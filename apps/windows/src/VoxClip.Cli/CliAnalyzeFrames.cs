@@ -14,8 +14,23 @@ internal sealed record CliFrameSources(IFrameFaces? Faces, IFrameTextLines? Text
 {
     /// <summary>What this build installs: the bundled face models when they verify and the catalogue is enabled (or
     /// <see cref="OnnxFrameFaces.OverrideVariable"/> is set; otherwise faces are unavailable), no text recognizer (Windows OCR is the
-    /// App's), and the shipped FFmpeg.</summary>
+    /// App's: the CLI is portable net10.0, W6), and the shipped FFmpeg.</summary>
     internal static CliFrameSources Installed() => new(OnnxFrameFaces.Installed(), null, new FfmpegFrameDecoder());
+
+    /// <summary>The text lines the analyzer reads, and whether they are only <see cref="NoFrameText"/> (faces only).</summary>
+    internal (IFrameTextLines Lines, bool FacesOnly) TextOrNone => Text is { } text ? (text, false) : (NoFrameText.Instance, true);
+
+    /// <summary>The cache the analyzer may use: none for faces only, whose observations have no text (the App's cache would read them as
+    /// frames without screens).</summary>
+    internal FrameAnalysisCache? Cache(bool wanted) => wanted && Text is not null ? new FrameAnalysisCache() : null;
+}
+
+/// <summary>No text recognizer: every frame has no text line, so no screen is found and no quad is looked for (faces only, W6).</summary>
+internal sealed class NoFrameText : IFrameTextLines
+{
+    internal static NoFrameText Instance { get; } = new();
+    public Task<IReadOnlyList<VoxClip.Core.Domain.Effects.ClipEffectRect>> LinesAsync(VoxClip.Core.Domain.Captions.PixelBuffer frame, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<VoxClip.Core.Domain.Effects.ClipEffectRect>>([]);
 }
 
 /// <summary><c>voxclip-cli analyze-frames --open &lt;project&gt; --clip &lt;id&gt; --json</c> (ADR-R48), twin of the Mac command: the
@@ -23,8 +38,10 @@ internal sealed record CliFrameSources(IFrameFaces? Faces, IFrameTextLines? Text
 /// JSON shape. Nothing is sent anywhere. With faces unavailable it measures nothing and fails with <c>modelMissing</c> (exit 7).</summary>
 internal static class CliAnalyzeFrames
 {
-    /// <summary>The line printed when the CLI has no text recognizer for the frames.</summary>
-    internal const string TextUnavailableMessage = "Text recognition isn't available to voxclip-cli on this PC, so text and screens in the video's frames can't be measured. Nothing was analyzed.";
+    /// <summary>The line printed when the CLI has no text recognizer for the frames and faces only weren't asked for.</summary>
+    internal const string TextUnavailableMessage = "Text recognition isn't available to voxclip-cli on this PC, so text and screens in the video's frames can't be measured. Nothing was analyzed. Pass --faces-only to measure faces alone.";
+    /// <summary>The Windows-only flag that measures faces with no text source (W6).</summary>
+    internal const string FacesOnly = "--faces-only";
 
     internal static async Task<JsonObject> RunAsync(ParseResult arguments, CliFrameSources sources, CancellationToken ct)
     {
@@ -35,7 +52,10 @@ internal static class CliAnalyzeFrames
         if (UsageError(clipId, transcriptPath, wordRange) is { } usage) throw new CliUsageException(usage);
         // Nothing is measured without faces: never an invented "no face".
         var faces = FrameFaces.Require(sources.Faces);
-        var text = sources.Text ?? throw new VoxClipException(VoxClipErrorCode.ModelMissing, TextUnavailableMessage);
+        // Without a text recognizer, faces only, when asked for: never textless frames that read as "no screen" by accident.
+        var facesOnly = arguments.GetValue<bool>(FacesOnly);
+        if (!facesOnly && sources.Text is null) throw new VoxClipException(VoxClipErrorCode.ModelMissing, TextUnavailableMessage);
+        IFrameTextLines text = facesOnly ? NoFrameText.Instance : sources.Text!;
 
         Project project;
         string source;
@@ -63,7 +83,7 @@ internal static class CliAnalyzeFrames
         var frameClip = FrameClip.Make(transcript, range, project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal))
             ?? throw new CliUsageException("The requested clip has no kept words.");
         var contentKey = project.Media.Source.ContentKey;
-        var cache = arguments.GetValue<bool>("--no-cache") ? null : new FrameAnalysisCache();
+        var cache = facesOnly || arguments.GetValue<bool>("--no-cache") ? null : new FrameAnalysisCache();
         var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(text), sources.Decoder, cache);
         JsonObject? pass = null;
         double? passBaseline = null;

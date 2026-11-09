@@ -13,12 +13,14 @@ namespace VoxClip.Cli;
 /// <summary><c>voxclip-cli autopilot</c>: ✦ Claude does it all, headless (design §6.7, ai.md §16.12), twin of the Mac command. Probe,
 /// transcription, Find Clips, then the top clips planned at once (at most three in flight; Claude Code and Codex get two more lanes) and
 /// each applied and, with <c>--out-dir</c>, exported as soon as its plan is ready. Paid steps never run here: rewrites in the creator's
-/// voice and music are listed as pending. Windows has no frame analyzer yet, so plans go as text and no clip carries <c>frames</c>.</summary>
+/// voice and music are listed as pending. Where this PC has the face models, the whole video's frame pass runs beside Find Clips and each
+/// clip carries the Mac's <c>frames</c> and <c>picture</c> (<see cref="CliAutopilotFrames"/>); without them plans go as text and no clip
+/// carries either.</summary>
 internal static class CliAutopilot
 {
     /// <summary>The command's result fields. <paramref name="connector"/> builds a connector from its id and the environment's keys.</summary>
     internal static async Task<JsonObject> RunAsync(ParseResult arguments, Func<ConnectorId, IKeyProvider, ILlmConnector> connector, CancellationToken ct,
-        ExportInputReader? openExport = null, ExportPreparer? prepareExport = null)
+        ExportInputReader? openExport = null, ExportPreparer? prepareExport = null, CliFrameSources? frameSources = null)
     {
         var clock = new ClaudeModeClock();
         var input = Path.GetFullPath(CliOperations.Required(arguments, "--open"));
@@ -72,6 +74,13 @@ internal static class CliAutopilot
         IReadOnlyList<ILlmConnector> lanes = id is ConnectorId.ClaudeCode or ConnectorId.Codex ? [Make(id), Make(id)] : [];
         var catalog = ServicesMergeAdapter.LlmModels();
         var runner = ServicesMergeAdapter.Runner(keys, redactor);
+        // The whole video's frames, beside Find Clips (ADR-R48 part 2): only with the face models. Images go to a CLI or a local AI that
+        // takes them; an API key gets the text summary, as on the Mac.
+        var frames = CliAutopilotFrames.Pass(project, source, frameSources ?? CliFrameSources.Installed(), Line);
+        frames?.Start(clock);
+        // The pass and every opening scan stop however the command ends.
+        using var passStop = new PassStop(frames);
+        var images = id is ConnectorId.ClaudeCode or ConnectorId.Codex or ConnectorId.Ollama or ConnectorId.LmStudio && main.SupportsImages;
 
         // Find Clips.
         Line("Finding clips…");
@@ -92,7 +101,8 @@ internal static class CliAutopilot
             Line($"Found {found.Clips.Count} clips. Planning the top {ranked.Length}…");
             var exports = new ClipExportRoute(openExport, prepareExport, checks);
             var (clips, plannedModel, applied) = await PlanAndApplyAsync(project, transcript, ranked, main, lanes, model, catalog, runner, root, clock, Line,
-                async (made, clipId, rank) => outDir is null ? [] : await ExportClipAsync(made, clipId, rank, outDir, aspect, quiet, clock, exports, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+                async (made, clipId, rank) => outDir is null ? [] : await ExportClipAsync(made, clipId, rank, outDir, aspect, quiet, clock, exports, ct).ConfigureAwait(false), ct,
+                frames, images, [CliAutopilotFrames.Shape(aspect)]).ConfigureAwait(false);
             // Each exported clip's self-check, which ran beside the other clips' work.
             if (checks is not null)
                 foreach (var clip in clips.OfType<JsonObject>())
@@ -111,6 +121,12 @@ internal static class CliAutopilot
         return fields;
     }
 
+    /// <summary>Stops a frame pass when disposed.</summary>
+    private sealed class PassStop(Media.Frames.VideoFramePass? pass) : IDisposable
+    {
+        public void Dispose() => pass?.Cancel();
+    }
+
     /// <summary>What the command prints without <c>--json</c>, as on the Mac: the progress lines are on stderr, and only the timings
     /// (with <c>--timings</c>) go to stdout.</summary>
     internal static string? HumanOutput(JsonObject fields) => fields["timings"]?.ToJsonString();
@@ -126,12 +142,20 @@ internal static class CliAutopilot
 
     /// <summary>The top clips planned at once on <paramref name="main"/> and <paramref name="lanes"/>, each applied (and handed to
     /// <paramref name="export"/>) the moment its plan is ready, one at a time. Rewrites and music stay pending. A clip whose plan failed is
-    /// listed with the reason; the others go on.</summary>
+    /// listed with the reason; the others go on. With <paramref name="frames"/> each request takes its clip's frames from the pass
+    /// (<paramref name="images"/> sends them as pictures, else the text summary) and its opening scan starts beside it; a clip whose request
+    /// carried frames gets the picture decisions for <paramref name="shapes"/> after the plan's own edits, and its JSON <c>frames</c> and
+    /// <c>picture</c>.</summary>
     internal static async Task<(JsonArray Clips, string Model, Project Project)> PlanAndApplyAsync(Project start, Core.Domain.Transcript.Transcript transcript,
         IReadOnlyList<(WordSpan Span, ClipAutopilotMoment Moment)> ranked, ILlmConnector main, IReadOnlyList<ILlmConnector> lanes, string model,
         LlmCatalog catalog, LlmRunner runner, string root, ClaudeModeClock clock, Action<string> line,
-        Func<Project, string, int, Task<IReadOnlyList<string>>> export, CancellationToken ct)
+        Func<Project, string, int, Task<IReadOnlyList<string>>> export, CancellationToken ct,
+        Media.Frames.VideoFramePass? frames = null, bool images = false, IReadOnlyList<ExportAspect>? shapes = null)
     {
+        IReadOnlyList<ExportAspect> exported = shapes ?? [ExportAspect.Portrait];
+        var sent = new CliAutopilotFrames.Sent();
+        var source = frames is null ? null
+            : CliAutopilotFrames.Source(frames, transcript.Words, start.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal), images, clock, sent);
         var project = start;
         var request = new ClipAutopilotRequest(transcript, project.Edits, new ClipAutopilotMode.Clips(ranked.Select(item => item.Span).ToArray()))
         { Moments = ranked.Select(item => item.Moment).ToArray() };
@@ -150,7 +174,7 @@ internal static class CliAutopilot
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         async Task<ClipAutopilotResult> PlanAsync()
         {
-            try { return await service.PlanAsync(request, main, model, lanes, Progress, stop.Token).ConfigureAwait(false); }
+            try { return await service.PlanAsync(request, main, model, lanes, Progress, stop.Token, source).ConfigureAwait(false); }
             finally { ready.Writer.TryComplete(); }
         }
         var planning = PlanAsync();
@@ -161,10 +185,21 @@ internal static class CliAutopilot
             {
                 if (clips.ContainsKey(index)) continue;
                 ct.ThrowIfCancellationRequested();
+                // The clip's opening scan ran beside its request; it is in hand before the clip is applied.
+                if (sent.Of(index) is { } scanning) await scanning.Opening.ConfigureAwait(false);
                 var clipId = Guid.NewGuid().ToString("D");
                 var applyStart = clock.Elapsed;
                 var (applied, pending) = ClipAutopilotMapping.Apply(ClipAutopilotMapping.Operations(plan, clipId, project, fonts), project);
                 project = applied;
+                // What the picture showed (ADR-R48): the same four decisions as Make it postable's rows.
+                Core.Domain.Frames.ClipPicture.Decisions? picture = null;
+                if (frames is not null && sent.Of(index) is { } shown)
+                {
+                    IReadOnlyList<Core.Domain.Frames.FrameObservation>? scan = null;
+                    if (Core.Domain.Frames.ClipPicture.OpeningClip(project, clipId) is { } opening) scan = await frames.OpeningAsync(opening, ct).ConfigureAwait(false);
+                    var inputs = new Core.Domain.Frames.ClipPicture.Inputs(shown.Frames, shown.Sentences, scan, exported, await frames.PitchBaselineAsync(ct).ConfigureAwait(false));
+                    (project, picture) = Core.Domain.Frames.ClipPicture.Apply(plan, clipId, project, inputs);
+                }
                 clock.Record(ClaudeModeStage.Apply, index + 1, applyStart);
                 line($"Clip {index + 1} ready: score {plan.Score}/10.");
                 var outputs = await export(project, clipId, index + 1).ConfigureAwait(false);
@@ -175,6 +210,11 @@ internal static class CliAutopilot
                     ["pending"] = new JsonArray(pending.Select(item => (JsonNode)JsonValue.Create(Decision(item.Decision))!).ToArray()),
                     ["outputs"] = new JsonArray(outputs.Select(path => (JsonNode)JsonValue.Create(path)!).ToArray())
                 };
+                if (sent.Of(index) is { } carried)
+                {
+                    clips[index]["frames"] = CliAutopilotFrames.FramesJson(carried.Frames, plan);
+                    if (picture is not null) clips[index]["picture"] = CliAutopilotFrames.PictureJson(picture, carried.Sentences, exported);
+                }
             }
         }
         catch

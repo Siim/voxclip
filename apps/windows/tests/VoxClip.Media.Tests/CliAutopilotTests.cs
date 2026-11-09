@@ -76,7 +76,10 @@ public sealed partial class CliAutopilotTests
     }
 
     /// <summary>The autopilot command's result fields on <paramref name="stub"/>, with its stderr.</summary>
-    private static async Task<(JsonObject Fields, string Errors)> AutopilotAsync(Stub stub, params string[] arguments)
+    private static Task<(JsonObject Fields, string Errors)> AutopilotAsync(Stub stub, params string[] arguments) => AutopilotAsync(stub, null, arguments);
+
+    /// <summary>The same with the frame sources <paramref name="frames"/> (null: what this build installs).</summary>
+    private static async Task<(JsonObject Fields, string Errors)> AutopilotAsync(Stub stub, CliFrameSources? frames, params string[] arguments)
     {
         var parsed = CliApplication.Parse(["autopilot", .. arguments]);
         Assert.Empty(parsed.Errors);
@@ -85,7 +88,7 @@ public sealed partial class CliAutopilotTests
         try
         {
             Console.SetError(errors);
-            var fields = await CliAutopilot.RunAsync(parsed, (_, _) => stub, TestContext.Current.CancellationToken);
+            var fields = await CliAutopilot.RunAsync(parsed, (_, _) => stub, TestContext.Current.CancellationToken, frameSources: frames);
             return (fields, errors.ToString());
         }
         finally { Console.SetError(previousError); }
@@ -142,6 +145,87 @@ public sealed partial class CliAutopilotTests
             Assert.Equal(before, await File.ReadAllBytesAsync(project, TestContext.Current.CancellationToken));
             Assert.Contains("Finding clips…", errors, StringComparison.Ordinal);
             Assert.Contains("Found 3 clips. Planning the top 2…", errors, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(Path.GetDirectoryName(project)!, true); }
+    }
+
+    /// <summary>five-questions.voxclip with its media pointed at a stand-in file, so the frame pass has a source (the decoder is a stub).</summary>
+    private static async Task<string> SourcedProjectAsync()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var path = Project();
+        var source = Path.Combine(Path.GetDirectoryName(path)!, "source.mp4");
+        await File.WriteAllTextAsync(source, "stand-in media " + Guid.NewGuid().ToString("N"), ct);
+        var project = Core.Domain.Shared.ProjectSerialization.Deserialize(await File.ReadAllTextAsync(path, ct));
+        var key = await new Core.Services.Project.ProjectStore().ComputeContentKeyAsync(source, null, ct);
+        project = project with { Media = new(project.Media.Source with { AbsolutePath = source, SizeBytes = new FileInfo(source).Length, ContentKey = key }) };
+        await File.WriteAllTextAsync(path, Core.Domain.Shared.ProjectSerialization.Serialize(project), ct);
+        return path;
+    }
+
+    /// <summary>With faces (stub models, W6) each plan carries its clip's frames, and each clip's JSON the Mac's <c>frames</c> and
+    /// <c>picture</c>; this CLI reads no text, so it says so, finds no screen and caches nothing. The pass and the opening scans are timed.</summary>
+    [Fact]
+    public async Task WithFacesEachClipCarriesItsFramesAndThePictureDecisions()
+    {
+        var project = await SourcedProjectAsync();
+        try
+        {
+            var stub = new Stub();
+            var decoder = new Frames.StubFrameDecoder();
+            var (result, errors) = await AutopilotAsync(stub, new CliFrameSources(new Frames.StubFrameFaces(), null, decoder),
+                "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "2", "--timings", "--json");
+            Assert.Contains(CliAutopilotFrames.FacesOnlyLine, errors, StringComparison.Ordinal);
+            Assert.NotEmpty(decoder.Reads);
+            var plans = stub.Requests.Where(request => request.Feature == LlmFeature.ClipAutopilot).ToArray();
+            Assert.Equal(2, plans.Length);
+            Assert.All(plans, request => Assert.Contains(Core.Domain.Frames.FrameSheet.SummaryHeader, request.Instruction, StringComparison.Ordinal));
+            Assert.All(plans, request => Assert.Empty(request.Images));
+            foreach (var clip in result["clips"]!.AsArray().Select(item => item!.AsObject()))
+            {
+                Assert.Equal(["clipId", "endWordId", "frames", "outputs", "pending", "picture", "rank", "score", "startWordId", "title", "verdict"],
+                    clip.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+                var frames = clip["frames"]!.AsObject();
+                Assert.Equal(["blur", "cover", "imageTokens", "images", "sent"], frames.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+                Assert.True(frames["sent"]!.GetValue<int>() > 0);
+                Assert.Equal((false, 0), (frames["images"]!.GetValue<bool>(), frames["imageTokens"]!.GetValue<int>()));
+                Assert.Empty(frames["blur"]!.AsArray());
+                var picture = clip["picture"]!.AsObject();
+                Assert.Equal(["blur", "cover", "crop", "opening"], picture.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+                // A clear look already: the start stays. The crop follows the stub's face (centred across, the crop's full height).
+                Assert.Equal("{\"shift\":0,\"reason\":null}", picture["opening"]!.ToJsonString());
+                Assert.Equal("{\"aspect\":\"9:16\",\"faceFound\":true,\"center\":{\"x\":0.5,\"y\":0.5}}", picture["crop"]!.ToJsonString());
+                Assert.Empty(picture["blur"]!.AsArray());
+                // The reply named no listed cover: the plan's validator takes C1, the best measured one, as its fallback, so no reason is shown.
+                Assert.Equal(("C1", false, (string?)null), (picture["cover"]!["id"]!.GetValue<string>(), picture["cover"]!["fallback"]!.GetValue<bool>(),
+                    picture["cover"]!["reason"]?.GetValue<string>()));
+                Assert.Equal(frames["cover"]!.GetValue<double>(), picture["cover"]!["time"]!.GetValue<double>());
+            }
+            var stages = result["timings"]!["stages"]!.AsArray().Select(stage => (stage!["stage"]!.GetValue<string>(), stage["clip"]?.GetValue<int>())).ToArray();
+            Assert.Contains(("frames", (int?)null), stages);
+            Assert.Contains(("opening", (int?)1), stages);
+            Assert.Contains(("opening", (int?)2), stages);
+        }
+        finally { Directory.Delete(Path.GetDirectoryName(project)!, true); }
+    }
+
+    /// <summary>Without the face models nothing is looked at: no pass, no frames in any plan, no <c>frames</c> or <c>picture</c>.</summary>
+    [Fact]
+    public async Task WithoutFacesNoFrameIsReadAndThePlansAreUnchanged()
+    {
+        var project = await SourcedProjectAsync();
+        try
+        {
+            var stub = new Stub();
+            var decoder = new Frames.StubFrameDecoder();
+            var (result, errors) = await AutopilotAsync(stub, new CliFrameSources(null, null, decoder),
+                "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "2", "--timings", "--json");
+            Assert.Empty(decoder.Reads);
+            Assert.DoesNotContain(CliAutopilotFrames.FacesOnlyLine, errors, StringComparison.Ordinal);
+            Assert.All(stub.Requests, request => Assert.DoesNotContain(Core.Domain.Frames.FrameSheet.SummaryHeader, request.Instruction, StringComparison.Ordinal));
+            Assert.All(result["clips"]!.AsArray(), clip => Assert.Equal(["clipId", "endWordId", "outputs", "pending", "rank", "score", "startWordId", "title", "verdict"],
+                clip!.AsObject().Select(pair => pair.Key).Order(StringComparer.Ordinal)));
+            Assert.DoesNotContain(result["timings"]!["stages"]!.AsArray(), stage => stage!["stage"]!.GetValue<string>() is "frames" or "opening");
         }
         finally { Directory.Delete(Path.GetDirectoryName(project)!, true); }
     }

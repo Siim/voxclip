@@ -255,6 +255,7 @@ internal static class CliApplication
         Add(frames, "--words", "With --transcript: the clip as first:last word indices.");
         Flag(frames, "--video-pass", "First run the whole video's sentence-frame pass, as Claude mode does beside Find Clips, and time it, the clip's frames from it and its opening scan.");
         Flag(frames, "--no-cache", "Analyze every frame again and leave the cache untouched.");
+        Flag(frames, CliAnalyzeFrames.FacesOnly, "Measure faces only: this CLI reads no text, so text and screens aren't looked for and nothing is cached.");
         Add(frames, "--sheet-out", "Folder to write the frame sheet's JPEGs to.");
         frames.Validators.Add(validation =>
         {

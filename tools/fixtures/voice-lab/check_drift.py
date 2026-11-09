@@ -65,6 +65,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-frames/frame-face-fields-cases.json',
          'shared/fixtures/clip-frames/frame-quad-cases.json',
          'shared/fixtures/clip-frames/analyze-frames-cli-cases.json',
+         'shared/fixtures/clip-frames/autopilot-picture-cases.json',
          'shared/fixtures/autopilot/plan-frames-cases.json', 'shared/fixtures/autopilot/plan-validation-cases.json',
          'shared/fixtures/autopilot/plan-v2-cases.json', 'shared/fixtures/autopilot/plan-tone-cases.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
@@ -133,6 +134,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_frame_quads.py")], check=True)
     # analyze-frames' output bytes on fabricated analyses (ADR-R48, W5), replayed by both CLIs; pure IEEE, so byte-exact.
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_analyze_frames.py")], check=True)
+    # autopilot's frames and picture objects on fabricated decisions (ADR-R48 part 2, W6), replayed by the Windows CLI; pure IEEE.
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_autopilot_picture.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/autopilot/generate_plan_frames.py")], check=True)
     # The clip style's tone (doc/design.md section 6.6) and the Rewrite tone catalog (section 6.3.1).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_style_tone_schema.py")], check=True)
