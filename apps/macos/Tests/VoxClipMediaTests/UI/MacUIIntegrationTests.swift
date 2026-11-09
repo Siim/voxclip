@@ -69,8 +69,11 @@ extension HeavyMediaTests {
         // S-clip-controls exports a clip at 1.25× with the Muted look and checks its length and caption alignment.
         // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.
         let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls", "S-claude-does-it-all"]
+        // Talk back to Claude in the transcript (DebugRewriteSmokeThread.swift): a reply, the arrows and "That's it, keep it"
+        // to Use; "3 more versions" and Undo. Both passes.
+        let thread = ["S-thread", "S-thread-more"]
         var names: [String] = (1...15).map { (index: Int) -> String in "S\(index)" }
-        for group in [own, guardScenarios, fitScenarios, makeIt, realisticOnly] { names += group }
+        for group in [own, guardScenarios, fitScenarios, makeIt, thread, realisticOnly] { names += group }
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
             arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],
             acceptNonzeroWithReport: "results.json", deadline: lengths == "realistic" ? 480 : 300)
@@ -81,7 +84,7 @@ extension HeavyMediaTests {
         var numbered: [String] = (1...12).map { (index: Int) -> String in "S\(index)" }
         numbered += ["S14", "S15"]
         var exactNames: [String] = []
-        for group in [numbered, own, guardScenarios, fitScenarios, makeIt] { for name in group { exactNames.append(name + "-exact") } }
+        for group in [numbered, own, guardScenarios, fitScenarios, makeIt, thread] { for name in group { exactNames.append(name + "-exact") } }
         let expected: [String] = lengths == "exact" ? exactNames : names
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }

@@ -1306,7 +1306,7 @@ The transcript shows a proposal as tracked changes. The panel's change list and 
 
 The treatments of these states, and of the selected clip and a selection, come with the visual redesign. Their contrast pairs join `tools/design/contrast.mjs` then, and every text pair keeps at least 4.5:1 (§15).
 
-macOS (v2) draws them as a code diff. New words read in `text.primary` on `change.add` at 19 %, at the text's height with radius 2; removed words keep their place in `word.gone` with a 1 pt strike, as under Show cuts; words a change keeps (bridges) stay plain, and words already cut inside it fold like any cut. A 3 pt `change.add` bar at x 66 runs beside every line a pending change touches, at 100 % for the focused change and 50 % for the others; the line's glyph column shows the change's kind (waveform for voice, pencil for a fix, scissors for a cut, in `text.tertiary`), above the AI voice waveform. The focused change shows **Keep ⌘↩** and **Undo ⌘⌫**, 20 pt buttons over a blank the text keeps after its last word, or after the next word or two when they end its clause. An excluded change shows its original words with a dotted `text.tertiary` underline. A fix that only moves punctuation is not drawn; Keep All still applies it. While changes wait for review, AI words outside them lose their marker and underline and keep the gutter glyph. Pending changes are also marks on the overview ruler. **Keep** on a cut or fix applies it as one undo step, "Keep change {i}", whose undo also takes the change back to waiting, or to left out; on a voice change it includes it for takes, with no project change. A kept change is gone like a commit: restoring or correcting its words later never brings it back, and Keep All never applies it again. **Undo** leaves the change out (unchecked in the list) with no project change and no undo step. **Keep All** keeps every change still waiting: the cuts and fixes as one undo step named for the scope ("Rewrite clip {n}"), whose undo also takes the voice changes back to waiting. That undo acts only on its own proposal: after a new Rewrite it undoes the project alone. After Keep or Undo the focus moves to the next waiting change. The proposal belongs to its tab and shows only while that tab is open. VoiceOver reaches Keep, Undo and Edit through the transcript's custom actions and the **Proposed changes** rotor; the buttons themselves are not elements.
+macOS (v2) draws them as a code diff. New words read in `text.primary` on `change.add` at 19 %, at the text's height with radius 2; removed words keep their place in `word.gone` with a 1 pt strike, as under Show cuts; words a change keeps (bridges) stay plain, and words already cut inside it fold like any cut. A 3 pt `change.add` bar at x 66 runs beside every line a pending change touches, at 100 % for the focused change and 50 % for the others; the line's glyph column shows the change's kind (waveform for voice, pencil for a fix, scissors for a cut, in `text.tertiary`), above the AI voice waveform. The focused change shows **Keep ⌘↩** and **Undo ⌘⌫**, 20 pt buttons over a blank the text keeps after its last word, or after the next word or two when they end its clause. An excluded change shows its original words with a dotted `text.tertiary` underline. A fix that only moves punctuation is not drawn; Keep All still applies it. While changes wait for review, AI words outside them lose their marker and underline and keep the gutter glyph. Pending changes are also marks on the overview ruler. **Keep** on a cut or fix applies it as one undo step, "Keep change {i}", whose undo also takes the change back to waiting, or to left out; on a voice change it includes it for takes, with no project change. A kept change is gone like a commit: restoring or correcting its words later never brings it back, and Keep All never applies it again. **Undo** leaves the change out (unchecked in the list) with no project change and no undo step. **Keep All** keeps every change still waiting: the cuts and fixes as one undo step named for the scope ("Rewrite clip {n}"), whose undo also takes the voice changes back to waiting. That undo acts only on its own proposal: after a new Rewrite it undoes the project alone. After Keep or Undo the focus moves to the next waiting change. The proposal belongs to its tab and shows only while that tab is open. VoiceOver reaches Keep, Undo and Talk to Claude through the transcript's custom actions and the **Proposed changes** rotor; the buttons themselves are not elements.
 
 **Inserted words** are display-only runs that map to no word ID.
 
@@ -1315,18 +1315,66 @@ macOS (v2) draws them as a code diff. New words read in `text.primary` on `chang
 
 Selection snapping skips them. Hit-testing an inserted run focuses its change.
 
-**Change editor.** Click a change, or press Return on a focused change or change row. On Windows, F2 opens the paragraph's existing inline correction row. The 1 November 2026 inline-action decision supersedes the older Windows popup wording; it does not create a new editor window or popup.
+**Change editor.** Click a change, or press Return on a focused change or change row. The 1 November 2026 inline-action decision supersedes the older popup wording; it does not create a new editor window or popup.
 
-- Windows places it under the affected paragraph, in the transcript's scroll flow. The shell owns the proposal's Keep, Undo, rediff/fit/cost and history operations; the transcript publishes ordinal-based callbacks and renders the returned real review snapshot. No rendering callback authorizes a provider request or synthesis.
-- Content:
-  - a label, "New words for change {i}";
-  - a field prefilled with the new words;
-  - the fit meter line (voice-lab.md §8.9.1): "about {s} s for a {g} s gap: fits", or "about {s} s for a {g} s gap: will change length";
-  - "Return saves · Esc cancels";
-  - **Reject Change**.
-- Saving reruns the local diff, the fit meter and the cost; nothing is sent. Emptying the field turns a voice change into a cut.
+- macOS (ADR-R50): Return, F2, a click on a change's new words, Return on its change row and VoiceOver's "Talk to Claude about change {i}" open the change's thread ("Talk back to Claude" below), whose input takes the keys. The edit popover is removed, and new words come from Claude's versions.
+- Windows, until its thread twin: F2 opens the paragraph's existing inline correction row.
+  - It sits under the affected paragraph, in the transcript's scroll flow. The shell owns the proposal's Keep, Undo, rediff/fit/cost and history operations; the transcript publishes ordinal-based callbacks and renders the returned real review snapshot. No rendering callback authorizes a provider request or synthesis.
+  - Content:
+    - a label, "New words for change {i}";
+    - a field prefilled with the new words;
+    - the fit meter line (voice-lab.md §8.9.1): "about {s} s for a {g} s gap: fits", or "about {s} s for a {g} s gap: will change length";
+    - "Return saves · Esc cancels";
+    - **Reject Change**.
+  - Saving reruns the local diff, the fit meter and the cost; nothing is sent. Emptying the field turns a voice change into a cut.
 
 **Timeline.** Proposed voice windows and accepted AI spans are marked on the timeline strip. Their marks come with the visual redesign (§5.2).
+
+#### Talk back to Claude
+
+The user, 9 November 2026: "the bubbles that help me to pick, if this text satisfies me, or the versions how I want to bend it." They pick, or bend, a change by talking to Claude about it, under its words. The mockup is `ux/rewrite-chat/mockup.html`, frame A with D's version arrows and B's "3 more versions" as a bubble (ADR-R50).
+
+**Where.**
+
+- The thread sits under the paragraph of the focused pending change, in the transcript's scroll flow. It is indented to the text column and has a 2 pt left rule in `change.add` at 45 %, with no box ("no outlines in the transcript").
+- Only the focused change shows its thread, and it follows the focus. Other changes keep the look above.
+- It shows when a Rewrite result arrives, under the first focused change, with just the version row, the bubbles and the input.
+- The paragraphs after it move down by its height.
+- A change kept or undone has no thread. While the wording fit works on the words, the thread steps aside.
+
+**What it shows**, top to bottom:
+
+1. The last two turns, in 13 pt: "**You**" in `text.secondary`, then your words; "**✦ Claude**" in the AI accent, then its one-sentence note on what it changed. Older turns fold into the versions. A first result's thread has no turns.
+2. The version row: "‹ 2 of 2 ›", then "· 3 phrases to voice at Keep", or "· text only, free" for a change with no voice part. Its tooltip is the fit meter line.
+3. The bubbles, 24 pt capsules, in this order:
+   - **✓ That's it, keep it**, on `change.add`: exactly Keep ⌘↩;
+   - up to two **✦** bubbles, Claude's own next steps for this text from its last reply (at most six words each, such as "More suspense before the scammer"), outlined in the AI accent;
+   - the steady ones: **Shorter**, **Closer to my words**, **3 more versions**.
+4. Rewrite's inline connector confirmation, when the provider needs one: the Rewrite consent, once per AI, as Ask Claude's (§6.8).
+5. The input, "Tell Claude what to change…", 1 to 4 lines, with ↵ at its end. Beside it in `text.tertiary` is the cost line as Ask Claude's footer says it: "Free on your Claude plan", "Billed to your {provider} key" or "Free on this Mac".
+6. An error, in place: the connector's readiness copy (the same words as R1x) and **Try Again**.
+
+**What it does.**
+
+- A bubble click sends its words as your message, ✦ and steady alike. "3 more versions" asks for three alternatives: they become versions n+1 to n+3, and the first one shows.
+- Claude's reply becomes version n+1 and goes into the change's place as a local edit: the diff, the kinds, the fit and the cost are worked out again here. It is the reply's own words, so Keep prices and voices it as any Rewrite change.
+- A reply with the same words adds no version, and Claude's line says "Kept the words as they are." and why.
+- The arrows, and ⌥← and ⌥→, switch the change's text between its versions. Nothing is sent. A switch is not an undo step; Keep is one, as before. Undo ⌘⌫ still returns the change to the recorded words.
+- While Claude works, the input shows a one-line spinner, "Claude is working on it", with **Stop**. Stop cancels the request and nothing changes. An error keeps the input's text.
+- Nothing is voiced or paid in the thread. Only the version that is kept goes on to the voice and price steps.
+
+**Keys.**
+
+| Key | Does |
+|---|---|
+| ↵ | Sends the input |
+| ⇧↵ | A new line in the input |
+| Esc | Folds the thread; the version stays in the text, and focusing the change again opens it |
+| ⌥← / ⌥→ | The previous or next version, while the input is empty. In the transcript, once the thread has two versions or more; otherwise they move by sentence as before |
+| ⌘↩ / ⌘⌫ | Keep and Undo, also with the input focused |
+| Return, F2, a click on the new words | Open the thread and put the keys in its input |
+
+**VoiceOver.** The thread is a group, "Talk to Claude about change {i}". Each turn reads "You: …" or "Claude: …"; the arrows are "Previous version" and "Next version" beside "Version 2 of 3"; a ✦ bubble reads "{words}, suggested by Claude"; the input is "Tell Claude what to change about change {i}".
 
 #### 6.3.6 Rewrite flow
 

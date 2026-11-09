@@ -675,6 +675,42 @@ struct RewriteChange: Equatable, Sendable {
         editor.proposal = proposal
         showProposal()
     }
+    /// Claude's words for a change from its thread (design.md §6.3 "Talk back to Claude"): once `editChange` has put them in
+    /// the change's place, they are this reply's words for it, as a wording fit's or a re-ask's are, so the change is
+    /// reviewed, priced and voiced at Keep as the AI wrote it (a change edited by hand still waits for a new run). A
+    /// change the edit made of one part keeps that part; one it split gets a single part over its words, as a fit's
+    /// `reword` makes. Nothing is sent, priced or paid here.
+    func acceptThreadWords(_ ordinal: Int, text: String) throws {
+        guard var proposal = ownProposal, changes.indices.contains(ordinal - 1), let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
+              proposal.changes[index].state == .pending else { throw CancellationError() }
+        var next = changes
+        let old = next[ordinal - 1].hunk, edited = proposal.changes[index]
+        let hunk: VoiceLabDiffHunk
+        if edited.parts.count == 1, let part = edited.parts.first {
+            var made = VoiceLabDiffHunk(kind: part.kind, sourceWordIds: part.sourceWordIDs, newTokens: part.newTokens, correctedTexts: part.correctedTexts,
+                                        absorbedItemIds: part.absorbedItemIDs, bridgeWordIds: part.bridgeWordIDs,
+                                        sourceStartIndex: old.sourceStartIndex, sourceEndIndex: old.sourceEndIndex, anchorSeconds: old.anchorSeconds)
+            made.audioTags = part.kind == .voice ? VoiceLabAudioTags.reanchored(old.audioTags, from: old.newTokens.joined(separator: " "),
+                                                                                to: part.newTokens.joined(separator: " ")) : []
+            hunk = made
+        } else {
+            var made = VoiceLabDiffHunk(kind: .voice, sourceWordIds: edited.span, newTokens: EditingPrimitives.splitWords(text), correctedTexts: [],
+                                        absorbedItemIds: old.absorbedItemIds, bridgeWordIds: [], sourceStartIndex: old.sourceStartIndex,
+                                        sourceEndIndex: old.sourceEndIndex, anchorSeconds: old.anchorSeconds)
+            made.audioTags = VoiceLabAudioTags.reanchored(old.audioTags, from: old.newTokens.joined(separator: " "), to: text)
+            hunk = made
+            proposal.changes[index].parts = [TranscriptChange.Part(hunk)]
+        }
+        next[ordinal - 1].hunk = hunk
+        let built = try RewriteReview.build(next.map(\.hunk), reviewInputs)
+        changes = next; review = built; problem = ""
+        replyParts[ordinal] = proposal.changes[index].parts
+        pricedAnyway.remove(ordinal); wordingFit.kept.remove(ordinal); wordingFit.initialEstimates[ordinal] = nil
+        guardBlocked[ordinal] = nil
+        takePlanFailure = nil
+        editor.proposal = proposal
+        showProposal()
+    }
     /// The voice whose calibration a phrase's estimate starts from (ADR-R43): the chosen voice, else the only calibrated one.
     var voiceCalibration: VoiceLabVoiceCalibration? { editor.app.rateCalibration(recordID: generation?.selectedVoiceID) }
     /// The ratios a phrase's multiplier reads for `model`: its voice's calibration, then this project's own samples.
@@ -722,6 +758,15 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored private var hasRun = false
     /// The transcript's proposal when it is this session's.
     var ownProposal: TranscriptProposal? { editor.proposal.flatMap { $0.id == proposalID ? $0 : nil } }
+    #if DEBUG
+    /// Makes `proposal` this session's own, as a reply's changes do (`showReplyInTranscript`): the DEBUG scenes and tests
+    /// that build a proposal directly, so its changes get their Rewrite thread.
+    func adopt(_ proposal: TranscriptProposal) {
+        proposalID = proposal.id
+        replyParts = Dictionary(proposal.changes.map { ($0.ordinal, $0.parts) }, uniquingKeysWith: { first, _ in first })
+        editor.proposal = proposal
+    }
+    #endif
     /// Takes the session's proposal out of the transcript.
     private func clearProposal() {
         if ownProposal != nil { editor.proposal = nil }

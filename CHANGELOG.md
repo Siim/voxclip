@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Windows, the face models now pick the speaker over a face in a graphic or on a screen, and don't guess the eyes of very small faces. Measured against the Mac again, they still don't match closely enough (eyes, picture quality, the opening frame and the cover), so they stay switched off.
+- After a Rewrite you can talk to Claude about a change right under its words: tell it what is wrong, or tap a bubble (Shorter, Closer to my words, 3 more versions, or Claude's own suggestions), get a new version in place, step between versions with ‹ ›, and keep the one you like; nothing is voiced or paid until you keep it. It replaces the box for typing a change's new words by hand.
 - Lip sync now accepts fal.ai's real results, which carry a Content Credentials (C2PA) metadata box. They used to stop with "fal.ai's video isn't an MP4 file VoxClip can open" after fal.ai had charged, and a kept result now imports on Try Again for free.
 - On Windows, the face models were measured against the Mac on 37 people from NASA's public-domain video; they don't match closely enough yet (eyes, picture quality and the opening frame), so they stay switched off.
 - On Windows, Make it postable can now look at your clip's frames as the Mac does: it opens on a clear look at you, follows your face in 9:16 and 1:1, blurs screens Claude saw text on and picks a cover saved beside the export, each with Undo; it stays switched off until the face models are matched to the Mac.

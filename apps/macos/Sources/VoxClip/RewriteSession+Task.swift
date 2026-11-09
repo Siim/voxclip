@@ -256,10 +256,10 @@ extension RewriteSession {
         case .message(let text):
             cards = [.text(text)]
             if let steps = failureSteps { cards.append(.nextSteps(steps)) }
-        case .signedOut(let cli, let command):
-            cards = [.text("\(cli) isn't signed in. Run `\(command)` in Terminal and sign in, then choose Try Again.")]
+        case .signedOut:
+            cards = [.text(error.line)]
         case .cliNetworkUnreachable(let cli, let detail):
-            cards = [.text("\(cli) couldn't reach its server from VoxClip."),
+            cards = [.text(PanelError.unreachable(cli)),
                      .text(LLMError.cliNetworkRecovery), .secondaryText(detail)]
             footer.link = PanelAction(id: "openLocalNetworkSettings", title: "Open Local Network Settings") { [weak self] in
                 guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork") else { return }
@@ -272,10 +272,10 @@ extension RewriteSession {
                 actionTask?.cancel()
                 actionTask = Task { await self.saveKeyAndTryAgain(provider) }
             }
-        case .notRunning(let server, let url):
-            cards = [.text(UserMessages.localServerUnavailable(name: server, url: url) + " Start it, then choose Try Again.")]
+        case .notRunning:
+            cards = [.text(error.line)]
         case .refused:
-            cards = [.text("The model declined to rewrite this recording."), .ask(placeholder: AskField.placeholder(words))]
+            cards = [.text(PanelError.refusedLine), .ask(placeholder: AskField.placeholder(words))]
             footer = PanelFooter(primary: askForSomethingElse)
         case .tooManyEntries, .tooMuchText:
             let findClips = task.scope == .fullTake ? PanelAction(id: "findClips", title: "Find Clips") { [weak editor] in

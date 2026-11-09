@@ -1028,16 +1028,26 @@ extension DebugTranscriptPixels {
         check("and one redo keeps them all again", model.cutWordIDs.contains(id(91)) && model.proposal?[5]?.state == .kept)
         model.undoManager = nil
 
-        // The edit popover holds the change's words; saving rediffs it locally and sends nothing.
+        // The focused change's Rewrite thread (design.md §6.3 "Talk back to Claude"): under its paragraph in the text's flow,
+        // indented to the text column, the paragraphs after it moved down by its height. A local edit sends nothing.
         model.proposal = proposal(for: model)
+        let session = RewriteSession(editor: model, scope: .clip("hunk-clip"), envelope: nil, connector: nil)
+        model.openRewrite = session
+        if let proposal = model.proposal { session.adopt(proposal) }
         pane.update(rebuild: true)
         pane.scroll(toCharacter: 0)
-        text.showChangePopover(1)
-        if let popover = text.changePopoverAuditView, let range = renderer.changeRange(1), let line = text.lineBox(atCharacter: NSMaxRange(range) - 1) {
-            bitmap = try pane.bitmap("v2-transcript-hunk-popover-dark", directory: directory)
-            check("the edit popover opens under the change with its new words (\(model.changeText(1)))", popover.frame.minY >= line.maxY && model.changeText(1) == "your source directory in the")
-        } else { check("the edit popover opens", false) }
-        text.hideChangePopover(refocus: false)
+        text.layoutThreadNow()
+        if let thread = text.threadAuditView, let range = renderer.changeRange(1), let anchor = renderer.threadAnchor,
+           let line = text.lineBox(atCharacter: anchor), let next = text.lineBox(atCharacter: anchor + 2) {
+            bitmap = try pane.bitmap("v2-transcript-hunk-thread-dark", directory: directory)
+            check("the thread stands under change 1's paragraph at the text column, the next paragraph below it (\(thread.frame), line \(line.maxY), next \(next.minY))",
+                  thread.frame.minY >= line.maxY && abs(thread.frame.minX - text.textContainerOrigin.x) < 0.5 && next.minY >= thread.frame.maxY
+                    && NSLocationInRange(NSMaxRange(range) - 1, NSRange(location: 0, length: anchor + 1)) && model.changeText(1) == "your source directory in the")
+        } else { check("the thread shows under the focused change", false) }
+        model.closeRewrite(returnFocus: false)
+        model.proposal = proposal(for: model)
+        pane.update(rebuild: true)
+        check("with no Rewrite of its own, a proposal shows no thread", !text.threadVisible && renderer.threadAnchor == nil)
         model.editChange(1, text: "")
         check("emptying a voice change's words turns it into a cut", model.proposal?[1]?.kind == .cut && model.proposal?[1]?.parts.first?.sourceWordIDs == (32...36).map(id))
         return results

@@ -563,13 +563,13 @@ extension RewriteSession {
         editor.keepAllChanges()
         if isOpen, case .proposal = task.state { showProposal() }
     }
-    /// Return on a row (design.md §6.3.5): focuses the change and opens its edit popover in the transcript, which takes
-    /// the keyboard, as Return on the focused change there does. A change with no review, or a kept cut or fix, has none.
+    /// Return on a row (design.md §6.3.5): focuses the change and opens its Rewrite thread in the transcript, whose input
+    /// takes the keyboard, as Return on the focused change there does. A change with no review, or a kept cut or fix, has none.
     private func editChange(_ ordinal: Int) {
         editor.focusChange(ordinal, announcing: false)
         guard editor.proposalDisplay?.focused == ordinal, editor.proposalDisplay?.actions.isEmpty == false, focusTranscript(in: editor.window),
               let transcript = editor.window?.firstResponder as? TranscriptNSTextView else { return }
-        // The focused change keeps its buttons' blank in the text: lay it out before the popover is placed under it.
+        // The focused change keeps its buttons' blank and its thread's room in the text: lay them out before the thread is placed.
         transcript.renderNow()
         _ = transcript.accessibleEditChange()
     }

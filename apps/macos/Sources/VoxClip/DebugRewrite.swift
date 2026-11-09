@@ -864,8 +864,8 @@ extension DebugRewrite {
               proposed && window.firstResponder is TranscriptNSTextView)
         editor.closeRewrite(returnFocus: false)
 
-        // R2 with the keyboard in the panel (design.md §10, V15 review): Return edits the focused change in the transcript
-        // and never runs the footer's primary; ⌘Return runs it. Full take's fixture reply cuts a word: Apply 1 Change.
+        // R2 with the keyboard in the panel (design.md §10, V15 review): Return opens the focused change's thread in the
+        // transcript, whose input takes the keys, and never runs the footer's primary; ⌘Return runs it. Full take's fixture reply cuts a word: Apply 1 Change.
         func transcript() -> TranscriptNSTextView? {
             func find(_ view: NSView) -> TranscriptNSTextView? { view as? TranscriptNSTextView ?? view.subviews.lazy.compactMap(find).first }
             return window.contentView.flatMap(find)
@@ -889,10 +889,10 @@ extension DebugRewrite {
         editor.paneFocusRequest += 1
         try await until { paneHasKeyboard() }
         returnKey([])
-        try await until { transcript()?.changePopoverVisible == true }
-        check("Return on R2's change list edits the focused change and applies nothing (first responder \(responder()))",
-              applies && transcript()?.changePopoverVisible == true && editor.project == before && fourth.isOpen)
-        transcript()?.hideChangePopover()
+        try await until { transcript()?.threadVisible == true && window.firstResponder is RewriteThreadInputTextView }
+        check("Return on R2's change list opens the focused change's thread and applies nothing (first responder \(responder()))",
+              applies && transcript()?.threadVisible == true && window.firstResponder is RewriteThreadInputTextView && editor.project == before && fourth.isOpen)
+        editor.foldRewriteThread()
         editor.focusedPane = .panel
         editor.paneFocusRequest += 1
         try await until { paneHasKeyboard() }

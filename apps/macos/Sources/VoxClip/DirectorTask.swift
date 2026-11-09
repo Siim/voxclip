@@ -341,6 +341,22 @@ enum PanelError: Equatable, Sendable {
         case .empty, .invalidInput: return nil
         }
     }
+
+    /// The fix as one line, in the words R1x's cards use: the Rewrite thread shows it in place, under its input
+    /// (design.md §6.3 "Talk back to Claude"), with its own Try Again.
+    var line: String {
+        switch self {
+        case .message(let text): text
+        case .signedOut(let cli, let command): "\(cli) isn't signed in. Run `\(command)` in Terminal and sign in, then choose Try Again."
+        case .cliNetworkUnreachable(let cli, _): Self.unreachable(cli) + " " + LLMError.cliNetworkRecovery
+        case .noKey(_, let name): LLMError.missingKey.userMessage(label: name, feature: .voiceRewrite) ?? ""
+        case .notRunning(let server, let url): UserMessages.localServerUnavailable(name: server, url: url) + " Start it, then choose Try Again."
+        case .refused: Self.refusedLine
+        case .tooManyEntries, .tooMuchText: "This is too much text to send in one request. Your edits are saved."
+        }
+    }
+    static func unreachable(_ cli: String) -> String { "\(cli) couldn't reach its server from VoxClip." }
+    static let refusedLine = "The model declined to rewrite this recording."
 }
 
 /// One task in the right column: its scope, its state and what the panel shows for it.

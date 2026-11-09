@@ -37,7 +37,13 @@ actor RewriteSmokeConnector: LLMConnector {
     private(set) var holding = false
     /// Fit replies sent without the bridge words their request named (S15).
     private(set) var droppedBridgeReplies = 0
-    init(rewrites: [RewriteSmokeReply], fits: [RewriteSmokeFit] = []) { self.rewrites = rewrites; self.fits = fits }
+    /// The Rewrite thread's replies (`rewrite-followup` and `rewrite-followup-versions`), in order, as JSON objects.
+    private var followups: [String]
+    /// The thread's requests as sent, for the S-thread checks.
+    private(set) var followupRequests: [LLMRequest] = []
+    init(rewrites: [RewriteSmokeReply], fits: [RewriteSmokeFit] = [], followups: [String] = []) {
+        self.rewrites = rewrites; self.fits = fits; self.followups = followups
+    }
 
     func status() -> ConnectorStatus { .ready }
     func knownCLIAuthMethod() async -> String? { nil }
@@ -67,6 +73,10 @@ actor RewriteSmokeConnector: LLMConnector {
                 return RawCompletion(text: then.reply(phrases), model: model, stop: .complete)
             }
             return RawCompletion(text: fit.reply(phrases), model: model, stop: .complete)
+        case "rewrite-followup", "rewrite-followup-versions":
+            followupRequests.append(request)
+            guard !followups.isEmpty else { throw LLMError.invalidOutput(reason: "The smoke script has no thread reply.") }
+            return RawCompletion(text: followups.removeFirst(), model: model, stop: .complete)
         default:
             throw LLMError.invalidOutput(reason: "The smoke script does not answer \(request.tag).")
         }

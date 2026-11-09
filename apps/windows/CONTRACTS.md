@@ -1,5 +1,32 @@
 # Windows fixed contracts
 
+### 2026-11-09 — Owed: talk back to Claude about a change (Mac track/v2-rewrite-thread, ADR-R50)
+
+The Mac has a Rewrite thread under the focused change (design.md §6.3 "Talk back to Claude"). Windows owes its twin.
+
+- **Prompt.** Load `shared/prompts/rewrite-followup.json` (`promptVersion` 1) as the Mac's `RewriteFollowupPrompt` does:
+  - the system prompt;
+  - `sourceBlock` as the cached block;
+  - `changeBlock`, `versionsBlock`, `messagesBlock`, each filled on its own, then `returnLine` or `versionsReturnLine` with `{count}` = 3;
+  - feature `voiceRewrite`, effort `decision`, tag `rewrite-followup` or `rewrite-followup-versions`.
+- **Checks.**
+  - Plain spoken text; alternatives deduplicated against the versions and each other, at most 3.
+  - The note cut to 20 words with "…".
+  - At most 2 next steps of 1 to 6 words, never a steady or keep bubble.
+  - A request with no version or message is refused.
+- **Vector replay.** Replay `shared/fixtures/rewrite-thread/request-cases.json` (`voxclip-rewrite-thread-cases/1`): 5 requests (system, cached block, instruction, schema name, tag, max output tokens) and 6 replies (texts, note, next steps, or `invalidOutput`). Assert its exact keys and counts. It is a new file, so no existing replay changes.
+- **Thread.**
+  - Under the focused pending change's paragraph, in the transcript's flow, with a 2 pt `change.add` rule at 45 % and no box.
+  - The last two turns; "‹ n of m ›" with "· N phrases to voice at Keep" or "· text only, free".
+  - Bubbles: ✓ That's it, keep it (= Keep); up to two ✦ from the last reply; Shorter, Closer to my words, 3 more versions.
+  - The input, with the cost line; the Rewrite consent inline; readiness copy in place with Try Again; Stop.
+- **Rules.**
+  - A version goes in through the local rediff and becomes the reply's own words for that change, so Keep voices it.
+  - Switching versions sends nothing and adds no undo step.
+  - Esc folds the thread; refocusing the change reopens it.
+  - Keys: ↵, ⇧↵, ⌥←/⌥→ while the input is empty, ⌘↩/⌘⌫.
+- **Popover.** The Mac removed its edit popover. Windows' inline correction row (F2) stays until the thread lands, then goes the same way.
+
 ### 2026-11-09 — Windows: the speaker's face and unknown eyes on small faces, then the calibration again, package W8 of "Windows sees the picture" (track/v2-win-frames-w8)
 
 ADR-R48 (Windows calibration, second pass) has the numbers and the reasons. **Result: quality at 0.40 now passes, as does facing; eyes, quality at 0.25, the opening and the cover still fail on the held-out people, so the catalogue stays `enabled: false` and `provisional`.** The W7 manifest, split and reference are unchanged, and so are the shared decisions.
