@@ -65,6 +65,10 @@ public sealed record ExportResult(string Output, string? Srt, double DurationSec
     public bool SoftwareEncoding { get; init; }
     /// <summary>The social loudness the export applied (ADR-R47); null with loudness off or without an audio track.</summary>
     public SocialLoudnessReport? Loudness { get; init; }
+    /// <summary>The cover JPEG written beside the video (ADR-R48), <c>&lt;name&gt;-cover.jpg</c>; null without a cover.</summary>
+    public string? Cover { get; init; }
+    /// <summary>The cover is also the MP4's <c>covr</c> art.</summary>
+    public bool CoverEmbedded { get; init; }
 }
 /// <summary>Frame hand-off; caller owns its lifetime. Preview uses a bounded channel of six; architecture §6.3.</summary>
 public sealed record PreviewFrame(PixelBuffer Buffer, double EditedPts, double SourcePts, long Generation);

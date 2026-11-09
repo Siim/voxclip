@@ -12,10 +12,16 @@ public static class FrameJpeg
     public const int Quality = 70;
 
     /// <summary>The JPEG of <paramref name="frame"/> (premultiplied BGRA, upright) with its long side at most <paramref name="edge"/>.</summary>
-    public static unsafe byte[] Encode(PixelBuffer frame, int edge)
+    public static byte[] Encode(PixelBuffer frame, int edge) => Encode(frame, edge, Quality);
+
+    /// <summary>The JPEG of <paramref name="frame"/> with its long side at most <paramref name="edge"/>, at <paramref name="quality"/>
+    /// (0–100; an export's cover is 90, the Mac's 0.9).</summary>
+    public static unsafe byte[] Encode(PixelBuffer frame, int edge, int quality)
     {
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentOutOfRangeException.ThrowIfLessThan(edge, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(quality, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(quality, 100);
         if (frame.Width <= 0 || frame.Height <= 0) throw Failed();
         var size = FfmpegFrameDecoder.Fit(frame.Width, frame.Height, edge);
         using var pin = frame.Pixels.Pin();
@@ -26,7 +32,7 @@ public static class FrameJpeg
         surface.Canvas.Clear(SKColors.Black);
         surface.Canvas.DrawImage(source, new SKRect(0, 0, size.Width, size.Height), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
         using var image = surface.Snapshot();
-        using var data = image.Encode(SKEncodedImageFormat.Jpeg, Quality) ?? throw Failed();
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality) ?? throw Failed();
         return data.ToArray();
     }
 
