@@ -14,7 +14,8 @@ A file ending in .voxclip is checked against project.schema.json; a JSON object 
 "voxclip-frame-face-fields-cases/1" (the Windows face fields' vectors) against frame-face-fields-cases.schema.json, and one whose
 "schema" is "voxclip-frame-quad-cases/1" (the Windows quad finder's vectors) against frame-quad-cases.schema.json, and one whose
 "schema" is "voxclip-analyze-frames-cli-cases/1" (analyze-frames' output) against analyze-frames-cli-cases.schema.json, and one whose
-"schema" is "voxclip-autopilot-picture-cases/1" (autopilot's frames and picture) against autopilot-picture-cases.schema.json; *.transcript.json
+"schema" is "voxclip-autopilot-picture-cases/1" (autopilot's frames and picture) against autopilot-picture-cases.schema.json, and one whose
+"schema" is "voxclip-rewrite-thread-cases/1" (the Rewrite thread's requests and replies) against rewrite-thread-cases.schema.json; *.transcript.json
 against project.schema.json's $defs/transcript. References between the
 schemas (project.schema.json -> timed-word.schema.json) resolve through a local registry,
 never over the network. Needs jsonschema >= 4.18 (tools/captions/requirements.txt).
@@ -71,6 +72,8 @@ def schema_for(path, document, by_name):
         return by_name["export-check-cases.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-spoken-numbers-cases/1":
         return by_name["spoken-numbers-cases.schema.json"]
+    if isinstance(document, dict) and document.get("schema") == "voxclip-rewrite-thread-cases/1":
+        return by_name["rewrite-thread-cases.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-frame-decision-cases/1":
         return by_name["frame-decision-cases.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-frame-models/1":
@@ -105,6 +108,7 @@ def main(argv):
           fixtures / "export-check" / "check-cases.json",
           fixtures / "export-check" / "number-check-cases.json",
           fixtures / "spoken-numbers" / "number-cases.json",
+          fixtures / "rewrite-thread" / "request-cases.json",
           fixtures / "clip-frames" / "decision-cases.json",
           fixtures / "clip-frames" / "frame-face-fields-cases.json",
           fixtures / "clip-frames" / "frame-quad-cases.json",
