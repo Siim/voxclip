@@ -177,6 +177,9 @@ public sealed partial class CliAutopilotTests
                 "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "2", "--timings", "--json");
             Assert.Contains(CliAutopilotFrames.FacesOnlyLine, errors, StringComparison.Ordinal);
             Assert.NotEmpty(decoder.Reads);
+            // Faces only: nothing is cached, since the App's cache would read these textless frames as frames without screens.
+            var key = Core.Domain.Shared.ProjectSerialization.Deserialize(await File.ReadAllTextAsync(project, TestContext.Current.CancellationToken)).Media.Source.ContentKey;
+            Assert.False(Directory.Exists(Path.Combine(Core.Services.Project.DataLocations.Resolve().Cache, key, "frames")), "nothing is cached for faces only");
             var plans = stub.Requests.Where(request => request.Feature == LlmFeature.ClipAutopilot).ToArray();
             Assert.Equal(2, plans.Length);
             Assert.All(plans, request => Assert.Contains(Core.Domain.Frames.FrameSheet.SummaryHeader, request.Instruction, StringComparison.Ordinal));

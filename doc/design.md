@@ -2000,6 +2000,10 @@ wires; part 2 (track/v2-eyes-2) shows them in Make it postable and Claude mode a
 - **The cover on export.** The frame at the cover's time, exactly as the export shows it (crop, captions, titles), is
   saved as `<export name>-cover.jpg` beside the video and embedded as the MP4's cover art; the video's streams are
   unchanged (doc/publishing.md §7).
+- **Windows** (W6) has the same rows, order and copy, with "this PC" for "this Mac" ("Faces were measured on this PC.", "the clearest look measured on this PC"). It differs in three ways:
+  - An API key always gets the text summary, because Windows has no image prices for the run cap.
+  - There is no frame strip under the send line and no row thumbnails. The cover's Change lists the other candidates as "Frame N at m:ss" chips.
+  - The rows and the send line appear only once the face models are on.
 - **Privacy.** Faces, eyes and screens are measured on the Mac. The frames sent are 320 px stills, one per sentence; no
   video, audio, file name or recognised text is sent. Frames go only with a Make it postable send the user started (or
   Claude mode's run), to the connector the user chose; the connector confirmation names them.

@@ -57,3 +57,13 @@ whether a Core calls hypot or sqrt. Regenerate with `python3 tools/fixtures/clip
 (check_drift.py runs it, exact); `tools/schemas/validate.py` checks it against `shared/schemas/analyze-frames-cli-cases.schema.json`.
 Swift `CLIAnalyzeFramesVectorTests` (through `FrameAnalyzerCLI.report` and `CLIExecution.printed`) and C# `AnalyzeFramesVectorTests`
 (through `CliAnalyzeFrames.Report` and `FrameJson.MacText`) replay every case byte for byte.
+
+`autopilot-picture-cases.json` (`voxclip-autopilot-picture-cases/1`, ADR-R48 part 2, Windows package W6) pins the `frames` and
+`picture` objects `voxclip-cli autopilot --json` gives each clip. A case is what the clip's plan request carried (the frame count,
+whether as images, their token estimate, the blur and cover candidates), the reply's frame choices, the four picture decisions as
+`ClipPicture.apply` left them, the clip's shapes and whether a face was measured; and the two objects as the Mac's
+`CLIWorkflow.framesJSON` and `pictureJSON` (apps/macos/Sources/voxclip-cli/Autopilot.swift) build them. Regenerate with
+`python3 tools/fixtures/clip-frames/generate_autopilot_picture.py` (check_drift.py runs it, exact); `tools/schemas/validate.py`
+checks it against `shared/schemas/autopilot-picture-cases.schema.json`. C# `CliAutopilotFramesVectorTests` (through
+`CliAutopilotFrames.FramesJson` and `PictureJson`) replays every case, keys and values exact; key order is not compared, as the Mac
+prints sorted keys. The generator is written from the Swift code; a Swift replay is not added yet.

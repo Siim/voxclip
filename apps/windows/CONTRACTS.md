@@ -1,5 +1,105 @@
 # Windows fixed contracts
 
+### 2026-11-09 — Windows: the picture wired end to end, package W6 of "Windows sees the picture" (track/v2-win-frames-w6)
+
+ADR-R48 part 2 and design.md §6.7.1 on Windows: the frame pass in the App, each plan's frames, Make it postable's four picture rows and the send line, the cover export and the CLI's frames. **Everything is gated on `App.Services.FrameFaces`**, and the catalogue is off until W7, so a shipping build still shows nothing new and sends the same plan request as before. `VOXCLIP_FRAME_FACES=1` turns it on for tests and W7.
+
+- **Core.**
+  - `Domain/Frames/ClipPicture.cs` (new) is the twin of the Mac's `ClipPicture`: the four decisions a plan makes from its frames, with the Mac's row ids (`frames-opening`, `frames-face`, `frames-blur-<B>`, `frames-cover`), copy and validation.
+    - **Opening:** the lead-in is 0 < s ≤ 0.6, only inside the silence before the first word.
+    - **Face-follow crop:** the clip's `reframe` centre, used for 9:16 and 1:1 only.
+    - **Screen blur:** a `blur` clip effect `fx-screen-<b>-<clip>` (≤ 64 chars) over the candidate's span and rect. It is applied only when the frames went as images and the reply chose it.
+    - **Cover:** `coverSeconds`. An unknown cover id gets the validator's best-measured fallback, with no reason.
+    - `Apply` upgrades the project to v4 and validates it.
+  - `ClipAutopilotFrames.FromSheet` and `.Frames` are new.
+  - `ClaudeModeStage` gains `Frames` and `Opening`, before `Check`.
+  - `Domain/Share/ExportCover.cs` (new) gives the cover's path (`<name>-cover.jpg` beside the video), its rendered time (through the timeline and speed, clamped to the last frame) and its frame index.
+  - `ExportResult` gains `Cover` and `CoverEmbedded`.
+  - `FrameScreenScan` returns `None` without text lines (no quad search).
+- **Media.**
+  - `VideoFramePass` records the `frames` stage.
+  - `FrameJpeg.Encode(frame, edge, quality)` is new.
+  - `Pipeline/Mp4CoverEmbed.cs` (new) streams the ported `Mp4CoverArt` writer onto a staged `<file>.cover` (CreateNew, 4 MiB chunks, ≤ 256 MiB of movie atoms), then moves it over the file. On failure it deletes the staged copy.
+  - **`Exporter`:**
+    - The frame at the cover's index is kept as a full-size JPEG (quality 90, ≤ 8 MB).
+    - After the trailer, `covr` is written onto the **partial** before the move, and before the Voice Lab disclosure step.
+    - The JPEG's partial is validated and published with the other destinations (and rolled back with them).
+    - So the App export, Export all, Make it postable and the CLI all get it from the clip's stored `coverSeconds`.
+  - `CurrentFrames.ReadAsync(…, controls)` crops still frames by `ClipFaceCrop.Centered`, so the caption gallery and row frames follow the face as the export does.
+- **App.**
+  - `EditorViewModel.MakeItFrames.cs` (new): the pass (`FramePass`, started in `ClaudeModeFindStarted` beside Find Clips and lazily at the plan; keyed on the content key, the raw key and the word count; cancelled on close).
+  - Each plan's `ClipAutopilotFrameSource`: the opening scan starts beside the request.
+  - The four rows (in the Mac's order and copy, first in the review after the tone row), each with ▶ and Undo as one step of its own. The screens' Change has inline Blur/Unblur toggles; the cover's Change has the other candidates.
+  - The send line (`MakeIt.SendLine`).
+  - `MakeItPostable` gains `MakeItFrameAi`, `MakeItFrameBilling`, `MakeItFrameRecord` and the `LeadIn`, `Reframe` and `Cover` inverses. `MakeItServices.Plan` takes the frame source.
+  - `EditorPage` sets `FramePass` only when `FrameFaces` is not null. It builds `FrameAnalyzer(faces, ScreensWith(WindowsFrameText), FfmpegFrameDecoder, FrameAnalysisCache)`, logging under `frames`, and names the AI (Claude, ChatGPT, Gemini, Grok, else the short name) and its billing for the line.
+- **CLI.**
+  - `autopilot` runs the whole video's pass beside Find Clips when faces are available. Each plan request carries the clip's frames: images to Claude Code, Codex, Ollama and LM Studio when the connector takes images, else the text summary.
+  - After the plan it applies the four decisions with a fresh opening scan, and adds each clip's `frames` (`sent`, `images`, `imageTokens`, `blur`, `cover`) and `picture` (`opening`, `crop`, `blur`, `cover`) with the Mac's keys.
+  - The `frames` and `opening` stages are in `--timings`.
+  - **Text-source decision:** no Windows TFM and no OCR in the CLI. It stays portable net10.0 (it runs on macOS and Linux for the cross-platform tests and E2E); WinRT OCR is the App's, and PP-OCRv4 is W7's fallback.
+    - So the CLI measures **faces only** (`NoFrameText`: no text lines, no screens, no blur candidates) and caches nothing, because the App's cache would read textless observations as frames without screens.
+    - `analyze-frames` needs the stated `--faces-only`, else it exits 7 (`TextUnavailableMessage` names the flag). `--faces-only` means faces only even where a text source exists.
+    - `autopilot` is faces only by itself, with the stderr line `CliAutopilotFrames.FacesOnlyLine`.
+- **Shared.** `shared/fixtures/clip-frames/autopilot-picture-cases.json` (new, `voxclip-autopilot-picture-cases/1`, 7 cases) holds the Mac's `framesJSON` and `pictureJSON` per clip. It comes from `tools/fixtures/clip-frames/generate_autopilot_picture.py` (new; check_drift.py runs it, exact) and is validated against `shared/schemas/autopilot-picture-cases.schema.json` (new). C# replays it, keys and values exact; a Swift replay is not added (the generator is written from Autopilot.swift).
+- **Deleted:** nothing.
+- **Tests.**
+  - win-ui `MakeItFramesTests` (new, 11):
+    - The four rows in order, with the send line.
+    - Each row's Undo on its own, saved (4 cases).
+    - A text-only AI gets the summary, nothing blurred and the row offering Blur.
+    - An API key gets the summary.
+    - Without faces: no pass, no rows, no send line, the plan request unchanged and the same rows as with faces minus the four.
+    - No face: no crop row; an unreadable video goes on as text only.
+    - The pass starts beside Find Clips, keeps its key and times its stage.
+    - The cover's Change offers the others, and a pick is one step.
+  - `MakeItPostableTests` and `ClaudeModeStreamingTests` were updated for the planner's new argument.
+  - Core `ClipPictureTests` (new, 7).
+  - **Media:**
+    - `ExportCoverTests` (new): the streamed embed against the 17 cover-art vectors, the full-size JPEG, and the CLI's snapshot carrying the cover.
+    - `NativeExportCoverTests` (RequiresFFmpeg/RequiresWindows): a real clip export writes the JPEG and `covr`.
+    - `CurrentFrameCropTests` (new, 2).
+    - `CliAutopilotFramesVectorTests` (new, 8).
+    - `CliAnalyzeFramesTests` +1 (faces only: no text, no cache).
+    - `CliAutopilotTests` +2: with faces, each clip has its frames and picture, the faces-only line, no cache and the stages; without faces, nothing is read and the plans are unchanged.
+- **Red without each rule** (one mutation at a time):
+  - An API key sending images: the API-key test.
+  - The picture rows not inserted: 8 tests.
+  - The send line without "Faces were measured on this PC.": 2 tests.
+  - A blur applied without images: `AScreenIsBlurredOnlyWhenClaudeSawItAndChoseTo`.
+  - `analyze-frames --faces-only` caching: the faces-only test.
+  - Autopilot caching faces-only frames: `WithFaces…`, after its no-cache assertion was added; it passed before.
+  - `FramesJson` without the cover fallback: 2 vector cases.
+  - The embed never landing: the vector embed test.
+  - The cover time ignored: the CLI snapshot test.
+- **ReleaseBoundary.** `update` on VoxClip.Core (+170), VoxClip.Media (+10/−2), VoxClip (the App surrogate, +185/−4) and voxclip-cli (+44/−2, with the literal `--faces-only`). The removals are only changed signatures. No friends, DEBUG members or hooks.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Windows Core 3,445 (3,416 passed, 29 skipped, 0 failed).
+  - Windows Media 1,282 (1,112 passed, 170 skipped, 0 failed).
+  - win-ui 1,412 (1,407 passed, 5 skipped, 0 failed).
+  - The App type-check builds with no warnings; `check-xaml.py` reports 0 problems.
+  - Both `check_drift.py` scripts and `tools/schemas/validate.py` pass, and the tree is clean after them.
+  - Plain process (`env -i`, built CLI): `--runtime-terms --json` works and `analyze-frames --help` lists `--faces-only`.
+  - Hosted CI on this branch, run 42583198982 (cc2ecb3f, the code; one dispatch): every job passed.
+    - Windows: Core 3,445 (3,424 passed, 21 skipped); Media 1,282 (1,264 passed, 18 skipped, with `NativeExportCoverTests` on x64); the WinUI x64 and arm64 App builds and the Release boundary on both.
+    - Also passed: macOS (Swift, and .NET Core, win-ui and Media on macOS), shared fixtures and repo hygiene, and macOS and Windows CLI E2E parity.
+    - This entry, the docs and one test assertion (autopilot caches nothing) came after that run and were checked locally.
+- **Deviations from the Mac.**
+  - **API-key image pricing:** Windows has no image prices for an API key's run cap, so an API key always gets the text summary ("a text summary of N frames"). The Mac prices the images first.
+  - **The cover is extra:** a cover JPEG that fails to encode, or is over 8 MB, is skipped, and the export still succeeds. The Mac fails the export.
+  - **The pass starts** beside Find Clips (and at the plan), not on transcript arrival.
+  - **Not built:** the frame strip under the send line, and row thumbnails. The cover's Change shows text chips ("Frame N at m:ss").
+  - **The AI-facing summary header** stays "Frames measured on this Mac" (pinned by the shared vectors); the user-facing copy says "this PC".
+  - The CLI has no screens (above).
+- **For W7:**
+  - Enable the catalogue after calibration; the rows, the send line and the CLI's frames then appear with no further wiring.
+  - If PP-OCRv4 lands, give `CliFrameSources` a text source. `analyze-frames` then runs without `--faces-only`, autopilot drops its faces-only line, and the cache is used again (`Cache(wanted)`).
+- **Native checks owed (VM):**
+  - A real Claude Code or Codex image send from the App.
+  - The four rows in the real window (▶, Undo, the screens' and cover's Change).
+  - `NativeExportCoverTests` on win-arm64 (it passed on hosted x64), and the cover together with a Voice Lab disclosure export.
+  - The face goldens and the speed on win-arm64.
+
 ### 2026-11-09 — Windows: the face models, bundled, behind W5's seam, package W3 of "Windows sees the picture" (track/v2-win-frames-w3)
 
 ADR-R48 Windows and /tmp/clipper-planning/research/windows-frame-analyzer.md (Question 1, Hosting, W3). **User decision (2026-11-09): both models are bundled in the Windows app**, pinned and hash-checked with their LICENSE and NOTICE; the user accepted YuNet's WIDER FACE training-data risk. The catalogue stays `enabled: false` until W7's calibration passes.
