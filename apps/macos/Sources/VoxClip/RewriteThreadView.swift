@@ -180,11 +180,12 @@ struct RewriteThreadBubble: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier(identifier)
     }
-    private var label: String {
+    /// What VoiceOver reads for the bubble.
+    var spokenLabel: String {
         switch kind {
         case .claude: "\(title), suggested by Claude"
         case .own: "My own words"
