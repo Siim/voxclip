@@ -231,11 +231,17 @@ enum CLIExecution {
     }
 
     static func printJSON(_ value: JSONValue) throws {
+        FileHandle.standardOutput.write(try printed(value))
+    }
+
+    /// The bytes `printJSON` writes: sorted keys, unescaped slashes, one final LF. The Windows CLI prints the same
+    /// (shared/fixtures/clip-frames/analyze-frames-cli-cases.json).
+    static func printed(_ value: JSONValue) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         var data = try encoder.encode(value)
         data.append(0x0A)
-        FileHandle.standardOutput.write(data)
+        return data
     }
 }
 
