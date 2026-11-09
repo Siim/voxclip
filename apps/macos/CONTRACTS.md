@@ -35,7 +35,11 @@ The user asked (2026-11-09) for "the bubbles that help me to pick, if this text 
   - `TranscriptProposalTests`' Return and F2 cases now open the thread, and the pixel scene checks the thread's placement.
   - Mutations turn tests red: only the newest message sent; no `editChange`; keep bubble not Keep; no fold; every next step shown; error clears the input; a thread for any change; no `acceptThreadWords`; no room; note uncut; steady bubble allowed; versions reversed. All 12 went red.
   - Smoke: `S-thread` and `S-thread-more` (T1–T10) in both passes, also in `MacUIIntegrationTests`. `S-thread` writes `rewrite-smoke-S-thread-thread.png`.
-- **Verification:** see the report for this package (suite counts, smoke, long-expression build, check_drift and validate).
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`):
+  - Core 1,545 tests in 175 suites (the 2 known deadline issues), Media 649 in 85 (its UI harness runs the smoke passes with S-thread), App 1,058 in 82.
+  - `rewrite-smoke.sh` (DEBUG, no path): PASSED, 92 scenarios.
+  - Both `check_drift.py` and `validate.py`: tree clean.
+  - Long-expression build (250 ms): the smoke's checks were split into typed steps. What is left in touched files is a plain `if let` at about 335 ms, which is this Mac's floor under a load average of 70 to 330; untouched files show the same.
 - **Owed.**
   - The live check with Claude Code (lead).
   - A real-window pass of the thread's input focus and the inline confirmation (`-uiSelfTest`; DebugRewrite's R2 Return check now expects the thread).
