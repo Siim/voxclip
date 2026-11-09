@@ -187,8 +187,114 @@ struct ContextDemoZoomCoverNativeTests {
         #expect(prepared.width == 1920 && prepared.height == 1080)
         let file = root.appendingPathComponent("window.mp4")
         try prepared.video.data.write(to: file)
-        _ = try await LipsyncResultValidation.validate(file: file, durationSeconds: window.seconds(sampleRate: 48_000),
+        _ = try await LipsyncResultValidation.validate(file: file, durationSeconds: window.uploadSeconds(sampleRate: 48_000),
             fps: prepared.fps, width: 1920, height: 1080)
+    }
+
+    /// MVP46: a lip sync uploads the window and its tail margin (the next frames on the video, silence on the audio), the
+    /// quote prices the upload, and a sync-3 result 5 frames short of the upload is cut back to the window from its start.
+    @Test @MainActor func aLipsyncRunUploadsTheMarginPricesItAndCutsTheResultBack() async throws {
+        let (root, request, window) = try await lipsyncRunFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let needed = window.seconds(sampleRate: 48_000)
+        let uploadFrames = Int((LipsyncLimits.uploadSeconds(needed) * 30 - 1e-6).rounded(.up))
+        let http = LipsyncImportHTTP(app: "fal-ai/sync-lipsync", maker: { video, _ in
+            try await FalShapedResult.truncate(video, frames: uploadFrames - 5, audioSeconds: needed - 0.2)
+        })
+        let (run, recordID) = try await lipsyncRun(root: root, http: http)
+        let result = try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3])
+        let uploads = await http.uploads
+        try #require(uploads.count == 2)
+        let video = root.appendingPathComponent("uploaded.mp4")
+        try uploads[0].write(to: video)
+        let sent = try await LipsyncResultValidation.inspect(file: video)
+        #expect(abs(sent.durationSeconds - LipsyncLimits.uploadSeconds(needed)) <= 1.0 / 30)
+        let marginFrames = Int((LipsyncLimits.tailMarginSeconds(needed) * 48_000).rounded(.up))
+        #expect(uploads[1].count == 44 + (Int((needed * 48_000).rounded()) + marginFrames) * 2)
+        let catalog = try VoiceLabPriceCatalog.load(shared: SharedResources(root: FixtureLoader.sharedRoot()))
+        let priced = try WholeClipRevoice.lipsyncPrice(videoSeconds: LipsyncLimits.uploadSeconds(needed), lipsync: .sync3, catalog: catalog)
+        #expect(abs(result.provenance.estimate.units - LipsyncLimits.uploadSeconds(needed)) < 1e-6)
+        #expect(result.provenance.estimate.usd == priced.usd)
+        #expect(abs(result.asset.durationSeconds - needed) <= 1.0 / 30)
+        #expect(!result.recovered)
+        #expect(await http.submits == 1)
+    }
+
+    /// A paid job whose download failed: Try Again · free prepares the same window again (the same input hashes), finds the
+    /// attempt's sidecar and fetches the result by request ID. Nothing is uploaded or submitted again.
+    @Test @MainActor func aFreeTryAgainRefetchesThePaidResultWithoutASecondSubmit() async throws {
+        let (root, request, window) = try await lipsyncRunFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let needed = window.seconds(sampleRate: 48_000)
+        let uploadFrames = Int((LipsyncLimits.uploadSeconds(needed) * 30 - 1e-6).rounded(.up))
+        let http = LipsyncImportHTTP(app: "fal-ai/sync-lipsync", maker: { video, _ in
+            try await FalShapedResult.truncate(video, frames: uploadFrames - 5, audioSeconds: needed - 0.2)
+        })
+        let (run, recordID) = try await lipsyncRun(root: root, http: http)
+        await http.failDownloads(true)
+        var thrown: LipsyncAttemptFailure?
+        do { _ = try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3]) }
+        catch let failure as LipsyncAttemptFailure { thrown = failure }
+        #expect(thrown?.freeRetry == true)
+        let attempt = try #require(thrown?.attempt)
+        let projectID = try #require(request.voiceLab?.project.id)
+        let recorded = try #require(LipsyncAttemptStore.load(videoSHA256: attempt.videoSHA256, audioSHA256: attempt.audioSHA256,
+                                                             projectID: projectID, paidRoot: root))
+        // Preparing the same window again makes the same WAV but not the same H.264 bytes: the sidecar is found again by its
+        // audio hash and picture fingerprint. A different picture over the same audio never matches.
+        let again = try await LipsyncWindowPreparation.prepare(request: request, window: window,
+                                                               scratchRoot: root.appendingPathComponent("scratch"), detector: { _ in 0.2 })
+        #expect(again.audio.sha256 == attempt.audioSHA256)
+        let picture = try #require(recorded.picture)
+        #expect(LipsyncPictureFingerprint.matches(picture, again.picture))
+        #expect(LipsyncAttemptStore.find(again, model: attempt.model, projectID: projectID, paidRoot: root)?.requestID == attempt.requestID)
+        #expect(LipsyncAttemptStore.find(again, model: run.provider.models[1].id, projectID: projectID, paidRoot: root) == nil)
+        var other = [UInt8](picture)
+        for index in 0..<(other.count / 2) { other[index] = other[index] > 127 ? 0 : 255 }
+        #expect(!LipsyncPictureFingerprint.matches(Data(other), again.picture))
+        await http.failDownloads(false)
+        let result = try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3], mayPay: false)
+        #expect(result.recovered && result.provenance.requestID == thrown?.attempt.requestID)
+        #expect(await http.submits == 1)
+        #expect(await http.uploads.count == 2)
+        // A free Try Again with nothing left to recover never pays.
+        await #expect(throws: LipsyncRecoveryFailed.self) {
+            _ = try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3], mayPay: false)
+        }
+        #expect(await http.submits == 1)
+    }
+
+    /// At the timeline's end the upload's margin holds the last frame.
+    @Test @MainActor func theMarginHoldsTheLastFrameAtTheEnd() async throws {
+        let (root, request, _) = try await lipsyncRunFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let graph = try await CompositionBuilder(scratchRoot: root).build(request, includeDisclosure: false, allowsFractionalFrameRate: true)
+        let end = graph.composition.duration
+        let file = root.appendingPathComponent("tail.mp4")
+        try await LipsyncMezzanine.write(graph: graph, range: CMTimeRange(start: end - CMTime(value: 1, timescale: 1), end: end),
+                                         output: request.output, to: file, frames: 42)
+        #expect(try await FalShapedResult.frames(file).count == 42)
+    }
+
+    @MainActor private func lipsyncRunFixture() async throws -> (URL, RenderRequest, LipsyncRenderWindow) {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("lipsync-run-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("scratch"), withIntermediateDirectories: true)
+        let source = try await NativeMediaFixtures.shared.file("joins-tone.mov")
+        let project = try zoomCoverProject(duration: 0.875, source: source, paidRoot: root)
+        let request = try zoomCoverRequest(project: project, paidRoot: root)
+        let plan = try #require(request.voiceLab).prepared.outputPlan
+        let recipe = try #require(project.voiceLab.segments[0].candidates[0].recipe)
+        let window = try LipsyncRenderWindow(source: LipsyncWindow.make(seamIn: recipe.video.sourceStartSample,
+            seamOut: recipe.video.sourceEndSample, totalSamples: plan.totalSourceSamples, sampleRate: 48_000, phraseID: 0), plan: plan)
+        return (root, request, window)
+    }
+
+    private func lipsyncRun(root: URL, http: LipsyncImportHTTP) async throws -> (LipsyncRun, String) {
+        let provider = try LipsyncImportFixture.provider(http: http)
+        let (store, recordID) = try await LipsyncImportFixture.consent(root: root)
+        var run = LipsyncRun(provider: provider, consentStore: store, paidRoot: root, scratchRoot: root.appendingPathComponent("scratch"))
+        run.detector = { _ in 0.2 }
+        return (run, recordID)
     }
 
     @Test @MainActor func lipsyncPreparationFaceGateAndPreviewExportFrames() async throws {
@@ -209,10 +315,16 @@ struct ContextDemoZoomCoverNativeTests {
         }
         let prepared = try await LipsyncWindowPreparation.prepare(request: baseRequest, window: window, scratchRoot: root, detector: { _ in 0.2 })
         #expect(prepared.width == 320 && prepared.height == 180 && prepared.fps == 30)
-        #expect(prepared.audio.data.count == 44 + Int((window.seconds(sampleRate: 48_000) * 48_000).rounded()) * 2)
+        // The upload runs the tail margin past the needed length: the audio in silence, the picture on (sync-3 drops the end).
+        let needed = window.seconds(sampleRate: 48_000)
+        #expect(prepared.neededSeconds == needed)
+        let marginFrames = Int((LipsyncLimits.tailMarginSeconds(needed) * 48_000).rounded(.up))
+        #expect(prepared.audio.data.count == 44 + (Int((needed * 48_000).rounded()) + marginFrames) * 2)
+        #expect(prepared.audio.data.suffix(marginFrames * 2).allSatisfy { $0 == 0 })
+        #expect(abs(prepared.video.durationSeconds - LipsyncLimits.uploadSeconds(needed)) < 1.0 / 48_000)
         let mezzanine = root.appendingPathComponent("check.mp4")
         try prepared.video.data.write(to: mezzanine)
-        let native = try await LipsyncResultValidation.validate(file: mezzanine, durationSeconds: window.seconds(sampleRate: 48_000), fps: 30, width: 320, height: 180)
+        let native = try await LipsyncResultValidation.validate(file: mezzanine, durationSeconds: prepared.video.durationSeconds, fps: 30, width: 320, height: 180)
         #expect(native.frameRate == 30)
         let whiteGraph = try await CompositionBuilder(scratchRoot: root).build(baseRequest, includeDisclosure: false, colorCorrection: (0, 0.95))
         let assetID = UUID().uuidString.lowercased()
@@ -254,11 +366,11 @@ struct ContextDemoZoomCoverNativeTests {
         let image = try await exported.image(at: CMTime(seconds: fadeStart + 0.15, preferredTimescale: 600_000)).image
         #expect(try Self.centerLuma(image) > 200)
         #expect(request.voiceLab?.prepared.disclosure.postText?.contains("Lip movements in parts of it were generated with AI.") == true)
-        let (conformed, warning) = try await LipsyncResultConformer.conform(lipFile, duration: range.duration.seconds,
-            fps: 30, width: 160, height: 90, reference: prepared.video)
-        let resized = try await LipsyncResultValidation.validate(file: conformed, durationSeconds: range.duration.seconds,
+        let conformed = try await LipsyncResultConformer.conform(lipFile, needed: range.duration.seconds,
+            uploaded: LipsyncLimits.uploadSeconds(range.duration.seconds), fps: 30, width: 160, height: 90, reference: prepared.video)
+        let resized = try await LipsyncResultValidation.validate(file: conformed.url, durationSeconds: range.duration.seconds,
             fps: 30, width: 160, height: 90)
-        #expect(resized.width == 160 && resized.height == 90 && warning)
+        #expect(resized.width == 160 && resized.height == 90 && conformed.colorWarning)
     }
 
     private static func centerLuma(_ image: CGImage) throws -> Double {

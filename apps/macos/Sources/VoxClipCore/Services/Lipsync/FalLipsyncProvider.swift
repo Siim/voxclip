@@ -45,6 +45,9 @@ public actor FalLipsyncProvider: LipsyncProvider {
 
     public func setDiagnostic(_ sink: (any LipsyncDiagnosticSink)?) { diagnostic = sink }
 
+    /// The provider's clock (a test's fixed one), for what fal.ai still keeps (`LipsyncAttempt.refetchable`).
+    public func date() -> Date { now() }
+
     public nonisolated var rewriteModel: LipsyncModel { models[3] }
 
     public init(keys: any KeyProvider, prices: VoiceLabPriceCatalog? = nil,
@@ -369,23 +372,88 @@ public actor FalLipsyncProvider: LipsyncProvider {
               current.terminal != nil || current.cancelled else { return }
         current.cleaning = true; entries[job.remoteID] = current
         defer { entries[job.remoteID]?.cleaning = false }
-        do {
-            let key = try await credential(for: current.quote)
-            let url = URL(string: "https://api.fal.ai/v1/models/requests/\(job.remoteID)/payloads")!
-            let response = try await http.send(request(url, method: "DELETE", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil)
-            let body = try json(response)
-            guard let results = body["cdn_delete_results"] as? [[String: Any]],
-                  results.allSatisfy({ $0["exception"] is NSNull }) else { throw LipsyncError.invalidResponse }
+        let key: String
+        do { key = try await credential(for: current.quote) } catch {
+            entries[job.remoteID]?.cleanup = .failed
+            await diagnostic?.record(.init(stage: .failure, requestID: job.remoteID, error: .network))
+            await log("cleanup-unconfirmed reason=key")
+            return
+        }
+        if let status = await deletePayloads(requestID: job.remoteID, key: key) {
             entries[job.remoteID]?.cleanup = .completed
-            await diagnostic?.record(.init(stage: .cleanup, requestID: job.remoteID, status: response.status, seconds: elapsed(current)))
+            await diagnostic?.record(.init(stage: .cleanup, requestID: job.remoteID, status: status, seconds: elapsed(current)))
             entries[job.remoteID]?.result = nil
             if active == job.remoteID { active = nil }
             await release(job)
-        } catch {
+        } else {
             entries[job.remoteID]?.cleanup = .failed
             await diagnostic?.record(.init(stage: .failure, requestID: job.remoteID, error: .network))
-            await log("cleanup-unconfirmed")
         }
+    }
+
+    /// `DELETE https://api.fal.ai/v1/models/requests/{id}/payloads` (fal.ai's Platform API): 200 with
+    /// `{"cdn_delete_results":[{"link":…,"exception":null}]}` deletes the request's payloads and its output files; each
+    /// `exception` is null on success. Only output files go; fal.ai never deletes a request's input files this way (they
+    /// expire with the upload's one-hour lifecycle). The key needs `models:requests:write` and `assets:write` (fal.ai's
+    /// FULL preset). Returns the confirmed status, or nil after logging why not (the HTTP status, never a URL or key).
+    private func deletePayloads(requestID: String, key: String) async -> Int? {
+        guard UUID(uuidString: requestID) != nil else { return nil }
+        let url = URL(string: "https://api.fal.ai/v1/models/requests/\(requestID)/payloads")!
+        let response: LipsyncHTTPResponse
+        do { response = try await http.send(request(url, method: "DELETE", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil) }
+        catch {
+            await log("cleanup-unconfirmed reason=network")
+            return nil
+        }
+        guard response.status == 200 else {
+            await log("cleanup-unconfirmed status=\(response.status)")
+            return nil
+        }
+        guard let body = try? json(response), let results = body["cdn_delete_results"] as? [[String: Any]],
+              results.allSatisfy({ $0["link"] is String && $0["exception"] is NSNull }) else {
+            let failed = ((try? json(response))?["cdn_delete_results"] as? [[String: Any]])?.filter { !($0["exception"] is NSNull) }.count
+            await log("cleanup-unconfirmed status=200 reason=\(failed.map { "exceptions=\($0)" } ?? "body")")
+            return nil
+        }
+        return response.status
+    }
+
+    /// Deletes a recovered attempt's payloads at fal.ai after its result was imported (`refetch`): no job entry is needed.
+    @discardableResult public func cleanup(requestID: String) async -> Bool {
+        guard let key = try? await credential() else {
+            await log("cleanup-unconfirmed reason=key")
+            return false
+        }
+        return await deletePayloads(requestID: requestID, key: key) != nil
+    }
+
+    /// Fetches a finished request's result again by its request ID, for free (`GET https://queue.fal.run/{owner}/{app}/requests/{id}`,
+    /// fal.ai's queue API: kept for the output's lifecycle, an hour here), and downloads its video to `file`. The paid
+    /// attempt's sidecar keeps only the request ID and the model; the signed result URL is read here and never stored.
+    public func refetch(requestID: String, model: LipsyncModel, to file: URL) async throws {
+        guard models.contains(model), UUID(uuidString: requestID) != nil else { throw LipsyncError.invalidInput }
+        let key = try await credential()
+        let app = model.id.hasPrefix("fal-ai/latentsync") ? "fal-ai/latentsync" : "fal-ai/sync-lipsync"
+        let url = URL(string: "https://queue.fal.run/\(app)/requests/\(requestID)")!
+        try LipsyncURLPolicy.queue(url, model: model, requestID: requestID, suffix: "")
+        let body = try json(try await http.send(request(url, method: "GET", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil))
+        guard !providerError(body), let video = body["video"] as? [String: Any], let text = video["url"] as? String,
+              let output = URL(string: text), video["content_type"] == nil || video["content_type"] as? String == "video/mp4"
+        else { throw LipsyncError.invalidResponse }
+        if let bytes = video["file_size"] {
+            guard let count = bytes as? Int, (1...LipsyncLimits.maximumVideoBytes).contains(count) else { throw LipsyncError.responseTooLarge }
+        }
+        try LipsyncURLPolicy.result(output)
+        await logger.register(secret: output.absoluteString)
+        var download = URLRequest(url: output)
+        download.setValue("video/mp4", forHTTPHeaderField: "Accept")
+        try await http.download(download, to: file, limit: LipsyncLimits.maximumVideoBytes)
+        await log("refetched")
+    }
+
+    /// One `lipsync` log line from the result import (a check's name and numbers; never URLs, keys or file names).
+    public func note(_ line: String) async {
+        await logger.write(LogEntry(level: .info, category: "lipsync", message: await logger.redact(line)))
     }
 
     private func validate(_ model: LipsyncModel, seconds: Double, fps: Double) throws {

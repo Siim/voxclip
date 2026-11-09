@@ -14,6 +14,8 @@ import VoxClipMedia
         let isCurrent: @MainActor () -> Bool
         /// Rewrite's phrases use sync-3; a whole-clip revoice lipsync-2 or the sync-3 upgrade (ADR-R46).
         var model: WholeClipRevoice.Lipsync = .sync3
+        /// False for a "Try Again · free": the earlier paid attempt's result is re-imported and nothing new is paid.
+        var mayPay = true
         var phraseIDs: [Int] { windows.flatMap { $0.source.phraseIDs } }
         var price: String { estimate.usd.map(VoiceLabCostPresentation.format) ?? "Price unavailable" }
     }
@@ -40,7 +42,9 @@ import VoxClipMedia
         let hasConsent: @MainActor () -> Bool
         let acceptConsent: @MainActor () -> Void
         let cap: @MainActor () async throws -> VoiceLabMonthlyCap?
-        let run: @MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult
+        /// The window's lip sync: the request, window, consent record, model, whether it may pay (false for a free Try
+        /// Again) and its progress.
+        let run: @MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, Bool, @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult
         let changed: @MainActor () async -> Void
     }
 
@@ -57,6 +61,8 @@ import VoxClipMedia
     private(set) var usingTakes = false
     /// The error behind each phrase's `.failed` state, for the whole clip's stop and its log line (its real case).
     @ObservationIgnored private(set) var errors: [Int: any Error] = [:]
+    /// Phrases whose last paid attempt failed with its result kept: their Try Again re-imports it for free.
+    private(set) var freeRetries: Set<Int> = []
     @ObservationIgnored var backend: Backend?
     @ObservationIgnored private var pending: [Offer] = []
     @ObservationIgnored private var active: Offer?
@@ -72,7 +78,14 @@ import VoxClipMedia
     func waitForRun() async { await operation?.value }
     var enabled: Bool { backend != nil }
     var hasPaidWork: Bool { !applied.isEmpty || running }
-    static let firstUse = "fal.ai receives this phrase's video and new audio. VoxClip deletes uploads and results after download where its API allows; inputs expire after one hour. Clicking Lip Sync approves the transfer and charge."
+    static let firstUse = "fal.ai receives this phrase's video and new audio. VoxClip asks fal.ai to delete the result after download, which your key's permissions must allow; uploads and results expire after one hour. Clicking Lip Sync approves the transfer and charge."
+
+    /// The failed row's line (design.md, Takes: lip sync): what happened, then what fal.ai charged and whether Try Again is free.
+    static func failureLine(phrase: Int, reason: String, price: String, mayBill: Bool, free: Bool) -> String {
+        let lead = "Couldn't lip sync phrase \(phrase + 1): \(reason)"
+        guard mayBill else { return lead + " No upload or charge." }
+        return lead + " fal.ai charged for the attempt (\(price))." + (free ? " Its result is kept, so Try Again is free." : "")
+    }
 
     func previewFailed() { problem = "Couldn't play the lip-synced preview. Your takes and original video are safe." }
 
@@ -121,6 +134,9 @@ import VoxClipMedia
         guard let backend, keyAvailable, !usingTakes, offer.isCurrent(),
               !receipts.contains(where: { $0.id == offer.id }),
               offer.phraseIDs.allSatisfy({ !isRunning($0) && applied[$0] == nil }) else { return false }
+        var offer = offer
+        // A free Try Again re-imports the paid attempt's kept result and never pays (design.md, Stopped).
+        offer.mayPay = !offer.phraseIDs.contains { freeRetries.contains($0) }
         backend.acceptConsent(); consentAccepted = true
         receipts.append(Receipt(id: offer.id, phraseIDs: offer.phraseIDs, estimate: offer.estimate))
         for phrase in offer.phraseIDs { states[phrase] = .running(started: Date(), progress: nil); errors[phrase] = nil }
@@ -140,7 +156,7 @@ import VoxClipMedia
                 for window in offer.windows {
                     try Task.checkCancellation()
                     guard offer.isCurrent(), !invalidated.contains(offer.id) else { throw CancellationError() }
-                    let run = Task { try await backend.run(offer.request, window, offer.recordID, offer.model) { [weak self] progress in
+                    let run = Task { try await backend.run(offer.request, window, offer.recordID, offer.model, offer.mayPay) { [weak self] progress in
                         await self?.progress(progress, phrases: window.source.phraseIDs)
                     } }
                     currentRun = run
@@ -151,6 +167,7 @@ import VoxClipMedia
                     let duration = started.duration(to: .now).components
                     let seconds = Double(duration.seconds) + Double(duration.attoseconds) / 1e18
                     for phrase in window.source.phraseIDs {
+                        freeRetries.remove(phrase)
                         applied[phrase] = Applied(result: result, window: window, dependencies: offer.dependencies)
                         states[phrase] = .done(seconds: seconds, price: result.provenance.estimate.usd.map(VoiceLabCostPresentation.format) ?? offer.price)
                     }
@@ -160,9 +177,13 @@ import VoxClipMedia
                 for phrase in offer.phraseIDs where applied[phrase] == nil {
                     if Task.isCancelled || error is CancellationError { states[phrase] = .cancelled(price: offer.price) }
                     else {
-                        let local = error is LipsyncPreparationError || error as? LipsyncError == .missingKey
+                        let local = Self.isLocal(error) || error is LipsyncRecoveryFailed
                         let reason = Self.reason(error)
-                        states[phrase] = .failed(reason: reason, price: offer.price, mayBill: !local)
+                        let failure = error as? LipsyncAttemptFailure
+                        // A failed free Try Again charged nothing new; its earlier attempt's charge was already shown.
+                        states[phrase] = .failed(reason: reason, price: failure.map { VoiceLabCostPresentation.format($0.attempt.estimate.usd ?? 0) } ?? offer.price,
+                                                 mayBill: !local && offer.mayPay)
+                        if failure?.freeRetry == true { freeRetries.insert(phrase) } else { freeRetries.remove(phrase) }
                         errors[phrase] = error
                     }
                 }
@@ -232,7 +253,15 @@ import VoxClipMedia
         if refreshAfterUse { refreshAfterUse = false; Task { await refresh() } }
     }
 
+    /// Failed on this Mac before anything reached fal.ai, and would fail the same way again.
+    static func isLocal(_ error: any Error) -> Bool {
+        error is LipsyncPreparationError || error as? LipsyncError == .missingKey
+    }
+
     static func reason(_ error: any Error) -> String {
+        if let failure = error as? LipsyncAttemptFailure { return reason(failure.error) }
+        if let check = error as? LipsyncResultCheck { return check.copy }
+        if error is LipsyncRecoveryFailed { return "VoxClip couldn't get fal.ai's earlier result back (fal.ai keeps it for an hour). Nothing new was paid." }
         if let local = error as? LipsyncPreparationError, let copy = local.errorDescription { return copy }
         if error as? LipsyncError == .invalidInput { return "This part is outside the lip sync's limits (3 s to 5 min of video). Your original video is unchanged." }
         if error as? LipsyncError == .missingKey { return "Lip sync needs your fal.ai key." }
@@ -269,7 +298,7 @@ import VoxClipMedia
         monthlyCap = state == "lipsync-first-use" ? VoiceLabMonthlyCap(limit: Decimal(string: "0.1")!, spent: 0) : nil
         let key = keyAvailable, consent = consentAccepted, cap = monthlyCap
         backend = .init(offers: { (individual, all) }, hasKey: { key }, hasConsent: { consent }, acceptConsent: {},
-            cap: { cap }, run: { _, _, _, _, _ in throw CancellationError() }, changed: {})
+            cap: { cap }, run: { _, _, _, _, _, _ in throw CancellationError() }, changed: {})
         usingTakes = state == "lipsync-waiting"
         for phrase in phrases {
             let price = individual[phrase.id]?.price ?? "$0.40"

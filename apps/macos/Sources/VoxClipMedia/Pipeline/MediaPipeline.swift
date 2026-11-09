@@ -98,7 +98,7 @@ public struct CompositionBuilder: Sendable {
     /// `previewFailures` hears about a preview's failed or degraded frames (design.md §5.4.4 g); exports pass none.
     public func build(_ request: RenderRequest, includeDisclosure: Bool = true,
                       colorCorrection: (scale: Double, bias: Double)? = nil, allowsFractionalFrameRate: Bool = false,
-                      previewFailures: PreviewFrameFailures? = nil,
+                      previewFailures: PreviewFrameFailures? = nil, includesSourceAudio: Bool = true,
                       isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
         try Task.checkCancellation()
         let plan = request.plan
@@ -128,7 +128,8 @@ public struct CompositionBuilder: Sendable {
         let asset = AVURLAsset(url: request.sourceURL)
         guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first else { throw VoxClipError.decodeFailed("No video track") }
         let (transform, videoRange, nominalRate) = try await sourceVideo.load(.preferredTransform, .timeRange, .nominalFrameRate)
-        let sourceAudio = try await MediaSupport.audioTrack(in: asset)
+        // A lip-sync result's conform reads only its picture: fal.ai's resampled audio is never used (voice-lab §9.3).
+        let sourceAudio = includesSourceAudio ? try await MediaSupport.audioTrack(in: asset) : nil
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw VoxClipError.exportFailed("Cannot create video track") }
         let audio = sourceAudio == nil ? nil : composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)

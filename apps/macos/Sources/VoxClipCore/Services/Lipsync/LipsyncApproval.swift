@@ -38,6 +38,16 @@ public enum LipsyncLimits {
     public static let maximumPolls = 140
     public static let deadlineSeconds: Double = 1_800
     public static let quoteLifetimeSeconds: Double = 300
+    /// The longest upload fal.ai is sent, the needed length and its tail margin together.
+    public static let maximumUploadSeconds: Double = 300
+    /// sync-3 keeps the start and drops frames at the end (fal.ai's example: 135 frames in, 130 out). Every upload runs this
+    /// far past the needed length, on the video (the next source frames, else the last frame held) and the audio (silence):
+    /// max(0.4 s, 2 % of the needed length). The quote prices it; the import cuts the result back to the needed length.
+    public static func tailMarginSeconds(_ neededSeconds: Double) -> Double { max(0.4, 0.02 * neededSeconds) }
+    /// What is uploaded and priced for `neededSeconds`: the needed length and its tail margin.
+    public static func uploadSeconds(_ neededSeconds: Double) -> Double { neededSeconds + tailMarginSeconds(neededSeconds) }
+    /// A result still short of the needed length by at most this many frames holds its last frame; shorter fails.
+    public static let heldFrames = 3
 }
 
 public struct LipsyncQuote: Sendable, Equatable, Identifiable {

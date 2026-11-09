@@ -46,7 +46,7 @@ struct RewriteLipsyncSessionTests {
             syncMode: .cutOff, seed: nil, submittedAt: Date(), importedAt: Date(), estimate: estimate)
         session.backend = .init(offers: { ([0: offer], offer) }, hasKey: { key }, hasConsent: { gate.consent },
             acceptConsent: { gate.consent = true }, cap: { .init(limit: Decimal(string: "0.3")!, spent: 0) },
-            run: { _, _, _, _, progress in
+            run: { _, _, _, _, _, progress in
                 if let failure { throw failure }
                 await gate.wait()
                 await progress(0.5)

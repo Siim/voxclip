@@ -13,12 +13,12 @@ enum FalShapedResult {
     static func level(_ frame: Int) -> UInt8 { UInt8(30 + (frame * 2) % 200) }
 
     static func write(to destination: URL, frames: Int, fps: Int, width: Int = 320, height: Int = 180,
-                      audioSeconds: Double?) async throws {
+                      audioSeconds: Double?, source: ((Int) -> CVPixelBuffer)? = nil) async throws {
         let folder = destination.deletingLastPathComponent().appendingPathComponent("fal-shaped-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: folder) }
         let video = folder.appendingPathComponent("video.mp4")
-        try await writeVideo(to: video, frames: frames, fps: fps, width: width, height: height)
+        try await writeVideo(to: video, frames: frames, fps: fps, width: width, height: height, source: source)
         let composition = AVMutableComposition()
         let videoAsset = AVURLAsset(url: video)
         let sourceVideo = try await videoAsset.loadTracks(withMediaType: .video)[0]
@@ -37,7 +37,8 @@ enum FalShapedResult {
         try await session.export(to: destination, as: .mp4)
     }
 
-    private static func writeVideo(to url: URL, frames: Int, fps: Int, width: Int, height: Int) async throws {
+    private static func writeVideo(to url: URL, frames: Int, fps: Int, width: Int, height: Int,
+                                   source: ((Int) -> CVPixelBuffer)?) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width, AVVideoHeightKey: height, AVVideoColorPropertiesKey: MediaSupport.colorProperties,
@@ -55,6 +56,12 @@ enum FalShapedResult {
             while !input.isReadyForMoreMediaData {
                 guard writer.status == .writing else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
                 await Task.yield()
+            }
+            if let source {
+                guard adaptor.append(source(frame), withPresentationTime: CMTime(value: Int64(frame), timescale: Int32(fps))) else {
+                    throw writer.error ?? CocoaError(.fileWriteUnknown)
+                }
+                continue
             }
             var buffer: CVPixelBuffer?
             guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
@@ -79,6 +86,33 @@ enum FalShapedResult {
         writer.endSession(atSourceTime: CMTime(value: Int64(frames), timescale: Int32(fps)))
         await writer.finishWriting()
         guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
+    }
+
+    /// fal.ai's answer to an upload: the uploaded window's first `frames` frames (its start kept, its end dropped), re-encoded,
+    /// with a separate 24 kHz AAC track `audioSeconds` long.
+    static func truncate(_ upload: Data, frames: Int, audioSeconds: Double?) async throws -> Data {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("fal-truncate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = folder.appendingPathComponent("upload.mp4")
+        try upload.write(to: input)
+        let asset = AVURLAsset(url: input)
+        let track = try await asset.loadTracks(withMediaType: .video)[0]
+        let (size, rate) = try await track.load(.naturalSize, .nominalFrameRate)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        reader.add(output)
+        guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+        var buffers: [CVPixelBuffer] = []
+        while buffers.count < frames, let sample = output.copyNextSampleBuffer() {
+            if let buffer = CMSampleBufferGetImageBuffer(sample) { buffers.append(buffer) }
+        }
+        reader.cancelReading()
+        let fps = Int(rate.rounded())
+        let destination = folder.appendingPathComponent("result.mp4")
+        try await write(to: destination, frames: buffers.count, fps: fps, width: Int(size.width), height: Int(size.height),
+                        audioSeconds: audioSeconds, source: { buffers[$0] })
+        return try Data(contentsOf: destination)
     }
 
     /// fal.ai's audio: AAC resampled to 24 kHz, mono, a tone (never our voice).
@@ -131,33 +165,46 @@ enum FalShapedResult {
     }
 }
 
-/// fal.ai's queue, stubbed: one accepted job whose result is `bytes`, and the documented payload delete. No network.
+/// fal.ai, stubbed: uploads (kept for the result maker), one accepted job per submit whose result is `bytes` or made from
+/// the uploads, and the documented payload delete. No network.
 actor LipsyncImportHTTP: LipsyncHTTPClient {
+    typealias Maker = @Sendable (_ video: Data, _ audio: Data) async throws -> Data
     let bytes: Data
     let app: String
+    private let maker: Maker?
     private(set) var deletions = 0
     private(set) var submits = 0
     private(set) var resultFetches = 0
     private(set) var downloads = 0
+    private(set) var uploads: [Data] = []
+    private(set) var requests: [URLRequest] = []
     var downloadFails = false
     var deleteBody = #"{"cdn_delete_results":[{"link":"https://v3.fal.media/files/fixture/output.mp4","exception":null}]}"#
     var deleteStatus = 200
     private let barrier: LipsyncImportBarrier?
-    static let requestID = "11111111-2222-4333-8444-555555555555"
+    /// Each stub's own request ID (the free re-import runs once per attempt in a process).
+    let requestID = UUID().uuidString.lowercased()
 
-    init(bytes: Data, app: String = "fal-ai/latentsync", barrier: LipsyncImportBarrier? = nil) {
-        self.bytes = bytes; self.app = app; self.barrier = barrier
+    init(bytes: Data = Data(), app: String = "fal-ai/latentsync", barrier: LipsyncImportBarrier? = nil, maker: Maker? = nil) {
+        self.bytes = bytes; self.app = app; self.barrier = barrier; self.maker = maker
     }
     func failDownloads(_ value: Bool) { downloadFails = value }
     func setDelete(status: Int, body: String) { deleteStatus = status; deleteBody = body }
 
     func send(_ request: URLRequest, limit: Int, permit: VoiceDispatchPermit?) async throws -> LipsyncHTTPResponse {
         if let permit { try permit.start {} }
-        let prefix = "https://queue.fal.run/\(app)/requests/\(Self.requestID)"
+        requests.append(request)
+        let prefix = "https://queue.fal.run/\(app)/requests/\(requestID)"
         let body: String
-        if request.httpMethod == "POST" {
+        if request.url?.host == "rest.fal.ai" {
+            let name = uploads.count == 0 ? "window.mp4" : "mixed.wav"
+            body = "{\"upload_url\":\"https://storage.fal.ai/upload/fixture-\(uploads.count)\",\"file_url\":\"https://v3.fal.media/files/fixture/\(name)\"}"
+        } else if request.url?.host == "storage.fal.ai" {
+            uploads.append(request.httpBody ?? Data())
+            return .init(status: 200, body: Data())
+        } else if request.httpMethod == "POST" {
             submits += 1
-            body = "{\"request_id\":\"\(Self.requestID)\",\"status_url\":\"\(prefix)/status\",\"response_url\":\"\(prefix)\",\"cancel_url\":\"\(prefix)/cancel\"}"
+            body = "{\"request_id\":\"\(requestID)\",\"status_url\":\"\(prefix)/status\",\"response_url\":\"\(prefix)\",\"cancel_url\":\"\(prefix)/cancel\"}"
         } else if request.httpMethod == "PUT" {
             return .init(status: 202, body: Data(#"{"status":"CANCELLATION_REQUESTED"}"#.utf8))
         } else if request.httpMethod == "DELETE" {
@@ -167,7 +214,8 @@ actor LipsyncImportHTTP: LipsyncHTTPClient {
             body = #"{"status":"COMPLETED"}"#
         } else {
             resultFetches += 1
-            body = "{\"video\":{\"url\":\"https://v3.fal.media/files/fixture/output.mp4\",\"content_type\":\"video/mp4\",\"file_size\":\(bytes.count)}}"
+            let size = maker == nil ? ",\"file_size\":\(bytes.count)" : ""
+            body = "{\"video\":{\"url\":\"https://v3.fal.media/files/fixture/output.mp4\",\"content_type\":\"video/mp4\"\(size)}}"
         }
         return .init(status: 200, body: Data(body.utf8))
     }
@@ -177,7 +225,8 @@ actor LipsyncImportHTTP: LipsyncHTTPClient {
         if let barrier { await barrier.block() }
         downloads += 1
         if downloadFails { throw LipsyncError.network }
-        try bytes.write(to: file)
+        if let maker, uploads.count >= 2 { try await maker(uploads[uploads.count - 2], uploads[uploads.count - 1]).write(to: file) }
+        else { try bytes.write(to: file) }
     }
 }
 

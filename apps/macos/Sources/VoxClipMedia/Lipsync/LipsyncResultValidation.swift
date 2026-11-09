@@ -5,15 +5,30 @@ import Foundation
 import VoxClipCore
 
 public struct LipsyncVideoMetadata: Sendable, Equatable {
+    /// The video track's own length (a result's audio track may be shorter or longer).
     public let durationSeconds: Double
     public let frameRate: Double
     public let width: Int
     public let height: Int
     public let byteCount: Int
+    /// The file carries an audio track (fal.ai's resampled copy of the upload's audio, never used).
+    public var hasAudio = false
 }
 
 public enum LipsyncResultValidation {
+    /// A stored or conformed lip-sync video, bound to its window: `durationSeconds`, `fps` and the size, within a frame.
     public static func validate(file: URL, durationSeconds: Double, fps: Double, width: Int, height: Int) async throws -> LipsyncVideoMetadata {
+        let facts: LipsyncVideoMetadata
+        do { facts = try await inspect(file: file) }
+        catch is LipsyncResultCheck { throw LipsyncError.invalidMedia }
+        try validate(facts, durationSeconds: durationSeconds, fps: fps, width: width, height: height)
+        return facts
+    }
+
+    /// The file's structure, each failure a named check (`LipsyncResultCheck`): a local regular MP4 with no external data,
+    /// one H.264 video track (at most one audio track beside it), no rotation, starting at its first frame. Measures the
+    /// video track's length, rate and size; the caller decides what they must be.
+    public static func inspect(file: URL) async throws -> LipsyncVideoMetadata {
         try Task.checkCancellation()
         let directory = try LipsyncLocalPath.openDirectory(file.deletingLastPathComponent())
         defer { Darwin.close(directory) }
@@ -21,33 +36,44 @@ public enum LipsyncResultValidation {
         guard descriptor >= 0 else { throw LipsyncError.unsafeFile }
         defer { Darwin.close(descriptor) }
         var info = stat()
-        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1,
-              (12...Int64(LipsyncLimits.maximumVideoBytes)).contains(info.st_size) else { throw LipsyncError.invalidMedia }
-        try inspectContainer(descriptor: descriptor, size: Int(info.st_size))
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 else { throw LipsyncError.invalidMedia }
+        guard (12...Int64(LipsyncLimits.maximumVideoBytes)).contains(info.st_size) else {
+            throw LipsyncResultCheck.structure(.container, "bytes=\(info.st_size)")
+        }
+        do { try inspectContainer(descriptor: descriptor, size: Int(info.st_size)) }
+        catch LipsyncError.invalidMedia { throw LipsyncResultCheck.structure(.container, "bytes=\(info.st_size)") }
         try Task.checkCancellation()
         let asset = AVURLAsset(url: file, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         return try await withTaskCancellationHandler {
-            guard try await asset.load(.isPlayable), !(try await asset.load(.hasProtectedContent)) else { throw LipsyncError.invalidMedia }
+            guard (try? await asset.load(.isPlayable)) == true, (try? await asset.load(.hasProtectedContent)) == false else {
+                throw LipsyncResultCheck.structure(.container, "bytes=\(info.st_size) playable=false")
+            }
             let tracks = try await asset.load(.tracks)
-            let videos = tracks.filter { $0.mediaType == .video }
-            guard videos.count == 1, tracks.allSatisfy({ [.video, .audio].contains($0.mediaType) }),
-                  tracks.filter({ $0.mediaType == .audio }).count <= 1 else { throw LipsyncError.invalidMedia }
+            let videos = tracks.filter { $0.mediaType == .video }, audios = tracks.filter { $0.mediaType == .audio }
+            guard videos.count == 1, audios.count <= 1, videos.count + audios.count == tracks.count else {
+                throw LipsyncResultCheck.structure(.tracks, "videos=\(videos.count) audios=\(audios.count) others=\(tracks.count - videos.count - audios.count)")
+            }
             let track = videos[0]
             let formats = try await track.load(.formatDescriptions)
             guard formats.count == 1, CMFormatDescriptionGetMediaSubType(formats[0]) == kCMVideoCodecType_H264 else {
-                throw LipsyncError.invalidMedia
+                throw LipsyncResultCheck.structure(.codec, "formats=\(formats.count)")
             }
             let dimensions = CMVideoFormatDescriptionGetDimensions(formats[0])
-            let transform = try await track.load(.preferredTransform)
-            guard transform == .identity else { throw LipsyncError.invalidMedia }
-            let duration = try await asset.load(.duration).seconds
+            guard try await track.load(.preferredTransform) == .identity else { throw LipsyncResultCheck.structure(.transform, "identity=false") }
             let rate = Double(try await track.load(.nominalFrameRate))
             let range = try await track.load(.timeRange)
-            guard range.start.seconds.isFinite, abs(range.start.seconds) <= 1 / fps,
-                  range.duration.seconds.isFinite, abs(range.duration.seconds - duration) <= 1 / fps else { throw LipsyncError.invalidMedia }
-            let facts = LipsyncVideoMetadata(durationSeconds: duration, frameRate: rate, width: Int(dimensions.width),
+            guard rate.isFinite, rate > 0, range.start.seconds.isFinite, abs(range.start.seconds) <= 1 / rate,
+                  range.duration.seconds.isFinite, range.duration.seconds > 0 else {
+                throw LipsyncResultCheck.structure(.start, "start=\(LipsyncResultLength.number(range.start.seconds)) fps=\(LipsyncResultLength.number(rate))")
+            }
+            // The asset's length is the longer track's; a stored file has only the picture, so the two agree.
+            let duration = try await asset.load(.duration).seconds
+            guard !audios.isEmpty || abs(range.duration.seconds - duration) <= 1 / rate else {
+                throw LipsyncResultCheck.structure(.start, "track=\(LipsyncResultLength.number(range.duration.seconds)) movie=\(LipsyncResultLength.number(duration))")
+            }
+            var facts = LipsyncVideoMetadata(durationSeconds: range.duration.seconds, frameRate: rate, width: Int(dimensions.width),
                                              height: Int(dimensions.height), byteCount: Int(info.st_size))
-            try validate(facts, durationSeconds: durationSeconds, fps: fps, width: width, height: height)
+            facts.hasAudio = !audios.isEmpty
             try Task.checkCancellation()
             var after = stat()
             guard fstatat(directory, file.lastPathComponent, &after, AT_SYMLINK_NOFOLLOW) == 0,

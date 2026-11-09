@@ -21,6 +21,10 @@ public struct PreparedLipsyncWindow: Sendable {
     public let height: Int
     public let fps: Double
     public let window: LipsyncRenderWindow
+    /// The needed length, the voice's: what the result is cut back to. The uploads run `LipsyncLimits.tailMarginSeconds` longer.
+    public let neededSeconds: Double
+    /// The upload's picture (`LipsyncPictureFingerprint`), which finds a paid attempt again when the encode differs.
+    let picture: Data
 }
 
 public enum LipsyncWindowPreparation {
@@ -76,19 +80,30 @@ public enum LipsyncWindowPreparation {
             }
         }
         guard LipsyncFaceCheck.passes(largestFaceHeights: heights) else { throw LipsyncPreparationError.noClearFace }
+        // The tail margin (sync-3 drops frames at the end): the video runs on into the next frames where the timeline has
+        // them, else holds its last frame; the audio runs on in silence. The import cuts the result back to `needed`.
+        let needed = range.duration.seconds
+        let neededFrames = Int((needed * 48_000).rounded())
+        let marginFrames = Int((LipsyncLimits.tailMarginSeconds(needed) * 48_000).rounded(.up))
+        let upload = Double(neededFrames + marginFrames) / 48_000
+        let available = graph.composition.duration
+        let uploadEnd = CMTimeMinimum(range.start + CMTime(value: Int64(neededFrames + marginFrames), timescale: 48_000), available)
+        let videoFrames = Int((upload * fps - 1e-6).rounded(.up))
         let videoURL = folder.appendingPathComponent("window.mp4")
-        try await LipsyncMezzanine.write(graph: graph, range: range, output: request.output, to: videoURL)
+        try await LipsyncMezzanine.write(graph: graph, range: CMTimeRange(start: range.start, end: uploadEnd), output: request.output,
+                                         to: videoURL, frames: videoFrames)
         let audioURL = folder.appendingPathComponent("mixed.wav")
-        let wav = try await mixedWAV(graph: graph, range: range)
+        let picture = try await LipsyncPictureFingerprint.make(videoURL, seconds: needed)
+        let wav = try await mixedWAV(graph: graph, range: range, silence: marginFrames)
         try wav.write(to: audioURL, options: [.withoutOverwriting])
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: audioURL.path)
-        let seconds = range.duration.seconds
-        return try PreparedLipsyncWindow(video: LipsyncUploadFile(file: videoURL, durationSeconds: seconds, contentType: "video/mp4"),
-            audio: LipsyncUploadFile(file: audioURL, durationSeconds: seconds, contentType: "audio/wav"),
-            width: width, height: height, fps: fps, window: window)
+        return try PreparedLipsyncWindow(video: LipsyncUploadFile(file: videoURL, durationSeconds: upload, contentType: "video/mp4"),
+            audio: LipsyncUploadFile(file: audioURL, durationSeconds: upload, contentType: "audio/wav"),
+            width: width, height: height, fps: fps, window: window, neededSeconds: needed, picture: picture)
     }
 
-    static func mixedWAV(graph: RenderGraph, range: CMTimeRange) async throws -> Data {
+    /// The window's final mixed audio, then `silence` frames of silence (the tail margin).
+    static func mixedWAV(graph: RenderGraph, range: CMTimeRange, silence: Int = 0) async throws -> Data {
         guard let track = graph.audioTrack else { throw LipsyncError.invalidMedia }
         let reader = try AVAssetReader(asset: graph.composition)
         reader.timeRange = range
@@ -101,8 +116,8 @@ public enum LipsyncWindowPreparation {
         guard reader.startReading() else { throw LipsyncError.invalidMedia }
         defer { reader.cancelReading() }
         let frames = Int((range.duration.seconds * 48_000).rounded())
-        guard frames >= 144_000, frames <= 14_400_000 else { throw LipsyncError.invalidInput }
-        var pcm = Data(count: frames * 2), readFrames = 0
+        guard frames >= 144_000, silence >= 0, frames + silence <= 14_400_000 else { throw LipsyncError.invalidInput }
+        var pcm = Data(count: (frames + silence) * 2), readFrames = 0
         while let sample = try await MediaSupport.nextSample(provider) {
             try Task.checkCancellation()
             let first = Int(((sample.presentationTimeStamp.seconds - range.start.seconds) * 48_000).rounded())
@@ -127,7 +142,9 @@ public enum LipsyncWindowPreparation {
 }
 
 enum LipsyncMezzanine {
-    static func write(graph: RenderGraph, range: CMTimeRange, output: OutputSpec, to url: URL,
+    /// Writes `range` of the graph's picture as H.264, at least `frames` frames: when the graph ends first, its last frame is
+    /// held (the lip-sync upload's tail margin, a result a few frames short).
+    static func write(graph: RenderGraph, range: CMTimeRange, output: OutputSpec, to url: URL, frames: Int? = nil,
                       isolation: isolated (any Actor)? = #isolation) async throws {
         let reader = try AVAssetReader(asset: graph.composition)
         reader.timeRange = range
@@ -149,9 +166,9 @@ enum LipsyncMezzanine {
             guard reader.startReading() else { throw LipsyncError.invalidMedia }
             var frameIndex: Int64 = 0
             let frameDuration = CMTime(seconds: 1 / output.fps, preferredTimescale: 600_000)
-            while let sample = try await MediaSupport.nextSample(provider) {
-                try Task.checkCancellation()
-                guard var frame = CMReadySampleBuffer<CVReadOnlyPixelBuffer>(sample) else { throw LipsyncError.invalidMedia }
+            var last: CMReadySampleBuffer<CVReadOnlyPixelBuffer>?
+            func append(_ source: CMReadySampleBuffer<CVReadOnlyPixelBuffer>) async throws {
+                var frame = source
                 frame.duration = frameDuration
                 frame.presentationTimeStamp = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
                 let encoded = CMReadySampleBuffer<CMSampleBuffer.DynamicContent>(frame)
@@ -162,8 +179,19 @@ enum LipsyncMezzanine {
                 }
                 frameIndex += 1
             }
-            guard reader.status == .completed else { throw LipsyncError.invalidMedia }
-            let encodedDuration = ceil(range.duration.seconds * output.fps) / output.fps
+            while let sample = try await MediaSupport.nextSample(provider) {
+                try Task.checkCancellation()
+                guard let frame = CMReadySampleBuffer<CVReadOnlyPixelBuffer>(sample) else { throw LipsyncError.invalidMedia }
+                try await append(frame)
+                last = frame
+            }
+            guard reader.status == .completed, let last else { throw LipsyncError.invalidMedia }
+            let wanted = max(Int64(frames ?? 0), Int64(ceil(range.duration.seconds * output.fps)))
+            while frameIndex < wanted {
+                try Task.checkCancellation()
+                try await append(last)
+            }
+            let encodedDuration = Double(wanted) / output.fps
             receiver.finish()
             writer.endSession(atSourceTime: CMTime(seconds: encodedDuration, preferredTimescale: 600_000))
             await writer.finishWriting()

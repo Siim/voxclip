@@ -62,6 +62,9 @@ import VoxClipMedia
         let usd: Decimal
         /// The picture's even speed-up under the voice (the record's `videoRetime`), 1 at the clip's own pace.
         let factor: Double
+        /// fal.ai's request it came from, and whether it was an earlier billed attempt's kept result (nothing new paid).
+        var requestID: String? = nil
+        var recovered = false
     }
     /// The Fit step's picture, checked before the lip sync is offered: the clip as edited under the laid-out voice, sped up
     /// evenly by `speed` (ADR-R46, "Your own pace"), `outputSeconds` long, and ready to be sent for lip sync.
@@ -138,6 +141,12 @@ import VoxClipMedia
     struct LipsyncFailed: Error {
         let error: any Error
         let local: Bool
+        /// What fal.ai charged for the failed attempt, when it reached fal.ai (`mayBill`); nil for a free Try Again.
+        var usd: Decimal? = nil
+        /// fal.ai's request for that charge, so a later free re-import of it is not counted twice.
+        var requestID: String? = nil
+        /// Its result is kept: Try Again re-imports it for free.
+        var freeRetry = false
     }
 
     private(set) var phase: Phase = .choose
@@ -175,7 +184,18 @@ import VoxClipMedia
     var running: Bool { run != nil }
     /// Waits for the run under way, if any.
     func waitForRun() async { await run?.value }
-    var spent: Decimal { ledger.total }
+    /// Failed lip syncs fal.ai charged for, by request: in the spent total until a free re-import puts one in the ledger.
+    private(set) var billedLipsyncs: [String: Decimal] = [:]
+    /// The last lip sync failed with its paid result kept: Try Again re-imports it and pays nothing for the lip sync.
+    private(set) var lipsyncKept = false
+    var spent: Decimal { ledger.total + billedLipsyncs.values.reduce(0, +) }
+
+    /// What Try Again would pay for the whole clip: what's left after the paid steps, and nothing for a kept lip sync.
+    var retryUSD: Decimal? {
+        guard let usd = quote?.wholeUSD else { return nil }
+        let kept: Decimal = lipsyncKept ? (quote?.lipsyncUSD ?? 0) : 0
+        return max(0, usd - ledger.total - kept)
+    }
 
     /// Prices the card. Free.
     func refreshQuote() async {
@@ -286,7 +306,10 @@ import VoxClipMedia
                 synced = previous
             } else {
                 synced = try await backend.lipsync(voice, factor, model) { [weak self] value in self?.progress = value }
-                ledger.record(key, usd: synced.usd)
+                // A kept result's re-import moves its charge from the failed attempts into the ledger; a new paid one adds to it.
+                if synced.recovered, let request = synced.requestID { billedLipsyncs.removeValue(forKey: request) }
+                ledger.record(key, usd: (ledger.lipsyncs[key] ?? 0) + synced.usd)
+                lipsyncKept = false
             }
             try Task.checkCancellation()
             self.synced = synced
@@ -301,6 +324,10 @@ import VoxClipMedia
             let step = Step.allCases.first { if case .done = steps[$0] { false } else { true } } ?? .lipsync
             for each in Step.allCases {
                 if case .running = steps[each] { steps[each] = cancelled ? .waiting : .failed(Self.copy(error)) }
+            }
+            if let failed = error as? LipsyncFailed {
+                if let usd = failed.usd { billedLipsyncs[failed.requestID ?? UUID().uuidString] = usd }
+                lipsyncKept = failed.freeRetry
             }
             if !cancelled {
                 if steps[step] == .waiting { steps[step] = .failed(Self.copy(error)) }
@@ -393,7 +420,13 @@ import VoxClipMedia
             let reason = ClipTakePlan.copy(unmatched.error)
             return "The picture couldn't be matched to the voice: " + reason + (reason.hasSuffix(".") ? "" : ".") + " Nothing was sent for lip sync."
         case let failed as LipsyncFailed:
-            return "Couldn't lip sync: " + RewriteLipsyncSession.reason(failed.error) + (failed.local ? " Nothing was sent to fal.ai." : "")
+            let charge: String
+            if failed.local { charge = " Nothing was sent to fal.ai." }
+            else if let usd = failed.usd {
+                charge = " fal.ai charged for the attempt (\(VoiceLabCostPresentation.format(usd)))."
+                    + (failed.freeRetry ? " Its result is kept, so Try Again is free." : "")
+            } else { charge = "" }
+            return "Couldn't lip sync: " + RewriteLipsyncSession.reason(failed.error) + charge
         case ClipTakePlan.Failure.placement(let refusal, let index): return placementCopy(refusal, part: index + 1)
         case is LipsyncError, is LipsyncPreparationError: return RewriteLipsyncSession.reason(error)
         default: return RewriteSession.refusal(error)
@@ -415,6 +448,7 @@ import VoxClipMedia
         case let unsent as Unsent: return cause(unsent.error)
         case let unmatched as Unmatched: return cause(unmatched.error)
         case let failed as LipsyncFailed: return cause(failed.error)
+        case let failure as LipsyncAttemptFailure: return cause(failure.error)
         default: return error
         }
     }
