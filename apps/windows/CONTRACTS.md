@@ -1,5 +1,44 @@
 # Windows fixed contracts
 
+### 2026-11-09 — Native batch (win-arm64 VM, 2026-11-09): not run, the VM hung (track/v2-win-vm-native)
+
+**Result: no native check ran.** The VM (`siim@192.168.64.3`) stopped answering before the batch reached it. Every check below stays owed; the Mac-side preparation is ready for the relaunch.
+
+- **The VM's state, seen from the Mac** (17:31–18:00 EET):
+  - Ping and SSH (port 22) timed out throughout. The DHCP lease and the ARP entry still name the VM's MAC.
+  - QEMU (pid 37371, up since the 2026-11-05 boot) ran one core at about 100 %, and the VM's disk image was last written at 17:18:47. That looks like a hung guest, not an update.
+  - Nothing reached the VM: no SSH session, no `C:\voxclip-build\vm.lock`, no files copied and no build. UTM and the VM were not touched.
+  - The user chose to stop (2026-11-09). The lead asks the user to restart the VM, clears any lock older than the reboot, and relaunches.
+- **Ready for the relaunch (Mac):**
+  - The Media fixtures, which come from `generate-fixtures.sh` (Mac FFmpeg 6.1.1, HEVC Main 10 by `hevc_videotoolbox`): 19 files, 34 MB, all generated.
+  - **`tools/frames/ocr-probe/` (new): the W4 OCR check.** `Windows.Media.Ocr` needs the App's `net10.0-windows10.0.26100.0`, and every test project is portable `net10.0`, so a `RequiresWindows` xUnit test would need a new Windows-target test project. Instead, a console tool runs the App's `WindowsFrameText.cs` (linked), `QuadFinder` and `FrameScreenScan`.
+    - Inputs: the quad vectors' `phone-upright`, `phone-tilted` and `laptop` frames, and three rendered 1,280 × 720 phone frames with real text from `render_text_frames.py`.
+    - Output: the installed OCR languages, line boxes, quads, screens with and without quads, `ScanAsync`, and the OCR and `QuadFinder` times.
+    - It compiles on the Mac with `-p:EnableWindowsTargeting=true` (0 warnings) and has not run anywhere.
+  - The VM has no FFmpeg archive on the Mac side. The test-only win-arm64 tools (`ffmpeg.json` `testTools.win-arm64`) and the shipping `voxclip-ffmpeg-n9.0.2-win-arm64.zip` must come from the VM's `C:\voxclip-build` cache or be fetched there with `Fetch-Ffmpeg.ps1`.
+- **Still owed natively (headless, over SSH)**, from this file's owed lines:
+  1. Windows Core and Media, Release, in full on win-arm64: totals, passed, skipped and failed, and which `RequiresWindows`/`RequiresFFmpeg` tests ran that the Mac skips. This includes:
+     - `NativeExportCheckerTests` and `NativeCliCheckTests` (export check, exit 8);
+     - `SocialLoudnessNativeExportTests` (−14 LUFS, ≤ −1 dBTP);
+     - `RewriteSourceDecodesOnlyTheRegionsOfARealTrackLongerThanOneChunk`;
+     - `NativeFrameAnalyzerTests` (W5);
+     - `NativeExportCoverTests` (W6: `-cover.jpg` and MP4 `covr`).
+  2. `OnnxFrameFacesTests` with `VOXCLIP_FRAME_FACES=1` (W3/W8): the goldens within tolerance on arm64, and ms per frame (Mac 14.1–14.9 ms; hosted x64 29.2 ms).
+  3. W4: `tools/frames/ocr-probe` on the VM, the OCR languages it has, and recall and speed at 1,280 px. These decide the PP-OCRv4 fallback.
+  4. The WinUI App for win-arm64 (unpackaged, self-contained):
+     - `models/frames/` with both models, `LICENSE-YuNet.txt`, `LICENSE-Apache-2.0.txt` and `NOTICE.txt`, hashes matching the catalogue;
+     - `build/Assert-OnnxRuntimePin.ps1` on that output;
+     - `build/Test-ReleaseBoundary.ps1 -RuntimeIdentifier win-arm64`.
+  5. The decode speed of the analyzer's four software lanes on arm64 (W5), and the clip-edge render (a check; the mixer is unchanged).
+  6. A8 parity against the shipped win-arm64 folder needs a format-2 runtime-terms receipt in the VM data root first (win-ort-pin entry).
+- **Owed to the user's interactive session (real windows, not over SSH):**
+  - the four Make it postable picture rows (opening, face-follow, blur, cover) and the send line in the window;
+  - a real Claude Code or Codex image send;
+  - the consent UI and the paid voice flows (Create a Voice, Make Takes, Make it postable's voice);
+  - WinUI layout, keyboard and Narrator sweeps listed in the older entries;
+  - a real local Whisper (large-v3-turbo) hearing a real export.
+- **Verification:** no product code changed, so no Windows suite was re-run. Both `check_drift.py` scripts and `tools/schemas/validate.py` pass, and the tree is clean after them.
+
 ### 2026-11-09 — Windows window placement: a seam at a cut, the twin of the Mac rule (track/v2-seam-fade-cut)
 
 The Mac package fixed "Voice Only the Changed Phrases" stopping at `seamFadeCrossesCut` on the user's heavily cut clip (MVP48; apps/macos/CONTRACTS.md has the cause and numbers). The rule is shared geometry, so the C# twin landed with it and both Cores replay the same regenerated vectors.
