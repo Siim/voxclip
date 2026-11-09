@@ -181,6 +181,9 @@ import Testing
         #expect(editor.proposal?[ordinal]?.state == .kept && editor.announcements.last == "Kept change \(ordinal)")
         #expect(editor.proposal?.threads[ordinal] == nil && editor.rewriteThreadDisplay?.ordinal != ordinal, "the thread goes with the kept change")
         #expect(script.requests.count == 1, "keeping sends nothing")
+        // A kept phrase in your voice still shows, waiting for its takes, and has no thread when focused again.
+        editor.focusChange(ordinal)
+        #expect(editor.proposalDisplay?.focused == ordinal && editor.rewriteThreadDisplay == nil && editor.rewriteThreadSlot(editor.proposalDisplay) == nil)
         // On another change: talk, then Undo (⌘⌫ from the input) returns it to the recorded words.
         let (other, _, otherScript, otherScenes) = try scene()
         defer { otherScenes.forEach { $0.editor?.close() } }
