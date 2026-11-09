@@ -138,6 +138,7 @@ import Testing
         #expect(editor.proposal?[ordinal]?.parts.flatMap(\.newTokens).contains("much") == true, "rediffed as an edit")
         #expect(editor.rewriteThreadDisplay?.versionLine == "2 of 2" && editor.rewriteThreadDisplay?.turns.map(\.speaker) == [.you, .claude])
         #expect(session.changes.isEmpty == false && editor.project == before && !undo.canUndo)
+        #expect(session.reviewedVoiceOrdinals.contains(ordinal) && !session.hasEditedChanges, "Claude's version is the reply's words: voiced at Keep, not a hand edit")
         // ‹ back to version 1 and › forward again: the text follows, nothing is sent and no undo step is added.
         #expect(editor.switchRewriteThreadVersion(by: -1))
         #expect(editor.changeText(ordinal) == first && editor.rewriteThreadDisplay?.versionLine == "1 of 2")
