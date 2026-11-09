@@ -126,7 +126,12 @@ public enum LipsyncResultValidation {
                         guard length <= 16 * 1_024 * 1_024 else { throw LipsyncError.responseTooLarge }
                     case "mdat": mediaCount += 1
                     case "free", "skip", "wide": break
-                    default: throw LipsyncError.invalidMedia
+                    // Metadata in a vendor box, never read: sync.so stamps its results with a C2PA manifest (Content
+                    // Credentials, uuid d8fec3d6-1b0e-483c-9297-5828877ec481), about 12 KB (2026-11-09, lipsync-2).
+                    case "uuid": guard length <= 1_024 * 1_024 else { throw LipsyncError.invalidMedia }
+                    default:
+                        let name = String(kind.unicodeScalars.map { $0.isASCII && $0.value > 32 && $0.value < 127 ? Character($0) : "?" })
+                        throw LipsyncResultCheck.structure(.container, "bytes=\(size) box=\(name)")
                     }
                 }
                 if containers.contains(kind) { try scan(offset + headerSize, next, depth + 1) }

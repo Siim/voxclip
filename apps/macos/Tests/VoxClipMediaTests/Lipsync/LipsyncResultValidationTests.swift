@@ -44,9 +44,26 @@ struct LipsyncResultValidationTests {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         for bytes in [Data([0, 0, 0, 7]) + Data("ftyp".utf8), container().dropLast(),
                       box("ftyp", Data(repeating: 0, count: 8)) + box("moov", Data()) + box("mdat", Data([0])),
-                      container() + box("rmra", Data()), container() + box("moov", Data())] {
+                      container() + box("moov", Data())] {
             #expect(throws: LipsyncError.invalidMedia) { try inspect(Data(bytes), root: root) }
         }
+        // An unknown top-level box, a reference movie among them, is refused and named in the log line.
+        #expect(throws: LipsyncResultCheck.structure(.container, "bytes=\(container().count + 8) box=rmra")) {
+            try inspect(container() + box("rmra", Data()), root: root)
+        }
+    }
+
+    /// sync.so stamps lipsync-2 results with a C2PA manifest in a top-level `uuid` box (12,299 bytes on 2026-11-09). It is
+    /// metadata AVFoundation never reads, so it passes; an oversized one still fails closed.
+    @Test func vendorMetadataBoxBesideTheMovieIsAccepted() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let c2pa = Data([0xd8, 0xfe, 0xc3, 0xd6, 0x1b, 0x0e, 0x48, 0x3c, 0x92, 0x97, 0x58, 0x28, 0x87, 0x7e, 0xc4, 0x81])
+        let valid = container()
+        let ftypLength = 16
+        let stamped = valid.prefix(ftypLength) + box("uuid", c2pa + Data(repeating: 0, count: 12_000)) + valid.dropFirst(ftypLength)
+        try inspect(Data(stamped), root: root)
+        let oversized = valid.prefix(ftypLength) + box("uuid", c2pa + Data(repeating: 0, count: 1_024 * 1_024)) + valid.dropFirst(ftypLength)
+        #expect(throws: LipsyncError.invalidMedia) { try inspect(Data(oversized), root: root) }
     }
 
     @Test func oversizedExtendedBoxDoesNotAllocateItsClaimedSize() throws {
