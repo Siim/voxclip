@@ -1299,6 +1299,8 @@ Only wording and fit failures (1, 2) reword. Each reworded round carries the phr
 
 `ClipTakePlan.prepareRewording` also refuses a wording without the bridge words and leaves the phrase's text unchanged. A manual measured suggestion that drops them shows "{AI} left out “…”, the words that join phrase N to your recording, so its wording wasn't used." with no re-ask. The "easier words" reword builds its text from the bridge words, so it can't drop them.
 
+**A reword waits for the take's own video (2026-11-09).** The take a measured round starts from has its video duration chosen as it lands (match or cut, below), and that video is prepared while the AI rewords. `ClipTakePlan.prepareRewording` waits for that preparation to settle before it prices the new wording, which replaces that video, and then checks again that the round still applies. It never refuses a wording because the take it measured is still being published (the "The new wording couldn't be priced." a long take showed on a slow Mac). A round that the settled plan superseded, for example because the preparation left the phrase as recorded, ends with no line.
+
 Before takes: a collision's merge re-ask is sent once; a refused surrounding sentence (while armed) is voiced on the changed words when their own window is valid, else re-asked "Rewrite this change without changing any words outside it.", else left out with its text fixes kept; a failed or stale re-ask is sent once more; over the budget Rewrite goes on.
 
 - **Rounds.** At most 3 per phrase (`RewriteAutoFixState.maximumRounds`). After the last the phrase keeps its original words (`ClipTakePlan.leaveOut`): no take is used, every take stays, Undo restores the best passing take.
