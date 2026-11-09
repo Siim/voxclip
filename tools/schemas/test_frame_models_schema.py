@@ -46,14 +46,27 @@ class FrameModelsSchemaTests(unittest.TestCase):
         del document["models"][0]["license"]
         self.assertFalse(self.valid(document))
 
-    def test_enabling_needs_every_url_and_a_finished_calibration(self):
+    def test_enabling_needs_every_file_hosted_or_bundled_and_a_finished_calibration(self):
         document = copy.deepcopy(self.catalogue)
         document["enabled"] = True
-        self.assertFalse(self.valid(document))
-        document["models"][0]["files"][1]["url"] = "https://example.invalid/face_mesh_v2.onnx"
         self.assertFalse(self.valid(document), "a provisional calibration must not be enabled")
         document["models"][0]["calibration"]["status"] = "calibrated"
         self.assertTrue(self.valid(document))
+        del document["models"][0]["files"][1]["bundled"]
+        self.assertFalse(self.valid(document), "a file neither hosted nor bundled must not be enabled")
+        document["models"][0]["files"][1]["url"] = "https://example.invalid/face_mesh_v2.onnx"
+        self.assertTrue(self.valid(document))
+
+    def test_both_files_are_bundled_as_catalogued(self):
+        import hashlib
+        for file in self.catalogue["models"][0]["files"]:
+            with self.subTest(file=file["name"]):
+                self.assertEqual(f"apps/windows/models/frames/{file['name']}", file["bundled"])
+                data = (ROOT / file["bundled"]).read_bytes()
+                self.assertEqual((file["bytes"], file["sha256"]), (len(data), hashlib.sha256(data).hexdigest()))
+        document = copy.deepcopy(self.catalogue)
+        document["models"][0]["files"][0]["bundled"] = "apps/windows/models/frames/../x.onnx"
+        self.assertFalse(self.valid(document))
 
     def test_hashes_sizes_and_total(self):
         model = self.catalogue["models"][0]

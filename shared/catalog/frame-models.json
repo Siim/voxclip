@@ -1,7 +1,7 @@
 {
   "schema": "voxclip-frame-models/1",
   "enabled": false,
-  "enabledNote": "Off until the calibration against the Mac (W7) passes and the user decides on YuNet's training-data terms (WIDER FACE). While off, nothing installs or loads these models.",
+  "enabledNote": "Off until the calibration against the Mac (W7) passes. The licence decision is made: the user accepted YuNet's training-data terms (WIDER FACE) on 2026-11-09, and both files are bundled in the Windows app. While off, nothing loads these models outside tests and the developer override (VOXCLIP_FRAME_FACES=1).",
   "models": [
     {
       "id": "yunet2026may-facemeshv2-f16v1",
@@ -12,7 +12,8 @@
           "role": "detector",
           "name": "face_detection_yunet_2026may.onnx",
           "url": "https://github.com/opencv/opencv_zoo/raw/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/face_detection_yunet_2026may.onnx",
-          "hosting": "opencv_zoo, pinned to commit 26cc381e4d2594bb9f47a26eb8fd96c94a13660d",
+          "hosting": "opencv_zoo, pinned to commit 26cc381e4d2594bb9f47a26eb8fd96c94a13660d; bundled unmodified in the Windows app",
+          "bundled": "apps/windows/models/frames/face_detection_yunet_2026may.onnx",
           "bytes": 229738,
           "sha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
           "input": "1x3xHxW BGR 0-255, H and W multiples of 32",
@@ -20,13 +21,14 @@
           "license": "MIT",
           "licenseUrl": "https://github.com/opencv/opencv_zoo/blob/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/LICENSE",
           "notice": "YuNet face detector. Copyright (c) 2020 Shiqi Yu. MIT License.",
-          "trainingData": "WIDER FACE (research-oriented terms; the user decides before Windows ships)"
+          "trainingData": "WIDER FACE (research-oriented terms; the user accepted the risk on 2026-11-09)"
         },
         {
           "role": "landmarks",
           "name": "face_mesh_v2.onnx",
           "url": null,
-          "hosting": "Owed: a VoxClip release asset with the Apache-2.0 LICENSE and this NOTICE, reproduced by a pinned tf2onnx conversion of the bundle below",
+          "hosting": "Bundled in the Windows app with the Apache-2.0 LICENSE and a NOTICE (apps/windows/models/frames/); the bytes are entry 'mesh' of the pinned pack below, and tools/models/convert_face_mesh.py reproduces the conversion from the pinned bundle and checks it",
+          "bundled": "apps/windows/models/frames/face_mesh_v2.onnx",
           "bytes": 4921008,
           "sha256": "336896759881634ebf1121fe161e95abf1eaae697779d02a9eab04f53b1f0784",
           "input": "1x256x256x3 RGB 0-1",
@@ -40,7 +42,7 @@
             "bundleSha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
             "tfliteSha256": "c7d54204ce0448474c7f3fa9af494787c0965cbdd6f20fc72867e43046bd43d5",
             "conversion": "tf2onnx 1.17.0, opset 17, batch 1 (byte-identical to entry 'mesh' of huggingface.co/NardoCreations/mediapipe-face-onnx@253c4f079ea8ec964c914ba6de237b7c62762197, pack SHA-256 69f881ea5961e8b8fecc5076ae5c5559e284f7bc22c1859ed19900b9069e3b98)",
-            "parity": "max |onnx - tflite| 5.7e-4 crop px on random inputs (2026-11-08)"
+            "parity": "max |onnx - tflite| 6.9e-4 crop px on random inputs, TFLite reference kernels vs onnxruntime 1.19.2 (tools/models/convert_face_mesh.py, 2026-11-09)"
           }
         }
       ],

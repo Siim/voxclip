@@ -48,4 +48,8 @@
   <Target Name="VerifyXamlResources" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
     <Error Condition="!Exists('$(TargetDir)$(TargetName).pri')" Text="WinUI $(TargetName).pri is missing from the unpackaged output. Check SDK BuildTools and PRI generation before launching VoxClip." />
   </Target>
+  <ItemGroup>
+    <!-- The bundled face models with their licences and NOTICE (ADR-R48 Windows), beside the app as models\frames\. -->
+    <Content Include="$(MSBuildThisFileDirectory)..\..\models\frames\*" LinkBase="models\frames" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

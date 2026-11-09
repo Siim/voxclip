@@ -1,0 +1,24 @@
+VoxClip for Windows: bundled face models (ADR-R48, Windows)
+
+These two files are bundled with the Windows app and hash-checked against shared/catalog/frame-models.json before they
+are loaded. They measure faces in a video's frames on the PC; nothing is sent anywhere.
+
+face_detection_yunet_2026may.onnx
+  YuNet face detector. Copyright (c) 2020 Shiqi Yu. MIT License (LICENSE-YuNet.txt).
+  Source: https://github.com/opencv/opencv_zoo/raw/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/face_detection_yunet_2026may.onnx
+  (opencv_zoo commit 26cc381e4d2594bb9f47a26eb8fd96c94a13660d), unmodified.
+  SHA-256 ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0, 229,738 bytes.
+  Trained on WIDER FACE, whose terms are research-oriented; the VoxClip maintainer accepted that risk on 2026-11-09.
+
+face_mesh_v2.onnx
+  MediaPipe Face Mesh V2 by Google LLC, licensed under the Apache License, Version 2.0 (LICENSE-Apache-2.0.txt).
+  Modified: converted from TensorFlow Lite to ONNX. The weights are unchanged apart from the format.
+  Source: face_landmarks_detector.tflite (SHA-256 c7d54204ce0448474c7f3fa9af494787c0965cbdd6f20fc72867e43046bd43d5) inside
+  https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+  (SHA-256 64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff).
+  Conversion: tf2onnx 1.17.0, opset 17, batch 1, by Nardo Creations (Apache-2.0). These are the bytes of entry "mesh" of
+  https://huggingface.co/NardoCreations/mediapipe-face-onnx at commit 253c4f079ea8ec964c914ba6de237b7c62762197
+  (mediapipe-face.pack, SHA-256 69f881ea5961e8b8fecc5076ae5c5559e284f7bc22c1859ed19900b9069e3b98).
+  tools/models/convert_face_mesh.py reproduces the conversion from the pinned bundle and checks that it is the same graph
+  (the same operators in order and the same weights) and that both answer like the TFLite original within 1e-3 crop pixels.
+  SHA-256 336896759881634ebf1121fe161e95abf1eaae697779d02a9eab04f53b1f0784, 4,921,008 bytes.

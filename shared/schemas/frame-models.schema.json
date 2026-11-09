@@ -12,7 +12,7 @@
   },
   "if": {"properties": {"enabled": {"const": true}}},
   "then": {"properties": {"models": {"items": {"properties": {
-    "files": {"items": {"properties": {"url": {"type": "string"}}}},
+    "files": {"items": {"anyOf": [{"required": ["bundled"]}, {"properties": {"url": {"type": "string"}}}]}},
     "calibration": {"properties": {"status": {"const": "calibrated"}}}
   }}}}},
   "$defs": {
@@ -31,6 +31,8 @@
         "name": {"type": "string", "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$"},
         "url": {"oneOf": [{"type": "null"}, {"type": "string", "format": "uri", "pattern": "^https://"}]},
         "hosting": {"type": "string", "minLength": 1},
+        "bundled": {"type": "string", "pattern": "^apps/windows/models/frames/[a-zA-Z0-9_][a-zA-Z0-9_.-]*$",
+                    "description": "The file's path in the repository when the Windows app bundles it (copied beside the app as models/frames/<name>); its last part is the file's name."},
         "bytes": {"type": "integer", "minimum": 1},
         "sha256": {"$ref": "#/$defs/hash"},
         "input": {"type": "string", "minLength": 1},
