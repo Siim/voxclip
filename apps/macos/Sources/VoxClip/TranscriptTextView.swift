@@ -807,11 +807,12 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         }
     }
     /// Return, F2, a click on a change's new words and VoiceOver's Talk to Claude: the change's thread opens and its
-    /// input takes the keys; the change and its thread come into view first. False where no thread shows.
-    @discardableResult func openThread(_ ordinal: Int) -> Bool {
+    /// input takes the keys; the change and its thread come into view first. ⌥E (`ownWords`) opens it with the input
+    /// taking your own words. False where no thread shows.
+    @discardableResult func openThread(_ ordinal: Int, ownWords: Bool = false) -> Bool {
         guard let model else { return false }
         if model.proposalDisplay?.focused != ordinal { model.focusChange(ordinal) }
-        guard model.openRewriteThreadInput() else { return false }
+        guard ownWords ? model.openRewriteThreadOwnWords() : model.openRewriteThreadInput() else { return false }
         renderNow()
         if let range = renderer?.changeRange(ordinal) { scrollRangeToVisible(range) }
         settleThread()
@@ -832,8 +833,8 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         updateThread()
     }
     /// ⌘↩ keeps and ⌘⌫ undoes the focused change, ⌥↓ and ⌥↑ walk the changes, ⌥← and ⌥→ switch its
-    /// thread's versions, and F2, or Return on the focused change or a selection in a change, opens its thread (impl-plan §3.2).
-    /// Returns false for any other key.
+    /// thread's versions, and F2, or Return on the focused change or a selection in a change, opens its thread (impl-plan §3.2);
+    /// ⌥E opens it for your own words. Returns false for any other key.
     private func handleChangeKey(_ event: NSEvent, model: EditorModel) -> Bool {
         guard let display = model.proposalDisplay else { return false }
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
@@ -849,6 +850,9 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         case ([], 120):
             guard let focused = display.focused, !display.actions.isEmpty else { return false }
             return openThread(focused)
+        case (.option, _) where event.charactersIgnoringModifiers?.lowercased() == "e":
+            guard let focused = display.focused, !display.actions.isEmpty else { return false }
+            return openThread(focused, ownWords: true)
         case ([], _) where returnKey:
             guard let ordinal = model.changeForReturn else { return false }
             return openThread(ordinal)
@@ -860,6 +864,10 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     @objc func accessibleEditChange() -> Bool {
         guard let focused = model?.proposalDisplay?.focused else { return false }
         return openThread(focused)
+    }
+    @objc func accessibleOwnWords() -> Bool {
+        guard let focused = model?.proposalDisplay?.focused else { return false }
+        return openThread(focused, ownWords: true)
     }
     /// Places the caret (impl-plan item 19): 2 × 19 at 15 pt, from 15 above the baseline to 4
     /// below, centred on the start of the playhead's word. Hidden while its line is offscreen.
@@ -997,6 +1005,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
             }
             if model?.rewriteThreadDisplay != nil {
                 actions.append(NSAccessibilityCustomAction(name: "Talk to Claude about change \(focused)", target: self, selector: #selector(accessibleEditChange)))
+                actions.append(NSAccessibilityCustomAction(name: "Type your own words for change \(focused)", target: self, selector: #selector(accessibleOwnWords)))
             }
         }
         setAccessibilityCustomActions(actions)
