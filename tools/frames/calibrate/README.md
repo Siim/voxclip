@@ -1,4 +1,4 @@
-# Windows faces calibrated against the Mac (W7)
+# Windows faces calibrated against the Mac (W7, W8)
 
 On Windows, VoxClip measures faces with YuNet and Face Mesh V2 (`OnnxFrameFaces`). The Mac uses Apple Vision. The shared
 decisions read both platforms' numbers with the same lines: eyes closed below 0.20, a good capture from 0.4, an open look
@@ -12,7 +12,7 @@ them on held-out people and writes the result back. ADR-R48 (Windows calibration
 |---|---|
 | `manifest.json` | The frames. US federal public-domain NASA video from images.nasa.gov only: nasa_id, the exact asset URL, each segment's seconds and fps, and every decoded frame's SHA-256 (raw RGB24 rows at 1,280 px on the long side, frame k at start + k / fps). 37 subjects (one person each), split by subject into `fit` (24) and `validation` (13). |
 | `calibrate.py` | `measure`: fetch, decode, hash and run both pipelines, one subject at a time. `fit`: fit on the fit split and report the acceptance numbers. `write`: write the catalogue's calibration block. `pin`: record the hashes of new segments. |
-| `windows-runner/` | The Windows half: a .NET 10 console app on the shipped C# steps (YuNet input, `YuNetDecoder`, `RotatedCrop`, Face Mesh V2, `FaceCropStats`, `FaceMeshFields.Measure`). It writes the raw numbers before the catalogue's maps, and stops if any frame differs from `OnnxFrameFaces.Faces` itself. |
+| `windows-runner/` | The Windows half: a .NET 10 console app on the shipped C# steps (YuNet input, `YuNetDecoder`, `SpeakerFace`, `RotatedCrop`, Face Mesh V2, `FaceCropStats`, `FaceMeshFields.Measure`). It writes the raw numbers before the catalogue's maps, every box YuNet kept (each with the mesh's numbers) and the frame's `QuadFinder` quads, and stops if any frame differs from `OnnxFrameFaces.Faces` itself. |
 | `apps/macos/Tests/VoxClipMediaTests/Frames/CalibrationVisionHarness.swift` | The Mac half: the production `AppleFrameVision` on the same bytes. It runs only when `VOXCLIP_CALIBRATION_FRAMES` names a job and is skipped everywhere else. |
 | `test_calibrate.py` | Shows that the fit is deterministic and recovers known maps, using a fixed synthetic paired set (numbers only). |
 
@@ -29,7 +29,7 @@ anything showing a child; school hosts' feeds inside downlinks; and wide shots o
 ## Rerun (when macOS, Vision's request set or the catalogue changes)
 
 Needs ffmpeg/ffprobe (6.1.1 pinned the hashes), Python 3 with numpy and scipy (no other packages), Xcode, and the .NET 10 SDK.
-Run on the Mac, not while the frames would contend with other work: about 25 minutes for 5,620 frames, and 15 GB free disk.
+Run on the Mac, not while the frames would contend with other work: about 12 minutes for 5,620 frames (M3 Max, 2026-11-09), and 15 GB free disk.
 
 ```sh
 cd apps/macos && VOXCLIP_NO_KEYCHAIN=1 swift build --build-tests
@@ -55,6 +55,14 @@ Then update the C# constants in `FrameModelCatalogTests` and the goldens in `Onn
 4. **(d)** The gates. A gate is fitted only when at least 30 fit faces lie past its fixed value; otherwise the study's fixed
    gate stays.
 5. **(e)** The quantile remap: the Windows score's p10, p25, p50, p75 and p90 onto Vision's.
+6. **(W8) The speaker score:** the fit split's lowest speaker score (the measured box the Mac's face overlaps) rounded down to
+   0.05. `fit` first checks that the recorded Windows face is `speaker_face`'s pick at the catalogue's score on every frame (the
+   twin of `SpeakerFace` without screens: the calibration has no OCR), then re-picks every frame at the fitted score.
+7. **(W8) The small-face width** (`eyesFromWidth`): the top of the highest 20 px band of fit faces, with at least 30 faces, whose
+   eye agreement with Vision is below the fit split's overall agreement.
+8. **(W8) The per-recording quality offset:** each quality moves by strength × (the fit recordings' mean Vision median − its own
+   recording's median), strength 0–1 by 0.25, the best mean of the two quality lines on the fit split. It chose 0 on
+   2026-11-09, so the app applies none and `write` refuses a non-zero strength until the app has the map.
 
 These stay as in the study: the eyes-open span (0.12 to 0.26), the facing span (0.6) and the sharpness range (30 to 400).
 `SHARPNESS_GRID` can try a range, but a fitted range lowered the held-out agreement on 2026-11-09. Frames where the two face
@@ -79,4 +87,11 @@ The opening frame line counts `OpeningFrame.choose` on every 10 fps frame that h
 frames around it, and the silence runs back 0.6 s. For cover regret, `CoverFrame.pick` runs on consecutive 24-frame windows,
 and the regret is how much worse Windows' pick scores than the Mac's under Vision's own scoring.
 
-The report also gives two diagnostics: the validation split without faces under 100 px, and without different-face frames.
+The eyes line counts the frames where both platforms state open or closed. A frame where Windows says unknown (a face under
+`eyesFromWidth`) and Vision gives a value is left out of it and counted as `eyesUnknown`; `eyesStrict` counts it as the
+decisions read it (not an open look: it agrees with Vision's closed and disagrees with Vision's open), and `eyesAwayFromLine`
+leaves out frames whose Vision ratio is within 0.02 of the 0.20 line. The opening and cover lines run on every frame, so they
+carry what an unknown costs.
+
+The report also gives the acceptance after each W8 change (`steps`: W7's path, the speaker rule, then the small faces) and two
+diagnostics: the validation split without faces under 100 px, and without different-face frames.

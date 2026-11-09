@@ -1,5 +1,41 @@
 # Windows fixed contracts
 
+### 2026-11-09 — Windows: the speaker's face and unknown eyes on small faces, then the calibration again, package W8 of "Windows sees the picture" (track/v2-win-frames-w8)
+
+ADR-R48 (Windows calibration, second pass) has the numbers and the reasons. **Result: quality at 0.40 now passes, as does facing; eyes, quality at 0.25, the opening and the cover still fail on the held-out people, so the catalogue stays `enabled: false` and `provisional`.** The W7 manifest, split and reference are unchanged, and so are the shared decisions.
+
+- **Core `Domain/Frames/SpeakerFace.cs`** (new, pure):
+  - `ReadingOrder(faces, input, screens, speakerScore)`: boxes outside every screen first (at least half the box inside a screen's rect counts as inside, `InsideScreenShare`), then confident ones (score ≥ `speakerScore`), then the larger; equal boxes keep the decoder's order.
+  - `FaceCount(order, speaker, speakerScore)`: the speaker plus each later confident box. A weak box counts only once the mesh confirms it, so W3's count changes where a weak box was larger than the speaker: on 78 calibration frames the count went from 1 to 2 under the new order, and this rule puts it back to the Mac's 1. Face counts agree with the Mac on 5,610 of 5,620 frames.
+- **The seam:** `IFrameFaces.FacesAsync(frame, screens, ct)` (was `(frame, ct)`). `FrameAnalyzer`'s lane scans text and screens first, then passes the sentence frame's `FrameScreen` rects to the faces; opening-scan frames pass none. `OnnxFrameFaces.Faces(frame, screens, ct)` reads in `SpeakerFace` order, and `Faces(frame, ct)` is `Faces(frame, [], ct)`. `FrameFaceFindings.Largest` keeps its name; it is now the speaker's face.
+- **Small faces:** `FaceMeshFields.Measure` leaves the face's eye ratios null when `faceWidthPixels < EyesFromWidth`, so the eyes are `Unknown`. The quality still uses the measured eyes, and `FaceMeshMeasure.RawLeftEye`/`RawRightEye` keep them.
+- **Catalogue** (`calibration`): `speakerScore` 0.85 and `eyesFromWidth` 80, both fitted on the fit split (ADR-R48). `FrameFaceCalibration.SpeakerScore`/`EyesFromWidth`; read and range-checked (score 0–1, width ≥ 0); schema `frame-models.schema.json` requires both. The W7 maps and weights refit to the same values. `evaluation` adds `steps`, `eyeBands`, `speaker`, `recordingOffset`, `eyesCounting` and per-set `eyesUnknown`/`eyesStrict`/`eyesAwayFromLine`.
+- **Not applied: the per-recording quality normalisation.** The tool fits it (`recording_offset`, `fit_recording_offset`, a strength grid 0–1), and the fit chose 0. Every variant tried (offset, per-recording quantile remap, recording-relative sharpness) lowered the fit split's agreement too. No Windows code ships for it, and `write` refuses a non-zero strength.
+- **Vectors** (`frame-face-fields-cases.json`, Windows-only, 81 → 94 cases): a new `speakers` section (11: order and `expectCount`, the title-card case, faces on, mostly on and partly on a screen, only weak faces), and meshes `small-face-eyes-unknown` and `eyes-at-the-width`. `generate_face_fields.py` has `speaker_order` and the small-face rule. The fixture schema is updated.
+- **Tool** (`tools/frames/calibrate`):
+  - The runner records every YuNet box with its mesh numbers and the frame's `QuadFinder` quads, and picks the face in `SpeakerFace` order.
+  - `calibrate.py`: `speaker_face` (the twin, checked against the recorded face on every frame), `fit_speaker_score`, `fit_eyes_from_width`, the offset fit, the eyes counts and the `steps` table. ffmpeg decodes on 4 threads; the hashes still match.
+  - `test_calibrate.py`: 4 → 11 tests (the speaker twin and its count, the score fit, the width fit, a small face's unknown eyes and kept quality, and that the offset is deterministic and reads only its own recording).
+  - `tools/models/face_golden_reference.py` reads in `SpeakerFace` order; the goldens reproduce the pins to all five decimals, so none is re-pinned.
+- **Numbers on the 13 held-out people** (needs → W7 → speaker rule → shipped, speaker and small faces):
+  - eyes ≥ 0.98 → 0.960 → 0.960 → **0.968** (260 Vision-stated frames unknown; strict 0.851; away from the line 0.983)
+  - facing ≥ 0.95 → 0.980 → 0.980 → 0.980
+  - quality at 0.25 ≥ 0.95 → 0.817 → 0.900 → **0.900**
+  - quality at 0.40 ≥ 0.85 → 0.823 → 0.906 → 0.906 (passes)
+  - opening ≥ 0.95 → 0.794 → 0.890 → **0.887**
+  - cover regret p90 ≤ 0.06 → 0.074 → 0.074 → **0.455**
+  - Fit split, shipped: 0.971 / 0.964 / 0.937 / 0.863 / 0.870 / 0.541.
+- **Red without each rule** (one mutation at a time): no screen rule → `SpeakersReplay` and `TwoFacesAreCountedAndTheLargerIsMeasuredUnlessItIsOnAScreen`; no weak rule → `SpeakersReplay`; weak boxes counted → `SpeakersReplay`; no small-face rule → `MeshesReplay` and `EyesAndPoseReadAsTheMacs`; the analyzer passing no screens → `TheFacePathGetsTheSentenceFramesScreens`; `OnnxFrameFaces` ignoring the screens → the two-faces test.
+- **ReleaseBoundary.** `update` on VoxClip.Core (+10/−1: `SpeakerFace`, `FrameFaceCalibration.SpeakerScore`/`EyesFromWidth`, the new `IFrameFaces.FacesAsync`) and VoxClip.Media (+2/−1: `OnnxFrameFaces.Faces(frame, screens, ct)`, the new `FacesAsync`). No literals; App and CLI unchanged.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`): Windows Core 3,440 (3,411 passed, 29 skipped, 0 failed); Windows Media 1,266 (1,097 passed, 169 skipped, 0 failed); the App type-check builds with no warnings. Both `check_drift.py` scripts, `tools/schemas/validate.py`, the schema and voice-lab unit tests and the calibration tests (11) pass, and the tree is clean after them. Vision gave the same numbers on all 5,620 frames in two runs, and W7's acceptance numbers reproduced exactly from a fresh measure.
+- **For the lead:**
+  - **The small-face rule costs the cover line.** It takes the eyes line from 0.960 to 0.968, but without an open-eyed frame a wide shot gets no cover pick, and the line counts the Mac's whole score as regret (p90 0.074 → 0.455). `eyesFromWidth: 0` turns it off, with no other change.
+  - **The eyes line at 0.98:** half of the remaining misses are within 0.02 of the 0.20 line, where Vision's own consecutive frames disagree in 25–33 % of pairs. Away from the line, the eyes agree 0.983. Whether 0.98 should apply near the line is the lead's call; the line is unchanged here.
+  - **s25's first segment is a title card**, which the manifest's own rules exclude; it stays because the split is W7's.
+  - **The Mac on small faces:** Vision calls 40.5 % of the eyes closed on fit faces under 60 px, against 4–11 % from 100 px. The Mac should probably treat faces under about 80 px as unknown too; unchanged here.
+- **Still owed:** W6 (the wiring); the screen rule's effect on real footage with Windows OCR (the calibration has no OCR); the native checks from W3/W7 (goldens and speed on win-arm64, Windows OCR recall at 1,280, the App's output folder on a Windows build).
+
+
 ### 2026-11-09 — Windows: the face models calibrated against the Mac's Vision, package W7 of "Windows sees the picture" (track/v2-win-frames-w7)
 
 ADR-R48 (Windows calibration) and /tmp/clipper-planning/research/windows-frame-analyzer.md (Question 2, "Expected accuracy", Risks 1–3, W7). **Result: the calibration fails 5 of the 6 acceptance lines on the held-out people, so the catalogue stays `enabled: false`.** The constants and every number are committed.
