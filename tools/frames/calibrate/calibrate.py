@@ -91,10 +91,11 @@ def frame_size(video, edge):
 
 def decode(video, segment, decoding):
     """Every frame of one segment, as raw RGB24 bytes at the manifest's size: ffmpeg seeks to the start (accurate seek), takes
-    the duration at the segment's fps and scales with the pinned, bit-exact swscale flags."""
+    the duration at the segment's fps and scales with the pinned, bit-exact swscale flags. Four decoding threads at most, so a
+    run leaves the machine usable; the hashes show the bytes don't depend on it."""
     width, height = frame_size(video, decoding['edge'])
     duration = segment['end'] - segment['start']
-    command = ['ffmpeg', '-v', 'error', '-nostdin', '-ss', f"{segment['start']:.3f}", '-i', video['url'], '-t', f'{duration:.3f}',
+    command = ['ffmpeg', '-v', 'error', '-nostdin', '-threads', '4', '-ss', f"{segment['start']:.3f}", '-i', video['url'], '-t', f'{duration:.3f}',
                '-an', '-sn', '-vf', f"fps={segment['fps']},scale={width}:{height}:flags={decoding['scaler']}",
                '-sws_flags', decoding['swsFlags'], '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-']
     data = subprocess.run(command, capture_output=True, check=True, timeout=1800).stdout

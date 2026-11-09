@@ -52,9 +52,10 @@ Parallel.For(0, frames.Length, new ParallelOptions { MaxDegreeOfParallelism = 2 
     var buffer = Bgra(rgb, frame.Width, frame.Height);
     var shipped = production.Faces(buffer);
     var measured = steps.Measure(buffer);
+    var quads = new QuadFinder().Find(buffer);
     if (shipped.FaceCount != measured.FaceCount || !Equal(shipped.Largest, measured.Face?.Measure.Face))
         differing.Add(frame.Sha256);
-    lines[index] = Line(frame.Sha256, measured).ToJsonString();
+    lines[index] = Line(frame.Sha256, measured, quads).ToJsonString();
 });
 if (!refused.IsEmpty)
 {
@@ -87,32 +88,42 @@ static bool Equal(FrameFace? a, FrameFace? b) => a is null || b is null ? a is n
     a.Rect.Equals(b.Rect) && a.CaptureQuality == b.CaptureQuality && a.LeftEyeAspect == b.LeftEyeAspect &&
     a.RightEyeAspect == b.RightEyeAspect && a.Yaw == b.Yaw && a.Pitch == b.Pitch && a.Eyes == b.Eyes;
 
-static JsonObject Line(string sha256, Measured measured)
+static JsonObject Rect(VoxClip.Core.Domain.Effects.ClipEffectRect rect) =>
+    new() { ["x"] = rect.X, ["y"] = rect.Y, ["width"] = rect.Width, ["height"] = rect.Height };
+
+static JsonObject Line(string sha256, Measured measured, IReadOnlyList<FrameQuad> quads)
 {
     var line = new JsonObject { ["sha256"] = sha256, ["faceCount"] = measured.FaceCount };
-    if (measured.Face is { } face)
+    if (measured.Face is { } face) line["face"] = Candidate(face);
+    // Every box YuNet kept, largest first, each with what the mesh measured (null: the mesh found no face in it), and the frame's
+    // quads: what the speaker rule is fitted from.
+    line["candidates"] = new JsonArray([.. measured.Candidates.Select(candidate => (JsonNode)new JsonObject
     {
-        var parts = face.Measure;
-        line["face"] = new JsonObject
-        {
-            ["rect"] = new JsonObject
-            {
-                ["x"] = parts.Face.Rect.X, ["y"] = parts.Face.Rect.Y, ["width"] = parts.Face.Rect.Width, ["height"] = parts.Face.Rect.Height,
-            },
-            ["detectorScore"] = face.DetectorScore,
-            ["presenceLogit"] = face.PresenceLogit,
-            ["roll"] = face.Roll,
-            ["faceWidthPixels"] = face.WidthAt1280,
-            ["rawLeftEye"] = parts.RawLeftEye,
-            ["rawRightEye"] = parts.RawRightEye,
-            ["meshYaw"] = parts.MeshYaw,
-            ["meshPitch"] = parts.MeshPitch,
-            ["sharpnessVariance"] = face.Crop.SharpnessVariance,
-            ["meanLuma"] = face.Crop.MeanLuma,
-            ["clippedFraction"] = face.Crop.ClippedFraction,
-        };
-    }
+        ["rect"] = Rect(candidate.Rect), ["detectorScore"] = candidate.DetectorScore, ["widthAt1280"] = candidate.WidthAt1280,
+        ["measured"] = candidate.Face is { } found ? Candidate(found) : null,
+    })]);
+    line["quads"] = new JsonArray([.. quads.Select(quad => (JsonNode)new JsonObject { ["rect"] = Rect(quad.BoundingBox), ["confidence"] = quad.Confidence })]);
     return line;
+}
+
+static JsonObject Candidate(MeasuredFace face)
+{
+    var parts = face.Measure;
+    return new JsonObject
+    {
+        ["rect"] = Rect(parts.Face.Rect),
+        ["detectorScore"] = face.DetectorScore,
+        ["presenceLogit"] = face.PresenceLogit,
+        ["roll"] = face.Roll,
+        ["faceWidthPixels"] = face.WidthAt1280,
+        ["rawLeftEye"] = parts.RawLeftEye,
+        ["rawRightEye"] = parts.RawRightEye,
+        ["meshYaw"] = parts.MeshYaw,
+        ["meshPitch"] = parts.MeshPitch,
+        ["sharpnessVariance"] = face.Crop.SharpnessVariance,
+        ["meanLuma"] = face.Crop.MeanLuma,
+        ["clippedFraction"] = face.Crop.ClippedFraction,
+    };
 }
 
 internal sealed record Frame(string Sha256, string Path, int Width, int Height);
@@ -120,7 +131,9 @@ internal sealed record Frame(string Sha256, string Path, int Width, int Height);
 internal sealed record MeasuredFace(FaceMeshMeasure Measure, FaceCropStats Crop, double WidthAt1280, double DetectorScore, double PresenceLogit,
     double Roll);
 
-internal sealed record Measured(int FaceCount, MeasuredFace? Face);
+internal sealed record CandidateFace(VoxClip.Core.Domain.Effects.ClipEffectRect Rect, double DetectorScore, double WidthAt1280, MeasuredFace? Face);
+
+internal sealed record Measured(int FaceCount, MeasuredFace? Face, IReadOnlyList<CandidateFace> Candidates);
 
 /// <summary>OnnxFrameFaces' steps, kept open so the parts before the maps can be read; the same inputs, outputs and order.</summary>
 internal sealed class Steps : IDisposable
@@ -147,16 +160,19 @@ internal sealed class Steps : IDisposable
     {
         var input = YuNetDecoder.Input(frame.Width, frame.Height);
         var found = Detect(frame, input);
-        if (found.Count == 0) return new(0, null);
+        if (found.Count == 0) return new(0, null, []);
         var rgb = new byte[frame.Width * frame.Height * 3];
         Rgb(frame, rgb);
+        var candidates = found.OrderByDescending(face => face.Area).Select(face => new CandidateFace(
+            face.PictureRect(input.ContentWidth, input.ContentHeight), face.Score,
+            face.Width * ((double)FrameAnalyzer.AnalysisEdge / YuNetDecoder.LongSide), Face(face, input, rgb, frame.Width, frame.Height))).ToArray();
         var rejected = 0;
-        foreach (var face in found.OrderByDescending(face => face.Area))
+        foreach (var candidate in candidates)
         {
-            if (Face(face, input, rgb, frame.Width, frame.Height) is { } measured) return new(found.Count - rejected, measured);
+            if (candidate.Face is { } measured) return new(found.Count - rejected, measured, candidates);
             rejected++;
         }
-        return new(0, null);
+        return new(0, null, candidates);
     }
 
     public void Dispose()
