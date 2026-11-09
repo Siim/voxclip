@@ -1,4 +1,4 @@
-"""The calibration's fit is pure and deterministic (W7): a fixed synthetic paired set (numbers only, no images) gives the same
+"""The calibration's fit is pure and deterministic (W7, W8): a fixed synthetic paired set (numbers only, no images) gives the same
 constants every time, recovers the maps it was built from, and agrees with itself through the shared decisions.
 
   python3 -I -m unittest discover -s tools/frames/calibrate -p "test_*.py"
@@ -90,6 +90,89 @@ class FitTests(unittest.TestCase):
         self.assertTrue(constants['gateNotes']['lumaLow'].startswith('fitted'))
         self.assertGreater(constants['quality']['gates']['luma'][0], 20.0)
         self.assertTrue(constants['gateNotes']['minimumFaceWidth'].startswith('kept fixed'))
+
+
+def box(width, score, measured=True, x=0.4):
+    rect = {'x': x, 'y': 0.3, 'width': width, 'height': width * 1.6}
+    face = {'rect': rect, 'faceWidthPixels': width * 1280} if measured else None
+    return {'rect': rect, 'detectorScore': score, 'widthAt1280': width * 1280, 'measured': face}
+
+
+class SpeakerTests(unittest.TestCase):
+    """W8: the twin of SpeakerFace (no screens) and the fit of its score."""
+
+    def test_a_weak_larger_box_gives_way_to_a_confident_one_and_is_not_counted(self):
+        row = {'windows': {'candidates': [box(0.43, 0.77), box(0.15, 0.94, x=0.66)]}}
+        count, face = calibrate.speaker_face(row, 0.85)
+        self.assertEqual((count, face['rect']['x']), (1, 0.66))
+        # With no speaker score every box is confident: the largest, as W7 read them, and both are counted.
+        count, face = calibrate.speaker_face(row, 0.0)
+        self.assertEqual((count, face['rect']['x']), (2, 0.4))
+
+    def test_a_box_the_mesh_rejects_is_skipped_and_not_counted(self):
+        row = {'windows': {'candidates': [box(0.3, 0.95, measured=False), box(0.2, 0.92), box(0.1, 0.9)]}}
+        self.assertEqual(calibrate.speaker_face(row, 0.85)[0], 2)
+        self.assertEqual(calibrate.speaker_face({'windows': {'candidates': [box(0.3, 0.9, measured=False)]}}, 0.85), (0, None))
+
+    def test_the_speaker_score_is_the_lowest_speaker_rounded_down(self):
+        mac = {'faceCount': 1, 'face': {'rect': {'x': 0.66, 'y': 0.3, 'width': 0.15, 'height': 0.24}}}
+        rows = [{'mac': mac, 'windows': {'candidates': [box(0.43, 0.77), box(0.15, score, x=0.66)]}} for score in (0.95, 0.8636, 0.91)]
+        cut, evidence = calibrate.fit_speaker_score(rows)
+        self.assertEqual(cut, 0.85)
+        self.assertEqual(evidence, {'speakers': 3, 'lowestSpeaker': 0.8636, 'others': 3, 'othersFromCut': 0})
+
+
+class SmallFaceTests(unittest.TestCase):
+    def test_the_cut_is_the_top_of_the_highest_band_below_the_overall_agreement(self):
+        rows = []
+        for index, (width, agree) in enumerate([(50, False)] * 15 + [(50, True)] * 25 + [(170, True)] * 200 + [(170, False)] * 4):
+            mac_eyes, raw = 0.30, (0.30 - EYE[1]) / EYE[0] if agree else (0.10 - EYE[1]) / EYE[0]
+            rect = {'x': 0.4, 'y': 0.3, 'width': 0.2, 'height': 0.3}
+            rows.append({'mac': {'face': {'rect': rect, 'leftEyeAspect': mac_eyes, 'rightEyeAspect': mac_eyes}},
+                         'windows': {'face': {'rect': rect, 'rawLeftEye': raw, 'rawRightEye': raw, 'faceWidthPixels': float(width)}}})
+        cut, report = calibrate.fit_eyes_from_width(rows, {'eyeAspect': {'a': EYE[0], 'b': EYE[1]}})
+        self.assertEqual(cut, 60)
+        self.assertEqual([band['faces'] for band in report['bands'] if band['faces']], [40, 204])
+
+    def test_a_small_face_reports_its_eyes_unknown_and_keeps_its_quality(self):
+        rows = synthetic_rows()
+        calibration = calibrate.calibration_from(calibrate.fit_constants(rows))
+        whole = calibrate.windows_observation(rows[0], calibration)['face']
+        small = calibrate.windows_observation(rows[0], calibration | {'eyesFromWidth': 201})['face']
+        self.assertEqual((whole['eyes'], small['eyes']), ('open', 'unknown'))
+        self.assertNotIn('leftEyeAspect', small)
+        self.assertEqual(whole['captureQuality'], small['captureQuality'])
+        numbers = calibrate.evaluate(rows, calibration | {'eyesFromWidth': 201})
+        self.assertEqual((numbers['eyes']['of'], numbers['eyesUnknown']), (0, 120))
+        # Counted the way the decisions read an unknown (not an open look), every open Vision frame disagrees.
+        self.assertEqual(numbers['eyesStrict']['agree'], sum(1 for row in rows if row['mac']['face']['leftEyeAspect'] < 0.2))
+
+
+class RecordingOffsetTests(unittest.TestCase):
+    """W8: the per-recording quality offset is deterministic and reads only the recording's own frames."""
+
+    def test_the_offset_uses_only_the_recordings_own_frames(self):
+        rows = synthetic_rows()
+        calibration = calibrate.calibration_from(calibrate.fit_constants(rows))
+        first = calibrate.recording_offset(rows, calibration, 0.5, 0.52)
+        self.assertEqual(json.dumps(first, sort_keys=True), json.dumps(calibrate.recording_offset(rows, calibration, 0.5, 0.52), sort_keys=True))
+        # Changing recording b's frames moves none of recording a's qualities.
+        changed = [dict(row, windows=dict(row['windows'], face=dict(row['windows']['face'], sharpnessVariance=5.0)))
+                   if row['subject'] == 'b' else row for row in rows]
+        second = calibrate.recording_offset(changed, calibration, 0.5, 0.52)
+        for key, observation in first.items():
+            if key.startswith('a'):
+                self.assertEqual(observation, second[key])
+        self.assertNotEqual([first[k] for k in first if k.startswith('b')], [second[k] for k in second if k.startswith('b')])
+
+    def test_strength_zero_is_the_plain_observation_and_the_fit_is_deterministic(self):
+        rows = synthetic_rows()
+        calibration = calibrate.calibration_from(calibrate.fit_constants(rows))
+        plain = {row['sha256'] + str(row['time']): calibrate.windows_observation(row, calibration) for row in rows}
+        self.assertEqual(calibrate.recording_offset(rows, calibration, 0.0, 0.52), plain)
+        self.assertEqual(calibrate.fit_recording_offset(rows, calibration), calibrate.fit_recording_offset(rows, calibration))
+        # A perfect calibration needs no offset.
+        self.assertEqual(calibrate.fit_recording_offset(rows, calibration)[0], 0.0)
 
 
 if __name__ == '__main__':
