@@ -409,7 +409,40 @@ Creative Commons may be contacted at creativecommons.org.
 ```
 VoxClip is MIT-licensed (see `LICENSE`). It bundles or links the third-party components below, each under its own licence. This is the single notices file: `bundle.sh` copies it into `VoxClip.app/Contents/Resources/` and the Windows release copies it into the install folder (doc/release.md). Every new dependency, font, data file or model adds its section here in the same change, with the exact licence text from the pinned package.
 
-Sections: Fonts; Data (Unicode Character Database); Application components (macOS, Windows); Models (downloaded at the user's request, never bundled); licence texts.
+Sections: Windows face models (bundled); Fonts; Data (Unicode Character Database); Application components (macOS, Windows); Models (downloaded at the user's request, never bundled); licence texts.
+
+## Windows face models (bundled)
+
+The Windows app bundles two models in `models\frames\` beside the app (`apps/windows/models/frames/` in the source, with its `NOTICE.txt`, `LICENSE-YuNet.txt` and `LICENSE-Apache-2.0.txt`). They are checked against `shared/catalog/frame-models.json` before they load, and measure faces in a video's frames on the PC; nothing is sent anywhere. The macOS app does not include them.
+
+- **YuNet face detector**, `face_detection_yunet_2026may.onnx` (229,738 bytes, SHA-256 `ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0`), unmodified, from opencv_zoo commit `26cc381e4d2594bb9f47a26eb8fd96c94a13660d` (`models/face_detection_yunet/`). Copyright (c) 2020 Shiqi Yu, MIT License (text below). Trained on WIDER FACE.
+- **MediaPipe Face Mesh V2** by Google LLC, `face_mesh_v2.onnx` (4,921,008 bytes, SHA-256 `336896759881634ebf1121fe161e95abf1eaae697779d02a9eab04f53b1f0784`), licensed under the Apache License 2.0 (text in the Apache License 2.0 section below). Modified: `face_landmarks_detector.tflite` from `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task` was converted from TensorFlow Lite to ONNX (tf2onnx 1.17.0, opset 17, batch 1, by Nardo Creations, Apache-2.0: entry `mesh` of `https://huggingface.co/NardoCreations/mediapipe-face-onnx` at commit `253c4f079ea8ec964c914ba6de237b7c62762197`); the weights are unchanged apart from the format. `tools/models/convert_face_mesh.py` reproduces and checks the conversion.
+
+YuNet's MIT License, exact text from the pinned opencv_zoo commit:
+
+```text
+MIT License
+
+Copyright (c) 2020 Shiqi Yu <shiqi.yu@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Windows installer prerequisite
 
@@ -664,7 +697,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ### Apache License 2.0
 
-The following licence applies to the Roboto font, the Noto Emoji images and swift-argument-parser (macOS).
+The following licence applies to the Roboto font, the Noto Emoji images, swift-argument-parser (macOS) and MediaPipe Face Mesh V2 (Windows face models).
 
 ```text
                                  Apache License
@@ -7555,7 +7588,7 @@ The Apache License 2.0 text is reproduced above. `Package.resolved` pins https:/
 
 | Component | Use | Licence |
 |---|---|---|
-| Microsoft.ML.OnnxRuntime / Microsoft.ML.OnnxRuntime.Managed 1.19.2 | CPU-only own-voice embeddings (win-arm64 / win-x64) | package MIT licence and exact all-platform third-party notices reproduced in the ONNX Runtime 1.19.2 section above |
+| Microsoft.ML.OnnxRuntime / Microsoft.ML.OnnxRuntime.Managed 1.19.2 | CPU-only own-voice embeddings and the bundled face models (win-arm64 / win-x64) | package MIT licence and exact all-platform third-party notices reproduced in the ONNX Runtime 1.19.2 section above |
 | .NET 10.0.2 runtime and host packs (self-contained, win-x64 / win-arm64) | managed runtime | MIT and package third-party notices below |
 | Microsoft.WindowsAppSDK 2.5.1 with its Base 2.0.4, Foundation 2.3.12, InteractiveExperiences 2.1.9, WinUI 2.3.9, DWrite 2.1.0 and Runtime 2.5.1 component packages | WinUI 3 self-contained runtime | Microsoft redistributable terms and package notices below; not the MIT source repository licence |
 | Microsoft.Web.WebView2 1.0.3719.77 | WebView2 loader | Microsoft package terms and notices below; installed WebView2 browser runtime is an operating-system prerequisite, not bundled |

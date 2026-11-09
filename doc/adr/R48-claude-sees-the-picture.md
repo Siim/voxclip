@@ -135,3 +135,4 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
 - **Windows** analyzes frames as the Mac does, behind a face seam (W5, track/v2-win-frames-w5): FFmpeg lanes at 1,280 px with the Mac's
   tolerances, the per-millisecond cache, 320 px sheet JPEGs, the whole-video pass and `voxclip-cli analyze-frames` with the Mac's bytes; with
   no face models installed nothing is measured (exit 7), never an invented "no face". W3, W6 and W7 are owed.
+- **Windows** bundles both face models in the app, pinned and hash-checked with their LICENSE and NOTICE (the user's decision, 2026-11-09, accepting YuNet's WIDER FACE training-data risk), and measures faces with them (W3, track/v2-win-frames-w3); they stay off until W7's calibration passes.

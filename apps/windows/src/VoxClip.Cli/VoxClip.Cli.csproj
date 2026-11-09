@@ -15,4 +15,8 @@
              Exclude="$(MSBuildThisFileDirectory)..\..\..\..\shared\fixtures\**"
              LinkBase="shared" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The bundled face models with their licences and NOTICE (ADR-R48 Windows), beside the app as models\frames\. -->
+    <Content Include="$(MSBuildThisFileDirectory)..\..\models\frames\*" LinkBase="models\frames" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

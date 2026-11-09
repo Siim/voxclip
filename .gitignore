@@ -32,6 +32,8 @@ AppPackages/
 
 # Local models, media and caches
 *.onnx
+# The Windows face models, bundled and hash-checked (ADR-R48 Windows; apps/windows/models/frames/NOTICE.txt).
+!apps/windows/models/frames/*.onnx
 *.bin
 *.mp4
 *.mov

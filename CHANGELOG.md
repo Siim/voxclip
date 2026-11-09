@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, the two face models now come with the app (checked before they load, with their licences), so VoxClip can measure faces, eyes and head turns in your video on your PC once they're matched to the Mac; until then they stay switched off.
 - On Windows, groundwork for VoxClip looking at your video's frames on your PC as the Mac does (faces, eyes, screens and small frames for Claude), with `voxclip-cli analyze-frames`; until the face models are installed it measures nothing and says so.
 - On Windows, groundwork for spotting phone and laptop screens in your video on your PC: text lines from Windows' own text recognition and a rectangle finder with the Mac's settings, so a phone showing only a few lines of text is found as a screen, as on the Mac (not switched on yet).
 - Lip sync now keeps fal.ai's results, which come back a few frames short: each upload carries a short margin that the result is cut back from, fal.ai's own audio is never used, a paid result that still can't be used is kept so Try Again re-imports it for free, and a failed attempt says what fal.ai charged for it.

@@ -8,15 +8,17 @@ namespace VoxClip.Core.Domain.Frames;
 /// notices list.</summary>
 /// <param name="Role"><c>detector</c> (YuNet) or <c>landmarks</c> (Face Mesh V2).</param>
 /// <param name="Name">The file name in the models folder.</param>
-/// <param name="Url">Where it is fetched from, or null while its hosting is owed (the catalogue cannot then be enabled).</param>
+/// <param name="Url">Where it is fetched from, or null when it is only bundled.</param>
 /// <param name="Bytes">Its exact size.</param>
 /// <param name="Sha256">Its SHA-256, lower-case hex.</param>
 /// <param name="License">Its licence, e.g. <c>MIT</c> or <c>Apache-2.0</c>.</param>
 /// <param name="LicenseUrl">The licence text.</param>
 /// <param name="Notice">The line the app's notices show for it.</param>
 /// <param name="TrainingData">What it was trained on, and that data's terms.</param>
+/// <param name="Bundled">Its path in the repository when the Windows app bundles it (<c>apps/windows/models/frames/&lt;name&gt;</c>,
+/// copied beside the app as <c>models/frames/&lt;name&gt;</c>), or null. A file that is neither hosted nor bundled can't be enabled.</param>
 public sealed record FrameModelFile(string Role, string Name, Uri? Url, long Bytes, string Sha256, string License, Uri LicenseUrl,
-    string Notice, string TrainingData);
+    string Notice, string TrainingData, string? Bundled);
 
 /// <summary>A fitted straight line, <c>a·value + b</c>, from the catalogue's calibration.</summary>
 /// <param name="A">The slope.</param>
@@ -177,11 +179,13 @@ public sealed class FrameModel
         Attribution = Text(value, "attribution");
         Files = Array.AsReadOnly(value.GetProperty("files").EnumerateArray().Select(file => new FrameModelFile(Text(file, "role"), Text(file, "name"),
             file.GetProperty("url").ValueKind == JsonValueKind.Null ? null : new Uri(Text(file, "url")), file.GetProperty("bytes").GetInt64(),
-            Text(file, "sha256"), Text(file, "license"), new Uri(Text(file, "licenseUrl")), Text(file, "notice"), Text(file, "trainingData"))).ToArray());
+            Text(file, "sha256"), Text(file, "license"), new Uri(Text(file, "licenseUrl")), Text(file, "notice"), Text(file, "trainingData"),
+            file.TryGetProperty("bundled", out var bundled) ? bundled.GetString() : null)).ToArray());
         if (Id.Any(character => character is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '-')) || OrtVersion != "1.19.2" ||
             Files.Count != 2 || Files.Count(file => file.Role == "detector") != 1 || Files.Count(file => file.Role == "landmarks") != 1 ||
             Files.Any(file => file.Name != Path.GetFileName(file.Name) || file.Name.Contains('\\') || file.Name.StartsWith('.') ||
-                file.Url is { Scheme: not "https" } || file.LicenseUrl.Scheme != "https" || file.Bytes <= 0 || !HashValid(file.Sha256)) ||
+                file.Url is { Scheme: not "https" } || file.LicenseUrl.Scheme != "https" || file.Bytes <= 0 || !HashValid(file.Sha256) ||
+                (file.Bundled is not null && file.Bundled != BundledFolder + file.Name)) ||
             Files.Sum(file => file.Bytes) != value.GetProperty("totalBytes").GetInt64())
             throw new InvalidDataException("The face model entry is not valid.");
         Calibration = FrameFaceCalibration.Read(value.GetProperty("calibration"));
@@ -204,14 +208,18 @@ public sealed class FrameModel
         return (Path.Combine(directory, Detector.Name), Path.Combine(directory, Landmarks.Name));
     }
 
+    /// <summary>The repository folder of the bundled files; the app has them in <c>models/frames</c> beside its executable.</summary>
+    public const string BundledFolder = "apps/windows/models/frames/";
+
     private static bool HashValid(string value) => value.Length == 64 && value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
     private static string Text(JsonElement row, string name) =>
         row.GetProperty(name).GetString() is { Length: > 0 } text ? text : throw new InvalidDataException(name + " is empty.");
 }
 
 /// <summary>The Windows face models' catalogue (<c>shared/catalog/frame-models.json</c>, <c>voxclip-frame-models/1</c>), mirroring
-/// <c>SpeakerModelCatalog</c>: read, validated and hash-checked, never downloaded here. It ships switched off: while
-/// <see cref="Enabled"/> is false nothing is installable, until the calibration (W7) passes and the licence decision is made.</summary>
+/// <c>SpeakerModelCatalog</c>: read, validated and hash-checked, never downloaded here. Both files are bundled in the Windows app
+/// (the user's decision, 2026-11-09). It ships switched off: while <see cref="Enabled"/> is false nothing is installable, until the
+/// calibration (W7) passes.</summary>
 public sealed class FrameModelCatalog
 {
     /// <summary>The catalogue's schema id.</summary>
@@ -239,8 +247,8 @@ public sealed class FrameModelCatalog
                 throw new InvalidDataException("Not a face model catalogue.");
             Enabled = root.GetProperty("enabled").GetBoolean();
             Entry = new FrameModel(root.GetProperty("models")[0]);
-            if (Enabled && (Entry.Files.Any(file => file.Url is null) || Entry.Calibration.Provisional))
-                throw new InvalidDataException("The face models can't be enabled before every file is hosted and the calibration has passed.");
+            if (Enabled && (Entry.Files.Any(file => file.Url is null && file.Bundled is null) || Entry.Calibration.Provisional))
+                throw new InvalidDataException("The face models can't be enabled before every file is hosted or bundled and the calibration has passed.");
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or JsonException or UriFormatException)
         {

@@ -1997,6 +1997,7 @@ member VoxClip.App.Services.AppServices :: field private SettingsChanged
 member VoxClip.App.Services.AppServices :: field private busyOperations
 member VoxClip.App.Services.AppServices :: field private cloudSpeechInstances
 member VoxClip.App.Services.AppServices :: field private dispatcher
+member VoxClip.App.Services.AppServices :: field private frameFaces
 member VoxClip.App.Services.AppServices :: field private localSpeech
 member VoxClip.App.Services.AppServices :: field private rateCalibrations
 member VoxClip.App.Services.AppServices :: field private settingsWrites
@@ -2034,6 +2035,7 @@ member VoxClip.App.Services.AppServices :: method internal get_Downloads()
 member VoxClip.App.Services.AppServices :: method internal get_Encoders()
 member VoxClip.App.Services.AppServices :: method internal get_ExportLedger()
 member VoxClip.App.Services.AppServices :: method internal get_Exporter()
+member VoxClip.App.Services.AppServices :: method internal get_FrameFaces()
 member VoxClip.App.Services.AppServices :: method internal get_IsBusy()
 member VoxClip.App.Services.AppServices :: method internal get_Keys()
 member VoxClip.App.Services.AppServices :: method internal get_LocalRuntime()

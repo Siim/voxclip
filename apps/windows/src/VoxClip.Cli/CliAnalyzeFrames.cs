@@ -12,9 +12,10 @@ namespace VoxClip.Cli;
 /// <summary>What the analyzer measures with in this CLI: the face source (null is faces unavailable), the text lines and the decoder.</summary>
 internal sealed record CliFrameSources(IFrameFaces? Faces, IFrameTextLines? Text, IFrameDecoding Decoder)
 {
-    /// <summary>What this build installs: no face models (W3 waits on their licence and hosting) and no text recognizer (Windows OCR is
-    /// the App's), with the shipped FFmpeg.</summary>
-    internal static CliFrameSources Installed() => new(null, null, new FfmpegFrameDecoder());
+    /// <summary>What this build installs: the bundled face models when they verify and the catalogue is enabled (or
+    /// <see cref="OnnxFrameFaces.OverrideVariable"/> is set; otherwise faces are unavailable), no text recognizer (Windows OCR is the
+    /// App's), and the shipped FFmpeg.</summary>
+    internal static CliFrameSources Installed() => new(OnnxFrameFaces.Installed(), null, new FfmpegFrameDecoder());
 }
 
 /// <summary><c>voxclip-cli analyze-frames --open &lt;project&gt; --clip &lt;id&gt; --json</c> (ADR-R48), twin of the Mac command: the

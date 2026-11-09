@@ -8,7 +8,7 @@ using Xunit;
 namespace VoxClip.Core.Tests.Tracks.WinAi;
 
 /// <summary>The Windows face models' catalogue (shared/catalog/frame-models.json, ADR-R48 Windows): pinned and hash-checked like the
-/// speaker model's, licensed per file, and switched off until the calibration (W7) and the licence decision. No download here.</summary>
+/// speaker model's, licensed per file, bundled in the Windows app, and switched off until the calibration (W7). No download here.</summary>
 [Trait("Track", "win-ai")]
 public sealed class FrameModelCatalogTests
 {
@@ -32,6 +32,7 @@ public sealed class FrameModelCatalogTests
             (model.Landmarks.Name, model.Landmarks.Bytes, model.Landmarks.Sha256, model.Landmarks.License));
         Assert.Contains("26cc381e4d2594bb9f47a26eb8fd96c94a13660d", model.Detector.Url!.AbsoluteUri);
         Assert.Null(model.Landmarks.Url);
+        Assert.All(model.Files, file => Assert.Equal(FrameModel.BundledFolder + file.Name, file.Bundled));
         Assert.All(model.Files, file => Assert.False(string.IsNullOrWhiteSpace(file.Notice)));
         Assert.Contains("Google", model.Landmarks.Notice);
         Assert.Contains("WIDER FACE", model.Detector.TrainingData);
@@ -54,12 +55,15 @@ public sealed class FrameModelCatalogTests
         Assert.Empty(Load(catalogue).Installable);
         catalogue["enabled"] = true;
         Assert.Throws<InvalidDataException>(() => Load(catalogue));
-        File0(catalogue, 1)["url"] = "https://example.invalid/face_mesh_v2.onnx";
-        Assert.Throws<InvalidDataException>(() => Load(catalogue));
         Model(catalogue)["calibration"]!["status"] = "calibrated";
         var enabled = Load(catalogue);
         Assert.True(enabled.Enabled);
         Assert.Same(enabled.Entry, Assert.Single(enabled.Installable));
+        // A file neither hosted nor bundled can't be enabled.
+        File0(catalogue, 1).Remove("bundled");
+        Assert.Throws<InvalidDataException>(() => Load(catalogue));
+        File0(catalogue, 1)["url"] = "https://example.invalid/face_mesh_v2.onnx";
+        Assert.True(Load(catalogue).Enabled);
     }
 
     [Theory]
@@ -92,6 +96,8 @@ public sealed class FrameModelCatalogTests
         Refused(catalogue => File0(catalogue, 0)["sha256"] = "EBAFCE4E3C118D6554634BE5C27AB333B4C047A9A8C3FAF1D7CF93101C22F0F0");
         Refused(catalogue => File0(catalogue, 0)["name"] = "../face.onnx");
         Refused(catalogue => File0(catalogue, 0)["url"] = "http://github.com/face.onnx");
+        Refused(catalogue => File0(catalogue, 0)["bundled"] = "apps/windows/models/frames/face_mesh_v2.onnx");
+        Refused(catalogue => File0(catalogue, 1)["bundled"] = "models/face_mesh_v2.onnx");
         Refused(catalogue => File0(catalogue, 1)["role"] = "detector");
         Refused(catalogue => Model(catalogue)["ortVersion"] = "1.20.0");
         Refused(catalogue => catalogue["schema"] = "voxclip-frame-models/2");

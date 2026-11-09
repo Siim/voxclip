@@ -4,6 +4,7 @@ using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
+using VoxClip.Media.Frames;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -134,6 +135,22 @@ public sealed class CliAnalyzeFramesTests : IDisposable
         Assert.Equal(2, (await RunAsync("analyze-frames", "--open", project, "--json")).Exit);
         Assert.Equal(2, (await RunAsync("analyze-frames", "--open", project, "--transcript", project, "--json")).Exit);
         Assert.Equal(2, (await RunAsync("analyze-frames", "--open", project, "--clip", "c", "--words", "0:1", "--json")).Exit);
+    }
+
+    /// <summary>The installed CLI's face source is the bundled models (W3) only while the catalogue is enabled or the developer override
+    /// (<see cref="OnnxFrameFaces.OverrideVariable"/>) is set; the shipped catalogue is off, so a plain run has none.</summary>
+    [Fact]
+    public void TheInstalledFaceSourceFollowsTheCatalogueAndTheOverride()
+    {
+        var installed = CliFrameSources.Installed();
+        try
+        {
+            Assert.Equal(new FrameModelCatalog().Enabled || OnnxFrameFaces.Overridden(), installed.Faces is OnnxFrameFaces);
+        }
+        finally
+        {
+            (installed.Faces as IDisposable)?.Dispose();
+        }
     }
 
     /// <summary>With faces but no text recognizer (this portable CLI has no Windows OCR), nothing is measured either.</summary>
