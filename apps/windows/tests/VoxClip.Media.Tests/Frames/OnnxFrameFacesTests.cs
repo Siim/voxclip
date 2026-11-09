@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Xml.Linq;
 using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Media.Frames;
 using VoxClip.Tests.Support;
@@ -75,9 +76,9 @@ public sealed class OnnxFrameFacesTests
         Assert.Equal((0, null), (found.FaceCount, found.Largest));
     }
 
-    /// <summary>Two people side by side: both counted, the larger one measured.</summary>
+    /// <summary>Two people side by side: both counted, the larger one measured, unless it is inside a screen.</summary>
     [Fact]
-    public void TwoFacesAreCountedAndTheLargerIsMeasured()
+    public void TwoFacesAreCountedAndTheLargerIsMeasuredUnlessItIsOnAScreen()
     {
         using var left = Bitmap("kaminix.png");
         using var right = Bitmap("saurabh.png");
@@ -91,6 +92,11 @@ public sealed class OnnxFrameFacesTests
         var found = Shared.Value.Faces(Pixels(canvas), Ct);
         Assert.Equal(2, found.FaceCount);
         Assert.True(found.Largest!.Rect.X > (double)left.Width / canvas.Width, "the larger face is the right-hand one");
+        // The larger face shown inside a screen (a slide, a call window) is not the speaker: the other one is measured (W8).
+        var screen = new ClipEffectRect((double)left.Width / canvas.Width, 0, (double)right.Width / canvas.Width, 1);
+        var speaker = Shared.Value.Faces(Pixels(canvas), [screen], Ct);
+        Assert.Equal(2, speaker.FaceCount);
+        Assert.True(speaker.Largest!.Rect.X + speaker.Largest.Rect.Width <= (double)left.Width / canvas.Width + 1e-9, "the face outside the screen");
     }
 
     [Fact]
@@ -103,7 +109,7 @@ public sealed class OnnxFrameFacesTests
         {
             Assert.True(start.SignalAndWait(TimeSpan.FromSeconds(30), Ct), "the lanes did not start together");
             return Enumerable.Range(0, frames.Length * 2).Select(step => (step + lane) % frames.Length)
-                .Select(index => (index, found: Shared.Value.FacesAsync(frames[index], Ct).GetAwaiter().GetResult())).ToArray();
+                .Select(index => (index, found: Shared.Value.FacesAsync(frames[index], [], Ct).GetAwaiter().GetResult())).ToArray();
         }, Ct)).ToArray();
         foreach (var lane in await Task.WhenAll(lanes))
             foreach (var (index, found) in lane)

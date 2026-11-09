@@ -185,6 +185,23 @@ public sealed class FrameAnalyzerTests
         Assert.Empty(opening.Jpegs);
     }
 
+    /// <summary>The face path gets each sentence frame's screens, so it can pass over a face shown on one (SpeakerFace, W8); an
+    /// opening-scan frame has no screen scan and gets none.</summary>
+    [Fact]
+    public async Task TheFacePathGetsTheSentenceFramesScreens()
+    {
+        var faces = new StubFrameFaces();
+        var analyzer = FrameFixtures.Analyzer(new StubFrameDecoder(), null, faces, new StubScreenText());
+        var sentences = await analyzer.ObservationsAsync("in.mp4", FrameFixtures.ContentKey, [1.0, 2.5], FrameScanKind.Sentence, Ct);
+        var screens = Assert.Single(sentences.Frames[0].Screens);
+        Assert.Equal(2, faces.Screens.Count);
+        Assert.All(faces.Screens, given => Assert.Equal([screens.Rect], given));
+        faces.Screens.Clear();
+        await analyzer.ObservationsAsync("in.mp4", FrameFixtures.ContentKey, [0.5, 0.6], FrameScanKind.Opening, Ct);
+        Assert.Equal(2, faces.Screens.Count);
+        Assert.All(faces.Screens, Assert.Empty);
+    }
+
     /// <summary>Sheet JPEGs are 320 px on the long edge, never scaled up, from the analysis frame or a frame decoded at the sheet's size.</summary>
     [Theory]
     [InlineData(1280, 720, 320, 180)]

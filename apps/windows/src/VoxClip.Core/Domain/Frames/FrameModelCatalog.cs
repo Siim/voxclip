@@ -74,6 +74,12 @@ public sealed record FrameFaceCalibration
     public required IReadOnlyList<(double Windows, double Vision)> QuantileMap { get; init; }
     /// <summary>The exposure and size gates.</summary>
     public required FrameQualityGates Gates { get; init; }
+    /// <summary>The YuNet score from which a box counts as a confident detection when the face path picks the speaker
+    /// (<see cref="SpeakerFace"/>), fitted below the calibration's speakers' lowest score (W8).</summary>
+    public required double SpeakerScore { get; init; }
+    /// <summary>The face width, pixels of the 1,280 px analysis frame, below which the eyes are reported unknown (null ratios):
+    /// smaller faces read too unsteadily to call open or closed (W8). The capture quality still uses the measured eyes.</summary>
+    public required double EyesFromWidth { get; init; }
 
     /// <summary>Whether the constants are still the seed fit.</summary>
     public bool Provisional => Status != "calibrated";
@@ -99,6 +105,7 @@ public sealed record FrameFaceCalibration
                 SharpLow = sharp.Item1, SharpHigh = sharp.Item2, QuantileMap = Array.AsReadOnly(map),
                 Gates = new FrameQualityGates(Number(gates, "minimumFaceWidth"), luma.Item1, luma.Item2, Number(gates, "clippedBelow"),
                     Number(gates, "clippedAbove"), Number(gates, "clippedFraction")),
+                SpeakerScore = Number(value, "speakerScore"), EyesFromWidth = Number(value, "eyesFromWidth"),
             };
             var previous = (Windows: 0.0, Vision: 0.0);
             foreach (var point in map)
@@ -110,7 +117,7 @@ public sealed record FrameFaceCalibration
             if (calibration.Status is not ("provisional" or "calibrated") || calibration.W0 < 0 || calibration.W1 < 0 || calibration.W2 < 0 ||
                 !(calibration.EyesOpenAt > calibration.EyesClosedAt) || !(calibration.FacingSpan > 0) || !(calibration.SharpLow > 0) ||
                 !(calibration.SharpHigh > calibration.SharpLow) || !(luma.Item2 >= luma.Item1) || calibration.Gates.MinimumFaceWidth < 0 ||
-                calibration.Gates.ClippedFraction is < 0 or > 1)
+                calibration.Gates.ClippedFraction is < 0 or > 1 || calibration.SpeakerScore is < 0 or > 1 || calibration.EyesFromWidth < 0)
                 throw new InvalidDataException("The face calibration is out of range.");
             return calibration;
         }

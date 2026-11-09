@@ -53,15 +53,17 @@ internal sealed class StubFrameDecoder(int width = 1280, int height = 720) : IFr
     }
 }
 
-/// <summary>One face per frame, the same for every frame; records the threads it was called on.</summary>
+/// <summary>One face per frame, the same for every frame; records the threads it was called on and the screens it was given.</summary>
 internal sealed class StubFrameFaces : IFrameFaces
 {
     internal static readonly FrameFace Face = new(new ClipEffectRect(0.4, 0.2, 0.2, 0.36), 0.62, 0.31, 0.33, 0.02, 0.1);
     internal ConcurrentQueue<int> Threads { get; } = new();
+    internal ConcurrentQueue<IReadOnlyList<ClipEffectRect>> Screens { get; } = new();
 
-    public Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, CancellationToken ct)
+    public Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, IReadOnlyList<ClipEffectRect> screens, CancellationToken ct)
     {
         Threads.Enqueue(Environment.CurrentManagedThreadId);
+        Screens.Enqueue(screens);
         return Task.FromResult(new FrameFaceFindings(1, Face));
     }
 }
@@ -77,6 +79,15 @@ internal sealed class StubFrameText : IFrameTextLines
         Threads.Enqueue(Environment.CurrentManagedThreadId);
         return Task.FromResult<IReadOnlyList<ClipEffectRect>>(Lines);
     }
+}
+
+/// <summary>Eight text lines in the top-left quarter of every frame: a text cluster, so every sentence frame shows one screen.</summary>
+internal sealed class StubScreenText : IFrameTextLines
+{
+    internal static readonly ClipEffectRect[] Lines = [.. Enumerable.Range(0, 8).Select(index => new ClipEffectRect(0.05, 0.05 + index * 0.04, 0.3, 0.03))];
+
+    public Task<IReadOnlyList<ClipEffectRect>> LinesAsync(PixelBuffer frame, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<ClipEffectRect>>(Lines);
 }
 
 internal static class FrameFixtures

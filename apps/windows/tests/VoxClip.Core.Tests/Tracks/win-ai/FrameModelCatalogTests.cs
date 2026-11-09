@@ -46,6 +46,7 @@ public sealed class FrameModelCatalogTests
             calibration.SharpLow, calibration.SharpHigh));
         Assert.Equal(new FrameQualityGates(40, 40, 220, 5, 250, 0.25), calibration.Gates);
         Assert.Equal([(0.372, 0.2759), (0.4416, 0.429), (0.5025, 0.5232), (0.558, 0.6069), (0.6088, 0.6543)], calibration.QuantileMap);
+        Assert.Equal((0.85, 80.0), (calibration.SpeakerScore, calibration.EyesFromWidth));
     }
 
     [Fact]
@@ -105,6 +106,9 @@ public sealed class FrameModelCatalogTests
         Refused(catalogue => Model(catalogue)["calibration"]!["quality"]!["eyesOpen"] = new JsonArray(0.26, 0.12));
         Refused(catalogue => Model(catalogue)["calibration"]!["quality"]!.AsObject().Remove("gates"));
         Refused(catalogue => Model(catalogue)["calibration"]!["status"] = "guessed");
+        Refused(catalogue => Model(catalogue)["calibration"]!.AsObject().Remove("speakerScore"));
+        Refused(catalogue => Model(catalogue)["calibration"]!["speakerScore"] = 1.2);
+        Refused(catalogue => Model(catalogue)["calibration"]!["eyesFromWidth"] = -1);
     }
 
     [Fact]

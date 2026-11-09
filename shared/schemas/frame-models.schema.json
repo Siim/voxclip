@@ -78,7 +78,7 @@
     },
     "calibration": {
       "type": "object", "additionalProperties": false,
-      "required": ["status", "basis", "date", "reference", "eyeAspect", "yaw", "pitch", "quality", "evaluation"],
+      "required": ["status", "basis", "date", "reference", "eyeAspect", "yaw", "pitch", "quality", "speakerScore", "eyesFromWidth", "evaluation"],
       "properties": {
         "status": {"enum": ["provisional", "calibrated"]},
         "basis": {"type": "string", "minLength": 1},
@@ -88,6 +88,8 @@
         "yaw": {"$ref": "#/$defs/linear"},
         "pitch": {"$ref": "#/$defs/linear"},
         "quality": {"$ref": "#/$defs/quality"},
+        "speakerScore": {"type": "number", "minimum": 0, "maximum": 1},
+        "eyesFromWidth": {"type": "number", "minimum": 0},
         "evaluation": {"type": ["object", "null"]}
       }
     },

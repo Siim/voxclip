@@ -84,12 +84,12 @@ public sealed class FrameFaceFieldsVectorTests
     public void TheFileHasItsSchemaKeysAndCount()
     {
         var root = Vectors.Value;
-        string[] sections = ["inputSizes", "decodes", "crops", "samples", "cropStats", "meshes", "qualities"];
+        string[] sections = ["inputSizes", "decodes", "crops", "samples", "cropStats", "meshes", "qualities", "speakers"];
         Assert.Equal(new[] { "schema", "description", "constants", "calibration", "caseCount", "counts" }.Concat(sections), root.Select(pair => pair.Key));
         Assert.Equal("voxclip-frame-face-fields-cases/1", root["schema"]!.GetValue<string>());
-        Assert.Equal(81, root["caseCount"]!.GetValue<int>());
+        Assert.Equal(94, root["caseCount"]!.GetValue<int>());
         Assert.Equal(sections, root["counts"]!.AsObject().Select(pair => pair.Key));
-        Assert.Equal(new[] { 8, 13, 8, 3, 8, 16, 25 }, sections.Select(key => root[key]!.AsArray().Count));
+        Assert.Equal(new[] { 8, 13, 8, 3, 8, 18, 25, 11 }, sections.Select(key => root[key]!.AsArray().Count));
         Assert.All(sections, key => Assert.Equal(root[key]!.AsArray().Count, root["counts"]![key]!.GetValue<int>()));
         Assert.All(sections, key => Assert.Equal(root[key]!.AsArray().Count, Rows(key).Select(Id).Distinct().Count()));
     }
@@ -399,9 +399,48 @@ public sealed class FrameFaceFieldsVectorTests
         Assert.Null(Read("no-pose").Yaw);
         Assert.Null(Read("no-pose").CaptureQuality);
         Assert.True(Read("small-face-gated").CaptureQuality == 0);
+        // A face narrower than the calibration's eyesFromWidth reports its eyes unknown (W8); its quality keeps the measured eyes.
+        Assert.Equal(FrameEyes.Unknown, Read("small-face-eyes-unknown").Eyes);
+        Assert.Null(Read("small-face-eyes-unknown").LeftEyeAspect);
+        Assert.Null(Read("small-face-eyes-unknown").RightEyeAspect);
+        Assert.Equal(Read("eyes-at-the-width").CaptureQuality, Read("small-face-eyes-unknown").CaptureQuality);
+        Assert.Equal(FrameEyes.Open, Read("eyes-at-the-width").Eyes);
+        Assert.Equal(FrameEyes.Unknown, Read("small-face-gated").Eyes);
         Assert.True(Read("level-open").CaptureQuality >= FrameFace.GoodQuality && Read("closed").CaptureQuality < FrameFace.GoodQuality);
         Assert.False(FaceMeshFields.Present(-0.01));
         Assert.True(FaceMeshFields.Present(0));
+    }
+
+    [Fact]
+    public void SpeakersReplay()
+    {
+        foreach (var row in Rows("speakers"))
+        {
+            var faces = row["faces"]!.AsArray().Select(face => new YuNetFace(Number(face!["x"]), Number(face["y"]), Number(face["width"]),
+                Number(face["height"]), [], Number(face["score"]))).ToArray();
+            var width = row["contentWidth"]!.GetValue<int>();
+            var height = row["contentHeight"]!.GetValue<int>();
+            var input = new YuNetInput(640, (height + 31) / 32 * 32, width, height, 1);
+            var screens = row["screens"]!.AsArray().Select(Rect).ToArray();
+            var order = SpeakerFace.ReadingOrder(faces, input, screens, Number(row["speakerScore"]));
+            Assert.Equal(row["expect"]!.AsArray().Select(index => faces[index!.GetValue<int>()]), order);
+            Assert.Equal(row["expectCount"]!.GetValue<int>(), SpeakerFace.FaceCount(order, 0, Number(row["speakerScore"])));
+        }
+    }
+
+    /// <summary>The speaker rule's evidence: a weak box (a face in a title card's graphic) loses to a confident one, and a face on a
+    /// screen to one off it, with the catalogue's speakerScore; a weak box the mesh doesn't read isn't counted.</summary>
+    [Fact]
+    public void AFaceOnAScreenOrAWeakBoxIsNotTheSpeaker()
+    {
+        int[] Order(string id) => [.. Rows("speakers").Single(row => Id(row) == id)["expect"]!.AsArray().Select(index => index!.GetValue<int>())];
+        Assert.Equal([1, 0], Order("weak-graphic-face-behind-a-title"));
+        Assert.Equal([1, 0], Order("face-on-a-screen"));
+        Assert.Equal([2, 1, 0], Order("screen-and-weak"));
+        Assert.Equal([1, 0], Order("largest-first"));
+        int Count(string id) => Rows("speakers").Single(row => Id(row) == id)["expectCount"]!.GetValue<int>();
+        Assert.Equal((1, 2, 1), (Count("weak-graphic-face-behind-a-title"), Count("largest-first"), Count("only-weak-faces")));
+        Assert.Equal(Calibration.Value.SpeakerScore, Number(Rows("speakers").First()["speakerScore"]));
     }
 
     [Fact]

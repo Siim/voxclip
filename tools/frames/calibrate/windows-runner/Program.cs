@@ -6,10 +6,12 @@
 // as calibrate.py decoded and hashed them. A frame whose bytes no longer hash to its pin is refused (exit 2).
 //
 // For every frame it writes one JSON line with what the shipped path measured before the catalogue's maps: the face count, the
-// largest face's YuNet box, the raw mean eye ratio of each eye, the mesh's yaw and pitch, and the crop's sharpness, luma and
-// clipped share, with the face's width at 1,280 px. It gets them by running the same public steps OnnxFrameFaces runs (YuNet
+// speaker's face (SpeakerFace's reading order, W8) with its YuNet box, the raw mean eye ratio of each eye, the mesh's yaw and
+// pitch, and the crop's sharpness, luma and clipped share, with the face's width at 1,280 px. It gets them by running the same public steps OnnxFrameFaces runs (YuNet
 // on the 640 px input, YuNetDecoder, RotatedCrop, Face Mesh V2, FaceCropStats, FaceMeshFields.Measure), and checks every frame
 // against OnnxFrameFaces.Faces itself: the face count and every FrameFace field must be the same, or the run stops (exit 3).
+// It also writes every box YuNet kept (largest first, each with the mesh's numbers or null) and the frame's QuadFinder quads,
+// which the speaker rule is fitted and checked from.
 // So the numbers are the shipped path's, not a twin's. Needs VOXCLIP_SHARED_DIR (the catalogue) and runs two frames at a time,
 // each session on two threads.
 using System.Buffers;
@@ -163,15 +165,15 @@ internal sealed class Steps : IDisposable
         if (found.Count == 0) return new(0, null, []);
         var rgb = new byte[frame.Width * frame.Height * 3];
         Rgb(frame, rgb);
+        // Every box, largest first, measured (the dump the speaker rule is fitted from); then the shipped choice: the boxes in
+        // SpeakerFace's reading order (no screens: the calibration has no OCR), the first the mesh confirms.
+        var measured = found.ToDictionary(face => face, face => Face(face, input, rgb, frame.Width, frame.Height));
         var candidates = found.OrderByDescending(face => face.Area).Select(face => new CandidateFace(
             face.PictureRect(input.ContentWidth, input.ContentHeight), face.Score,
-            face.Width * ((double)FrameAnalyzer.AnalysisEdge / YuNetDecoder.LongSide), Face(face, input, rgb, frame.Width, frame.Height))).ToArray();
-        var rejected = 0;
-        foreach (var candidate in candidates)
-        {
-            if (candidate.Face is { } measured) return new(found.Count - rejected, measured, candidates);
-            rejected++;
-        }
+            face.Width * ((double)FrameAnalyzer.AnalysisEdge / YuNetDecoder.LongSide), measured[face])).ToArray();
+        var order = SpeakerFace.ReadingOrder(found, input, [], calibration.SpeakerScore);
+        for (var index = 0; index < order.Count; index++)
+            if (measured[order[index]] is { } speaker) return new(SpeakerFace.FaceCount(order, index, calibration.SpeakerScore), speaker, candidates);
         return new(0, null, candidates);
     }
 
