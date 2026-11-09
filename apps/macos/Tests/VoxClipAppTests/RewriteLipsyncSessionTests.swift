@@ -108,6 +108,19 @@ struct RewriteLipsyncSessionTests {
         #expect(session.applied[0]?.result.recovered == true && session.freeRetries.isEmpty)
     }
 
+    /// A failure before the job was submitted (the smoke's whole clip met one preparing its audio) never says fal.ai charged.
+    @Test func aFailureBeforeTheSubmitClaimsNoCharge() async throws {
+        let (session, offer, _) = try setup()
+        session.backend = .init(offers: { ([0: offer], offer) }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { nil },
+            run: { _, _, _, _, _, _ in throw LipsyncNotSubmitted(error: LipsyncError.invalidMedia) }, changed: {})
+        await session.refresh()
+        session.start(offer)
+        await session.waitForRun()
+        guard case .failed(let reason, _, let mayBill) = session.states[0] else { Issue.record("not failed"); return }
+        #expect(!mayBill && session.freeRetries.isEmpty)
+        #expect(reason == "The job could not be completed. Your original video and edits are safe.")
+    }
+
     @Test func approvalKeyCapAndUndoKeepReceipt() async throws {
         let (session, offer, gate) = try setup()
         await session.refresh()

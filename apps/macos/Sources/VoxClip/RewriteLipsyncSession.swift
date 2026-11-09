@@ -181,8 +181,9 @@ import VoxClipMedia
                         let reason = Self.reason(error)
                         let failure = error as? LipsyncAttemptFailure
                         // A failed free Try Again charged nothing new; its earlier attempt's charge was already shown.
+                        // fal.ai can have charged only for a job it was sent: not before the submit, nor for a free Try Again.
                         states[phrase] = .failed(reason: reason, price: failure.map { VoiceLabCostPresentation.format($0.attempt.estimate.usd ?? 0) } ?? offer.price,
-                                                 mayBill: !local && offer.mayPay)
+                                                 mayBill: !local && offer.mayPay && !(error is LipsyncNotSubmitted))
                         if failure?.freeRetry == true { freeRetries.insert(phrase) } else { freeRetries.remove(phrase) }
                         errors[phrase] = error
                     }
@@ -260,6 +261,7 @@ import VoxClipMedia
 
     static func reason(_ error: any Error) -> String {
         if let failure = error as? LipsyncAttemptFailure { return reason(failure.error) }
+        if let unsent = error as? LipsyncNotSubmitted { return reason(unsent.error) }
         if let check = error as? LipsyncResultCheck { return check.copy }
         if error is LipsyncRecoveryFailed { return "VoxClip couldn't get fal.ai's earlier result back (fal.ai keeps it for an hour). Nothing new was paid." }
         if let local = error as? LipsyncPreparationError, let copy = local.errorDescription { return copy }

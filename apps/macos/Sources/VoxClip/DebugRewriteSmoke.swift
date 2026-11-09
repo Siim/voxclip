@@ -1360,7 +1360,7 @@ import VoxClipCore
         },
     ]
         // Built step by step: a long `+` chain of scenario lists strains hosted Xcode 26's type checker.
-        let groups: [[Definition]] = [ownTakeScenarios, guardScenarios, fitScenarios, rebuildScenarios, makeItScenarios, framesScenarios,
+        let groups: [[Definition]] = [ownTakeScenarios, lipsyncScenarios, guardScenarios, fitScenarios, rebuildScenarios, makeItScenarios, framesScenarios,
                                       askClaudeScenarios, clipControlsScenarios, toneScenarios, claudeModeScenarios, videoVoiceScenarios,
                                       wholeClipScenarios]
         for group in groups { all += group }

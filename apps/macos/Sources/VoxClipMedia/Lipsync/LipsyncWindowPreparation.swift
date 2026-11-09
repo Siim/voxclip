@@ -136,7 +136,9 @@ public enum LipsyncWindowPreparation {
                 readFrames += length
             }
         }
-        guard reader.status == .completed, readFrames >= frames - 1 else { throw LipsyncError.invalidMedia }
+        // A window that runs to the timeline's end can find the mixed audio a few samples short of the picture (the smoke's
+        // whole clip: 32 samples, 0.7 ms); the missing tail is silence already. More than 10 ms missing is a broken mix.
+        guard reader.status == .completed, readFrames >= frames - 480 else { throw LipsyncError.invalidMedia }
         return VoiceLabWavePCM(rate: 48_000, channels: 1, bits: 16, floating: false, pcm: pcm).bytes
     }
 }

@@ -21,8 +21,9 @@ public struct LipsyncRun: Sendable {
                         mayPay: Bool = true,
                         onProgress: @escaping @Sendable (Double?) async -> Void = { _ in }) async throws -> ImportedLipsyncResult {
         guard let projectID = request.voiceLab?.project.id else { throw LipsyncError.invalidInput }
-        let prepared = try await LipsyncWindowPreparation.prepare(request: request, window: window, scratchRoot: scratchRoot,
-                                                                  detector: detector)
+        let prepared: PreparedLipsyncWindow
+        do { prepared = try await LipsyncWindowPreparation.prepare(request: request, window: window, scratchRoot: scratchRoot, detector: detector) }
+        catch { throw LipsyncNotSubmitted.wrap(error) }
         try Task.checkCancellation()
         let chosen = model ?? provider.rewriteModel
         if let attempt = LipsyncAttemptStore.find(prepared, model: chosen.id, projectID: projectID, paidRoot: paidRoot),
@@ -37,9 +38,12 @@ public struct LipsyncRun: Sendable {
             }
         }
         guard mayPay else { throw LipsyncRecoveryFailed(error: LipsyncError.unknownJob) }
-        let (quote, approval) = try await provider.prepareApprovedUpload(video: prepared.video, audio: prepared.audio,
-            options: LipsyncOptions(syncMode: window.syncMode), fps: prepared.fps, consentStore: consentStore,
-            recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true, model: chosen)
+        let quote: LipsyncQuote, approval: LipsyncApproval
+        do {
+            (quote, approval) = try await provider.prepareApprovedUpload(video: prepared.video, audio: prepared.audio,
+                options: LipsyncOptions(syncMode: window.syncMode), fps: prepared.fps, consentStore: consentStore,
+                recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true, model: chosen)
+        } catch { throw LipsyncNotSubmitted.wrap(error) }
         let job = try await provider.submit(quote, approval: approval)
         do {
             // The attempt's sidecar: written as soon as fal.ai accepted the job, so its result is never lost.
@@ -65,6 +69,17 @@ public struct LipsyncRun: Sendable {
             await provider.cleanup(job)
             throw error
         }
+    }
+}
+
+/// A lip sync that failed before its job was submitted (preparing the window, uploading, quoting or approving): fal.ai
+/// cannot have charged for it. Local preparation errors, a missing key and cancellation keep their own types.
+public struct LipsyncNotSubmitted: Error, Sendable {
+    public let error: any Error
+
+    static func wrap(_ error: any Error) -> any Error {
+        if error is CancellationError || error is LipsyncPreparationError || error as? LipsyncError == .missingKey { return error }
+        return LipsyncNotSubmitted(error: error)
     }
 }
 

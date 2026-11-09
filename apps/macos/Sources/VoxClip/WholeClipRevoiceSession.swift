@@ -450,6 +450,7 @@ import VoxClipMedia
         case let unmatched as Unmatched: return cause(unmatched.error)
         case let failed as LipsyncFailed: return cause(failed.error)
         case let failure as LipsyncAttemptFailure: return cause(failure.error)
+        case let unsent as LipsyncNotSubmitted: return cause(unsent.error)
         default: return error
         }
     }

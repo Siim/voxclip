@@ -111,6 +111,10 @@ extension DebugRewriteSmoke {
                    requiresCompletion: false, fixture: wholeClipShortFixture()) { harness in
             try await harness.retryWholeClipAfterAPictureFailure()
         },
+        Definition(id: "S-revoice-whole-fal-short", title: "the whole clip's lip sync through the real run: fal.ai's result comes back 5 frames short with its own audio, is cut back to the voice, and Use puts it in",
+                   requiresCompletion: false, fixture: wholeClipFixture()) { harness in
+            try await harness.revoiceWholeClipThroughFal()
+        },
         Definition(id: "S-revoice-whole-claude", title: "✦ Claude does it all revoices a stitched clip whole within the cap, with no click",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
             try await harness.revoiceWholeClipAutomatically(budget: 2)
@@ -214,10 +218,11 @@ extension DebugRewriteSmoke.Harness {
             throw DebugRewriteSmoke.Failure.setup("no quote")
         }
         let catalog = try VoiceLabPriceCatalog(data: Data(contentsOf: shared.root.appendingPathComponent("catalog/voice-lab.json")))
-        // The lip sync is priced on the clip as edited, with Rewrite's one-second handles (ADR-R46).
+        // The lip sync is priced on the clip as edited, with Rewrite's one-second handles (ADR-R46) and the upload's tail margin.
         let edited = try VoiceLabOutputPlanner.build(project, scope: .clip("clip-whole"))
         let seconds = edited.mapTime(script.sentences.last?.end ?? 0) - edited.mapTime(script.sentences.first?.start ?? 0) + 2
-        let expected = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID, videoSeconds: seconds,
+        let expected = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
+                                                  videoSeconds: LipsyncLimits.uploadSeconds(seconds),
                                                   lipsync: .lipsync2, catalog: catalog)
         let chip = session.wholeClipChipAction()?.title ?? ""
         let primary = session.wholeClipPrimary()?.title ?? ""
@@ -313,6 +318,24 @@ extension DebugRewriteSmoke.Harness {
         makeItAppend([wholeClipCheck("WM2", (try? prepared.get()) != nil && besideSource, detail)])
     }
 
+    /// MVP46: the whole clip's lip sync through Rewrite's own run and import, with only fal.ai stood in (WF1).
+    func revoiceWholeClipThroughFal() async throws {
+        let fal = try installFalShortResult()
+        editor?.wholeClipPrepared = { [weak self] plan in
+            guard let self, let project = self.editor?.project else { return }
+            self.recordFitting(plan, edited: try? VoiceLabOutputPlanner.build(project, scope: .clip("clip-whole")))
+        }
+        editor?.wholeClipSmoke = { _, whole in whole.backend?.match = { _ in .init(take: 0.81, anchorBaseline: 0.54, realSpeech: nil) } }
+        let (session, whole) = try await openWholeClip()
+        let primary = try checkChoose(session, whole)
+        let before = editor?.project.voiceLab.segments.count ?? 0
+        try await runWholeClip(session, whole, title: primary)
+        checkReview(whole, segmentsBefore: before)
+        let line = await fal.line(), passed = await fal.passed()
+        makeItAppend([wholeClipCheck("WF1", whole.phase == .review && passed, phaseText(whole) + " · " + line)])
+        try await useAndCheck(session, whole, model: .lipsync2)
+    }
+
     func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false, tightened: Bool = false, short: Bool = false) async throws {
         let lipsync = installWholeClipStandIn()
         let (session, whole) = try await openWholeClip()
@@ -341,7 +364,8 @@ extension DebugRewriteSmoke.Harness {
         let video = session.wholeClipEditedSeconds ?? 0
         let sped = phrases.allSatisfy { phrase in phrase.videoChoice == .cut && (phrase.selected?.row.audio?.fit.plan.pictureSpeed ?? 1) > 1 }
         let catalog = try? VoiceLabPriceCatalog.load(shared: SharedResources.locate())
-        let expected = catalog.flatMap { try? WholeClipRevoice.lipsyncPrice(videoSeconds: picture.outputSeconds + 2, lipsync: .lipsync2, catalog: $0).usd }
+        let expected = catalog.flatMap { try? WholeClipRevoice.lipsyncPrice(videoSeconds: LipsyncLimits.uploadSeconds(picture.outputSeconds + 2),
+                                                                            lipsync: .lipsync2, catalog: $0).usd }
         let priced = (try? whole.backend?.lipsyncPrice(.lipsync2)) ?? nil
         makeItAppend([wholeClipCheck("WS1", voice.seconds < video * 0.75 && abs(picture.speed - WholeClipRevoice.maximumPictureSpeed) < 0.002
                 && picture.laidOut && fit.contains("picture 1.20× and laid out on the clip's pauses") && sped
