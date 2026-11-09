@@ -231,3 +231,32 @@ public sealed class FrameAnalyzerTests
 
     private static string Text(FrameObservation frame) => FrameJson.Write(frame).ToJsonString();
 }
+
+/// <summary>The analyzer on the shipped FFmpeg: hosted Windows CI runs it with the pinned test-only FFmpeg; elsewhere it skips with
+/// its remedy. Real lanes on the shared counter fixture, each frame within its pass's tolerance of the time asked for.</summary>
+[Trait("Category", "RequiresFFmpeg")]
+public sealed class NativeFrameAnalyzerTests : IAsyncLifetime
+{
+    public async ValueTask InitializeAsync() => await NativeTest.RequireAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    [Fact]
+    public async Task TheFfmpegLanesReturnFramesWithinTheTolerance()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var source = Path.Combine(VoxClip.Tests.Support.FixtureLoader.SharedRoot, "fixtures", "media", "counter-1080p.mp4");
+        var faces = new StubFrameFaces();
+        var analyzer = FrameFixtures.Analyzer(new FfmpegFrameDecoder(), null, faces);
+        var clip = FrameClip.Make(FrameFixtures.Words, 0, 3, new HashSet<string>())!;
+        var result = await analyzer.AnalyzeAsync(source, FrameFixtures.ContentKey, clip, ct);
+        Assert.Equal((2, 13), (result.Analysis.Sentences.Count, result.Analysis.Opening.Count));
+        foreach (var (frame, asked) in result.Analysis.Sentences.Zip(FrameSampling.SentenceSamples(clip).Select(sample => sample.Time)))
+            Assert.InRange(frame.Time, asked - FrameAnalyzer.SentenceTolerance - 1e-6, asked + FrameAnalyzer.SentenceTolerance + 1e-6);
+        foreach (var (frame, asked) in result.Analysis.Opening.Zip(FrameSampling.OpeningTimes(clip.Start)))
+            Assert.InRange(frame.Time, asked - FrameAnalyzer.OpeningTolerance - 1e-6, asked + FrameAnalyzer.OpeningTolerance + 1e-6);
+        Assert.Equal(15, faces.Threads.Count);
+        Assert.All(result.Sheet.Frames, frame => Assert.Equal((320, 180), (frame.Image.Width, frame.Image.Height)));
+        var thumbnails = await analyzer.SheetAsync(source, FrameFixtures.ContentKey, [new FrameObservation(0.5)], null, ct);
+        Assert.Equal((320, 180), (thumbnails.Frames[0].Image.Width, thumbnails.Frames[0].Image.Height));
+    }
+}
