@@ -752,6 +752,7 @@ member VoxClip.App.Controls.RewritePanel :: field private renderedFocus
 member VoxClip.App.Controls.RewritePanel :: field private renderedPending
 member VoxClip.App.Controls.RewritePanel :: field private renderedReview
 member VoxClip.App.Controls.RewritePanel :: field private renderedRows
+member VoxClip.App.Controls.RewritePanel :: field private renderedStates
 member VoxClip.App.Controls.RewritePanel :: field private renderedSteps
 member VoxClip.App.Controls.RewritePanel :: field private renderedTakeElements
 member VoxClip.App.Controls.RewritePanel :: field private renderedWordingPhrase
@@ -1241,7 +1242,7 @@ member VoxClip.App.Controls.TranscriptView :: field private threadView
 member VoxClip.App.Controls.TranscriptView :: field private unsupportedInsertionSubscriber
 member VoxClip.App.Controls.TranscriptView :: method internal Announce(string)
 member VoxClip.App.Controls.TranscriptView :: method internal AttachProposal(VoxClip.App.ViewModels.RewriteSession)
-member VoxClip.App.Controls.TranscriptView :: method internal FocusChange(int,bool)
+member VoxClip.App.Controls.TranscriptView :: method internal FocusChange(int,bool,bool)
 member VoxClip.App.Controls.TranscriptView :: method internal HideSelectionFlyout()
 member VoxClip.App.Controls.TranscriptView :: method internal OpenThread(int,bool)
 member VoxClip.App.Controls.TranscriptView :: method internal RequestRewrite()
@@ -6007,6 +6008,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationInputA
 member VoxClip.App.ViewModels.RewriteSession :: method internal IsAccountFailure(VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind)
 member VoxClip.App.ViewModels.RewriteSession :: method internal IsPricedAfresh(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepBlockedAsRecorded()
+member VoxClip.App.ViewModels.RewriteSession :: method internal KeepChange(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepCollidedOriginal(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepFixing()
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepLongChangesAsRecorded(bool)
@@ -6086,6 +6088,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal ThreadInputKey(V
 member VoxClip.App.ViewModels.RewriteSession :: method internal ToggleThreadOwnWords()
 member VoxClip.App.ViewModels.RewriteSession :: method internal TooManyPhrasesCopy(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal TriedWordings(int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal UndoChange(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal UndoKeepOriginal(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal UndoThreadChange()
 member VoxClip.App.ViewModels.RewriteSession :: method internal UnplaceableReason(VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException)
@@ -6177,6 +6180,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_RecordedStor
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_ReplyNextActions()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_RevealChange()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Review()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_ReviewFocusMoved()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_ReviewFooter()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_ReviewIdentity()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_ReviewIsCurrent()
@@ -6222,9 +6226,11 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal set_EditReviewCh
 member VoxClip.App.ViewModels.RewriteSession :: method internal set_Log(VoxClip.Core.Services.Logging.ILog)
 member VoxClip.App.ViewModels.RewriteSession :: method internal set_OwnWordsEditing(System.Nullable`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal set_RevealChange(System.Action`1<int>)
+member VoxClip.App.ViewModels.RewriteSession :: method internal set_ReviewFocusMoved(System.Action`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal set_ThreadBackend(VoxClip.App.ViewModels.RewriteThreadBackend)
 member VoxClip.App.ViewModels.RewriteSession :: method internal set_VoiceConsent(System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>)
 member VoxClip.App.ViewModels.RewriteSession :: method private AcceptanceForward(string)
+member VoxClip.App.ViewModels.RewriteSession :: method private AdvanceFocus(int)
 member VoxClip.App.ViewModels.RewriteSession :: method private AiChips()
 member VoxClip.App.ViewModels.RewriteSession :: method private AiChips(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried>)
 member VoxClip.App.ViewModels.RewriteSession :: method private Announce(string)
@@ -6255,6 +6261,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private EditorPropertyCha
 member VoxClip.App.ViewModels.RewriteSession :: method private EndsSentence(string)
 member VoxClip.App.ViewModels.RewriteSession :: method private ExpressionBlocker()
 member VoxClip.App.ViewModels.RewriteSession :: method private FitCandidates()
+member VoxClip.App.ViewModels.RewriteSession :: method private ForgetThread(int)
 member VoxClip.App.ViewModels.RewriteSession :: method private GenerationChanged(object,System.EventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private GenerationSelectionChanged(object,System.EventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private GiveUp(int)
@@ -6576,9 +6583,12 @@ member VoxClip.App.ViewModels.RewriteThreadSpeaker :: field public Claude
 member VoxClip.App.ViewModels.RewriteThreadSpeaker :: field public You
 member VoxClip.App.ViewModels.RewriteThreadSpeaker :: field public Yours
 member VoxClip.App.ViewModels.RewriteThreadSpeaker :: field public value__
+member VoxClip.App.ViewModels.RewriteThreadState :: field internal ApplyFailed
+member VoxClip.App.ViewModels.RewriteThreadState :: field internal WaitsForDiscard
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal Begin(VoxClip.App.ViewModels.RewriteThreadKey,System.Threading.CancellationTokenSource)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal End(VoxClip.App.ViewModels.RewriteThreadKey)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal Follow(VoxClip.App.ViewModels.RewriteThreadKey)
+member VoxClip.App.ViewModels.RewriteThreadState :: method internal Leave(VoxClip.App.ViewModels.RewriteThreadKey)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal Run(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal get_Cancellation()
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal get_Confirmation()
@@ -7560,6 +7570,8 @@ member VoxClip.App.ViewModels.TranscriptPieceKind :: field public Source
 member VoxClip.App.ViewModels.TranscriptPieceKind :: field public value__
 member VoxClip.App.ViewModels.TranscriptProposalHunk :: method internal get_NewText()
 member VoxClip.App.ViewModels.TranscriptProposalHunk :: method internal get_Priority()
+member VoxClip.App.ViewModels.TranscriptProposalHunk :: method internal get_Reviewed()
+member VoxClip.App.ViewModels.TranscriptProposalHunk :: method internal get_ShowsNewWords()
 member VoxClip.App.ViewModels.TranscriptProposalHunk :: method private .ctor(VoxClip.App.ViewModels.TranscriptProposalHunk)
 member VoxClip.App.ViewModels.TranscriptProposalHunk :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.TranscriptProposalHunk :: method private get_EqualityContract()

@@ -3,6 +3,9 @@ using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
+/// <summary>A change's review (design.md §6.3.5; Mac <c>TranscriptChange.State</c>): waiting, left out (its original words), or kept. A kept
+/// change is included for takes and Use, priced and voiced as a waiting one, and has no thread. Windows applies every change at Use, so a
+/// kept change still shows its words.</summary>
 internal enum TranscriptChangeState { Pending, Excluded, Kept }
 
 internal sealed record TranscriptProposalHunk(int Ordinal, VoiceLabDiffHunk Hunk, int First, int Last,
@@ -10,6 +13,10 @@ internal sealed record TranscriptProposalHunk(int Ordinal, VoiceLabDiffHunk Hunk
 {
     internal string NewText => string.Join(" ", Hunk.NewTokens);
     internal int Priority => Hunk.Kind switch { VoiceLabDiffHunkKind.Voice => 3, VoiceLabDiffHunkKind.TextOnly => 2, _ => 1 };
+    /// <summary>Its words show as the change makes them: waiting or kept, not left out.</summary>
+    internal bool ShowsNewWords => State != TranscriptChangeState.Excluded;
+    /// <summary>", kept" or ", left out" after a review, as the Mac's change description ends.</summary>
+    internal string Reviewed => State switch { TranscriptChangeState.Kept => ", kept", TranscriptChangeState.Excluded => ", left out", _ => "" };
 }
 
 internal sealed record TranscriptProposalInsertion(TranscriptProposalHunk Change, string Text);
@@ -49,7 +56,6 @@ internal sealed class TranscriptProposalPresentation
             var hunk = diff.Hunks[offset];
             var ordinal = offset + 1;
             var state = states?.GetValueOrDefault(ordinal) ?? TranscriptChangeState.Pending;
-            if (state == TranscriptChangeState.Kept) continue;
             var ids = hunk.SourceWordIds.Concat(hunk.AbsorbedItemIds).Distinct(StringComparer.Ordinal).ToArray();
             if (ids.Any(id => !positions.ContainsKey(id))) continue;
             var indices = ids.Select(id => positions[id]).Order().ToArray();
@@ -78,7 +84,7 @@ internal sealed class TranscriptProposalPresentation
             }
             var adds = operation.Kind == VoiceLabDiffOpKind.Insert || operation.Kind == VoiceLabDiffOpKind.Equal && operation.SourceToken != operation.NewToken;
             if (!adds || operation.NewToken is null) continue;
-            var change = hunks.FirstOrDefault(hunk => hunk.State == TranscriptChangeState.Pending &&
+            var change = hunks.FirstOrDefault(hunk => hunk.ShowsNewWords &&
                 tokenIndex >= hunk.Hunk.SourceStartIndex && (operation.Kind == VoiceLabDiffOpKind.Insert
                     ? tokenIndex <= hunk.Hunk.SourceEndIndex : tokenIndex < hunk.Hunk.SourceEndIndex));
             if (change is null) continue;

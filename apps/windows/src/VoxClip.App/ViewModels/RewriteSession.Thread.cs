@@ -41,13 +41,13 @@ internal sealed partial class RewriteSession
         }
     }
 
-    /// <summary>The change a thread shows for: the focused one, still waiting, in a review that can change now, before any paid take (a
-    /// change with takes is past review, as a kept change is on the Mac).</summary>
+    /// <summary>The change a thread shows for: the focused one, still waiting (not kept or left out), in a review that can change now (Mac
+    /// <c>rewriteThreadTarget</c>). Paid takes don't change which: a kept change has no thread, a waiting one keeps its thread.</summary>
     private (RewriteThreadKey Key, VoiceLabDiffHunk Hunk)? ThreadTarget
     {
         get
         {
-            if (!IsOpen || !ReviewIsCurrent || Review is not { } review || HasPaidTakes || Editor.IsReadOnly || Editor.Busy || Editor.IsLeaving) return null;
+            if (!IsOpen || !ReviewIsCurrent || Review is not { } review || Editor.IsReadOnly || Editor.Busy || Editor.IsLeaving) return null;
             var ordinal = FocusedChange;
             if (ordinal < 1 || ordinal > review.Diff.Hunks.Count || changeStates.GetValueOrDefault(ordinal) != TranscriptChangeState.Pending) return null;
             return (new(ProposalRevision, ordinal), review.Diff.Hunks[ordinal - 1]);
@@ -90,7 +90,7 @@ internal sealed partial class RewriteSession
         foreach (var pair in moved) { threads.Remove(pair.Key); threads[pair.Key - 1] = pair.Value; }
     }
 
-    /// <summary>The focused change's thread, or null where none shows: no review, not waiting, past paid takes, or folded with Esc.</summary>
+    /// <summary>The focused change's thread, or null where none shows: no review, kept or left out, or folded with Esc.</summary>
     internal RewriteThreadDisplay? ThreadDisplay
     {
         get
@@ -231,7 +231,7 @@ internal sealed partial class RewriteSession
             switch (AcceptThreadWords(key.Ordinal, versions[next].Text))
             {
                 case RewriteThreadApply.Failed:
-                    Thread.Error = "The new words couldn't be put in the text. Your edits are saved.";
+                    Thread.Error = PendingPaidReviewChange is null ? RewriteThreadState.ApplyFailed : RewriteThreadState.WaitsForDiscard;
                     return;
                 case RewriteThreadApply.LeftOut:
                     Announce($"{AiName}: {note} Change {key.Ordinal} keeps its recorded words.");
@@ -290,25 +290,12 @@ internal sealed partial class RewriteSession
         return true;
     }
 
-    /// <summary>"✓ That's it, keep it", Ctrl+Enter in the input: exactly the change's Keep, which includes it for takes; the thread folds,
-    /// as a kept change has none.</summary>
-    internal bool KeepThreadChange()
-    {
-        if (ThreadDisplay is not { } display || !SetChangeIncluded(display.Ordinal, true)) return false;
-        Thread.Folded = display.Key;
-        Announce($"Kept change {display.Ordinal}");
-        Changed?.Invoke(this, EventArgs.Empty);
-        return true;
-    }
+    /// <summary>"✓ That's it, keep it", Ctrl+Enter in the input: exactly the change's <see cref="KeepChange"/>. The change is kept, still
+    /// priced and voiced, and its thread goes.</summary>
+    internal bool KeepThreadChange() => ThreadDisplay is { } display && KeepChange(display.Ordinal);
 
-    /// <summary>Ctrl+Backspace in the input: exactly the change's Undo, which leaves it out; a change left out has no thread.</summary>
-    internal bool UndoThreadChange()
-    {
-        if (ThreadDisplay is not { } display || !SetChangeIncluded(display.Ordinal, false)) return false;
-        threads.Remove(display.Ordinal);
-        Announce($"Change {display.Ordinal} keeps its recorded words");
-        return true;
-    }
+    /// <summary>Ctrl+Backspace on an empty input: exactly the change's <see cref="UndoChange"/>, which leaves it out with no thread.</summary>
+    internal bool UndoThreadChange() => ThreadDisplay is { } display && UndoChange(display.Ordinal);
 
     /// <summary>The thread's input keys (design.md §6.3 "Keys", in their Windows form). False hands the key back to the text box.</summary>
     internal bool ThreadInputKey(RewriteThreadInputKey key)
@@ -405,7 +392,7 @@ internal sealed partial class RewriteSession
         var applied = AcceptThreadWords(key.Ordinal, text);
         if (applied == RewriteThreadApply.Failed)
         {
-            Thread.Error = "Your words couldn't be put in the text. Your edits are saved.";
+            Thread.Error = PendingPaidReviewChange is null ? "Your words couldn't be put in the text. Your edits are saved." : RewriteThreadState.WaitsForDiscard;
             Thread.Failed = null;
             Changed?.Invoke(this, EventArgs.Empty);
             return false;

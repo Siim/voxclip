@@ -149,7 +149,10 @@ internal sealed partial class RewriteSession
     internal string ReviewIdentity => System.Text.Json.JsonSerializer.Serialize(new
     {
         Project.Id, Scope, Instruction, NewWords, Diff = Review?.Diff, Metadata = scopeHunks,
-        States = changeStates.OrderBy(pair => pair.Key).ToArray(), Overrides = priceOverrides.Order().ToArray(),
+        // What a review leaves out, not how it was reviewed: a kept change is included as a waiting one is, so Keep changes nothing a
+        // price, a take or a deferred change reads.
+        Excluded = changeStates.Where(pair => pair.Value == TranscriptChangeState.Excluded).Select(pair => pair.Key).Order().ToArray(),
+        Overrides = priceOverrides.Order().ToArray(),
         Sentences = sentenceReplacements.OrderBy(pair => pair.Key).ToArray(), Local = LocalOperations()
     });
 
@@ -162,11 +165,69 @@ internal sealed partial class RewriteSession
         priceOverrides.Clear();
         changeStates[ordinal] = included ? TranscriptChangeState.Pending : TranscriptChangeState.Excluded;
         // A change left out has no thread (design.md §6.3 "Where").
-        if (!included) threads.Remove(ordinal);
+        if (!included) ForgetThread(ordinal);
         RefreshReview();
         InvalidateGenerationInputs();
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
+    }
+
+    /// <summary>Keep (the transcript's Keep, Ctrl+Enter, "✓ That's it, keep it"; Mac <c>keepChange</c>): the change is kept, and a kept
+    /// change has no thread (design.md §6.3.5). It stays included, priced and voiced as it was. Keeping a waiting change changes nothing a
+    /// price or a take reads, so paid takes stay; keeping one left out includes it again, which asks first with paid takes. The focus moves
+    /// to the next waiting change. Nothing changes in the project: Windows applies every change at Use.</summary>
+    internal bool KeepChange(int ordinal)
+    {
+        StopWordingFit();
+        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
+        var state = changeStates.GetValueOrDefault(ordinal);
+        if (state == TranscriptChangeState.Kept) return false;
+        var including = state == TranscriptChangeState.Excluded;
+        if (including && DeferPaidReviewChange(() => Task.FromResult(KeepChange(ordinal)))) return false;
+        if (including) { InvalidateProposal(); priceOverrides.Clear(); }
+        changeStates[ordinal] = TranscriptChangeState.Kept;
+        ForgetThread(ordinal);
+        if (including) { RefreshReview(); InvalidateGenerationInputs(); }
+        AdvanceFocus(ordinal);
+        Announce($"Kept change {ordinal}");
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Undo (the transcript's Undo, Ctrl+Backspace; Mac <c>excludeChange</c>): a waiting or kept change is left out, with no thread,
+    /// and the focus moves to the next waiting change. Including it again in the review brings it back to waiting, with a new thread.</summary>
+    internal bool UndoChange(int ordinal)
+    {
+        if (Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count ||
+            changeStates.GetValueOrDefault(ordinal) == TranscriptChangeState.Excluded || !SetChangeIncluded(ordinal, false)) return false;
+        AdvanceFocus(ordinal);
+        Announce($"Change {ordinal} keeps its recorded words");
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>The transcript moves its focus with the review's (Keep and Undo move it to the next waiting change).</summary>
+    internal Action<int>? ReviewFocusMoved { get; set; }
+
+    /// <summary>After Keep or Undo (Mac <c>advanceFocus</c>): the next waiting change the transcript shows, in its order and wrapping.</summary>
+    private void AdvanceFocus(int ordinal)
+    {
+        if (Review is not { } review) return;
+        var order = TranscriptProposalPresentation.From(review.Diff, Source, Editor.Words, InsertionAfter, changeStates).Hunks
+            .OrderBy(hunk => hunk.Anchor).ThenBy(hunk => hunk.Ordinal).Select(hunk => hunk.Ordinal).ToList();
+        var start = order.IndexOf(ordinal);
+        var next = Enumerable.Range(1, order.Count).Select(step => order[(start + step + order.Count) % order.Count])
+            .FirstOrDefault(candidate => candidate != ordinal && changeStates.GetValueOrDefault(candidate) == TranscriptChangeState.Pending);
+        if (next == 0) return;
+        FocusChange(next);
+        ReviewFocusMoved?.Invoke(next);
+    }
+
+    /// <summary>A kept or left-out change has no thread: its stored thread and its input go.</summary>
+    private void ForgetThread(int ordinal)
+    {
+        threads.Remove(ordinal);
+        Thread.Leave(new(ProposalRevision, ordinal));
     }
 
     internal bool SetChangesIncluded(IReadOnlyList<int> ordinals, bool included)

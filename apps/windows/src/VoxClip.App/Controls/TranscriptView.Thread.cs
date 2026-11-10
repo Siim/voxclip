@@ -11,7 +11,8 @@ using Windows.System;
 namespace VoxClip.App.Controls;
 
 /// <summary>The Rewrite thread under the focused change (design.md §6.3 "Talk back to Claude", ADR-R50): one control, moved to the
-/// paragraph of the focused waiting change and updated in place, so its input keeps the keys while the proposal refreshes.</summary>
+/// paragraph of the focused waiting change and updated in place, so its input keeps the keys while the proposal refreshes. Keep and Undo
+/// take it away: a kept or left-out change has none.</summary>
 public sealed partial class TranscriptView
 {
     private RewriteThreadView? threadView;
@@ -213,7 +214,13 @@ public sealed partial class TranscriptView
                 if (keep) bubble.Background = owner.Brush("VcChangeAddBrush");
                 if (ai) bubble.BorderBrush = owner.Brush("VcAccentTextBrush");
                 AutomationProperties.SetName(bubble, name ?? title);
-                bubble.Click += (_, _) => { if (session is { } current) _ = current.PressThreadBubbleAsync(title); };
+                bubble.Click += (_, _) =>
+                {
+                    if (session is not { } current) return;
+                    _ = current.PressThreadBubbleAsync(title);
+                    // Keep removes the thread: the keys go back to the transcript, on the change the focus moved to (Mac ⌘↩).
+                    if (keep) owner.Focus(FocusState.Programmatic);
+                };
                 bubbles.Children.Add(bubble);
             }
         }

@@ -51,6 +51,9 @@ internal sealed class RewriteThreadState
     internal string Text { get; set; } = "";
     /// <summary>The change <see cref="Text"/> and <see cref="Error"/> belong to; a focus move to another change starts with an empty input.</summary>
     internal RewriteThreadKey? Key { get; private set; }
+    /// <summary>Thread errors that are not the AI's: the new words couldn't go into the text, or they wait for the paid takes' discard.</summary>
+    internal const string ApplyFailed = "The new words couldn't be put in the text. Your edits are saved.";
+    internal const string WaitsForDiscard = "Changing these words discards your paid takes: confirm in the Rewrite panel. Your edits are saved.";
     /// <summary>The change whose request is in flight.</summary>
     internal RewriteThreadKey? Sending { get; private set; }
     internal string? Error { get; set; }
@@ -85,6 +88,16 @@ internal sealed class RewriteThreadState
     {
         if (Key == key) return;
         Key = key; Text = ""; Error = null; Failed = null; OwnWords = null; Draft = "";
+    }
+
+    /// <summary>The change <paramref name="key"/> was kept or left out, so it has no thread: its request stops, and its input, error and
+    /// fold go. If it waits again later, its thread starts again.</summary>
+    internal void Leave(RewriteThreadKey key)
+    {
+        if (Sending == key) { Cancellation?.Cancel(); Confirmation?.Cancel(); }
+        if (Folded == key) Folded = null;
+        if (Key != key) return;
+        Key = null; Text = ""; Error = null; Failed = null; OwnWords = null; Draft = "";
     }
 }
 

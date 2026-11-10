@@ -109,7 +109,9 @@ internal sealed partial class RewriteSession
                 {
                     case RewriteScopedReply.OutcomeKind.Replace:
                         proposals[index] = reply.Scoped?[outcome.Index] ?? proposals[index] with { Diff = reply.Hunks[outcome.Index] };
-                        changeStates.Remove(index + 1);
+                        // A kept voice change stays kept with its new words (Mac `applyReask`); any other replaced change waits again.
+                        if (changeStates.GetValueOrDefault(index + 1) != TranscriptChangeState.Kept || proposals[index].Diff.Kind != VoiceLabDiffHunkKind.Voice)
+                            changeStates.Remove(index + 1);
                         break;
                     case RewriteScopedReply.OutcomeKind.KeepOriginal:
                         changeStates[index + 1] = TranscriptChangeState.Excluded;

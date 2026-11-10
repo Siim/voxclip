@@ -15,6 +15,8 @@ internal sealed partial class RewritePanel
     private int renderedFocus = -1;
     private bool renderedEditable;
     private int renderedPending;
+    /// <summary>The reviews the rows show: Keep changes no review, only a row's "kept".</summary>
+    private string renderedStates = "";
     private readonly HashSet<DependencyObject> reviewElements = [];
     private readonly StackPanel sentenceReview = Ui.Stack(8);
     private readonly StackPanel paidReviewChange = Ui.Stack(8);
@@ -74,9 +76,11 @@ internal sealed partial class RewritePanel
 
     private void RenderChangeReview()
     {
+        var states = string.Join(",", session.ChangeStates.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}:{pair.Value}"));
         if (ReferenceEquals(renderedReview, session.Review) && renderedFocus == session.FocusedChange && renderedEditable == session.ReviewIsCurrent &&
-            renderedPending == session.PendingExpressionCount) return;
+            renderedPending == session.PendingExpressionCount && renderedStates == states) return;
         renderedPending = session.PendingExpressionCount;
+        renderedStates = states;
         renderedReview = session.Review;
         renderedFocus = session.FocusedChange;
         renderedEditable = session.ReviewIsCurrent;
@@ -90,10 +94,12 @@ internal sealed partial class RewritePanel
         {
             var ordinal = index + 1;
             var hunk = current.Diff.Hunks[index];
-            var included = session.ChangeStates.GetValueOrDefault(ordinal) != TranscriptChangeState.Excluded;
+            var state = session.ChangeStates.GetValueOrDefault(ordinal);
+            var included = state != TranscriptChangeState.Excluded;
             var row = Ui.Stack(6);
             AutomationProperties.SetAutomationId(row, "Rewrite.Change" + ordinal);
-            var title = new CheckBox { Content = $"Change {ordinal}" + (session.FocusedChange == ordinal ? " · focused" : ""),
+            // "kept" once reviewed, as the Mac's row says it (its trailing label).
+            var title = new CheckBox { Content = $"Change {ordinal}" + (state == TranscriptChangeState.Kept ? " · kept" : "") + (session.FocusedChange == ordinal ? " · focused" : ""),
                 IsChecked = included, IsEnabled = session.ReviewIsCurrent };
             SetName(title, $"Include change {ordinal} of {current.Diff.Hunks.Count}");
             title.Checked += (_, _) => { if (ReferenceEquals(current, session.Review)) { renderedReview = null; session.SetChangeIncluded(ordinal, true); } };

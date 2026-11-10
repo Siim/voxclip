@@ -155,18 +155,21 @@ public sealed class TranscriptV2Tests
     }
 
     [Fact]
-    public void ExcludedAndKeptChangesNeverLeaveDisplayOnlyTextBehind()
+    public void AnExcludedChangeShowsItsOriginalWordsAndAKeptOneShowsItsNewWords()
     {
         var words = Words("we", "old", "clips");
         var diff = VoiceLabWordDiff.Diff(words, "we new clips");
-        foreach (var state in new[] { TranscriptChangeState.Excluded, TranscriptChangeState.Kept })
-        {
-            var proposal = TranscriptProposalPresentation.From(diff, words, words, states: new Dictionary<int, TranscriptChangeState> { [1] = state });
-            var pieces = Present(words, proposal: proposal);
-            Assert.DoesNotContain(pieces, piece => piece.Kind == TranscriptPieceKind.Inserted || piece.Removed);
-            if (state == TranscriptChangeState.Excluded) Assert.Equal(state, Assert.Single(proposal.Hunks).State);
-            else Assert.Empty(proposal.Hunks);
-        }
+        // Left out: the original words, with no display-only text left behind.
+        var excluded = TranscriptProposalPresentation.From(diff, words, words, states: new Dictionary<int, TranscriptChangeState> { [1] = TranscriptChangeState.Excluded });
+        var pieces = Present(words, proposal: excluded);
+        Assert.DoesNotContain(pieces, piece => piece.Kind == TranscriptPieceKind.Inserted || piece.Removed);
+        Assert.Equal((TranscriptChangeState.Excluded, ", left out"), (Assert.Single(excluded.Hunks).State, excluded.Hunks[0].Reviewed));
+        // Kept: Windows applies changes at Use, so a kept change still shows, as the change makes the words (design.md §6.3.5).
+        var kept = TranscriptProposalPresentation.From(diff, words, words, states: new Dictionary<int, TranscriptChangeState> { [1] = TranscriptChangeState.Kept });
+        pieces = Present(words, proposal: kept);
+        Assert.Equal((TranscriptChangeState.Kept, ", kept"), (Assert.Single(kept.Hunks).State, kept.Hunks[0].Reviewed));
+        Assert.Equal("new ", Assert.Single(pieces, piece => piece.Kind == TranscriptPieceKind.Inserted).Text);
+        Assert.Equal("old ", Assert.Single(pieces, piece => piece.Removed).Text);
     }
 
     [Fact]

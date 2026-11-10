@@ -1,5 +1,57 @@
 # Windows fixed contracts
 
+### 2026-11-10 — Windows: a kept change, so its Rewrite thread goes away on Keep, as on the Mac (track/v2-win-kept-change)
+
+This settles the thread entry's "Next package must know" (below): Windows had no kept state, so Keep only folded the thread, and paid takes hid every thread. Mac sources: `TranscriptProposal.swift` (`keepChange`, `excludeChange`, `advanceFocus`, `proposalDisplay.actions`), `RewriteThread.swift` (`rewriteThreadTarget`), `ChangeList.swift` and `RewriteSession.applyReask`. See design.md §6.3.5 and §6.3 "Keys".
+
+- **View model.**
+  - `TranscriptChangeState.Kept` is now set. `RewriteSession.KeepChange(ordinal)` (the transcript's Keep, Ctrl+Enter, the keep bubble) moves a waiting or left-out change to kept and drops its thread: the stored thread, and through `RewriteThreadState.Leave` its input, own-words mode, error, fold and any request in flight.
+    - A kept change stays included (`!= Excluded` everywhere), priced and voiced as it was. Keeping a waiting change rebuilds nothing and asks no discard with paid takes. Keeping one left out includes it again, through the same deferral as the review's checkbox.
+    - `ReviewIdentity` reads only which changes are left out, so Keep changes no identity a price, a take run or a deferred change compares.
+  - `UndoChange(ordinal)` (the transcript's Undo, Ctrl+Backspace on an empty input) leaves a waiting or kept change out, with no thread, as the Mac's `excludeChange`. The review's checkbox brings a left-out change back waiting, with a new thread.
+  - Both move the focus to the next waiting change the transcript shows, in its order and wrapping (Mac `advanceFocus`). `ReviewFocusMoved` tells the transcript; with nothing left waiting the focus stays.
+  - Paid takes no longer hide a thread (`ThreadTarget` lost `HasPaidTakes`): a kept change has none and a waiting one keeps it, as on the Mac. A thread version that needs the paid takes' discard says so in the thread: "Changing these words discards your paid takes: confirm in the Rewrite panel. Your edits are saved." That replaces "couldn't be put in the text". After the discard the deferred edit runs, and the thread picks the words up as a version (`Following`), with no turn. The Mac has the same gap (its own-words entry).
+  - A scoped re-ask that replaces a kept voice change keeps it kept (Mac `applyReask`).
+  - **Deleted:** the "Keep folds the thread" workaround (`KeepThreadChange`'s `SetChangeIncluded(true)` and `Thread.Folded`). `KeepThreadChange` and `UndoThreadChange` are now `KeepChange` and `UndoChange` on the shown change.
+- **View.**
+  - `TranscriptProposalPresentation` no longer drops kept changes. A kept change shows its words as the change makes them (removed words struck, new words on `change.add`) and its glyph, with no change bar and no overview mark, which now mark only what waits or is left out.
+  - The focused change's buttons follow its state: Keep and Undo while it waits, Undo once kept, Keep once left out. After a click, the keys stay in the transcript; after the keep bubble too.
+  - The review row reads "Change {i} · kept".
+  - **Narrator:** the paragraph reads "Proposed change {i} of {n}, kept: …" (", left out" for one left out), the focus announcement ends ", kept", and "Kept change {i}" is said once (the focus move is silent). The F2 / Shift+F2 help text is only on a waiting change.
+- **Deviation:** design.md §6.3.5 applies a kept cut or fix to the project at Keep. Windows applies every change at Use, so Keep makes a cut or fix kept too, and it shows as kept until Use, like a kept voice change. design.md's Windows sentence under "Keys" says so.
+- **Deviation from the brief:** the brief asked that Undo bring a kept change back to pending with its thread. The Mac's Undo on a kept change (`excludeChange`, ⌘⌫) leaves it out, and a voice Keep adds no ⌘Z step, so Windows matches the Mac. The way back to waiting, with a new thread, is the review's checkbox.
+- **Tests** (win-ui `RewriteThreadTests`, 22, was 18; the old Keep/Undo test is replaced):
+  - `KeepMakesTheChangeKeptWithNoThreadStillPricedAndVoicedAndTheFocusMovesToTheNextWaitingChange`: keep bubble and Ctrl+Enter, the same review and identity, the version voiced, the focus moved, both shown as kept.
+  - `UndoLeavesAWaitingOrKeptChangeOutWithNoThreadAndIncludingItAgainBringsItBackWaitingWithItsThread`.
+  - `MyOwnWordsThenKeepKeepsTheChangeVoicedFromYourWordsAndTheThreadGoes`.
+  - `AfterPaidTakesAKeptChangeHasNoThreadAndAWaitingOneKeepsItsThreadAndKeepingItKeepsTheTakes`.
+  - `TheTranscriptShowsAKeptChangeAsTheMacDoesAndKeepNoLongerFoldsTheThread` (source checks of the view).
+  - `TranscriptV2Tests.AnExcludedChangeShowsItsOriginalWordsAndAKeptOneShowsItsNewWords` replaces the test that expected kept changes hidden.
+  - **Mutations turn tests red** (each built and run, then restored):
+    - Keep folds again (4 red);
+    - paid takes hide the thread (1);
+    - kept changes hidden (3);
+    - no focus move (2);
+    - the input kept on Keep (1);
+    - the identity reads Kept (1).
+- **ReleaseBoundary** `update` on `VoxClip.txt`: +13, −1 (`FocusChange(int,bool)` became `(int,bool,bool)`). Core, Media and CLI are unchanged.
+- **Verification** (Mac; `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`, load average about 16–23):
+  - Windows Core Release: 3,455 tests (3,426 passed, 29 skipped, 0 failed).
+  - win-ui Release: 1,519 (1,514 passed, 5 skipped, 0 failed).
+  - Windows Media Release: 1,283 (1,113 passed, 170 skipped, 0 failed).
+  - `VoxClip.App.TypeCheck` Release: 0 warnings, 0 errors. `check-xaml.py`: 0 problems.
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests pass, and the tree is clean after them.
+- **Owed** (the user's Windows session; the VM was not used):
+  - Real-window checks: the thread leaves on Keep (bubble, Ctrl+Enter, the transcript's Keep), with the paragraphs closing up; the focus and the thread move to the next waiting change; the keys stay in the transcript after a click on Keep, Undo or the keep bubble.
+  - The kept look: no bar, the glyph kept, Undo only.
+  - Narrator reading ", kept", "Kept change {i}" once, and the review row's "kept".
+  - With paid takes: a waiting change's thread, and the discard line in the thread after a reply.
+  - The native win-arm64 run (Core, Media and the App with its XAML compiler).
+- **Next package must know.**
+  - `KeepChange` and `UndoChange` are the only Keep and Undo. `SetChangeIncluded` is the review's checkbox: true makes a change wait, false leaves it out.
+  - Every "included" check is `!= Excluded`. Only the thread, the focus move, the change bar, the overview and the transcript's Keep and Undo buttons tell a kept change from a waiting one.
+  - Thread versions with paid takes still go through `EditChange`'s discard deferral; the deferred edit adds no turn.
+
 ### 2026-11-10 — The frame summary says "this computer"; the Rewrite generation tests run in Release (track/v2-small-parity)
 
 - **Frame summary** (settles the item in the native-batch entry below and in the W5/W6 entries): `FrameSheet.SummaryHeader` and `ClipAutopilotRequest`'s empty summary now say "Frames measured on this computer", the same as the Mac Core. The shared fixtures are regenerated. apps/macos/CONTRACTS.md (same date) has the details and the owed system-prompt wording.
@@ -80,6 +132,7 @@ This replaces the three 2026-11-09 "Owed" pieces: "✎ My own words", "talk back
   - **Vector replay:** `RewriteFollowupReplayTests` (7 tests) replays `shared/fixtures/rewrite-thread/request-cases.json` (`voxclip-rewrite-thread-cases/1`). It asserts the exact keys and counts (5 requests, 6 replies) and `promptSha256`. Every request matches byte for byte and every reply checks as expected. No case needed a deviation; the fixture and its generator are unchanged.
 - **App view model** (`ViewModels/RewriteThread.cs`, `ViewModels/RewriteSession.Thread.cs`): the twin of the Mac's `RewriteThread`, `RewriteThreadState` and `RewriteThreadDisplay`.
   - **Where a thread shows.** Only for the focused change, while it waits (not excluded), in a review that can change now, with an editable editor and **no paid takes**. On Windows a change with takes is still "waiting"; on the Mac such a change has been kept and has no thread.
+    - *Superseded (track/v2-win-kept-change, entry above):* paid takes no longer hide a thread. A kept change has none; a waiting one keeps its thread with paid takes, as on the Mac.
   - **Storage.** Threads are kept per ordinal together with the change's source span; a change whose span moved gets a new thread. They are cleared when a new reply arrives, when the words are edited by hand, and on close.
   - **Sending.** `SendThreadAsync`, `PressThreadBubbleAsync` ("3 more versions" asks for alternatives), `RetryThreadAsync` and `StopThread`. The input keeps its text until the reply is in. An error shows in place, keeps the text and offers Try Again.
   - **A version** goes in through `AcceptThreadWords` and becomes the change's words for Keep. `SwitchThreadVersion` sends nothing and adds no undo step. A reply with the same words adds no version, and its note starts "Kept the words as they are." `FoldThread` is Esc; focusing the change again, or `OpenThreadInput`, reopens it.
@@ -93,6 +146,7 @@ This replaces the three 2026-11-09 "Owed" pieces: "✎ My own words", "talk back
     - Empty words make a cut. The recorded words leave the change out, and the later changes' threads move down with their changes. The words already in the text change nothing. A version's exact words show that version.
     - Later requests carry your words as a version, never as a message. A bubble that talks to Claude leaves your own words first.
   - **Keep and Undo.** The keep bubble and Ctrl+Enter in the input are exactly the change's Keep (`SetChangeIncluded(true)`), and the thread folds. A kept voice change stays in the Windows review, included for takes; Windows has no kept state for it. Ctrl+Backspace on an empty input is Undo: the change is left out and has no thread.
+    - *Superseded (track/v2-win-kept-change, entry above):* Keep is `KeepChange`, which makes the change kept, with no thread; nothing folds.
   - **The per-phrase keep (`KeepUnplaceable`, the twin of the Mac's `keepUnplaceable`).**
     - *Before this package:* when `PlaceAll` refused a change on geometry, the review row carried the refusal copy (for example "This change can't be placed in this take. Your edits are saved.") and had no window or fit. The change was never priced, while the others were. It stayed included and checked, and at Use it added no segment, so it was dropped silently.
     - *Now:* such a change, when the recording's envelope was read and the refusal is not a collision, keeps its original words. It is excluded through the "Keep original words" path, with an automatic note: "Change {n} keeps your original words: it can't be joined to the recording there." (`UnplaceableReason` also has the Mac's take-edge and insertion reasons). The rest are placed again and priced.
@@ -171,8 +225,8 @@ This replaces the three 2026-11-09 "Owed" pieces: "✎ My own words", "talk back
   - The native win-arm64 run: Core, Media and the App build with its XAML compiler.
   - Still shared and owed from the seam-at-a-cut entry: the sample-grid range check.
 - **Next package must know.**
-  - Windows Keep on a voice change only includes it, so the thread folds instead of going away. A Windows "kept" state would let it go as on the Mac.
-  - A thread never shows once takes are paid.
+  - Windows Keep on a voice change only includes it, so the thread folds instead of going away. A Windows "kept" state would let it go as on the Mac. *Done in track/v2-win-kept-change (entry above).*
+  - A thread never shows once takes are paid. *No longer: see track/v2-win-kept-change (entry above).*
   - `EditChange` and `AcceptThreadWords` share one body. Change the review's rediff there, not twice.
 
 ### 2026-11-09 — Native batch (win-arm64 VM, 2026-11-09): ran 2026-11-10, every headless check passes (track/v2-win-vm-native)
