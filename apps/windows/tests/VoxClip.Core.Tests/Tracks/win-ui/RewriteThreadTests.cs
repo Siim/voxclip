@@ -335,18 +335,23 @@ public sealed class RewriteThreadTests
     [Fact]
     public void AVersionThatDiffersInSeveralPlacesStaysOneChangeVoicedFromItsWholeText()
     {
-        var (session, _, _) = Open("word10 alpha beta gamma word14 word15 word16 word17 word18 word19 word20");
+        var (session, _, _) = Open("word10 alpha beta gamma delta epsilon word16 word17 word18 word19 word20");
         using var _session = session;
-        Assert.Equal(["w11", "w12", "w13"], session.Review!.Diff.Hunks[0].SourceWordIds);
-        session.OpenThreadOwnWords();
-        Assert.True(session.ApplyThreadOwnWords("delta word12 epsilon"));
-        var hunk = Assert.Single(session.Review!.Diff.Hunks);
-        Assert.Equal((VoiceLabDiffHunkKind.Voice, "delta word12 epsilon"), (hunk.Kind, string.Join(" ", hunk.NewTokens)));
-        Assert.Equal(["w11", "w12", "w13"], hunk.SourceWordIds);
-        Assert.Equal(2, session.ThreadDisplay!.Versions);
-        // A plain edit outside the thread is the local rediff as before: two changes.
-        Assert.True(session.EditChange(1, "zeta word12 eta"));
+        string[] span = ["w11", "w12", "w13", "w14", "w15"];
+        Assert.Equal(span, session.Review!.Diff.Hunks[0].SourceWordIds);
+        // A plain edit outside the thread is the local rediff as before: here, two changes.
+        Assert.True(session.EditChange(1, "zeta word12 word13 word14 eta"));
         Assert.Equal(2, session.Review!.Diff.Hunks.Count);
+        session.Edit("word10 alpha beta gamma delta epsilon word16 word17 word18 word19 word20");
+        session.FocusChange(2);
+        session.FocusChange(1);
+        session.OpenThreadOwnWords();
+        Assert.True(session.ApplyThreadOwnWords("zeta word12 word13 word14 eta"));
+        var hunk = Assert.Single(session.Review!.Diff.Hunks);
+        Assert.Equal((VoiceLabDiffHunkKind.Voice, "zeta word12 word13 word14 eta"), (hunk.Kind, string.Join(" ", hunk.NewTokens)));
+        Assert.Equal(span, hunk.SourceWordIds);
+        Assert.Equal((2, 2, true), (session.ThreadDisplay!.Version, session.ThreadDisplay.Versions, session.ThreadDisplay.Yours));
+        Assert.Contains("zeta word12 word13 word14 eta", Assert.Single(session.Review.VoiceHunks).PatchText);
     }
 
     [Fact]
@@ -395,11 +400,15 @@ public sealed class RewriteThreadTests
             (RewriteThreadDisplay.CostLineFor(ConnectorId.ClaudeCode), RewriteThreadDisplay.CostLineFor(ConnectorId.Anthropic), RewriteThreadDisplay.CostLineFor(ConnectorId.Ollama)));
         var view = AppSource("Controls", "TranscriptView.Thread.cs");
         foreach (var name in new[] { "display.Label", "display.InputLabel", "\"Previous version\"", "\"Next version\"", "display.VersionLabel",
-                     "RewriteThreadDisplay.StepLabel", "RewriteThreadDisplay.TurnLabel", "\"My own words\"", "SelectionItemPattern", "CustomNavigation" })
+                     "RewriteThreadDisplay.StepLabel", "RewriteThreadDisplay.TurnLabel", "\"My own words\"", "new ToggleButton", "IsChecked = display.OwnWords" })
             Assert.Contains(name, view);
         Assert.DoesNotContain("Flyout", view);
         Assert.DoesNotContain("ContentDialog", view);
         Assert.DoesNotContain("Popup", view);
+        // WinUI has no custom actions: the focused change's paragraph names both keys in its help text.
+        var presentation = AppSource("Controls", "TranscriptView.Presentation.cs");
+        Assert.Contains("RewriteThreadDisplay.TalkAction(talked.Ordinal)", presentation);
+        Assert.Contains("RewriteThreadDisplay.OwnWordsAction(talked.Ordinal)", presentation);
     }
 
     [Fact]

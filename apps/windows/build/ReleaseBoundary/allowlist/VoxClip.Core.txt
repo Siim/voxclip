@@ -9892,6 +9892,90 @@ member VoxClip.Core.Domain.VoiceLab.RewriteBlockedReason :: field public Context
 member VoxClip.Core.Domain.VoiceLab.RewriteBlockedReason :: field public Fit
 member VoxClip.Core.Domain.VoiceLab.RewriteBlockedReason :: field public Take
 member VoxClip.Core.Domain.VoiceLab.RewriteBlockedReason :: field public value__
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind :: field public Reply
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind :: field public Versions
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind :: field public value__
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: field private LanguageCode
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: field private Link
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: field private Templates
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: field private document
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: field public Path
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method private .cctor()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method private Characters(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method private IsObjectSchema(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method private Limit(string,int)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method private PunctuationAround(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method private Template(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public .ctor(System.Text.Json.Nodes.JsonObject,string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public CachedBlock(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Instruction(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Key(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Load(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Reply(System.Text.Json.Nodes.JsonObject,VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Request(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest,System.TimeSpan,System.Nullable`1<int>)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Schema(VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public SchemaName(VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Spoken(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Tag(VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public Validate(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_Alternatives()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_KeepBubble()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxMessageChars()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxMessages()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxNextStepWords()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxNextSteps()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxNoteWords()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxOutputTokens()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxTextChars()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_MaxVersions()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_PromptVersion()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_Sha256()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_SteadyBubbles()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt :: method public get_System()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method private .ctor(VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<string>,string,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<string>&,string&,System.Collections.Generic.IReadOnlyList`1<string>&)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public Equals(VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public get_NextSteps()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public get_Note()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public get_Texts()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply,VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply,VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public set_NextSteps(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public set_Note(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply :: method public set_Texts(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method private .ctor(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public .ctor(VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind,string,string,string,int,string,System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public Deconstruct(VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind&,string&,string&,string&,int&,string&,System.Collections.Generic.IReadOnlyList`1<string>&,System.Collections.Generic.IReadOnlyList`1<string>&)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public Equals(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Kind()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Language()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Messages()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Ordinal()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Recorded()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Scope()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Source()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public get_Versions()
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest,VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest,VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Kind(VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Language(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Messages(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Ordinal(int)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Recorded(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Scope(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Source(string)
+member VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest :: method public set_Versions(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.Core.Domain.VoiceLab.RewriteNextAction :: field internal MaximumInstructionBytes
 member VoxClip.Core.Domain.VoiceLab.RewriteNextAction :: field internal MaximumLabelBytes
 member VoxClip.Core.Domain.VoiceLab.RewriteNextAction :: field internal MaximumOrdinals
@@ -17746,6 +17830,11 @@ member VoxClip.Core.Services.VoiceLab.PatchRewriteService+Prompt :: method publi
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService+Prompt :: method public set_SchemaName(string)
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService+Prompt :: method public set_Sha256(string)
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService+Prompt :: method public set_System(string)
+member VoxClip.Core.Services.VoiceLab.RewriteFollowupService :: method private TimeoutKind(VoxClip.Core.Services.LLM.ConnectorId)
+member VoxClip.Core.Services.VoiceLab.RewriteFollowupService :: method public .ctor(VoxClip.Core.Services.LLM.LlmRunner,VoxClip.Core.Services.LLM.LlmCatalog,VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt)
+member VoxClip.Core.Services.VoiceLab.RewriteFollowupService :: method public Request(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest,VoxClip.Core.Services.LLM.ConnectorId)
+member VoxClip.Core.Services.VoiceLab.RewriteFollowupService :: method public SendAsync(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest,VoxClip.Core.Services.LLM.ILlmConnector,string,System.Threading.CancellationToken)
+member VoxClip.Core.Services.VoiceLab.RewriteFollowupService :: method public get_Prompt()
 member VoxClip.Core.Services.VoiceLab.RewriteNextActionFeedback :: field public PromptPath
 member VoxClip.Core.Services.VoiceLab.RewriteNextActionFeedback :: method private Checked(string)
 member VoxClip.Core.Services.VoiceLab.RewriteNextActionFeedback :: method private Fill(string,System.Collections.Generic.IReadOnlyDictionary`2<string,string>)
@@ -18804,6 +18893,10 @@ type VoxClip.Core.Domain.VoiceLab.RenderTimeline+Legacy
 type VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab
 type VoxClip.Core.Domain.VoiceLab.RewriteBlockedPhrase
 type VoxClip.Core.Domain.VoiceLab.RewriteBlockedReason
+type VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind
+type VoxClip.Core.Domain.VoiceLab.RewriteFollowupPrompt
+type VoxClip.Core.Domain.VoiceLab.RewriteFollowupReply
+type VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest
 type VoxClip.Core.Domain.VoiceLab.RewriteNextAction
 type VoxClip.Core.Domain.VoiceLab.RewriteScope
 type VoxClip.Core.Domain.VoiceLab.RewriteScopedReply
@@ -19344,6 +19437,7 @@ type VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+WavInfo
 type VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder
 type VoxClip.Core.Services.VoiceLab.PatchRewriteService
 type VoxClip.Core.Services.VoiceLab.PatchRewriteService+Prompt
+type VoxClip.Core.Services.VoiceLab.RewriteFollowupService
 type VoxClip.Core.Services.VoiceLab.RewriteNextActionFeedback
 type VoxClip.Core.Services.VoiceLab.RewriteNextActionFeedback+Budget
 type VoxClip.Core.Services.VoiceLab.SpeakerModel

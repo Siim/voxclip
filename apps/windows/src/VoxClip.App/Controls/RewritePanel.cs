@@ -78,6 +78,7 @@ internal sealed partial class RewritePanel : Grid
     {
         this.session = session;
         session.VoiceConsent = AuthorizeVoiceAsync;
+        session.ThreadBackend = ThreadSendAsync;
         task = new(session);
         this.correctionOpen = correctionOpen ?? (() => false);
         var connectorWire = session.Connector is { } selected ? ProviderWireId(selected.Connector.Id) : null;
@@ -227,9 +228,7 @@ internal sealed partial class RewritePanel : Grid
         var firstUse = !InlinePrivacyGranted();
         var billed = session.Estimate?.Kind == VoiceLabCostPresentationKind.Confirm;
         if (!firstUse && !billed) return true;
-        var privacy = RemoteLocal ? "Allow these words to be sent to this server for this Rewrite session. No audio or video." : firstUse ? ConnectorConsent.Text(ConnectorConsentAction.Rewrite, connector.Connector.Id,
-            connector.Name, session.Source.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word),
-            (connector.Connector as VoxClip.Core.Services.LLM.LlmConnector)?.CliDetection) : null;
+        var privacy = PrivacyText(connector, firstUse);
         if (firstUse && privacy is null) return false;
         return await session.ConfirmCostAsync(action, async token =>
         {
@@ -272,6 +271,13 @@ internal sealed partial class RewritePanel : Grid
             }
         });
     }
+    /// <summary>The Rewrite consent sentence a first send to this connector shows (ai §4.8), or the remote server's; null when the sign-in
+    /// can't be named, which refuses the send.</summary>
+    private string? PrivacyText(RewriteConnector connector, bool firstUse) =>
+        RemoteLocal ? "Allow these words to be sent to this server for this Rewrite session. No audio or video." : firstUse ? ConnectorConsent.Text(ConnectorConsentAction.Rewrite, connector.Connector.Id,
+            connector.Name, session.Source.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word),
+            (connector.Connector as VoxClip.Core.Services.LLM.LlmConnector)?.CliDetection) : null;
+
     private static Uri? PricingPage(VoxClip.Core.Services.LLM.ConnectorId id) => id switch
     {
         VoxClip.Core.Services.LLM.ConnectorId.Anthropic or VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode => new("https://www.anthropic.com/pricing"),

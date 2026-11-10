@@ -136,7 +136,7 @@ public sealed partial class TranscriptView : UserControl
         selectionFlyout.CanAskClaude = () => model?.CanAskClaude == true;
         selectionFlyout.AskClaude = () => model?.OpenAskClaudeOnSelection();
         AutomationProperties.SetAutomationId(this, "Editor.Transcript");
-        AutomationProperties.SetName(this, "Transcript. Select words to cut. Enter corrects spelling. F2 edits a proposed change. Control Alt K makes a clip.");
+        AutomationProperties.SetName(this, "Transcript. Select words to cut. Enter corrects spelling. F2 talks to Claude about a proposed change. Control Alt K makes a clip.");
         repeater = new ItemsRepeater
         {
             Layout = new StackLayout { Spacing = 14 },
@@ -241,7 +241,7 @@ public sealed partial class TranscriptView : UserControl
         if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= SelectionChanged; model.Announcement -= Announce; model.CorrectionChanged -= CorrectionChanged; }
         CloseInlineEditor(false);
         DetachProposal();
-        KeepChangeRequested = null; ExcludeChangeRequested = null; EditChangeRequested = null;
+        KeepChangeRequested = null; ExcludeChangeRequested = null;
         model = viewModel;
         model.Changed += ModelChanged;
         model.SelectionChanged += SelectionChanged;
@@ -258,7 +258,7 @@ public sealed partial class TranscriptView : UserControl
         if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= SelectionChanged; model.Announcement -= Announce; model.CorrectionChanged -= CorrectionChanged; }
         CloseInlineEditor(false);
         DetachProposal();
-        KeepChangeRequested = null; ExcludeChangeRequested = null; EditChangeRequested = null;
+        KeepChangeRequested = null; ExcludeChangeRequested = null;
         selectionFlyout.Hide();
         foreach (var visual in realized.Values) visual.Release();
         realized.Clear();
@@ -420,8 +420,10 @@ public sealed partial class TranscriptView : UserControl
         var display = pointer is null || visual is null ? null : HitPiece(visual, pointer.Offset);
         if (display?.Piece.Kind == TranscriptPieceKind.Inserted && display.Piece.Change is { } inserted)
         {
+            // A click on a change's new words opens its thread, whose input takes the keys.
             FocusChange(inserted.Ordinal, false);
             Focus(FocusState.Pointer);
+            OpenThread(inserted.Ordinal);
             args.Handled = true;
             return;
         }
@@ -478,7 +480,7 @@ public sealed partial class TranscriptView : UserControl
     private void DoubleTappedWord(object sender, DoubleTappedRoutedEventArgs args) { BeginCorrection(); args.Handled = true; }
     public void BeginCorrection()
     {
-        if (focusedChange > 0 && proposal.Hunks.Any(hunk => hunk.Ordinal == focusedChange)) BeginProposalCorrection();
+        if (focusedChange > 0 && proposal.Hunks.Any(hunk => hunk.Ordinal == focusedChange)) OpenThread(focusedChange);
         else BeginWordCorrection();
     }
     private void WordContextRequested(object sender, RightTappedRoutedEventArgs args)

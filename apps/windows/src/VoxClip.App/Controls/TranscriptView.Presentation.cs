@@ -26,7 +26,6 @@ public sealed partial class TranscriptView
     private IReadOnlyDictionary<int, TranscriptChangeState>? proposalStates;
     internal Action<int>? KeepChangeRequested { get; set; }
     internal Action<int>? ExcludeChangeRequested { get; set; }
-    internal Func<int, string, bool>? EditChangeRequested { get; set; }
     internal event Action<int>? ChangeFocused;
     internal int FocusedChange => focusedChange;
 
@@ -124,7 +123,7 @@ public sealed partial class TranscriptView
         timecode.TextAlignment = rtl ? TextAlignment.Left : TextAlignment.Right;
         var editor = (StackPanel)page.Children[3];
         if (ReferenceEquals(inlineEditor, editor)) CloseInlineEditor(false);
-        editor.Children.Clear();
+        ClearEditorHost(editor);
         rich.Blocks.Clear();
         var paragraph = new Paragraph();
         var runs = new List<WordRun>();
@@ -178,6 +177,8 @@ public sealed partial class TranscriptView
             }
         }
         rich.Blocks.Add(paragraph);
+        // The focused change's thread sits under the paragraph that holds its last piece (design.md §6.3 "Where").
+        PlaceThread(editor, actionsAfter?.Change is not null);
         var overlay = new TranscriptOverlay(rich, (FrameworkElement)page.Children[0], (FrameworkElement)page.Children[2]);
         var visual = new ParagraphVisual(rich, runs, pauses, overlay, grid, glyphs, editor, item, displays);
         visual.HighlightStarts = runs.Select(run => run.Run.ContentStart.Offset - rich.ContentStart.Offset).ToArray();
@@ -195,6 +196,10 @@ public sealed partial class TranscriptView
         rich.RightTapped -= WordContextRequested; rich.RightTapped += WordContextRequested;
         AutomationProperties.SetName(rich, string.Join(" ", pieces.Select(piece => piece.Kind == TranscriptPieceKind.Fold ? piece.FoldName :
             piece.Change is { } hunk ? $"Proposed change {hunk.Ordinal} of {proposal.TotalCount}: {piece.Text}" : piece.Text)));
+        // Narrator's form of the Mac's custom actions on the focused change: WinUI has none, so the keys are in the paragraph's help.
+        AutomationProperties.SetHelpText(rich, actionsAfter?.Change is { } talked
+            ? $"{RewriteThreadDisplay.TalkAction(talked.Ordinal)}: F2. {RewriteThreadDisplay.OwnWordsAction(talked.Ordinal)}: {RewriteThreadDisplay.OwnWordsKey}."
+            : "");
         DrawParagraph(visual);
         if (FrameProbePrepared is { } report) report(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }

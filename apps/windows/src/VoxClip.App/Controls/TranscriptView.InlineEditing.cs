@@ -25,12 +25,21 @@ public sealed partial class TranscriptView
 
     private bool HandleProposalKey(KeyRoutedEventArgs args)
     {
+        // F2 opens the focused change's thread for Claude, Shift+F2 with your own words (the Mac's Return and ⌥E: Alt+E would reach
+        // menu access keys); with no change focused, F2 corrects the selected word's spelling.
         if (args.Key == VirtualKey.F2)
         {
-            if (focusedChange > 0) BeginProposalCorrection();
-            else BeginWordCorrection();
+            var ownWords = InputState.Down(VirtualKey.Shift);
+            if (focusedChange > 0) OpenThread(focusedChange, ownWords);
+            else if (!ownWords) BeginWordCorrection();
             args.Handled = true;
             return true;
+        }
+        // Alt+Page Up and Alt+Page Down: the focused change's previous or next version (the Mac's ⌥← and ⌥→; Alt+← is Back).
+        if (InputState.Down(VirtualKey.Menu) && args.Key is VirtualKey.PageUp or VirtualKey.PageDown && focusedChange > 0)
+        {
+            if (SwitchThreadVersion(args.Key == VirtualKey.PageDown ? 1 : -1)) { args.Handled = true; return true; }
+            return false;
         }
         if (InputState.Down(VirtualKey.Menu) && (args.Key is VirtualKey.Up or VirtualKey.Down) && proposal.Hunks.Count > 0)
         {
@@ -66,7 +75,6 @@ public sealed partial class TranscriptView
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8, 0, 0, 0) };
         if (KeepChangeRequested is not null) Add("Keep", () => KeepChangeRequested?.Invoke(hunk.Ordinal));
         if (ExcludeChangeRequested is not null) Add("Undo", () => ExcludeChangeRequested?.Invoke(hunk.Ordinal));
-        if (EditChangeRequested is not null) Add("Edit", () => BeginProposalCorrection());
         return row;
 
         void Add(string title, Action action)
@@ -131,54 +139,30 @@ public sealed partial class TranscriptView
         RevealWord(index);
         var visual = realized.Values.FirstOrDefault(value => value.Runs.Any(run => run.Index <= index && run.LastIndex >= index));
         if (visual is null || !IsLoaded) { model.EndCorrection(keep: false); return; }
-        ShowInlineEditor(visual, "Correct spelling", model.CorrectionText,
-            "Changes captions only. Enter saves. Esc cancels.", _ => false, wordCorrection: true);
+        ShowInlineEditor(visual, model.CorrectionText);
     }
 
-    internal void EditProposalChange(int ordinal)
+    /// <summary>The word's inline spelling row under its paragraph: "Correct spelling", Enter saves (Tab saves and opens the next word), Esc
+    /// cancels, and a click outside it ends the correction.</summary>
+    private void ShowInlineEditor(ParagraphVisual visual, string value)
     {
-        FocusChange(ordinal);
-        BeginProposalCorrection();
-    }
-
-    private void BeginProposalCorrection()
-    {
-        if (!CanEditTranscript || model is null || EditChangeRequested is null ||
-            proposal.Hunks.FirstOrDefault(hunk => hunk.Ordinal == focusedChange) is not { } hunk) return;
-        var index = hunk.First >= 0 ? hunk.First : hunk.Anchor;
-        RevealWord(index);
-        var visual = realized.Values.FirstOrDefault(value => index >= value.Item.StartIndex && index < value.Item.StartIndex + value.Item.Count);
-        if (visual is null) return;
-        var expected = proposal;
-        var timing = proposalSession?.Review?.VoiceHunks.FirstOrDefault(review => review.Ordinals.Contains(hunk.Ordinal))?.Fit;
-        ShowInlineEditor(visual, $"New words for change {hunk.Ordinal}", hunk.NewText,
-            (timing is null ? "Nothing is sent. " : timing.Copy + ". ") + "Return saves · Esc cancels", value =>
-                ReferenceEquals(expected, proposal) && EditChangeRequested?.Invoke(hunk.Ordinal, value) == true,
-            ExcludeChangeRequested is null ? null : () => ExcludeChangeRequested?.Invoke(hunk.Ordinal));
-    }
-
-    private void ShowInlineEditor(ParagraphVisual visual, string title, string value, string hint, Func<string, bool> save, Action? reject = null, bool wordCorrection = false)
-    {
-        if (!wordCorrection) CloseInlineEditor(false);
+        const string title = "Correct spelling";
         selectionFlyout.Hide();
         var host = visual.Editor;
         var expectedProject = model?.Project;
         inlineEditor = host;
-        inlineWordCorrection = wordCorrection;
+        inlineWordCorrection = true;
         var text = new TextBox { Header = title, Text = value, TextWrapping = TextWrapping.Wrap, MaxWidth = 680 };
         model?.RewriteCaretChanged();
         text.SelectionChanged += (_, _) => model?.RewriteCaretChanged();
         AutomationProperties.SetName(text, title);
-        if (wordCorrection)
+        text.TextChanged += (_, _) => { if (ReferenceEquals(inlineEditor, host) && model is not null) model.CorrectionText = text.Text; };
+        text.LostFocus += (_, _) =>
         {
-            text.TextChanged += (_, _) => { if (ReferenceEquals(inlineEditor, host) && model is not null) model.CorrectionText = text.Text; };
-            text.LostFocus += (_, _) =>
-            {
-                if (ReferenceEquals(inlineEditor, host) && text.ContextFlyout is not { IsOpen: true } && text.SelectionFlyout is not { IsOpen: true })
-                    model?.EndCorrection();
-            };
-        }
-        var status = new TextBlock { Text = hint, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+            if (ReferenceEquals(inlineEditor, host) && text.ContextFlyout is not { IsOpen: true } && text.SelectionFlyout is not { IsOpen: true })
+                model?.EndCorrection();
+        };
+        var status = new TextBlock { Text = "Changes captions only. Enter saves. Esc cancels.", TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         var composing = false;
         var compositionEnded = false;
         text.TextCompositionStarted += (_, _) => composing = true;
@@ -191,25 +175,17 @@ public sealed partial class TranscriptView
         void Commit(bool next)
         {
             if (composing || compositionEnded || !ReferenceEquals(inlineEditor, host) || !CanEditTranscript) return;
-            if (wordCorrection && model is not null && !ReferenceEquals(expectedProject, model.Project))
-            { model.EndCorrection(keep: false); return; }
+            if (model is not null && !ReferenceEquals(expectedProject, model.Project)) { model.EndCorrection(keep: false); return; }
             var entered = text.Text;
-            if (wordCorrection && model is not null) model.CorrectionText = entered;
-            var applied = wordCorrection ? model?.SaveCorrection(advance: next) == true : save(entered);
+            if (model is not null) model.CorrectionText = entered;
+            var applied = model?.SaveCorrection(advance: next) == true;
             if (!applied)
             {
                 status.Text = "The edit was not applied. Your media and edits are safe.";
                 Announce(status.Text);
                 return;
             }
-            if (wordCorrection)
-            {
-                if (model?.CorrectionWordId is null) Focus(FocusState.Keyboard);
-                return;
-            }
-            CloseInlineEditor(false);
-            if (next && model?.HasSelection == true) { model.Select(model.SelectionEnd + 1); KeepWordInView(model.SelectionCaret); }
-            Focus(FocusState.Keyboard);
+            if (model?.CorrectionWordId is null) Focus(FocusState.Keyboard);
         }
         text.KeyDown += (_, args) =>
         {
@@ -220,14 +196,13 @@ public sealed partial class TranscriptView
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         Add("Save", () => Commit(false));
         Add("Cancel", () => CloseInlineEditor(true));
-        if (reject is not null) Add("Reject Change", () => { CloseInlineEditor(false); reject(); Focus(FocusState.Keyboard); });
         host.Children.Add(text);
         host.Children.Add(status);
         host.Children.Add(actions);
         host.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = Ui.EffectPolicy.Animations });
         text.Focus(FocusState.Programmatic);
         text.SelectAll();
-        if (wordCorrection && XamlRoot?.Content is UIElement root)
+        if (XamlRoot?.Content is UIElement root)
         {
             // Register after the opening pointer event has finished bubbling.
             DispatcherQueue.TryEnqueue(() =>
@@ -267,7 +242,15 @@ public sealed partial class TranscriptView
         inlineEditor = null;
         inlineWordCorrection = false;
         if (word) model?.EndCorrection(keep: false);
-        previous?.Children.Clear();
+        ClearEditorHost(previous);
         if (focus && IsLoaded) Focus(FocusState.Keyboard);
+    }
+
+    /// <summary>Empties a paragraph's editor host but keeps the thread, which moves only with the focused change.</summary>
+    private void ClearEditorHost(StackPanel? host)
+    {
+        if (host is null) return;
+        foreach (var child in host.Children.ToArray())
+            if (!ReferenceEquals(child, threadView)) host.Children.Remove(child);
     }
 }
