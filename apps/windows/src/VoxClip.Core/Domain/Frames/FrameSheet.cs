@@ -19,7 +19,7 @@ public sealed class FrameSheet
     public const double PixelsPerToken = 750.0;
     /// <summary>The summary's first line. It names the Mac on both platforms, so a connector reads the same text from either
     /// (shared/fixtures/autopilot/plan-frames-cases.json pins it).</summary>
-    public const string SummaryHeader = "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):";
+    public const string SummaryHeader = "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):";
 
     /// <summary>A sheet of at most <see cref="MaximumFrames"/> frames.</summary>
     public FrameSheet(IEnumerable<FrameSheetFrame> frames) => Frames = frames.Take(MaximumFrames).ToArray();

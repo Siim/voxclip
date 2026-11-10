@@ -263,7 +263,7 @@ public static partial class ClipAutopilotRequestBuilder
         var cover = frames.Cover.Select(candidate => prompt.Request("coverCandidate", Values(("id", candidate.Id),
             ("frame", candidate.Frame.ToString(CultureInfo.InvariantCulture)), ("time", ClipAutopilotFrames.Seconds(candidate.Time))))).ToArray();
         var block = prompt.Request("frames", Values(
-            ("summary", frames.Summary.Length == 0 ? "Frames measured on this Mac: none could be read." : frames.Summary),
+            ("summary", frames.Summary.Length == 0 ? "Frames measured on this computer: none could be read." : frames.Summary),
             ("blur", blur.Length == 0 ? prompt.Request("noBlurCandidates", Values()) : string.Join("\n", blur)),
             ("cover", cover.Length == 0 ? prompt.Request("noCoverCandidates", Values()) : string.Join("\n", cover))));
         return block + (frames.SendsImages ? prompt.Request("framesSent", Values()) : "");

@@ -33,7 +33,7 @@ def rect(box):
 def generated(prompt):
     request = prompt['request']
     summary = '\n'.join([
-        'Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):',
+        'Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):',
         'F1 1.25 s: face at 0.40,0.20,0.20,0.36, eyes open, quality 0.55, facing camera',
         'F2 4.75 s: face at 0.41,0.21,0.20,0.35, eyes closed, quality 0.48, facing camera',
         'F3 8.25 s: face at 0.39,0.19,0.21,0.36, eyes open, quality 0.62, facing camera, screen with 6 text boxes at 0.62,0.30,0.20,0.40',

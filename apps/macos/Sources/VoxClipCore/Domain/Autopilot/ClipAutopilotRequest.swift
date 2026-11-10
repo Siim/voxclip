@@ -290,7 +290,7 @@ public enum ClipAutopilotRequestBuilder {
             try prompt.request("coverCandidate", ["id": $0.id, "frame": String($0.frame), "time": FrameSheetFrame.seconds($0.time)])
         }
         let block = try prompt.request("frames", [
-            "summary": frames.summary.isEmpty ? "Frames measured on this Mac: none could be read." : frames.summary,
+            "summary": frames.summary.isEmpty ? "Frames measured on this computer: none could be read." : frames.summary,
             "blur": blur.isEmpty ? try prompt.request("noBlurCandidates", [:]) : blur.joined(separator: "\n"),
             "cover": cover.isEmpty ? try prompt.request("noCoverCandidates", [:]) : cover.joined(separator: "\n")])
         return block + (frames.sendsImages ? try prompt.request("framesSent", [:]) : "")

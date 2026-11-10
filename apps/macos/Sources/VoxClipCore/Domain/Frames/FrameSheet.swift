@@ -22,7 +22,7 @@ public struct FrameSheet: Sendable, Equatable {
     /// The summary block: a header line, then one line per frame, facing judged against `pitchBaseline`.
     public func summary(pitchBaseline: Double?) -> String {
         guard !frames.isEmpty else { return "" }
-        let header = "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):"
+        let header = "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):"
         return ([header] + frames.map { $0.summaryLine(pitchBaseline: pitchBaseline) }).joined(separator: "\n")
     }
 

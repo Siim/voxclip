@@ -8515,8 +8515,8 @@
       ],
       "pitchBaseline": null,
       "expect": {
-        "summary": "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 1.25 s: face at 0.40,0.20,0.20,0.36, eyes open, quality 0.55, facing camera\nF2 4.75 s: face at 0.41,0.21,0.20,0.35, eyes closed, quality 0.48, facing camera\nF3 8.25 s: face at 0.39,0.19,0.21,0.36, eyes open, quality 0.62, facing camera, screen with 6 text boxes at 0.62,0.30,0.20,0.40\nF4 11.75 s: face at 0.40,0.20,0.20,0.36, eyes open, quality 0.50, facing camera, screen with 5 text boxes at 0.63,0.31,0.19,0.39\nF5 15.25 s: no face, dense text with 9 text boxes at 0.10,0.60,0.30,0.20",
-        "summaryTokens": 268
+        "summary": "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 1.25 s: face at 0.40,0.20,0.20,0.36, eyes open, quality 0.55, facing camera\nF2 4.75 s: face at 0.41,0.21,0.20,0.35, eyes closed, quality 0.48, facing camera\nF3 8.25 s: face at 0.39,0.19,0.21,0.36, eyes open, quality 0.62, facing camera, screen with 6 text boxes at 0.62,0.30,0.20,0.40\nF4 11.75 s: face at 0.40,0.20,0.20,0.36, eyes open, quality 0.50, facing camera, screen with 5 text boxes at 0.63,0.31,0.19,0.39\nF5 15.25 s: no face, dense text with 9 text boxes at 0.10,0.60,0.30,0.20",
+        "summaryTokens": 270
       }
     },
     {
@@ -8629,8 +8629,8 @@
       ],
       "pitchBaseline": null,
       "expect": {
-        "summary": "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 0.00 s: face at 0.40,0.30,0.20,0.40 (largest of 3), eyes open, quality 0.70, facing camera\nF2 1.00 s: face at 0.12,0.38,0.62,0.04, eyes open\nF3 2.68 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 1.00, turned away\nF4 3.50 s: no face, 4 text boxes\nF5 4.50 s: face at 0.40,0.30,0.20,0.40, eyes unknown, quality 0.44",
-        "summaryTokens": 191
+        "summary": "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 0.00 s: face at 0.40,0.30,0.20,0.40 (largest of 3), eyes open, quality 0.70, facing camera\nF2 1.00 s: face at 0.12,0.38,0.62,0.04, eyes open\nF3 2.68 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 1.00, turned away\nF4 3.50 s: no face, 4 text boxes\nF5 4.50 s: face at 0.40,0.30,0.20,0.40, eyes unknown, quality 0.44",
+        "summaryTokens": 193
       }
     },
     {
@@ -8679,8 +8679,8 @@
       ],
       "pitchBaseline": 0.45,
       "expect": {
-        "summary": "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 1.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, facing camera\nF2 2.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, turned away",
-        "summaryTokens": 116
+        "summary": "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 1.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, facing camera\nF2 2.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, turned away",
+        "summaryTokens": 118
       }
     },
     {
@@ -8729,8 +8729,8 @@
       ],
       "pitchBaseline": null,
       "expect": {
-        "summary": "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 1.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, turned away\nF2 2.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, turned away",
-        "summaryTokens": 115
+        "summary": "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 1.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, turned away\nF2 2.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, turned away",
+        "summaryTokens": 117
       }
     },
     {
@@ -9259,8 +9259,8 @@
       ],
       "pitchBaseline": null,
       "expect": {
-        "summary": "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 0.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF2 1.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF3 3.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF4 4.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF5 6.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF6 7.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF7 9.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF8 10.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF9 12.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF10 13.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF11 15.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF12 16.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF13 18.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF14 19.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF15 21.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF16 22.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF17 24.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF18 25.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF19 27.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF20 28.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF21 30.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF22 31.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF23 33.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF24 34.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera",
-        "summaryTokens": 921
+        "summary": "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 0.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF2 1.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF3 3.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF4 4.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF5 6.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF6 7.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF7 9.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF8 10.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF9 12.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF10 13.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF11 15.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF12 16.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF13 18.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF14 19.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF15 21.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF16 22.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF17 24.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF18 25.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF19 27.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF20 28.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF21 30.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF22 31.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF23 33.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera\nF24 34.50 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.50, facing camera",
+        "summaryTokens": 924
       }
     },
     {
