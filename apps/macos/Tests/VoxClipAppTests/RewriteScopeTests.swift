@@ -970,7 +970,8 @@ private final class WorkThreads: Sendable {
     /// A voice change's window reads the words beside the passage, so a cut there, outside the scope, can move it: the
     /// review built again says so, and the takes made for the old window can no longer be used. Use Takes waits for that
     /// review; a cut far away leaves the takes ready. In connected speech the cut word touches the passage, so the window
-    /// stays where it was, its seam now at the cut (voice-lab §8.4 step 5, 2026-11-09), and the takes stay ready.
+    /// stays where it was, its seam now at the cut (voice-lab §8.4 step 5, 2026-11-09), and the takes stay ready, also off
+    /// the sample grid (§10.1). A cut word that really overlaps the passage refuses the window, and its takes retire.
     @Test func aCutBesideThePassageRetiresItsTakes() async throws {
         let stub = ScopeStub()
         let (app, _) = app("ollama", stub: stub)
@@ -990,8 +991,8 @@ private final class WorkThreads: Sendable {
         step(undo) { editor.apply(.cutSelection(ids: ["w61"]), name: "Cut selection") }
         await session.reviewing?.value
         #expect(session.review?.voiceHunks.first?.window == before && generation.readyToAccept)
-        // Where the touching boundary lies off the source grid, the stored edge of a seam at the cut would cut into the cut
-        // word, so the cut refuses the window: the review built again says so and the takes for the old window retire.
+        // Off the source grid the touching boundary meets the stored edge on the grid (voice-lab §10.1, 2026-11-10; it was
+        // refused until then), so the window stays there too and its takes stay ready.
         editor.closeRewrite(returnFocus: false)
         let (offGrid, offGridUndo) = try self.editor(app, tab: nil, contiguous: true) { words in
             words[61].end += 1e-9; words[62].start += 1e-9
@@ -999,15 +1000,30 @@ private final class WorkThreads: Sendable {
         defer { offGrid.close() }
         offGrid.selectedWordIDs = ["w62", "w63", "w64"]
         let touching = try await rewrite(offGrid)
-        #expect(touching.review?.voiceHunks.first?.window != nil)
-        let takes = try giveTake(touching, editor: offGrid)
-        var publishedOffGrid = 0
-        takes.publishForTests = { _, _, _ in publishedOffGrid += 1; throw CancellationError() }
+        let offGridWindow = try #require(touching.review?.voiceHunks.first?.window)
+        let offGridTakes = try giveTake(touching, editor: offGrid)
+        offGridTakes.publishForTests = { _, _, _ in throw CancellationError() }
         step(offGridUndo) { offGrid.apply(.cutSelection(ids: ["w61"]), name: "Cut selection") }
-        #expect(touching.reviewing != nil && proposal(touching) != nil && touching.current)
-        #expect(await touching.acceptTakes() == false)
-        #expect(publishedOffGrid == 0 && !takes.readyToAccept && !takes.rows.isEmpty)
-        #expect(touching.review?.voiceHunks.first?.window == nil && touching.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
+        await touching.reviewing?.value
+        #expect(touching.review?.voiceHunks.first?.window == offGridWindow && offGridTakes.readyToAccept)
+        // A word that really overlaps the passage is bridged while it is kept; cut, it crosses the seam at the cut, so the
+        // review built again refuses the window and the takes for the old window retire.
+        offGrid.closeRewrite(returnFocus: false)
+        let (overlap, overlapUndo) = try self.editor(app, tab: nil, contiguous: true) { words in
+            words[60].end -= 0.5; words[61].end = words[62].start + 0.1
+        }
+        defer { overlap.close() }
+        overlap.selectedWordIDs = ["w62", "w63", "w64"]
+        let crossing = try await rewrite(overlap)
+        #expect(crossing.review?.voiceHunks.first?.window?.leftBridgeWordIds == ["w61"])
+        let takes = try giveTake(crossing, editor: overlap)
+        var publishedOverlap = 0
+        takes.publishForTests = { _, _, _ in publishedOverlap += 1; throw CancellationError() }
+        step(overlapUndo) { overlap.apply(.cutSelection(ids: ["w61"]), name: "Cut selection") }
+        #expect(crossing.reviewing != nil && proposal(crossing) != nil && crossing.current)
+        #expect(await crossing.acceptTakes() == false)
+        #expect(publishedOverlap == 0 && !takes.readyToAccept && !takes.rows.isEmpty)
+        #expect(crossing.review?.voiceHunks.first?.window == nil && crossing.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
         #expect(published == 0)
     }
 
