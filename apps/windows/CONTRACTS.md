@@ -1,5 +1,29 @@
 # Windows fixed contracts
 
+### 2026-11-10 — The App meets a replace range on the source sample grid (track/v2-sample-grid-display)
+
+This settles the owed item in the sample-grid entry below. apps/macos/CONTRACTS.md (same date) has the Mac display sites.
+
+- **Changed:** `DebugVoiceLabActions.For` (the DEBUG AI passage menu) uses `VoiceLabReplacement.Covers(start, end, rate)` at `Media.Source.Audio?.SampleRate ?? 48000`, the Core's rate. It was the App's one word-versus-range check in seconds.
+- **Already on the Core's rule, unchanged:**
+  - The transcript's AI words (`TranscriptWordDecoration.Speech`, the `TranscriptView.Presentation` AI waveform) follow the range's `FirstWordId`..`LastWordId`, not times.
+  - `ContainsAiSpeech` (the disclosure, the sidebar's "AI modified" and the export names) asks `VoiceLabRenderContract.Prepare`, whose planner uses the grid.
+  - Timeline tiles and frames compare times only to draw.
+- **Tests:** `EditorVoiceLabHistoryTests.DebugMenuMeetsTheRangeOnTheSourceGrid` (DEBUG, win-ui) uses the passage fixture at 48 kHz with the range stored on the grid.
+  - w4 starts one ulp, or half a sample, before the stored start, or w5 ends one ulp after the stored end. The word shows as AI modified and its menu offers Delete AI passage.
+  - A w5 crossing the end by 2.5 samples gets no menu.
+  - With the change reverted, the three covered cases fail in Debug.
+- **ReleaseBoundary:** unchanged (no public API).
+- **Verification** (on the Mac):
+  - Core Release: 3 455 tests (3 426 passed, 29 skipped, 0 failed).
+  - win-ui Release: 1 430 tests (1 425 passed, 5 skipped, 0 failed).
+    - A first run aborted after 269 tests with an `AccessViolationException` inside .NET's `DriveInfo.GetDrives()` (`getmntinfo`), reached from `VoiceLabCapacity` in `PaidTakePlaybackTests`. That is a runtime race while this Mac's mounts changed. The rerun passed.
+  - win-ui Debug (the new test is DEBUG-only): its 4 cases pass.
+    - 18 other Debug-only failures in `RewriteGenerationTests` and `RewriteTakeReviewTests` are Debug copy, for example "Check the ElevenLabs key" appended to an expected message.
+    - They fail the same way with this change reverted. Release does not build them this way, and CI runs Release.
+  - `VoxClip.App.TypeCheck` Release: 0 warnings, 0 errors. `check-xaml.py`: 0 problems.
+  - No native VM check: the change is a DEBUG view-model check with no Windows-only code.
+
 ### 2026-11-10 — Words meet a replace range on the source sample grid, the twin of the Mac rule (track/v2-sample-grid-range)
 
 The seam package's owed item (2026-11-09 entry below). apps/macos/CONTRACTS.md (same date) has the cause, the rule, the moved vectors and the fuzz numbers before and after. The Mac got the same Core change, the App test updates and the spec (voice-lab §10.1).
