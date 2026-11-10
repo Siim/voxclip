@@ -86,6 +86,10 @@ import xlocale
     @ObservationIgnored var executeForTests: (@MainActor (VoiceLabTakeRunQuote, @Sendable ([VoiceLabTakeRow]) async -> Void, @Sendable () async throws -> Void) async throws -> VoiceLabTakeRunResult)?
     func finishGenerationForTests() async { await sending?.value; await quotePreparation?.value }
     func finishQuotePreparationForTests() async { await quotePreparation?.value }
+    /// Automatic price preparations (`requestQuote`) not yet returned, a cancelled one included: from the moment a new
+    /// voice, model or input asks for one, before `prepareTakes` has a plan to mark as preparing. The Rewrite smoke's
+    /// settle waits on it (DebugRewriteSmoke.swift `busyReason`).
+    @ObservationIgnored private(set) var quotePreparationsRunning = 0
     func showFixture(_ state: String, voice: VoiceConsentRecord) {
         fixture = true
         voices = state == "no-voice" ? [] : [voice]
@@ -362,7 +366,13 @@ import xlocale
         revision += 1; quote = nil; cost = nil; quotedInput = nil; preparingQuote = false
         quotePreparationFailed = false; problem = ""
         guard prepareNewQuote, let prepareQuote else { return }
+        #if DEBUG
+        quotePreparationsRunning += 1
+        #endif
         quotePreparation = Task {
+            #if DEBUG
+            defer { quotePreparationsRunning -= 1 }
+            #endif
             guard !Task.isCancelled else { return }
             await prepareQuote()
         }

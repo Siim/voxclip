@@ -311,7 +311,7 @@ It drives the real Rewrite session through these scenarios using only clicks a u
 
 A take whose only issue is a join advisory is chosen automatically (ADR-R39), so no scenario clicks Use anyway: S3-exact, S14, S15 and S16 once did. The Windows twin (`RewriteSmokeTests`) runs S17, its twin of S16: twelve phrases in three parts, one approval, each later part quoted again at the approved price.
 
-After every step it checks seven invariants, and at the end of S10–S12 two more:
+After every step it checks these invariants; I5 is checked at the end of every scenario, and I8 and I9 at the end of S10–S12:
 
 - I1: a control that acts, or the resolver, is visible.
 - I2: no disabled control.
@@ -322,6 +322,8 @@ After every step it checks seven invariants, and at the end of S10–S12 two mor
 - I7: an added tag shows in the phrase quote.
 - I8: the applied take cuts or matches the video as its length requires; it keeps the source video in the exact pass.
 - I9: every voice change is applied in your voice; none is dropped on the way.
+- I10: while Rewrite waits on nothing, its footer has a primary that moves forward.
+- I11: the step reads the panel settled: nothing the session started is still in flight, including the price a newly chosen voice asks for at once.
 
 It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel for each failing step. It exits non-zero on any failure not named in `--known-failing`. The same run is `MacUIIntegrationTests/rewriteSmoke`, which asserts every invariant with no known failures. Hand over a build only when the smoke is clean, or when every remaining failure is named and the user has been told.
 
