@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On the Mac, when a new version from your talk with Claude would discard paid takes, the Rewrite panel now asks "Discard 2 paid takes for change 3?" with Discard Takes and Continue, instead of "Discard this change?", since the change itself stays.
 - While Rewrite prepares the price of your takes, or once it is priced with no take made, the panel no longer says "Listen, pick a take, then use them." before any take exists.
 - Ask Claude no longer freezes the editor while it looks for faces and text in the picture, and a blur or pixelate that follows a face no longer stalls it while the track is found.
 - With paid takes, a new version of a Rewrite change from its talk with Claude, Claude's or your own words, now waits in the talk for you to confirm discarding the takes, then shows there as its version with its turn; declining changes nothing and keeps what you typed.

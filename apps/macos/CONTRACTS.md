@@ -1,5 +1,39 @@
 # macOS implementation contracts
 
+### 2026-11-10 — A thread version's discard question names the takes (track/v2-discard-takes-copy)
+
+This settles the thread-deferred-edit entry's "Next package must know" item (below). A waiting thread version asked "Discard this change?" with Discard Changes, though only the change's paid takes go. See design.md §6.3 "Talk back to Claude" → "Paid takes" and the copy table.
+
+- **Copy** (Mac, thread versions only):
+  - The question is "Discard {n} paid take(s) for change {i}?", or "Discard your paid takes for change {i}?" while the count is 0 (the first takes still being made), as the waiting line does.
+  - The buttons are Keep Working (the safe primary, unchanged: it keeps the change as it is) and **Discard Takes and Continue**.
+  - Every other caller keeps "Discard this change?" / "Discard these {c} changes?" with Discard Changes.
+- **Mac and Windows wording:** the Mac moved toward Windows.
+  - The confirm button is Windows' "Discard takes and continue" in the Mac's title case.
+  - The question starts with "Discard … paid takes", as Windows' "Discard paid takes to change this review?" and design.md's "Discard {t} takes?" do. The brief's example, "Replace {n} paid take(s) for change {i}?", used another verb than its button, so I used "Discard" for both.
+  - Windows wasn't changed (house rules): it keeps Cancel, and its question names neither the count nor the change. Its question covers every paid review change, not only thread versions.
+- **Changed (App):**
+  - `RewriteSession.confirmDiscardChanges(waiting:perform:)` and `confirmPaidProposalChange(waiting:perform:)` take the `RewriteThreadState.Waiting` instead of a bare `owner: UUID?`. The question's `owner` is `waiting?.token`, as before. So "the owner is a thread version" now holds by type, and the question's count is the waiting line's count.
+  - `RewriteThreadDisplay.discardTakesQuestion(takes:ordinal:)` is new. It shares `paidTakes(_:)` with `waitingLine(takes:)`.
+  - `placeRewriteThreadVersion` builds the `Waiting` once and passes it; its announcement uses `waiting.takes`.
+  - The confirm action's id stays `discardChanges`, so the smoke, `MakeItPostableTests` and the accessibility identifiers (`voxclip.director.discardChanges`) are unchanged.
+- **VoiceOver:**
+  - `confirmDiscardChanges` announces the question, then the thread announces its waiting line.
+  - The footer draws the question and puts it on Keep Working as its hint (`PanelFooterView`). Each button's title is its label.
+  - SwiftUI's accessibility tree can't be read offscreen. So the test reads what the panel drew (`director.question`, `director.button.*`, `director.answer`), and the announcements.
+- **Inline:** no new pop-up; the question stays in the Rewrite job's footer.
+- **Tests** (App `RewriteThreadTests`, +2, 24 in all):
+  - `aThreadVersionsQuestionNamesThePaidTakesNotTheChange`:
+    - Claude's version with paid takes asks the take copy with the count, with the owner and the announcements, and the panel draws it;
+    - Keep Working keeps the change and takes;
+    - a 0-count `Waiting` asks "Discard your paid takes for change {i}?".
+  - `anotherCallersQuestionKeepsTheChangeCopy`: with paid takes, Keep on the change and a plain `confirmDiscardChanges` ask the change copy with Discard Changes and no owner.
+  - The doc comments of the three waiting tests now say Discard Takes and Continue.
+  - **Red without the change:**
+    - With the old copy back in `confirmDiscardChanges`, the first test fails with 9 issues.
+    - With the take copy for every caller with paid takes, the second fails with 3 issues.
+    - The other test passes in each case.
+
 ### 2026-11-10 — AVAssetReader pulls run off the cooperative pool (track/v2-reader-off-pool)
 
 CI 42828823833 (track/v2-smoke-s8, 229d0efc, with the Vision fix): the Media step hung about a minute in, and the watchdog stopped it.
