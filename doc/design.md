@@ -1416,7 +1416,7 @@ its measured pre-fit trimmed length and the selected take's receipt pace, not th
 text estimate. A fresh quote and priced click are still required, including after another
 retry quote or a speech-model change.
 
-Duration choices are inline rows, with none preselected for each passage and take:
+Duration choices are inline rows for each passage and take. Only valid choices show, and the first valid one is chosen at once (`autoChooseVideo` on both platforms; "Phrase cards show only controls that can act" below):
 
 - **Keep source video duration** — “Adds {s} s of natural pauses in your room's sound. Speech keeps its pace.” Keep the existing verified-fit copy when no pauses are added; disable with the actual reason if natural pause capacity is insufficient.
 - **Cut the video to this take** — “Removes {s} s of video at a pause, like a vlog jump cut. Speech keeps its pace.” Show only for a verified safe cut; the rest of the source window gets a 1.06× punch-in after the first jump.
