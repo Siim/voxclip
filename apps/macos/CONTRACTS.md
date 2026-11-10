@@ -1,5 +1,74 @@
 # macOS implementation contracts
 
+### 2026-11-10 — A hung Swift test step names itself; Vision runs off the cooperative pool (track/v2-media-hang)
+
+The CI step `Swift test (VoxClipMediaTests)` sometimes went silent and was killed at its 40-minute limit (CI 42770795464 on 2026-11-10, 42580229744 on 2026-11-09). Other runs finish it in about 25 minutes.
+
+- **The cause** (reproduced): Vision's synchronous `perform` on a cooperative thread. The call path is `EffectRenderTests.visionFindsTheTextAndTracksTheMovingSubject` → `ClipEffectVision.detect` → `observe` → `VNImageRequestHandler.perform([faces, words])`.
+  - `VNRecognizeTextRequest` (`.accurate`) waits inside `perform`, in Vision's `VNCRImageReaderDetector`, on a semaphore that work on the Swift concurrency pool signals.
+  - `detect` and `track` take the caller's isolation (`#isolation`), so a nonisolated test task runs `perform` on a pool thread. It then waits for a pool thread of its own.
+  - On the 3-core runner the pool has 3 threads, so it deadlocks once other tests also hold threads (synchronous CIContext renders, AVAssetReader loops, `Process.waitUntilExit`). Under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` (one thread) it deadlocks every time.
+  - `MP4CoverEmbedTests`, `titleEmojiAndArrowGoldens` and `appleCJKAndUnsupportedLanguages` were bystanders. The test process's stdout is block-buffered, so the log stopped up to a whole buffer before the hang. That fits: the Vision test runs later in the same `.serialized` suite as `titleEmojiAndArrowGoldens`, inside the output that never flushed.
+  - The 2026-11-09 stop (in the XCTest phase's output) is most likely the same: the test has existed since 03407045 (2026-11-05), and the buffering hides where it stopped. No stacks exist for that run.
+  - The same hazard as `FrameAnalyzer.look` (lead, 2026-11-08), in a second place.
+  - In the app, Ask Claude (`EditorModel`, `@MainActor`) ran the same `perform` on the main thread and froze the window while it looked at the picture.
+- **Changed (Media).**
+  - `VisionQueue` (Frames/VisionQueue.swift): the concurrent queue `FrameAnalyzer` used (`voxclip.frames.vision`), plus `run(_:_:)`, which runs synchronous Vision on it behind a continuation. Every Vision `perform` in VoxClipMedia now goes through it: `FrameAnalyzer.look`, `ClipEffectVision.detect` (`observe`) and `track` (`observe`, `salient`), and lip sync's face check (`LipsyncWindowPreparation.largestFaceHeight`).
+  - A custom `FaceDetector` (the smoke's stand-in) still runs inline, as before.
+  - `VisionQueue.assertOnQueue()`, a DEBUG `dispatchPrecondition`, sits at the top of `AppleFrameVision.observe`, `ClipEffectVision.observe`/`salient` and `largestFaceHeight`. A test that reaches synchronous Vision outside the queue crashes at once instead of hanging the runner now and then. `CalibrationVisionHarness` now goes through `FrameAnalyzer.look`.
+- **Deleted:** `FrameAnalyzer.visionQueue` and its private `UncheckedImage` (now in `VisionQueue`), the inline face request in `LipsyncWindowPreparation.prepare`.
+- **Test bound:** `NativeSpeechTests.appleCJKAndUnsupportedLanguages` awaits `AppleSpeechTranscriber.supports` and `cacheIdentity`, which ask the system speech service through `SpeechTranscriber.supportedLocale(equivalentTo:)`. It now awaits them through `TestDeadline.value(…, timeout: .seconds(60))`, so a service that never answers fails the test with "Apple Speech's locale lookups" instead of holding the suite.
+- **The watchdog** (`apps/macos/scripts/test-watchdog.py`; CI's four `Swift test (…)` steps run `python3 scripts/test-watchdog.py --label <core|app|media|caption-parity> -- swift test …`). The commands, env and timeouts are otherwise unchanged.
+  - **Pass-through:** stdout and stderr are copied byte for byte, and a run that ends on its own exits with `swift test`'s code (128 + signal for a signal).
+  - **When it fires:** when the run has printed nothing AND its process tree has used under 0.05 cores for 6 minutes (`--idle-seconds 360`). It also fires on 20 minutes with no output at all (`--silent-seconds 1200`), which catches a spinning hang.
+  - **Why not silence alone:** passing runs are silent for up to 13 minutes. The App step is quiet for 10–13 min and Media for 6 min 12 s, because stdout is block-buffered. `CaptionParityTests` renders its goldens for 519 s in one test (CI 42649873743, 42757119426, 42770795696).
+  - **What it saves** before ending the tree (SIGTERM, then SIGKILL after 15 s), into `$RUNNER_TEMP/voxclip-test-stacks/<label>/`:
+    - `process-tree.txt`;
+    - `sample-<pid>-<name>.txt` (`/usr/bin/sample <pid> 5`, then `sudo -n sample`, then `sudo -n spindump`);
+    - `concurrency-<pid>-<name>.txt` (`swift-inspect dump-concurrency`, when it exists);
+    - `SUMMARY.txt` (why it fired and what each tool reported).
+  - **Flush:** it also asks each process to `fflush` its stdout through lldb, so the log reaches the real last lines. It does this only where attaching can't show an authorization dialog: `DevToolsSecurity` enabled, or `sudo -n`. `VOXCLIP_WATCHDOG_NO_ATTACH=1` and `VOXCLIP_WATCHDOG_NO_SUDO=1` turn those off locally.
+  - **Exit:** it then exits 124 with a `::error title=Test run hung::` annotation, and the step fails in minutes instead of at its limit. Because the tree is ended, SwiftPM's lock is free for the next step.
+  - **Upload:** the step `Upload hung Swift test stacks` (`if: failure()`, `actions/upload-artifact@v4`, `if-no-files-found: ignore`) uploads the folder as `macos-swift-test-stacks`.
+- **Reading the artifact:** `gh run download <run> -R Siim/voxclip -n macos-swift-test-stacks`, then open `<label>/sample-*-swiftpm-testing-helper.txt` (the test process).
+  - Look for threads on `com.apple.root.*.cooperative` that are blocked (`__ulock_wait`, `semaphore_wait_trap`, `_dispatch_group_wait_slow`, `waitUntilExit`, `mach_msg` under a framework). The frames above them name the test and the call.
+  - A deadlocked pool shows every cooperative thread blocked like that.
+  - An await that never resumes (a system service) shows idle cooperative threads; `concurrency-*.txt` lists the suspended tasks.
+  - The step log after the flush ends at the tests that were in flight.
+- **Tests:** `python3 apps/macos/scripts/test_watchdog.py` (9 tests, local; CI does not run it). They cover:
+  - a silent dummy (a compiled sleeper) is sampled (`Call graph`) and ended with 124 within seconds;
+  - a platform binary that can't be sampled still gets a stacks file;
+  - steady output keeps a run alive;
+  - normal output and exit codes are unchanged (3, 0, 143);
+  - the hang decision (519 s silent but busy is not hung; 20 min silent is; 6 min silent and idle is) and the CPU accounting.
+- **Red without the change:** with 6667ce7f's sources, `MP4CoverEmbedTests|EffectRenderTests|NativeSpeechTests|CaptionPerformanceTests|MacUIRenderPerformanceTests` under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` printed nothing and stopped. The watchdog fired after 181 s idle (`--idle-seconds 180`), and its sample showed the one cooperative thread in `visionFindsTheTextAndTracksTheMovingSubject` → `ClipEffectVision.observe` → `-[VNRequestPerformer _performOrderedRequests:…]` → `_dispatch_group_wait_slow`. With the change, the same run passes in 8 s.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, a fresh `VOXCLIP_DATA_DIR` per run, serial under `nice -n 10`, load average 7–20, under the watchdog):
+  - Media in full (`--filter VoxClipMediaTests --skip CaptionParityTests`): 646 tests in 84 suites passed in 1,181 s.
+  - Under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`, twice: no hang either time.
+    - Run 1 (1,359 s) was while the smoke's stand-in face check still went through the queue. Three Rewrite smoke scenarios (S8, S-own-mic-misfit, S-guard-blocked) failed "Rewrite not applied". With the stand-in inline again (final code), that smoke test passed alone under the strict pool in 352 s.
+    - S8's failure is older than this package: CI 42788989271 at 6667ce7f failed the Media step on the same "S8-exact step 4 I5: Rewrite not applied" in 28 min, with no hang. That is an ordering race in the Rewrite smoke, which this package does not fix.
+    - Run 2, the final code (1,734 s): 645 passed. `ExportStopTests.exportPumpsStopAtSampleBoundaries` (stoppedPump 0) failed: the export didn't reach its 10th append within `TestDeadline`'s 10 s on one thread under load. It has no Vision in its path, and it passed in run 1 and in the normal run.
+  - The guard: with `ClipEffectVision.detect` calling `observe` directly again, the test process traps as soon as `visionFindsTheTextAndTracksTheMovingSubject` starts, without the strict pool. EffectRenderTests, FrameAnalyzerTests, ContextDemoZoomCoverCompositionTests and NativeSpeechTests pass under the strict pool (42 tests, 24 s).
+  - Both `check_drift.py` and `tools/schemas/validate.py` pass. Core and App were not run: their code is untouched.
+  - CI 42807560623 (track/v2-media-hang, 1b0c41c5), every macOS Swift test step under the watchdog, none fired:
+    - Core passed in 13 min 36 s and App in 22 min 25 s.
+    - Media passed in 27 min 27 s (12:19:04–12:46:31Z).
+    - CaptionParity passed in 8 min 59 s.
+    - `Upload hung Swift test stacks` was skipped.
+- **Not fixed (reported):**
+  - `AppleSpeechTranscriber.locale(for:)` awaits `SpeechTranscriber.supportedLocale(equivalentTo:)` with no time bound in the product. design.md says nothing about what the user sees when the speech service never answers, so no product timeout was added.
+  - Tests that still block a cooperative thread for a bounded time:
+    - `MP4CoverEmbedTests.samples` (`copyNextSampleBuffer`);
+    - `ffprobeStreams` and the `say`/`afconvert` helpers (`waitUntilExit`);
+    - the synchronous CIContext golden renders;
+    - `UIProcessHarness.run`, whose `Thread.sleep` poll holds one pool thread for the whole app run, up to 900 s.
+  - None of these waits on pool work, so they slow the pool but cannot deadlock it on their own.
+- **Next package must know.**
+  - CI's Media step can still fail on the Rewrite smoke's S8 ("Rewrite not applied", CI 42788989271). That is a test failure in about 28 min, not a hang, and it is older than this package.
+  - Synchronous Vision goes through `VisionQueue.run`. A DEBUG precondition stops a test that skips it.
+  - A hung macOS Swift test step now fails at about 6 min with `test-watchdog: no output and under 0.05 cores…`. Read the `macos-swift-test-stacks` artifact before re-running.
+  - Don't judge a hang by the last tests in the log: stdout is block-buffered.
+
 ### 2026-11-10 — A thread version that waits for the paid takes' discard lands in the thread (track/v2-thread-deferred-edit)
 
 This settles the own-words entry's owed item (2026-11-09) and the Windows kept-change entry's "Next package must know". With paid takes, a version from the Rewrite thread went through `editChange`'s discard question. On Discard Changes, `editChange` ran again without `acceptThreadWords` and with no turn: the thread picked the words up as a bare version. Before that, Claude's reply said "The new words couldn't be put in the text." and dropped its versions. See design.md §6.3 "Talk back to Claude" → "Paid takes". apps/windows/CONTRACTS.md (same date) has the Windows side.

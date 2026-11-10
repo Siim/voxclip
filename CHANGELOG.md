@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - While Rewrite prepares the price of your takes, or once it is priced with no take made, the panel no longer says "Listen, pick a take, then use them." before any take exists.
+- Ask Claude no longer freezes the editor while it looks for faces and text in the picture, and a blur or pixelate that follows a face no longer stalls it while the track is found.
 - With paid takes, a new version of a Rewrite change from its talk with Claude, Claude's or your own words, now waits in the talk for you to confirm discarding the takes, then shows there as its version with its turn; declining changes nothing and keeps what you typed.
 - On Windows, Keep on a Rewrite change now keeps it and closes its talk with Claude, as on the Mac, instead of folding it; a kept change shows as kept, paid takes no longer hide the talk for a change still waiting, and the focus moves to the next change.
 - ✦ Make it postable's planning instructions now say the frames are measured on this computer, so on Windows the AI is no longer told it is on a Mac.

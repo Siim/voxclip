@@ -155,7 +155,7 @@ jobs:
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
-        run: swift test --jobs 2 --filter VoxClipCoreTests
+        run: python3 scripts/test-watchdog.py --label core -- swift test --jobs 2 --filter VoxClipCoreTests
 
       - name: Swift test (headless Voice Lab app model)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
@@ -166,7 +166,7 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_DATA_DIR: ${{ runner.temp }}/voxclip-voice-lab-app-tests
-        run: swift test --jobs 2 --filter VoxClipAppTests
+        run: python3 scripts/test-watchdog.py --label app -- swift test --jobs 2 --filter VoxClipAppTests
 
       - name: Swift test (VoxClipMediaTests)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
@@ -181,9 +181,12 @@ jobs:
           VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         # A test that blocks a cooperative thread can deadlock this 3-core runner's small Swift concurrency pool while
-        # passing on a 10-core Mac. Check new async code with LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 locally (2026-11-08:
-        # Vision's synchronous perform on the frame analyzer's lanes stopped this step at 01:08:29 for 40 min).
-        run: swift test --jobs 2 --filter VoxClipMediaTests --skip CaptionParityTests
+        # passing on a 10-core Mac. Check new async code with LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 locally. Vision's
+        # synchronous perform did it twice (2026-11-08 the frame analyzer's lanes; 2026-11-10 ClipEffectVision, CI
+        # 42770795464), so every perform now runs on VisionQueue. test-watchdog.py ends a run that is silent and idle for
+        # 6 min and uploads its stacks (macos-swift-test-stacks). The test process's stdout is block-buffered, so the log
+        # can stop a whole buffer of lines before the hang: read the stacks, not the last tests that started.
+        run: python3 scripts/test-watchdog.py --label media -- swift test --jobs 2 --filter VoxClipMediaTests --skip CaptionParityTests
 
       # The caption golden renders keep all three runner cores busy for minutes, so they run alone instead
       # of beside the one-minute heavy media tests.
@@ -200,7 +203,19 @@ jobs:
         run: |
           pkill -f swiftpm-testing-helper || true
           pkill -f VoxClipPackageTests || true
-          swift test --jobs 2 --filter CaptionParityTests
+          python3 scripts/test-watchdog.py --label caption-parity -- swift test --jobs 2 --filter CaptionParityTests
+
+      # test-watchdog.py writes here only when a Swift test step hung: no output and no CPU for 6 min, or no output for
+      # 20 min. See apps/macos/CONTRACTS.md for how to read it.
+      - name: Upload hung Swift test stacks
+        if: failure() && steps.detect.outputs.swift == 'true'
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-swift-test-stacks
+          path: ${{ runner.temp }}/voxclip-test-stacks
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Runs after a Swift test failure too, with the Release CLI built above.
       - name: Canonical macOS CLI E2E (Release)

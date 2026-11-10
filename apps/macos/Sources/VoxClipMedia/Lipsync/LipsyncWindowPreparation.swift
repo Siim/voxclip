@@ -73,11 +73,7 @@ public enum LipsyncWindowPreparation {
             try Task.checkCancellation()
             let frame = try await generator.image(at: range.start + CMTime(seconds: offset, preferredTimescale: 600_000)).image
             if let detector { heights.append(try detector(frame)) }
-            else {
-                let faces = VNDetectFaceRectanglesRequest()
-                try VNImageRequestHandler(cgImage: frame, options: [:]).perform([faces])
-                heights.append(faces.results?.map { Double($0.boundingBox.height) }.max() ?? 0)
-            }
+            else { heights.append(try await VisionQueue.run(frame, largestFaceHeight)) }
         }
         guard LipsyncFaceCheck.passes(largestFaceHeights: heights) else { throw LipsyncPreparationError.noClearFace }
         // The tail margin (sync-3 drops frames at the end): the video runs on into the next frames where the timeline has
@@ -100,6 +96,14 @@ public enum LipsyncWindowPreparation {
         return try PreparedLipsyncWindow(video: LipsyncUploadFile(file: videoURL, durationSeconds: upload, contentType: "video/mp4"),
             audio: LipsyncUploadFile(file: audioURL, durationSeconds: upload, contentType: "audio/wav"),
             width: width, height: height, fps: fps, window: window, neededSeconds: needed, picture: picture)
+    }
+
+    /// The tallest face's height as a fraction of the frame, or 0. Synchronous Vision: `prepare` runs it on `VisionQueue`.
+    static func largestFaceHeight(_ frame: CGImage) throws -> Double {
+        VisionQueue.assertOnQueue()
+        let faces = VNDetectFaceRectanglesRequest()
+        try VNImageRequestHandler(cgImage: frame, options: [:]).perform([faces])
+        return faces.results?.map { Double($0.boundingBox.height) }.max() ?? 0
     }
 
     /// The window's final mixed audio, then `silence` frames of silence (the tail margin).
