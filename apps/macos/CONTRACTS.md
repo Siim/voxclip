@@ -1,5 +1,37 @@
 # macOS implementation contracts
 
+### 2026-11-10 — The smoke settles for the price a chosen voice asks for; the listen line waits for a take (track/v2-smoke-s8)
+
+CI 42788989271 (6667ce7f), Media's `MacUIIntegrationTests` exact pass: S8-exact stopped after [Rewrite Again]. The panel showed "1 phrase in your voice", "Listen, pick a take, then use them.", "Nothing paid yet." and only [Stop]. Locally the same scenario passed 6/6.
+
+- **The state.** The two Stops were one: the headline's `stopTakes`, counted once from the task model and once as drawn. A take plan existed and was `preparing`, with no take yet, so the footer was only `takeSpendLine`.
+  - **Who started it.** The harness. After `settle`'s calm polls, `ensureGeneration` configures the scripted ElevenLabs and calls `discover`. `discover` → `chooseVoice` → `inputsChanged` → `requestQuote` starts an automatic price Task (`prepareQuote` = `prepareTakes`). `observe` then read the panel. When that Task reached `plan.prepare()` first (as on the 3-core runner), the step saw a price halfway through. `finish` had nothing in its order to click (Stop is not a way forward), so I5 failed.
+  - **Locally** the Task usually had not run yet. The step saw [Get Price], and the click started a second, concurrent `prepareTakes`.
+  - **Not caused by 0df5688f or c5de0818.** Between ba5b9e87 and 6667ce7f nothing on this path changed: `owner` is nil for every caller but the thread, and the grid change doesn't touch S8. The race is older; CI hit it now.
+- **Which it was: both.**
+  - **(a) Transient; the harness acted too early.** The price is free and bounded, and Stop acts throughout. A user can't get stuck there.
+  - **(b) Contradictory copy.** T3's sub-line "Listen, pick a take, then use them." showed before any take existed: during Get Price, beside [Make Takes · ≈ $x], and while the first takes ran. design.md §6.3.8 gives that line to T3 Ready only.
+- **Fix (harness, DEBUG).**
+  - `RewriteGenerationSession.quotePreparationsRunning` (DEBUG): automatic price Tasks not yet returned, counted from `requestQuote`, before any plan marks itself preparing.
+  - `busyReason` adds `price`. `settle` now loops: wait until calm, then `ensureGeneration`, then wait again while anything it started is busy (at most 3 rounds; a timed-out wait ends it). `waitUntilCalm` is the old loop.
+  - New per-step invariant **I11**: the step was read settled (`unsettled`, set by `settle`, checked and cleared by `observe`).
+  - `Harness.getPrice()` clicks [Get Price] unless the session already priced the takes itself. S2, S7, S-own-typed, S-own-mic, S-own-mic-misfit and S-lipsync-fal-short used a hard `click(["prepareTakes", "makeTakes"])` and failed once the settle waited. They passed only on the race's other side.
+- **Fix (App).** `proposalContent`: the takes card's sub-line is "Listen, pick a take, then use them." only once a phrase has a take (or the generation has rows). Before that there is no sub-line, and the card's status line says what runs ("Checking it's your voice…", "Takes start after you approve the price."). The autofix line is unchanged.
+- **Deleted:** nothing. The settle's loop moved into `waitUntilCalm`.
+- **Tests.**
+  - App `ClipTakePlanTests.theListenLineWaitsForATake`: Get Price held at the quote by a `ClipTakeBarrier` (`productionSession` now runs `fixture.beforeQuote` too). It checks no sub-line while preparing and while priced, and the listen line once takes exist. Red without the ChangeList change: 2 issues.
+  - Smoke I11, deterministic: with I11 and the `price` reason but the old settle, `--only S8 --lengths both` failed both passes with CI's exact panel ("observed while takes: preparing+price still ran"). Awaiting `busyReason` after `ensureGeneration` is the actor hop that lets the price Task run. With the new settle, S8 is 7 steps, S8-exact 6: Rewrite Again, then the priced Make Takes, then Use.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, fresh `VOXCLIP_DATA_DIR`, serial, `nice -n 10`, Mac in use):
+  - `rewrite-smoke.sh` (DEBUG, no path), all scenarios, both lengths: PASSED, 96 scenarios in 562.6 s, no I11 failure. Locally the realistic pass took 268 s, exact 178 s and S16 115 s, inside the 480/300/900 s deadlines.
+  - `--only S8 --lengths both`: 5/5. Under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`: 3/3 (the executable run with the script's clean environment, since the script's `env -i` drops the variable).
+  - App: 1,072 tests in 83 suites passed (before the lead merge).
+  - Media `MacUIIntegrationTests`, after merging lead/v2-rewrite (1616afaa): 15 tests passed in 507 s. Both smoke passes took 290 s and the long take 151 s.
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests pass, and the tree is clean after them.
+- **Owed:** none for this path. The panel is offscreen in the smoke; the copy change needs no real-window gate beyond the next `-uiSelfTest`.
+- **Next package must know.**
+  - A smoke step must never read a session that still works. `settle` covers work that `ensureGeneration` starts. New automatic work needs its own `busyReason` flag, or I11 fails.
+  - In the smoke, finding the scripted voices prices the takes by itself. Use `getPrice()`, not a hard Get Price click.
+
 ### 2026-11-10 — A hung Swift test step names itself; Vision runs off the cooperative pool (track/v2-media-hang)
 
 The CI step `Swift test (VoxClipMediaTests)` sometimes went silent and was killed at its 40-minute limit (CI 42770795464 on 2026-11-10, 42580229744 on 2026-11-09). Other runs finish it in about 25 minutes.
