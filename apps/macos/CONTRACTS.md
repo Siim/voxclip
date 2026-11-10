@@ -33,6 +33,16 @@ This settles the thread-deferred-edit entry's "Next package must know" item (bel
     - With the old copy back in `confirmDiscardChanges`, the first test fails with 9 issues.
     - With the take copy for every caller with paid takes, the second fails with 3 issues.
     - The other test passes in each case.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, a fresh `VOXCLIP_DATA_DIR` per run, serial under `nice -n 10`, load average about 16–31):
+  - App in full, under the watchdog: 1,074 tests in 83 suites passed (883 s).
+  - `rewrite-smoke.sh` (DEBUG, no path): PASSED, 96 scenarios in 695 s. No smoke scenario has paid takes under a thread, so none shows the new copy.
+  - The `-warn-long-expression-type-checking=300` build flags none of the touched files.
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests (61) pass, and the tree is clean afterwards.
+  - Core and Media were not run: the change is App-only.
+- **Owed:** a real-window pass (`-uiSelfTest`; the console was idle past the screen-lock point, about 1,400 s). It should check VoiceOver on the live question (the hint on Keep Working, both button labels) and the footer fitting the longer button at the panel's narrowest width.
+- **Next package must know.**
+  - A thread version asks through `confirmPaidProposalChange(waiting:)`. Pass the `Waiting` the thread shows, so the question and the waiting line share one count.
+  - Windows still asks "Discard paid takes to change this review?" with Cancel. If Windows should name the count and change, or use Keep Working, that is a Windows package.
 
 ### 2026-11-10 — AVAssetReader pulls run off the cooperative pool (track/v2-reader-off-pool)
 
