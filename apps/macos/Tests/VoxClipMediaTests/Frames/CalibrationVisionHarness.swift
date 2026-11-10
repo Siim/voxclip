@@ -28,7 +28,7 @@ import VoxClipCore
         let face: FrameFace?
     }
 
-    @Test(.enabled(if: job != nil)) func observeTheCalibrationFrames() throws {
+    @Test(.enabled(if: job != nil)) func observeTheCalibrationFrames() async throws {
         let job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: URL(fileURLWithPath: try #require(Self.job))))
         let vision = AppleFrameVision()
         let encoder = JSONEncoder()
@@ -40,7 +40,7 @@ import VoxClipCore
             #expect(Self.sha256(bytes) == frame.sha256, "\(frame.path) is not the frame the manifest pins")
             guard bytes.count == frame.width * frame.height * 3, Self.sha256(bytes) == frame.sha256 else { continue }
             let image = try #require(Self.image(bytes, width: frame.width, height: frame.height))
-            let observation = try vision.observe(image, time: 0)
+            let observation = try await FrameAnalyzer.look(vision, image: image, time: 0)
             lines.append(try encoder.encode(Line(sha256: frame.sha256, faceCount: observation.faceCount, face: observation.face)))
             lines.append(0x0A)
         }
