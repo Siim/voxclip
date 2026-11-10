@@ -131,7 +131,7 @@ struct PanelFooter: Equatable {
 
 /// A question the task asks in place of its footer before it drops the user's work (impl-plan §13.1: inline, not an
 /// alert): "Discard these 6 changes?" with the safe answer as the primary ("Keep Working"), which Return and Esc choose,
-/// and the other as the link ("Discard Changes").
+/// and the other as the link ("Discard Changes"; "Discard Takes and Continue" when a waiting thread version asks).
 struct PanelConfirm: Equatable {
     let question: String
     let cancel: PanelAction

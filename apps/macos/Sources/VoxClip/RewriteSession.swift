@@ -973,12 +973,17 @@ struct RewriteChange: Equatable, Sendable {
         let planned = takePlan?.phrases.reduce(0) { $0 + $1.takes.filter { $0.source == .clonedVoice }.count } ?? 0
         return planned + (generation?.rows.count ?? 0)
     }
-    func confirmDiscardChanges(owner: UUID? = nil, perform: @escaping @MainActor () -> Void) {
-        let count = proposalCount
-        let question = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
+    /// Asks before the proposal's work goes, inline in the Rewrite job's footer: "Discard this change?" / "Discard these
+    /// {c} changes?" with Keep Working and Discard Changes. For a thread version that waits (`waiting`, design.md §6.3
+    /// "Talk back to Claude", "Paid takes") only the change's paid takes go, so it names them instead: "Discard 2 paid
+    /// takes for change 3?" with Keep Working and Discard Takes and Continue, and the question's owner is the version.
+    func confirmDiscardChanges(waiting: RewriteThreadState.Waiting? = nil, perform: @escaping @MainActor () -> Void) {
+        let count = proposalCount, owner = waiting?.token
+        let question = waiting.map { RewriteThreadDisplay.discardTakesQuestion(takes: $0.takes, ordinal: $0.key.ordinal) }
+            ?? (count == 1 ? "Discard this change?" : "Discard these \(count) changes?")
         task.ask(PanelConfirm(question: question,
             cancel: PanelAction(id: "keepWorking", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() },
-            confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { [weak self] in
+            confirm: PanelAction(id: "discardChanges", title: waiting == nil ? "Discard Changes" : "Discard Takes and Continue") { [weak self] in
                 guard let self, isOpen, task.confirm?.confirm.id == "discardChanges", task.confirm?.owner == owner else { return }
                 task.dismissConfirm()
                 perform()
@@ -988,9 +993,9 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then).
     var changeNeedsDiscard: Bool { hasPaidTakes && !applyingTextFixesOnly }
-    func confirmPaidProposalChange(owner: UUID? = nil, perform: @escaping @MainActor () -> Void) -> Bool {
+    func confirmPaidProposalChange(waiting: RewriteThreadState.Waiting? = nil, perform: @escaping @MainActor () -> Void) -> Bool {
         guard changeNeedsDiscard else { return false }
-        confirmDiscardChanges(owner: owner) { [weak self] in
+        confirmDiscardChanges(waiting: waiting) { [weak self] in
             guard let self, current else { return }
             if takesBusy, let plan = takePlan {
                 takesTask = Task { [weak self] in

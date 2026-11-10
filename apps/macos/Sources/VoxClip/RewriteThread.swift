@@ -136,8 +136,15 @@ struct RewriteThreadDisplay: Equatable {
     var label: String { "Talk to Claude about change \(ordinal)" }
     /// The waiting line for a version that replaces `takes` paid takes (0: the takes still being made).
     static func waitingLine(takes: Int) -> String {
-        let what = takes == 0 ? "your paid takes" : takes == 1 ? "1 paid take" : "\(takes) paid takes"
-        return "Waiting: this replaces \(what). Confirm in the Rewrite panel to use it."
+        "Waiting: this replaces \(paidTakes(takes)). Confirm in the Rewrite panel to use it."
+    }
+    /// The Rewrite panel's question while a version for change `ordinal` waits: "Discard 2 paid takes for change 3?",
+    /// "Discard your paid takes for change 3?" while the first ones are still being made (`takes` 0).
+    static func discardTakesQuestion(takes: Int, ordinal: Int) -> String {
+        "Discard \(paidTakes(takes)) for change \(ordinal)?"
+    }
+    private static func paidTakes(_ takes: Int) -> String {
+        takes == 0 ? "your paid takes" : takes == 1 ? "1 paid take" : "\(takes) paid takes"
     }
 }
 
@@ -219,8 +226,8 @@ extension EditorModel {
     /// Puts a thread version, Claude's or your own words, in change `key`'s place: the local edit, then the Rewrite's own
     /// words for the change (`acceptThreadWords`), then `land` records it in the thread. With paid takes it waits for the
     /// discard instead (design.md §6.3 "Talk back to Claude", "Paid takes"): the thread says so, and the Rewrite panel
-    /// asks. Discard Changes puts it in and records it, as any version; Keep Working changes nothing. A later version
-    /// replaces a waiting one, so only one waits.
+    /// asks "Discard 2 paid takes for change 3?". Discard Takes and Continue puts it in and records it, as any version;
+    /// Keep Working changes nothing. A later version replaces a waiting one, so only one waits.
     func placeRewriteThreadVersion(_ key: RewriteThreadState.Key, text: String,
                                    land: @escaping @MainActor () -> Void) -> RewriteThreadPlacement {
         guard let session = openRewrite, session.changeNeedsDiscard else {
@@ -229,10 +236,10 @@ extension EditorModel {
             land()
             return .placed
         }
-        let token = UUID(), state = rewriteThread
-        state.waiting = .init(key: key, token: token, takes: session.paidTakeCount)
+        let token = UUID(), state = rewriteThread, waiting = RewriteThreadState.Waiting(key: key, token: token, takes: session.paidTakeCount)
+        state.waiting = waiting
         state.error = nil; state.failed = nil
-        _ = session.confirmPaidProposalChange(owner: token) { [weak self] in
+        _ = session.confirmPaidProposalChange(waiting: waiting) { [weak self] in
             guard let self, state.waiting?.token == token else { return }
             state.waiting = nil
             guard proposal?.id == key.proposal, proposal?[key.ordinal]?.state == .pending, editChange(key.ordinal, text: text) else {
@@ -242,7 +249,7 @@ extension EditorModel {
             try? openRewrite?.acceptThreadWords(key.ordinal, text: text)
             land()
         }
-        announce(RewriteThreadDisplay.waitingLine(takes: session.paidTakeCount))
+        announce(RewriteThreadDisplay.waitingLine(takes: waiting.takes))
         return .waiting
     }
 

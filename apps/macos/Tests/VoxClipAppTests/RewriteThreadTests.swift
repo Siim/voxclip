@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import VoxClipCore
 @testable import VoxClip
@@ -476,7 +477,7 @@ import Testing
     private func waitingLine(_ session: RewriteSession) -> String { RewriteThreadDisplay.waitingLine(takes: session.paidTakeCount) }
 
     /// With paid takes, Claude's version waits for the Rewrite panel's discard question, and the thread says so. Keep
-    /// Working changes nothing and the line goes; Discard Changes puts the version in as any reply: "2 of 2", its turns
+    /// Working changes nothing and the line goes; Discard Takes and Continue puts the version in as any reply: "2 of 2", its turns
     /// and next steps, reviewed and voiced at Keep. The arrows wait the same way.
     @Test func claudesVersionWaitsForTheDiscardThenLandsInTheThreadOrChangesNothing() async throws {
         let (editor, session, script, scenes) = try scene()
@@ -500,7 +501,7 @@ import Testing
         let declined = try #require(editor.rewriteThreadDisplay)
         #expect(declined.waiting == nil && declined.versionLine == "1 of 1" && declined.turns.isEmpty && declined.error == nil)
         #expect(editor.changeText(ordinal) == first && session.takePlan === takes)
-        // Again, and Discard Changes: the version lands as any reply does.
+        // Again, and Discard Takes and Continue: the version lands as any reply does.
         script.replies = [reply("much fresher words", steps: ["More suspense"])]
         await send(editor, "Make it fresher")
         #expect(editor.rewriteThreadDisplay?.waiting == waitingLine(session))
@@ -521,7 +522,7 @@ import Testing
     }
 
     /// With paid takes, your own words wait for the discard: the input keeps them, still your own words. Keep Working
-    /// changes nothing and they stay typed; Discard Changes puts them in: "3 of 3 · your words", the "your own words"
+    /// changes nothing and they stay typed; Discard Takes and Continue puts them in: "3 of 3 · your words", the "your own words"
     /// turn, Claude's steps gone, back to Claude.
     @Test func yourOwnWordsWaitForTheDiscardAndKeepWhatYouTyped() async throws {
         let (editor, session, script, scenes) = try scene()
@@ -543,7 +544,7 @@ import Testing
         let declined = try #require(editor.rewriteThreadDisplay)
         #expect(declined.waiting == nil && declined.ownWords && editor.rewriteThread.text == "my very own sentence")
         #expect(declined.versionLine == "2 of 2" && editor.changeText(ordinal) == "much fresher words" && session.hasPaidTakes)
-        // ↵ again, and Discard Changes.
+        // ↵ again, and Discard Takes and Continue.
         field.keyDown(with: key(36, [], "\r"))
         try #require(session.task.confirm).confirm.perform()
         let landed = try #require(editor.rewriteThreadDisplay)
@@ -583,6 +584,82 @@ import Testing
         let landed = try #require(editor.rewriteThreadDisplay)
         #expect(editor.changeText(ordinal) == "much fresher words" && landed.versionLine == "3 of 3" && landed.yoursLine == nil)
         #expect(landed.turns.map(\.speaker) == [.you, .claude] && landed.waiting == nil && !editor.rewriteThread.text.contains("other words"))
+    }
+
+    /// The panel's question for a waiting thread version names what goes, the change's paid takes, not the change:
+    /// "Discard 2 paid takes for change 3?" ("your paid takes" while the count isn't known) with Keep Working and
+    /// Discard Takes and Continue, as Windows' "Discard takes and continue". VoiceOver hears it when it's asked, reads
+    /// it with Keep Working (the safe answer, which has the keyboard), and reads both buttons. Keep Working keeps the
+    /// change as it is.
+    @Test func aThreadVersionsQuestionNamesThePaidTakesNotTheChange() async throws {
+        let (editor, session, script, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        let first = editor.changeText(ordinal)
+        try payTakes(editor, session, focus: ordinal)
+        let takes = session.paidTakeCount, plan = try #require(session.takePlan)
+        script.replies = [reply("much fresher words")]
+        await send(editor, "Make it fresher")
+        let copy = "Discard \(takes) paid take\(takes == 1 ? "" : "s") for change \(ordinal)?"
+        let asked = try #require(session.task.confirm)
+        #expect(asked.question == copy && asked.question.hasPrefix("Discard ") && !asked.question.contains("change?"))
+        #expect(asked.cancel.title == "Keep Working" && asked.confirm.title == "Discard Takes and Continue")
+        #expect(asked.owner == editor.rewriteThread.waiting?.token && asked.owner != nil)
+        #expect(Array(editor.announcements.suffix(2)) == [copy, waitingLine(session)], "the question, then the thread's line")
+        // VoiceOver, in the drawn panel: the question, and each button by its title (its VoiceOver label). Keep Working,
+        // the safe answer, has the question as its hint (`PanelFooterView`). SwiftUI's accessibility tree can't be
+        // read offscreen, so this reads what the panel drew.
+        let host = NSHostingView(rootView: PanelHost(model: editor, shell: WorkspaceShell(app: editor.app), width: 404, height: 600).environment(editor.app))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 600)
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: -10_000, width: 404, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        func draw() -> [String: String] {
+            host.layoutSubtreeIfNeeded(); _ = RunLoop.current.run(mode: .default, before: Date())
+            return DebugRightColumn.texts(in: host)
+        }
+        await TestDeadline.until { draw()["director.question"] == copy }
+        let drawn = draw()
+        #expect(drawn["director.question"] == copy, "\(drawn)")
+        #expect(drawn["director.button.keepWorking"] == "Keep Working" && drawn["director.button.discardChanges"] == "Discard Takes and Continue", "\(drawn)")
+        #expect(drawn["director.answer"]?.hasSuffix("keepWorking") == true, "Keep Working is the answer that reads the question")
+        // Keep Working keeps the change as it is, takes and all.
+        asked.cancel.perform()
+        #expect(session.task.confirm == nil && editor.changeText(ordinal) == first && session.takePlan === plan && session.hasPaidTakes)
+        // While the count isn't known (the first takes still being made), the question says "your paid takes".
+        let proposal = try #require(editor.proposal?.id)
+        let unknown = RewriteThreadState.Waiting(key: .init(proposal: proposal, ordinal: ordinal), token: UUID(), takes: 0)
+        #expect(session.confirmPaidProposalChange(waiting: unknown) {})
+        let unknownAsked = try #require(session.task.confirm)
+        #expect(unknownAsked.question == "Discard your paid takes for change \(ordinal)?" && unknownAsked.owner == unknown.token)
+        #expect(unknownAsked.confirm.title == "Discard Takes and Continue" && unknownAsked.cancel.title == "Keep Working")
+        #expect(editor.lastAnnouncement == "Discard your paid takes for change \(ordinal)?")
+        unknownAsked.cancel.perform()
+        #expect(session.task.confirm == nil && editor.changeText(ordinal) == first && session.takePlan === plan)
+    }
+
+    /// Every other caller of the discard question keeps the change copy with paid takes: Keep on the change, and Rewrite
+    /// again, ask "Discard this change?" / "Discard these {c} changes?" with Keep Working and Discard Changes, and no owner.
+    @Test func anotherCallersQuestionKeepsTheChangeCopy() throws {
+        let (editor, session, _, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        try payTakes(editor, session, focus: ordinal)
+        let changes = session.proposalCount, copy = changes == 1 ? "Discard this change?" : "Discard these \(changes) changes?"
+        #expect(!editor.keepChange(ordinal))
+        let keep = try #require(session.task.confirm)
+        #expect(keep.question == copy && keep.owner == nil && editor.lastAnnouncement == copy)
+        #expect(keep.cancel.title == "Keep Working" && keep.confirm.title == "Discard Changes")
+        keep.cancel.perform()
+        var discarded = false
+        session.confirmDiscardChanges { discarded = true }
+        let again = try #require(session.task.confirm)
+        #expect(again.question == copy && again.owner == nil && again.confirm.title == "Discard Changes" && !discarded)
+        again.cancel.perform()
+        #expect(session.task.confirm == nil && session.hasPaidTakes && !discarded)
     }
 
     /// ⌥E in the transcript opens the thread for your own words (↵ and F2 still open it for Claude); VoiceOver reads the
