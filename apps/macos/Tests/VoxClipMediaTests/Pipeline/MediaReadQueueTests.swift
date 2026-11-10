@@ -28,6 +28,59 @@ import Testing
         #expect(counts == Array(repeating: one, count: width))
     }
 
+    // MARK: The guard
+
+    /// Split so this file's own patterns don't count.
+    static let syncPull = "copyNext" + "SampleBuffer", next = ".ne" + "xt()"
+    /// Files that may pull without `MediaReadQueue`, and why.
+    static let allowed: [String: String] = [
+        "Sources/VoxClipMedia/Pipeline/MediaReadQueue.swift": "the helper itself",
+        "Sources/VoxClipMedia/Pipeline/ExportSampleReader.swift":
+            "the exporter's pumps pull in a Task(executorPreference:) on their own per-pump queue, with their own stop handling",
+    ]
+
+    /// Reader pulls in `source` that hold the calling thread: `copyNextSampleBuffer`, or a provider's own `next()`.
+    /// Comment lines don't count.
+    static func pulls(in source: String) -> [String] {
+        source.split(separator: "\n", omittingEmptySubsequences: false).compactMap { line -> String? in
+            let code = line.trimmingCharacters(in: .whitespaces)
+            guard !code.hasPrefix("//") else { return nil }
+            if code.contains(syncPull + "(") { return code }
+            if code.range(of: #"[pP]rovider\w*(\([^()]*\))?\s*\.next\(\)"#, options: .regularExpression) != nil { return code }
+            return nil
+        }
+    }
+
+    @Test func thePullMatcherFindsBothKinds() {
+        #expect(Self.pulls(in: "while let b = output.\(Self.syncPull)() {}").count == 1)
+        #expect(Self.pulls(in: "while let s = try await provider\(Self.next) {}").count == 1)
+        #expect(Self.pulls(in: "let s = try await videoProvider\(Self.next)").count == 1)
+        #expect(Self.pulls(in: "let s = try await reader.outputProvider(for: output)\(Self.next)").count == 1)
+        #expect(Self.pulls(in: "// output.\(Self.syncPull)()\nwhile let r = try await group\(Self.next) {}").isEmpty)
+        #expect(Self.pulls(in: "while let s = try await MediaReadQueue.next(provider) {}").isEmpty)
+        #expect(Self.pulls(in: "while let s = MediaReadQueue.copyNext(output) {}").isEmpty)
+    }
+
+    /// Every AVAssetReader pull under Sources/ and Tests/ goes through `MediaReadQueue` (CI 42828823833): a pull on a
+    /// cooperative thread can stop the process once the pool fills.
+    @Test func everyReaderPullGoesThroughTheReadQueue() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        var scanned = 0
+        for folder in ["Sources", "Tests"] {
+            let walk = try #require(FileManager.default.enumerator(at: root.appendingPathComponent(folder), includingPropertiesForKeys: nil))
+            for case let file as URL in walk where file.pathExtension == "swift" {
+                scanned += 1
+                let path = String(file.standardizedFileURL.path.dropFirst(root.standardizedFileURL.path.count + 1))
+                guard Self.allowed[path] == nil else { continue }
+                let found = Self.pulls(in: try String(contentsOf: file, encoding: .utf8))
+                #expect(found.isEmpty, "\(path) pulls an AVAssetReader on the calling thread: \(found). Wrap a synchronous loop in MediaReadQueue.run and pull with MediaReadQueue.copyNext; pull an output provider with MediaReadQueue.next (Sources/VoxClipMedia/Pipeline/MediaReadQueue.swift).")
+            }
+        }
+        #expect(scanned > 500, "scanned \(scanned) files under \(root.path)")
+        for path in Self.allowed.keys { #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path), "\(path)") }
+    }
+
     /// Every sample of every track, read by a synchronous loop on the queue.
     static func loopSamples(_ file: URL) async throws -> Int {
         let asset = AVURLAsset(url: file)
