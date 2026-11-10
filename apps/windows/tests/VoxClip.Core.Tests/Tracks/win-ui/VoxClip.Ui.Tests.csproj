@@ -42,6 +42,7 @@
     <Compile Include="AskClaudeSmokeTests.cs" />
     <Compile Include="RewriteLearningLoopTests.cs" />
     <Compile Include="RewriteOwnWordsTests.cs" />
+    <Compile Include="RewriteThreadTests.cs" />
     <Compile Include="RewriteOwnTakeTests.cs" />
     <Compile Include="RewriteTakesRulesTests.cs" />
     <Compile Include="RewriteNextStepsTests.cs" />

@@ -493,6 +493,35 @@ internal sealed partial class RewriteSession
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>The per-phrase keep (Mac <c>keepUnplaceable</c>, track/v2-seam-fade-cut): a change that placing every change together
+    /// refuses on geometry, not a collision, keeps its original words (its "Keep original words" path) with the note "Change {n} keeps your
+    /// original words: it can't be joined to the recording there.", and the rest are placed again and priced. Not after Stop or with paid
+    /// takes. True when a change was left out, so the review is built again.</summary>
+    private bool KeepUnplaceable()
+    {
+        if (Review is not { } review || Envelope is null || HasPaidTakes || AutoFix.Stopped) return false;
+        var refused = review.VoiceHunks.Where(hunk => hunk is { Unplaceable: not null, CollidesWith: null })
+            .SelectMany(hunk => hunk.Ordinals.Select(ordinal => (Ordinal: ordinal, Error: hunk.Unplaceable!)))
+            .Where(pair => changeStates.GetValueOrDefault(pair.Ordinal) != TranscriptChangeState.Excluded).ToArray();
+        foreach (var (ordinal, error) in refused)
+        {
+            changeStates[ordinal] = TranscriptChangeState.Excluded;
+            threads.Remove(ordinal);
+            var copy = $"Change {ordinal} keeps your original words: {UnplaceableReason(error)}";
+            if (AutoFix.Notes.Contains(copy)) continue;
+            AutoFix.Notes.Add(copy);
+            AutoFix.Announcement = copy;
+        }
+        return refused.Length > 0;
+    }
+    /// <summary>Why a change can't be placed, in plain words (Mac <c>unplaceableReason</c>).</summary>
+    internal static string UnplaceableReason(VoiceLabGeometryException error) => error switch
+    {
+        { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } => $"it is too close to the {(start ? "start" : "end")} of the take to blend in.",
+        { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } => "it adds words where you said nothing, and the video has no time for them.",
+        _ => "it can't be joined to the recording there."
+    };
+
     /// <summary>Keep original words for one phrase with takes: no take of it is used, every take stays (never a discard).</summary>
     internal bool KeepOriginal(int index)
     {

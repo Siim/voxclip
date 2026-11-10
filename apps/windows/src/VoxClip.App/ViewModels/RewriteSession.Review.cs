@@ -129,11 +129,14 @@ internal sealed partial class RewriteSession
     }
     internal int FocusedChange { get; private set; }
     internal Action<int>? RevealChange { get; set; }
+    /// <summary>The review's Edit on a change row: the transcript focuses the change and opens its thread.</summary>
     internal Action<int>? EditReviewChange { get; set; }
     internal void FocusChange(int ordinal)
     {
         if (Review is null || ordinal < 1 || ordinal > Review.Diff.Hunks.Count || FocusedChange == ordinal) return;
         FocusedChange = ordinal;
+        // Focusing a folded change again opens its thread.
+        if (Thread.Folded is { } folded && folded.Ordinal != ordinal) Thread.Folded = null;
         Changed?.Invoke(this, EventArgs.Empty);
     }
     internal Func<CancellationToken, Task<bool>>? VoiceConsent { get; set; }
@@ -158,6 +161,8 @@ internal sealed partial class RewriteSession
         InvalidateProposal();
         priceOverrides.Clear();
         changeStates[ordinal] = included ? TranscriptChangeState.Pending : TranscriptChangeState.Excluded;
+        // A change left out has no thread (design.md §6.3 "Where").
+        if (!included) threads.Remove(ordinal);
         RefreshReview();
         InvalidateGenerationInputs();
         Changed?.Invoke(this, EventArgs.Empty);
@@ -174,17 +179,26 @@ internal sealed partial class RewriteSession
         return true;
     }
 
-    internal bool EditChange(int ordinal, string text)
+    /// <summary>The local rediff of one change's words: the change becomes the hunks its new words make against its recorded words (none
+    /// for the recorded words, so it leaves the proposal), and the review, fit and cost are worked out again. Nothing is sent.</summary>
+    internal bool EditChange(int ordinal, string text) => EditChange(ordinal, text, wholeChange: false) != RewriteThreadApply.Failed;
+
+    /// <summary>A thread version, Claude's or your own words, as the change's words for Keep (Mac <c>acceptThreadWords</c>): the local
+    /// rediff, kept as the change's one hunk so its thread and ordinal stay. Words that differ in more than one place become one voice hunk
+    /// over the change's recorded words, as the Mac voices a change of several parts; the recorded words leave the change out.</summary>
+    internal RewriteThreadApply AcceptThreadWords(int ordinal, string text) => EditChange(ordinal, text, wholeChange: true);
+
+    private RewriteThreadApply EditChange(int ordinal, string text, bool wholeChange)
     {
         StopWordingFit();
-        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
-        if (DeferPaidReviewChange(() => Task.FromResult(EditChange(ordinal, text)))) return false;
+        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return RewriteThreadApply.Failed;
+        if (DeferPaidReviewChange(() => Task.FromResult(EditChange(ordinal, text, wholeChange) != RewriteThreadApply.Failed))) return RewriteThreadApply.Failed;
         var hunk = Review.Diff.Hunks[ordinal - 1];
         try
         {
             var sourceIds = hunk.SourceWordIds.ToHashSet(StringComparer.Ordinal);
-            var local = VoiceLabWordDiff.Diff(Source.Where(word => sourceIds.Contains(word.Id)).ToArray(), text,
-                VoiceLabAudioTags.Reanchored(hunk.AudioTags, string.Join(" ", hunk.NewTokens), text));
+            var tags = VoiceLabAudioTags.Reanchored(hunk.AudioTags, string.Join(" ", hunk.NewTokens), text);
+            var local = VoiceLabWordDiff.Diff(Source.Where(word => sourceIds.Contains(word.Id)).ToArray(), text, tags);
             var proposals = scopeHunks ?? Review.Diff.Hunks.Select(change => new ScopeRewriteDiff.Hunk(change, null, [], [], false)).ToArray();
             var metadata = proposals[ordinal - 1];
             var replacements = local.Hunks.Select(change => metadata with
@@ -192,6 +206,9 @@ internal sealed partial class RewriteSession
                 Diff = change with { SourceStartIndex = change.SourceStartIndex + hunk.SourceStartIndex,
                     SourceEndIndex = change.SourceEndIndex + hunk.SourceStartIndex, AnchorSeconds = change.AnchorSeconds ?? hunk.AnchorSeconds }
             }).ToArray();
+            if (wholeChange && replacements.Length > 0 && !(replacements.Length == 1 && replacements[0].Diff.SourceWordIds.SequenceEqual(hunk.SourceWordIds, StringComparer.Ordinal)))
+                replacements = [metadata with { Diff = new VoiceLabDiffHunk(VoiceLabDiffHunkKind.Voice, hunk.SourceWordIds, EditingAlgorithms.SplitWords(text), [],
+                    hunk.AbsorbedItemIds, [], hunk.SourceStartIndex, hunk.SourceEndIndex, hunk.AnchorSeconds) { AudioTags = tags } }];
             var dispositions = changeStates.ToArray();
             InvalidateProposal();
             priceOverrides.Clear();
@@ -199,13 +216,17 @@ internal sealed partial class RewriteSession
             changeStates.Clear();
             foreach (var pair in dispositions.Where(pair => pair.Key != ordinal))
                 changeStates[pair.Key < ordinal ? pair.Key : pair.Key + replacements.Length - 1] = pair.Value;
+            if (replacements.Length == 0) DropThread(ordinal);
+            else if (replacements.Length > 1)
+                foreach (var pair in threads.Where(pair => pair.Key > ordinal).OrderByDescending(pair => pair.Key).ToArray())
+                { threads.Remove(pair.Key); threads[pair.Key + replacements.Length - 1] = pair.Value; }
             NewWords = string.Join(" ", ReviewDiff().Ops.Where(operation => operation.NewToken is not null).Select(operation => operation.NewToken));
             RefreshReview();
             InvalidateGenerationInputs();
             Changed?.Invoke(this, EventArgs.Empty);
-            return true;
+            return replacements.Length == 0 ? RewriteThreadApply.LeftOut : RewriteThreadApply.Applied;
         }
-        catch (VoiceLabWordDiffException error) { reviewProblem = Refusal(error); Changed?.Invoke(this, EventArgs.Empty); return false; }
+        catch (VoiceLabWordDiffException error) { reviewProblem = Refusal(error); Changed?.Invoke(this, EventArgs.Empty); return RewriteThreadApply.Failed; }
     }
 
     internal VoiceLabWordDiffResult ReviewDiff()
