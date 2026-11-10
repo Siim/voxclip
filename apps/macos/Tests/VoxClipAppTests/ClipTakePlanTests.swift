@@ -1380,6 +1380,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 await fixture.beforePublish?(phrase)
                 return try await publish(phrase, row, input, date)
             }
+            let prepare = backend.prepare
+            backend.prepare = { inputs, indices, candidates in
+                await fixture.beforeQuote?()
+                return try await prepare(inputs, indices, candidates)
+            }
             return backend
         }
         let generation = try #require(session.generation)
@@ -2819,6 +2824,33 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             // A take still publishing or preparing its video is real work, not a yield away (up to 10 s in all).
             try? await Task.sleep(for: .milliseconds(10))
         }
+    }
+
+    /// T3's "Listen, pick a take, then use them." needs a take to listen to. While Get Price prepares, and once it is
+    /// priced with no take made, the headline has no sub-line and the card says what runs or what is next (CI 42788989271:
+    /// the Rewrite smoke read "Listen, pick a take, then use them." beside "Nothing paid yet." with only Stop).
+    @Test func theListenLineWaitsForATake() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, prepare: false); defer { editor.close() }
+        let barrier = ClipTakeBarrier()
+        fixture.beforeQuote = { await barrier.pause() }
+        session.makeTakes()
+        await barrier.wait()
+        let plan = try #require(session.takePlan)
+        try #require(plan.preparing && plan.phrases.allSatisfy(\.takes.isEmpty))
+        session.showProposal()
+        #expect(session.task.headline.text == "1 phrase in your voice" && session.task.headline.sub == nil, "\(session.task.headline)")
+        #expect(session.task.headline.stop?.id == "stopTakes" && session.task.footer.note == "Nothing paid yet.", "\(session.task.footer)")
+        fixture.beforeQuote = nil
+        barrier.resume()
+        await session.takesTask?.value
+        session.showProposal()
+        #expect(plan.approvalID != nil && session.task.headline.sub == nil, "\(session.task.headline)")
+        #expect(session.phraseStatus(plan.phrases[0], plan: plan) == "Takes start after you approve the price.")
+        try approvePrice(session)
+        await settle(session)
+        #expect(plan.phrases[0].takes.isEmpty == false, "\(plan.problem)")
+        #expect(session.task.headline.sub == "Listen, pick a take, then use them.", "\(session.task.headline)")
     }
 
     /// Every take too long and failing its word check (MVP13's dead end, cause a): with no take selected the measured

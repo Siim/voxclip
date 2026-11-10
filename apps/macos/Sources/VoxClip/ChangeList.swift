@@ -206,7 +206,10 @@ extension RewriteSession {
             cards += withReaskNotice(stuckSteps()).map(PanelCard.nextSteps)
             let count = takePlan?.phrases.count ?? includedVoice.count
             headline.text = count == 1 ? "1 phrase in your voice" : "\(count) phrases in your voice"
-            headline.sub = fixing.isEmpty ? "Listen, pick a take, then use them." : "Fixing stuck phrases. Nothing else to do yet."
+            // T3's line needs a take to listen to: before one exists (T1's price, T2's first takes) the card's own status
+            // line says what runs or what is next ("Checking it's your voice…", "Takes start after you approve the price.").
+            let anyTake = takePlan?.phrases.contains { !$0.takes.isEmpty } == true || generation?.rows.isEmpty == false
+            headline.sub = !fixing.isEmpty ? "Fixing stuck phrases. Nothing else to do yet." : anyTake ? "Listen, pick a take, then use them." : nil
             if !fixing.isEmpty || (autoFix.running && autoFix.work != nil) {
                 // One Stop for the whole automatic resolver: it keeps everything made so far.
                 headline.stop = PanelAction(id: "stopAutoFix", title: "Stop") { [weak self] in self?.stopAutoFix() }
