@@ -404,7 +404,8 @@ public static class VoiceLabWindowPlanner
             var cutIds = segments.Where(segment => segment.Kind == EditSegmentKind.Word && segment.Cut).Select(segment => segment.Id).ToHashSet(StringComparer.Ordinal);
             KeptItem = words.Select(word => !cutIds.Contains(word.Id)).ToArray();
             // An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
-            Replaced = words.Select(word => replacements.Any(piece => piece.Start <= word.Start && word.End <= piece.End)).ToArray();
+            var grid = new VoiceLabSampleGrid(take.Rate);
+            Replaced = words.Select(word => replacements.Any(piece => grid.Contains(piece.Start, piece.End, word.Start, word.End))).ToArray();
             Reserved = replacements.Select(piece => new MediaInterval(piece.Range.StartSample - piece.InFade / 2, piece.Range.StartSample))
                 .Concat(replacements.Select(piece => new MediaInterval(piece.Range.EndSample, piece.Range.EndSample + piece.OutFade - piece.OutFade / 2)))
                 .ToArray();
@@ -416,8 +417,9 @@ public static class VoiceLabWindowPlanner
         {
             var dropped = new List<(double Start, double End)>(Replacements.Select(piece => (piece.Start, piece.End)));
             if (passage is { } passageRange) dropped.Add(passageRange);
+            var grid = new VoiceLabSampleGrid(take.Rate);
             var remaining = segments.Where(segment => segment.Kind is not (EditSegmentKind.Word or EditSegmentKind.Pause) ||
-                !dropped.Any(range => segment.Start >= range.Start && segment.End <= range.End)).ToArray();
+                !dropped.Any(range => grid.Contains(range.Start, range.End, segment.Start, segment.End))).ToArray();
             var kept = Editing(() => EditingEngine.BuildEditPlan(remaining, take.Duration, take.Rate, take.PauseKeepSeconds).Kept);
             var synth = Replacements.Select(piece => piece.Range).ToList();
             if (window is { } own) synth.Add(own);
@@ -437,16 +439,17 @@ public static class VoiceLabWindowPlanner
     static IReadOnlyList<SynthPiece> ScopeReplacements(Project project, TimeRange? clipRange, double rate, double duration)
     {
         var selected = new List<SynthPiece>();
+        var grid = new VoiceLabSampleGrid(rate);
         foreach (var segment in project.VoiceLab.Segments.Where(segment => segment.Enabled))
         {
             var start = segment.Replace.Start;
             var end = segment.Replace.End;
-            if (!double.IsFinite(start) || !double.IsFinite(end) || start < 0 || !(start < end) || end > duration)
+            if (!double.IsFinite(start) || !double.IsFinite(end) || start < 0 || !(start < end) || grid.Sample(end) > grid.Sample(duration))
                 throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
-            if (clipRange is { } outside && (end <= outside.Start || start >= outside.End)) continue;
+            if (clipRange is { } outside && (grid.Sample(end) <= grid.Sample(outside.Start) || grid.Sample(start) >= grid.Sample(outside.End))) continue;
             var range = new MediaInterval(VoiceLabGeometry.Samples(start, rate), VoiceLabGeometry.Samples(end, rate));
             var seams = segment.Candidates.ElementAtOrDefault(segment.SelectedCandidateIndex)?.Recipe?.Seams;
-            if (clipRange is { } clip && (start < clip.Start || end > clip.End) || range.EndSample <= range.StartSample || seams is null ||
+            if (clipRange is { } clip && !grid.Contains(clip.Start, clip.End, start, end) || range.EndSample <= range.StartSample || seams is null ||
                 new[] { seams.In.FadeSamples, seams.Out.FadeSamples }.Any(fade => fade < 0 || fade >= VoiceLabGeometry.SampleLimit))
                 throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
             selected.Add(new(segment.Id, false, start, end, range, seams.In.Kind, seams.In.FadeSamples, seams.Out.Kind, seams.Out.FadeSamples));
@@ -589,12 +592,15 @@ public static class VoiceLabWindowPlanner
         if (rightSeam.Sample <= leftSeam.Sample) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
         if (replacements.FirstOrDefault(piece => piece.Start < end && start < piece.End) is { } overlapped)
             throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.OverlapsReplacement, segmentId: overlapped.Id);
+        // Items meet the window on the source sample grid, where the fit stores its edges (§10.1): a touching boundary off
+        // the grid meets a seam that rounds to the same sample.
+        var grid = new VoiceLabSampleGrid(rate);
         foreach (var word in words)
-            if (word.Start < start && start < word.End || word.Start < end && end < word.End)
+            if (grid.CrossesSample(word.Start, word.End, leftSeam.Sample) || grid.CrossesSample(word.Start, word.End, rightSeam.Sample))
                 throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.WindowCrossesWord, word.Id);
         // The window holds the passage and its bridges. It absorbs cut items, events and unlabeled speech, but a kept word
         // that is neither a passage nor a bridge word would lose its speech.
-        var inside = Enumerable.Range(0, words.Count).Where(index => words[index].Start >= start && words[index].End <= end).ToArray();
+        var inside = Enumerable.Range(0, words.Count).Where(index => grid.Contains(start, end, words[index].Start, words[index].End)).ToArray();
         for (var index = firstIndex; index <= lastIndex; index++)
             if (!inside.Contains(index)) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.WindowCrossesWord, words[index].Id);
         foreach (var index in inside)
@@ -615,22 +621,13 @@ public static class VoiceLabWindowPlanner
         // Only a window inside the clip, holding a passage of the clip, can open or close its output; any other is refused
         // as before.
         var inClip = source.ClipBounds is { } bounds && bounds.Start <= a && b <= bounds.End &&
-            clipRange is { } own && own.Start <= start && end <= own.End;
+            clipRange is { } own && grid.Contains(own.Start, own.End, start, end);
         var layout = new SeamLayout(replacements.Append(window).OrderBy(piece => piece.Range.StartSample).ToArray(),
             KeptSource((start, end), windowRange), total, clipScope);
         // The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
         var alone = new SeamLayout(replacements.ToArray(), KeptSource(null), total, clipScope);
         var elements = layout.Elements;
         var w = Array.FindIndex(elements, piece => piece.IsWindow);
-        // A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's
-        // edge as its sample over the rate (§8.9.2), so that stored edge must not cut into an item either: at a touching
-        // boundary off the source grid it would by under a sample, and the hunk is refused with WindowCrossesWord.
-        void StoredAtCut(VoiceLabSeamPlacement seam)
-        {
-            var stored = seam.Sample / rate;
-            foreach (var word in words)
-                if (word.Start < stored && stored < word.End) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.WindowCrossesWord, word.Id);
-        }
         static VoiceLabGeometryException Refusal(bool adjacent, string id) =>
             new(adjacent ? VoiceLabGeometryErrorCode.AdjacentReplacement : VoiceLabGeometryErrorCode.InvalidInput, segmentId: id);
         // Throws unless replacement index's seam on that side still renders beside the window. A check that holds without the
@@ -653,10 +650,7 @@ public static class VoiceLabWindowPlanner
         if (leftSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, true))
             HoldsInFullTake(project, take, window, true);
         else if (leftSeam.Kind != VoiceLabSeamKind.None && layout.Beside(w, true) < leftSeam.FadeSamples / 2)
-        {
             HoldsAcrossCut(layout, w, true);
-            StoredAtCut(leftSeam);
-        }
         if (w + 1 < elements.Length)
         {
             if (layout.Run(w + 1).Length == 0) throw Refusal(true, elements[w + 1].Id);
@@ -666,10 +660,7 @@ public static class VoiceLabWindowPlanner
         if (rightSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, false))
             HoldsInFullTake(project, take, window, false);
         else if (rightSeam.Kind != VoiceLabSeamKind.None && layout.Beside(w, false) < rightSeam.FadeSamples - rightSeam.FadeSamples / 2)
-        {
             HoldsAcrossCut(layout, w, false);
-            StoredAtCut(rightSeam);
-        }
         // The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
         var inner = leftSeam.FadeSamples - leftSeam.FadeSamples / 2 + rightSeam.FadeSamples / 2;
         if (inner > rightSeam.Sample - leftSeam.Sample)
@@ -814,15 +805,16 @@ public static class VoiceLabWindowPlanner
         var source = new ScopeSource(project, scope, take);
         var kept = VoiceLabGeometry.Subtract(source.KeptSource((window.Start, window.End), new MediaInterval(window.StartSample, window.EndSample)),
             source.Reserved);
-        var before = take.Words.Where((word, index) => source.KeptItem[index] && word.End <= window.Start)
+        var before = take.Words.Where((word, index) => source.KeptItem[index] && VoiceLabGeometry.Samples(word.End, take.Rate) <= window.StartSample)
             .Select(word => VoiceLabGeometry.Samples(word.End, take.Rate)).ToArray();
-        var after = take.Words.Where((word, index) => source.KeptItem[index] && word.Start >= window.End)
+        var after = take.Words.Where((word, index) => source.KeptItem[index] && VoiceLabGeometry.Samples(word.Start, take.Rate) >= window.EndSample)
             .Select(word => VoiceLabGeometry.Samples(word.Start, take.Rate)).ToArray();
+        var grid = new VoiceLabSampleGrid(take.Rate);
         double? Lend(VoiceLabSeamPlacement seam, bool incoming)
         {
             if (seam.Kind == VoiceLabSeamKind.None)
             {
-                var words = take.Words.Where(word => word.Kind == WordKind.Word && word.Start >= window.Start && word.End <= window.End);
+                var words = take.Words.Where(word => word.Kind == WordKind.Word && grid.Contains(window.Start, window.End, word.Start, word.End));
                 return incoming ? Math.Max(0, words.Select(word => word.Start).DefaultIfEmpty(window.Start).Min() - window.Start)
                     : Math.Max(0, window.End - words.Select(word => word.End).DefaultIfEmpty(window.End).Max());
             }

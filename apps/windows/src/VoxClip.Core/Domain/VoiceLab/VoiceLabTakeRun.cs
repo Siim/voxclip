@@ -29,8 +29,10 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     public VoiceLabSpeechOptions Options(int take)
     {
         var kept = Items.Where(word => word.Kind == WordKind.Word && !CutWordIds.Contains(word.Id)).ToArray();
-        return new(unchecked(Seed + (uint)take), string.Join(" ", kept.Where(word => word.End <= Window.Start).Select(word => word.Text)),
-            string.Join(" ", kept.Where(word => word.Start >= Window.End).Select(word => word.Text)), Pace);
+        // Before and after the window on the source grid (§10.1).
+        var grid = new VoiceLabSampleGrid(SourceSampleRate);
+        return new(unchecked(Seed + (uint)take), string.Join(" ", kept.Where(word => grid.Sample(word.End) <= Window.StartSample).Select(word => word.Text)),
+            string.Join(" ", kept.Where(word => grid.Sample(word.Start) >= Window.EndSample).Select(word => word.Text)), Pace);
     }
     /// <summary>A copy that later changes to the caller's lists cannot reach. The excerpt never changes, so it is shared.</summary>
     public VoiceLabTakeInput Snapshot() => this with { SourceEnvelope = SourceEnvelope with { Rms = Array.AsReadOnly(SourceEnvelope.Rms.ToArray()) },

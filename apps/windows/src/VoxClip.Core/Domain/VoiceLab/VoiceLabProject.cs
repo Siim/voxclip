@@ -16,7 +16,12 @@ public enum VoiceLabSegmentKind
     /// <summary>The user's own microphone take of a Rewrite phrase (voice-lab.md §8.13): real speech, no clone, no consent (v3 only).</summary>
     [JsonStringEnumMemberName("recorded")] Recorded
 }
-public sealed record VoiceLabReplacement(double Start, double End, string FirstWordId, string LastWordId);
+public sealed record VoiceLabReplacement(double Start, double End, string FirstWordId, string LastWordId)
+{
+    /// <summary>Whether this replace range covers the item from <paramref name="start"/> to <paramref name="end"/> on the
+    /// source grid at <paramref name="rate"/> (voice-lab §10.1).</summary>
+    public bool Covers(double start, double end, double rate) => new VoiceLabSampleGrid(rate).Contains(Start, End, start, end);
+}
 /// <summary>A segment's audio. <c>TiltDbPerOctave</c> (Mac since 2026-11-06, voice-lab §8.7 item 2b) is the Mac's tone
 /// match: read, validated and saved unchanged; Windows renders without it for now (owed). Omitted when null.</summary>
 public sealed record VoiceLabAudio(string AssetId, double TrimStart, double TrimEnd, double Stretch, double GainDb,
@@ -142,19 +147,21 @@ public static class VoiceLabProject
         var indices = words.Select((word, index) => (word.Id, index)).ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var enabled = new List<(double start, double end)>();
+        var grid = new VoiceLabSampleGrid(sourceRate);
         foreach (var segment in project.VoiceLab.Segments)
         {
             Require(Matches(segment.Id, Id) && ids.Add(segment.Id) && double.IsFinite(segment.OutDuration) && segment.OutDuration > 0 &&
                 double.IsFinite(segment.OutDuration * sourceRate) && segment.OutDuration * sourceRate < long.MaxValue,
                 VoiceLabProjectErrorCode.InvalidSegment);
             var range = segment.Replace;
+            // Words meet the range on the source sample grid, where the fit stores its edges (§10.1), and so does the take's end.
+            bool Inside(TimedWord word) => grid.Contains(range.Start, range.End, word.Start, word.End);
             Require(double.IsFinite(range.Start) && double.IsFinite(range.End) && range.Start >= 0 && range.End > range.Start &&
-                range.End <= project.Media.Source.DurationSeconds && indices.TryGetValue(range.FirstWordId, out var first) &&
-                indices.TryGetValue(range.LastWordId, out var last) && first <= last && words[first].Start >= range.Start &&
-                words[last].End <= range.End && words.FirstOrDefault(word => word.Start >= range.Start && word.End <= range.End)?.Id == range.FirstWordId &&
-                words.LastOrDefault(word => word.Start >= range.Start && word.End <= range.End)?.Id == range.LastWordId &&
-                !words.Any(word => word.Start < range.Start && word.End > range.Start ||
-                    word.Start < range.End && word.End > range.End), VoiceLabProjectErrorCode.InvalidRange);
+                grid.Sample(range.End) <= grid.Sample(project.Media.Source.DurationSeconds) && indices.TryGetValue(range.FirstWordId, out var first) &&
+                indices.TryGetValue(range.LastWordId, out var last) && first <= last && Inside(words[first]) && Inside(words[last]) &&
+                words.FirstOrDefault(Inside)?.Id == range.FirstWordId && words.LastOrDefault(Inside)?.Id == range.LastWordId &&
+                !words.Any(word => grid.Crosses(word.Start, word.End, range.Start) || grid.Crosses(word.Start, word.End, range.End)),
+                VoiceLabProjectErrorCode.InvalidRange);
             var asset = assets.FirstOrDefault(item => item.Id == segment.Audio.AssetId);
             Require(asset is not null, VoiceLabProjectErrorCode.DanglingAsset);
             var audio = segment.Audio;
