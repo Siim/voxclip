@@ -967,22 +967,30 @@ struct RewriteChange: Equatable, Sendable {
     var currentSynthesisModel: String? {
         takePlan.flatMap { $0.isRetired ? nil : $0.modelID } ?? generation?.selectedModelID ?? synthesisModel
     }
-    func confirmDiscardChanges(perform: @escaping @MainActor () -> Void) {
+    /// The paid takes a change of words discards: the take plan's cloned-voice takes and the generation's rows. Zero
+    /// while the first takes are still being made.
+    var paidTakeCount: Int {
+        let planned = takePlan?.phrases.reduce(0) { $0 + $1.takes.filter { $0.source == .clonedVoice }.count } ?? 0
+        return planned + (generation?.rows.count ?? 0)
+    }
+    func confirmDiscardChanges(owner: UUID? = nil, perform: @escaping @MainActor () -> Void) {
         let count = proposalCount
         let question = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
         task.ask(PanelConfirm(question: question,
             cancel: PanelAction(id: "keepWorking", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() },
             confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { [weak self] in
-                guard let self, isOpen, task.confirm?.confirm.id == "discardChanges" else { return }
+                guard let self, isOpen, task.confirm?.confirm.id == "discardChanges", task.confirm?.owner == owner else { return }
                 task.dismissConfirm()
                 perform()
-            }))
+            }, owner: owner))
         if editor.app.shell.editor === editor, !editor.app.shell.viewerShown { editor.app.shell.toggleViewer() }
         editor.announce(question)
     }
-    func confirmPaidProposalChange(perform: @escaping @MainActor () -> Void) -> Bool {
-        guard hasPaidTakes, !applyingTextFixesOnly else { return false }
-        confirmDiscardChanges { [weak self] in
+    /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then).
+    var changeNeedsDiscard: Bool { hasPaidTakes && !applyingTextFixesOnly }
+    func confirmPaidProposalChange(owner: UUID? = nil, perform: @escaping @MainActor () -> Void) -> Bool {
+        guard changeNeedsDiscard else { return false }
+        confirmDiscardChanges(owner: owner) { [weak self] in
             guard let self, current else { return }
             if takesBusy, let plan = takePlan {
                 takesTask = Task { [weak self] in

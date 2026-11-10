@@ -73,6 +73,15 @@ struct RewriteThreadBackend {
     var ownWords: Key?
     /// What the input held for Claude when your own words took it, given back when they leave.
     @ObservationIgnored var draft = ""
+    /// A version, Claude's or your own words, that waits for the paid takes' discard before it goes into the text. Only
+    /// one waits: a later version replaces it. It waits while the Rewrite panel's question with `token` stands.
+    struct Waiting: Equatable {
+        let key: Key
+        let token: UUID
+        /// The paid takes it replaces; 0 while the first ones are still being made.
+        let takes: Int
+    }
+    var waiting: Waiting?
     /// The inline connector confirmation, as Ask Claude's (consent action `rewrite`).
     let confirmation = ConnectorConfirmation()
     @ObservationIgnored var task: Task<Void, Never>?
@@ -110,6 +119,8 @@ struct RewriteThreadDisplay: Equatable {
     var yours = false
     /// The input takes your own words, not a message to Claude.
     var ownWords = false
+    /// A version waits for the paid takes' discard: "Waiting: this replaces 2 paid takes. Confirm in the Rewrite panel to use it."
+    var waiting: String? = nil
     static let ownWordsBubble = "\u{270E} My own words"
     static let ownWordsPlaceholder = "Your exact words \u{00B7} \u{21B5} applies \u{00B7} Esc cancels"
     static let ownWordsCostLine = "Free \u{00B7} nothing is sent"
@@ -123,6 +134,11 @@ struct RewriteThreadDisplay: Equatable {
         voicePhrases == 0 ? "\u{00B7} text only, free" : "\u{00B7} \(voicePhrases) phrase\(voicePhrases == 1 ? "" : "s") to voice at Keep"
     }
     var label: String { "Talk to Claude about change \(ordinal)" }
+    /// The waiting line for a version that replaces `takes` paid takes (0: the takes still being made).
+    static func waitingLine(takes: Int) -> String {
+        let what = takes == 0 ? "your paid takes" : takes == 1 ? "1 paid take" : "\(takes) paid takes"
+        return "Waiting: this replaces \(what). Confirm in the Rewrite panel to use it."
+    }
 }
 
 extension EditorModel {
@@ -186,7 +202,48 @@ extension EditorModel {
                                     steps: Array(thread.nextSteps.prefix(prompt?.maxNextSteps ?? 2)), keep: prompt?.keepBubble ?? "",
                                     steady: prompt?.steadyBubbles ?? [], costLine: Self.costLine(target.session.provider),
                                     sending: state.sending == target.key, error: mine ? state.error : nil, retry: mine && state.failed != nil,
-                                    yours: thread.versions[thread.current].yours, ownWords: state.ownWords == target.key)
+                                    yours: thread.versions[thread.current].yours, ownWords: state.ownWords == target.key,
+                                    waiting: rewriteThreadWaiting(target.key, session: target.session).map { RewriteThreadDisplay.waitingLine(takes: $0.takes) })
+    }
+
+    /// The version waiting for change `key`: only while the Rewrite panel still asks its question. Keep Working, or
+    /// anything else that takes the question away, ends the wait with nothing changed.
+    private func rewriteThreadWaiting(_ key: RewriteThreadState.Key, session: RewriteSession) -> RewriteThreadState.Waiting? {
+        guard let waiting = rewriteThread.waiting, waiting.key == key, session.task.confirm?.owner == waiting.token else { return nil }
+        return waiting
+    }
+
+    /// Where a thread version went: into the text now, waiting for the paid takes' discard, or nowhere.
+    enum RewriteThreadPlacement { case placed, waiting, failed }
+
+    /// Puts a thread version, Claude's or your own words, in change `key`'s place: the local edit, then the Rewrite's own
+    /// words for the change (`acceptThreadWords`), then `land` records it in the thread. With paid takes it waits for the
+    /// discard instead (design.md §6.3 "Talk back to Claude", "Paid takes"): the thread says so, and the Rewrite panel
+    /// asks. Discard Changes puts it in and records it, as any version; Keep Working changes nothing. A later version
+    /// replaces a waiting one, so only one waits.
+    func placeRewriteThreadVersion(_ key: RewriteThreadState.Key, text: String,
+                                   land: @escaping @MainActor () -> Void) -> RewriteThreadPlacement {
+        guard let session = openRewrite, session.changeNeedsDiscard else {
+            guard editChange(key.ordinal, text: text) else { return .failed }
+            try? openRewrite?.acceptThreadWords(key.ordinal, text: text)
+            land()
+            return .placed
+        }
+        let token = UUID(), state = rewriteThread
+        state.waiting = .init(key: key, token: token, takes: session.paidTakeCount)
+        state.error = nil; state.failed = nil
+        _ = session.confirmPaidProposalChange(owner: token) { [weak self] in
+            guard let self, state.waiting?.token == token else { return }
+            state.waiting = nil
+            guard proposal?.id == key.proposal, proposal?[key.ordinal]?.state == .pending, editChange(key.ordinal, text: text) else {
+                if state.key == key { state.error = "The new words couldn't be put in the text. Your edits are saved." }
+                return
+            }
+            try? openRewrite?.acceptThreadWords(key.ordinal, text: text)
+            land()
+        }
+        announce(RewriteThreadDisplay.waitingLine(takes: session.paidTakeCount))
+        return .waiting
     }
 
     /// The change's recorded words: its span as the take reads it, corrected spelling included.
@@ -278,22 +335,23 @@ extension EditorModel {
         } else if note.isEmpty {
             note = kind == .versions ? "\(thread.versions.count - count) more versions." : "Changed the words."
         }
-        if let target, target != thread.current {
-            guard editChange(key.ordinal, text: thread.versions[target].text) else {
-                rewriteThread.error = "The new words couldn't be put in the text. Your edits are saved."
-                return
-            }
-            // Claude's words, not a hand edit: the Rewrite reviews and voices them at Keep.
-            try? openRewrite?.acceptThreadWords(key.ordinal, text: thread.versions[target].text)
-            thread.current = target
-        }
         thread.turns += [.init(speaker: .you, text: message), .init(speaker: .claude, text: note)]
         thread.nextSteps = reply.nextSteps
-        guard var proposal, proposal.id == key.proposal, proposal[key.ordinal]?.state == .pending else { return }
-        proposal.threads[key.ordinal] = thread
-        self.proposal = proposal
-        if fromInput, rewriteThread.key == key { rewriteThread.text = "" }
-        announce("Claude: \(note) Version \(thread.current + 1) of \(thread.versions.count).")
+        let record: @MainActor (Int) -> Void = { [weak self] current in
+            guard let self, var proposal, proposal.id == key.proposal, proposal[key.ordinal]?.state == .pending else { return }
+            var thread = thread
+            thread.current = current
+            proposal.threads[key.ordinal] = thread
+            self.proposal = proposal
+            if fromInput, rewriteThread.key == key { rewriteThread.text = "" }
+            announce("Claude: \(note) Version \(current + 1) of \(thread.versions.count).")
+        }
+        guard let target, target != thread.current else { record(thread.current); return }
+        // Claude's words, not a hand edit: the Rewrite reviews and voices them at Keep. With paid takes they wait for the
+        // discard, and the reply's versions and turns come into the thread only once they are in the text.
+        if placeRewriteThreadVersion(key, text: thread.versions[target].text, land: { record(target) }) == .failed {
+            rewriteThread.error = "The new words couldn't be put in the text. Your edits are saved."
+        }
     }
 
     // MARK: Versions and folding
@@ -302,16 +360,16 @@ extension EditorModel {
     /// and no undo step is added.
     @discardableResult func switchRewriteThreadVersion(by step: Int) -> Bool {
         guard let target = rewriteThreadTarget, var thread = rewriteThread(target.key.ordinal) else { return false }
-        let next = thread.current + step
-        guard thread.versions.indices.contains(next), editChange(target.key.ordinal, text: thread.versions[next].text) else { return false }
-        try? openRewrite?.acceptThreadWords(target.key.ordinal, text: thread.versions[next].text)
+        let next = thread.current + step, key = target.key
+        guard thread.versions.indices.contains(next) else { return false }
         thread.current = next
-        // Words equal to the recorded ones leave nothing to change: the edit left the change out, and its thread goes with it.
-        guard var proposal, proposal.id == target.key.proposal, proposal[target.key.ordinal]?.state == .pending else { return true }
-        proposal.threads[target.key.ordinal] = thread
-        self.proposal = proposal
-        announce("Version \(next + 1) of \(thread.versions.count)")
-        return true
+        return placeRewriteThreadVersion(key, text: thread.versions[next].text) { [weak self] in
+            // Words equal to the recorded ones leave nothing to change: the edit left the change out, and its thread goes with it.
+            guard let self, var proposal, proposal.id == key.proposal, proposal[key.ordinal]?.state == .pending else { return }
+            proposal.threads[key.ordinal] = thread
+            self.proposal = proposal
+            announce("Version \(next + 1) of \(thread.versions.count)")
+        } != .failed
     }
 
     /// Esc: the thread folds; the version stays in the text, and focusing the change again opens it.
@@ -381,32 +439,31 @@ extension EditorModel {
             announce("Nothing changed: those are the words in the text.")
             return true
         }
-        guard editChange(key.ordinal, text: text) else {
+        // With paid takes your words wait for the discard, and the input keeps them, still your own words, until then.
+        let placed = placeRewriteThreadVersion(key, text: text) { [weak self] in
+            guard let self else { return }
+            if state.ownWords == key { leaveRewriteThreadOwnWords(focus: false) }
+            // The recorded words (or none for added words): the edit left the change out, and its thread went with it.
+            guard var proposal, proposal.id == key.proposal, proposal[key.ordinal]?.state == .pending else { return }
+            let shown = changeText(key.ordinal)
+            if let found = thread.versions.firstIndex(where: { $0.text == shown }) { thread.current = found } else {
+                thread.versions.append(.init(text: shown, note: nil, yours: true))
+                thread.current = thread.versions.count - 1
+            }
+            thread.turns.append(.init(speaker: .yours, text: text))
+            // Claude's next steps were for its own words.
+            thread.nextSteps = []
+            proposal.threads[key.ordinal] = thread
+            self.proposal = proposal
+            if state.key == key { state.error = nil }
+            announce((text.isEmpty ? "Change \(key.ordinal) cuts its words now." : "Your words are in change \(key.ordinal).")
+                     + " Version \(thread.current + 1) of \(thread.versions.count). Nothing was sent.")
+        }
+        guard placed != .failed else {
             state.error = "Your words couldn't be put in the text. Your edits are saved."
             state.failed = nil
             return false
         }
-        // The recorded words (or none for added words): the edit left the change out, and its thread went with it.
-        guard proposal?.id == key.proposal, proposal?[key.ordinal]?.state == .pending else {
-            leaveRewriteThreadOwnWords(focus: false)
-            return true
-        }
-        try? openRewrite?.acceptThreadWords(key.ordinal, text: text)
-        guard var proposal else { return true }
-        let shown = changeText(key.ordinal)
-        if let found = thread.versions.firstIndex(where: { $0.text == shown }) { thread.current = found } else {
-            thread.versions.append(.init(text: shown, note: nil, yours: true))
-            thread.current = thread.versions.count - 1
-        }
-        thread.turns.append(.init(speaker: .yours, text: text))
-        // Claude's next steps were for its own words.
-        thread.nextSteps = []
-        proposal.threads[key.ordinal] = thread
-        self.proposal = proposal
-        leaveRewriteThreadOwnWords(focus: false)
-        state.error = nil
-        announce((text.isEmpty ? "Change \(key.ordinal) cuts its words now." : "Your words are in change \(key.ordinal).")
-                 + " Version \(thread.current + 1) of \(thread.versions.count). Nothing was sent.")
         return true
     }
 

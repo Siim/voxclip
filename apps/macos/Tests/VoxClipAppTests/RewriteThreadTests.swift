@@ -463,6 +463,128 @@ import Testing
         #expect(editor.proposal == before && editor.rewriteThreadDisplay?.versionLine == "1 of 1" && editor.rewriteThread.ownWords == nil)
     }
 
+    // MARK: Paid takes: a version waits for the discard
+
+    /// Paid takes on the scene's phrases, as the take fixtures make them; the voice change still waits, with its thread.
+    private func payTakes(_ editor: EditorModel, _ session: RewriteSession, focus ordinal: Int) throws {
+        try DebugRewriteGeneration.install("ready", in: session)
+        session.showProposal()
+        editor.focusChange(ordinal)
+        #expect(session.hasPaidTakes && session.paidTakeCount > 0 && session.task.confirm == nil)
+        #expect(editor.rewriteThreadDisplay?.ordinal == ordinal && editor.rewriteThreadDisplay?.waiting == nil, "a waiting change keeps its thread")
+    }
+    private func waitingLine(_ session: RewriteSession) -> String { RewriteThreadDisplay.waitingLine(takes: session.paidTakeCount) }
+
+    /// With paid takes, Claude's version waits for the Rewrite panel's discard question, and the thread says so. Keep
+    /// Working changes nothing and the line goes; Discard Changes puts the version in as any reply: "2 of 2", its turns
+    /// and next steps, reviewed and voiced at Keep. The arrows wait the same way.
+    @Test func claudesVersionWaitsForTheDiscardThenLandsInTheThreadOrChangesNothing() async throws {
+        let (editor, session, script, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        let first = editor.changeText(ordinal)
+        try payTakes(editor, session, focus: ordinal)
+        let takes = try #require(session.takePlan)
+        script.replies = [reply("much fresher words", steps: ["More suspense"])]
+        await send(editor, "Make it fresher")
+        let waiting = try #require(editor.rewriteThreadDisplay)
+        #expect(waiting.waiting == waitingLine(session) && waiting.waiting?.hasPrefix("Waiting: this replaces ") == true)
+        #expect(waiting.error == nil && waiting.versionLine == "1 of 1" && waiting.turns.isEmpty && waiting.steps.isEmpty, "nothing in the thread yet")
+        #expect(editor.changeText(ordinal) == first && session.takePlan === takes && session.hasPaidTakes, "nothing in the text, takes kept")
+        let question = try #require(session.task.confirm)
+        #expect(question.owner == editor.rewriteThread.waiting?.token && question.owner != nil)
+        #expect(editor.lastAnnouncement == waitingLine(session))
+        // Keep Working: nothing changes, and the thread shows the version in the text.
+        question.cancel.perform()
+        let declined = try #require(editor.rewriteThreadDisplay)
+        #expect(declined.waiting == nil && declined.versionLine == "1 of 1" && declined.turns.isEmpty && declined.error == nil)
+        #expect(editor.changeText(ordinal) == first && session.takePlan === takes)
+        // Again, and Discard Changes: the version lands as any reply does.
+        script.replies = [reply("much fresher words", steps: ["More suspense"])]
+        await send(editor, "Make it fresher")
+        #expect(editor.rewriteThreadDisplay?.waiting == waitingLine(session))
+        try #require(session.task.confirm).confirm.perform()
+        let landed = try #require(editor.rewriteThreadDisplay)
+        #expect(editor.changeText(ordinal) == "much fresher words" && !session.hasPaidTakes && session.task.confirm == nil)
+        #expect(landed.waiting == nil && landed.versionLine == "2 of 2" && landed.turns.map(\.speaker) == [.you, .claude] && landed.steps == ["More suspense"])
+        #expect(session.reviewedVoiceOrdinals.contains(ordinal) && !session.hasEditedChanges, "Claude's words, voiced at Keep")
+        #expect(editor.rewriteThread.waiting == nil)
+        // The arrows wait too: ‹ with paid takes again, declined, then confirmed.
+        try payTakes(editor, session, focus: ordinal)
+        #expect(editor.switchRewriteThreadVersion(by: -1) && editor.rewriteThreadDisplay?.waiting != nil && editor.changeText(ordinal) == "much fresher words")
+        try #require(session.task.confirm).cancel.perform()
+        #expect(editor.rewriteThreadDisplay?.versionLine == "2 of 2" && editor.rewriteThreadDisplay?.waiting == nil)
+        #expect(editor.switchRewriteThreadVersion(by: -1))
+        try #require(session.task.confirm).confirm.perform()
+        #expect(editor.changeText(ordinal) == first && editor.rewriteThreadDisplay?.versionLine == "1 of 2" && editor.rewriteThreadDisplay?.turns.count == 2)
+    }
+
+    /// With paid takes, your own words wait for the discard: the input keeps them, still your own words. Keep Working
+    /// changes nothing and they stay typed; Discard Changes puts them in: "3 of 3 · your words", the "your own words"
+    /// turn, Claude's steps gone, back to Claude.
+    @Test func yourOwnWordsWaitForTheDiscardAndKeepWhatYouTyped() async throws {
+        let (editor, session, script, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        script.replies = [reply("much fresher words", steps: ["More suspense"])]
+        await send(editor, "Make it fresher")
+        try payTakes(editor, session, focus: ordinal)
+        editor.rewriteThread.text = "a draft for Claude"
+        editor.pressRewriteThreadBubble("\u{270E} My own words")
+        let field = input(editor, "my very own sentence")
+        field.keyDown(with: key(36, [], "\r"))
+        let waiting = try #require(editor.rewriteThreadDisplay)
+        #expect(waiting.waiting == waitingLine(session) && waiting.ownWords && editor.rewriteThread.text == "my very own sentence")
+        #expect(waiting.versionLine == "2 of 2" && waiting.yoursLine == nil && waiting.steps == ["More suspense"] && editor.changeText(ordinal) == "much fresher words")
+        // Keep Working: nothing changes, and what you typed stays in the input.
+        try #require(session.task.confirm).cancel.perform()
+        let declined = try #require(editor.rewriteThreadDisplay)
+        #expect(declined.waiting == nil && declined.ownWords && editor.rewriteThread.text == "my very own sentence")
+        #expect(declined.versionLine == "2 of 2" && editor.changeText(ordinal) == "much fresher words" && session.hasPaidTakes)
+        // ↵ again, and Discard Changes.
+        field.keyDown(with: key(36, [], "\r"))
+        try #require(session.task.confirm).confirm.perform()
+        let landed = try #require(editor.rewriteThreadDisplay)
+        #expect(editor.changeText(ordinal) == "my very own sentence" && !session.hasPaidTakes && landed.waiting == nil)
+        #expect(landed.versionLine == "3 of 3" && landed.yoursLine == "\u{00B7} your words" && landed.steps.isEmpty && !landed.ownWords)
+        #expect(landed.turns.last == RewriteThread.Turn(speaker: .yours, text: "my very own sentence"))
+        #expect(editor.rewriteThread.text == "a draft for Claude", "Claude's draft comes back")
+        #expect(session.reviewedVoiceOrdinals.contains(ordinal) && !session.hasEditedChanges && script.requests.count == 1)
+    }
+
+    /// Only one version waits: a later one, Claude's or your own words, replaces it in the thread and in the panel's
+    /// question, and only the last one goes in.
+    @Test func aSecondVersionReplacesTheWaitingOne() async throws {
+        let (editor, session, script, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        try payTakes(editor, session, focus: ordinal)
+        // Claude's version waits; your own words replace it.
+        script.replies = [reply("much fresher words")]
+        await send(editor, "Make it fresher")
+        let claude = try #require(editor.rewriteThread.waiting)
+        #expect(editor.openRewriteThreadOwnWords() && editor.applyRewriteThreadOwnWords("my very own sentence"))
+        let own = try #require(editor.rewriteThread.waiting)
+        #expect(own.token != claude.token && session.task.confirm?.owner == own.token && editor.rewriteThreadDisplay?.waiting != nil)
+        try #require(session.task.confirm).confirm.perform()
+        #expect(editor.changeText(ordinal) == "my very own sentence" && editor.rewriteThreadDisplay?.versionLine == "2 of 2")
+        #expect(editor.rewriteThreadDisplay?.turns.map(\.speaker) == [.yours], "Claude's waiting version never landed")
+        // Your own words wait; Claude's version replaces them.
+        try payTakes(editor, session, focus: ordinal)
+        #expect(editor.openRewriteThreadOwnWords() && editor.applyRewriteThreadOwnWords("other words of mine"))
+        let mine = try #require(editor.rewriteThread.waiting)
+        script.replies = [reply("much fresher words")]
+        await send(editor, "Make it fresher")
+        #expect(editor.rewriteThread.waiting?.token != mine.token && session.task.confirm?.owner == editor.rewriteThread.waiting?.token)
+        try #require(session.task.confirm).confirm.perform()
+        let landed = try #require(editor.rewriteThreadDisplay)
+        #expect(editor.changeText(ordinal) == "much fresher words" && landed.versionLine == "3 of 3" && landed.yoursLine == nil)
+        #expect(landed.turns.map(\.speaker) == [.you, .claude] && landed.waiting == nil && !editor.rewriteThread.text.contains("other words"))
+    }
+
     /// ⌥E in the transcript opens the thread for your own words (↵ and F2 still open it for Claude); VoiceOver reads the
     /// bubble, the field and the transcript's action.
     @Test func optionEOpensYourOwnWordsAndVoiceOverNamesThem() throws {

@@ -136,6 +136,9 @@ struct PanelConfirm: Equatable {
     let question: String
     let cancel: PanelAction
     let confirm: PanelAction
+    /// Who asked, when the asker shows its own waiting state (a Rewrite thread version waiting for the paid takes'
+    /// discard, design.md §6.3 "Talk back to Claude"): it waits while this question stands, and not after.
+    var owner: UUID? = nil
 }
 
 /// One step of a task's work log: Rewrite's own steps (R1), or one tool call in Phase 1.
