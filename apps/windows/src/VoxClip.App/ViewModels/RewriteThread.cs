@@ -41,6 +41,10 @@ internal sealed record RewriteThread(IReadOnlyList<RewriteThreadVersion> Version
 /// <see cref="RewriteSession.ProposalRevision"/>.</summary>
 internal readonly record struct RewriteThreadKey(int Proposal, int Ordinal);
 
+/// <summary>A thread version waiting for the paid takes' discard: the change it goes into, the paid takes it replaces (0 while the first
+/// ones are still being made) and the review change the Rewrite panel asks about.</summary>
+internal sealed record RewriteThreadWaiting(RewriteThreadKey Key, int Takes, RewritePaidReviewChange Change);
+
 /// <summary>What a thread request is: a message to the AI or "3 more versions".</summary>
 internal sealed record RewriteThreadFailure(string Message, RewriteFollowupKind Kind);
 
@@ -51,9 +55,12 @@ internal sealed class RewriteThreadState
     internal string Text { get; set; } = "";
     /// <summary>The change <see cref="Text"/> and <see cref="Error"/> belong to; a focus move to another change starts with an empty input.</summary>
     internal RewriteThreadKey? Key { get; private set; }
-    /// <summary>Thread errors that are not the AI's: the new words couldn't go into the text, or they wait for the paid takes' discard.</summary>
+    /// <summary>The thread's error that is not the AI's: the new words couldn't go into the text.</summary>
     internal const string ApplyFailed = "The new words couldn't be put in the text. Your edits are saved.";
-    internal const string WaitsForDiscard = "Changing these words discards your paid takes: confirm in the Rewrite panel. Your edits are saved.";
+    /// <summary>A version, the AI's or your own words, that waits for the paid takes' discard before it goes into the text (design.md §6.3
+    /// "Talk back to Claude", "Paid takes"). It waits while the Rewrite panel asks <see cref="RewriteThreadWaiting.Change"/>; only one waits,
+    /// as the panel asks one question.</summary>
+    internal RewriteThreadWaiting? Waiting { get; set; }
     /// <summary>The change whose request is in flight.</summary>
     internal RewriteThreadKey? Sending { get; private set; }
     internal string? Error { get; set; }
@@ -104,8 +111,11 @@ internal sealed class RewriteThreadState
 /// <summary>The focused change's thread as the transcript shows it (Mac <c>RewriteThreadDisplay</c>).</summary>
 internal sealed record RewriteThreadDisplay(RewriteThreadKey Key, int Ordinal, IReadOnlyList<RewriteThreadTurn> Turns, int Version, int Versions,
     int VoicePhrases, IReadOnlyList<string> Steps, string Keep, IReadOnlyList<string> Steady, string CostLine, bool Sending, string? Error,
-    bool Retry, bool Yours, bool OwnWords, string Input, string FitLine, string AiName, InlineApproval? Confirmation)
+    bool Retry, bool Yours, bool OwnWords, string Input, string FitLine, string AiName, InlineApproval? Confirmation, string? Waiting = null)
 {
+    /// <summary>The line while a version waits for the paid takes' discard, as on the Mac.</summary>
+    internal static string WaitingLine(int takes) =>
+        $"Waiting: this replaces {(takes == 0 ? "your paid takes" : takes == 1 ? "1 paid take" : $"{takes} paid takes")}. Confirm in the Rewrite panel to use it.";
     internal const string OwnWordsBubble = "✎ My own words";
     internal const string OwnWordsPlaceholder = "Your exact words · ↵ applies · Esc cancels";
     internal const string OwnWordsCostLine = "Free · nothing is sent";

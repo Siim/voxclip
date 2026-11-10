@@ -11,6 +11,8 @@ internal sealed record RewritePaidReviewChange(string Identity, Func<Task<bool>>
 internal sealed partial class RewriteSession
 {
     internal bool HasPaidTakes => generationWindows.Any(window => window.HasPaidTakes);
+    /// <summary>The paid takes a change of the review discards; 0 while the first ones are still being made.</summary>
+    internal int PaidTakeCount => generationWindows.Sum(window => window.PaidTakeCount);
     internal RewritePaidReviewChange? PendingPaidReviewChange { get; private set; }
     private bool DeferPaidReviewChange(Func<Task<bool>> apply, bool shorter = false)
     {

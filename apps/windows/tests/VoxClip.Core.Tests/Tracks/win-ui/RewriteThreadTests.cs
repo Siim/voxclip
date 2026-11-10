@@ -263,6 +263,160 @@ public sealed class RewriteThreadTests
         Assert.Equal(rows, session.GenerationWindows.Select(window => window.Rows.ToArray()).ToArray());
     }
 
+    // Paid takes: a thread version waits for their discard (design.md §6.3 "Talk back to Claude", "Paid takes"; Mac RewriteThreadTests).
+
+    /// <summary>Change 1 kept, then paid takes on a phrase, with change 2 waiting and its thread showing.</summary>
+    static async Task<(RewriteSession Session, Backend Backend)> OpenWithPaidTakesAsync()
+    {
+        var (session, backend, _) = Open();
+        Assert.True(session.KeepChange(1));
+        RewriteAutoFixTests.Configure(session, new RewriteAutoFixTests.Runner((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed)));
+        await PayAsync(session);
+        return (session, backend);
+    }
+    static async Task PayAsync(RewriteSession session)
+    {
+        await session.DiscoverWindowsAsync();
+        var paid = session.GenerationWindows.First(window => window.Quote is not null);
+        paid.MarkEstimateShown(paid.Quote!);
+        await paid.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        Assert.True(session.HasPaidTakes);
+        Assert.True(session.PaidTakeCount > 0);
+        session.FocusChange(2);
+        Assert.Equal(2, session.ThreadDisplay!.Ordinal);
+        Assert.Null(session.ThreadDisplay.Waiting);
+        Assert.Null(session.PendingPaidReviewChange);
+    }
+    static string WaitingLine(RewriteSession session) => RewriteThreadDisplay.WaitingLine(session.PaidTakeCount);
+    static Task<bool> ConfirmAsync(RewriteSession session) => session.ConfirmPaidReviewChangeAsync(session.PendingPaidReviewChange!);
+
+    [Fact]
+    public async Task WithPaidTakesTheAisVersionWaitsForTheDiscardThenLandsInTheThreadOrChangesNothing()
+    {
+        var (session, backend) = await OpenWithPaidTakesAsync();
+        using var _session = session;
+        var first = Words(session, 2);
+        backend.Answer = (_, _) => Task.FromResult(new RewriteFollowupReply(["much nicer"], "Warmer.", ["Name the buyer"]));
+        session.SetThreadText("Make it warmer");
+        Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Enter));
+        await session.Thread.Running;
+        var waiting = session.ThreadDisplay!;
+        Assert.Equal(WaitingLine(session), waiting.Waiting);
+        Assert.StartsWith("Waiting: this replaces ", waiting.Waiting);
+        Assert.Equal((1, 1, 0, 0, null as string), (waiting.Version, waiting.Versions, waiting.Turns.Count, waiting.Steps.Count, waiting.Error));
+        Assert.Equal("Make it warmer", waiting.Input);
+        Assert.Equal(first, Words(session, 2));
+        Assert.Same(session.PendingPaidReviewChange, session.Thread.Waiting!.Change);
+        Assert.True(session.HasPaidTakes);
+        // Cancel: nothing changes, and the thread shows the version in the text.
+        session.CancelPaidReviewChange();
+        var declined = session.ThreadDisplay!;
+        Assert.Null(declined.Waiting);
+        Assert.Equal((1, 1, 0, "Make it warmer"), (declined.Version, declined.Versions, declined.Turns.Count, declined.Input));
+        Assert.Equal(first, Words(session, 2));
+        Assert.True(session.HasPaidTakes);
+        // Again, and "Discard takes and continue": the version lands as any reply does.
+        Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Enter));
+        await session.Thread.Running;
+        Assert.Equal(WaitingLine(session), session.ThreadDisplay!.Waiting);
+        Assert.True(await ConfirmAsync(session));
+        var landed = session.ThreadDisplay!;
+        Assert.Equal("much nicer", Words(session, 2));
+        Assert.Null(landed.Waiting);
+        Assert.Equal((2, 2, ""), (landed.Version, landed.Versions, landed.Input));
+        Assert.Equal(["Name the buyer"], landed.Steps);
+        Assert.Equal([RewriteThreadSpeaker.You, RewriteThreadSpeaker.Claude], landed.Turns.Select(turn => turn.Speaker));
+        Assert.False(session.HasPaidTakes);
+        Assert.Null(session.Thread.Waiting);
+        Assert.Contains("much nicer", Assert.Single(session.Review!.VoiceHunks, hunk => hunk.Ordinals.Contains(2)).PatchText);
+        // The arrows wait too: back to version 1 with paid takes again, cancelled, then confirmed.
+        await PayAsync(session);
+        Assert.True(session.SwitchThreadVersion(-1));
+        Assert.NotNull(session.ThreadDisplay!.Waiting);
+        Assert.Equal("much nicer", Words(session, 2));
+        session.CancelPaidReviewChange();
+        Assert.Equal((2, null as string), (session.ThreadDisplay!.Version, session.ThreadDisplay.Waiting));
+        Assert.True(session.SwitchThreadVersion(-1));
+        Assert.True(await ConfirmAsync(session));
+        Assert.Equal(first, Words(session, 2));
+        Assert.Equal((1, 2, 2), (session.ThreadDisplay!.Version, session.ThreadDisplay.Versions, session.ThreadDisplay.Turns.Count));
+    }
+
+    [Fact]
+    public async Task WithPaidTakesYourOwnWordsWaitForTheDiscardAndKeepWhatYouTyped()
+    {
+        var (session, backend, _) = Open();
+        using var _session = session;
+        Assert.True(session.KeepChange(1));
+        await session.SendThreadAsync("Make it warmer");
+        Assert.Equal("much better", Words(session, 2));
+        RewriteAutoFixTests.Configure(session, new RewriteAutoFixTests.Runner((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed)));
+        await PayAsync(session);
+        session.SetThreadText("a draft for Claude");
+        Assert.True(session.OpenThreadOwnWords());
+        session.SetThreadText("my very own words");
+        Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Enter));
+        var waiting = session.ThreadDisplay!;
+        Assert.Equal(WaitingLine(session), waiting.Waiting);
+        Assert.True(waiting.OwnWords);
+        Assert.Equal(("my very own words", 2, 2, false), (waiting.Input, waiting.Version, waiting.Versions, waiting.Yours));
+        Assert.Equal(["Name the buyer"], waiting.Steps);
+        Assert.Equal("much better", Words(session, 2));
+        // Cancel: nothing changes, and what you typed stays in the input, still your own words.
+        session.CancelPaidReviewChange();
+        var declined = session.ThreadDisplay!;
+        Assert.Null(declined.Waiting);
+        Assert.Equal((true, "my very own words", 2), (declined.OwnWords, declined.Input, declined.Version));
+        Assert.Equal("much better", Words(session, 2));
+        Assert.True(session.HasPaidTakes);
+        // Enter again, and the discard: your words land as any own words do.
+        Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Enter));
+        Assert.True(await ConfirmAsync(session));
+        var landed = session.ThreadDisplay!;
+        Assert.Equal("my very own words", Words(session, 2));
+        Assert.Null(landed.Waiting);
+        Assert.Equal((3, 3, true, false, "a draft for Claude"), (landed.Version, landed.Versions, landed.Yours, landed.OwnWords, landed.Input));
+        Assert.Empty(landed.Steps);
+        Assert.Equal(new RewriteThreadTurn(RewriteThreadSpeaker.Yours, "my very own words"), landed.Turns[^1]);
+        Assert.False(session.HasPaidTakes);
+        Assert.Single(backend.Requests);
+    }
+
+    [Fact]
+    public async Task WithPaidTakesASecondVersionReplacesTheWaitingOne()
+    {
+        var (session, backend) = await OpenWithPaidTakesAsync();
+        using var _session = session;
+        // The AI's version waits; your own words replace it, in the thread and in the panel's question.
+        backend.Answer = (_, _) => Task.FromResult(new RewriteFollowupReply(["much nicer"], "Warmer.", []));
+        await session.SendThreadAsync("Make it warmer");
+        var claude = session.Thread.Waiting!;
+        Assert.True(session.OpenThreadOwnWords());
+        Assert.True(session.ApplyThreadOwnWords("my very own words"));
+        var own = session.Thread.Waiting!;
+        Assert.NotSame(claude, own);
+        Assert.Same(own.Change, session.PendingPaidReviewChange);
+        Assert.False(await session.ConfirmPaidReviewChangeAsync(claude.Change));
+        Assert.True(await ConfirmAsync(session));
+        Assert.Equal("my very own words", Words(session, 2));
+        Assert.Equal((2, 2), (session.ThreadDisplay!.Version, session.ThreadDisplay.Versions));
+        Assert.Equal([RewriteThreadSpeaker.Yours], session.ThreadDisplay.Turns.Select(turn => turn.Speaker));
+        // Your own words wait; the AI's version replaces them.
+        await PayAsync(session);
+        Assert.True(session.OpenThreadOwnWords());
+        Assert.True(session.ApplyThreadOwnWords("other words of mine"));
+        var mine = session.Thread.Waiting!;
+        await session.SendThreadAsync("Make it warmer");
+        Assert.NotSame(mine, session.Thread.Waiting);
+        Assert.Same(session.Thread.Waiting!.Change, session.PendingPaidReviewChange);
+        Assert.True(await ConfirmAsync(session));
+        var landed = session.ThreadDisplay!;
+        Assert.Equal("much nicer", Words(session, 2));
+        Assert.Equal((3, 3, false, null as string), (landed.Version, landed.Versions, landed.Yours, landed.Waiting));
+        Assert.Equal([RewriteThreadSpeaker.You, RewriteThreadSpeaker.Claude], landed.Turns.Select(turn => turn.Speaker));
+        Assert.DoesNotContain("other words", landed.Input);
+    }
+
     [Fact]
     public async Task EscFoldsTheThreadAndKeepsTheVersionAndFocusingTheChangeAgainOpensIt()
     {
