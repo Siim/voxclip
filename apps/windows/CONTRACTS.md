@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-10 — The plan system prompt says "this computer" (track/v2-autopilot-prompt-computer)
+
+- **Changed:** the shared `clip-autopilot.json` is `promptVersion` 9. Its `frames` section now says the frames are measured, and the opening and 9:16 decided, "on this computer", not "on this Mac". A Windows plan request no longer tells the AI it runs on a Mac. apps/macos/CONTRACTS.md (same date) has the details. This settles the owed system-prompt wording from track/v2-small-parity.
+- **Pins:** `ClipAutopilotTests` (`PromptFileFillsItsLimitsAndEveryFixturePinsIt`, `ServicePlansThroughTheRunnerAndChecksTheReply`) and `ClipAutopilotFramesTests.VectorsPinTheCurrentPrompt` expect version 9. The latter also checks both "this computer" phrases and that the prompt has no "this Mac". With the old prompt, all three fail (8 against 9). With the old text at version 9, the SHA pins fail (`b0a16898…` against `81009b47…`).
+- **Verification:** Core Release 3 426 passed (29 skipped); win-ui Release 1 510 passed (5 skipped). The first win-ui run failed one test, `VideoVoiceFlowTests.EachVideoGetsItsOwnVoiceAndThePreviousOneIsRemovedThroughTheDeletion`, because it shared a `VOXCLIP_DATA_DIR` with the Mac App suite, whose VoiceLab voice it read. It passes with a fresh data dir. Use a fresh data dir for each suite.
+
 ### 2026-11-10 — The frame summary says "this computer"; the Rewrite generation tests run in Release (track/v2-small-parity)
 
 - **Frame summary** (settles the item in the native-batch entry below and in the W5/W6 entries): `FrameSheet.SummaryHeader` and `ClipAutopilotRequest`'s empty summary now say "Frames measured on this computer", the same as the Mac Core. The shared fixtures are regenerated. apps/macos/CONTRACTS.md (same date) has the details and the owed system-prompt wording.

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- ✦ Make it postable's planning instructions now say the frames are measured on this computer, so on Windows the AI is no longer told it is on a Mac.
 - On Windows, ✦ Make it postable no longer tells the AI that the clip's frames were measured on a Mac; both apps now say "this computer".
 - The words an AI passage replaces always show as AI-modified on the Mac, a clip that only touches one no longer says it contains AI-modified speech, and changing the voice of a passage whose words touch their neighbours no longer fails, all over a rounding sliver of under one audio sample.
 - Rewrites next to cuts and at words that touch no longer fail or keep their original words over a rounding sliver of under one audio sample.
