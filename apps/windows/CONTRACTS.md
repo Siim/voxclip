@@ -1,5 +1,34 @@
 # Windows fixed contracts
 
+### 2026-11-11 — A thread version's discard question names the paid takes (track/v2-small-followups-2)
+
+This settles the Mac's 2026-11-10 discard-takes entry's "Next package must know" (apps/macos/CONTRACTS.md): Windows' review row asked "Discard paid takes to change this review?" with Cancel for every caller, naming neither the count nor the change. See design.md §6.3 "Paid takes" and the copy table.
+
+- **Copy:**
+  - A waiting thread version: "Discard {n} paid take(s) for change {i}?", or "Discard your paid takes for change {i}?" at a count of 0. The buttons are **Keep working** and **Discard takes and continue** (the Mac's copy in sentence case).
+  - The count is the waiting line's (`RewriteThreadWaiting.Takes`, the `PaidTakeCount` when the version was asked), so the question and the line agree.
+  - Every other review change keeps "Discard paid takes to change this review?" with Cancel and Discard takes and continue. design.md gives no other caller the take question.
+  - Narrator: the row's name is the question for a thread version ("Discard paid takes confirmation" otherwise), and each button is named by its title.
+- **Changed (App):**
+  - `RewritePaidReviewQuestion(Question, Cancel, Confirm, Name)` with `Review`, `ThreadVersion(takes, ordinal)` and `Detail` (`RewriteSession.Review.cs`).
+  - `RewriteSession.PaidReviewQuestion`: null with nothing pending; the thread version's question while `Thread.Waiting.Change` is `PendingPaidReviewChange` (by reference); otherwise `Review`.
+  - `RewriteThreadDisplay.DiscardTakesQuestion(takes, ordinal)`, sharing `PaidTakes(int)` with `WaitingLine`.
+  - `RewritePanel.RenderPaidReviewChange` draws the question; the automation ids are unchanged.
+- **Inline:** the row stays in the Rewrite panel; nothing is a pop-up.
+- **ReleaseBoundary** `update` on `VoxClip.txt`: +27 (the new record's members, `get_PaidReviewQuestion`, `DiscardTakesQuestion`, `PaidTakes`). Core, Media and CLI are unchanged.
+- **Tests** (win-ui):
+  - `RewriteThreadTests` (+2, 27 in all): `AThreadVersionsDiscardQuestionNamesThePaidTakesForItsChange` (the count, the 0-count copy, the names, Keep working); `AnotherReviewChangeKeepsTheReviewsDiscardQuestion` (leaving a change out keeps the review's question, also when it replaces a waiting version).
+  - `RewritePaceMatchingTests.FittingRowsSpeakTheirTimingAndInlineEditsUseTheSelectedModelsFit`: its source scan now finds `Content = question.Confirm` and checks the confirm copy on both questions.
+  - **Red without the change:** with `PaidReviewQuestion` always `Review`, both new tests fail; the other caller's first half passes either way.
+- **Verification** (on the Mac; `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, a fresh `VOXCLIP_DATA_DIR` per suite, serial under `nice -n 10`):
+  - Core Release: 3,455 tests (3,426 passed, 29 skipped, 0 failed).
+  - win-ui Release: 1,524 (1,519 passed, 5 skipped, 0 failed). Its first run failed only the release-boundary surrogate and the old source scan, before the allowlist update and the scan's change.
+  - `VoxClip.App.TypeCheck` Release: 0 warnings, 0 errors. `check-xaml.py`: 0 problems.
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests (61) pass.
+  - Media was not run: no Media code changed.
+- **Owed** (the user's Windows session; the VM was not used): with paid takes and a waiting thread version, the row's question and buttons at the panel's narrowest width, and Narrator reading the question as the row's name. The native win-arm64 run.
+- **Next package must know.** The review row's copy comes from `RewriteSession.PaidReviewQuestion`; a new caller that should name its takes adds a factory there.
+
 ### 2026-11-10 — A thread version that waits for the paid takes' discard lands in the thread (track/v2-thread-deferred-edit)
 
 This settles the kept-change entry's "Next package must know" (below): thread versions with paid takes went through `EditChange`'s discard deferral, and the deferred edit added no turn. The Mac had the same gap (apps/macos/CONTRACTS.md, same date, which has the shared rule). See design.md §6.3 "Talk back to Claude" → "Paid takes".

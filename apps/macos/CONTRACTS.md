@@ -1,5 +1,39 @@
 # macOS implementation contracts
 
+### 2026-11-11 — Apple Speech's locale lookup is bounded (track/v2-small-followups-2)
+
+`AppleSpeechTranscriber` awaited `SpeechTranscriber.supportedLocale(equivalentTo:)` with no time limit, and `supports`, `readiness`, `cacheIdentity`, `prepare` and `transcribe` all waited on it. A system speech service that never answers (seen on hosted CI; track/v2-media-hang bounded only the tests) held transcription setup forever. See design.md §7.1 "Engine" and transcription spec §10.2.
+
+- **The rule:**
+  - One locale lookup, every `supportedLocale` call it makes included, is bounded at 15 s (`AppleSpeechLocaleSource.system.bound`).
+  - No answer is not ready, never unsupported. `readiness` is `.unavailable(reason: AppleSpeechTranscriber.noAnswerReason)`, "Apple Speech didn't answer. Try again, or choose On this Mac.". `supports` stays true. `cacheIdentity`, `prepare` and `transcribe` throw `transcriptionFailed("Apple Speech didn't answer")`, or `.cancelled` when the caller was cancelled.
+  - A late answer is dropped: the first of the answer, the bound and the caller's cancellation decides, and the lookup's tasks are cancelled.
+  - The lookup writes nothing, so a timeout leaves `apple-speech-locales.json` as it was. Nothing caches the result; the next check asks again.
+- **Changed (Media):**
+  - `AppleSpeechAssets.swift`: `AppleSpeechLocaleLookup` (`.locale`, `.unsupported`, `.noAnswer`), `AppleSpeechLocaleSource` (availability, preferred languages, `resolve`, `bound`; `.system` is the framework) and `AppleSpeechBoundedLookup.run(within:_:)`. It runs the lookup unstructured with a timer, because a task group would wait for a child that never returns. `AppleSpeechLookupOnce` (a `Mutex`) resumes the continuation once.
+  - `AppleSpeechTranscriber`: an internal `init(locations:localeSource:)` for tests; `locale(for:)` now throws, the no-answer or unsupported error.
+  - `ExportChecker.localHearing` asks `readiness` only (ready implies supported), so a silent service costs one bound, not two.
+- **Changed (App):**
+  - `InlineTranscription.speechDidNotAnswer`: the block's line is the reason, the primary is an enabled **Retry**, and `activate()` then re-checks (`choicesChanged()`) and starts nothing. Other `.unavailable` reasons keep "Transcription is not available in this build…" with the primary disabled.
+  - `AppleSpeechAssetLibrary.State.noAnswer`: Settings' Apple speech row shows the reason with **Retry** (`check(language)`).
+- **Inline:** no new pop-up.
+- **Tests:**
+  - Media `AppleSpeechLocaleBoundTests` (new, 4): a never-answering stub (`SpeechServiceGate`, released in a `defer`) gives `.unavailable` with the copy after the 150 ms test bound, `supports` true, the `transcriptionFailed` error and the seeded ledger's bytes unchanged; a late answer is ignored by `AppleSpeechBoundedLookup` and by the engine, and the next lookup answers; a normal answer and an unsupported language are unchanged (no `AssetInventory` call in any test); the app's bound is 15 s.
+  - App `InlineTranscriptionTests` (+2, 28 in all): the block's copy, Retry and re-check; Settings' row state and copy.
+  - **Red without the change:** with the lookup unbounded and the App's old mapping, 4 of the 6 new tests fail (both never-answer Media tests and both App tests, at their 20 s deadlines or expectations); the normal-answer and 15 s tests pass either way.
+  - All 6 pass under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, a fresh `VOXCLIP_DATA_DIR` per run, serial under `nice -n 10`, with `scripts/test-watchdog.py`):
+  - Media in full (Caption parity included): 658 tests in 87 suites passed (1,167 s).
+  - Core in full: 1,550 tests in 176 suites passed, with 2 known issues (existing `withKnownIssue`s) (270 s).
+  - App: `InlineTranscriptionTests` 28 passed. The App suite in full was not run.
+  - The `-warn-long-expression-type-checking=300` build flags none of the touched files. No new SDK symbols.
+- **Owed:**
+  - A real-window pass (`-uiSelfTest`) was not run; nothing in it reaches the no-answer path.
+  - CI was not dispatched.
+- **Next package must know.**
+  - Anything new that asks Apple Speech for a locale goes through `AppleSpeechLocaleSource.lookup`, never `supportedLocale` directly.
+  - `AssetInventory.status(forModules:)` and the asset calls are still unbounded; only the locale lookup was in scope.
+
 ### 2026-11-10 — A thread version's discard question names the takes (track/v2-discard-takes-copy)
 
 This settles the thread-deferred-edit entry's "Next package must know" item (below). A waiting thread version asked "Discard this change?" with Discard Changes, though only the change's paid takes go. See design.md §6.3 "Talk back to Claude" → "Paid takes" and the copy table.

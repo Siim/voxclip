@@ -913,7 +913,8 @@ Everything below is available from macOS 26, the deployment target. Names come f
 
 ### 10.2 Locales
 
-- The engine is offered only when `SpeechTranscriber.isAvailable` is true and `supportedLocale(equivalentTo:)` returns a locale for the language. Neither `SpeechTranscriber` nor `DictationTranscriber` supports Estonian (measured).
+- The engine is offered only when `SpeechTranscriber.isAvailable` is true and `supportedLocale(equivalentTo:)` returns a locale for the language.
+- One lookup (every `supportedLocale` call in the order below) is bounded at 15 s, because the system speech service can fail to answer. With no answer, readiness is `.unavailable(reason: "Apple Speech didn't answer. Try again, or choose On this Mac.")`, not `.unsupportedLanguage`; `supports` stays true; prepare, cache identity and transcription stop with `transcriptionFailed("Apple Speech didn't answer")`. A late answer is dropped, and nothing is written to the locale ledger. The next check asks again. Neither `SpeechTranscriber` nor `DictationTranscriber` supports Estonian (measured).
 - For a bare language code `L`, pick the locale in this order:
   1. the first entry of `Locale.preferredLanguages` whose language is `L` and that `supportedLocale(equivalentTo:)` accepts;
   2. otherwise `supportedLocale(equivalentTo: Locale(identifier: L))`;
