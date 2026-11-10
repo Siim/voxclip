@@ -137,19 +137,130 @@ public sealed class RewriteThreadTests
     }
 
     [Fact]
-    public async Task TheKeepBubbleIsExactlyKeepAndUndoLeavesTheChangeOutWithNoThread()
+    public async Task KeepMakesTheChangeKeptWithNoThreadStillPricedAndVoicedAndTheFocusMovesToTheNextWaitingChange()
+    {
+        var (session, backend, editor) = Open();
+        using var _session = session;
+        List<string> said = [];
+        editor.Announcement += (_, text) => said.Add(text);
+        List<int> moved = [];
+        session.ReviewFocusMoved = moved.Add;
+        await session.SendThreadAsync("Make it warmer");
+        var review = session.Review;
+        var identity = session.ReviewIdentity;
+        await session.PressThreadBubbleAsync("✓ That's it, keep it");
+        Assert.Single(backend.Requests);
+        Assert.Equal(TranscriptChangeState.Kept, session.ChangeStates[1]);
+        Assert.Equal("Kept change 1", said[^1]);
+        // Kept, not folded: focusing it again opens no thread, and F2 can't either.
+        session.FocusChange(1);
+        Assert.Null(session.ThreadDisplay);
+        Assert.False(session.OpenThreadInput());
+        // Still included, priced and voiced from the kept version: Keep changes nothing a price or a take reads.
+        Assert.Same(review, session.Review);
+        Assert.Equal(identity, session.ReviewIdentity);
+        Assert.Contains(session.IncludedHunks, hunk => hunk.NewTokens.SequenceEqual(["much", "better"]));
+        Assert.Contains("much better", Assert.Single(session.Review!.VoiceHunks, hunk => hunk.Ordinals.Contains(1)).PatchText);
+        Assert.False(editor.CanUndo);
+        // The focus moved to the next waiting change (Mac `advanceFocus`), whose thread shows.
+        Assert.Equal([2], moved);
+        session.FocusChange(2);
+        Assert.Equal(2, session.ThreadDisplay!.Ordinal);
+        // Ctrl+Enter in its input keeps it too; with nothing left waiting, the focus stays.
+        Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Keep));
+        Assert.Equal(TranscriptChangeState.Kept, session.ChangeStates[2]);
+        Assert.Equal((2, 1), (session.FocusedChange, moved.Count));
+        Assert.Null(session.ThreadDisplay);
+        Assert.False(session.KeepChange(2));
+        // The transcript shows both kept changes with their new words.
+        var shown = TranscriptProposalPresentation.From(session.Review.Diff, session.Source, editor.Words, session.InsertionAfter, session.ChangeStates);
+        Assert.All(shown.Hunks, hunk => Assert.Equal((TranscriptChangeState.Kept, ", kept"), (hunk.State, hunk.Reviewed)));
+        Assert.Equal(["much better", "nicer"], shown.Hunks.Select(hunk => hunk.NewText));
+    }
+
+    [Fact]
+    public void UndoLeavesAWaitingOrKeptChangeOutWithNoThreadAndIncludingItAgainBringsItBackWaitingWithItsThread()
     {
         var (session, backend, _) = Open();
         using var _session = session;
-        await session.PressThreadBubbleAsync("✓ That's it, keep it");
-        Assert.Empty(backend.Requests);
-        Assert.Equal(TranscriptChangeState.Pending, session.ChangeStates[1]);
-        Assert.Null(session.ThreadDisplay);
         Assert.True(session.OpenThreadInput());
         Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Undo));
         Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
+        Assert.Equal(2, session.FocusedChange);
+        // Keep on a change left out keeps it (Mac `keepChange`), and Undo on a kept change leaves it out (Mac `excludeChange`).
+        Assert.True(session.KeepChange(1));
+        Assert.Equal(TranscriptChangeState.Kept, session.ChangeStates[1]);
+        Assert.True(session.UndoChange(1));
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
+        Assert.False(session.UndoChange(1));
+        session.FocusChange(1);
         Assert.Null(session.ThreadDisplay);
+        // Included again in the review, it waits again, with a new thread and an empty input.
+        Assert.True(session.SetChangeIncluded(1, true));
+        Assert.Equal(TranscriptChangeState.Pending, session.ChangeStates[1]);
+        var display = Assert.IsType<RewriteThreadDisplay>(session.ThreadDisplay);
+        Assert.Equal((1, 1, 1, ""), (display.Ordinal, display.Version, display.Versions, display.Input));
         Assert.Empty(backend.Requests);
+    }
+
+    [Fact]
+    public async Task MyOwnWordsThenKeepKeepsTheChangeVoicedFromYourWordsAndTheThreadGoes()
+    {
+        var (session, backend, _) = Open();
+        using var _session = session;
+        Assert.True(session.OpenThreadOwnWords());
+        session.SetThreadText("truly better");
+        Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Enter));
+        Assert.Equal("truly better", Words(session, 1));
+        Assert.True(session.OpenThreadOwnWords());
+        session.SetThreadText("typed but not applied");
+        await session.PressThreadBubbleAsync("✓ That's it, keep it");
+        Assert.Empty(backend.Requests);
+        Assert.Equal(TranscriptChangeState.Kept, session.ChangeStates[1]);
+        Assert.Contains("truly better", Assert.Single(session.Review!.VoiceHunks, hunk => hunk.Ordinals.Contains(1)).PatchText);
+        Assert.Null(session.Thread.OwnWords);
+        Assert.Equal("", session.Thread.Text);
+        session.FocusChange(1);
+        Assert.Null(session.ThreadDisplay);
+        // If it waits again, its thread starts again from your words, with the input back to Claude.
+        Assert.True(session.SetChangeIncluded(1, false));
+        Assert.True(session.SetChangeIncluded(1, true));
+        var display = session.ThreadDisplay!;
+        Assert.Equal((1, 1, false, ""), (display.Version, display.Versions, display.OwnWords, display.Input));
+        Assert.Equal("truly better", Words(session, 1));
+    }
+
+    [Fact]
+    public async Task AfterPaidTakesAKeptChangeHasNoThreadAndAWaitingOneKeepsItsThreadAndKeepingItKeepsTheTakes()
+    {
+        var (session, _, editor) = Open();
+        using var _session = session;
+        Assert.True(session.KeepChange(1));
+        RewriteAutoFixTests.Configure(session, new RewriteAutoFixTests.Runner((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed)));
+        await session.DiscoverWindowsAsync();
+        // One phrase's paid takes are enough: the rule is about the session having any.
+        var paid = Assert.Single(session.GenerationWindows, window => window.Quote is not null);
+        paid.MarkEstimateShown(paid.Quote!);
+        await paid.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        Assert.True(session.HasPaidTakes);
+        var rows = session.GenerationWindows.Select(window => window.Rows.ToArray()).ToArray();
+        Assert.NotEmpty(paid.Rows);
+        // Paid takes don't make a waiting change look kept, or a kept one waiting.
+        Assert.Equal(TranscriptChangeState.Kept, session.ChangeStates[1]);
+        Assert.Equal(TranscriptChangeState.Pending, session.ChangeStates.GetValueOrDefault(2));
+        session.FocusChange(1);
+        Assert.Null(session.ThreadDisplay);
+        session.FocusChange(2);
+        Assert.Equal(2, session.ThreadDisplay!.Ordinal);
+        var shown = TranscriptProposalPresentation.From(session.Review!.Diff, session.Source, editor.Words, session.InsertionAfter, session.ChangeStates);
+        Assert.Equal([TranscriptChangeState.Kept, TranscriptChangeState.Pending], shown.Hunks.Select(hunk => hunk.State));
+        // Keeping the waiting one changes nothing a take reads: no discard is asked and every paid take stays.
+        Assert.True(session.ThreadInputKey(RewriteThreadInputKey.Keep));
+        Assert.Null(session.PendingPaidReviewChange);
+        Assert.Equal(TranscriptChangeState.Kept, session.ChangeStates[2]);
+        Assert.Null(session.ThreadDisplay);
+        Assert.True(session.HasPaidTakes);
+        Assert.Equal(rows, session.GenerationWindows.Select(window => window.Rows.ToArray()).ToArray());
     }
 
     [Fact]

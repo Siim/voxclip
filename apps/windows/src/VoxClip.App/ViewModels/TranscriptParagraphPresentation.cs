@@ -29,12 +29,12 @@ internal static class TranscriptParagraphPresentation
             var word = words[index];
             var outside = presented.LastSourceIndex < clipFirst || index > clipLast;
             var change = outside ? null : proposal.At(index);
-            var pending = change?.State == TranscriptChangeState.Pending;
+            var changes = change?.ShowsNewWords == true;
             if (!outside) AddInsertions(index, true);
             var cut = !presented.AiModified && cuts.Contains(word.Id);
             var bridge = change?.Hunk.BridgeWordIds.Contains(word.Id) == true;
             pieces.Add(new(TranscriptPieceKind.Source, presented.Text + " ", index, presented.LastSourceIndex, outside,
-                !outside && (cut || pending && !bridge), presented.AiModified, change, [word.Id], [], EditingAlgorithms.IsFillerText(presented.Text)));
+                !outside && (cut || changes && !bridge), presented.AiModified, change, [word.Id], [], EditingAlgorithms.IsFillerText(presented.Text)));
             if (!outside) AddInsertions(index, false);
             if (!outside && showPauses && pauses.TryGetValue(presented.LastSourceIndex, out var pause))
                 pieces.Add(new(TranscriptPieceKind.Pause, TranscriptWordDecoration.VisiblePause(pause.Label), index,
