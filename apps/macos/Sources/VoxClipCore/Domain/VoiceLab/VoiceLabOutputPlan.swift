@@ -106,6 +106,8 @@ public enum VoiceLabOutputPlanner {
         let duration = project.media.source.durationSeconds
         let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
         let total = Int64(max(0, EditingPrimitives.jsRound(duration * rate)))
+        // Words, a clip's range and the take's end meet a replace range on the source sample grid (§10.1).
+        let grid = VoiceLabSampleGrid(rate: rate)
         let edits = project.edits
         let pauses = try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds)
         let state = EditState(transcript: transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds,
@@ -125,12 +127,13 @@ public enum VoiceLabOutputPlanner {
         let enabled = project.voiceLab.segments.filter { segment in
             guard segment.enabled else { return false }
             if let clipRange {
-                if segment.replace.end <= clipRange.start || segment.replace.start >= clipRange.end { return false }
+                if grid.sample(segment.replace.end) <= grid.sample(clipRange.start)
+                    || grid.sample(segment.replace.start) >= grid.sample(clipRange.end) { return false }
             }
             return true
         }.sorted { $0.replace.start < $1.replace.start }
         if let clipRange {
-            for segment in enabled where segment.replace.start < clipRange.start || segment.replace.end > clipRange.end {
+            for segment in enabled where !grid.contains(clipRange.start, clipRange.end, start: segment.replace.start, end: segment.replace.end) {
                 throw VoiceLabProjectError.invalidScope
             }
         }
@@ -138,8 +141,8 @@ public enum VoiceLabOutputPlanner {
                                                      duration: $0.outDuration, audio: $0.audio) }
         for (window, pendingID) in windows {
             guard window.start.isFinite, window.end.isFinite, window.start >= 0,
-                  window.end <= duration, window.end > window.start else { throw VoiceLabProjectError.invalidRange }
-            if let clipRange, window.start < clipRange.start || window.end > clipRange.end {
+                  grid.sample(window.end) <= grid.sample(duration), window.end > window.start else { throw VoiceLabProjectError.invalidRange }
+            if let clipRange, !grid.contains(clipRange.start, clipRange.end, start: window.start, end: window.end) {
                 throw VoiceLabProjectError.invalidScope
             }
             guard replacements.allSatisfy({ window.end <= $0.start || window.start >= $0.end }) else {
@@ -150,7 +153,7 @@ public enum VoiceLabOutputPlanner {
             replacements.sort { $0.start < $1.start }
         }
         func inside(_ start: Double, _ end: Double) -> Bool {
-            replacements.contains { start >= $0.start && end <= $0.end }
+            replacements.contains { grid.contains($0.start, $0.end, start: start, end: end) }
         }
         let segments = try buildSegments(state, activeClip: activeClip).filter { item in
             !(item.kind == .word || item.kind == .pause) || !inside(item.start, item.end)
@@ -213,7 +216,7 @@ public enum VoiceLabOutputPlanner {
         }
         var captions: [CaptionWord] = []
         for word in transcript.words where word.kind == .word {
-            if let covered = enabled.first(where: { word.start >= $0.replace.start && word.end <= $0.replace.end }) {
+            if let covered = enabled.first(where: { $0.replace.covers(start: word.start, end: word.end, rate: rate) }) {
                 guard covered.kind == .voiceChanger else { continue }
                 let start = plan.mapTime(word.start), end = plan.mapTime(word.end)
                 if end > start { captions.append(CaptionWord(id: word.id, text: word.text, start: start, end: end)) }

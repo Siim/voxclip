@@ -324,6 +324,51 @@ struct VoiceLabWindowTests {
         #expect(opening > 0 && closing > 0)
     }
 
+    /// `window-grid-cases.json` (generate_window_grid.py): words meet a replace range on the source sample grid (§10.1). A
+    /// seam at a cut or at a touching kept word off the grid places, and validates and prepares both as placed and as the
+    /// fit stores it, in its scope and in the full take; a word that really crosses the passage is still refused.
+    @Test func sampleGridVectors() throws {
+        let document = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/window-grid-cases.json"))
+        #expect(document["schema"].vectorString == "voxclip-voice-lab-window-grid-cases/1")
+        #expect(Set(document.vectorFields.keys) == Set(["schema", "caseCount", "windows", "grid"]))
+        let tests = try #require(document["windows"].vectorItems), grid = try #require(document["grid"].vectorItems)
+        #expect(tests.count == 8 && grid.count == 10 && document["caseCount"].vectorInteger == Int64(tests.count + grid.count))
+        let (accepted, passages, rendered) = try replayWindows(tests)
+        #expect(accepted == 7 && passages == accepted && rendered == accepted)
+        for test in tests where test["expected"]["error"].isVectorNull {
+            let input = test["input"], name = test["name"].vectorString ?? "?", placed = window(test["expected"])
+            let project = try take(input, tone: test["roomTone"]), rate = input["sampleRate"].vectorNumber
+            #expect(Double(placed.startSample) / rate == test["stored"]["start"].vectorNumber, "\(name)")
+            #expect(Double(placed.endSample) / rate == test["stored"]["end"].vectorNumber, "\(name)")
+            let tone = try VoiceLabRoomToneSelection.select(items: project.transcript?.words ?? [], envelope: envelope(input["envelope"]),
+                                                            sourceSampleRate: rate,
+                                                            totalSamples: VoiceLabGeometry.samples(input["durationSeconds"].vectorNumber, rate))
+            let outDuration = Double(placed.endSample - placed.startSample) / rate
+            let words = [VoiceLabWord(text: "patch", start: 0, end: outDuration, synthetic: true)]
+            let scopes: [VoiceLabOutputScope] = self.scope(input) == .full ? [.full] : [self.scope(input), .full]
+            for scope in scopes {
+                for stored in [false, true] {
+                    do {
+                        try VoiceLabRenderContract.validatePlacement(project, scope: scope, window: placed)
+                        _ = try assemble(project, window: placed, tone: tone, words: words, trimStart: 0.5, patch: "patch", scope: scope,
+                                         stored: stored)
+                    } catch { Issue.record("\(name) does not render in \(scope), stored \(stored): \(error)") }
+                }
+            }
+        }
+        for test in grid {
+            let name = test["name"].vectorString ?? "?", item = test["item"], range = test["range"]
+            let rule = VoiceLabSampleGrid(rate: test["sampleRate"].vectorNumber)
+            let start = item["start"].vectorNumber, end = item["end"].vectorNumber
+            let lower = range["start"].vectorNumber, upper = range["end"].vectorNumber
+            #expect(rule.contains(lower, upper, start: start, end: end) == test["inside"].vectorBool, "\(name)")
+            #expect(rule.crosses(start: start, end: end, edge: lower) == test["crossesStart"].vectorBool, "\(name)")
+            #expect(rule.crosses(start: start, end: end, edge: upper) == test["crossesEnd"].vectorBool, "\(name)")
+            #expect(VoiceLabReplacement(start: lower, end: upper, firstWordId: "", lastWordId: "").covers(start: start, end: end, rate: rule.rate)
+                    == test["inside"].vectorBool, "\(name)")
+        }
+    }
+
     @Test(arguments: ["hard-fade-outside-take-start", "hard-fade-outside-take-end"])
     func takeEdgeRefusalNamesTheSharedEdge(_ name: String) throws {
         let test = try #require(cases("window").first { $0["name"].vectorString == name })
@@ -579,9 +624,11 @@ struct VoiceLabWindowTests {
 
     /// The selected recipe a candidate would carry for `window`, built only from the geometry above, as segment `id` with its
     /// own asset. The asset holds `trimStart` seconds before the passage and 0.5 s after it. Without `words` the segment is a
-    /// voice changer, which carries no text, words or room tone.
-    private func passageSegment(_ project: Project, id: String, window: VoiceLabWindow, tone: VoiceLabRoomTone?, words: [VoiceLabWord]?,
-                                trimStart: Double, patch: String?, fit: VoiceLabFitPlan? = nil, duration: Double? = nil) throws -> (VoiceLabSegment, VoiceLabAsset) {
+    /// voice changer, which carries no text, words or room tone. A `stored` range has each edge at its sample over the rate,
+    /// as the fit plan and the recipe store it (§8.9.2); words meet it on the sample grid (§10.1).
+    func passageSegment(_ project: Project, id: String, window: VoiceLabWindow, tone: VoiceLabRoomTone?, words: [VoiceLabWord]?,
+                                trimStart: Double, patch: String?, fit: VoiceLabFitPlan? = nil, duration: Double? = nil,
+                                stored: Bool = false) throws -> (VoiceLabSegment, VoiceLabAsset) {
         let rate = Double(try #require(project.media.source.audio?.sampleRate))
         let assetRate: Double = 24_000
         let windowSamples: Int64 = window.endSample - window.startSample
@@ -622,7 +669,9 @@ struct VoiceLabWindowTests {
         if let words { recipe.qa.transcriptTokens = words.count }
         segment.id = id
         segment.kind = words == nil ? .voiceChanger : .tts
-        segment.replace = VoiceLabReplacement(start: window.start, end: window.end, firstWordId: window.firstWordId, lastWordId: window.lastWordId)
+        let start: Double = stored ? Double(window.startSample) / rate : window.start
+        let end: Double = stored ? Double(window.endSample) / rate : window.end
+        segment.replace = VoiceLabReplacement(start: start, end: end, firstWordId: window.firstWordId, lastWordId: window.lastWordId)
         segment.text = patch.map { VoiceLabText(original: "we ship uh the clipper.", new: $0) }
         segment.audio = recipe.audio; segment.outDuration = recipe.outDuration; segment.words = recipe.words
         segment.candidates = [VoiceLabCandidate(assetId: asset.id, score: 0.9)]
@@ -632,10 +681,12 @@ struct VoiceLabWindowTests {
     }
 
     /// Adds the recipe for `window` to the project's replacements as segment `id`, then validates and prepares the project
-    /// in `scope`.
-    private func assemble(_ project: Project, window: VoiceLabWindow, tone: VoiceLabRoomTone?, words: [VoiceLabWord]?, trimStart: Double,
-                          patch: String?, scope: VoiceLabOutputScope = .full, id: String = "segment-window") throws -> (Project, VoiceLabPreparedRender) {
-        let (segment, asset) = try passageSegment(project, id: id, window: window, tone: tone, words: words, trimStart: trimStart, patch: patch)
+    /// in `scope`. The range is stored on the source grid, as Use stores it, unless `stored` is false.
+    func assemble(_ project: Project, window: VoiceLabWindow, tone: VoiceLabRoomTone?, words: [VoiceLabWord]?, trimStart: Double,
+                          patch: String?, scope: VoiceLabOutputScope = .full, id: String = "segment-window",
+                          stored: Bool = true) throws -> (Project, VoiceLabPreparedRender) {
+        let (segment, asset) = try passageSegment(project, id: id, window: window, tone: tone, words: words, trimStart: trimStart, patch: patch,
+                                                  stored: stored)
         var built = project
         built.voiceLab.segments.append(segment)
         built.voiceLab.assets = (built.voiceLab.assets ?? []) + [asset]

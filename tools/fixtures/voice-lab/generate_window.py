@@ -57,6 +57,23 @@ def samples(seconds, rate):
     return js_round(seconds * rate)
 
 
+def grid_inside(lo, hi, start, end, rate):
+    """Section 10.1 (2026-11-10): an item from `start` to `end` lies inside the range from `lo` to `hi` by its boundaries
+    rounded to the source sample grid with the fit's half-up rule, so a stored edge meets a touching boundary that rounds
+    to the same sample."""
+    return samples(start, rate) >= samples(lo, rate) and samples(end, rate) <= samples(hi, rate)
+
+
+def grid_crosses(start, end, edge_sample, rate):
+    """Section 10.1: an item crosses an edge when the edge's sample lies strictly between its rounded boundaries."""
+    return samples(start, rate) < edge_sample < samples(end, rate)
+
+
+def stored_window(window, rate):
+    """A window as the fit plan and the recipe store it (section 8.9.2): each edge is its sample over the source rate."""
+    return dict(window, start=window['startSample'] / rate, end=window['endSample'] / rate)
+
+
 def frame_size(rate):
     return max(1, js_round(rate * RMS_FRAME))
 
@@ -199,12 +216,13 @@ def scope_replacements(segments, clip_range, rate, duration):
         start, end = window['start'], window['end']
         if not segment['enabled']:
             continue
-        if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end <= duration):
+        if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end
+                and samples(end, rate) <= samples(duration, rate)):
             raise GeometryError('invalidInput')
-        if clip_range is not None and (end <= clip_range[0] or start >= clip_range[1]):
-            continue
         lo, hi = samples(start, rate), samples(end, rate)
-        if clip_range is not None and (start < clip_range[0] or end > clip_range[1]) or hi <= lo:
+        if clip_range is not None and (hi <= samples(clip_range[0], rate) or lo >= samples(clip_range[1], rate)):
+            continue
+        if clip_range is not None and not grid_inside(clip_range[0], clip_range[1], start, end, rate) or hi <= lo:
             raise GeometryError('invalidInput')
         selected.append({'id': segment['id'], 'start': start, 'end': end, 'lo': lo, 'hi': hi,
                          'in': window['leftSeam'], 'out': window['rightSeam']})
@@ -338,7 +356,7 @@ class ScopeSource:
         cut = {segment['id']: segment['cut'] for segment in self.segments if segment['kind'] == 'word'}
         self.kept_item = [not cut[item['id']] for item in items]
         # An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
-        self.replaced = [any(other['start'] <= item['start'] and item['end'] <= other['end'] for other in self.scope)
+        self.replaced = [any(grid_inside(other['start'], other['end'], item['start'], item['end'], rate) for other in self.scope)
                          for item in items]
         # The outer half of each replacement's own fades, which a gap seam beside it must leave free.
         self.reserved = [(other['lo'] - other['in']['fadeSamples'] // 2, other['lo']) for other in self.scope] + \
@@ -351,7 +369,7 @@ class ScopeSource:
         source."""
         dropped = [(other['start'], other['end']) for other in self.scope] + ([passage] if passage is not None else [])
         remaining = [segment for segment in self.segments if segment['kind'] not in ('word', 'pause')
-                     or not any(segment['start'] >= lo and segment['end'] <= hi for lo, hi in dropped)]
+                     or not any(grid_inside(lo, hi, segment['start'], segment['end'], self.rate) for lo, hi in dropped)]
         synth = [(other['lo'], other['hi']) for other in self.scope]
         return subtract(edit_plan(remaining, self.duration, self.rate, self.keep)[1], synth + list(window))
 
@@ -467,12 +485,14 @@ def place(project, clip_id, envelope, first_id, last_id):
     overlapped = next((other for other in scope if other['start'] < end and start < other['end']), None)
     if overlapped is not None:
         raise GeometryError('overlapsReplacement', segmentId=overlapped['id'])
+    # Items meet the window on the source sample grid, where the fit stores its edges (section 10.1): a touching boundary
+    # off the grid meets a seam that rounds to the same sample.
     for item in items:
-        if item['start'] < start < item['end'] or item['start'] < end < item['end']:
+        if any(grid_crosses(item['start'], item['end'], seam['sample'], rate) for seam in (left, right)):
             raise GeometryError('windowCrossesWord', wordId=item['id'])
     # The window holds the passage and its bridges. It absorbs cut items, events and unlabeled speech, but a kept word
     # that is neither a passage nor a bridge word would lose its speech.
-    inside = [index for index, item in enumerate(items) if item['start'] >= start and item['end'] <= end]
+    inside = [index for index, item in enumerate(items) if grid_inside(start, end, item['start'], item['end'], rate)]
     for index in range(first, last + 1):
         if index not in inside:
             raise GeometryError('windowCrossesWord', wordId=ids[index])
@@ -493,7 +513,7 @@ def place(project, clip_id, envelope, first_id, last_id):
     # Only a window inside the clip, holding a passage of the clip, can open or close its output; any other is refused as
     # before.
     in_clip = (clip_scope and source.bounds[0] <= a <= source.bounds[1] and source.bounds[0] <= b <= source.bounds[1]
-               and clip_range[0] <= start and end <= clip_range[1])
+               and grid_inside(clip_range[0], clip_range[1], start, end, rate))
     layout = SeamLayout(sorted(scope + [window], key=lambda element: element['lo']),
                         kept_source((start, end), [(left['sample'], right['sample'])]), total, clip_scope)
     # The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
@@ -523,7 +543,6 @@ def place(project, clip_id, envelope, first_id, last_id):
         holds_in_full_take(project, rate, duration, items, edits, total, window, True)
     elif left['kind'] != 'none' and layout.beside(w, True) < left['fadeSamples'] // 2:
         holds_across_cut(layout, w, True)
-        stored_at_cut(items, left, rate)
     if w + 1 < len(elements):
         if not layout.run(w + 1):
             raise GeometryError('adjacentReplacement', segmentId=elements[w + 1]['id'])
@@ -534,7 +553,6 @@ def place(project, clip_id, envelope, first_id, last_id):
         holds_in_full_take(project, rate, duration, items, edits, total, window, False)
     elif right['kind'] != 'none' and layout.beside(w, False) < right['fadeSamples'] - right['fadeSamples'] // 2:
         holds_across_cut(layout, w, False)
-        stored_at_cut(items, right, rate)
     # The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
     needed = left['fadeSamples'] - left['fadeSamples'] // 2 + right['fadeSamples'] // 2
     if needed > right['sample'] - left['sample']:
@@ -628,16 +646,6 @@ def move_to_cut_edges(source, a, b, first, last, blocking, left, right):
     return left, right
 
 
-def stored_at_cut(items, seam, rate):
-    """A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's edge
-    as its sample over the rate (section 8.9.2), so that stored edge must not cut into an item either: at a touching boundary
-    off the source grid it would by under a sample, and the hunk is refused with windowCrossesWord."""
-    stored = seam['sample'] / rate
-    crossing = next((item for item in items if item['start'] < stored < item['end']), None)
-    if crossing is not None:
-        raise GeometryError('windowCrossesWord', wordId=crossing['id'])
-
-
 def holds_across_cut(layout, index, incoming):
     """Prepare's rule for the window's seam at `index` when no kept source lies right beside it (section 10.5): the output
     piece beside the seam is source and holds the fade's outer half, possibly across a cut, and a replacement across that
@@ -684,14 +692,14 @@ def lendable_silence(project, clip_id, window):
     source = ScopeSource(project, clip_id, rate, duration, items, edits)
     kept = subtract(source.kept_source((window['start'], window['end']), [(lo, hi)]), source.reserved)
     before = [samples(item['end'], rate) for item, kept_item in zip(items, source.kept_item)
-              if kept_item and item['end'] <= window['start']]
+              if kept_item and samples(item['end'], rate) <= lo]
     after = [samples(item['start'], rate) for item, kept_item in zip(items, source.kept_item)
-             if kept_item and item['start'] >= window['end']]
+             if kept_item and samples(item['start'], rate) >= hi]
 
     def lend(seam, incoming):
         if seam['kind'] == 'none':
             words = [item for item in items if item['kind'] == 'word'
-                     and item['start'] >= window['start'] and item['end'] <= window['end']]
+                     and grid_inside(window['start'], window['end'], item['start'], item['end'], rate)]
             if incoming:
                 return max(0.0, min((item['start'] for item in words), default=window['start']) - window['start'])
             return max(0.0, window['end'] - max((item['end'] for item in words), default=window['end']))
@@ -720,17 +728,17 @@ def segment_failure(items, rate, duration, window):
     """VoiceLabProject.validate and VoiceLabRenderValidation for one segment whose recipe is built on `window`."""
     total, ids = samples(duration, rate), [item['id'] for item in items]
     start, end, left, right = window['start'], window['end'], window['leftSeam'], window['rightSeam']
-    if not (start >= 0 and end > start and end <= duration):
+    # Words, and the take's end, meet the range on the source sample grid (section 10.1).
+    s, e = samples(start, rate), samples(end, rate)
+    if not (start >= 0 and end > start and e <= total):
         return 'invalidRange: bounds'
     first, last = ids.index(window['firstWordId']), ids.index(window['lastWordId'])
-    inside = [index for index, item in enumerate(items) if item['start'] >= start and item['end'] <= end]
-    if not (first <= last and items[first]['start'] >= start and items[last]['end'] <= end and inside
-            and inside[0] == first and inside[-1] == last):
+    inside = [index for index, item in enumerate(items) if grid_inside(start, end, item['start'], item['end'], rate)]
+    if not (first <= last and first in inside and last in inside and inside[0] == first and inside[-1] == last):
         return 'invalidRange: words'
-    if any(item['start'] < start < item['end'] or item['start'] < end < item['end'] for item in items):
+    if any(grid_crosses(item['start'], item['end'], edge, rate) for item in items for edge in (s, e)):
         return 'invalidRange: crossing'
     # The seams on the source grid.
-    s, e = samples(start, rate), samples(end, rate)
     out = e - s
     if out <= 0 or s != left['sample'] or e != right['sample']:
         return 'invalidRange: samples'
@@ -776,15 +784,16 @@ def render_failure(project, clip_id, window):
     # VoiceLabOutputPlanner.build: scope, dropped items, cuts trimmed at each synth range, pieces.
     bounds, clip_range = resolve_scope(items, edits, clip_id)
     scoped = [segment for segment in segments if segment['enabled'] and not (clip_range is not None and (
-        segment['window']['end'] <= clip_range[0] or segment['window']['start'] >= clip_range[1]))]
-    if clip_range is not None and any(segment['window']['start'] < clip_range[0] or segment['window']['end'] > clip_range[1]
-                                      for segment in scoped):
+        samples(segment['window']['end'], rate) <= samples(clip_range[0], rate)
+        or samples(segment['window']['start'], rate) >= samples(clip_range[1], rate)))]
+    if clip_range is not None and any(not grid_inside(clip_range[0], clip_range[1], segment['window']['start'],
+                                                      segment['window']['end'], rate) for segment in scoped):
         return 'invalidScope'
     if window is not None and not any(segment is segments[-1] for segment in scoped):
         return 'excluded from its scope'
     scoped.sort(key=lambda segment: segment['window']['start'])
     remaining = [segment for segment in edit_segments(items, edits, bounds) if segment['kind'] not in ('word', 'pause') or not any(
-        segment['start'] >= other['window']['start'] and segment['end'] <= other['window']['end'] for other in scoped)]
+        grid_inside(other['window']['start'], other['window']['end'], segment['start'], segment['end'], rate) for other in scoped)]
     cuts = edit_plan(remaining, duration, rate, edits['pauseKeepSeconds'])[0]
     synth = [(samples(segment['window']['start'], rate), samples(segment['window']['end'], rate), segment) for segment in scoped]
     if any(hi <= lo for lo, hi, _ in synth):
@@ -2023,7 +2032,7 @@ def widen_by_lend(project, clip_id, window, stats, failures):
     widened = dict(window, startSample=lo, endSample=hi, start=left['time'], end=right['time'], leftSeam=left, rightSeam=right)
 
     def inside(span):
-        return [item['id'] for item in items if item['start'] >= span['start'] and item['end'] <= span['end']]
+        return [item['id'] for item in items if grid_inside(span['start'], span['end'], item['start'], item['end'], rate)]
 
     failure = 'absorbs an item' if inside(widened) != inside(window) else render_failure(project, clip_id, widened)
     if failure is not None:
@@ -2056,6 +2065,11 @@ for index in range(PROPERTY_CASES):
         failure = render_failure(project, None, expected) if clip_id is not None else None
         if failure is not None:
             failures.append((index, 'full take: ' + failure))
+        # The fit plan and the recipe store the window on the source grid (section 8.9.2): stored, it renders too.
+        for scope in (clip_id, None) if clip_id is not None else (None,):
+            failure = render_failure(project, scope, stored_window(expected, project['sampleRate']))
+            if failure is not None:
+                failures.append((index, 'stored: ' + failure))
         widen_by_lend(project, clip_id, expected, lend_stats, lend_failures)
         fuzz['accepted'] += 1
         fuzz['acceptedInClipScope'] += clip_id is not None
@@ -2170,6 +2184,13 @@ def multi_check(project, clip_id, placed):
     failure = render_failure(project, clip_id, placed)
     if failure is not None:
         multi_failures.append((failure, placed))
+    # Stored as the fit stores them, on the source grid (section 8.9.2), the window and every replacement render too.
+    rate = project['sampleRate']
+    stored = dict(project, segments=[dict(segment, window=stored_window(segment['window'], rate)) for segment in project['segments']])
+    if render_failure(stored, clip_id, None) is None:
+        failure = render_failure(stored, clip_id, stored_window(placed, rate))
+        if failure is not None:
+            multi_failures.append(('stored: ' + failure, placed))
     # A window that opens or closes its clip's output renders in the full take too, where its segment also plays, whenever
     # the full take rendered before it (section 8.4).
     if clip_id is not None and clip_output_edges(project, clip_id, placed) and render_failure(project, None, None) is None:

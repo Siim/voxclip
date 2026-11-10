@@ -12649,6 +12649,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method private .ctor(
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method private get_EqualityContract()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public .ctor(double,double,string,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public Covers(double,double,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public Deconstruct(double&,double&,string&,string&)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public Equals(object)
@@ -12884,6 +12885,22 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public .ctor(S
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public AuthorizeAsync(System.Guid,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public Start`1(System.Func`1<System.Threading.Tasks.Task`1<!!0>>,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public WithStart(System.Action`1<System.Action>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public .ctor(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public Contains(double,double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public Crosses(double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public CrossesSample(double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public Deconstruct(double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public Overlaps(double,double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public Sample(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public get_Rate()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid,VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid,VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid :: method public set_Rate(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSeam :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabSeam)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSeam :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSeam :: method private get_EqualityContract()
@@ -19089,6 +19106,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRoomToneSelection
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch
+type VoxClip.Core.Domain.VoiceLab.VoiceLabSampleGrid
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSeam
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSeamKind
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSeamPlacement

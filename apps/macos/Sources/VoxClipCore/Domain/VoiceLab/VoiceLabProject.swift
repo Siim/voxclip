@@ -238,19 +238,22 @@ public enum VoiceLabProject {
         }
         let wordIndex = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
         var segmentIDs = Set<String>()
+        let grid = VoiceLabSampleGrid(rate: sourceRate)
         var enabled: [(Double, Double)] = []
         for segment in project.voiceLab.segments {
             guard matches(segment.id, id), segmentIDs.insert(segment.id).inserted,
                   segment.outDuration.isFinite, segment.outDuration > 0,
                   (segment.outDuration * sourceRate).isFinite, segment.outDuration * sourceRate < Double(Int64.max) else { throw VoiceLabProjectError.invalidSegment }
             let range = segment.replace
+            // Words meet the range on the source sample grid, where the fit stores its edges (§10.1), and so does the take's end.
+            func inside(_ word: TimedWord) -> Bool { grid.contains(range.start, range.end, start: word.start, end: word.end) }
             guard range.start.isFinite, range.end.isFinite, range.start >= 0, range.end > range.start,
-                  range.end <= project.media.source.durationSeconds,
+                  grid.sample(range.end) <= grid.sample(project.media.source.durationSeconds),
                   let first = wordIndex[range.firstWordId], let last = wordIndex[range.lastWordId], first <= last,
-                  words[first].start >= range.start, words[last].end <= range.end,
-                  words.first(where: { $0.start >= range.start && $0.end <= range.end })?.id == range.firstWordId,
-                  words.last(where: { $0.start >= range.start && $0.end <= range.end })?.id == range.lastWordId,
-                  !words.contains(where: { $0.start < range.start && $0.end > range.start || $0.start < range.end && $0.end > range.end }) else { throw VoiceLabProjectError.invalidRange }
+                  inside(words[first]), inside(words[last]),
+                  words.first(where: inside)?.id == range.firstWordId, words.last(where: inside)?.id == range.lastWordId,
+                  !words.contains(where: { grid.crosses(start: $0.start, end: $0.end, edge: range.start)
+                      || grid.crosses(start: $0.start, end: $0.end, edge: range.end) }) else { throw VoiceLabProjectError.invalidRange }
             guard let asset = assets.first(where: { $0.id == segment.audio.assetId }) else { throw VoiceLabProjectError.danglingAsset }
             let audio = segment.audio
             guard audio.trimStart.isFinite, audio.trimEnd.isFinite, audio.stretch.isFinite, audio.gainDb.isFinite, audio.tiltIsValid,

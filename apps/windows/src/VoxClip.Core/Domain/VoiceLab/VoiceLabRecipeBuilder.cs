@@ -159,7 +159,10 @@ public static class VoiceLabRecipeBuilder
     {
         if (selected < 0 || selected >= candidates.Count || candidates[selected].Rejected is not null || candidates[selected].Recipe is not { } recipe)
             throw Error(VoiceLabProjectErrorCode.InvalidCandidate);
-        var original = string.Join(" ", input.Items.Where(word => word.Kind == WordKind.Word && word.End > plan.WindowStart && word.Start < plan.WindowEnd).Select(word => word.Text));
+        // The words the stored range overlaps on the source grid (§10.1): a touching word off the grid is not one of them.
+        var grid = new VoiceLabSampleGrid(input.SourceSampleRate);
+        var original = string.Join(" ", input.Items.Where(word => word.Kind == WordKind.Word && grid.Overlaps(plan.WindowStart, plan.WindowEnd, word.Start, word.End))
+            .Select(word => word.Text));
         return new(id, kind, true, new(plan.WindowStart, plan.WindowEnd, input.Window.FirstWordId, input.Window.LastWordId), recipe.OutDuration,
             recipe.Audio, new(original, input.Text) { AudioTags = input.HasRequestTags ? VoiceLabAudioTags.Validated(input.AudioTags, input.Text) : null }, recipe.Words, recipe.Provenance, new(recipe.Qa.TranscriptMatch, recipe.Qa.LufsJumpLu, recipe.Qa.PeakDbfs, recipe.Qa.SpeakerScore),
             Array.AsReadOnly(candidates.ToArray()), selected) { Scope = VoiceLabSegmentScope.Passage };

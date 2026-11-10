@@ -96,6 +96,8 @@ public static class VoiceLabOutputPlanner
         var duration = project.Media.Source.DurationSeconds;
         var rate = (double)(project.Media.Source.Audio?.SampleRate ?? 48000);
         var total = (long)Math.Max(0, EditingMath.Round(duration * rate));
+        // Words, a clip's range and the take's end meet a replace range on the source sample grid (§10.1).
+        var grid = new VoiceLabSampleGrid(rate);
         var state = EditingEngine.FromProject(project) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
         state = state with { ActiveClipId = scope.ClipId };
         TimeRange? clipRange = null;
@@ -114,23 +116,25 @@ public static class VoiceLabOutputPlanner
             clipRange = EditingAlgorithms.ClipTimes(words, first, last, clip.LeadInSeconds);
         }
         var enabled = project.VoiceLab.Segments.Where(segment => segment.Enabled &&
-            (clipRange is null || segment.Replace.End > clipRange.Value.Start && segment.Replace.Start < clipRange.Value.End))
+            (clipRange is null || grid.Sample(segment.Replace.End) > grid.Sample(clipRange.Value.Start) &&
+                grid.Sample(segment.Replace.Start) < grid.Sample(clipRange.Value.End)))
             .OrderBy(segment => segment.Replace.Start).ToArray();
-        if (clipRange is { } range && enabled.Any(segment => segment.Replace.Start < range.Start || segment.Replace.End > range.End))
+        if (clipRange is { } range && enabled.Any(segment => !grid.Contains(range.Start, range.End, segment.Replace.Start, segment.Replace.End)))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
         var replacements = enabled.Select(item => new Replacement(item.Id, item.Replace.Start, item.Replace.End, item.OutDuration, item.Audio)).ToList();
         if (window is not null && pendingId is not null)
         {
-            if (!double.IsFinite(window.Start) || !double.IsFinite(window.End) || window.Start < 0 || window.End > duration || window.End <= window.Start)
+            if (!double.IsFinite(window.Start) || !double.IsFinite(window.End) || window.Start < 0 || grid.Sample(window.End) > grid.Sample(duration) ||
+                window.End <= window.Start)
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidRange);
-            if (clipRange is { } clip && (window.Start < clip.Start || window.End > clip.End))
+            if (clipRange is { } clip && !grid.Contains(clip.Start, clip.End, window.Start, window.End))
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
             if (replacements.Any(item => window.End > item.Start && window.Start < item.End))
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.OverlappingReplacement);
             replacements.Add(new(pendingId, window.Start, window.End, window.End - window.Start, null));
             replacements.Sort((a, b) => a.Start.CompareTo(b.Start));
         }
-        bool Inside(double start, double end) => replacements.Any(segment => start >= segment.Start && end <= segment.End);
+        bool Inside(double start, double end) => replacements.Any(segment => grid.Contains(segment.Start, segment.End, start, end));
         var segments = EditingEngine.BuildSegments(state, duration).Where(item =>
             item.Kind is not (EditSegmentKind.Word or EditSegmentKind.Pause) || !Inside(item.Start, item.End)).ToArray();
         var basePlan = EditingEngine.BuildEditPlan(segments, duration, rate, state.PauseKeepSeconds);
@@ -193,7 +197,7 @@ public static class VoiceLabOutputPlanner
         var captions = new List<CaptionWord>();
         foreach (var word in transcript.Words.Where(word => word.Kind == WordKind.Word))
         {
-            var covered = enabled.FirstOrDefault(segment => word.Start >= segment.Replace.Start && word.End <= segment.Replace.End);
+            var covered = enabled.FirstOrDefault(segment => segment.Replace.Covers(word.Start, word.End, rate));
             if (covered is not null)
             {
                 if (covered.Kind != VoiceLabSegmentKind.VoiceChanger) continue;

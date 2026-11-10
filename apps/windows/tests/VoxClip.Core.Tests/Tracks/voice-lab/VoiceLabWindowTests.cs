@@ -245,6 +245,66 @@ public sealed class VoiceLabWindowTests
         Assert.True(opening > 0 && closing > 0);
     }
 
+    /// <summary>window-grid-cases.json (generate_window_grid.py): words meet a replace range on the source sample grid
+    /// (§10.1). A seam at a cut or at a touching kept word off the grid places, and validates and prepares both as placed and
+    /// as the fit stores it, in its scope and in the full take; a word that really crosses the passage is still refused. The
+    /// Mac twin is VoiceLabWindowTests.sampleGridVectors.</summary>
+    [Fact]
+    public void SampleGridVectors()
+    {
+        using var file = FixtureLoader.ReadJson("fixtures/voice-lab/window-grid-cases.json");
+        var document = file.RootElement.Clone();
+        Assert.Equal("voxclip-voice-lab-window-grid-cases/1", Text(document, "schema"));
+        Assert.Equal(new[] { "caseCount", "grid", "schema", "windows" }, document.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+        var tests = document.GetProperty("windows").EnumerateArray().ToArray();
+        var grid = document.GetProperty("grid").EnumerateArray().ToArray();
+        Assert.True(tests.Length == 8 && grid.Length == 10);
+        Assert.Equal(tests.Length + grid.Length, document.GetProperty("caseCount").GetInt32());
+        var (accepted, passages, rendered) = ReplayWindows(tests);
+        Assert.True(accepted == 7 && passages == accepted && rendered == accepted, $"{rendered} of {accepted} rendered");
+        foreach (var test in tests.Where(test => !test.GetProperty("expected").TryGetProperty("error", out _)))
+        {
+            var input = test.GetProperty("input");
+            var name = Text(test, "name");
+            var placed = Window(test.GetProperty("expected"));
+            var project = Take(input, test.GetProperty("roomTone"));
+            var rate = Number(input, "sampleRate");
+            Assert.True(placed.StartSample / rate == Number(test.GetProperty("stored"), "start"), name);
+            Assert.True(placed.EndSample / rate == Number(test.GetProperty("stored"), "end"), name);
+            var tone = VoiceLabRoomToneSelection.Select(project.Transcript!.Words, Envelope(input.GetProperty("envelope")), rate,
+                VoiceLabGeometry.Samples(Number(input, "durationSeconds"), rate));
+            VoiceLabWord[] words = [new("patch", 0, (placed.EndSample - placed.StartSample) / rate, true)];
+            var scopes = Scope(input) == VoiceLabOutputScope.Full ? new[] { VoiceLabOutputScope.Full } : new[] { Scope(input), VoiceLabOutputScope.Full };
+            foreach (var scope in scopes)
+            {
+                foreach (var stored in new[] { false, true })
+                {
+                    try
+                    {
+                        VoiceLabRenderContract.ValidatePlacement(project, scope, placed);
+                        Assemble(project, placed, tone, words, 0.5, "patch", scope, stored: stored);
+                    }
+                    catch (Exception error) when (error is VoiceLabProjectException or VoiceLabGeometryException)
+                    {
+                        Assert.Fail($"{name} does not render in {scope}, stored {stored}: {error.Message}");
+                    }
+                }
+            }
+        }
+        foreach (var test in grid)
+        {
+            var name = Text(test, "name");
+            var item = test.GetProperty("item");
+            var range = test.GetProperty("range");
+            var rule = new VoiceLabSampleGrid(Number(test, "sampleRate"));
+            double start = Number(item, "start"), end = Number(item, "end"), lower = Number(range, "start"), upper = Number(range, "end");
+            Assert.True(rule.Contains(lower, upper, start, end) == test.GetProperty("inside").GetBoolean(), name);
+            Assert.True(rule.Crosses(start, end, lower) == test.GetProperty("crossesStart").GetBoolean(), name);
+            Assert.True(rule.Crosses(start, end, upper) == test.GetProperty("crossesEnd").GetBoolean(), name);
+            Assert.True(new VoiceLabReplacement(lower, upper, "", "").Covers(start, end, rule.Rate) == test.GetProperty("inside").GetBoolean(), name);
+        }
+    }
+
     /// <summary>The committed sample of the property fuzz: every case replays, and every accepted window validates and prepares.</summary>
     [Fact]
     public void PropertyCases()
@@ -566,9 +626,10 @@ public sealed class VoiceLabWindowTests
 
     /// <summary>The selected recipe a candidate would carry for window, built only from the geometry above, as segment id with
     /// its own asset. The asset holds trimStart seconds before the passage and 0.5 s after it. Without words the segment is
-    /// a voice changer, which carries no text, words or room tone.</summary>
+    /// a voice changer, which carries no text, words or room tone. A stored range has each edge at its sample over the rate,
+    /// as the fit plan and the recipe store it (§8.9.2); words meet it on the sample grid (§10.1).</summary>
     static (VoiceLabSegment Segment, VoiceLabAsset Asset) PassageSegment(Project project, string id, VoiceLabWindow window, VoiceLabRoomTone? tone,
-        IReadOnlyList<VoiceLabWord>? words, double trimStart, string? patch, VoiceLabFitPlan? fit = null, double? duration = null)
+        IReadOnlyList<VoiceLabWord>? words, double trimStart, string? patch, VoiceLabFitPlan? fit = null, double? duration = null, bool stored = false)
     {
         double rate = project.Media.Source.Audio!.SampleRate;
         var outDuration = duration ?? (window.EndSample - window.StartSample) / rate;
@@ -602,7 +663,8 @@ public sealed class VoiceLabWindowTests
         {
             Id = id,
             Kind = words is null ? VoiceLabSegmentKind.VoiceChanger : VoiceLabSegmentKind.Tts,
-            Replace = new VoiceLabReplacement(window.Start, window.End, window.FirstWordId, window.LastWordId),
+            Replace = stored ? new VoiceLabReplacement(window.StartSample / rate, window.EndSample / rate, window.FirstWordId, window.LastWordId)
+                : new VoiceLabReplacement(window.Start, window.End, window.FirstWordId, window.LastWordId),
             Text = patch is null ? null : new VoiceLabText("we ship uh the clipper.", patch),
             Audio = audio,
             OutDuration = outDuration,
@@ -614,11 +676,12 @@ public sealed class VoiceLabWindowTests
     }
 
     /// <summary>Adds the recipe for window to the project's replacements as segment id, then validates and prepares the project
-    /// in scope.</summary>
+    /// in scope. The range is stored on the source grid, as Use stores it, unless stored is false.</summary>
     static (Project Project, VoiceLabRenderRecipe Recipe, VoiceLabPreparedRender Prepared) Assemble(Project project, VoiceLabWindow window,
-        VoiceLabRoomTone? tone, IReadOnlyList<VoiceLabWord>? words, double trimStart, string? patch, VoiceLabOutputScope scope, string id = "segment-window")
+        VoiceLabRoomTone? tone, IReadOnlyList<VoiceLabWord>? words, double trimStart, string? patch, VoiceLabOutputScope scope, string id = "segment-window",
+        bool stored = true)
     {
-        var (segment, asset) = PassageSegment(project, id, window, tone, words, trimStart, patch);
+        var (segment, asset) = PassageSegment(project, id, window, tone, words, trimStart, patch, stored: stored);
         project = project with
         {
             VoiceLab = project.VoiceLab with { Assets = [.. project.VoiceLab.Assets ?? [], asset], Segments = [.. project.VoiceLab.Segments, segment] },

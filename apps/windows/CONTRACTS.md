@@ -1,5 +1,21 @@
 # Windows fixed contracts
 
+### 2026-11-10 — Words meet a replace range on the source sample grid, the twin of the Mac rule (track/v2-sample-grid-range)
+
+The seam package's owed item (2026-11-09 entry below). apps/macos/CONTRACTS.md (same date) has the cause, the rule, the moved vectors and the fuzz numbers before and after. The Mac got the same Core change, the App test updates and the spec (voice-lab §10.1).
+
+- **Core.** `VoiceLabSampleGrid` (new public `readonly record struct`: `Sample`, `Contains`, `Crosses`, `CrossesSample`, `Overlaps`) and `VoiceLabReplacement.Covers(start, end, rate)`.
+  - `VoiceLabProject.Validate`: the range's words, crossings and the take's end are checked on the grid.
+  - `VoiceLabOutputPlanner.Build`: the clip filter and check, a placing window's end and clip bounds, `Inside` and the caption cover test.
+  - `VoiceLabWindowPlanner`: `Place`'s crossing check (against the seams' samples), the window's items and `inClip`; `ScopeSource.Replaced` and `KeptSource`; `ScopeReplacements`; `LendableSilence`.
+  - `VoiceLabRecipeBuilder.Segment`'s original text and `VoiceLabTakeInput.Options`' context text.
+  - **Deleted:** the local `StoredAtCut` refusal.
+  - There is no C# twin of the Mac `VoiceLabSpeechContextPlan`, so its cut-word overlap has nothing to change here.
+- **Tests.** `VoiceLabWindowTests`: `Assemble` stores the range on the grid as Use does; `SampleGridVectors` (new) replays `window-grid-cases.json` and validates and prepares each accepted window as placed and as stored, in its scope and in the full take. It also checks the 10 rule cases through `VoiceLabSampleGrid` and `Covers`. Red without the change (the five source files reverted): 6 of 28 fail (`SampleGridVectors`, `PropertyCases`, `MultiSegmentCases`, `ClipEdgeVectors`, `WindowVectors`, `TakeEdgeRecipeValidatesAndPrepares`).
+- **ReleaseBoundary** `update` on VoxClip.Core: +18, additions only (the new type's members and `Covers`). App, Media and CLI are unchanged.
+- **Verification** (on the Mac, Release, `--no-build`): Core 3 455 (3 426 passed, 29 skipped, 0 failed), Media 1 283 (1 113 passed, 170 skipped, 0 failed).
+- **Owes:** the Windows App's covered-word display, if it has one like the Mac's (only `DebugVoiceLabActions` compares a word with `Replace` in seconds, DEBUG only). There is no native VM check: no Windows-only code changed.
+
 ### 2026-11-10 — Windows: the Rewrite thread, "✎ My own words" and the per-phrase keep, the twins of the Mac's ADR-R50 work (track/v2-win-rewrite-thread)
 
 This replaces the three 2026-11-09 "Owed" pieces: "✎ My own words", "talk back to Claude about a change" and the seam-at-a-cut entry's per-phrase keep. Mac sources: track/v2-rewrite-thread, track/v2-thread-own-words and track/v2-seam-fade-cut (apps/macos/CONTRACTS.md). See design.md §6.3 "Talk back to Claude" and "Your own words", ADR-R50 and ai.md §12.10.
