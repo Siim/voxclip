@@ -43,6 +43,13 @@ package enum MediaReadQueue {
         }
     }
 
+    /// Frames a `run` loop decoded, handed back to the caller. The compiler can't tell they are free of the reader (they
+    /// come from its buffers), but the loop's reader is gone when `run` returns, so nothing else touches them.
+    package struct DecodedFrames: @unchecked Sendable {
+        package let buffers: [CVPixelBuffer]
+        package init(_ buffers: [CVPixelBuffer]) { self.buffers = buffers }
+    }
+
     /// What crosses to `queue` and back; `run`'s `sending` contract is what makes it safe.
     private struct Handoff<Value>: @unchecked Sendable {
         let value: Value

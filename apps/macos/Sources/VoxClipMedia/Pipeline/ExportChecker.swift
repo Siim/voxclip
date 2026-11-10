@@ -150,9 +150,6 @@ public struct ExportChecker: Sendable {
         return ExportCheckInput.Track(start: start, end: end)
     }
 
-    /// AVAssetReader is synchronous, so the decodes run on this queue behind a continuation, never on the cooperative pool
-    /// (a 3-core runner stops when they fill it; `FrameAnalyzer.look`).
-    static let decodeQueue = DispatchQueue(label: "voxclip.export-check.decode", qos: .userInitiated)
     /// The local engine's synchronous model work runs here, as the task's preferred executor.
     static let hearingQueue = DispatchQueue(label: "voxclip.export-check.hearing", qos: .userInitiated)
 
@@ -171,14 +168,11 @@ public struct ExportChecker: Sendable {
         let rate = description.mSampleRate, channels = Int(description.mChannelsPerFrame)
         guard rate.isFinite, rate > 0, channels > 0 else { throw VoxClipError.decodeFailed("Unsupported audio format") }
         let held = UncheckedAsset(asset: asset, track: track)
-        return try await withCheckedThrowingContinuation { continuation in
-            decodeQueue.async {
-                continuation.resume(with: Result {
-                    let measurement = try meter(held, rate: rate, channels: channels)
-                    let extracted = try wav.map { try resample(held, to: $0) }
-                    return (measurement, extracted)
-                })
-            }
+        // AVAssetReader is synchronous, so both decodes run on `MediaReadQueue`, never on the cooperative pool.
+        return try await MediaReadQueue.run {
+            let measurement = try meter(held, rate: rate, channels: channels)
+            let extracted = try wav.map { try resample(held, to: $0) }
+            return (measurement, extracted)
         }
     }
 
@@ -210,7 +204,7 @@ public struct ExportChecker: Sendable {
         reader.add(output)
         guard reader.startReading() else { throw VoxClipError.decodeFailed(reader.error?.localizedDescription ?? "Cannot read the export's audio") }
         defer { if reader.status == .reading { reader.cancelReading() } }
-        while let sample = output.copyNextSampleBuffer() {
+        while let sample = MediaReadQueue.copyNext(output) {
             guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
             let length = CMBlockBufferGetDataLength(block)
             guard length > 0 else { continue }

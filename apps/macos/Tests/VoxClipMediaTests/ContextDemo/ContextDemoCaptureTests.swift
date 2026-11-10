@@ -273,6 +273,22 @@ struct ContextDemoCaptureTests {
         }
     }
 
+    /// The real inspector reads a silent H.264 recording, decoding its first frame on `MediaReadQueue` (not the main
+    /// thread), and refuses a file whose picture doesn't decode.
+    @Test func theInspectorReadsARealRecordingAndRefusesABrokenOne() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("context-demo-inspect-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let recording = folder.appendingPathComponent("recording.mp4")
+        try await FalShapedResult.write(to: recording, frames: 15, fps: 30, width: 320, height: 180, audioSeconds: nil)
+        let metadata = try await ContextDemoRecordingInspector().inspect(recording)
+        #expect(metadata.width == 320 && metadata.height == 180)
+        #expect(abs(metadata.duration - 0.5) < 0.01, "\(metadata.duration)")
+        let broken = folder.appendingPathComponent("broken.mp4")
+        try Data([0, 0, 0, 24] + Array("ftypmp42".utf8) + [0, 0, 0, 0]).write(to: broken)
+        await #expect(throws: (any Error).self) { try await ContextDemoRecordingInspector().inspect(broken) }
+    }
+
     @Test func nativeErrorsMapWithoutLeakingWindowOrOSDetails() {
         #expect(ContextDemoScreenCapture.map(NSError(domain: SCStreamErrorDomain, code: -3801)) == .permissionDenied)
         #expect(ContextDemoScreenCapture.map(NSError(domain: SCStreamErrorDomain, code: -3806)) == .targetUnavailable)

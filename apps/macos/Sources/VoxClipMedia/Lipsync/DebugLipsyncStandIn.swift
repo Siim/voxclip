@@ -18,14 +18,17 @@ package enum LipsyncShortResultStandIn {
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw LipsyncError.invalidMedia }
         let (size, rate) = try await track.load(.naturalSize, .nominalFrameRate)
         let fps = Double(rate)
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
-        reader.add(output)
-        guard reader.startReading() else { throw LipsyncError.invalidMedia }
-        var frames: [CVPixelBuffer] = []
-        while let sample = output.copyNextSampleBuffer() {
-            if let buffer = CMSampleBufferGetImageBuffer(sample) { frames.append(buffer) }
-        }
+        var frames = try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            reader.add(output)
+            guard reader.startReading() else { throw LipsyncError.invalidMedia }
+            var frames: [CVPixelBuffer] = []
+            while let sample = MediaReadQueue.copyNext(output) {
+                if let buffer = CMSampleBufferGetImageBuffer(sample) { frames.append(buffer) }
+            }
+            return MediaReadQueue.DecodedFrames(frames)
+        }.buffers
         guard frames.count > droppingFrames + 1 else { throw LipsyncError.invalidMedia }
         frames.removeLast(droppingFrames)
         let picture = folder.appendingPathComponent("picture.mp4")
@@ -87,7 +90,7 @@ package enum LipsyncShortResultStandIn {
         let receiver = writer.inputReceiver(for: input)
         guard writer.startWriting(), reader.startReading() else { throw LipsyncError.invalidMedia }
         writer.startSession(atSourceTime: .zero)
-        while let sample = try await provider.next() { try await receiver.append(sample) }
+        while let sample = try await MediaReadQueue.next(provider) { try await receiver.append(sample) }
         receiver.finish()
         await writer.finishWriting()
         guard writer.status == .completed else { throw LipsyncError.invalidMedia }

@@ -1,5 +1,6 @@
 import AVFoundation
 import VoxClipCore
+import VoxClipMedia
 
 /// One level of the waveform pyramid (impl-plan §3.1): per frame, the loudest 10 ms RMS
 /// value in it (`max`) and the RMS over it (`rms`).
@@ -270,7 +271,7 @@ actor WaveformCache {
         var count = 0
         var sum = 0.0
         var levels: [Float] = []
-        while let ready = try await provider.next() {
+        while let ready = try await MediaReadQueue.next(provider) {
             try Task.checkCancellation()
             try ready.withUnsafeSampleBuffer { sample in
                 let frames = CMSampleBufferGetNumSamples(sample)

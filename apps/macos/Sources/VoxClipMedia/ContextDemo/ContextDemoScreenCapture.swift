@@ -193,18 +193,28 @@ private final class ContextDemoRecordingDelegate: NSObject, SCRecordingOutputDel
         let bounds = CGRect(origin: .zero, size: size).applying(transform)
         guard bounds.width.isFinite, bounds.height.isFinite, bounds.width >= 2, bounds.height >= 2,
               bounds.width <= 1_920, bounds.height <= 1_080 else { throw ContextDemoCaptureError.invalidRecording }
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-        ])
-        guard reader.canAdd(output) else { throw ContextDemoCaptureError.invalidRecording }
-        reader.add(output)
-        guard reader.startReading(), let sample = output.copyNextSampleBuffer(),
-              CMSampleBufferIsValid(sample), CMSampleBufferGetImageBuffer(sample) != nil else {
-            reader.cancelReading(); throw ContextDemoCaptureError.invalidRecording
-        }
-        reader.cancelReading()
+        try await Self.decodeFirstFrame(url)
         try Task.checkCancellation()
         return ContextDemoRecordingMetadata(duration: duration, width: Int(bounds.width), height: Int(bounds.height))
+    }
+
+    /// Throws unless the recording's first frame decodes. The reader runs on `MediaReadQueue`, not on the main thread, while
+    /// the main actor awaits it; its own asset keeps the main actor's out of the read.
+    nonisolated private static func decodeFirstFrame(_ url: URL) async throws {
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw ContextDemoCaptureError.invalidRecording }
+        try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+            ])
+            guard reader.canAdd(output) else { throw ContextDemoCaptureError.invalidRecording }
+            reader.add(output)
+            guard reader.startReading(), let sample = MediaReadQueue.copyNext(output),
+                  CMSampleBufferIsValid(sample), CMSampleBufferGetImageBuffer(sample) != nil else {
+                reader.cancelReading(); throw ContextDemoCaptureError.invalidRecording
+            }
+            reader.cancelReading()
+        }
     }
 }
