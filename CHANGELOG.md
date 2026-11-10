@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrites next to cuts and at words that touch no longer fail or keep their original words over a rounding sliver of under one audio sample.
 - On Windows, you can now talk to Claude about a Rewrite change right under its words, as on the Mac: bubbles, versions (Alt+Page Up / Alt+Page Down), ✎ My own words (Shift+F2) and Keep, with nothing voiced or paid until you keep it; F2 opens it instead of the old row for typing a change's new words, and a change that can't be joined to the recording keeps its words with one line of why while the others are voiced.
 - A take too long for its place no longer ends in "The new wording couldn't be priced." when Rewrite's shorter wording arrives while the take's matched video is still being prepared: the price waits for it.
 - Rewrite now voices a changed phrase that starts or ends right at a cut, crossfading from the audio before the cut, and a phrase that still can't be joined to the recording keeps its words with one line of why while the others are voiced. Before, "Voice Only the Changed Phrases" could stop after the AI's rewrite with "This change can't be placed in this take."
