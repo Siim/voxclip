@@ -29,9 +29,14 @@ struct NativeSpeechTests {
         let tokens = AppleSpeechRunMapper.tokens(runs, language: "zh-CN", group: 0)
         #expect(!tokens[1].joinsPrevious && tokens[2].joinsPrevious)
         let engine = AppleSpeechTranscriber()
-        #expect(await !engine.supports(.forced("et"), model: nil))
-        #expect(await !engine.supports(.auto, model: nil))
-        do { _ = try await engine.cacheIdentity(for: TranscriptionPlan(engine: .appleSpeech, language: .forced("et"))); Issue.record("Expected unsupported language") }
+        // Each lookup asks the system speech service (`SpeechTranscriber.supportedLocale(equivalentTo:)`), which has no time
+        // bound of its own: a service that never answers fails this test instead of holding the suite.
+        let lookups = Task { () async -> [Bool] in
+            [await engine.supports(.forced("et"), model: nil), await engine.supports(.auto, model: nil)]
+        }
+        #expect(try await TestDeadline.value(lookups, "Apple Speech's locale lookups", timeout: .seconds(60)) == [false, false])
+        let identity = Task { try await engine.cacheIdentity(for: TranscriptionPlan(engine: .appleSpeech, language: .forced("et"))) }
+        do { _ = try await TestDeadline.value(identity, "Apple Speech's cache identity", timeout: .seconds(60)); Issue.record("Expected unsupported language") }
         catch let error as VoxClipError { #expect(error.errorDescription == "Apple can't transcribe et.") }
     }
     @Test func whisperCatalogueSupportsAndReadiness() async throws {
