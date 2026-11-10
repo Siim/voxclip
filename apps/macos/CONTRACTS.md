@@ -1,5 +1,17 @@
 # macOS implementation contracts
 
+### 2026-11-10 — The plan system prompt says "this computer" (track/v2-autopilot-prompt-computer)
+
+This settles the item owed by track/v2-small-parity (the entry below). The plan system prompt told the AI the frames were measured, and the opening and 9:16 decided, "on this Mac", and Windows sends the same prompt. apps/windows/CONTRACTS.md (same date) has the Windows side.
+
+- **Changed (shared prompt):** `shared/prompts/clip-autopilot.json` is `promptVersion` 9. In `sections.frames`, "as this Mac measured them" becomes "as this computer measured them", and "decided on this Mac" becomes "decided on this computer". No other word changed. These were the only "Mac" mentions in `shared/prompts/*.json`; none is about macOS itself. The plan format (version 4) and the reply schema are unchanged.
+- **Regenerated:** `tools/fixtures/autopilot/generate_plan_frames.py` refreshed the prompt SHA-256 (now `81009b47…`) in `plan-frames-cases.json`, `plan-validation-cases.json`, `plan-v2-cases.json` and `plan-tone-cases.json`. No fixture carries the prompt's text or version.
+- **Pins:** `promptVersion == 9` in `ClipAutopilotTests` (twice), `ClipAutopilotToneTests` and `ClipFramesTests`. `ClipFramesTests.vectorsPinTheCurrentPrompt` now also requires both "this computer" phrases and no "this Mac" in the plan system prompt.
+- **Saved decisions:** the prompt version and SHA are reported only in `ClipAutopilotResult`. Nothing saves them, and no cache key uses them (`prompt_cache_key` hashes the transcript block). A saved series decodes by its plan `version`, which is unchanged, so old decisions load as before.
+- **Left as is:** doc comments saying a feature arrived "before/in prompt version 8" (they are history), and the Mac UI's "this Mac" copy.
+- **Tests:** against the old prompt file, 9 issues in the autopilot suites (version and SHA pins). With the old text and only the version bumped, 5 issues (the four SHA pins and the new wording check). With the change, 51 tests pass.
+- **Verification** (on the Mac, under a load average of about 25 to 35): Core 1 550 passed (2 known issues); App 1 068 passed. Both `check_drift.py` scripts and `tools/schemas/validate.py` pass, and the tree is clean afterwards.
+
 ### 2026-11-10 — The frame summary says "this computer" (track/v2-small-parity)
 
 The win-arm64 native batch found that the Windows plan request told the AI "Frames measured on this Mac", because it replays the shared wording. apps/windows/CONTRACTS.md (same date) has the Windows side.

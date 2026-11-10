@@ -1798,7 +1798,7 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 
 | File | Holds |
 | --- | --- |
-| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 7 (version 6 adds the tone: the `tone` section, the `toneFixed`, `toneAuto`, `toneLine` and `toneAsSaid` templates, `maxToneSummaryScalars` and the reply's `tone` and `toneSummary`; version 7 adds `momentOthers`, §16.12). `sections` of system text and `system.plan` / `system.moments`, the section lists of the two system prompts; `looks`, the colour looks with their descriptions; transcript and request templates; defaults; limits; the plan schema `clip_autopilot_plan` and the moments schema `clip_autopilot_moments`; output-token caps (`clip` 16,000, `moments` 8,000) and the minimum timeout |
+| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 9 (version 6 adds the tone: the `tone` section, the `toneFixed`, `toneAuto`, `toneLine` and `toneAsSaid` templates, `maxToneSummaryScalars` and the reply's `tone` and `toneSummary`; version 7 adds `momentOthers`, §16.12; version 8 adds the `frames` section and the reply's `frames`, §19.6; version 9 says the frames are measured, and the opening and 9:16 decided, "on this computer" instead of "on this Mac", because Windows sends the same prompt). `sections` of system text and `system.plan` / `system.moments`, the section lists of the two system prompts; `looks`, the colour looks with their descriptions; transcript and request templates; defaults; limits; the plan schema `clip_autopilot_plan` and the moments schema `clip_autopilot_moments`; output-token caps (`clip` 16,000, `moments` 8,000) and the minimum timeout |
 | `shared/catalog/music-prices.json` | Eleven Music list price in the Voice Lab price format (`voxclip-voice-lab-prices/1`), read by `VoiceLabPriceCatalog`. It is a separate file because both Core suites pin `voice-lab.json`'s hash and entry count. **TODO (lead):** verify the 0.15 USD per minute row before the music package ships; the pricing page also says music is billed per generation |
 | `shared/fixtures/autopilot/plan-validation-cases.json` | `voxclip-autopilot-validation/1`: a synthetic 30-item transcript, two rendered-transcript vectors and eleven hand-derived validation cases (version 1 fields); its `series` case replays as the moments stage. `sources` pins the prompt's SHA-256 |
 | `shared/fixtures/autopilot/plan-tone-cases.json` | `voxclip-autopilot-tone/1`: eleven hand-derived tone cases on the version 1 fixture's transcript (fixed, saved, Auto, As I said it and no tone; a reply that names another tone, an unknown one or a long summary) and four instruction vectors, the tone line each mode adds. `sources` pins the prompt's and `shared/data/rewrite-tones.json`'s SHA-256 |
@@ -2290,12 +2290,12 @@ JSON> --words first:last` measures a file without a project. It changes no proje
 
 Part 2 gives Windows the project fields: a clip's `leadInSeconds`, its `clipControls.reframe` and `coverSeconds` open, validate
 and save losslessly (the `shared/fixtures/clip-frames/` vectors replay), the clip opens at its lead-in, and the 9:16 and 1:1
-export crops follow the stored face (`ClipFaceCrop`). The `clip-autopilot` prompt version 8 and its fixtures pass.
+export crops follow the stored face (`ClipFaceCrop`). The `clip-autopilot` prompt (version 8 then, 9 now) and its fixtures pass.
 
 Windows Core (track/v2-win-speed-images, 2026-11-08) has `LlmRequest.Images`, `ILlmConnector.SupportsImages` from the catalogue
 and the §19.3 wires (Anthropic, OpenAI, xAI, Gemini; Claude Code's stream-json message when `--help` lists `images.requiredFlags`;
 Codex `--image` files in the private io folder), byte for byte as the Mac's; requests without images are unchanged and the shared
-LLM vectors replay. The planner renders prompt version 8 with `moments`, `momentOthers` and the frame section when the caller gives
+LLM vectors replay. The planner renders prompt version 8 (now 9) with `moments`, `momentOthers` and the frame section when the caller gives
 `ClipAutopilotFrames` (plan version 4, `FrameChoices`, the reply's `frames` checked as on the Mac; `plan-frames-cases.json`
 replays). Windows has no analyzer, so the editor and `voxclip-cli autopilot` send no frames.
 
@@ -2313,7 +2313,7 @@ and the CLI command.
   (`FrameSampling.clipSamples`; a clip inside one long sentence decodes its own), with their sheet, and starts that clip's
   opening scan (±0.6 s at 10 fps) beside the request; the apply waits for it. A source the analyzer cannot read logs one
   line ("frames: the video's frames can't be read, so plans go as text only (…)") and every clip goes as text.
-- **The request** (`clip-autopilot.json` promptVersion 8, plan version 4; the `frames` section). `ClipAutopilotFrames`
+- **The request** (`clip-autopilot.json` promptVersion 9, plan version 4; the `frames` section, added in version 8). `ClipAutopilotFrames`
   carries the sheet's summary, which the instruction always holds after the names line, and the 320 px images, which
   only a connector that takes images gets (`LLMRequest.images`, labelled "Frame n at s.ss s"). It lists screens to judge,
   `B1…` (`ClipFrameCandidates.blur`: `FrameBlurSpans.merge` with an 8 s gap and 1 s pad, cut to the clip; "screen at
