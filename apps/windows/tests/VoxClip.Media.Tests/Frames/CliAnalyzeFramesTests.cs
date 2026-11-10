@@ -114,10 +114,13 @@ public sealed class CliAnalyzeFramesTests : IDisposable
     }
 
     /// <summary>The whole CLI with no face models installed: <c>modelMissing</c>, exit 7, the line that says so, and nothing measured or
-    /// cached. A missing clip or a wrong pair of options is a usage error (exit 2), as on the Mac.</summary>
+    /// cached. A missing clip or a wrong pair of options is a usage error (exit 2), as on the Mac. The run is in-process, so it skips when
+    /// the installed CLI has faces (the catalogue enabled, or <see cref="OnnxFrameFaces.OverrideVariable"/> set for W3/W8's runs).</summary>
     [Fact]
     public async Task WithFacesUnavailableTheCliFailsWithTheMacsCodeAndLine()
     {
+        Assert.SkipWhen(new FrameModelCatalog().Enabled || OnnxFrameFaces.Overridden(),
+            "The face models are installed for this run (the catalogue is enabled or VOXCLIP_FRAME_FACES=1), so the CLI's faces-unavailable path can't be reached.");
         var (project, key) = await ProjectAsync();
         var (exit, output, _) = await RunAsync("analyze-frames", "--open", project, "--clip", "fq-clip-1", "--json");
         Assert.Equal(7, exit);
