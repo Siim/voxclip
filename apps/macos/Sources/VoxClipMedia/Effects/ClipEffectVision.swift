@@ -23,7 +23,7 @@ public enum ClipEffectVision {
         var order: [String] = []
         for (time, image) in try await images(source: source, times: times) {
             try Task.checkCancellation()
-            let found = try observe(image, text: true)
+            let found = try await VisionQueue.run(image) { try observe($0, text: true) }
             for face in found.faces {
                 if let index = faces.indices.max(by: { iou(faces[$0].rect, face) < iou(faces[$1].rect, face) }), iou(faces[index].rect, face) > 0.25 {
                     faces[index].last = time
@@ -52,8 +52,8 @@ public enum ClipEffectVision {
         for (time, image) in try await images(source: source, times: times) {
             try Task.checkCancellation()
             let candidates: [ClipEffect.Rect]
-            if mode == .face { candidates = try observe(image, text: false).faces.map { grown($0, by: 0.25) } }
-            else { candidates = try salient(image) }
+            if mode == .face { candidates = try await VisionQueue.run(image) { try observe($0, text: false) }.faces.map { grown($0, by: 0.25) } }
+            else { candidates = try await VisionQueue.run(image) { try salient($0) } }
             if let best = candidates.min(by: { distance($0, previous) < distance($1, previous) }) { previous = best.clamped }
             raw.append(.init(t: time, rect: previous))
         }
@@ -79,7 +79,9 @@ public enum ClipEffectVision {
         return result
     }
 
+    /// Synchronous Vision: call it only through `VisionQueue.run`.
     static func observe(_ image: CGImage, text: Bool) throws -> (faces: [ClipEffect.Rect], texts: [(String, ClipEffect.Rect)]) {
+        VisionQueue.assertOnQueue()
         let faces = VNDetectFaceRectanglesRequest()
         let words = VNRecognizeTextRequest()
         words.recognitionLevel = .accurate
@@ -95,7 +97,9 @@ public enum ClipEffectVision {
         return (found, lines)
     }
 
+    /// Synchronous Vision: call it only through `VisionQueue.run`.
     static func salient(_ image: CGImage) throws -> [ClipEffect.Rect] {
+        VisionQueue.assertOnQueue()
         let request = VNGenerateObjectnessBasedSaliencyImageRequest()
         try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
         return (request.results?.first?.salientObjects ?? []).map { rect($0.boundingBox) }

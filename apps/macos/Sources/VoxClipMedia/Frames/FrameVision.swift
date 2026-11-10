@@ -19,7 +19,9 @@ public protocol FrameObserving: Sendable {
 public struct AppleFrameVision: FrameObserving {
     public init() {}
 
+    /// Synchronous Vision: `FrameAnalyzer.look` runs it on `VisionQueue`.
     public func observe(_ image: CGImage, time: Double) throws -> FrameObservation {
+        VisionQueue.assertOnQueue()
         let faces = Self.faceRequest()
         let text = VNRecognizeTextRequest()
         text.recognitionLevel = .fast
