@@ -195,10 +195,11 @@ public sealed partial class TranscriptView
         rich.DoubleTapped -= DoubleTappedWord; rich.DoubleTapped += DoubleTappedWord;
         rich.RightTapped -= WordContextRequested; rich.RightTapped += WordContextRequested;
         AutomationProperties.SetName(rich, string.Join(" ", pieces.Select(piece => piece.Kind == TranscriptPieceKind.Fold ? piece.FoldName :
-            piece.Change is { } hunk ? $"Proposed change {hunk.Ordinal} of {proposal.TotalCount}: {piece.Text}" : piece.Text)));
-        // Narrator's form of the Mac's custom actions on the focused change: WinUI has none, so the keys are in the paragraph's help.
-        AutomationProperties.SetHelpText(rich, actionsAfter?.Change is { } talked
-            ? $"{RewriteThreadDisplay.TalkAction(talked.Ordinal)}: F2. {RewriteThreadDisplay.OwnWordsAction(talked.Ordinal)}: {RewriteThreadDisplay.OwnWordsKey}."
+            piece.Change is { } hunk ? $"Proposed change {hunk.Ordinal} of {proposal.TotalCount}{hunk.Reviewed}: {piece.Text}" : piece.Text)));
+        // Narrator's form of the Mac's custom actions on the focused change: WinUI has none, so the keys are in the paragraph's help. A
+        // kept or left-out change has no thread to talk in.
+        AutomationProperties.SetHelpText(rich, actionsAfter?.Change is { State: TranscriptChangeState.Pending } talked
+            ?$"{RewriteThreadDisplay.TalkAction(talked.Ordinal)}: F2. {RewriteThreadDisplay.OwnWordsAction(talked.Ordinal)}: {RewriteThreadDisplay.OwnWordsKey}."
             : "");
         DrawParagraph(visual);
         if (FrameProbePrepared is { } report) report(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
@@ -289,7 +290,8 @@ public sealed partial class TranscriptView
         var glyphs = new List<(double Top, string Text, string Brush)>();
         foreach (var line in lines.Values)
         {
-            if (line.Change is { } change) visual.Overlay.ChangeBar(line.Bounds, change.Ordinal == focusedChange, change.State == TranscriptChangeState.Excluded);
+            // A kept change keeps its words and its glyph but no bar: the bar marks what still waits for a review (design.md §6.3.5).
+            if (line.Change is { State: not TranscriptChangeState.Kept } change) visual.Overlay.ChangeBar(line.Bounds, change.Ordinal == focusedChange, change.State == TranscriptChangeState.Excluded);
             if (line.Change is { } hunk) glyphs.Add((line.Bounds.Top, hunk.Priority == 3 ? "\u223f" : hunk.Priority == 2 ? "\u270e" : "\u2702", "VcTextTertiaryBrush"));
             else if (line.Ai) glyphs.Add((line.Bounds.Top, "\u223f", "VcAiWaveBrush"));
         }
@@ -316,7 +318,7 @@ public sealed partial class TranscriptView
         var extent = ClipExtent();
         if (extent.First >= 0 && extent.Last >= extent.First) Mark(extent.First, extent.Last, "VcClipLabelBrush", 1);
         if (model.HasSelection) Mark(model.SelectionStart, model.SelectionEnd, "VcAccentTextBrush", 4);
-        foreach (var hunk in proposal.Hunks) Mark(hunk.First >= 0 ? hunk.First : hunk.Anchor, hunk.Last >= 0 ? hunk.Last : hunk.Anchor, "VcChangeAddBrush", 6);
+        foreach (var hunk in proposal.Hunks.Where(hunk => hunk.State != TranscriptChangeState.Kept)) Mark(hunk.First >= 0 ? hunk.First : hunk.Anchor, hunk.Last >= 0 ? hunk.Last : hunk.Anchor, "VcChangeAddBrush", 6);
         foreach (var segment in model.Project.VoiceLab.Segments.Where(segment => segment.Enabled))
             Mark(model.Index(segment.Replace.FirstWordId), model.Index(segment.Replace.LastWordId), "VcAiWaveBrush", 8);
 

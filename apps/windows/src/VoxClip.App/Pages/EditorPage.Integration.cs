@@ -130,8 +130,10 @@ public sealed partial class EditorPage
             owner.RefreshShellChrome();
         }
         session.Changed += Publish;
-        Transcript.KeepChangeRequested = ordinal => session.SetChangeIncluded(ordinal, true);
-        Transcript.ExcludeChangeRequested = ordinal => session.SetChangeIncluded(ordinal, false);
+        Transcript.KeepChangeRequested = ordinal => session.KeepChange(ordinal);
+        Transcript.ExcludeChangeRequested = ordinal => session.UndoChange(ordinal);
+        // Keep and Undo move the focus to the next waiting change; "Kept change {i}" is what Narrator reads, not the move.
+        session.ReviewFocusMoved = ordinal => Transcript.FocusChange(ordinal, announce: false);
         Publish(this, EventArgs.Empty);
     }
 

@@ -537,6 +537,32 @@ public sealed class RewriteThreadTests
         Assert.Contains("VirtualKey.PageUp", editing);
     }
 
+    [Fact]
+    public void TheTranscriptShowsAKeptChangeAsTheMacDoesAndKeepNoLongerFoldsTheThread()
+    {
+        // Keep and Undo are the review's own, with the focus moving on and the keys staying in the transcript.
+        var integration = AppSource("Pages", "EditorPage.Integration.cs");
+        Assert.Contains("KeepChangeRequested = ordinal => session.KeepChange(ordinal)", integration);
+        Assert.Contains("ExcludeChangeRequested = ordinal => session.UndoChange(ordinal)", integration);
+        Assert.Contains("session.ReviewFocusMoved = ordinal => Transcript.FocusChange(ordinal, announce: false)", integration);
+        // A waiting change offers Keep and Undo, a kept one Undo, one left out Keep; a kept one has no bar and no thread keys.
+        var editing = AppSource("Controls", "TranscriptView.InlineEditing.cs");
+        Assert.Contains("hunk.State != TranscriptChangeState.Kept) Add(\"Keep\"", editing);
+        Assert.Contains("hunk.State != TranscriptChangeState.Excluded) Add(\"Undo\"", editing);
+        Assert.Contains("{change.NewText}{change.Reviewed}", editing);
+        var presentation = AppSource("Controls", "TranscriptView.Presentation.cs");
+        Assert.Contains("line.Change is { State: not TranscriptChangeState.Kept } change) visual.Overlay.ChangeBar", presentation);
+        Assert.Contains("actionsAfter?.Change is { State: TranscriptChangeState.Pending } talked", presentation);
+        Assert.Contains("{hunk.Reviewed}: {piece.Text}", presentation);
+        Assert.Contains("if (keep) owner.Focus(FocusState.Programmatic)", AppSource("Controls", "TranscriptView.Thread.cs"));
+        Assert.Contains("\" · kept\"", AppSource("Controls", "RewritePanel.Review.cs"));
+        // The workaround is gone: Keep never folds the thread or includes the change through the review's checkbox path.
+        var thread = AppSource("ViewModels", "RewriteSession.Thread.cs");
+        Assert.DoesNotContain("SetChangeIncluded(display.Ordinal, true)", thread);
+        Assert.DoesNotContain("Thread.Folded = display.Key;\n        Announce($\"Kept", thread);
+        Assert.Contains("internal bool KeepThreadChange() => ThreadDisplay is { } display && KeepChange(display.Ordinal);", thread);
+    }
+
     static string AppSource(string folder, string file) =>
         File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "..", "apps", "windows", "src", "VoxClip.App", folder, file));
 }

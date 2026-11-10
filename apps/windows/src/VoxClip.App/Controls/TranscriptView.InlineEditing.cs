@@ -12,7 +12,7 @@ namespace VoxClip.App.Controls;
 
 public sealed partial class TranscriptView
 {
-    internal void FocusChange(int ordinal, bool reveal = true)
+    internal void FocusChange(int ordinal, bool reveal = true, bool announce = true)
     {
         if (proposal.Hunks.FirstOrDefault(hunk => hunk.Ordinal == ordinal) is not { } change) return;
         CloseInlineEditor(false);
@@ -20,7 +20,7 @@ public sealed partial class TranscriptView
         if (reveal) RevealWord(change.First >= 0 ? change.First : change.Anchor);
         RebuildRealized();
         ChangeFocused?.Invoke(ordinal);
-        Announce($"Proposed change {ordinal} of {proposal.TotalCount}. {change.NewText}");
+        if (announce) Announce($"Proposed change {ordinal} of {proposal.TotalCount}. {change.NewText}{change.Reviewed}");
     }
 
     private bool HandleProposalKey(KeyRoutedEventArgs args)
@@ -73,15 +73,17 @@ public sealed partial class TranscriptView
     {
         var expected = proposal;
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8, 0, 0, 0) };
-        if (KeepChangeRequested is not null) Add("Keep", () => KeepChangeRequested?.Invoke(hunk.Ordinal));
-        if (ExcludeChangeRequested is not null) Add("Undo", () => ExcludeChangeRequested?.Invoke(hunk.Ordinal));
+        // Where they can act (Mac `proposalDisplay.actions`): a waiting change Keep and Undo, a kept one Undo, one left out Keep.
+        if (KeepChangeRequested is not null && hunk.State != TranscriptChangeState.Kept) Add("Keep", () => KeepChangeRequested?.Invoke(hunk.Ordinal));
+        if (ExcludeChangeRequested is not null && hunk.State != TranscriptChangeState.Excluded) Add("Undo", () => ExcludeChangeRequested?.Invoke(hunk.Ordinal));
         return row;
 
         void Add(string title, Action action)
         {
             var button = new Button { Content = title, MinWidth = 0, MinHeight = 20, Height = 20, Padding = new Thickness(7, 0, 7, 0), FontSize = 12 };
             AutomationProperties.SetName(button, $"{title} proposed change {hunk.Ordinal} of {proposal.TotalCount}");
-            button.Click += (_, _) => { if (CanEditTranscript && ReferenceEquals(expected, proposal)) action(); };
+            // The buttons change with the review, so the keys stay in the transcript, on the change the focus moved to.
+            button.Click += (_, _) => { if (CanEditTranscript && ReferenceEquals(expected, proposal)) { action(); Focus(FocusState.Programmatic); } };
             button.IsEnabled = CanEditTranscript;
             row.Children.Add(button);
         }
