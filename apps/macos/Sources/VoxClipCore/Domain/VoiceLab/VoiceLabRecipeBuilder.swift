@@ -208,7 +208,10 @@ public enum VoiceLabRecipeBuilder {
                                plan: VoiceLabFitPlan, kind: VoiceLabSegmentKind = .tts) throws -> VoiceLabSegment {
         guard candidates.indices.contains(selected), let recipe = candidates[selected].recipe,
               candidates[selected].rejected == nil else { throw VoiceLabProjectError.invalidCandidate }
-        let original = input.items.filter { $0.kind == .word && $0.end > plan.windowStart && $0.start < plan.windowEnd }.map(\.text).joined(separator: " ")
+        // The words the stored range overlaps on the source grid (§10.1): a touching word off the grid is not one of them.
+        let grid = VoiceLabSampleGrid(rate: Double(input.sourceSampleRate))
+        let original = input.items.filter { $0.kind == .word && grid.overlaps(plan.windowStart, plan.windowEnd, start: $0.start, end: $0.end) }
+            .map(\.text).joined(separator: " ")
         var segment = VoiceLabSegment(id: id, kind: kind, enabled: true,
             replace: VoiceLabReplacement(start: plan.windowStart, end: plan.windowEnd,
                 firstWordId: input.window.firstWordId, lastWordId: input.window.lastWordId),

@@ -53,19 +53,45 @@ import Testing
         #expect(window.leftSeam == VoiceLabSeamPlacement(kind: .hard, time: Double(seam) / 48_000, sample: seam, fadeSamples: 576))
         #expect(window.firstWordId == first && window.leftBridgeWordIds.isEmpty)
         // It renders as the take plan checks it, in the clip and in the full take, where the segment also plays.
-        for scope in [Self.scope, .full] { try VoiceLabRenderContract.validatePlacement(project, scope: scope, window: window) }
+        try Self.validatesAtUse(project, window: window)
     }
 
-    /// The fit plan and the recipe store a window's edge as its sample over the rate. The user's touching boundary lies on
-    /// the 48 kHz grid; half a sample later it doesn't, and the stored edge would cut into the phrase's first word, so the
-    /// hunk is refused before any paid take (the Rewrite then keeps that phrase's words).
-    @Test func touchingCutOffTheSourceGridIsRefused() throws {
+    /// The fit plan and the recipe store a window's edge as its sample over the rate, and words meet it on the sample grid
+    /// (§10.1, 2026-11-10). The user's touching boundary lies on the 48 kHz grid. One ulp later, as a transcript time stored as
+    /// 15.655000000000001 was on the user's clip, or exactly half a sample later, it doesn't: the stored edge then sits under
+    /// a sample inside the cut word or the phrase. Such a phrase was refused with `windowCrossesWord` and kept its original
+    /// words; now it places, and its stored range validates at Use in the clip and in the full take.
+    @Test(arguments: [(11.135.nextUp, Int64(534_480)), (11.135 + 0.5 / 48_000, Int64(534_481))])
+    func touchingCutOffTheSourceGridPlaces(_ boundary: Double, _ seam: Int64) throws {
         var (project, envelope) = try Self.take()
-        let boundary: Double = 11.135 + 0.5 / 48_000
         project.transcript?.words[18].end = boundary
         project.transcript?.words[19].start = boundary
-        #expect(throws: VoiceLabGeometryError.windowCrossesWord("w20")) {
-            try VoiceLabWindowPlanner.place(project: project, scope: Self.scope, envelope: envelope, firstWordId: "w20", lastWordId: "w23")
+        let window = try VoiceLabWindowPlanner.place(project: project, scope: Self.scope, envelope: envelope, firstWordId: "w20", lastWordId: "w23")
+        #expect(window.leftSeam == VoiceLabSeamPlacement(kind: .hard, time: boundary, sample: seam, fadeSamples: 576))
+        #expect(window.firstWordId == "w20" && Double(window.startSample) / 48_000 != boundary)
+        try Self.validatesAtUse(project, window: window)
+    }
+
+    /// The same latent fault without a cut: a hard seam at a kept word that touches the phrase off the grid placed, but its
+    /// stored range had that word cross it by under a sample, so `VoiceLabProject.validate` refused it at Use with
+    /// `invalidRange`. Now it validates.
+    @Test func hardSeamAtATouchingKeptWordOffTheGridValidatesAtUse() throws {
+        var (project, envelope) = try Self.take()
+        let boundary: Double = 5.195 + 0.3 / 48_000
+        project.transcript?.words[9].end = boundary
+        project.transcript?.words[10].start = boundary
+        let window = try VoiceLabWindowPlanner.place(project: project, scope: Self.scope, envelope: envelope, firstWordId: "w11", lastWordId: "w11")
+        #expect(window.leftSeam.kind == .hard && window.leftSeam.time == boundary && window.leftBridgeWordIds.isEmpty)
+        #expect(Double(window.startSample) / 48_000 < boundary)
+        try Self.validatesAtUse(project, window: window)
+    }
+
+    /// Use: the window's segment with its range stored on the grid, as the fit plan stores it, passes `VoiceLabProject.validate`
+    /// and prepares in the clip and in the full take, beside the take plan's own check.
+    static func validatesAtUse(_ project: Project, window: VoiceLabWindow) throws {
+        for scope in [Self.scope, .full] {
+            try VoiceLabRenderContract.validatePlacement(project, scope: scope, window: window)
+            _ = try VoiceLabWindowTests().assemble(project, window: window, tone: nil, words: nil, trimStart: 0.5, patch: nil, scope: scope)
         }
     }
 

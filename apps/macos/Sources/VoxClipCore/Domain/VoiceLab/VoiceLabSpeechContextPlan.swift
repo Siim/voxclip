@@ -122,6 +122,7 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
         guard request.reviewHunks.allSatisfy({ $0.sourceEndIndex <= sourceTokenCount }) else { throw Failure.invalidInput }
         let duration = request.project.media.source.durationSeconds
         let sampleRate = Double(request.project.media.source.audio?.sampleRate ?? 48_000)
+        let grid = VoiceLabSampleGrid(rate: sampleRate)
         guard duration.isFinite, duration > 0, duration * sampleRate < VoiceLabGeometry.sampleLimit else { throw Failure.invalidInput }
         try VoiceLabGeometry.check(rate: sampleRate, totalSamples: VoiceLabGeometry.samples(duration, sampleRate),
                                    envelope: envelope, items: words)
@@ -209,7 +210,7 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
                 } catch { continue }
                 guard window.leftBridgeWordIds.isEmpty, window.rightBridgeWordIds.isEmpty,
                       window.start >= lowerTime, window.end <= upperTime,
-                      !words.contains(where: { cuts.contains($0.id) && $0.start < window.end && window.start < $0.end }),
+                      !words.contains(where: { cuts.contains($0.id) && grid.overlaps(window.start, window.end, start: $0.start, end: $0.end) }),
                       !cutPauses.contains(where: { $0.start < window.end && window.start < $0.end }) else { continue }
                 let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: request.scope, window: window)
                 let meter = try VoiceLabFitMeter.measure(text: text, window: window, incomingSilence: silence.incoming,

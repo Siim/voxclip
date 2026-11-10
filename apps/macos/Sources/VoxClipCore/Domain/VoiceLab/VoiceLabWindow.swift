@@ -443,7 +443,8 @@ public enum VoiceLabWindowPlanner {
             let cutIds = Set(segments.filter { $0.kind == .word && $0.cut }.map(\.id))
             keptItem = words.map { !cutIds.contains($0.id) }
             // An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
-            replaced = words.map { word in replacements.contains { $0.start <= word.start && word.end <= $0.end } }
+            let grid = VoiceLabSampleGrid(rate: take.rate)
+            replaced = words.map { word in replacements.contains { grid.contains($0.start, $0.end, start: word.start, end: word.end) } }
             let incomingHandles: [MediaInterval] = replacements.map { (replacement: SynthPiece) -> MediaInterval in
                 let halfFade: Int64 = replacement.incoming.fade / 2
                 let start: Int64 = replacement.range.startSample - halfFade
@@ -461,8 +462,10 @@ public enum VoiceLabWindowPlanner {
         /// `passage`, when given, are dropped, and neither the cuts nor the synth ranges (with `window`) are source.
         func keptSource(_ passage: (start: Double, end: Double)?, window: [MediaInterval] = []) throws -> [MediaInterval] {
             let dropped = replacements.map { ($0.start, $0.end) } + (passage.map { [($0.start, $0.end)] } ?? [])
+            let grid = VoiceLabSampleGrid(rate: take.rate)
             let remaining = segments.filter { segment in
-                !(segment.kind == .word || segment.kind == .pause) || !dropped.contains { segment.start >= $0.0 && segment.end <= $0.1 }
+                !(segment.kind == .word || segment.kind == .pause)
+                    || !dropped.contains { grid.contains($0.0, $0.1, start: segment.start, end: segment.end) }
             }
             let keep = take.edits.pauseKeepSeconds
             let kept = try editing { try buildEditPlan(remaining, duration: take.duration, sampleRate: take.rate, pauseKeepSeconds: keep).kept }
@@ -479,12 +482,15 @@ public enum VoiceLabWindowPlanner {
     /// range, has no synth samples, has no selected recipe or overlaps another leaves the scope unrenderable.
     private static func scopeReplacements(_ project: Project, clipRange: TimeRange?, rate: Double, duration: Double) throws -> [SynthPiece] {
         var selected: [SynthPiece] = []
+        let grid = VoiceLabSampleGrid(rate: rate)
         for segment in project.voiceLab.segments where segment.enabled {
             let start = segment.replace.start, end = segment.replace.end
-            guard start.isFinite, end.isFinite, start >= 0, start < end, end <= duration else { throw VoiceLabGeometryError.invalidInput() }
-            if let clipRange, end <= clipRange.start || start >= clipRange.end { continue }
+            guard start.isFinite, end.isFinite, start >= 0, start < end, grid.sample(end) <= grid.sample(duration) else {
+                throw VoiceLabGeometryError.invalidInput()
+            }
+            if let clipRange, grid.sample(end) <= grid.sample(clipRange.start) || grid.sample(start) >= grid.sample(clipRange.end) { continue }
             let range = MediaInterval(startSample: VoiceLabGeometry.samples(start, rate), endSample: VoiceLabGeometry.samples(end, rate))
-            guard clipRange.map({ start >= $0.start && end <= $0.end }) ?? true, range.endSample > range.startSample,
+            guard clipRange.map({ grid.contains($0.start, $0.end, start: start, end: end) }) ?? true, range.endSample > range.startSample,
                   segment.candidates.indices.contains(segment.selectedCandidateIndex),
                   let seams = segment.candidates[segment.selectedCandidateIndex].recipe?.seams,
                   [seams.in.fadeSamples, seams.out.fadeSamples].allSatisfy({ $0 >= 0 && Double($0) < VoiceLabGeometry.sampleLimit })
@@ -632,12 +638,16 @@ public enum VoiceLabWindowPlanner {
         if let overlapped = replacements.first(where: { $0.start < end && start < $0.end }) {
             throw VoiceLabGeometryError.overlapsReplacement(overlapped.id)
         }
-        if let crossing = words.first(where: { $0.start < start && start < $0.end || $0.start < end && end < $0.end }) {
+        // Items meet the window on the source sample grid, where the fit stores its edges (§10.1): a touching boundary off
+        // the grid meets a seam that rounds to the same sample.
+        let grid = VoiceLabSampleGrid(rate: rate)
+        let edges: [Double] = [Double(leftSeam.sample), Double(rightSeam.sample)]
+        if let crossing = words.first(where: { word in edges.contains { grid.crosses(start: word.start, end: word.end, edgeSample: $0) } }) {
             throw VoiceLabGeometryError.windowCrossesWord(crossing.id)
         }
         // The window holds the passage and its bridges. It absorbs cut items, events and unlabeled speech, but a kept word
         // that is neither a passage nor a bridge word would lose its speech.
-        let inside = words.indices.filter { words[$0].start >= start && words[$0].end <= end }
+        let inside = words.indices.filter { grid.contains(start, end, start: words[$0].start, end: words[$0].end) }
         if let uncovered = (first...last).first(where: { !inside.contains($0) }) {
             throw VoiceLabGeometryError.windowCrossesWord(words[uncovered].id)
         }
@@ -665,21 +675,12 @@ public enum VoiceLabWindowPlanner {
         // Only a window inside the clip, holding a passage of the clip, can open or close its output; any other is refused
         // as before.
         let passageInClip = source.clipBounds.map { $0.contains(a) && $0.contains(b) } ?? false
-        let inClip = passageInClip && clipRange.map { $0.start <= start && end <= $0.end } == true
+        let inClip = passageInClip && clipRange.map { grid.contains($0.start, $0.end, start: start, end: end) } == true
         let layout = SeamLayout(elements: (replacements + [window]).sorted { $0.range.startSample < $1.range.startSample },
                                 pieces: try keptSource((start, end), window: [windowRange]), total: total, clipScope: clipScope)
         // The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
         let alone = SeamLayout(elements: replacements, pieces: try keptSource(nil), total: total, clipScope: clipScope)
         let elements = layout.elements, w = elements.firstIndex(where: \.isWindow)!
-        /// A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's
-        /// edge as its sample over the rate (§8.9.2), so that stored edge must not cut into an item either: at a touching
-        /// boundary off the source grid it would by under a sample, and the hunk is refused with `windowCrossesWord`.
-        func storedAtCut(_ seam: VoiceLabSeamPlacement) throws {
-            let stored: Double = Double(seam.sample) / rate
-            if let crossing = words.first(where: { $0.start < stored && stored < $0.end }) {
-                throw VoiceLabGeometryError.windowCrossesWord(crossing.id)
-            }
-        }
         /// Throws unless replacement `index`'s seam on that side still renders beside the window. A check that holds without
         /// the window and fails with it is the window's doing. A check that already fails is judged by prepare's own rule, and
         /// when that fails without the window too, the scope was unrenderable before the window.
@@ -699,7 +700,6 @@ public enum VoiceLabWindowPlanner {
             try holdsInFullTake(project, take: take, window: window, incoming: true)
         } else if leftSeam.kind != .none && layout.beside(w, incoming: true) < leftSeam.fadeSamples / 2 {
             try holdsAcrossCut(layout, window: w, incoming: true)
-            try storedAtCut(leftSeam)
         }
         if w + 1 < elements.count {
             guard !layout.run(w + 1).isEmpty else { throw VoiceLabGeometryError.adjacentReplacement(elements[w + 1].id) }
@@ -710,7 +710,6 @@ public enum VoiceLabWindowPlanner {
             try holdsInFullTake(project, take: take, window: window, incoming: false)
         } else if rightSeam.kind != .none && layout.beside(w, incoming: false) < rightSeam.fadeSamples - rightSeam.fadeSamples / 2 {
             try holdsAcrossCut(layout, window: w, incoming: false)
-            try storedAtCut(rightSeam)
         }
         // The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
         let inner = leftSeam.fadeSamples - leftSeam.fadeSamples / 2 + rightSeam.fadeSamples / 2
@@ -851,12 +850,14 @@ extension VoiceLabWindowPlanner {
         let kept = VoiceLabGeometry.subtract(try source.keptSource((window.start, window.end), window: [range]), source.reserved)
         var before: [Int64] = [], after: [Int64] = []
         for (word, isKept) in zip(take.words, source.keptItem) where isKept {
-            if word.end <= window.start { before.append(VoiceLabGeometry.samples(word.end, take.rate)) }
-            if word.start >= window.end { after.append(VoiceLabGeometry.samples(word.start, take.rate)) }
+            let start = VoiceLabGeometry.samples(word.start, take.rate), end = VoiceLabGeometry.samples(word.end, take.rate)
+            if end <= window.startSample { before.append(end) }
+            if start >= window.endSample { after.append(start) }
         }
+        let grid = VoiceLabSampleGrid(rate: take.rate)
         func lend(_ seam: VoiceLabSeamPlacement, incoming: Bool) -> Double? {
             if seam.kind == .none {
-                let words = take.words.filter { $0.kind == .word && $0.start >= window.start && $0.end <= window.end }
+                let words = take.words.filter { $0.kind == .word && grid.contains(window.start, window.end, start: $0.start, end: $0.end) }
                 if incoming { return max(0, (words.map(\.start).min() ?? window.start) - window.start) }
                 return max(0, window.end - (words.map(\.end).max() ?? window.end))
             }
