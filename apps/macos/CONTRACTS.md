@@ -28,7 +28,17 @@ The seam package's owed item (the 2026-11-09 "A seam at a cut" entry). The fit a
   - App `RewriteScopeTests.aCutBesideThePassageRetiresItsTakes`: the off-grid touching cut now keeps its window and takes. A new block cuts a word that really overlaps the passage by 0.1 s and retires the takes. `aSelectionNeedsNoVoicePlacement` and `unplaceablePhraseKeepsItsWordsAndTheOthersArePriced` are unchanged: they sit on the grid or really cross, so the per-phrase keep is still tested by a case that refuses.
   - Red without the Core change (the six source files reverted): 9 tests, 232 issues. They include the user's exact `windowCrossesWord("w19")`/`("w20")`, the Use-side `invalidRange`, `sampleGridVectors`, `propertyCases`, `multiSegmentCases`, `clipEdgeVectors`, `windowVectors`, `takeEdgeRecipeValidatesAndPrepares` (a stored take end off the grid) and the App off-grid block.
 - **Windows** got the twin in this package (apps/windows/CONTRACTS.md, same date).
-- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`): @@VERIFY@@
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`):
+  - The load average was 25–710 throughout; the user's work and other agents were running.
+  - Core: 1 550 tests in 176 suites pass (the 2 known deadline issues).
+  - App: 1 065 tests in 82 suites, with one failure, `DurationHookIntegrationTests.removedPaidAssetAfterReadinessCannotBeAcceptedOrCreateUndo`. That suite passes 3 of 3 alone; it does not touch this change.
+  - Media: 649 tests in 85 suites. `MacUIIntegrationTests` timed out twice at load 40–270 (S16 "stopped settling, still busy", at a different step each run; the layout audit `.timedOut`). Run alone, both pass: S16 ok in 127.6 s with "I9: 36 of 36 voice changes applied", and the layout audit.
+  - `rewrite-smoke.sh` (DEBUG, no path): PASSED, 96 scenarios, S-seam-cut and the fit scenarios ok.
+  - `aCutBesideThePassageRetiresItsTakes` and `SeamAtCutTests` pass under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`.
+  - Long-expression build (300 ms): nothing flagged in a touched file.
+  - Windows Core Release 3 455 (0 failed, 29 skipped), Media Release 1 283 (0 failed, 170 skipped).
+  - All voice-lab and project generators, both `check_drift.py`, `validate.py` and the voice-lab unittests (61): tree clean.
+  - No real-window gate was needed (no UI change).
 - **Owes / next package must know:**
   - **App display, not changed here** (the brief kept this package out of the App target): `TranscriptTextView` (two covered-word checks), `TranscriptRendering` (replaced words) and `EditorModel+VoiceChange` (the snapshot range filter) still compare words with `segment.replace` in seconds. A segment stored on the grid next to a touching off-grid word can show that word as not covered by under a sample. `VoiceLabReplacement.covers(start:end:rate:)` is the one-line fix.
   - The six user-clip reviews could not be replayed (the user's project is not read); the ulp and half-sample cases are their shape.
