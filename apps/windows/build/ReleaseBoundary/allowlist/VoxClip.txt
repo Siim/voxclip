@@ -1422,6 +1422,7 @@ member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: field private tu
 member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: field private updating
 member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: field private version
 member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: field private versionRow
+member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: field private waiting
 member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: field private working
 member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: field private workingRow
 member VoxClip.App.Controls.TranscriptView+RewriteThreadView :: method internal .ctor(VoxClip.App.Controls.TranscriptView)
@@ -5465,6 +5466,7 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ModelId()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Models()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_NeedsShorterWording()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_NextPace()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_PaidTakeCount()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_PendingSelectionChange()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_PendingUpdate()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Phase()
@@ -6159,6 +6161,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_NewWords()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_NextStepCards()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_OwnWordsAdvice()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_OwnWordsEditing()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_PaidTakeCount()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PendingExpressionCount()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PendingPaidReviewChange()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PendingTakeVoices()
@@ -6278,6 +6281,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private MeasuredRoundOwns
 member VoxClip.App.ViewModels.RewriteSession :: method private MicrophoneChanged(object,System.EventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private ObserveMeasuredTakes()
 member VoxClip.App.ViewModels.RewriteSession :: method private OwnWordsQuoted(int,string)
+member VoxClip.App.ViewModels.RewriteSession :: method private PlaceThreadVersion(VoxClip.App.ViewModels.RewriteThreadKey,string,System.Action`1<VoxClip.App.ViewModels.RewriteThreadApply>)
 member VoxClip.App.ViewModels.RewriteSession :: method private PreferVideoVoice(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.ViewModels.RewriteSession :: method private PrepareShorterFeedbackAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback>)
 member VoxClip.App.ViewModels.RewriteSession :: method private PriceTakeTitle(int)
@@ -6314,6 +6318,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private SpeakingRate()
 member VoxClip.App.ViewModels.RewriteSession :: method private StartVideoVoiceAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method private StopWordingFit(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private StoreThread(int,VoxClip.App.ViewModels.RewriteThread)
+member VoxClip.App.ViewModels.RewriteSession :: method private ThreadWaiting(VoxClip.App.ViewModels.RewriteThreadKey)
 member VoxClip.App.ViewModels.RewriteSession :: method private TryApplyReviewedWindowsAsync(System.Collections.Generic.HashSet`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method private UndecidedDurations()
 member VoxClip.App.ViewModels.RewriteSession :: method private UseAnchorForVideosAsync()
@@ -6469,6 +6474,7 @@ member VoxClip.App.ViewModels.RewriteThread :: method public set_Versions(System
 member VoxClip.App.ViewModels.RewriteThreadApply :: field public Applied
 member VoxClip.App.ViewModels.RewriteThreadApply :: field public Failed
 member VoxClip.App.ViewModels.RewriteThreadApply :: field public LeftOut
+member VoxClip.App.ViewModels.RewriteThreadApply :: field public Waiting
 member VoxClip.App.ViewModels.RewriteThreadApply :: field public value__
 member VoxClip.App.ViewModels.RewriteThreadBackend :: method public .ctor(object,nint)
 member VoxClip.App.ViewModels.RewriteThreadBackend :: method public BeginInvoke(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest,System.Threading.CancellationToken,System.AsyncCallback,object)
@@ -6485,6 +6491,7 @@ member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal OwnWordsAc
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal StepLabel(string)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal TalkAction(int)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal TurnLabel(VoxClip.App.ViewModels.RewriteThreadTurn)
+member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal WaitingLine(int)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal get_InputCostLine()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal get_InputLabel()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal get_Label()
@@ -6497,8 +6504,8 @@ member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal get_YoursL
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method private .ctor(VoxClip.App.ViewModels.RewriteThreadDisplay)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method private get_EqualityContract()
-member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public .ctor(VoxClip.App.ViewModels.RewriteThreadKey,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteThreadTurn>,int,int,int,System.Collections.Generic.IReadOnlyList`1<string>,string,System.Collections.Generic.IReadOnlyList`1<string>,string,bool,string,bool,bool,bool,string,string,string,VoxClip.App.ViewModels.InlineApproval)
-member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public Deconstruct(VoxClip.App.ViewModels.RewriteThreadKey&,int&,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteThreadTurn>&,int&,int&,int&,System.Collections.Generic.IReadOnlyList`1<string>&,string&,System.Collections.Generic.IReadOnlyList`1<string>&,string&,bool&,string&,bool&,bool&,bool&,string&,string&,string&,VoxClip.App.ViewModels.InlineApproval&)
+member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public .ctor(VoxClip.App.ViewModels.RewriteThreadKey,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteThreadTurn>,int,int,int,System.Collections.Generic.IReadOnlyList`1<string>,string,System.Collections.Generic.IReadOnlyList`1<string>,string,bool,string,bool,bool,bool,string,string,string,VoxClip.App.ViewModels.InlineApproval,string)
+member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public Deconstruct(VoxClip.App.ViewModels.RewriteThreadKey&,int&,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteThreadTurn>&,int&,int&,int&,System.Collections.Generic.IReadOnlyList`1<string>&,string&,System.Collections.Generic.IReadOnlyList`1<string>&,string&,bool&,string&,bool&,bool&,bool&,string&,string&,string&,VoxClip.App.ViewModels.InlineApproval&,string&)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public Equals(VoxClip.App.ViewModels.RewriteThreadDisplay)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public Equals(object)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public GetHashCode()
@@ -6521,6 +6528,7 @@ member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public get_Turns()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public get_Version()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public get_Versions()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public get_VoicePhrases()
+member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public get_Waiting()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public get_Yours()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public op_Equality(VoxClip.App.ViewModels.RewriteThreadDisplay,VoxClip.App.ViewModels.RewriteThreadDisplay)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public op_Inequality(VoxClip.App.ViewModels.RewriteThreadDisplay,VoxClip.App.ViewModels.RewriteThreadDisplay)
@@ -6542,6 +6550,7 @@ member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public set_Turns(Sy
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public set_Version(int)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public set_Versions(int)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public set_VoicePhrases(int)
+member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public set_Waiting(string)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public set_Yours(bool)
 member VoxClip.App.ViewModels.RewriteThreadFailure :: method private .ctor(VoxClip.App.ViewModels.RewriteThreadFailure)
 member VoxClip.App.ViewModels.RewriteThreadFailure :: method private PrintMembers(System.Text.StringBuilder)
@@ -6584,7 +6593,6 @@ member VoxClip.App.ViewModels.RewriteThreadSpeaker :: field public You
 member VoxClip.App.ViewModels.RewriteThreadSpeaker :: field public Yours
 member VoxClip.App.ViewModels.RewriteThreadSpeaker :: field public value__
 member VoxClip.App.ViewModels.RewriteThreadState :: field internal ApplyFailed
-member VoxClip.App.ViewModels.RewriteThreadState :: field internal WaitsForDiscard
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal Begin(VoxClip.App.ViewModels.RewriteThreadKey,System.Threading.CancellationTokenSource)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal End(VoxClip.App.ViewModels.RewriteThreadKey)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal Follow(VoxClip.App.ViewModels.RewriteThreadKey)
@@ -6602,6 +6610,7 @@ member VoxClip.App.ViewModels.RewriteThreadState :: method internal get_OwnWords
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal get_Running()
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal get_Sending()
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal get_Text()
+member VoxClip.App.ViewModels.RewriteThreadState :: method internal get_Waiting()
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_Confirmation(VoxClip.App.ViewModels.InlineApproval)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_Draft(string)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_Error(string)
@@ -6610,6 +6619,7 @@ member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_FocusReq
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_Folded(System.Nullable`1<VoxClip.App.ViewModels.RewriteThreadKey>)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_OwnWords(System.Nullable`1<VoxClip.App.ViewModels.RewriteThreadKey>)
 member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_Text(string)
+member VoxClip.App.ViewModels.RewriteThreadState :: method internal set_Waiting(VoxClip.App.ViewModels.RewriteThreadWaiting)
 member VoxClip.App.ViewModels.RewriteThreadState :: method private set_Cancellation(System.Threading.CancellationTokenSource)
 member VoxClip.App.ViewModels.RewriteThreadState :: method private set_Key(System.Nullable`1<VoxClip.App.ViewModels.RewriteThreadKey>)
 member VoxClip.App.ViewModels.RewriteThreadState :: method private set_Running(System.Threading.Tasks.Task)
@@ -6647,6 +6657,23 @@ member VoxClip.App.ViewModels.RewriteThreadVersion :: method public op_Inequalit
 member VoxClip.App.ViewModels.RewriteThreadVersion :: method public set_Note(string)
 member VoxClip.App.ViewModels.RewriteThreadVersion :: method public set_Text(string)
 member VoxClip.App.ViewModels.RewriteThreadVersion :: method public set_Yours(bool)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method private .ctor(VoxClip.App.ViewModels.RewriteThreadWaiting)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public .ctor(VoxClip.App.ViewModels.RewriteThreadKey,int,VoxClip.App.ViewModels.RewritePaidReviewChange)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public Deconstruct(VoxClip.App.ViewModels.RewriteThreadKey&,int&,VoxClip.App.ViewModels.RewritePaidReviewChange&)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public Equals(VoxClip.App.ViewModels.RewriteThreadWaiting)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public Equals(object)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public GetHashCode()
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public ToString()
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public get_Change()
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public get_Key()
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public get_Takes()
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public op_Equality(VoxClip.App.ViewModels.RewriteThreadWaiting,VoxClip.App.ViewModels.RewriteThreadWaiting)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public op_Inequality(VoxClip.App.ViewModels.RewriteThreadWaiting,VoxClip.App.ViewModels.RewriteThreadWaiting)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public set_Change(VoxClip.App.ViewModels.RewritePaidReviewChange)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public set_Key(VoxClip.App.ViewModels.RewriteThreadKey)
+member VoxClip.App.ViewModels.RewriteThreadWaiting :: method public set_Takes(int)
 member VoxClip.App.ViewModels.RewriteToneServices :: method private .ctor(VoxClip.App.ViewModels.RewriteToneServices)
 member VoxClip.App.ViewModels.RewriteToneServices :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteToneServices :: method private get_EqualityContract()
@@ -8717,6 +8744,7 @@ type VoxClip.App.ViewModels.RewriteThreadSpeaker
 type VoxClip.App.ViewModels.RewriteThreadState
 type VoxClip.App.ViewModels.RewriteThreadTurn
 type VoxClip.App.ViewModels.RewriteThreadVersion
+type VoxClip.App.ViewModels.RewriteThreadWaiting
 type VoxClip.App.ViewModels.RewriteToneServices
 type VoxClip.App.ViewModels.RewriteVoice
 type VoxClip.App.ViewModels.SelectionBarLayout

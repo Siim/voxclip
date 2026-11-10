@@ -54,6 +54,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal const string FixedModelUnavailable = "Eleven v4 is not available on this account. New Rewrite takes require Eleven v4.";
     internal double? NextPace => Quote?.Takes[0].Synthesis.Review.Pace;
     internal bool HasPaidTakes => IsRunning || core.Rows.Any(row => row.AcceptedRequestIds.Count > 0);
+    /// <summary>The paid takes this phrase holds: rows a provider accepted a request for.</summary>
+    internal int PaidTakeCount => core.Rows.Count(row => row.AcceptedRequestIds.Count > 0);
     internal string Problem { get; private set; } = "";
     internal string Announcement { get; private set; } = "";
     internal bool IsRunning => executing is not null;

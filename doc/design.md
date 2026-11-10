@@ -1371,6 +1371,8 @@ The user, 9 November 2026: "the bubbles that help me to pick, if this text satis
 - **Takes.** Your words are this Rewrite's words for the change, as Claude's versions are. Keep prices and voices them like any change, and the voice is made from your text. "✓ That's it, keep it" then Use works, with no "Takes are made from the AI's words" stop.
 - A later message to Claude carries your words as a version. They are never a message (ai.md §12.10).
 
+**Paid takes** (both platforms, 10 November 2026). With paid takes, a new version for a waiting change discards them, so it waits for the Rewrite panel's inline discard question (Mac "Discard this change?" with Keep Working and Discard Changes; Windows "Discard paid takes to change this review?" with Cancel and Discard takes and continue). That goes for Claude's reply, an arrow and your own words. Until the user answers, the thread says so in place, under the input: "Waiting: this replaces {n} paid take(s). Confirm in the Rewrite panel to use it." ("your paid takes" while the first ones are still being made). Confirming puts the version in as any version: Claude's becomes "‹ k of m ›" with its turns and next steps, and your own words become "· your words" with their "You · your own words: “…”" turn. Keep Working or Cancel changes nothing. The waiting line goes, the thread shows the version in the text, and the input keeps what was typed (your own words stay your own words). Only one version waits: a later one replaces it in the thread and in the panel's question.
+
 **Keys.**
 
 | Key | Does |

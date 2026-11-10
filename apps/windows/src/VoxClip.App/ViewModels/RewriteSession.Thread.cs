@@ -10,8 +10,8 @@ namespace VoxClip.App.ViewModels;
 internal delegate Task<RewriteFollowupReply> RewriteThreadBackend(RewriteFollowupRequest request, CancellationToken ct);
 
 /// <summary>How a version went into the change's place: through the local rediff as the change's one hunk, or, for the recorded words,
-/// out of the proposal (nothing to change).</summary>
-internal enum RewriteThreadApply { Failed, Applied, LeftOut }
+/// out of the proposal (nothing to change). <see cref="Waiting"/>: with paid takes, it waits for their discard (a thread version only).</summary>
+internal enum RewriteThreadApply { Failed, Applied, LeftOut, Waiting }
 
 /// <summary>Talk back to Claude about a change (design.md §6.3 "Talk back to Claude" and "Your own words", ADR-R50; Mac
 /// <c>RewriteThread.swift</c>). The thread sits under the focused pending change; a version goes in through the local rediff and becomes
@@ -103,8 +103,53 @@ internal sealed partial class RewriteSession
                 target.Hunk.Kind == VoiceLabDiffHunkKind.Voice ? 1 : 0, thread.NextSteps.Take(prompt?.MaxNextSteps ?? 2).ToArray(), prompt?.KeepBubble ?? "",
                 prompt?.SteadyBubbles ?? [], RewriteThreadDisplay.CostLineFor(Connector?.Connector.Id), Thread.Sending == target.Key,
                 mine ? Thread.Error : null, mine && Thread.Failed is not null, thread.Versions[thread.Current].Yours, Thread.OwnWords == target.Key,
-                mine ? Thread.Text : "", fit, AiName, mine ? Thread.Confirmation : null);
+                mine ? Thread.Text : "", fit, AiName, mine ? Thread.Confirmation : null,
+                ThreadWaiting(target.Key) is { } waiting ? RewriteThreadDisplay.WaitingLine(waiting.Takes) : null);
         }
+    }
+
+    /// <summary>The version waiting for change <paramref name="key"/>: only while the Rewrite panel still asks about it. Cancel, or a later
+    /// question that replaces it, ends the wait with nothing changed.</summary>
+    private RewriteThreadWaiting? ThreadWaiting(RewriteThreadKey key) =>
+        Thread.Waiting is { } waiting && waiting.Key == key && ReferenceEquals(waiting.Change, PendingPaidReviewChange) ? waiting : null;
+
+    /// <summary>Puts a thread version, the AI's or your own words, in change <paramref name="key"/>'s place (<see cref="AcceptThreadWords"/>),
+    /// then <paramref name="land"/> records it in the thread. With paid takes it waits for their discard instead (design.md §6.3 "Talk back to
+    /// Claude", "Paid takes"; Mac <c>placeRewriteThreadVersion</c>): the thread says so and the Rewrite panel asks. "Discard takes and
+    /// continue" puts it in and records it, as any version; Cancel changes nothing. A later version replaces a waiting one.</summary>
+    private RewriteThreadApply PlaceThreadVersion(RewriteThreadKey key, string text, Action<RewriteThreadApply> land)
+    {
+        if (!HasPaidTakes)
+        {
+            var applied = AcceptThreadWords(key.Ordinal, text);
+            if (applied != RewriteThreadApply.Failed) land(applied);
+            return applied;
+        }
+        StopWordingFit();
+        if (!ReviewIsCurrent || Review is null || key.Ordinal < 1 || key.Ordinal > Review.Diff.Hunks.Count) return RewriteThreadApply.Failed;
+        RewriteThreadWaiting? waiting = null;
+        DeferPaidReviewChange(() =>
+        {
+            if (waiting is null || !ReferenceEquals(Thread.Waiting, waiting)) return Task.FromResult(false);
+            Thread.Waiting = null;
+            if (!IsOpen || key.Proposal != ProposalRevision || changeStates.GetValueOrDefault(key.Ordinal) != TranscriptChangeState.Pending)
+                return Task.FromResult(false);
+            var applied = AcceptThreadWords(key.Ordinal, text);
+            if (applied == RewriteThreadApply.Failed)
+            {
+                if (Thread.Key == key) Thread.Error = RewriteThreadState.ApplyFailed;
+                return Task.FromResult(false);
+            }
+            land(applied);
+            return Task.FromResult(true);
+        });
+        waiting = new(key, PaidTakeCount, PendingPaidReviewChange!);
+        Thread.Waiting = waiting;
+        Thread.Error = null;
+        Thread.Failed = null;
+        Announce(RewriteThreadDisplay.WaitingLine(waiting.Takes));
+        Changed?.Invoke(this, EventArgs.Empty);
+        return RewriteThreadApply.Waiting;
     }
 
     /// <summary>The scope as the follow-up's source block names it.</summary>
@@ -225,29 +270,26 @@ internal sealed partial class RewriteSession
         }
         if (kind == RewriteFollowupKind.Reply && target == thread.Current) note = "Kept the words as they are." + (note.Length == 0 ? "" : " " + note);
         else if (note.Length == 0) note = kind == RewriteFollowupKind.Versions ? $"{versions.Count - count} more versions." : "Changed the words.";
-        var current = thread.Current;
-        if (target is { } next && next != current)
-        {
-            switch (AcceptThreadWords(key.Ordinal, versions[next].Text))
-            {
-                case RewriteThreadApply.Failed:
-                    Thread.Error = PendingPaidReviewChange is null ? RewriteThreadState.ApplyFailed : RewriteThreadState.WaitsForDiscard;
-                    return;
-                case RewriteThreadApply.LeftOut:
-                    Announce($"{AiName}: {note} Change {key.Ordinal} keeps its recorded words.");
-                    return;
-            }
-            current = next;
-        }
-        if (changeStates.GetValueOrDefault(key.Ordinal) != TranscriptChangeState.Pending) return;
         var updated = thread with
         {
-            Versions = versions, Current = current, NextSteps = reply.NextSteps,
+            Versions = versions, NextSteps = reply.NextSteps,
             Turns = [.. thread.Turns, new(RewriteThreadSpeaker.You, message), new(RewriteThreadSpeaker.Claude, note)]
         };
-        StoreThread(key.Ordinal, updated);
-        if (fromInput && Thread.Key == key) Thread.Text = "";
-        Announce($"{AiName}: {note} Version {current + 1} of {versions.Count}.");
+        void Record(int current)
+        {
+            if (changeStates.GetValueOrDefault(key.Ordinal) != TranscriptChangeState.Pending) return;
+            StoreThread(key.Ordinal, updated with { Current = current });
+            if (fromInput && Thread.Key == key) Thread.Text = "";
+            Announce($"{AiName}: {note} Version {current + 1} of {versions.Count}.");
+        }
+        if (target is not { } next || next == thread.Current) { Record(thread.Current); return; }
+        // With paid takes the version waits for their discard, and the reply's versions and turns come into the thread only once it is in.
+        var placed = PlaceThreadVersion(key, versions[next].Text, applied =>
+        {
+            if (applied == RewriteThreadApply.LeftOut) Announce($"{AiName}: {note} Change {key.Ordinal} keeps its recorded words.");
+            else Record(next);
+        });
+        if (placed == RewriteThreadApply.Failed) Thread.Error = RewriteThreadState.ApplyFailed;
     }
 
     // Versions and folding
@@ -259,12 +301,15 @@ internal sealed partial class RewriteSession
         if (ThreadTarget is not { } target || Thread.Sending is not null || ThreadFor(target.Key.Ordinal) is not { } thread) return false;
         var next = thread.Current + step;
         if (next < 0 || next >= thread.Versions.Count) return false;
-        var applied = AcceptThreadWords(target.Key.Ordinal, thread.Versions[next].Text);
-        if (applied == RewriteThreadApply.Failed) return false;
-        // Words equal to the recorded ones leave nothing to change: the edit left the change out, and its thread went with it.
-        if (applied == RewriteThreadApply.LeftOut || changeStates.GetValueOrDefault(target.Key.Ordinal) != TranscriptChangeState.Pending) return true;
-        StoreThread(target.Key.Ordinal, thread with { Current = next });
-        Announce($"Version {next + 1} of {thread.Versions.Count}");
+        var key = target.Key;
+        var placed = PlaceThreadVersion(key, thread.Versions[next].Text, applied =>
+        {
+            // Words equal to the recorded ones leave nothing to change: the edit left the change out, and its thread went with it.
+            if (applied == RewriteThreadApply.LeftOut || changeStates.GetValueOrDefault(key.Ordinal) != TranscriptChangeState.Pending) return;
+            StoreThread(key.Ordinal, thread with { Current = next });
+            Announce($"Version {next + 1} of {thread.Versions.Count}");
+        });
+        if (placed == RewriteThreadApply.Failed) return false;
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
@@ -389,32 +434,33 @@ internal sealed partial class RewriteSession
             Changed?.Invoke(this, EventArgs.Empty);
             return true;
         }
-        var applied = AcceptThreadWords(key.Ordinal, text);
-        if (applied == RewriteThreadApply.Failed)
+        // With paid takes your words wait for the discard, and the input keeps them, still your own words, until then.
+        var placed = PlaceThreadVersion(key, text, applied =>
         {
-            Thread.Error = PendingPaidReviewChange is null ? "Your words couldn't be put in the text. Your edits are saved." : RewriteThreadState.WaitsForDiscard;
+            if (Thread.OwnWords == key) LeaveThreadOwnWords(focus: false);
+            // The recorded words (or none for added words): the edit left the change out, and its thread went with it.
+            if (applied == RewriteThreadApply.LeftOut || changeStates.GetValueOrDefault(key.Ordinal) != TranscriptChangeState.Pending)
+            {
+                Announce($"Change {key.Ordinal} keeps its recorded words. Nothing was sent.");
+                return;
+            }
+            var shown = ChangeText(key.Ordinal);
+            var versions = thread.Versions.ToList();
+            var found = versions.FindIndex(version => version.Text == shown);
+            if (found < 0) { versions.Add(new(shown, null, Yours: true)); found = versions.Count - 1; }
+            // The AI's next steps were for its own words.
+            StoreThread(key.Ordinal, thread with { Versions = versions, Current = found, NextSteps = [], Turns = [.. thread.Turns, new(RewriteThreadSpeaker.Yours, text)] });
+            if (Thread.Key == key) Thread.Error = null;
+            Announce((text.Length == 0 ? $"Change {key.Ordinal} cuts its words now." : $"Your words are in change {key.Ordinal}.") +
+                $" Version {found + 1} of {versions.Count}. Nothing was sent.");
+        });
+        if (placed == RewriteThreadApply.Failed)
+        {
+            Thread.Error = "Your words couldn't be put in the text. Your edits are saved.";
             Thread.Failed = null;
             Changed?.Invoke(this, EventArgs.Empty);
             return false;
         }
-        // The recorded words (or none for added words): the edit left the change out, and its thread went with it.
-        if (applied == RewriteThreadApply.LeftOut || changeStates.GetValueOrDefault(key.Ordinal) != TranscriptChangeState.Pending)
-        {
-            LeaveThreadOwnWords(focus: false);
-            Announce($"Change {key.Ordinal} keeps its recorded words. Nothing was sent.");
-            Changed?.Invoke(this, EventArgs.Empty);
-            return true;
-        }
-        var shown = ChangeText(key.Ordinal);
-        var versions = thread.Versions.ToList();
-        var found = versions.FindIndex(version => version.Text == shown);
-        if (found < 0) { versions.Add(new(shown, null, Yours: true)); found = versions.Count - 1; }
-        // The AI's next steps were for its own words.
-        StoreThread(key.Ordinal, thread with { Versions = versions, Current = found, NextSteps = [], Turns = [.. thread.Turns, new(RewriteThreadSpeaker.Yours, text)] });
-        LeaveThreadOwnWords(focus: false);
-        Thread.Error = null;
-        Announce((text.Length == 0 ? $"Change {key.Ordinal} cuts its words now." : $"Your words are in change {key.Ordinal}.") +
-            $" Version {found + 1} of {versions.Count}. Nothing was sent.");
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }

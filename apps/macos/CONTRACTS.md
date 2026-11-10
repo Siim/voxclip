@@ -1,5 +1,38 @@
 # macOS implementation contracts
 
+### 2026-11-10 — A thread version that waits for the paid takes' discard lands in the thread (track/v2-thread-deferred-edit)
+
+This settles the own-words entry's owed item (2026-11-09) and the Windows kept-change entry's "Next package must know". With paid takes, a version from the Rewrite thread went through `editChange`'s discard question. On Discard Changes, `editChange` ran again without `acceptThreadWords` and with no turn: the thread picked the words up as a bare version. Before that, Claude's reply said "The new words couldn't be put in the text." and dropped its versions. See design.md §6.3 "Talk back to Claude" → "Paid takes". apps/windows/CONTRACTS.md (same date) has the Windows side.
+
+- **The rule** (both platforms): a thread version waits while the Rewrite panel's discard question stands. That covers Claude's reply, ‹ › (⌥←/⌥→) and ↵ with your own words. The thread says so under the input: "Waiting: this replaces {n} paid take(s). Confirm in the Rewrite panel to use it." ("your paid takes" while `paidTakeCount` is 0, as when the first takes are still being made).
+  - **Discard Changes:** the version goes in as any version: `editChange`, then `acceptThreadWords`, then the thread records it. Claude's reply brings its versions, turns and next steps; your own words bring "· your words", the `yours` turn and cleared steps, and leave own-words mode (Claude's draft comes back); an arrow brings only its version, no turn, as before.
+  - **Keep Working**, or anything that takes the question away: nothing changes, the line goes, and the thread shows the version in the text. Your own words stay in the input, still in own-words mode. A message typed for Claude stays in the input too, since only a landed reply clears it.
+  - **A second version while one waits** replaces it: a new question with a new owner. Only the last one can land.
+- **Changed (App).**
+  - `PanelConfirm.owner: UUID?` (default nil): who asked. `RewriteSession.confirmDiscardChanges(owner:perform:)` and `confirmPaidProposalChange(owner:perform:)` pass it through; every other caller is unchanged.
+  - `RewriteSession.changeNeedsDiscard` (`hasPaidTakes && !applyingTextFixesOnly`, the guard `confirmPaidProposalChange` already used) and `paidTakeCount` (the take plan's cloned-voice takes plus the generation's rows).
+  - `RewriteThreadState.Waiting` (`key`, `token`, `takes`) and `waiting`. `RewriteThreadDisplay.waiting` is the line, and `waitingLine(takes:)` the copy. The display shows it only while `session.task.confirm?.owner` is the waiting token, so no cancel hook is needed.
+  - `EditorModel.placeRewriteThreadVersion(_:text:land:)` returns `.placed`, `.waiting` or `.failed`. It is now the one way a thread version goes in: `receiveRewriteThread`, `switchRewriteThreadVersion` and `applyRewriteThreadOwnWords` use it. It announces the waiting line after the panel's question.
+  - `RewriteThreadView`: the waiting line under the input, callout in `text.secondary` (`voxclip.rewriteThread.waiting`).
+- **Inline:** the discard question was already inline (the Rewrite job's footer question, impl-plan §13.1). Nothing new is a pop-up.
+- **Deleted:** the per-path `editChange` + `acceptThreadWords` pairs in the three thread paths, now in `placeRewriteThreadVersion`.
+- **Tests** (App `RewriteThreadTests`, +3, 22 in all; paid takes from `DebugRewriteGeneration.install("ready")`):
+  - `claudesVersionWaitsForTheDiscardThenLandsInTheThreadOrChangesNothing`: wait, decline, wait, confirm ("2 of 2", turns, steps, voiced at Keep), then an arrow that waits, is declined and is confirmed.
+  - `yourOwnWordsWaitForTheDiscardAndKeepWhatYouTyped`: wait, decline (still own words, the typed text kept), confirm ("3 of 3 · your words", the `yours` turn, steps gone, the draft back).
+  - `aSecondVersionReplacesTheWaitingOne`: Claude's version, then your own words in its place, and the other way round. Only the last lands, with its own turns.
+  - **Red without the change:** with `placeRewriteThreadVersion` on its old immediate path, the three tests fail with 15 issues. With the waiting line not tied to the question's owner, 2 of them fail with 3 issues (decline).
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, a fresh `VOXCLIP_DATA_DIR` per suite, serial under `nice -n 10`, load average about 17–22):
+  - App: 1,071 tests in 83 suites passed.
+  - Core: 1,550 in 176 suites passed (the 2 known deadline issues).
+  - The `-warn-long-expression-type-checking=300` build flags nothing in the touched files.
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests pass, and the tree is clean after them.
+  - Not run: Media and `rewrite-smoke.sh`. No smoke scenario has paid takes under a thread, and the brief's gates did not ask for them.
+- **Owed:** a real-window pass (`-uiSelfTest`, not run while the Mac was in use): the waiting line under the input with the panel's question showing, its going on Keep Working, and the thread's height following it.
+- **Next package must know.**
+  - Every thread version goes in through `placeRewriteThreadVersion`. Calling `editChange` for a thread version skips the wait and the turn.
+  - A panel question that the asker shows as waiting carries `owner`; match on it, not on the question's id.
+  - The question still reads "Discard this change?" / "Discard these {c} changes?" with Discard Changes, though for a thread version it discards the takes, not the change. The thread's line names the takes. Rewording the panel's question was out of scope.
+
 ### 2026-11-10 — The plan system prompt says "this computer" (track/v2-autopilot-prompt-computer)
 
 This settles the item owed by track/v2-small-parity (the entry below). The plan system prompt told the AI the frames were measured, and the opening and 9:16 decided, "on this Mac", and Windows sends the same prompt. apps/windows/CONTRACTS.md (same date) has the Windows side.

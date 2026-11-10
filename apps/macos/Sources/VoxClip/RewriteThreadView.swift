@@ -49,6 +49,11 @@ import VoxClipCore
             .disabled(display.sending)
             ConnectorConfirmationView(confirmation: model.rewriteThread.confirmation, model: model)
             inputRow(display)
+            if let waiting = display.waiting {
+                Text(waiting).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voxclip.rewriteThread.waiting")
+            }
             if let error = display.error {
                 HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
                     Text(error).font(VCType.callout.font()).foregroundStyle(DesignValues.color("status.dangerForeground"))

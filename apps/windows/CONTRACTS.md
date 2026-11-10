@@ -1,5 +1,39 @@
 # Windows fixed contracts
 
+### 2026-11-10 — A thread version that waits for the paid takes' discard lands in the thread (track/v2-thread-deferred-edit)
+
+This settles the kept-change entry's "Next package must know" (below): thread versions with paid takes went through `EditChange`'s discard deferral, and the deferred edit added no turn. The Mac had the same gap (apps/macos/CONTRACTS.md, same date, which has the shared rule). See design.md §6.3 "Talk back to Claude" → "Paid takes".
+
+- **The rule**, as on the Mac. With paid takes, the AI's reply, Alt+Page Up/Down and Enter with your own words wait while the review asks "Discard paid takes to change this review?". The thread says so under the input: "Waiting: this replaces {n} paid take(s). Confirm in the Rewrite panel to use it."
+  - **Discard takes and continue** (`ConfirmPaidReviewChangeAsync`) puts the version in as any version, with its versions, turns and next steps, or "· your words" and the `Yours` turn.
+  - **Cancel** (`CancelPaidReviewChange`) changes nothing. The line goes, the thread shows the version in the text, and the input keeps what was typed (own words stay own words).
+  - A later version replaces the waiting one: `PendingPaidReviewChange` holds one change, and the earlier record can no longer be confirmed.
+- **Changed (App).**
+  - `RewriteThreadWaiting(Key, Takes, Change)` and `RewriteThreadState.Waiting`. `ThreadWaiting(key)` shows the waiting line only while `PendingPaidReviewChange` is that `Change` (by reference).
+  - `RewriteThreadDisplay.Waiting` (a new last positional parameter, default null) and `WaitingLine(int)`.
+  - `RewriteThreadApply.Waiting`.
+  - `PlaceThreadVersion(key, text, land)` is now the one way a thread version goes in: `ReceiveThread`, `SwitchThreadVersion` and `ApplyThreadOwnWords` use it. Without paid takes it is `AcceptThreadWords` and then `land`. With them it defers its own `RewritePaidReviewChange`, whose `Apply` runs `AcceptThreadWords` and `land`.
+  - `RewriteGeneration.PaidTakeCount` and `RewriteSession.PaidTakeCount` (rows with an accepted request).
+  - `TranscriptView.Thread`: the waiting line under the input (`Rewrite.ThreadWaiting`, 13 px, `VcTextSecondaryBrush`).
+- **Deleted:** `RewriteThreadState.WaitsForDiscard` ("Changing these words discards your paid takes: confirm in the Rewrite panel. Your edits are saved.") and its two uses, now the waiting line.
+- **Inline:** the review's discard row was already inline in the Rewrite panel (`RenderPaidReviewChange`). Nothing new is a pop-up.
+- **ReleaseBoundary** `update` on `VoxClip.txt`: +31 −3 (the new members, the display's constructor and `Deconstruct`, and the deleted constant). Core, Media and CLI are unchanged.
+- **Tests** (win-ui `RewriteThreadTests`, +3, 25 in all; change 1 kept, paid takes made through `RewriteAutoFixTests.Configure`, change 2 waiting):
+  - `WithPaidTakesTheAisVersionWaitsForTheDiscardThenLandsInTheThreadOrChangesNothing`: wait, Cancel, wait, confirm, then an arrow that waits, is cancelled and is confirmed.
+  - `WithPaidTakesYourOwnWordsWaitForTheDiscardAndKeepWhatYouTyped`.
+  - `WithPaidTakesASecondVersionReplacesTheWaitingOne`: both directions, and the replaced record can't be confirmed.
+  - **Red without the change:** with `PlaceThreadVersion` on its old path (`AcceptThreadWords`' own deferral), all three fail. With the waiting line not tied to `PendingPaidReviewChange`, two fail (Cancel).
+- **Verification** (on the Mac; `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, a fresh `VOXCLIP_DATA_DIR` per suite, serial under `nice -n 10`):
+  - Core Release: 3,455 tests (3,426 passed, 29 skipped, 0 failed).
+  - win-ui Release: 1,522 (1,517 passed, 5 skipped, 0 failed). Its first run failed only the release-boundary surrogate, before the allowlist update.
+  - `VoxClip.App.TypeCheck` Release: 0 warnings, 0 errors. `check-xaml.py`: 0 problems.
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests pass, and the tree is clean after them.
+  - Media was not run: no Media code changed.
+- **Owed** (the user's Windows session; the VM was not used): with paid takes, the waiting line under the thread's input beside the review's discard row, its going on Cancel, the version landing on "Discard takes and continue", and Narrator hearing the waiting line. The native win-arm64 run (Core and the App with its XAML compiler).
+- **Next package must know.**
+  - Every thread version goes in through `PlaceThreadVersion`. Calling `AcceptThreadWords` directly for a thread version skips the wait and the turn.
+  - `RewriteThreadApply.Waiting` comes only from `PlaceThreadVersion`.
+
 ### 2026-11-10 — Windows: a kept change, so its Rewrite thread goes away on Keep, as on the Mac (track/v2-win-kept-change)
 
 This settles the thread entry's "Next package must know" (below): Windows had no kept state, so Keep only folded the thread, and paid takes hid every thread. Mac sources: `TranscriptProposal.swift` (`keepChange`, `excludeChange`, `advanceFocus`, `proposalDisplay.actions`), `RewriteThread.swift` (`rewriteThreadTarget`), `ChangeList.swift` and `RewriteSession.applyReask`. See design.md §6.3.5 and §6.3 "Keys".

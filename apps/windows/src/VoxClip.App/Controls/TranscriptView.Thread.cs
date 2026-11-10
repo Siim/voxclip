@@ -70,6 +70,8 @@ public sealed partial class TranscriptView
         private readonly Grid inputRow = new() { ColumnSpacing = 8 };
         private readonly TextBlock working = new() { FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
         private readonly StackPanel workingRow = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
+        /// <summary>"Waiting: this replaces 2 paid takes. Confirm in the Rewrite panel to use it." while a version waits for their discard.</summary>
+        private readonly TextBlock waiting = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock error = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap };
         private readonly Button retry = new() { Content = "Try Again" };
         private readonly StackPanel errorRow = new() { Spacing = 4 };
@@ -113,7 +115,8 @@ public sealed partial class TranscriptView
             retry.Click += (_, _) => { if (session is { } current) _ = current.RetryThreadAsync(); };
             AutomationProperties.SetName(retry, "Try Again");
             errorRow.Children.Add(error); errorRow.Children.Add(retry);
-            foreach (var part in new UIElement[] { turns, versionRow, bubbles, confirmation, inputRow, workingRow, errorRow }) body.Children.Add(part);
+            AutomationProperties.SetAutomationId(waiting, "Rewrite.ThreadWaiting");
+            foreach (var part in new UIElement[] { turns, versionRow, bubbles, confirmation, inputRow, workingRow, waiting, errorRow }) body.Children.Add(part);
         }
 
         private static Button Arrow(string glyph, string name)
@@ -158,6 +161,9 @@ public sealed partial class TranscriptView
                 inputRow.Visibility = display.Sending ? Visibility.Collapsed : Visibility.Visible;
                 working.Text = display.WorkingLine;
                 workingRow.Visibility = display.Sending && display.Confirmation is null ? Visibility.Visible : Visibility.Collapsed;
+                waiting.Text = display.Waiting ?? "";
+                waiting.Foreground = owner.Brush("VcTextSecondaryBrush");
+                waiting.Visibility = display.Waiting is null ? Visibility.Collapsed : Visibility.Visible;
                 error.Text = display.Error ?? "";
                 retry.Visibility = display.Retry ? Visibility.Visible : Visibility.Collapsed;
                 errorRow.Visibility = display.Error is null ? Visibility.Collapsed : Visibility.Visible;
