@@ -34,6 +34,7 @@ def definitions():
 def generate(reference):
     word, window_case, place, run_case = reference['word'], reference['window_case'], reference['place'], reference['run_case']
     render_failure, clip_output_edges = reference['render_failure'], reference['clip_output_edges']
+    stored_window = reference['stored_window']
     take_input, passage_room_tone = reference['take_input'], reference['passage_room_tone']
     envelope_levels, samples, frame_size = reference['envelope_levels'], reference['samples'], reference['frame_size']
     REFUSALS = reference['REFUSALS']
@@ -48,8 +49,10 @@ def generate(reference):
         if 'error' in expected:
             case['clipOutputEdges'] = None
             return case
-        assert render_failure(project, clip_id, expected) is None, case['name']
-        assert render_failure(project, None, expected) is None, case['name']
+        # Also as the fit stores it, on the source grid (voice-lab section 8.9.2).
+        for window in (expected, stored_window(expected, project['sampleRate'])):
+            assert render_failure(project, clip_id, window) is None, case['name']
+            assert render_failure(project, None, window) is None, case['name']
         edges = clip_output_edges(project, clip_id, expected)
         case['clipOutputEdges'] = {'incoming': True in edges, 'outgoing': False in edges}
         return case
@@ -181,9 +184,10 @@ def generate(reference):
             case['clipOutputEdges'] = None
         else:
             fuzz['accepted'] += 1
-            failures = [render_failure(project, 'c1', expected), render_failure(project, None, expected)]
+            stored = stored_window(expected, project['sampleRate'])
+            failures = [render_failure(project, scope, window) for window in (expected, stored) for scope in ('c1', None)]
             fuzz['renderFailures'] += sum(failure is not None for failure in failures)
-            assert failures == [None, None], (index, failures)
+            assert failures == [None] * 4, (index, failures)
             assert case['roomTone'] is not None, index
             edges = clip_output_edges(project, 'c1', expected)
             fuzz['opening'] += True in edges
