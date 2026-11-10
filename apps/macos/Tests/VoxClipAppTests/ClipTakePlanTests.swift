@@ -14,11 +14,14 @@ private struct ClipTakeKeys: KeyProvider {
 private actor MeasuredFitConnector: LLMConnector {
     nonisolated let id: ConnectorID
     private(set) var requests: [LLMRequest] = []
-    init(id: ConnectorID = .ollama) { self.id = id }
+    /// Awaited before each reply: a test holds the reply until the plan reaches a state it names.
+    private let hold: (@Sendable () async -> Void)?
+    init(id: ConnectorID = .ollama, hold: (@Sendable () async -> Void)? = nil) { self.id = id; self.hold = hold }
     func status() -> ConnectorStatus { .ready }
     func models(refresh: Bool) -> [LLMModel] { [.init(id: "fixture", name: "Fixture", contextTokens: 128_000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 128_000 }
-    func send(_ request: LLMRequest, model: String) -> RawCompletion {
+    func send(_ request: LLMRequest, model: String) async -> RawCompletion {
+        if let hold { await hold() }
         requests.append(request)
         return RawCompletion(text: #"{"phrases":[{"ordinal":2,"action":"reword","text":"Corrected Welcome today"}]}"#,
             model: model, stop: .complete)
@@ -1372,6 +1375,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                     await progress(rows)
                 }
             }
+            let publish = backend.publish
+            backend.publish = { phrase, row, input, date in
+                await fixture.beforePublish?(phrase)
+                return try await publish(phrase, row, input, date)
+            }
             return backend
         }
         let generation = try #require(session.generation)
@@ -1631,7 +1639,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let availability = plan.videoAvailability(phrase: 0)
         #expect(!availability.allows(.source) && !availability.allows(.cut) && availability.allows(.retimed))
         #expect(session.wordingFit.measured?.text != nil && plan.approvalID != nil,
-                "measured \(String(describing: session.wordingFit.measured)) left out \(plan.phrases[0].leftOut) \(plan.problem) \(session.wordingFit.problem)")
+                "measured \(String(describing: session.wordingFit.measured)) left out \(plan.phrases[0].leftOut) \(plan.diagnostics) \(session.wordingFit.problem)")
         #expect(await connector.requests.count == 1)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
@@ -1663,8 +1671,44 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         barrier.resume()
         await session.wordingFit.measuredWork?.value
         let suggestion = try #require(session.wordingFit.measured)
-        #expect(suggestion.text == "Corrected Welcome today" && !suggestion.preparing && suggestion.problem.isEmpty, "\(suggestion)")
-        #expect(plan.phrases[0].text == suggestion.text && plan.approvalID != nil, "\(plan.problem)")
+        #expect(suggestion.text == "Corrected Welcome today" && !suggestion.preparing && suggestion.problem.isEmpty, "\(suggestion) \(plan.diagnostics)")
+        #expect(plan.phrases[0].text == suggestion.text && plan.approvalID != nil, "\(plan.diagnostics)")
+        #expect(await connector.requests.count == 1)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    /// CI 42715860857, after the price learned to wait for the take's own video preparation. That preparation failed
+    /// here (this fixture's source file doesn't match the project's content key: "source identity"), and the lip sync
+    /// refresh that `autoChooseVideo` runs after it published the take for its offers (`makeLipsyncOffers` →
+    /// `publishSelection`), outside the preparation the price waited for. The round's reply arrived during that publish
+    /// and was refused as busy: "The new wording couldn't be priced." Here lip sync's publish is held until the reply
+    /// arrives, so the two always overlap: the price waits for it, and the offers it was making, stale now, end quietly.
+    @Test func measuredRewordingWaitsForLipSyncsPublishAfterTheTakeLands() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let publish = ClipTakeBarrier()
+        let connector = MeasuredFitConnector(hold: { await publish.wait() })
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        fixture.beforePublish = { [weak plan] _ in
+            guard plan?.publishPurpose == .lipsync, !publish.arrived else { return }
+            await publish.pause()
+        }
+        ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength + 1.5; $0.speechMargin = 0.15 }
+        await plan.start(approved: true, quoteID: plan.approvalID)
+        await TestDeadline.until { publish.arrived }
+        #expect(plan.publishing && plan.publishPurpose == .lipsync && plan.phrases[0].videoChoice == .retimed, "\(plan.diagnostics)")
+        await TestDeadline.until {
+            session.wordingFit.measured?.text != nil || session.wordingFit.measured?.problem.isEmpty == false
+        }
+        let waiting = try #require(session.wordingFit.measured)
+        #expect(waiting.text == "Corrected Welcome today" && waiting.preparing && waiting.problem.isEmpty, "\(waiting) \(plan.diagnostics)")
+        publish.resume()
+        await session.wordingFit.measuredWork?.value
+        let suggestion = try #require(session.wordingFit.measured)
+        #expect(suggestion.text == "Corrected Welcome today" && !suggestion.preparing && suggestion.problem.isEmpty,
+                "\(suggestion) \(plan.diagnostics)")
+        #expect(plan.phrases[0].text == suggestion.text && plan.approvalID != nil && plan.rewordingRefusal == nil, "\(plan.diagnostics)")
+        #expect(plan.problem.isEmpty && plan.lipsync.problem.isEmpty, "\(plan.diagnostics) lip sync \(plan.lipsync.problem)")
         #expect(await connector.requests.count == 1)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }

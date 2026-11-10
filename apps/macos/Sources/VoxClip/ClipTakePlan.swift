@@ -160,8 +160,39 @@ import VoxClipMedia
     private(set) var phrases: [Phrase]
     private(set) var preparing = false
     private(set) var generating = false
-    private(set) var publishing = false
-    private(set) var preparingVideo = false
+    private(set) var publishing = false { didSet { resumeIdleWaiters() } }
+    private(set) var preparingVideo = false { didSet { resumeIdleWaiters() } }
+    /// `settleBackgroundWork` callers waiting for `publishing` and `preparingVideo` to clear.
+    @ObservationIgnored private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+    private func resumeIdleWaiters() {
+        guard !publishing, !preparingVideo, !idleWaiters.isEmpty else { return }
+        let waiters = idleWaiters
+        idleWaiters = []
+        for waiter in waiters { waiter.resume() }
+    }
+    /// Who is publishing the selection while `publishing` is true, for `diagnostics`.
+    enum PublishPurpose: String { case video = "video preparation", lipsync = "lip sync", use = "Use" }
+    @ObservationIgnored private(set) var publishPurpose: PublishPurpose?
+    /// Why the last `prepareRewording` refused its wording, nil once one is priced (tests and `diagnostics` read it).
+    enum RewordingRefusal: String, Equatable {
+        case notAsked, notCurrent, noPhrase, blocked, generating, preparing, publishing, preparingVideo, bridge
+    }
+    @ObservationIgnored private(set) var rewordingRefusal: RewordingRefusal?
+    /// The plan's state for a test's message or a log line, never the user's copy: the error behind `problem` with its
+    /// payload (an `invalidSelection`'s step), the video preparation's failure, what keeps the plan busy, and why the
+    /// last rewording was refused.
+    var diagnostics: String {
+        var busy: [String] = []
+        if preparing { busy.append("preparing") }
+        if generating { busy.append("generating") }
+        if publishing { busy.append("publishing(" + (publishPurpose?.rawValue ?? "?") + ")") }
+        if preparingVideo { busy.append("preparingVideo") }
+        if videoPreparation != nil { busy.append("videoPreparation task") }
+        let failure = failure.map { String(reflecting: $0) } ?? "none"
+        let video = videoPreparationFailure.map { String(reflecting: $0) } ?? "none"
+        return "problem \"\(problem)\" failure \(failure) videoFailure \(video) busy [\(busy.joined(separator: ", "))] "
+            + "rewordingRefusal \(rewordingRefusal?.rawValue ?? "none")"
+    }
     /// The take panel's problem line; `failure` is the error behind it, for its next steps (RewriteNextSteps.swift).
     private(set) var problem = "" { didSet { if problem.isEmpty { failure = nil } } }
     private(set) var failure: (any Error)?
@@ -339,17 +370,45 @@ import VoxClipMedia
         // any) instead of returning early, so "prepare, then refresh lip sync" and Use never act on half-prepared video.
         await settleVideoPreparation()
         guard needsVideoPreparation else { return }
-        let task = Task { await runVideoPreparation(at: date) }
-        videoPreparation = task
-        await task.value
-        if videoPreparation == task { videoPreparation = nil }
+        await startVideoPreparation(at: date).value
     }
     private var videoPreparation: Task<Void, Never>?
+    @ObservationIgnored private var videoPreparationTurn = UUID()
+    /// Starts a preparation that `settleVideoPreparation` sees from this moment on, not only once its task first runs;
+    /// it forgets itself when it ends, so a finished one never reads as running.
+    private func startVideoPreparation(at date: Date) -> Task<Void, Never> {
+        let turn = UUID()
+        videoPreparationTurn = turn
+        let task = Task {
+            await runVideoPreparation(at: date)
+            if videoPreparationTurn == turn { videoPreparation = nil }
+        }
+        videoPreparation = task
+        return task
+    }
     /// Waits for a running `prepareVideoChoices`, and for any newer choices the callers waiting on it prepared after it.
     private func settleVideoPreparation() async {
         while let running = videoPreparation {
             await running.value
             if videoPreparation == running { videoPreparation = nil }
+        }
+    }
+    /// Waits until no work the plan started on its own holds it busy (voice-lab §8.2.2 "A reword waits for the take's own
+    /// video"): a video preparation and any newer choices prepared after it, a publish of the selection (lip sync's offers
+    /// or preview, Use, a preparation queued after lip sync's publish), and a quote being prepared. A take that lands
+    /// starts all of these without a click. A paid run (`generating`) is not waited for, and a retired plan returns at once.
+    private func settleBackgroundWork() async {
+        while stillCurrent {
+            if let running = videoPreparation {
+                await running.value
+                if videoPreparation == running { videoPreparation = nil }
+            } else if publishing || preparingVideo {
+                await withCheckedContinuation { idleWaiters.append($0) }
+            } else if preparing, !generating, let quote = operation {
+                await quote.value
+                // Its owner clears `preparing` when the quote ends; one that is still set is no longer this quote's.
+                if operation == quote, preparing { return }
+            } else { return }
         }
     }
 
@@ -359,7 +418,7 @@ import VoxClipMedia
             let turn = videoRevision, choices = videoChoices
             preparingVideo = true; attempted = true
             do {
-                let output = try await publishSelection(at: date)
+                let output = try await publishSelection(at: date, for: .video)
                 let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
                     .applying(to: project, outputScope: scope)
                 let render = try await VideoDurationRenderReadiness.prepare(proposed, scope: scope, using: prepareDurationRender)
@@ -613,20 +672,35 @@ import VoxClipMedia
 
     /// Puts a new wording on one phrase and prices a take of it. A wording without the phrase's bridge words can't be
     /// placed or priced: it is refused, and the phrase keeps its words (false).
-    /// A take that just landed starts its own video preparation (`autoChooseVideo` matching or cutting the video to it),
-    /// which publishes the take while it runs. The new wording replaces that video anyway, so the price waits for it to
-    /// settle instead of being refused over it (the measured round's "couldn't be priced" after a long take). `stillAsked`
-    /// is the caller's own check, made again after that wait: false refuses, with nothing changed.
+    /// A take that just landed starts work of its own: its video preparation (`autoChooseVideo` matching or cutting the
+    /// video to it), then lip sync's offers, which publish the take again when that video isn't prepared, and possibly a
+    /// quote. The new wording replaces that work's result anyway, so the price waits for all of it to settle
+    /// (`settleBackgroundWork`) instead of being refused over it (the measured round's "couldn't be priced" after a long
+    /// take, CI 42715860857). `stillAsked` is the caller's own check, made again after that wait: false refuses, with
+    /// nothing changed. `rewordingRefusal` says which check refused.
     @discardableResult func prepareRewording(_ text: String, phrase index: Int,
                                              stillAsked: () -> Bool = { true }) async -> Bool {
-        await settleVideoPreparation()
-        guard stillAsked(), stillCurrent, phrases.indices.contains(index), phrases[index].blocked == nil, !generating, !preparing, !publishing, !preparingVideo else { return false }
-        if let bridge = bridge(phrase: index), !bridge.keeps(text) { return false }
+        await settleBackgroundWork()
+        rewordingRefusal = refusal(rewording: text, phrase: index, stillAsked: stillAsked)
+        guard rewordingRefusal == nil else { return false }
         phrases[index].audioTags = VoiceLabAudioTags.reanchored(phrases[index].audioTags, from: phrases[index].text, to: text)
         phrases[index].text = text
         clearPreparedVideo()
         await prepareQuote(indices: [index], decoding: true, candidates: 1)
         return true
+    }
+
+    private func refusal(rewording text: String, phrase index: Int, stillAsked: () -> Bool) -> RewordingRefusal? {
+        if !stillAsked() { return .notAsked }
+        if !stillCurrent { return .notCurrent }
+        guard phrases.indices.contains(index) else { return .noPhrase }
+        if phrases[index].blocked != nil { return .blocked }
+        if generating { return .generating }
+        if preparing { return .preparing }
+        if publishing { return .publishing }
+        if preparingVideo { return .preparingVideo }
+        if let bridge = bridge(phrase: index), !bridge.keeps(text) { return .bridge }
+        return nil
     }
 
     func keepSelectedWording(phrase index: Int) {
@@ -1211,7 +1285,7 @@ import VoxClipMedia
         try await lipsync.waitForUseTakes()
         guard stillCurrent else { invalidate(); throw Failure.stale }
         guard canAccept else { throw Failure.noSelection }
-        let output = try applyingLipsync(to: await publishSelection(at: date))
+        let output = try applyingLipsync(to: await publishSelection(at: date, for: .use))
         if selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) || !output.videoAssets.isEmpty {
             let turn = videoRevision, choices = videoChoices
             preparingVideo = true
@@ -1226,18 +1300,19 @@ import VoxClipMedia
         return output
     }
 
-    private func publishSelection(at date: Date, onlyChosen: Bool = false) async throws -> Acceptance {
+    private func publishSelection(at date: Date, for purpose: PublishPurpose, onlyChosen: Bool = false) async throws -> Acceptance {
         stopAudition()
         let version = revision
         try checkCurrent(version)
         try validateContextInputs(inputs)
         guard !generating, !preparing, !publishing, let backend else { throw Failure.stale }
-        publishing = true
+        publishing = true; publishPurpose = purpose
         defer {
-            publishing = false
+            publishing = false; publishPurpose = nil
             // Lip sync's publish can refuse a video preparation that an automatic choice started meanwhile (ADR-R39: no
-            // click follows to start it again); it starts once this one ends, so Use never waits on a preparation nobody runs.
-            if onlyChosen, !preparingVideo, videoPreparation == nil, needsVideoPreparation { Task { await prepareVideoChoices() } }
+            // click follows to start it again); it starts once this one ends, so Use never waits on a preparation nobody
+            // runs. It is tracked from here, so a reword arriving before its task runs waits for it too.
+            if onlyChosen, !preparingVideo, videoPreparation == nil, needsVideoPreparation { _ = startVideoPreparation(at: Date()) }
         }
         let selected = selectedPhrases.filter { !onlyChosen || $0.videoChoice != nil }
         guard !selected.isEmpty, selected.allSatisfy({ phrase in
@@ -1449,7 +1524,7 @@ extension ClipTakePlan {
         if let prepared = preparedVideoSelection, prepared.choices == videoChoices, chosen.count == selectedPhrases.count {
             request = prepared.render.request; recordID = prepared.acceptance.voice?.consentRecordId ?? inputs.first?.recordID ?? ""
         } else {
-            let base = try await publishSelection(at: Date(), onlyChosen: true)
+            let base = try await publishSelection(at: Date(), for: .lipsync, onlyChosen: true)
             let proposed = try VoiceLabEditCommand.acceptAll(segments: base.segments, assets: base.assets, voice: base.voice)
                 .applying(to: project, outputScope: scope, videoAssets: base.videoAssets)
             request = try await prepareDurationRender(proposed, scope)
@@ -1510,7 +1585,7 @@ extension ClipTakePlan {
 
     func lipsyncPreview() async throws -> RenderRequest {
         guard let prepareDurationRender else { throw Failure.stale }
-        let output = try applyingLipsync(to: await publishSelection(at: Date(), onlyChosen: true))
+        let output = try applyingLipsync(to: await publishSelection(at: Date(), for: .lipsync, onlyChosen: true))
         let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
             .applying(to: project, outputScope: scope, videoAssets: output.videoAssets)
         return try await prepareDurationRender(proposed, scope)
