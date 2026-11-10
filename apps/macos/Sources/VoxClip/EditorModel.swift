@@ -595,6 +595,9 @@ struct EditorRenderSnapshot {
     }
     var selectedIDs: [String] { words.filter { selectedWordIDs.contains($0.id) }.map(\.id) }
     var sourceDuration: Double { project.media.source.durationSeconds }
+    /// The source sample grid the Core compares words and replace ranges on (voice-lab §10.1): a word touching a stored
+    /// edge off the grid, by under a sample, is still covered.
+    var sourceGrid: VoiceLabSampleGrid { VoiceLabSampleGrid(rate: Double(project.media.source.audio?.sampleRate ?? 48_000)) }
     var duration: Double { renderTimeline?.duration ?? sourceDuration }
     /// Cuts in the scope (design §3.5): the maximal runs of consecutive cut words, plus
     /// the cut pauses between the scope's words.

@@ -8,7 +8,9 @@ extension EditorModel {
                   let first = index(clip.startWordId), let last = index(clip.endWordId) else { return false }
             lower = words[first].start; upper = words[last].end
         } else { lower = 0; upper = project.media.source.durationSeconds }
-        return project.voiceLab.segments.contains { $0.enabled && $0.isAIModified && $0.replace.start < upper && $0.replace.end > lower }
+        // A replace range meets the clip on the source sample grid, as the output planner's clip filter does (§10.1).
+        let grid = sourceGrid
+        return project.voiceLab.segments.contains { $0.enabled && $0.isAIModified && grid.overlaps(lower, upper, start: $0.replace.start, end: $0.replace.end) }
     }
     func exportAccessibleName(_ name: String, targets: [ExportTarget]) -> String {
         name + (targets.contains { target in

@@ -417,8 +417,9 @@ struct TranscriptAppearance: Equatable {
         wordIndex = model.wordIndex
         corrections = model.project.edits.corrections
         let replacements = model.project.voiceLab.segments.filter(\.enabled)
+        let rate = model.sourceGrid.rate
         let ai = replacements.isEmpty ? [] : Set(words.lazy.filter { word in
-            replacements.contains { word.start >= $0.replace.start && word.end <= $0.replace.end }
+            replacements.contains { $0.replace.covers(start: word.start, end: word.end, rate: rate) }
         }.map(\.id))
         let aiChanged = aiWordIDs.symmetricDifference(ai)
         aiWordIDs = ai
