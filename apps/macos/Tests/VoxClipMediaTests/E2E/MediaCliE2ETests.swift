@@ -268,25 +268,30 @@ struct MediaCliE2ETests {
     private func decodedAudio(_ url: URL) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMIsFloatKey: true,
-            AVLinearPCMBitDepthKey: 32, AVLinearPCMIsNonInterleaved: false,
-            AVNumberOfChannelsKey: 2, AVSampleRateKey: 48000])
-        reader.add(output)
-        try #require(reader.startReading())
-        var samples = [Float]()
-        while let sample = output.copyNextSampleBuffer() {
-            guard let buffer = CMSampleBufferGetDataBuffer(sample) else { continue }
-            let length = CMBlockBufferGetDataLength(buffer)
-            var chunk = [Float](repeating: 0, count: length / 4)
-            let copied = chunk.withUnsafeMutableBytes { bytes in
-                CMBlockBufferCopyDataBytes(buffer, atOffset: 0, dataLength: length, destination: bytes.baseAddress!)
+        let (samples, started, copiedAll, completed) = try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMIsFloatKey: true,
+                AVLinearPCMBitDepthKey: 32, AVLinearPCMIsNonInterleaved: false,
+                AVNumberOfChannelsKey: 2, AVSampleRateKey: 48000])
+            reader.add(output)
+            guard reader.startReading() else { return ([Float](), false, false, false) }
+            var samples = [Float]()
+            while let sample = MediaReadQueue.copyNext(output) {
+                guard let buffer = CMSampleBufferGetDataBuffer(sample) else { continue }
+                let length = CMBlockBufferGetDataLength(buffer)
+                var chunk = [Float](repeating: 0, count: length / 4)
+                let copied = chunk.withUnsafeMutableBytes { bytes in
+                    CMBlockBufferCopyDataBytes(buffer, atOffset: 0, dataLength: length, destination: bytes.baseAddress!)
+                }
+                guard copied == noErr else { return (samples, true, false, false) }
+                samples.append(contentsOf: chunk)
             }
-            try #require(copied == noErr)
-            samples.append(contentsOf: chunk)
+            return (samples, true, true, reader.status == .completed)
         }
-        try #require(reader.status == .completed)
+        try #require(started)
+        try #require(copiedAll)
+        try #require(completed)
         return samples
     }
 
@@ -299,7 +304,7 @@ struct MediaCliE2ETests {
         let provider = reader.outputProvider(for: output)
         try #require(reader.startReading())
         var counts = [Int: Int](), index = 0
-        while let ready = try await provider.next() {
+        while let ready = try await MediaReadQueue.next(provider) {
             if wanted.contains(index) {
                 counts[index] = try ready.withUnsafeSampleBuffer { sample in
                     let buffer = try #require(CMSampleBufferGetImageBuffer(sample))

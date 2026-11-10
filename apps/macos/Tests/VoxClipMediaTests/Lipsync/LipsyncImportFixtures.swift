@@ -99,15 +99,18 @@ enum FalShapedResult {
         let asset = AVURLAsset(url: input)
         let track = try await asset.loadTracks(withMediaType: .video)[0]
         let (size, rate) = try await track.load(.naturalSize, .nominalFrameRate)
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
-        reader.add(output)
-        guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-        var buffers: [CVPixelBuffer] = []
-        while buffers.count < frames, let sample = output.copyNextSampleBuffer() {
-            if let buffer = CMSampleBufferGetImageBuffer(sample) { buffers.append(buffer) }
-        }
-        reader.cancelReading()
+        let buffers = try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            reader.add(output)
+            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+            var buffers: [CVPixelBuffer] = []
+            while buffers.count < frames, let sample = MediaReadQueue.copyNext(output) {
+                if let buffer = CMSampleBufferGetImageBuffer(sample) { buffers.append(buffer) }
+            }
+            reader.cancelReading()
+            return MediaReadQueue.DecodedFrames(buffers)
+        }.buffers
         let fps = Int(rate.rounded())
         let destination = folder.appendingPathComponent("result.mp4")
         try await write(to: destination, frames: buffers.count, fps: fps, width: Int(size.width), height: Int(size.height),
@@ -136,7 +139,7 @@ enum FalShapedResult {
         let receiver = writer.inputReceiver(for: input)
         guard writer.startWriting(), reader.startReading() else { throw writer.error ?? reader.error ?? CocoaError(.fileWriteUnknown) }
         writer.startSession(atSourceTime: .zero)
-        while let sample = try await provider.next() { try await receiver.append(sample) }
+        while let sample = try await MediaReadQueue.next(provider) { try await receiver.append(sample) }
         receiver.finish()
         await writer.finishWriting()
         guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
@@ -147,19 +150,22 @@ enum FalShapedResult {
     static func frames(_ url: URL) async throws -> (count: Int, levels: [UInt8]) {
         let asset = AVURLAsset(url: url)
         let track = try await asset.loadTracks(withMediaType: .video)[0]
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
-        reader.add(output)
-        guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-        var levels: [UInt8] = []
-        while let sample = output.copyNextSampleBuffer() {
-            guard let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-            CVPixelBufferLockBaseAddress(buffer, .readOnly)
-            let base = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
-            let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
-            let center = base.advanced(by: (CVPixelBufferGetHeight(buffer) / 2) * rowBytes + (CVPixelBufferGetWidth(buffer) / 2) * 4)
-            levels.append(center[1])
-            CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+        let levels = try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            reader.add(output)
+            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+            var levels: [UInt8] = []
+            while let sample = MediaReadQueue.copyNext(output) {
+                guard let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+                CVPixelBufferLockBaseAddress(buffer, .readOnly)
+                let base = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
+                let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+                let center = base.advanced(by: (CVPixelBufferGetHeight(buffer) / 2) * rowBytes + (CVPixelBufferGetWidth(buffer) / 2) * 4)
+                levels.append(center[1])
+                CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+            }
+            return levels
         }
         return (levels.count, levels)
     }

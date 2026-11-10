@@ -252,21 +252,23 @@ struct VoiceGuardSpeechMeasureTests {
     static func decodeMono(_ url: URL, rate: Int) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true, AVLinearPCMIsNonInterleaved: false, AVLinearPCMIsBigEndianKey: false,
-        ])
-        reader.add(output)
-        #expect(reader.startReading())
-        var samples: [Float] = []
-        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
-            let length = CMBlockBufferGetDataLength(block)
-            var chunk = [Float](repeating: 0, count: length / 4)
-            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: $0.baseAddress!) }
-            samples += chunk
+        return try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true, AVLinearPCMIsNonInterleaved: false, AVLinearPCMIsBigEndianKey: false,
+            ])
+            reader.add(output)
+            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+            var samples: [Float] = []
+            while let buffer = MediaReadQueue.copyNext(output), let block = CMSampleBufferGetDataBuffer(buffer) {
+                let length = CMBlockBufferGetDataLength(block)
+                var chunk = [Float](repeating: 0, count: length / 4)
+                _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: $0.baseAddress!) }
+                samples += chunk
+            }
+            return samples
         }
-        return samples
     }
 }
 }

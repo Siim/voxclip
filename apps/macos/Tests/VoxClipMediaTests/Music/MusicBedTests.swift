@@ -190,16 +190,18 @@ import VoxClipCore
     static func decodedAudio(_ url: URL) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
-        reader.add(output)
-        #expect(reader.startReading())
-        var samples: [Float] = []
-        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
-            var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
-            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
-            samples += chunk
+        return try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
+            reader.add(output)
+            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+            var samples: [Float] = []
+            while let buffer = MediaReadQueue.copyNext(output), let block = CMSampleBufferGetDataBuffer(buffer) {
+                var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
+                _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+                samples += chunk
+            }
+            return samples
         }
-        return samples
     }
 }

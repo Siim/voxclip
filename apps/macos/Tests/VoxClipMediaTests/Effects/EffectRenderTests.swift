@@ -251,18 +251,34 @@ import VoxClipCore
 
     /// The mixed PCM a preview or export reads: every audio track through the graph's audio mix, 48 kHz, the left channel.
     static func mixed(_ graph: RenderGraph) async throws -> [Float] {
-        let reader = try AVAssetReader(asset: graph.composition)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: graph.mixedAudioTracks, audioSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
-        output.audioMix = graph.audioMix
-        reader.add(output)
-        #expect(reader.startReading())
-        var samples: [Float] = []
-        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
-            var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
-            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
-            samples += chunk
-        }
+        let samples = try await interleavedMix(graph.composition, tracks: graph.mixedAudioTracks, mix: graph.audioMix)
         return stride(from: 0, to: samples.count, by: 2).map { samples[$0] }
+    }
+
+    /// `tracks` through `mix`, read as interleaved stereo PCM at 48 kHz on `MediaReadQueue`.
+    static func interleavedMix(_ composition: AVComposition, tracks: [AVAssetTrack], mix: AVAudioMix?) async throws -> [Float] {
+        let held = MixRead(composition: composition, tracks: tracks, mix: mix)
+        return try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: held.composition)
+            let output = AVAssetReaderAudioMixOutput(audioTracks: held.tracks, audioSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
+            output.audioMix = held.mix
+            reader.add(output)
+            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+            var samples: [Float] = []
+            while let buffer = MediaReadQueue.copyNext(output), let block = CMSampleBufferGetDataBuffer(buffer) {
+                var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
+                _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+                samples += chunk
+            }
+            return samples
+        }
+    }
+
+    /// A graph's composition, tracks and mix, handed to the read queue; the test doesn't touch them while it reads.
+    private struct MixRead: @unchecked Sendable {
+        let composition: AVComposition
+        let tracks: [AVAssetTrack]
+        let mix: AVAudioMix?
     }
 
     /// The amplitude of `frequency` in `samples[range]` (Goertzel), 1 for a full-scale sine.
@@ -311,17 +327,7 @@ import VoxClipCore
         let graph = try await CompositionBuilder().build(request)
         let voice = try #require(graph.audioTrack)
         // The edited-audio export's own read: the voice track through the graph's audio mix.
-        let reader = try AVAssetReader(asset: graph.composition)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: [voice], audioSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
-        output.audioMix = graph.audioMix
-        reader.add(output)
-        #expect(reader.startReading())
-        var interleaved: [Float] = []
-        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
-            var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
-            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
-            interleaved += chunk
-        }
+        let interleaved = try await Self.interleavedMix(graph.composition, tracks: [voice], mix: graph.audioMix)
         let samples = stride(from: 0, to: interleaved.count, by: 2).map { interleaved[$0] }
         try #require(samples.count >= 96_000)
         #expect(Self.amplitude(samples, 24_000..<48_000, 441) < 0.001, "the bleeped words stay silent")

@@ -29,7 +29,7 @@ func sampledFrames(_ url: URL, points: [(Int, Int)]) async throws -> [SampledFra
     let provider = reader.outputProvider(for: output)
     guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot verify video") }
     var frames: [SampledFrame] = []
-    while let ready = try await provider.next() {
+    while let ready = try await MediaReadQueue.next(provider) {
         try Task.checkCancellation()
         let pixels = try ready.withUnsafeSampleBuffer { sample -> [[Int]] in
             let buffer = try #require(CMSampleBufferGetImageBuffer(sample))

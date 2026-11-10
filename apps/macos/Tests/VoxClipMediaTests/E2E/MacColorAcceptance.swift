@@ -139,7 +139,7 @@ enum MacColorAcceptance {
             let provider = reader.outputProvider(for: output)
             try #require(reader.startReading())
             var pts = [Double](), samples = [Int64: [[Int]]]()
-            while let ready = try await provider.next() {
+            while let ready = try await MediaReadQueue.next(provider) {
                 let index = Int64(pts.count)
                 let framePTS = ready.presentationTimeStamp.seconds
                 try #require(framePTS.isFinite, "frame \(index): non-finite decoded PTS")

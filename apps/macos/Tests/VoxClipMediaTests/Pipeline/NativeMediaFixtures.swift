@@ -309,7 +309,7 @@ actor NativeMediaFixtures {
         do {
             guard writer.startWriting(), reader.startReading() else { throw writer.error ?? reader.error ?? CocoaError(.fileWriteUnknown) }
             writer.startSession(atSourceTime: .zero)
-            while let sample = try await provider.next() {
+            while let sample = try await MediaReadQueue.next(provider) {
                 try Task.checkCancellation()
                 try await receiver.append(sample)
             }

@@ -140,26 +140,29 @@ struct MP4CoverEmbedTests {
     /// Each track's samples as stored, read by AVFoundation without decoding into another format.
     static func samples(_ file: URL) async throws -> [[Data]] {
         let asset = AVURLAsset(url: file)
-        var tracks: [[Data]] = []
-        for track in try await asset.load(.tracks) {
-            let reader = try AVAssetReader(asset: asset)
-            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-            reader.add(output)
-            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-            var samples: [Data] = []
-            while let buffer = output.copyNextSampleBuffer() {
-                guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-                var bytes = Data(count: CMBlockBufferGetDataLength(block))
-                let status = bytes.withUnsafeMutableBytes { raw in
-                    CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: raw.count, destination: raw.baseAddress!)
+        let tracks = try await asset.load(.tracks)
+        return try await MediaReadQueue.run {
+            var samplesByTrack: [[Data]] = []
+            for track in tracks {
+                let reader = try AVAssetReader(asset: asset)
+                let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+                reader.add(output)
+                guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+                var samples: [Data] = []
+                while let buffer = MediaReadQueue.copyNext(output) {
+                    guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+                    var bytes = Data(count: CMBlockBufferGetDataLength(block))
+                    let status = bytes.withUnsafeMutableBytes { raw in
+                        CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: raw.count, destination: raw.baseAddress!)
+                    }
+                    guard status == kCMBlockBufferNoErr else { throw CocoaError(.fileReadCorruptFile) }
+                    samples.append(bytes)
                 }
-                guard status == kCMBlockBufferNoErr else { throw CocoaError(.fileReadCorruptFile) }
-                samples.append(bytes)
+                guard reader.status == .completed else { throw reader.error ?? CocoaError(.fileReadCorruptFile) }
+                samplesByTrack.append(samples)
             }
-            guard reader.status == .completed else { throw reader.error ?? CocoaError(.fileReadCorruptFile) }
-            tracks.append(samples)
+            return samplesByTrack
         }
-        return tracks
     }
 
     /// The artwork AVFoundation reads from the file's metadata.
