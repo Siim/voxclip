@@ -18,12 +18,14 @@ private struct VoiceChangeFinishFixture {
     let rate = 24_000
     let model = "eleven_multilingual_sts_v2"
 
-    static func make(passage: Bool, split: Bool = false, generatedGain: Double = 1) throws -> Self {
+    static func make(passage: Bool, split: Bool = false, generatedGain: Double = 1,
+                     words edit: (inout [TimedWord]) -> Void = { _ in }) throws -> Self {
         let root = try VoiceChangeTestFiles.directory()
         let paidRoot = root.appendingPathComponent("paid"), scratch = root.appendingPathComponent("scratch")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false)
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        if var words = project.transcript?.words { edit(&words); project.transcript?.words = words }
         let record = try VoiceChangeTestFiles.record()
         let rate = 24_000, total = rate * 7
         let createdAt = Date(timeIntervalSince1970: 1_793_577_600)
@@ -122,6 +124,27 @@ struct VoiceChangeFinisherTests {
         #expect(try fixture.paidBytes() == originalBytes)
         let mixed = try AVAudioFile(forReading: lease.mixedAudioURL)
         #expect(mixed.length == 7 * Int64(fixture.rate))
+    }
+
+    /// Words touching the window's stored edges off the source grid, by under a sample, are the segment's words
+    /// (voice-lab §10.1): w4 starts one ulp or half a sample before 2.5 s, and w5 ends one ulp after 3.2 s.
+    @Test(arguments: [false, true]) func wordsTouchingTheWindowOffTheGridAreTheSegmentsWords(halfSample: Bool) async throws {
+        let fixture = try VoiceChangeFinishFixture.make(passage: true) { words in
+            guard let w4 = words.firstIndex(where: { $0.id == "w4" }), let w5 = words.firstIndex(where: { $0.id == "w5" }) else { return }
+            words[w4].start = halfSample ? (60_000 - 0.5) / 24_000 : Double(2.5).nextDown
+            words[w5].end = Double(3.2).nextUp; words[w5 + 1].start = words[w5].end
+        }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let grid = VoiceLabSampleGrid(rate: 24_000)
+        let words = try #require(fixture.project.transcript?.words)
+        #expect(words[3].start < fixture.window.start && grid.sample(words[3].start) == Double(fixture.window.startSample))
+        #expect(words[4].end > fixture.window.end && grid.sample(words[4].end) == Double(fixture.window.endSample))
+        let payload = try await fixture.finish()
+        let segment = try #require(payload.segments.first)
+        #expect(segment.replace.firstWordId == "w4" && segment.replace.lastWordId == "w5")
+        let changed = try VoiceLabEditCommand.acceptAll(segments: payload.segments, assets: payload.assets, voice: payload.voice)
+            .applying(to: fixture.project)
+        try VoiceLabProject.validate(changed)
     }
 
     @Test func touchingChunksKeepOriginalRequestsAndUseCanonicalSynthHandles() async throws {

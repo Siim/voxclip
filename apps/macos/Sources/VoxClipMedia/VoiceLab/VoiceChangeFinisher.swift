@@ -144,7 +144,9 @@ public enum VoiceChangeFinisher {
             let positions: [Int] = (item.incoming.kind == .none ? [] : [before.count]) +
                 (item.outgoing.kind == .none ? [] : [before.count + samples.count])
             let qa = try measurement(samples: dry, seams: positions, rate: rate)
-            let contained = transcript.words.filter { $0.start >= Double(lower) / Double(rate) && $0.end <= Double(upper) / Double(rate) }
+            // The range's words on the source sample grid, as the Core validates them (voice-lab §10.1).
+            let grid = VoiceLabSampleGrid(rate: Double(rate))
+            let contained = transcript.words.filter { grid.sample($0.start) >= Double(lower) && grid.sample($0.end) <= Double(upper) }
             guard let first = contained.first, let last = contained.last else { throw Failure.invalidInput }
             let recipe = makeRecipe(item, record: record, modelID: modelID, seed: seed, rate: rate, verifiedAt: verifiedAt, qa: qa)
             var candidate = VoiceLabCandidate(assetId: item.asset.id, score: nil)
