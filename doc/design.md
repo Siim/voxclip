@@ -1318,15 +1318,7 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 **Change editor.** Click a change, or press Return on a focused change or change row. The 1 November 2026 inline-action decision supersedes the older popup wording; it does not create a new editor window or popup.
 
 - macOS (ADR-R50): Return, F2, a click on a change's new words, Return on its change row and VoiceOver's "Talk to Claude about change {i}" open the change's thread ("Talk back to Claude" below), whose input takes the keys; ⌥E opens it with the input taking your own words. The edit popover is removed: new words come from Claude's versions or from "✎ My own words" in the thread.
-- Windows, until its thread twin: F2 opens the paragraph's existing inline correction row.
-  - It sits under the affected paragraph, in the transcript's scroll flow. The shell owns the proposal's Keep, Undo, rediff/fit/cost and history operations; the transcript publishes ordinal-based callbacks and renders the returned real review snapshot. No rendering callback authorizes a provider request or synthesis.
-  - Content:
-    - a label, "New words for change {i}";
-    - a field prefilled with the new words;
-    - the fit meter line (voice-lab.md §8.9.1): "about {s} s for a {g} s gap: fits", or "about {s} s for a {g} s gap: will change length";
-    - "Return saves · Esc cancels";
-    - **Reject Change**.
-  - Saving reruns the local diff, the fit meter and the cost; nothing is sent. Emptying the field turns a voice change into a cut.
+- Windows (ADR-R50): F2, Enter, a click on a change's new words and **Edit** on its change row open the change's thread under its paragraph, whose input takes the keys; **Shift+F2** opens it with the input taking your own words (⌥E's twin: Alt+E would reach menu access keys). **Alt+Page Up** and **Alt+Page Down** switch versions (⌥← and ⌥→'s twins: Alt+← is Back, and Ctrl+← and Ctrl+→ already move by sentence). In the input, Enter sends, Shift+Enter is a new line, Esc folds the thread or leaves your own words, Ctrl+Enter keeps the change, and Ctrl+Backspace undoes it while the input is empty (with text it deletes a word, as in any Windows field). The inline correction row ("New words for change {i}", Reject Change) is removed. With no change focused, F2 still corrects the selected word's spelling. Narrator: the thread is named "Talk to Claude about change {i}", **✎ My own words** is a toggle button (its pressed state is the selected state), and since WinUI has no custom actions, the focused change's paragraph names both keys in its help text ("Talk to Claude about change {i}: F2. Type your own words for change {i}: Shift+F2.").
 
 **Timeline.** Proposed voice windows and accepted AI spans are marked on the timeline strip. Their marks come with the visual redesign (§5.2).
 
@@ -1391,6 +1383,8 @@ The user, 9 November 2026: "the bubbles that help me to pick, if this text satis
 | Return, F2, a click on the new words | Open the thread and put the keys in its input |
 | ⌥E | In the transcript: open the thread with the input taking your own words |
 | ↵ / Esc, with your own words | Put them in place / back to Claude with nothing changed |
+
+Windows uses Enter, Shift+Enter and Esc as above; **Alt+Page Up / Alt+Page Down** for ⌥← / ⌥→; **Ctrl+Enter** for ⌘↩ and **Ctrl+Backspace** on an empty input for ⌘⌫; **F2**, Enter or a click for Return; and **Shift+F2** for ⌥E (Change editor above). Keep folds the thread: a kept voice change stays in the Windows review, included for takes.
 
 **VoiceOver.** The thread is a group, "Talk to Claude about change {i}". Each turn reads "You: …" or "Claude: …"; the arrows are "Previous version" and "Next version" beside "Version 2 of 3"; a ✦ bubble reads "{words}, suggested by Claude"; the input is "Tell Claude what to change about change {i}". "✎ My own words" reads "My own words", selected while it is on; the input then reads "Your own words for change {i}". The transcript adds the custom action "Type your own words for change {i}" beside "Talk to Claude about change {i}".
 
