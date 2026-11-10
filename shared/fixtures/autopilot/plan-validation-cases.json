@@ -3,7 +3,7 @@
  "id": "plan-validation-cases",
  "origin": "voxclip",
  "sources": {
-  "shared/prompts/clip-autopilot.json": "9ae577be03099bd583116401a95605268f9d80a2e3fcd724b344fc44b185c3eb"
+  "shared/prompts/clip-autopilot.json": "81009b47fb62f7af4447591969eec7a8819620c4346a5900f079bb265d535572"
  },
  "description": "Hand-derived vectors for the Make it postable planner (doc/spec/ai.md section 16): the indexed transcript the request renders, and how the validator repairs or drops each reply item. 'repairs' lists [field, action] pairs sorted; the detail text is not pinned. Edit this file by hand and replay it in every Core suite that implements the planner.",
  "transcript": {

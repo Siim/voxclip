@@ -38,10 +38,14 @@ public sealed class ClipAutopilotFramesTests
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
         var fixture = Frames();
-        Assert.Equal(8, prompt.PromptVersion);
+        Assert.Equal(9, prompt.PromptVersion);
         Assert.Equal("voxclip-autopilot-frames/1", fixture["schema"]!.GetValue<string>());
         Assert.Equal(prompt.Sha256, fixture["sources"]!["shared/prompts/clip-autopilot.json"]!.GetValue<string>());
         Assert.Contains("frames.blur", prompt.System, StringComparison.Ordinal);
+        // The shared prompt (version 9) tells the AI the frames were measured, and the opening and 9:16 decided, on this computer.
+        Assert.Contains("one per sentence, as this computer measured them", prompt.System, StringComparison.Ordinal);
+        Assert.Contains("follows the face are decided on this computer;", prompt.System, StringComparison.Ordinal);
+        Assert.DoesNotContain("this Mac", prompt.System, StringComparison.Ordinal);
         Assert.Contains(prompt.Schema["required"]!.AsArray(), key => key!.GetValue<string>() == "frames");
         Assert.Equal(6, fixture["cases"]!.AsArray().Count);
     }

@@ -73,7 +73,7 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothStagesInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 8)
+        #expect(prompt.promptVersion == 9)
         for system in [prompt.system, prompt.momentsSystem] {
             #expect(!system.contains("{") && !system.contains("}"))
             #expect(system.contains("Length: 20 to 45 seconds after cuts. Up to 60 s only when the idea cannot land in less"))
@@ -271,7 +271,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 8 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 9 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })

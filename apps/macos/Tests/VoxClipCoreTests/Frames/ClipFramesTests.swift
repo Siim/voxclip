@@ -183,9 +183,12 @@ import Testing
 
     @Test func vectorsPinTheCurrentPrompt() throws {
         let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
-        #expect(prompt.promptVersion == 8)
+        #expect(prompt.promptVersion == 9)
         #expect(try Self.fixture()[ai: "sources"][ai: "shared/prompts/clip-autopilot.json"].aiString == prompt.sha256)
         #expect(prompt.system.contains("frames.blur") && prompt.schema[ai: "required"].aiArray.contains(.string("frames")))
+        // Windows sends the same prompt (version 9): the frames are measured, and the opening and 9:16 decided, on this computer.
+        let measured = "one per sentence, as this computer measured them", decided = "follows the face are decided on this computer;"
+        #expect(prompt.system.contains(measured) && prompt.system.contains(decided) && !prompt.system.contains("this Mac"))
     }
 
     @Test func theBlockCarriesTheSummaryAlwaysAndNamesTheImagesOnlyWhenTheyGo() throws {
