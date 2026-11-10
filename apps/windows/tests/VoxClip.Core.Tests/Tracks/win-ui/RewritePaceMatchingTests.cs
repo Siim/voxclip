@@ -121,7 +121,10 @@ public sealed class RewritePaceMatchingTests
         var rows = File.ReadAllText(Path.Combine(root, "Controls/RewritePanel.Review.cs"));
         Assert.Contains("voiceHunk?.SpokenTiming", rows);
         Assert.Contains("SetName(row,", rows);
-        Assert.Contains("Discard takes and continue", rows);
+        // The inline discard row draws the view model's question (RewritePaidReviewQuestion), whose confirm is the same for every caller.
+        Assert.Contains("Content = question.Confirm", rows);
+        Assert.Equal("Discard takes and continue", RewritePaidReviewQuestion.Review.Confirm);
+        Assert.Equal("Discard takes and continue", RewritePaidReviewQuestion.ThreadVersion(2, 1).Confirm);
         Assert.DoesNotContain("new ContentDialog", rows);
         // The change's thread replaced the inline edit row: its version row's tooltip is the same fit line.
         var thread = File.ReadAllText(Path.Combine(root, "ViewModels/RewriteSession.Thread.cs"));

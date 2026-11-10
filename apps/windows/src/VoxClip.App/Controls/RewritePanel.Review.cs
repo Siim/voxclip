@@ -25,13 +25,18 @@ internal sealed partial class RewritePanel
     {
         paidReviewChange.Children.Clear();
         paidReviewChange.Visibility = session.PendingPaidReviewChange is null ? Visibility.Collapsed : Visibility.Visible;
-        SetName(paidReviewChange, "Discard paid takes confirmation");
-        if (session.PendingPaidReviewChange is not { } pending) return;
-        paidReviewChange.Children.Add(Ui.Text("Discard paid takes to change this review?"));
-        paidReviewChange.Children.Add(Ui.Text("Your paid takes are kept until you confirm. Changing the reviewed words or included phrases discards these takes and needs a new price."));
-        var cancel = Ui.Button("Cancel", session.CancelPaidReviewChange);
-        var confirm = new Button { Content = "Discard takes and continue", IsEnabled = session.ReviewIsCurrent &&
+        if (session.PendingPaidReviewChange is not { } pending || session.PaidReviewQuestion is not { } question)
+        {
+            SetName(paidReviewChange, RewritePaidReviewQuestion.Review.Name);
+            return;
+        }
+        SetName(paidReviewChange, question.Name);
+        paidReviewChange.Children.Add(Ui.Text(question.Question));
+        paidReviewChange.Children.Add(Ui.Text(RewritePaidReviewQuestion.Detail));
+        var cancel = Ui.Button(question.Cancel, session.CancelPaidReviewChange);
+        var confirm = new Button { Content = question.Confirm, IsEnabled = session.ReviewIsCurrent &&
             !session.GenerationWindows.Any(window => window.IsRunning || window.IsPreparing) };
+        SetName(cancel, question.Cancel); SetName(confirm, question.Confirm);
         AutomationProperties.SetAutomationId(cancel, "Rewrite.CancelPaidReviewChange");
         AutomationProperties.SetAutomationId(confirm, "Rewrite.ConfirmPaidReviewChange");
         confirm.Click += async (_, _) =>

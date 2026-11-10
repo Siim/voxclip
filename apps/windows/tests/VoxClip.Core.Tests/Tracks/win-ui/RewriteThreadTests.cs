@@ -382,6 +382,56 @@ public sealed class RewriteThreadTests
         Assert.Single(backend.Requests);
     }
 
+    /// <summary>A waiting thread version's discard row names the paid takes and the change, with the waiting line's count, as on the
+    /// Mac in sentence case (design.md §6.3 "Paid takes"; Mac <c>aThreadVersionsQuestionNamesThePaidTakesNotTheChange</c>).</summary>
+    [Fact]
+    public async Task AThreadVersionsDiscardQuestionNamesThePaidTakesForItsChange()
+    {
+        var (session, backend) = await OpenWithPaidTakesAsync();
+        using var _session = session;
+        Assert.Null(session.PaidReviewQuestion);
+        backend.Answer = (_, _) => Task.FromResult(new RewriteFollowupReply(["much nicer"], "Warmer.", []));
+        await session.SendThreadAsync("Make it warmer");
+        var waiting = session.Thread.Waiting!;
+        Assert.True(waiting.Takes > 0);
+        Assert.Equal(session.PaidTakeCount, waiting.Takes);
+        Assert.Equal(RewriteThreadDisplay.WaitingLine(waiting.Takes), session.ThreadDisplay!.Waiting);
+        var question = session.PaidReviewQuestion!;
+        var takes = waiting.Takes == 1 ? "1 paid take" : $"{waiting.Takes} paid takes";
+        Assert.Equal($"Discard {takes} for change 2?", question.Question);
+        Assert.Equal(("Keep working", "Discard takes and continue", question.Question), (question.Cancel, question.Confirm, question.Name));
+        // While the first takes are still being made the count is 0, and the question says "your paid takes", as the waiting line does.
+        session.Thread.Waiting = waiting with { Takes = 0 };
+        Assert.Equal(("Discard your paid takes for change 2?", "Keep working"), (session.PaidReviewQuestion!.Question, session.PaidReviewQuestion.Cancel));
+        Assert.Equal("Discard your paid takes for change 2?", session.PaidReviewQuestion.Name);
+        Assert.Equal("Waiting: this replaces your paid takes. Confirm in the Rewrite panel to use it.", session.ThreadDisplay!.Waiting);
+        // Keep working changes nothing, and the question goes.
+        session.CancelPaidReviewChange();
+        Assert.Null(session.PaidReviewQuestion);
+        Assert.True(session.HasPaidTakes);
+    }
+
+    /// <summary>Every other paid review change keeps the review's question with Cancel: one that replaces a waiting version too.</summary>
+    [Fact]
+    public async Task AnotherReviewChangeKeepsTheReviewsDiscardQuestion()
+    {
+        var (session, backend) = await OpenWithPaidTakesAsync();
+        using var _session = session;
+        Assert.False(session.SetChangeIncluded(2, false));
+        Assert.NotNull(session.PendingPaidReviewChange);
+        Assert.Same(RewritePaidReviewQuestion.Review, session.PaidReviewQuestion);
+        Assert.Equal(("Discard paid takes to change this review?", "Cancel", "Discard takes and continue", "Discard paid takes confirmation"),
+            (session.PaidReviewQuestion!.Question, session.PaidReviewQuestion.Cancel, session.PaidReviewQuestion.Confirm, session.PaidReviewQuestion.Name));
+        session.CancelPaidReviewChange();
+        // A thread version waits, then leaving its change out asks instead: the question is the review's again.
+        backend.Answer = (_, _) => Task.FromResult(new RewriteFollowupReply(["much nicer"], "Warmer.", []));
+        await session.SendThreadAsync("Make it warmer");
+        Assert.StartsWith("Discard ", session.PaidReviewQuestion!.Question);
+        Assert.EndsWith(" for change 2?", session.PaidReviewQuestion.Question);
+        Assert.False(session.SetChangeIncluded(2, false));
+        Assert.Same(RewritePaidReviewQuestion.Review, session.PaidReviewQuestion);
+    }
+
     [Fact]
     public async Task WithPaidTakesASecondVersionReplacesTheWaitingOne()
     {

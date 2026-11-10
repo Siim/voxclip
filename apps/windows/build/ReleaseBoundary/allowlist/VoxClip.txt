@@ -5717,6 +5717,29 @@ member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public op_Inequa
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Apply(System.Func`1<System.Threading.Tasks.Task`1<bool>>)
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Identity(string)
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Shorter(bool)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: field internal Detail
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: field internal Review
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method internal ThreadVersion(int,int)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method private .cctor()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method private .ctor(VoxClip.App.ViewModels.RewritePaidReviewQuestion)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public .ctor(string,string,string,string)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public Deconstruct(string&,string&,string&,string&)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public Equals(VoxClip.App.ViewModels.RewritePaidReviewQuestion)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public Equals(object)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public GetHashCode()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public ToString()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public get_Cancel()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public get_Confirm()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public get_Name()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public get_Question()
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public op_Equality(VoxClip.App.ViewModels.RewritePaidReviewQuestion,VoxClip.App.ViewModels.RewritePaidReviewQuestion)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public op_Inequality(VoxClip.App.ViewModels.RewritePaidReviewQuestion,VoxClip.App.ViewModels.RewritePaidReviewQuestion)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public set_Cancel(string)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public set_Confirm(string)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public set_Name(string)
+member VoxClip.App.ViewModels.RewritePaidReviewQuestion :: method public set_Question(string)
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: field internal ExtraSeconds
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: field private Changed
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: field private access
@@ -6161,6 +6184,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_NewWords()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_NextStepCards()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_OwnWordsAdvice()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_OwnWordsEditing()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_PaidReviewQuestion()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PaidTakeCount()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PendingExpressionCount()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PendingPaidReviewChange()
@@ -6487,6 +6511,7 @@ member VoxClip.App.ViewModels.RewriteThreadDisplay :: field internal OwnWordsKey
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: field internal OwnWordsPlaceholder
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: field internal PreviousVersionKey
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal CostLineFor(System.Nullable`1<VoxClip.Core.Services.LLM.ConnectorId>)
+member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal DiscardTakesQuestion(int,int)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal OwnWordsAction(int)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal StepLabel(string)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal TalkAction(int)
@@ -6502,6 +6527,7 @@ member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal get_Versio
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal get_WorkingLine()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method internal get_YoursLine()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method private .ctor(VoxClip.App.ViewModels.RewriteThreadDisplay)
+member VoxClip.App.ViewModels.RewriteThreadDisplay :: method private PaidTakes(int)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method private get_EqualityContract()
 member VoxClip.App.ViewModels.RewriteThreadDisplay :: method public .ctor(VoxClip.App.ViewModels.RewriteThreadKey,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteThreadTurn>,int,int,int,System.Collections.Generic.IReadOnlyList`1<string>,string,System.Collections.Generic.IReadOnlyList`1<string>,string,bool,string,bool,bool,bool,string,string,string,VoxClip.App.ViewModels.InlineApproval,string)
@@ -8719,6 +8745,7 @@ type VoxClip.App.ViewModels.RewriteOpening
 type VoxClip.App.ViewModels.RewriteOwnWordsAdvice
 type VoxClip.App.ViewModels.RewriteOwnWordsFit
 type VoxClip.App.ViewModels.RewritePaidReviewChange
+type VoxClip.App.ViewModels.RewritePaidReviewQuestion
 type VoxClip.App.ViewModels.RewritePhraseMicrophone
 type VoxClip.App.ViewModels.RewritePhraseMicrophone+MicrophoneState
 type VoxClip.App.ViewModels.RewriteQuote

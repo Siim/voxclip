@@ -8,12 +8,33 @@ namespace VoxClip.App.ViewModels;
 
 internal sealed record RewritePaidReviewChange(string Identity, Func<Task<bool>> Apply, bool Shorter);
 
+/// <summary>The review's inline discard row (design.md §6.3 "Paid takes"): its question, its buttons and the row's Narrator name. A thread
+/// version that waits names what goes, the change's paid takes, with the Mac's copy in sentence case; every other review change keeps
+/// "Discard paid takes to change this review?" with Cancel.</summary>
+internal sealed record RewritePaidReviewQuestion(string Question, string Cancel, string Confirm, string Name)
+{
+    internal const string Detail = "Your paid takes are kept until you confirm. Changing the reviewed words or included phrases discards these takes and needs a new price.";
+    internal static readonly RewritePaidReviewQuestion Review = new("Discard paid takes to change this review?", "Cancel", "Discard takes and continue",
+        "Discard paid takes confirmation");
+    /// <summary>For a version of change <paramref name="ordinal"/> that replaces <paramref name="takes"/> paid takes (0: still being made).</summary>
+    internal static RewritePaidReviewQuestion ThreadVersion(int takes, int ordinal)
+    {
+        var question = RewriteThreadDisplay.DiscardTakesQuestion(takes, ordinal);
+        return new(question, "Keep working", "Discard takes and continue", question);
+    }
+}
+
 internal sealed partial class RewriteSession
 {
     internal bool HasPaidTakes => generationWindows.Any(window => window.HasPaidTakes);
     /// <summary>The paid takes a change of the review discards; 0 while the first ones are still being made.</summary>
     internal int PaidTakeCount => generationWindows.Sum(window => window.PaidTakeCount);
     internal RewritePaidReviewChange? PendingPaidReviewChange { get; private set; }
+    /// <summary>What the review's discard row asks while <see cref="PendingPaidReviewChange"/> waits. A thread version's question uses the
+    /// count its waiting line shows (<see cref="RewriteThreadWaiting.Takes"/>, the <see cref="PaidTakeCount"/> when it was asked).</summary>
+    internal RewritePaidReviewQuestion? PaidReviewQuestion => PendingPaidReviewChange is not { } pending ? null
+        : Thread.Waiting is { } waiting && ReferenceEquals(waiting.Change, pending) ? RewritePaidReviewQuestion.ThreadVersion(waiting.Takes, waiting.Key.Ordinal)
+        : RewritePaidReviewQuestion.Review;
     private bool DeferPaidReviewChange(Func<Task<bool>> apply, bool shorter = false)
     {
         if (!HasPaidTakes) return false;

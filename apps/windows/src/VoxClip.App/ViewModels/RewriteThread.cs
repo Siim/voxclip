@@ -114,8 +114,11 @@ internal sealed record RewriteThreadDisplay(RewriteThreadKey Key, int Ordinal, I
     bool Retry, bool Yours, bool OwnWords, string Input, string FitLine, string AiName, InlineApproval? Confirmation, string? Waiting = null)
 {
     /// <summary>The line while a version waits for the paid takes' discard, as on the Mac.</summary>
-    internal static string WaitingLine(int takes) =>
-        $"Waiting: this replaces {(takes == 0 ? "your paid takes" : takes == 1 ? "1 paid take" : $"{takes} paid takes")}. Confirm in the Rewrite panel to use it.";
+    internal static string WaitingLine(int takes) => $"Waiting: this replaces {PaidTakes(takes)}. Confirm in the Rewrite panel to use it.";
+    /// <summary>The Rewrite panel's question while a version for change <paramref name="ordinal"/> waits, as on the Mac: "Discard 2 paid
+    /// takes for change 3?", or "Discard your paid takes for change 3?" while the first ones are still being made.</summary>
+    internal static string DiscardTakesQuestion(int takes, int ordinal) => $"Discard {PaidTakes(takes)} for change {ordinal}?";
+    private static string PaidTakes(int takes) => takes == 0 ? "your paid takes" : takes == 1 ? "1 paid take" : $"{takes} paid takes";
     internal const string OwnWordsBubble = "✎ My own words";
     internal const string OwnWordsPlaceholder = "Your exact words · ↵ applies · Esc cancels";
     internal const string OwnWordsCostLine = "Free · nothing is sent";
