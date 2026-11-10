@@ -1,5 +1,87 @@
 # macOS implementation contracts
 
+### 2026-11-10 — AVAssetReader pulls run off the cooperative pool (track/v2-reader-off-pool)
+
+CI 42828823833 (track/v2-smoke-s8, 229d0efc, with the Vision fix): the Media step hung about a minute in, and the watchdog stopped it.
+
+- **The stacks** (`macos-swift-test-stacks`, `media/sample-5458-swiftpm-testing-helper.txt`): all three `com.apple.root.default-qos.cooperative` threads blocked in `-[AVAssetReaderOutput copyNextSampleBuffer]` → MediaToolbox → `FigSemaphoreWaitRelative`.
+  - Two came from `MP4CoverEmbedTests.samples` (line 150), under `theEmbeddedVectorsStillDecode` and `aWriterMovieGetsItsCover`.
+  - The third came from `FalShapedResult.writeAAC24k` (`LipsyncImportFixtures.swift:139`) under `LipsyncResultLengthTests.anExampleShapedResultImports`. It is not a direct call: it is the async `AVAssetReaderOutput.Provider.next()`, which calls `copyNextSampleBuffer` synchronously on the thread that awaits it.
+  - CoreMedia's own reader threads (videomentor, audiomentor, readerOfflineMixer) sat idle in condition waits. `concurrency-*.txt` shows one test task enqueued, and six top-level tasks that never started, waiting for a pool thread.
+- **The S8 reading is confirmed: the reader's own work needs a free cooperative thread.** It is not shown by the stacks alone (nothing names what the readers wait on), but by a standalone probe on this Mac (14 cores, so 14 pool threads). The probe runs N tasks, each reading a small movie's samples on its cooperative thread:
+  - N = 4, 10 and 13: all finish (13 in 2.7 s);
+  - N = 14 and N = 15: never finish (60 s watchdog), every pool thread in `copyNextSampleBuffer`, the CI stack;
+  - the same 14 or 15 through a dispatch queue: 0.3 s;
+  - the async provider: a raw `provider.next()` hangs at N = 15 the same way; with a task-executor preference on a dispatch queue it finishes in 0.4 s.
+  - **Correction:** `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` does NOT reproduce this hang. Under it a lone reader on the only pool thread finishes, and so do 3 at once. Most likely the strict pool allows a thread per QoS and the reader's work runs at another. The two named suites passed under the strict pool before this change (10 tests, 10 s). So the strict pool is no proof for reader code; more readers than `activeProcessorCount` at once is.
+- **The helper:** `MediaReadQueue` (`Sources/VoxClipMedia/Pipeline/MediaReadQueue.swift`, `package`, so the App target uses it too). It is modelled on `VisionQueue`:
+  - `queue`: `voxclip.media.read`, concurrent, `.userInitiated`.
+  - `run(_:)`: a synchronous reader loop on the queue behind a continuation. The closure is `sending` and so is its result: build the reader inside it from a local asset and track, and don't touch them afterwards.
+    - On the main actor the asset is the actor's, so read from a `nonisolated` function with its own asset (the Context demo inspector).
+    - A parameter asset needs a holder (ExportChecker's `UncheckedAsset`, EffectRenderTests' `MixRead`).
+  - `copyNext(_:)`: the loop's pull. A DEBUG `dispatchPrecondition` stops the test process (SIGTRAP) when it runs anywhere but the queue.
+  - `next(_:)`: one async provider pull, with the queue as the task's preferred executor. It was `MediaSupport.nextSample`, which preferred `DispatchQueue.global(qos: .userInitiated)`.
+  - `DecodedFrames`: hands `CVPixelBuffer`s out of `run`. The compiler ties them to the reader's region; the reader is gone by then.
+- **Sources, before → after** (the product gains no main-thread queue hop: `run` resumes on the caller's own executor):
+  - `ExportChecker.decode`: before, it was already off the pool, on its own serial `voxclip.export-check.decode` queue behind a continuation. After, the same two passes (meter, then the 16 kHz resample) run on `MediaReadQueue.run`.
+    - The loop, the errors and the copy ("Cannot read the export's audio", "The export's audio did not decode", "Cannot copy the export's audio") are unchanged.
+    - There was no cancellation between buffers before, and there is none now.
+    - The one difference: two export checks at once now decode side by side, instead of one after the other.
+    - The `ExportCheck*` suites pass unchanged.
+  - `LipsyncShortResultStandIn.make` (DEBUG, the smoke's fal.ai stand-in): it is called from `LipsyncSmokeFalHTTP`, an actor, so it ran on the pool. Before, the frame loop and the 24 kHz audio `provider.next()` both held a cooperative thread. After, the frames go through `run` (`DecodedFrames`) and the audio through `next`.
+  - `ContextDemoRecordingInspector.inspect` (`@MainActor`): before, it decoded the first frame on the main thread, which is not the pool. After, `decodeFirstFrame` (`nonisolated`, its own `AVURLAsset` of the same URL) decodes it on the queue while the main actor awaits. The checks and `invalidRecording` are unchanged.
+  - `WaveformCache.decode` (App, `nonisolated async`, so on the pool): before, a raw `provider.next()`. After, `MediaReadQueue.next`. `Task.checkCancellation()` per buffer is kept.
+  - `ExportSampleReader.read` is unchanged: the exporter's pumps already pull inside `Task(executorPreference:)` on a per-pump serial queue, with their own stop handling. It is the guard's one listed exception.
+  - The 13 product `MediaSupport.nextSample` callers now call `MediaReadQueue.next`.
+- **Tests, moved:**
+  - Synchronous loops into `run` + `copyNext`:
+    - `MP4CoverEmbedTests.samples`: one `run` for all tracks; sending the asset once per track is a region error;
+    - `FalShapedResult.truncate` and `.frames`;
+    - `MusicBedTests.decodedAudio`;
+    - `VoiceGuardSpeechMeasureTests.decodeMono`;
+    - `MediaCliE2ETests.decodedAudio`;
+    - `EffectRenderTests.mixed` and the edited-audio read, which now share `interleavedMix`.
+  - Raw `provider.next()` into `next`: `FalShapedResult.writeAAC24k`, `NativeMediaFixtures.encodeAAC`, `sampledFrames`, `MacColorAcceptance.decoded`, `MediaCliE2ETests.brightCaptionCounts`.
+  - The 7 `MediaSupport.nextSample` test callers are renamed.
+  - An `#expect`/`#require` that sat inside a loop now throws or returns a flag: on the queue there is no current test.
+- **The guard:** `MediaReadQueueTests.everyReaderPullGoesThroughTheReadQueue` scans every `.swift` under `Sources/` and `Tests/` (it requires more than 500; there are 922).
+  - It fails on `copyNextSampleBuffer(` or a provider's own `next()` (`[pP]rovider\w*(\([^()]*\))?\s*\.next\(\)`, so `outputProvider(for: o).next()` too) outside `MediaReadQueue.swift` and the listed `ExportSampleReader.swift`. Comment lines don't count.
+  - The message points at `MediaReadQueue.run`/`copyNext`/`next`.
+  - `thePullMatcherFindsBothKinds` checks the matcher.
+- **Deleted:** `MediaSupport.nextSample` (now `MediaReadQueue.next`) and `ExportChecker.decodeQueue`, with its continuation.
+- **Other synchronous AVFoundation reads (step 5):**
+  - No synchronous `tracks`/`duration`/property reads of an `AVURLAsset` remain in Sources or Tests (`tracks(withMediaType:)` is only read on in-memory `AVComposition`s).
+  - Synchronous `AVAssetImageGenerator.copyCGImage` is used only in tests: `ClipCoverExportTests:100` and `ClipCaptionLookExportTests:121, 134`. In the probe, 15 at once on the 14-thread pool all finished (75 images in 0.25 s), so it doesn't wait on the pool. It is not the same family and is left as is. Every product image generator uses the async `image(at:)` or `generateCGImage(s)Asynchronously`.
+- **Red without the change:**
+  - `moreReadersThanPoolThreadsAllFinish`, with `run` and `next` made inline (no queue, no preference): it printed nothing, and the watchdog ended it after 60 s idle (`--idle-seconds 60`). Its sample shows all 14 cooperative threads in `copyNextSampleBuffer`, under `loopSamples` and `providerSamples`. With the helper it passes in 0.07 s.
+  - `copyNext` off the queue: with the inspector's read inline on the main actor, `theInspectorReadsARealRecordingAndRefusesABrokenOne` stops the test process with SIGTRAP (signal 5) at once.
+  - The guard: with a stray `copyNextSampleBuffer()` added to `ExportChecker.swift` and a stray `provider.next()` to `MusicBedTests.swift`, `everyReaderPullGoesThroughTheReadQueue` fails with 2 issues.
+- **New tests:**
+  - `MediaReadQueueTests` (3): `moreReadersThanPoolThreadsAllFinish` (`activeProcessorCount + 1` readers at once, half loops and half providers), `thePullMatcherFindsBothKinds` and `everyReaderPullGoesThroughTheReadQueue`.
+  - `ContextDemoCaptureTests.theInspectorReadsARealRecordingAndRefusesABrokenOne`: the real inspector had no test; every caller used a fake.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, a fresh `VOXCLIP_DATA_DIR` per run, serial under `nice -n 10` and the watchdog, load average 9–35, swap 26–28 GB of 28):
+  - The named and touched suites under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`: 240 tests in 21 suites passed (283 s). They include `MP4CoverEmbedTests`, `LipsyncResultLengthTests`, `LipsyncResultValidationTests`, `MusicBedTests`, `EffectRenderTests`, `EffectClipControlsTests`, `ClipControlsRenderTests`, `ClipRenderVectorReplayTests`, the Context demo, voice-lab and pipeline suites, and `MediaReadQueueTests`. The `ExportCheck*` suites (4) passed under the strict pool with their expectations unchanged.
+  - Media in full (`--filter VoxClipMediaTests --skip CaptionParityTests`), three runs:
+    - Run 1 hung once: no output for 363 s, and the watchdog ended it. The sample shows no cooperative thread at all and the main thread idle, so every task was suspended, not blocked; an AVAssetWriter's `formatwriter.qtmovie` thread was waiting. Block-buffered stdout hid the test, and without a silent attach (developer mode off, no `sudo -n`) there is no task dump.
+    - Run 2, under a pseudo-terminal (`script -q /dev/null swift test …`, so stdout is line-buffered): 650 tests in 85 suites passed in 1,069 s.
+    - Run 3, the same under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`: 650 tests in 85 suites passed in 1,033 s.
+  - Core: 1,550 tests in 176 suites passed (the 2 known issues). App: 1,072 tests in 83 suites passed.
+  - `rewrite-smoke.sh` (DEBUG): PASSED, 96 scenarios in 633 s, `S-lipsync-fal-short` (the stand-in) included.
+    - The script was given the DEBUG executable this branch built (`.build/debug/VoxClip`, from HEAD). Free disk was 12 GB, under the 15 GB floor for starting a build, and the script without a path rebuilds.
+    - Its first attempt stalled at startup for 20 min at 0 % CPU in `DebugRewriteSmoke.sourceMovie`, before any scenario. `smoke-source-….mov` was open at 96 KB, a video compression and a format writer thread idle, and nothing on the pool. That is `MovieFeed`'s two `requestMediaDataWhenReady` inputs, with no reader involved. The rerun passed.
+  - The `-warn-long-expression-type-checking=300` build flags none of the touched files.
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests (61) pass.
+  - CI 42865670320 (track/v2-reader-off-pool, 7697915a): success, every job. Every macOS Swift test step ran under the watchdog and none fired; `Upload hung Swift test stacks` was skipped.
+    - Core passed in 14 min 44 s and App in 23 min 17 s.
+    - Media passed in 30 min 43 s (18:24:04–18:54:47Z).
+    - CaptionParity passed in 10 min 3 s, and the Release CLI E2E (`MediaCliE2ETests`) in 18 min 51 s.
+- **No CHANGELOG line.** ExportChecker was already off the pool, so an export check couldn't freeze this way before. In the app the other paths changed only where they wait: the waveform's pull, and one first-frame decode that leaves the main thread.
+- **Next package must know.**
+  - Pull an AVAssetReader only through `MediaReadQueue`: `run` + `copyNext` for a synchronous loop, `next` for an output provider. The source scan fails otherwise, and a DEBUG `copyNext` off the queue traps.
+  - The strict pool proves nothing for readers. To test reader concurrency, run more readers than `activeProcessorCount` at once.
+  - Two local idle stalls stay unexplained, both with an AVAssetWriter mid-write and nothing blocked: Media run 1 and the smoke's source movie. Neither involves a reader pull. If CI shows one, read `concurrency-*.txt` for the suspended task.
+  - `MediaSupport.nextSample` is gone. A branch that adds a call to it fails to build after merging this one: rename it to `MediaReadQueue.next`.
+
 ### 2026-11-10 — The smoke settles for the price a chosen voice asks for; the listen line waits for a take (track/v2-smoke-s8)
 
 CI 42788989271 (6667ce7f), Media's `MacUIIntegrationTests` exact pass: S8-exact stopped after [Rewrite Again]. The panel showed "1 phrase in your voice", "Listen, pick a take, then use them.", "Nothing paid yet." and only [Stop]. Locally the same scenario passed 6/6.
