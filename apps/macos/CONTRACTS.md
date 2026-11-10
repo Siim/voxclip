@@ -48,7 +48,7 @@ Round 1 (below) made the measured round's price wait for the take's own video pr
   - **Smoke.** `rewrite-smoke.sh` (DEBUG, no path): 96/96, S12 and S12-exact ok.
   - **Checks.** The `-warn-long-expression-type-checking=250` build flags nothing in the touched files. Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests are clean.
   - **Not run.** No real-window gate (no window path changed), and no live or paid calls.
-  - **CI.** dispatched once on this branch after the local runs; its result is in the next line of this entry once it ends.
+  - **CI.** Run 42749599005 on e8fd2f8a: the macOS job's "Swift test (headless Voice Lab app model)" step passed. That step failed on 97612a6c in CI 42715860857. The job's later steps were still running when this entry was written.
 
 ### 2026-11-09 — The measured wording round's price waits for the take's own video (track/v2-measured-fit-race)
 
