@@ -6,7 +6,7 @@ using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using Xunit;
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
 using VoxClip.App.Services;
 #endif
 
@@ -93,7 +93,7 @@ public sealed class RewriteGenerationTests
         Assert.Contains("var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? \"\", VoiceLabSourceAudio.RewriteSourceAsync);",
             Source("Pages/EditorPage.xaml.cs"));
     }
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
     private static string Fixture => Path.Combine(SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-run-cases.json");
     private static VoiceLabTakeInput Input(string voice = "voice-a", string model = "model-a", uint seed = uint.MaxValue) =>
         new("clearer words", model, voice, "en", seed, "content-key", [0.1f, 0.2f], 48_000, [], new HashSet<string>(),
@@ -139,6 +139,12 @@ public sealed class RewriteGenerationTests
             public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
         }
     }
+    /// <summary>A Rewrite owner fixes its generations to Eleven v4 (<c>RewriteSession.ConfigureGeneration</c>), so the account
+    /// the owner tests discover offers it.</summary>
+    /// <summary>A 401 from a price or a run, with its one fix (RewriteSession.ProviderProblem, Mac ClipTakePlan.nextStep).</summary>
+    private const string RejectedKeyProblem =
+        "ElevenLabs rejected the key (401). Your edits are saved. Check the ElevenLabs key in Settings, then choose Price a take.";
+    private static VoiceLabModel[] OwnerModels => [new(VoiceLabWordingFit.ModelId, "Eleven v4", ["en"], true, false, 5000, 1)];
     private sealed class Harness : IAsyncDisposable
     {
         internal readonly Clock Clock = new();
@@ -228,9 +234,9 @@ public sealed class RewriteGenerationTests
         Assert.False(test.Generation.CanExecute);
     }
     [Theory]
-    [InlineData(0, "Generate Takes", "Generate Again")]
-    [InlineData(0.02, "Generate Takes · ≈ $0.02", "Generate Again · ≈ $0.02")]
-    [InlineData(1.2, "Generate Takes · ≈ $1.20", "Generate Again · ≈ $1.20")]
+    [InlineData(0, "Make take", "Try another")]
+    [InlineData(0.02, "Make take · ≈ $0.02", "Try another · ≈ $0.02")]
+    [InlineData(1.2, "Make take · ≈ $1.20", "Try another · ≈ $1.20")]
     public async Task WholeRunButtonUsesTheFreshQuoteAmount(decimal price, string before, string after)
     {
         await using var test = new Harness(); test.Runner.Price = price;
@@ -280,7 +286,7 @@ public sealed class RewriteGenerationTests
     public async Task EditingDuringInitialDiscoveryQuotesTheLatestInputWithoutAnotherConsentPrompt(string field)
     {
         using var owner = new RewriteSession(Editor(), 10, 12, Envelope(), null);
-        await using var test = new Harness(); owner.ConfigureGeneration(test.Generation);
+        await using var test = new Harness(OwnerModels); owner.ConfigureGeneration(test.Generation);
         test.ReadText = () => owner.NewWords;
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -439,7 +445,7 @@ public sealed class RewriteGenerationTests
     public async Task RenderingAfterExpiryPreparesAndReenablesTheDisplayedButtonWithoutDispatch()
     {
         Assert.Contains("generate.Content = title", Source("Controls/RewritePanel.cs"));
-        Assert.Contains("batch.TakeCount, batch.Kind()", Source("Controls/RewritePanel.cs"));
+        Assert.Contains("VoiceLabCostPresentation.ButtonTitle(actionTitle, null, batch.Kind())", Source("Controls/RewritePanel.cs"));
         Assert.Contains("generate.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && session.CanGenerateAll", Source("Controls/RewritePanel.cs"));
         await using var test = new Harness(); await test.ReadyAsync();
         var expired = test.Generation.Quote!;
@@ -447,11 +453,11 @@ public sealed class RewriteGenerationTests
         test.Runner.BeforePrepare = ct => finish.Task.WaitAsync(ct);
         test.Clock.Now = expired.ExpiresAt;
         Assert.Null(test.Generation.Quote);
-        Assert.Equal("Generate Takes", test.Generation.ButtonTitle);
+        Assert.Equal("Make take", test.Generation.ButtonTitle);
         Assert.False(test.Generation.CanExecute); Assert.True(test.Generation.IsPreparing);
         Assert.Equal(2, test.Runner.Preparations);
         finish.SetResult(); await test.Generation.PendingUpdate;
-        Assert.Equal("Generate Takes · ≈ $0.02", test.Generation.ButtonTitle);
+        Assert.Equal("Make take · ≈ $0.02", test.Generation.ButtonTitle);
         Assert.False(test.Generation.CanExecute);
         test.Generation.MarkEstimateShown(expired); Assert.False(test.Generation.CanExecute);
         test.Generation.MarkEstimateShown(test.Generation.Quote!);
@@ -471,8 +477,8 @@ public sealed class RewriteGenerationTests
         Assert.False(test.Generation.CanExecute);
         if (fail)
         {
-            Assert.Equal("Generate Takes", test.Generation.ButtonTitle);
-            Assert.Equal("ElevenLabs rejected the key (401). Your edits are saved.", test.Generation.Problem);
+            Assert.Equal("Make take", test.Generation.ButtonTitle);
+            Assert.Equal(RejectedKeyProblem, test.Generation.Problem);
             test.Clock.FireDueTimers(); Assert.Equal(2, test.Runner.Preparations);
             test.Runner.PreparationError = null; await test.Generation.DiscoverAsync();
         }
@@ -619,10 +625,10 @@ public sealed class RewriteGenerationTests
         var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         test.Runner.BeforePrepare = async ct => { entered.SetResult(); await resume.Task.WaitAsync(ct); };
         var pending = test.Generation.DiscoverAsync(); await entered.Task;
-        Assert.Equal("Generate Takes", test.Generation.ButtonTitle); Assert.True(test.Generation.IsPreparing); Assert.False(test.Generation.CanExecute);
+        Assert.Equal("Make take", test.Generation.ButtonTitle); Assert.True(test.Generation.IsPreparing); Assert.False(test.Generation.CanExecute);
         test.Runner.PreparationError = new VoiceLabException(VoiceLabErrorKind.Unauthorized);
         resume.SetResult(); await pending;
-        Assert.Equal("ElevenLabs rejected the key (401). Your edits are saved.", test.Generation.Problem);
+        Assert.Equal(RejectedKeyProblem, test.Generation.Problem);
         Assert.Equal(RewriteGenerationPhase.Failed, test.Generation.Phase); Assert.Equal(0, test.Runner.PaidRequests);
         test.Runner.BeforePrepare = null; test.Runner.PreparationError = null;
         await test.Generation.InputsChangedAsync(); Assert.Equal("", test.Generation.Problem); Assert.NotNull(test.Generation.Quote);
@@ -642,7 +648,7 @@ public sealed class RewriteGenerationTests
     {
         await using var test = new Harness(); test.Runner.State = "provider-error";
         await test.ReadyAsync(); await test.GenerateAsync();
-        Assert.Equal("ElevenLabs rejected the key (401). Your edits are saved.", test.Generation.Problem);
+        Assert.Equal(RejectedKeyProblem, test.Generation.Problem);
         Assert.NotEqual(RewriteGenerationPhase.NonePassed, test.Generation.Phase);
         Assert.NotNull(test.Generation.Quote);
     }
@@ -657,7 +663,7 @@ public sealed class RewriteGenerationTests
     {
         var editor = Editor(); var current = true;
         using var owner = new RewriteSession(editor, 10, 12, Envelope(), null, connectorIsCurrent: () => current);
-        await using var test = new Harness(); owner.ConfigureGeneration(test.Generation); await test.ReadyAsync(); await test.GenerateAsync();
+        await using var test = new Harness(OwnerModels); owner.ConfigureGeneration(test.Generation); await test.ReadyAsync(); await test.GenerateAsync();
         switch (reason)
         {
             case "edit": editor.Apply(new EditOperation.Correct("w10", "changed")); break;
@@ -675,7 +681,7 @@ public sealed class RewriteGenerationTests
     public async Task OwnerInstructionWordsAndSettingsChangesCallTheAutomaticQuotePath()
     {
         using var owner = new RewriteSession(Editor(), 10, 12, Envelope(), null);
-        await using var test = new Harness(); owner.ConfigureGeneration(test.Generation); await test.ReadyAsync();
+        await using var test = new Harness(OwnerModels); owner.ConfigureGeneration(test.Generation); await test.ReadyAsync();
         var count = test.Runner.Preparations;
         await owner.SetInstructionAsync("clearer"); await test.Generation.PendingUpdate;
         owner.Edit("better words"); await test.Generation.PendingUpdate;
@@ -687,8 +693,7 @@ public sealed class RewriteGenerationTests
         Assert.Equal("My voice · consent Oct 12", RewriteGenerationBackend.VoiceLabel("My voice", new(2026, 10, 12, 0, 0, 0, TimeSpan.Zero)));
 #endif
     /// <summary>The take run's input comes from the one reviewed hunk, and the source reader gets what the run reads around: the
-    /// window, its two lendable silences, each in its place, and the transcript, on the whole track. Not DEBUG-only: CI runs these
-    /// tests in Release.</summary>
+    /// window, its two lendable silences, each in its place, and the transcript, on the whole track.</summary>
     [Fact]
     public async Task InputBindingUsesOneReviewedHunkBridgesSourceClockAndSelectedVoiceModel()
     {

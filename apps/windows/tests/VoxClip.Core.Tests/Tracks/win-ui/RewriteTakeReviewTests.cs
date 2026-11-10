@@ -3,7 +3,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using Xunit;
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
@@ -114,7 +114,7 @@ public sealed class RewriteTakeReviewTests
         Assert.Contains("Editor.SelectionChanged += GenerationSelectionChanged", session);
         Assert.Contains("Editor.SelectionChanged -= GenerationSelectionChanged", session);
     }
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
     [Fact]
     public async Task FailedCheckedTakePlaysItsMixWithoutChangingSelectionBestOrAcceptance()
     {
@@ -371,24 +371,26 @@ public sealed class RewriteTakeReviewTests
         Assert.False(test.Generation.ReadyToAccept); Assert.False(await test.Session.ApplyTakeAsync());
         Assert.Equal(0, test.PublishCalls); Assert.False(test.Editor.CanUndo);
     }
+    /// <summary>A longer take that can't be cut gets Match video chosen at once, its only valid duration (design.md R2
+    /// "Phrase cards show only controls that can act", Mac <c>autoChooseVideo</c>), so Use is the one action left.</summary>
     [Fact]
-    public async Task ChangedLengthOffersMatchVideoWithoutPreselectionAndRendersIt()
+    public async Task ChangedLengthChoosesMatchVideoAndRendersIt()
     {
         await using var test = new Harness("length-changed"); await test.GenerateAsync();
-        Assert.NotNull(test.Generation.SelectedTakeId); Assert.Null(test.Generation.VideoChoice);
-        Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
+        Assert.NotNull(test.Generation.SelectedTakeId);
+        Assert.Equal(new[] { VoiceLabVideoMode.Retimed }, test.Generation.ValidVideoChoices);
+        Assert.Equal(VoiceLabVideoMode.Retimed, test.Generation.VideoChoice);
+        Assert.Equal(RewriteGenerationPhase.ReadyToAccept, test.Generation.Phase);
         Assert.Contains("0.2 s longer", test.Generation.LengthCopy);
-        Assert.False(test.Generation.ReadyToAccept);
-        Assert.Equal("Choose the video duration for phrase 1.", test.Session.AcceptanceBlocker);
+        Assert.True(test.Generation.ReadyToAccept); Assert.Null(test.Session.AcceptanceBlocker);
         Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Lipsync));
         Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Source));
         Assert.False(test.Generation.CanCut); Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Cut));
         Assert.True(test.Generation.CanRetime); Assert.False(test.Generation.NeedsShorterWording);
+        Assert.Equal(VoiceLabVideoMode.Retimed, test.Generation.VideoChoice);
         Assert.Matches(@"^Keeps this take's natural speech timing, plays source video at 0\.\d\d× and crops in 1\.12×\. Nothing is sent\.$", test.Generation.RetimeCopy);
         Assert.StartsWith("This take is longer than the source window.", test.Generation.KeepSourceCopy);
-        Assert.False(await test.Session.ApplyTakeAsync()); Assert.Equal(0, test.PublishCalls);
-        Assert.True(test.Generation.ChooseVideo(VoiceLabVideoMode.Retimed));
-        Assert.True(test.Generation.ReadyToAccept); Assert.Null(test.Session.AcceptanceBlocker);
+        Assert.Equal(0, test.PublishCalls);
         Assert.True(await test.Session.ApplyTakeAsync(), test.Generation.Problem + " / " + test.Editor.Notice);
         var video = test.Editor.Project.VoiceLab.Segments.Single().Candidates.Single(candidate => candidate.Recipe!.Video.Mode != VoiceLabVideoMode.Source).Recipe!.Video;
         Assert.Equal(VoiceLabVideoMode.ZoomCover, video.Mode);
@@ -396,19 +398,18 @@ public sealed class RewriteTakeReviewTests
         AssertRenderable(test.Editor.Project, VoiceLabVideoDurationOptions.MatchZoom);
     }
     /// <summary>Lead review finding 2: a phrase that fits only with a video cut is priced as fitting, so once paid its take
-    /// must offer a Cut that is accepted and renders, not leave the phrase without a usable video choice.</summary>
+    /// must get a Cut that is accepted and renders, not leave the phrase without a usable video choice. Cut is the first
+    /// valid duration, so it is chosen at once (Mac <c>autoChooseVideo</c>).</summary>
     [Fact]
-    public async Task PaidTakeThatFitsOnlyWithAVideoCutOffersCutAndRendersIt()
+    public async Task PaidTakeThatFitsOnlyWithAVideoCutChoosesCutAndRendersIt()
     {
         await using var test = new Harness("length-cut"); await test.GenerateAsync();
-        Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
-        Assert.Null(test.Generation.VideoChoice); Assert.False(test.Generation.ReadyToAccept);
+        Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.ValidVideoChoices[0]);
+        Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.VideoChoice);
+        Assert.Equal(RewriteGenerationPhase.ReadyToAccept, test.Generation.Phase);
         Assert.Contains("0.2 s shorter", test.Generation.LengthCopy);
         Assert.True(test.Generation.CanCut); Assert.False(test.Generation.NeedsShorterWording);
         Assert.Equal("Removes 0.2 s of video at a pause, like a vlog jump cut. Speech keeps its pace.", test.Generation.CutCopy);
-        Assert.Equal("Choose the video duration for phrase 1.", test.Session.AcceptanceBlocker);
-        Assert.True(test.Generation.ChooseVideo(VoiceLabVideoMode.Cut));
-        Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.VideoChoice);
         Assert.True(test.Generation.ReadyToAccept); Assert.Null(test.Session.AcceptanceBlocker);
         Assert.True(await test.Session.ApplyTakeAsync(), test.Generation.Problem + " / " + test.Editor.Notice);
         var segment = test.Editor.Project.VoiceLab.Segments.Single();
