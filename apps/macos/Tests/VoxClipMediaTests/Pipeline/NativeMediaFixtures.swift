@@ -257,7 +257,7 @@ actor NativeMediaFixtures {
             let reader = try AVAssetReader(asset: composition)
             let provider = reader.outputProvider(for: AVAssetReaderTrackOutput(track: track, outputSettings: nil))
             guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-            while let sample = try await MediaSupport.nextSample(provider) { try await receiver.append(sample) }
+            while let sample = try await MediaReadQueue.next(provider) { try await receiver.append(sample) }
             guard reader.status == .completed else { throw reader.error ?? CocoaError(.fileReadUnknown) }
             receiver.finish()
         }

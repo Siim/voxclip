@@ -66,7 +66,7 @@ public actor AVAudioExtractor: AudioExtractor {
         do {
             guard reader.startReading() else { throw VoxClipError.decodeFailed(reader.error?.localizedDescription ?? "Cannot read audio") }
             progress(0)
-            while let ready = try await MediaSupport.nextSample(provider) {
+            while let ready = try await MediaReadQueue.next(provider) {
                 try Task.checkCancellation()
                 let input = try ready.withUnsafeSampleBuffer { sample in
                     let count = CMSampleBufferGetNumSamples(sample)

@@ -3,12 +3,6 @@ import ImageIO
 import VoxClipCore
 
 enum MediaSupport {
-    static func nextSample(_ provider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>) async throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent>? {
-        try await withTaskExecutorPreference(DispatchQueue.global(qos: .userInitiated)) {
-            try await provider.next()
-        }
-    }
-
     static func audioTrack(in asset: AVAsset, index: Int? = nil) async throws -> AVAssetTrack? {
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         if let index {

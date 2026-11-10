@@ -107,7 +107,7 @@ func verifyVoiceCallerAudio(_ output: URL, expected: VoiceLabOutputPlan) async t
     let provider = reader.outputProvider(for: AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: 48_000, channels: 2)))
     try #require(reader.startReading())
     var samples = [Float](repeating: .nan, count: 4800)
-    while let ready = try await MediaSupport.nextSample(provider) {
+    while let ready = try await MediaReadQueue.next(provider) {
         let start = Int((ready.presentationTimeStamp.seconds * 48_000).rounded())
         try ready.withUnsafeSampleBuffer { sample in
             let block = try #require(CMSampleBufferGetDataBuffer(sample))

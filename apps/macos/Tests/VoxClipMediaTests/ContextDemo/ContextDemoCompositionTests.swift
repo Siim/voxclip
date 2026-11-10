@@ -165,7 +165,7 @@ struct ContextDemoCompositionNativeTests {
         try #require(reader.startReading())
         defer { reader.cancelReading() }
         var result = Data()
-        while let ready = try await MediaSupport.nextSample(provider) {
+        while let ready = try await MediaReadQueue.next(provider) {
             try ready.withUnsafeSampleBuffer { sample in
                 let block = try #require(CMSampleBufferGetDataBuffer(sample))
                 var bytes = Data(count: CMBlockBufferGetDataLength(block))

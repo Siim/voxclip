@@ -96,7 +96,7 @@ enum MusicBedRenderer {
         let provider = reader.outputProvider(for: output)
         var levels = MusicMix.LevelAccumulator(frameSize: Int(rate * MusicMix.frameSeconds))
         guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot read the voice for the music mix") }
-        while let ready = try await MediaSupport.nextSample(provider) {
+        while let ready = try await MediaReadQueue.next(provider) {
             try Task.checkCancellation()
             let samples = try floats(ready)
             levels.append(samples)
@@ -118,7 +118,7 @@ enum MusicBedRenderer {
         var result: [Float] = []
         result.reserveCapacity(Int(min(seconds, ProjectMusic.maximumDuration) * rate) * 2)
         guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot read the music track") }
-        while let ready = try await MediaSupport.nextSample(provider) {
+        while let ready = try await MediaReadQueue.next(provider) {
             try Task.checkCancellation()
             result.append(contentsOf: try floats(ready))
         }

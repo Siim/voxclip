@@ -404,7 +404,7 @@ import VoxClipCore
         try #require(reader.startReading())
         defer { reader.cancelReading() }
         var buffers: Int = 0
-        while let _ = try await MediaSupport.nextSample(provider) { buffers += 1 }
+        while let _ = try await MediaReadQueue.next(provider) { buffers += 1 }
         #expect(buffers > 1)
         print("VOICE_LAB_WRITER inputTimescale=\(timescale) storedTimescale=\(storedScale) decodedBuffers=\(buffers)")
     }

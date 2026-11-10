@@ -156,7 +156,7 @@ enum ContextDemoCompositionAssets {
         guard reader.canAdd(output) else { throw ContextDemoCompositionError.invalidVideo }
         let provider = reader.outputProvider(for: output)
         defer { reader.cancelReading() }
-        guard reader.startReading(), let first = try await MediaSupport.nextSample(provider) else {
+        guard reader.startReading(), let first = try await MediaReadQueue.next(provider) else {
             throw ContextDemoCompositionError.invalidVideo
         }
         let valid = first.withUnsafeSampleBuffer { sample in

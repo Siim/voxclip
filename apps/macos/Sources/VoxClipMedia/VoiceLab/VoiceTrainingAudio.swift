@@ -105,7 +105,7 @@ public enum VoiceTrainingAudio {
             guard reader.startReading() else { throw VoiceLabSourceAudioError.unreadable }
             let levels: VoiceTrainingLevels
             do {
-                levels = try await Self.levels(rate: rate, channels: channels, length: length) { try await MediaSupport.nextSample(provider) }
+                levels = try await Self.levels(rate: rate, channels: channels, length: length) { try await MediaReadQueue.next(provider) }
             } catch {
                 reader.cancelReading()
                 throw error

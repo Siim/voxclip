@@ -16,7 +16,7 @@ private enum ExportedAudio {
         let provider = reader.outputProvider(for: output)
         guard reader.startReading() else { throw reader.error ?? VoxClipError.decodeFailed("test reader") }
         var samples: [Float] = []
-        while let sample = try await MediaSupport.nextSample(provider) {
+        while let sample = try await MediaReadQueue.next(provider) {
             var chunk: [Float] = []
             try ExportLoudnessPass.copy(sample, frames: sample.sampleCount, into: &chunk)
             samples.append(contentsOf: chunk.prefix(2 * sample.sampleCount))

@@ -122,7 +122,7 @@ public enum LipsyncWindowPreparation {
         let frames = Int((range.duration.seconds * 48_000).rounded())
         guard frames >= 144_000, silence >= 0, frames + silence <= 14_400_000 else { throw LipsyncError.invalidInput }
         var pcm = Data(count: (frames + silence) * 2), readFrames = 0
-        while let sample = try await MediaSupport.nextSample(provider) {
+        while let sample = try await MediaReadQueue.next(provider) {
             try Task.checkCancellation()
             let first = Int(((sample.presentationTimeStamp.seconds - range.start.seconds) * 48_000).rounded())
             try sample.withUnsafeSampleBuffer { raw in
@@ -185,7 +185,7 @@ enum LipsyncMezzanine {
                 }
                 frameIndex += 1
             }
-            while let sample = try await MediaSupport.nextSample(provider) {
+            while let sample = try await MediaReadQueue.next(provider) {
                 try Task.checkCancellation()
                 guard let frame = CMReadySampleBuffer<CVReadOnlyPixelBuffer>(sample) else { throw LipsyncError.invalidMedia }
                 try await append(frame)

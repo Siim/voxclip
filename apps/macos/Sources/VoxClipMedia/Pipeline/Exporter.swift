@@ -663,7 +663,7 @@ public actor AVExporter: Exporter {
         guard reader.startReading() else { throw reader.error ?? VoxClipError.decodeFailed("Cannot measure the export audio") }
         defer { if reader.status == .reading { reader.cancelReading() } }
         var frames: Int64 = 0
-        while let sample = try await MediaSupport.nextSample(provider) {
+        while let sample = try await MediaReadQueue.next(provider) {
             try Task.checkCancellation()
             let count = Int(min(Int64(sample.sampleCount), max(0, sampleLimit - frames)))
             guard count > 0 else { continue }
@@ -834,7 +834,7 @@ public actor AVExporter: Exporter {
         let wav = try PCMFile(url: temporary, rate: Int(request.timeline.sampleRate), channels: 2, float: true)
         do {
             guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot read edited audio") }
-            while let ready = try await MediaSupport.nextSample(provider) {
+            while let ready = try await MediaReadQueue.next(provider) {
                 try Task.checkCancellation()
                 let data = try ready.withUnsafeSampleBuffer { sample -> Data in
                     guard let block = CMSampleBufferGetDataBuffer(sample) else { throw VoxClipError.decodeFailed("Missing PCM data") }
@@ -884,7 +884,7 @@ public actor AVExporter: Exporter {
         guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot verify the source audio tail") }
         defer { reader.cancelReading() }
         var end: Int64?
-        while let sample = try await MediaSupport.nextSample(provider) {
+        while let sample = try await MediaReadQueue.next(provider) {
             try Task.checkCancellation()
             end = Int64((sample.presentationTimeStamp.seconds * request.plan.sampleRate).rounded()) + Int64(sample.sampleCount)
         }

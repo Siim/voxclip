@@ -160,7 +160,7 @@ func roundedContainerAudioTailsMatchEditedWAVAndMP4(_ clipped: Bool) async throw
     let provider = reader.outputProvider(for: AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: 48000, channels: 2)))
     try #require(reader.startReading())
     var decoded: Int64 = 0
-    while let sample = try await MediaSupport.nextSample(provider) { decoded += Int64(sample.sampleCount) }
+    while let sample = try await MediaReadQueue.next(provider) { decoded += Int64(sample.sampleCount) }
     try #require(reader.status == .completed)
     try #require(total > decoded, "Rounded source must expose its undecodable tail: total=\(total), decoded=\(decoded)")
     let render = RenderRequest(sourceURL: source, plan: plan,

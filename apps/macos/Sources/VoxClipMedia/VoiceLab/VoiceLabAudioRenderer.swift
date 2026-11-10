@@ -312,7 +312,7 @@ enum VoiceLabAudioRenderer {
         guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot decode Voice Lab source") }
         var written: Int64 = 0
         do {
-            while let sample = try await MediaSupport.nextSample(provider) {
+            while let sample = try await MediaReadQueue.next(provider) {
                 try Task.checkCancellation()
                 let count = Int(sample.sampleCount)
                 let exactPTS = sample.presentationTimeStamp.seconds * rate

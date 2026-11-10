@@ -90,7 +90,7 @@ enum ClipVoiceRenderer {
         output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)
         guard reader.startReading() else { throw reader.error ?? VoxClipError.decodeFailed("Cannot read the clip voice") }
-        while let ready = try await MediaSupport.nextSample(provider) {
+        while let ready = try await MediaReadQueue.next(provider) {
             try Task.checkCancellation()
             try handle(try MusicBedRenderer.floats(ready))
         }

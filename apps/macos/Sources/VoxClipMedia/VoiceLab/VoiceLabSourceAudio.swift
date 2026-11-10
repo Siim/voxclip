@@ -506,7 +506,7 @@ public enum VoiceLabSourceAudio {
         var accumulator = ConversionAccumulator(rate: rate, channels: channels, startSample: startSample,
                                               endSample: endSample, frames: frames, origin: 0.0, silenceGaps: silenceGaps)
         do {
-            while !accumulator.isComplete, let sample = try await MediaSupport.nextSample(provider) {
+            while !accumulator.isComplete, let sample = try await MediaReadQueue.next(provider) {
                 try Task.checkCancellation()
                 try accumulator.append(sample)
             }

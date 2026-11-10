@@ -336,7 +336,7 @@ struct VoiceLabCompositionTests {
         var count: Int64 = 0
         var firstPTS: Double?
         var end = 0.0
-        while let ready = try await MediaSupport.nextSample(provider) {
+        while let ready = try await MediaReadQueue.next(provider) {
             let sampleCount = Int(ready.sampleCount)
             let pts = ready.presentationTimeStamp.seconds
             firstPTS = firstPTS ?? pts
