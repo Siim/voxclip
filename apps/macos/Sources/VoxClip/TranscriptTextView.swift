@@ -1130,8 +1130,9 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
             case "Clips": clipStarts.contains(span.id)
             case "AI words": model.voiceLabPlan?.pieces.contains { piece in
                 guard piece.kind == .synth, let position = model.index(span.id), let rate = model.voiceLabPlan?.sampleRate else { return false }
-                let word = model.words[position]
-                return word.start >= Double(piece.sourceStartSample) / rate && word.end <= Double(piece.sourceEndSample) / rate
+                // The piece's own samples, against the word's on the same grid (voice-lab §10.1).
+                let word = model.words[position], grid = VoiceLabSampleGrid(rate: rate)
+                return grid.sample(word.start) >= Double(piece.sourceStartSample) && grid.sample(word.end) <= Double(piece.sourceEndSample)
             } ?? false
             default: false
             }
@@ -1221,9 +1222,9 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     }
     private func aiModified(_ span: TranscriptSpan) -> Bool {
         guard let model, !span.pause, let position = model.index(span.id) else { return false }
-        let word = model.words[position]
+        let word = model.words[position], rate = model.sourceGrid.rate
         return model.project.voiceLab.segments.contains { segment in
-            segment.enabled && segment.hasAISpeech && word.start >= segment.replace.start && word.end <= segment.replace.end
+            segment.enabled && segment.hasAISpeech && segment.replace.covers(start: word.start, end: word.end, rate: rate)
         }
     }
     private func accessibilityStates(_ span: TranscriptSpan) -> [String] {
@@ -1368,10 +1369,11 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     @objc private func rewriteWords() { model?.runRewrite() }
     private var voiceLabSegment: VoiceLabSegment? {
         guard let model else { return nil }
+        let rate = model.sourceGrid.rate
         return model.project.voiceLab.segments.first { segment in
             model.selectedWordIDs.contains { id in
                 guard let position = model.index(id) else { return false }
-                return model.words[position].start >= segment.replace.start && model.words[position].end <= segment.replace.end
+                return segment.replace.covers(start: model.words[position].start, end: model.words[position].end, rate: rate)
             }
         }
     }

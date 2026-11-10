@@ -1,5 +1,47 @@
 # macOS implementation contracts
 
+### 2026-11-10 — The transcript shows AI coverage on the source sample grid (track/v2-sample-grid-display)
+
+This settles the owed item from the sample-grid package (the entry below): the App display still compared words with a replace range in seconds. A segment stored on the grid could therefore show a touching off-grid word as not covered, by under a sample. Such segments now get past Use. Rule: voice-lab §10.1.
+
+- **Changed (App):** each check now uses the Core's `VoiceLabSampleGrid` at the source's own rate, `project.media.source.audio?.sampleRate ?? 48_000`, the rate `VoiceLabProject.validate` and the output planner use. The new `EditorModel.sourceGrid` returns that grid.
+  - `TranscriptRenderer` `aiWordIDs` (the AI underline and marker, and the AI waveform line), via `covers(start:end:rate:)`.
+  - `TranscriptNSTextView`:
+    - `aiModified` (the spoken "AI modified", and no "cut" on AI words), via `covers`;
+    - `voiceLabSegment` (the menu's Turn off, Delete AI passage and Choose take, and their validation), via `covers`;
+    - the "AI words" rotor: the word's rounded samples against the synth piece's own `sourceStartSample`/`sourceEndSample`, at the plan's rate.
+  - `ExplorerOutline`'s AI dot and `containsAISpeech(clipID:)` (the export disclosure name and the viewer's "AI modified" tag), via `grid.overlaps`, the output planner's clip filter.
+  - `prepareVoiceChangeReview`: each payload range lies inside the window, checked as rounded samples against `window.startSample`/`endSample`.
+- **Changed (Media):** `VoiceChangeFinisher` picked a segment's words in seconds. A selected word touching the window's edge off the grid was dropped: the finish refused with `invalidInput`, or named a first word that the Core's validation then rejected. It now uses the grid.
+- **Left in seconds, and why:**
+  - `ViewerSection.tag` tests whether the playhead time lies in a range: a point, not a word.
+  - `TranscriptOverviewRuler` marks are drawing positions.
+  - The voice change scope's check against existing replacements stays in seconds, like the validator's `overlappingReplacement` rule (§8.4 step 6). Both sides are sample ÷ rate there.
+  - The voice change scope's cut-pause overlap with the window: pauses lie between words, so this checks a pause against the passage, not a touching word.
+  - `DebugTranscriptPixels` finds a word in the on-grid fixture's synth piece. It is a DEBUG probe, not a display.
+  - `ClipTakePlan.swift` has no such check. It was not edited (another package owns it).
+- **Tests.**
+  - New `TranscriptSampleGridTests`:
+    - `aWordTouchingAStoredEdgeOffTheGridShowsAsTheAIsWords`: the passage fixture at 48 kHz, its range stored on the grid. w4 starts one ulp, or exactly half a sample, before the stored start, or w5 ends one ulp after the stored end. Each shows as covered: `aiWordIDs`, the spoken state, the menu and the rotor. A w5 that crosses the end by 2.5 samples stays uncovered.
+    - `aClipTouchingTheStoredEndFromInsideCarriesNoAISpeech`: a boundary one ulp or half a sample before the stored end. The clip and paragraph after it carry no AI disclosure or dot; the clip over the passage still does.
+  - New `VoiceChangeFinisherTests.wordsTouchingTheWindowOffTheGridAreTheSegmentsWords` (half a sample or one ulp): the segment names w4–w5 and validates.
+  - `ExplorerTests.aiVoiceDotsFollowEnabledSpeechOverlappingEachParagraph` now uses the grid as its oracle.
+  - Red without the change:
+    - App, with the four display files reverted: 12 issues. Every covered case fails; the crossing case passes either way.
+    - The rotor alone reverted: 2 issues, the start cases.
+    - Media, the finisher reverted: both cases fail with `invalidInput`.
+  - `prepareVoiceChangeReview` has no new test: the finisher stores the range and the window from the same samples, so the two rules agree there.
+- **Windows:** the twin is in apps/windows/CONTRACTS.md (same date).
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`, load average 13–270):
+  - Core: 1 550 tests in 176 suites pass (the 2 known issues).
+  - App: 1 067 tests in 83 suites pass.
+  - Media: 650 tests in 85 suites pass.
+    - A first Media run hung at 0 % CPU in `ContextDemoZoomCoverNativeTests.aFreeTryAgainRefetchesThePaidResultWithoutASecondSubmit`, blocked in AVAssetReader `copyNextSampleBuffer` under `LipsyncResultConformer`. That path does not touch this change.
+    - Alone, it passed in 4.3 s. The full rerun passed.
+  - The 300 ms long-expression build flags nothing in a touched file.
+  - Both `check_drift.py`, `validate.py` and the voice-lab unittests pass, with the tree clean.
+  - No real-window gate was run: the change is in what the transcript computes, and headless tests cover it.
+
 ### 2026-11-10 — Words meet a replace range on the source sample grid: seams at cuts and touching words off the grid place and pass Use (track/v2-sample-grid-range)
 
 The seam package's owed item (the 2026-11-09 "A seam at a cut" entry). The fit and the recipe store a window's edges as sample ÷ rate (fit-README Round 4), but `VoiceLabProject.validate`, the output planner and the reference model compared words with the range in exact seconds. A touching word boundary off the grid therefore always had a word crossing the stored edge by under a sample. `place` refused that case for a seam at a cut (`storedAtCut`, `windowCrossesWord`; 6 of 288 rewrite-style reviews on the user's clip, from a transcript time stored as 15.655000000000001). A hard seam at a touching *kept* word placed, then failed at Use with `invalidRange`. Spec: voice-lab §10.1 "Words meet a replace range on the source sample grid", §8.4 steps 4–5, §15 test 3.

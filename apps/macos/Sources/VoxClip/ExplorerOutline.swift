@@ -38,13 +38,14 @@ extension WorkspaceShell {
         guard let editor, !showsHome else { return [] }
         let words = editor.words
         let scope = editor.scopeBounds.map { $0.lowerBound..<($0.upperBound + 1) } ?? 0..<words.count
+        let grid = editor.sourceGrid
         return TranscriptParagraphs.split(words: words).enumerated().compactMap { index, range in
             guard range.overlaps(scope) else { return nil }
             let start = words[range.lowerBound].start, end = words[range.upperBound - 1].end
             return ExplorerOutlineEntry(id: index, words: range, time: TranscriptGutter.timecode(start),
                 title: words[range.prefix(6)].map { editor.text($0) }.joined(separator: " "),
                 pendingHunk: outlineHasPendingHunk?(range) ?? false,
-                aiVoice: editor.project.voiceLab.segments.contains { $0.enabled && $0.replace.start < end && $0.replace.end > start })
+                aiVoice: editor.project.voiceLab.segments.contains { $0.enabled && grid.overlaps(start, end, start: $0.replace.start, end: $0.replace.end) })
         }
     }
 

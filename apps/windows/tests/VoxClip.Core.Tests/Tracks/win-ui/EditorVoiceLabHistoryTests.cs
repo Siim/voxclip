@@ -445,6 +445,49 @@ public sealed class EditorVoiceLabHistoryTests
         editor.SetMediaUnavailable(true);
         Assert.Empty(DebugVoiceLabActions.For(editor, true).Actions);
     }
+
+    /// <summary>A word touching the stored range off the source grid, by under a sample, is the AI's (voice-lab §10.1): the
+    /// transcript shows it as AI modified and its menu offers the AI passage. The fit stores the range's edges as sample ÷
+    /// rate; w4 starts one ulp or half a sample before the stored start, or w5 ends one ulp after the stored end. A w5 that
+    /// really crosses the end by 2.5 samples stays the recording's. The Mac twin is TranscriptSampleGridTests.</summary>
+    [Theory]
+    [InlineData("startOneUlp", true)]
+    [InlineData("startHalfSample", true)]
+    [InlineData("endOneUlp", true)]
+    [InlineData("endCrosses", false)]
+    public void DebugMenuMeetsTheRangeOnTheSourceGrid(string touch, bool covered)
+    {
+        const int rate = 48_000, startSample = 124_799, endSample = 148_800;
+        double lower = startSample / (double)rate, upper = endSample / (double)rate;
+        var fixture = Fixture();
+        var segments = fixture.VoiceLab.Segments.Select(segment => segment.Id == "vl-passage"
+            ? segment with { Replace = segment.Replace with { Start = lower, End = upper } } : segment).ToArray();
+        var words = fixture.Transcript!.Words.Select(word => (word.Id, touch) switch
+        {
+            ("w4", "startOneUlp") => word with { Start = Math.BitDecrement(lower) },
+            ("w4", "startHalfSample") => word with { Start = (startSample - 0.5) / rate },
+            ("w5", "endOneUlp") => word with { End = Math.BitIncrement(upper) },
+            ("w5", "endCrosses") => word with { End = upper + 2.5 / rate },
+            _ => word
+        }).ToArray();
+        var project = fixture with
+        {
+            Media = fixture.Media with { Source = fixture.Media.Source with { Audio = new(rate, 1) } },
+            Transcript = fixture.Transcript with { Words = words },
+            VoiceLab = fixture.VoiceLab with { Segments = segments }
+        };
+        var grid = new VoiceLabSampleGrid(rate);
+        var edge = touch.StartsWith("start", StringComparison.Ordinal) ? words.Single(word => word.Id == "w4") : words.Single(word => word.Id == "w5");
+        if (touch.StartsWith("start", StringComparison.Ordinal)) Assert.True(edge.Start < lower && grid.Sample(edge.Start) == startSample);
+        else if (covered) Assert.True(edge.End > upper && grid.Sample(edge.End) == endSample);
+        else Assert.Equal(endSample + 3, grid.Sample(edge.End));
+        var editor = Editor(project);
+        Assert.True(editor.PresentedWord(editor.Index("w4")).AiModified);
+        editor.Select(editor.Index(edge.Id));
+        var actions = DebugVoiceLabActions.For(editor, true).Actions.Select(action => action.Id).ToArray();
+        Assert.Equal(covered, actions.Contains("VoiceLab.Delete"));
+        if (covered) Assert.True(segments.Single(segment => segment.Id == "vl-passage").Replace.Covers(edge.Start, edge.End, rate));
+    }
 #endif
 }
 #endif

@@ -394,10 +394,12 @@ extension EditorModel {
     static func prepareVoiceChangeReview(snapshot: VoiceChangeSession.Snapshot, prepared: VoiceChangeSession.Prepared,
                                         payload: VoiceChangeSession.Payload, paidRoot: URL,
                                         services: VoiceChangeSession.Services) throws -> VoiceChangeSession.Review {
+        // Each range lies inside the window on the source sample grid, where both store their edges (§10.1).
+        let grid = VoiceLabSampleGrid(rate: Double(snapshot.sampleRate))
         guard !payload.segments.isEmpty, payload.voice.consentRecordId == prepared.record.id,
               payload.voice.voiceId == prepared.record.voiceId, payload.voice.status == .active,
               payload.segments.allSatisfy({ $0.kind == .voiceChanger && $0.enabled && $0.text == nil && $0.words == nil &&
-                  $0.replace.start >= snapshot.window.start && $0.replace.end <= snapshot.window.end &&
+                  grid.sample($0.replace.start) >= Double(snapshot.window.startSample) && grid.sample($0.replace.end) <= Double(snapshot.window.endSample) &&
                   $0.provenance.voiceId == prepared.record.voiceId && $0.provenance.consentRecordId == prepared.record.id }),
               Set(payload.segments.flatMap { segment in segment.candidates.compactMap(\.recipe).flatMap(\.chunks).map(\.requestId) }) == Set(prepared.requests.map { $0.quote.requestID.uuidString }) else {
             throw VoiceChangeSession.Failure.invalidReview

@@ -420,7 +420,7 @@ import Testing
         #expect(shell.outlineEntries.contains { $0.aiVoice })
         for entry in shell.outlineEntries {
             let start = editor.words[entry.words.lowerBound].start, end = editor.words[entry.words.upperBound - 1].end
-            let overlaps = project.voiceLab.segments.contains { $0.enabled && $0.replace.start < end && $0.replace.end > start }
+            let overlaps = project.voiceLab.segments.contains { $0.enabled && editor.sourceGrid.overlaps(start, end, start: $0.replace.start, end: $0.replace.end) }
             #expect(entry.aiVoice == overlaps)
             if entry.aiVoice { #expect(entry.accessibilityLabel.contains("AI voice")) }
         }

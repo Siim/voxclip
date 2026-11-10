@@ -14,9 +14,11 @@ internal sealed class DebugVoiceLabActions(Project snapshot, IReadOnlyList<Debug
     {
         var snapshot = editor.Project;
         if (!enabled || editor.IsReadOnly || editor.IsLeaving || editor.Busy || !editor.HasSelection) return new(snapshot, []);
+        // A selected word meets the range on the source sample grid, as the Core validates it (voice-lab §10.1).
+        var rate = (double)(snapshot.Media.Source.Audio?.SampleRate ?? 48_000);
         var segment = snapshot.VoiceLab.Segments.FirstOrDefault(segment => editor.Words
             .Skip(editor.SelectionStart).Take(editor.SelectionEnd - editor.SelectionStart + 1)
-            .Any(word => word.Start >= segment.Replace.Start && word.End <= segment.Replace.End));
+            .Any(word => segment.Replace.Covers(word.Start, word.End, rate)));
         if (segment is null) return new(snapshot, []);
         var actions = new List<DebugVoiceLabAction>
         {
