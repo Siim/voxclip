@@ -42,7 +42,8 @@ public struct ExportChecker: Sendable {
         if transcript?.engine.id == .appleSpeech {
             let apple = AppleSpeechTranscriber(locations: locations)
             let plan = TranscriptionPlan(engine: .appleSpeech, language: language)
-            if await apple.supports(language, model: nil), await apple.readiness(for: plan) == .ready {
+            // Ready implies supported: one locale lookup, so a speech service that doesn't answer costs one bound, not two.
+            if await apple.readiness(for: plan) == .ready {
                 return Hearing(transcriber: apple, plan: plan)
             }
         }

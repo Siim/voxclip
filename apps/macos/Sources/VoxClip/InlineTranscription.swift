@@ -84,6 +84,8 @@ import VoxClipMedia
     var warning: String { AppDelegate.retranscriptionWarning(for: model.project) }
     var cancelTitle: String { again ? "Cancel" : "Not now" }
     var needsDownload: Bool { if case .needsModels = readiness { return true }; if case .needsSystemAssets = readiness { return true }; return false }
+    /// Apple Speech gave no locale answer in time: not ready, never unsupported. Retry asks again; Whisper and ElevenLabs stay choosable.
+    var speechDidNotAnswer: Bool { readiness == .unavailable(reason: AppleSpeechTranscriber.noAnswerReason) }
     var mediaReady: Bool {
         model.capabilities.writable && model.mediaUsable && (model.mediaChecked || model.document.demo)
             && model.sourceDuration.isFinite && model.sourceDuration > 0
@@ -91,9 +93,10 @@ import VoxClipMedia
     var canStart: Bool {
         guard mediaReady, phase == .choosing, readiness != nil, !savingKey else { return false }
         if paid { return hasKey && estimate != nil }
-        return readiness == .ready || needsDownload
+        return readiness == .ready || needsDownload || speechDidNotAnswer
     }
     var primaryTitle: String {
+        if speechDidNotAnswer { return "Retry" }
         if again && !againConfirmed { return "Transcribe Again" + (paid ? " · " + price : "") }
         if paid { return (error == nil ? "Upload and Transcribe" : "Retry") + " · " + price }
         if downloadFailed || downloadCancelled || error != nil { return "Retry" }
@@ -235,7 +238,9 @@ import VoxClipMedia
             readiness = status
             if case .needsKey = status { hasKey = false }
             if case .unsupportedLanguage = status { error = language == "auto" ? "Which language is spoken?" : "\(engine == "apple" ? "Apple Speech" : "Whisper") can't transcribe \(languageName)." }
-            if case .unavailable = status { error = "Transcription is not available in this build. Your video and edits are still here." }
+            if case .unavailable(let reason) = status {
+                error = reason == AppleSpeechTranscriber.noAnswerReason ? reason : "Transcription is not available in this build. Your video and edits are still here."
+            }
             keyGuard.reset()
         } catch {
             let message = await model.app.safeError(error)
@@ -287,6 +292,7 @@ import VoxClipMedia
     /// The click is approval. Saving a key, consent already on disk and download completion never reach a paid send.
     func activate() {
         guard canStart else { return }
+        if speechDidNotAnswer { choicesChanged(); return }
         guard terms.count <= 100, !terms.contains(where: { $0.count > 50 }) else { error = "Use at most 100 keyterms, each up to 50 characters."; return }
         downloadBaseline = !paid && needsDownload ? model.project : nil
         if again && !againConfirmed {

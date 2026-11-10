@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 @testable import VoxClip
 @testable import VoxClipCore
+@testable import VoxClipMedia
 
 private actor InlineTranscriptionKeys: ProviderKeyStore {
     var keyed = false
@@ -132,6 +133,44 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         await model.transcription.openOnImport()
         #expect(model.transcription.phase == .choosing && model.transcription.language == "auto")
         #expect(model.transcription.error == "Which language is spoken?" && !model.transcription.canStart)
+    }
+    /// Apple Speech that doesn't answer in time is not ready, never unsupported (design.md §7.1 "Engine"): the block says so and
+    /// Retry asks again, starting nothing; the other engines stay choosable.
+    @Test func appleSpeechThatDoesNotAnswerSaysSoAndRetryAsksAgain() async throws {
+        let model = try editor(); defer { model.close() }
+        let noAnswer = Readiness.unavailable(reason: AppleSpeechTranscriber.noAnswerReason)
+        var answers: [Readiness] = [noAnswer, .ready], asked: [TranscriptionPlan] = [], runs = 0
+        model.transcription.readinessOverride = { plan in asked.append(plan); return answers.isEmpty ? .ready : answers.removeFirst() }
+        let result = try transcript()
+        model.transcription.runOverride = { _ in runs += 1; return result }
+        await model.transcription.openOnImport()
+        let flow = model.transcription
+        #expect(flow.phase == .choosing && flow.engine == "apple" && runs == 0)
+        #expect(flow.error == "Apple Speech didn't answer. Try again, or choose On this Mac.")
+        #expect(flow.sendLine == flow.error && flow.primaryTitle == "Retry" && flow.canStart)
+        flow.activate()
+        await flow.choiceTask?.value
+        #expect(asked.count == 2 && asked.allSatisfy { $0.engine == .appleSpeech } && runs == 0)
+        #expect(flow.readiness == .ready && flow.error == nil && flow.primaryTitle == "Transcribe" && flow.phase == .choosing)
+        // Another engine's unavailable reason keeps its own copy and its disabled primary.
+        flow.readinessOverride = { _ in .unavailable(reason: "Choose a catalogue model") }
+        flow.engine = "local"; flow.choicesChanged()
+        await flow.choiceTask?.value
+        #expect(flow.error == "Transcription is not available in this build. Your video and edits are still here." && !flow.canStart)
+    }
+    @Test func settingsAppleSpeechRowSaysWhenTheServiceDoesNotAnswer() async throws {
+        let model = try editor(); defer { model.close() }
+        let assets = model.app.appleSpeechAssets
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-apple-speech-row-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        // A service that never answers: the stream stays open until the test ends; the bound's cancellation ends the wait.
+        let (service, hold) = AsyncStream<Locale?>.makeStream(); defer { hold.finish() }
+        let never = AppleSpeechLocaleSource(isAvailable: { true }, preferredLanguages: { ["en-GB"] },
+            resolve: { _ in for await answer in service { return answer }; return nil }, bound: .milliseconds(100))
+        assets.engine = AppleSpeechTranscriber(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]), localeSource: never)
+        // A missing bound fails here instead of holding the suite.
+        _ = try await TestDeadline.value(Task { await assets.check("en") }, "Apple Speech row check", timeout: .seconds(20))
+        #expect(assets.state == .noAnswer && assets.statusText == "Apple Speech didn't answer. Try again, or choose On this Mac.")
     }
     @Test func reopeningDisablesStaleReadinessAndResetsReturnBeforeTheKeyLookup() async throws {
         let model = try editor(); defer { model.close() }

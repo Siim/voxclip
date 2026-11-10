@@ -4,7 +4,7 @@ import VoxClipCore
 import VoxClipMedia
 
 @MainActor @Observable final class AppleSpeechAssetLibrary {
-    enum State: Equatable { case chooseLanguage, checking, installed, needsDownload, downloading, unsupported, unavailable }
+    enum State: Equatable { case chooseLanguage, checking, installed, needsDownload, downloading, unsupported, unavailable, noAnswer }
     private(set) var language = ""
     private(set) var state = State.checking
     private(set) var fraction: Double?
@@ -29,6 +29,7 @@ import VoxClipMedia
         case .downloading: return "Downloading Apple's \(name) speech model…"
         case .unsupported: return "Apple Speech can't transcribe \(name)."
         case .unavailable: return "Apple on-device speech isn't available on this Mac."
+        case .noAnswer: return AppleSpeechTranscriber.noAnswerReason
         }
     }
 
@@ -45,6 +46,7 @@ import VoxClipMedia
         case .ready: state = .installed
         case .needsSystemAssets: state = .needsDownload
         case .unsupportedLanguage: state = .unsupported
+        case .unavailable(AppleSpeechTranscriber.noAnswerReason): state = .noAnswer
         default: state = .unavailable
         }
     }
@@ -91,6 +93,7 @@ import VoxClipMedia
                     ProgressView(value: assets.fraction).frame(width: 120)
                     Button("Cancel") { assets.task?.cancel() }
                 case .installed: Text("Installed ✓")
+                case .noAnswer: Button("Retry") { Task { await assets.check(assets.language) } }
                 default: EmptyView()
                 }
             }

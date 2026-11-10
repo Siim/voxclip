@@ -7,15 +7,25 @@ import VoxClipCore
 public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
     public nonisolated let engine: TranscriptEngine = .appleSpeech
     private let locations: DataLocations
+    private let localeSource: AppleSpeechLocaleSource
     private var active = false
-    public init() { locations = DataLocations() }
-    public init(locations: DataLocations) { self.locations = locations }
+    /// Readiness when the system speech service gives no locale answer within the bound (design.md §7.1 "Engine").
+    public static let noAnswerReason = "Apple Speech didn't answer. Try again, or choose On this Mac."
+    public init() { locations = DataLocations(); localeSource = .system }
+    public init(locations: DataLocations) { self.locations = locations; localeSource = .system }
+    init(locations: DataLocations, localeSource: AppleSpeechLocaleSource) { self.locations = locations; self.localeSource = localeSource }
     public nonisolated func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .runGrouped, verbatim: false, autoLanguage: false, onDevice: true) }
+    /// No answer from the speech service is not "unsupported": the language may well be supported, so `readiness` says not ready.
     public func supports(_ language: LanguageChoice, model: String?) async -> Bool {
-        await locale(for: language) != nil
+        await localeSource.lookup(language) != .unsupported
     }
     public func readiness(for plan: TranscriptionPlan) async -> Readiness {
-        guard let locale = await locale(for: plan.language) else { return .unsupportedLanguage("Choose a supported Apple Speech locale") }
+        let locale: Locale
+        switch await localeSource.lookup(plan.language) {
+        case .locale(let found): locale = found
+        case .unsupported: return .unsupportedLanguage("Choose a supported Apple Speech locale")
+        case .noAnswer: return .unavailable(reason: Self.noAnswerReason)
+        }
         let transcriber = module(locale)
         switch await AssetInventory.status(forModules: [transcriber]) {
         case .installed: return .ready
@@ -28,7 +38,7 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         guard plan.engine == engine else { throw SpeechErrorCopy.unsupported(engine, language: plan.language) }
         let reporter = SpeechProgressLimiter(callback: progress)
         defer { reporter.cancel() }
-        guard let locale = await locale(for: plan.language) else { throw SpeechErrorCopy.unsupported(engine, language: plan.language) }
+        let locale = try await locale(for: plan.language)
         try await AppleSpeechAssets.prepare(locale: locale.identifier(.bcp47), operation: {
             try await self.prepareAssets(locale, reporter: reporter)
         }, reserve: { try await self.reserve(locale) }, release: { try await self.releaseOldest(excluding: locale) })
@@ -52,7 +62,7 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         }
     }
     public func cacheIdentity(for plan: TranscriptionPlan) async throws -> EngineRef {
-        guard let locale = await locale(for: plan.language) else { throw SpeechErrorCopy.unsupported(engine, language: plan.language) }
+        let locale = try await locale(for: plan.language)
         return EngineRef(id: .appleSpeech, engineVersion: "macOS \(SpeechRuntimeVersion.macOS) Speech", locale: locale.identifier(.bcp47))
     }
     public func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
@@ -60,7 +70,8 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         guard !active else { throw VoxClipError.transcriptionFailed("This Apple Speech engine is already transcribing") }
         active = true
         defer { active = false }
-        guard request.plan.engine == engine, let locale = await locale(for: request.plan.language) else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
+        guard request.plan.engine == engine else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
+        let locale = try await locale(for: request.plan.language)
         guard request.audio.durationSeconds.isFinite, request.audio.durationSeconds > 0 else { throw VoxClipError.noSpeech }
         await AppleSpeechLocaleUsage.shared.begin(locale.identifier(.bcp47))
         defer {
@@ -89,10 +100,15 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         }
         throw VoxClipError.transcriptionFailed("Apple Speech authorization")
     }
-    private func locale(for language: LanguageChoice) async -> Locale? {
-        guard Speech.SpeechTranscriber.isAvailable else { return nil }
-        return await AppleSpeechLocaleResolver.locale(for: language, preferredLanguages: Locale.preferredLanguages) {
-            await Speech.SpeechTranscriber.supportedLocale(equivalentTo: $0)
+    /// The language's locale, or the error that stops the step: unsupported, or no answer within the bound. The lookup writes
+    /// nothing, so a timeout leaves the locale ledger as it was.
+    private func locale(for language: LanguageChoice) async throws -> Locale {
+        switch await localeSource.lookup(language) {
+        case .locale(let locale): return locale
+        case .unsupported: throw SpeechErrorCopy.unsupported(engine, language: language)
+        case .noAnswer:
+            if Task.isCancelled { throw VoxClipError.cancelled }
+            throw VoxClipError.transcriptionFailed("Apple Speech didn't answer")
         }
     }
     private func module(_ locale: Locale) -> Speech.SpeechTranscriber {
