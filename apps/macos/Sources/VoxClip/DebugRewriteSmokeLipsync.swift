@@ -86,7 +86,7 @@ extension DebugRewriteSmoke {
                    voiced: 1, fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(exactFit: true))) { harness in
             let fal = try harness.installFalShortResult()
             try await harness.start()
-            try await harness.click(["prepareTakes", "makeTakes"])
+            try await harness.getPrice()
             try await harness.click(["takeQuote-"])
             if harness.session?.task.confirm != nil { try await harness.click(["approveTakeQuote"]) }
             guard let session = harness.session, let plan = session.takePlan, !plan.phrases.isEmpty else {

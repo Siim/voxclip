@@ -666,7 +666,26 @@ import VoxClipCore
 
         /// Waits until the session has nothing in flight but a scripted reply the scenario holds. The limit only stops a
         /// session that never settles; a slow runner (hosted CI) can take 20 s and more for one automatic fix.
+        ///
+        /// Finding the voices once a proposal shows (`ensureGeneration`) chooses one, and a chosen voice asks for a price at
+        /// once (`RewriteGenerationSession.requestQuote`, then `prepareTakes`): that is the session's own work too, so the
+        /// step settles again for it. Without that, a step could read the panel halfway through the price, with only Stop
+        /// (CI 42788989271, S8-exact after Rewrite Again). The price is free and bounded like any other preparation, so
+        /// waiting for it never waits on the user; a held scripted reply still ends the wait (`busyReason`).
         func settle(timeout: Double = 90) async {
+            var settled = await waitUntilCalm(timeout: timeout)
+            for _ in 0..<3 {
+                let discovering = ProcessInfo.processInfo.systemUptime
+                await ensureGeneration()
+                waits["voices", default: 0] += ProcessInfo.processInfo.systemUptime - discovering
+                unsettled = await busyReason()
+                guard settled, unsettled != nil else { break }
+                settled = await waitUntilCalm(timeout: timeout)
+            }
+            recordFitting()
+        }
+        /// One wait for five calm polls in a row: false when `timeout` (300 s more while takes generate) ran out first.
+        private func waitUntilCalm(timeout: Double) async -> Bool {
             let start = ProcessInfo.processInfo.systemUptime
             var calm = 0
             var last = start
@@ -688,11 +707,10 @@ import VoxClipCore
                 if now - start >= generatingLimit + timeout || (!generating && now - phaseStart >= timeout) { break }
             }
             if !settled { DebugRewriteSmoke.progress("\(scenario) stopped settling after \(DebugRewriteSmoke.seconds(ProcessInfo.processInfo.systemUptime - start)), still busy") }
-            let discovering = ProcessInfo.processInfo.systemUptime
-            await ensureGeneration()
-            waits["voices", default: 0] += ProcessInfo.processInfo.systemUptime - discovering
-            recordFitting()
+            return settled
         }
+        /// What was still in flight when the last settle returned; the next observation checks it (I11) and clears it.
+        private var unsettled: String?
         /// Waits since the last observed step, by reason; `observe` moves them onto its step.
         private var waits: [String: Double] = [:]
         /// When the last step ended (or the fixture opened).
@@ -727,6 +745,8 @@ import VoxClipCore
                 if plan.preparingVideo { reasons.append("takes: video") }
             }
             if session.isReasking { reasons.append("reask") }
+            // A chosen voice, model or input asks for a price at once, before any plan marks itself preparing.
+            if (session.generation?.quotePreparationsRunning ?? 0) > 0 { reasons.append("price") }
             if session.wordingFit.running { reasons.append("wording fit") }
             if session.wordingFit.measured?.preparing == true { reasons.append("measuring") }
             if session.takePlan?.lipsync.usingTakes == true { reasons.append("lipsync") }
@@ -801,6 +821,13 @@ import VoxClipCore
             }
             let shown = steps.last.map { DebugRewriteSmoke.summary($0.snapshot) } ?? "nothing shown"
             throw Failure.missing(ids.joined(separator: " or "), shown)
+        }
+
+        /// [Get Price] as a user clicks it, unless the session priced the takes by itself: the scripted voices found once a
+        /// proposal shows choose a voice, which asks for a price at once (`settle`), so the priced Make Takes may already be up.
+        func getPrice() async throws {
+            if session?.takePlan?.approvalID != nil, modelActions().contains(where: { $0.0.id.hasPrefix("takeQuote-") }) { return }
+            try await click(["prepareTakes", "makeTakes"])
         }
 
         /// A step the scenario takes itself (an edit, choosing a take's duration), then the observation.
@@ -1026,7 +1053,12 @@ import VoxClipCore
                 lastPlanVoiced = plan.phrases.map { !$0.takes.isEmpty && $0.blocked == nil }
             }
             var capture: String?
-            let checks = invariants(snapshot, clicked: clicked, paidBefore: paidBefore ?? paid, current: current, tag: tag).map { check in
+            // I11: the step reads the panel once the session's own work is done, not halfway through it (CI 42788989271:
+            // S8-exact read a price being prepared, with only Stop, as a dead end).
+            let settledCheck = Check(invariant: "I11", passed: unsettled == nil,
+                detail: unsettled.map { "observed while \($0) still ran" } ?? "settled")
+            unsettled = nil
+            let checks = (invariants(snapshot, clicked: clicked, paidBefore: paidBefore ?? paid, current: current, tag: tag) + [settledCheck]).map { check in
                 var check = check
                 check.knownFailing = !check.passed && DebugRewriteSmoke.knownFailing[check.invariant] != nil
                 return check
@@ -1209,7 +1241,7 @@ import VoxClipCore
             fixture: Fixture(rewrites: [.passage(replace([("keep the pauses", "preserve all breaks"), ("remove the ones", "cut every one")]))],
                 voice: RewriteSmokeVoiceScript(offset: 0.1))) { harness in
             try await harness.start()
-            try await harness.click(["prepareTakes", "makeTakes"])
+            try await harness.getPrice()
             // Placement merges nearby changes when it can; the user's refusal is a pair it could not merge. When this fixture's
             // pair merged, the plan refuses phrase 2 as the user saw it, as the layout audit's `rewrite-collision` variant does.
             if let session = harness.session, session.takePlanFailure == nil, session.changes.count >= 2 {
@@ -1271,7 +1303,7 @@ import VoxClipCore
         Definition(id: "S7", title: "add an expression while another phrase has paid takes, then remove it",
             fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(offset: -0.15))) { harness in
             try await harness.start()
-            try await harness.click(["prepareTakes", "makeTakes"])
+            try await harness.getPrice()
             try await harness.click(["takeQuote-"])
             if harness.session?.task.confirm != nil { try await harness.click(["approveTakeQuote"]) }
             guard let session = harness.session, let plan = session.takePlan, plan.phrases.count >= 2 else {

@@ -89,7 +89,7 @@ extension DebugRewriteSmoke {
         Definition(id: "S-own-typed", title: "My words: the user types the wording, the cloned voice reads it, Use", voiced: 1,
             fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.start()
-            try await harness.click(["prepareTakes", "makeTakes"])
+            try await harness.getPrice()
             guard let session = harness.session, session.takePlan?.phrases.isEmpty == false else { throw Failure.setup("S-own-typed needs a takes plan") }
             try await harness.act("choose [My words] on phrase 1", clicked: "wording") { session.chooseWording(.ownWords, phrase: 0) }
             try await harness.act("type 'shoot the clip in one go' in My words", clicked: "ownWords") {
@@ -104,7 +104,7 @@ extension DebugRewriteSmoke {
         Definition(id: "S-own-mic", title: "Say it myself: the user records the phrase, it is checked on this Mac, Use", voiced: 1,
             fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.start()
-            try await harness.click(["prepareTakes", "makeTakes"])
+            try await harness.getPrice()
             try await recordOwnTake(harness, factor: 1, step: "click [● Record]")
             try await useOwnTake(harness)
             try await harness.finish()
@@ -112,7 +112,7 @@ extension DebugRewriteSmoke {
         Definition(id: "S-own-mic-misfit", title: "Say it myself runs too long, then Record again fits, Use", voiced: 1,
             fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.start()
-            try await harness.click(["prepareTakes", "makeTakes"])
+            try await harness.getPrice()
             try await recordOwnTake(harness, factor: 2.2, step: "click [● Record]")
             try await recordOwnTake(harness, factor: 1, step: "click [Record again]")
             try await useOwnTake(harness)
