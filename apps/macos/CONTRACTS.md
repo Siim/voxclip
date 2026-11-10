@@ -1,5 +1,55 @@
 # macOS implementation contracts
 
+### 2026-11-10 — The measured round's price waits for everything the landed take started (track/v2-measured-fit-race-2)
+
+Round 1 (below) made the measured round's price wait for the take's own video preparation. Hosted CI 42715860857 on 97612a6c still failed `measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable`, fast this time (9.3 s): "The new wording couldn't be priced.", with the plan's problem "The selected Voice Lab take or output plan changed." See voice-lab §8.2.2 "A reword waits for the take's own video".
+
+- **Diagnostics (App).**
+  - `ClipTakePlan.rewordingRefusal` names the check `prepareRewording` refused on (`notAsked`, `notCurrent`, `noPhrase`, `blocked`, `generating`, `preparing`, `publishing`, `preparingVideo`, `bridge`), nil once a wording is priced.
+  - `publishPurpose` says who is publishing (`video`, `lipsync`, `use`).
+  - `diagnostics` is for tests and logs, never user copy. It holds `String(reflecting:)` of the failure behind `problem` (so an `invalidSelection` shows its step), the video preparation's failure, the busy flags with the publisher, and the refusal. The measured tests print it.
+- **The interleaving** (reproduced deterministically by the new test; the strict pool, `taskpolicy -c background` and running beside the App suite didn't reproduce it by timing):
+  1. The take lands: `start` → `onMeasuredTakesChanged` → `observeMeasuredTakes`. `autoChooseVideo` chooses Match and starts `Task { prepareVideoChoices(); lipsync.refresh() }`. In the same pass, `measuredWork` → `rewordMeasuredTake` asks the AI.
+  2. `runVideoPreparation` → `publishSelection` → `VideoDurationRenderReadiness.prepare` → `VoiceLabRenderPreflight.validate` throws `invalidSelection("source identity")`, and `report` sets the plan's problem.
+     - **Why invalidSelection:** `productionSession` writes a fresh `source.wav` whose size and content key don't match the fixture project's source. So in this fixture the take's own preparation always fails. The reword doesn't cause it, and it isn't a stale step.
+     - In the app, the same path runs whenever that preparation fails, or when only kept-source durations are chosen.
+  3. The same task goes on to `lipsync.refresh` → `makeLipsyncOffers`. No video is prepared, so it calls `publishSelection(onlyChosen: true)`, which sets `publishing` while `backend.publish` awaits. That work is outside `videoPreparation`, which round 1's settle waited for.
+  4. The reply arrives. `prepareRewording` → `settleVideoPreparation` (nothing running) → the `!publishing` guard refuses → "couldn't be priced", with step 2's problem left on the plan.
+     - Diagnostics: `failure invalidSelection("source identity") … busy [publishing(lip sync)] rewordingRefusal publishing`.
+- **The fix (App).**
+  - `prepareRewording` first awaits `settleBackgroundWork()`. It loops until none of these remain:
+    - a `videoPreparation` (and newer choices prepared after it);
+    - `publishing` or `preparingVideo` from anyone: lip sync's offers or preview, Use's `acceptance`, a preparation;
+    - a quote being prepared (`preparing` with its `operation`).
+  - It doesn't wait for a paid run (`generating`), and it returns at once for a retired plan.
+  - `publishing` and `preparingVideo` resume `idleWaiters` in `didSet` when both are clear. A quote whose owner left `preparing` set ends the wait instead of spinning.
+  - `startVideoPreparation` makes a preparation visible to the settle from the moment it is queued, and it clears itself when it ends. `prepareVideoChoices` uses it. So does `publishSelection`'s `defer`, which started an untracked `Task { prepareVideoChoices() }`; a finished task no longer stays in `videoPreparation`.
+  - `RewriteLipsyncSession.refresh` ends a `ClipTakePlan.Failure.stale` quietly: offers cleared, no problem line. The reword makes the offers it was making stale (`bindings == lipsyncBindings`). Before, the panel showed "Choose a passing take and its video duration to prepare lip sync." The refresh after the new take makes fresh offers.
+  - The reword's own `prepareQuote` clears the plan's problem, as before.
+- **Tests.**
+  - New `measuredRewordingWaitsForLipSyncsPublishAfterTheTakeLands`:
+    - It holds lip sync's publish (the fixture's `beforePublish`, now also wrapped around the production backend's `publish`, gated on `publishPurpose == .lipsync`).
+    - The stub connector's reply waits for that hold (`MeasuredFitConnector(hold:)`).
+    - So the CI overlap happens on every pool.
+  - `measuredRewordingWaitsForTheTakesOwnVideoPreparation` and `measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable` print `plan.diagnostics`. No time limit was raised.
+- **Next package.**
+  - To let an automatic step wait for the plan, use `settleBackgroundWork`, not one task: `publishing` and `preparingVideo` are also set outside `videoPreparation`.
+  - Start a video preparation only through `startVideoPreparation`.
+  - A consumer of `ClipTakePlan.Failure.stale` from background work ends quietly.
+- **Verification.** (absolute `VOXCLIP_SHARED_DIR`, `VOXCLIP_NO_KEYCHAIN=1`, isolated `VOXCLIP_DATA_DIR`, `nice -n 10`; load average 13–745 while the user worked)
+  - **Red.** On the diagnostics-only commit, the new test fails with 4 issues, which show CI's signature above. With only the lip sync stale branch reverted, it fails on "Choose a passing take…".
+  - **Repeats.**
+    - The original test: 10/10 under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`, 10/10 without, and 121/121 strict beside a full App suite run (`swiftpm-testing-helper` on the built bundle, which avoids the `.build` lock).
+    - The new test with `measuredRewordingWaitsForTheTakesOwnVideoPreparation`, `measuredAPIRoundWaitsForInlineApprovalAndNeverSynthesizes` (both arguments), `measuredRewordingPreparesButNeverPaysAndDecliningKeepsTheRecording` and the original: 3/3 strict and 3/3 default.
+  - **Suites.**
+    - Core 1,548 / 176 (2 known issues).
+    - App 1,066 / 82, and App strict 1,066 / 82.
+    - Media 649 / 85 with one failure, `ExportSafetyTests.exportPumpsStopAtSampleBoundaries`: its 10 s stop watchdog timed out at load average 250. It passed alone (147 s). This change touches no Media code.
+  - **Smoke.** `rewrite-smoke.sh` (DEBUG, no path): 96/96, S12 and S12-exact ok.
+  - **Checks.** The `-warn-long-expression-type-checking=250` build flags nothing in the touched files. Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests are clean.
+  - **Not run.** No real-window gate (no window path changed), and no live or paid calls.
+  - **CI.** dispatched once on this branch after the local runs; its result is in the next line of this entry once it ends.
+
 ### 2026-11-09 — The measured wording round's price waits for the take's own video (track/v2-measured-fit-race)
 
 A take too long for its place sometimes ended its measured wording round in "The new wording couldn't be priced.", with the plan's problem "The selected Voice Lab take or output plan changed." On hosted CI, `measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable` ran into its 120 s limit in 2 of 4 runs. A single-thread cooperative pool (`LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`) reproduced it every time. See voice-lab §8.2.2 "A reword waits for the take's own video".
