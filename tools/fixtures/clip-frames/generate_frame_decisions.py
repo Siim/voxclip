@@ -51,7 +51,7 @@ MAXIMUM_SENTENCES = 24
 MAXIMUM_SENTENCE_WORDS = 40
 PIXELS_PER_TOKEN = 750.0
 MINIMUM_RECT_SIDE = 0.01
-SUMMARY_HEADER = 'Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):'
+SUMMARY_HEADER = 'Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):'
 
 
 # MARK: Arithmetic as Swift does it

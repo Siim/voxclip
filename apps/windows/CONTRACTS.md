@@ -1,5 +1,24 @@
 # Windows fixed contracts
 
+### 2026-11-10 — The frame summary says "this computer"; the Rewrite generation tests run in Release (track/v2-small-parity)
+
+- **Frame summary** (settles the item in the native-batch entry below and in the W5/W6 entries): `FrameSheet.SummaryHeader` and `ClipAutopilotRequest`'s empty summary now say "Frames measured on this computer", the same as the Mac Core. The shared fixtures are regenerated. apps/macos/CONTRACTS.md (same date) has the details and the owed system-prompt wording.
+  - With the old header back in `FrameSheet.cs`, `FrameDecisionVectorTests.SummariesReplay` and `ThePlanRequestFramesComeFromTheDecisions` fail.
+- **The 18 Debug-only win-ui failures** (sample-grid-display entry below) were not Debug copy. 85 tests in `RewriteGenerationTests` and `RewriteTakeReviewTests` sat behind `#if DEBUG`, so Release, and therefore CI, never compiled them. They had gone stale against deliberate product changes:
+  - Rewrite owners fix generations to Eleven v4 (`RewriteSession.ConfigureGeneration` sets `FixedModelId`). The owner tests' account offered only "model-a"/"model-b", so no quote was made. Those tests now use `OwnerModels`.
+  - The buttons read "Make take" / "Try another", not "Generate Takes" / "Generate Again".
+  - A 401 from a price or a run names its fix, `RewriteSession.ProviderProblem` (Mac `ClipTakePlan.nextStep`). This is product copy in every configuration, not a developer hint. One `RejectedKeyProblem` constant holds it.
+  - `RewritePanel`'s batch title comes from `VoiceLabCostPresentation.ButtonTitle(actionTitle, null, batch.Kind())`.
+  - A selected take that doesn't fit gets its first valid video duration chosen at once (Mac `autoChooseVideo`, design.md R2 "Phrase cards show only controls that can act"). The two review tests are renamed `…ChoosesMatchVideo…` and `…ChoosesCut…`.
+  - **Changed:** the guards are now `#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER`, like `IntegratedRewriteTests`. The test project always defines that symbol, and `DebugRewriteTakeRunner` builds under it. No product code changed.
+- **Verification** (on the Mac):
+  - Core Release: 3 455 tests (3 426 passed, 29 skipped, 0 failed).
+  - Media Release: 1 283 (1 113 passed, 170 skipped, 0 failed). `AnalyzeFramesVectorTests` ran 3 of 3.
+  - win-ui Release: 1 515 (1 510 passed, 5 skipped, 0 failed). That is up from 1 430, because CI now runs the 85 tests.
+  - win-ui Debug: 1 525 (1 520 passed, 5 skipped, 0 failed). Before the change, the two classes had 18 of 96 failing in Debug.
+  - No native VM check: the change is shared strings and view-model tests.
+- **Next package:** design.md's duration-choice section still says "with none preselected for each passage and take". Both platforms auto-choose (R2 "Phrase cards show only controls that can act"), so that line is stale.
+
 ### 2026-11-10 — The App meets a replace range on the source sample grid (track/v2-sample-grid-display)
 
 This settles the owed item in the sample-grid entry below. apps/macos/CONTRACTS.md (same date) has the Mac display sites.

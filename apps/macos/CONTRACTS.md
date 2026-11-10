@@ -1,5 +1,22 @@
 # macOS implementation contracts
 
+### 2026-11-10 — The frame summary says "this computer" (track/v2-small-parity)
+
+The win-arm64 native batch found that the Windows plan request told the AI "Frames measured on this Mac", because it replays the shared wording. apps/windows/CONTRACTS.md (same date) has the Windows side.
+
+- **Changed (Core):** `FrameSheet`'s summary header is now "Frames measured on this computer (one per sentence; …)", and `ClipAutopilotRequest`'s empty summary is "Frames measured on this computer: none could be read." That one word is the only change in the AI's input. The point stays the same: nothing was measured in the cloud.
+- **Regenerated through their generators:** `clip-frames/decision-cases.json`, `autopilot/plan-frames-cases.json` and `clip-frames/analyze-frames-cli-cases.json`. The CLI vectors' `estimatedSummaryTokens` grow by 1 to 3 with the longer word.
+- **No prompt version bump:** the header is written in code, not in `shared/prompts/clip-autopilot.json`, so no `promptVersion` or pinned prompt SHA covers it.
+- **Unchanged on purpose:** the Mac's user-facing copy ("Faces were measured on this Mac.", "Eyes open, the clearest look measured on this Mac", the DEBUG smoke frames' check of that line) and doc comments. They are Mac UI, and Windows says "this PC".
+- **Owed:** the plan system prompt (`clip-autopilot.json`, `frames` section) still says "Where the clip opens and how 9:16 follows the face are decided on this Mac". Windows sends that too. Changing it is a prompt change (`promptVersion` 8 and the pinned SHAs), so it was left for its own package.
+- **Tests:** with the fixtures regenerated and the old header back in `FrameSheet.swift`, `FrameDecisionVectorTests` (11 issues) and the analyze-frames CLI vectors (3 issues) fail. They pass with the change.
+- **Verification** (on the Mac, under a load average of 25 to 230):
+  - Core: 1 550 tests passed (2 known issues).
+  - App: 1 068 passed.
+  - Media (without `CaptionParityTests`, as CI runs it): 646 passed.
+  - Both `check_drift.py` scripts and `tools/schemas/validate.py` pass, and the tree is clean afterwards.
+  - `rewrite-smoke.sh` was not run: the smoke frames did not change.
+
 ### 2026-11-10 — The transcript shows AI coverage on the source sample grid (track/v2-sample-grid-display)
 
 This settles the owed item from the sample-grid package (the entry below): the App display still compared words with a replace range in seconds. A segment stored on the grid could therefore show a touching off-grid word as not covered, by under a sample. Such segments now get past Use. Rule: voice-lab §10.1.

@@ -53,7 +53,7 @@ public sealed class ClipAutopilotFramesTests
         Assert.Equal(Frames()["block"]!.GetValue<string>(), ClipAutopilotRequestBuilder.FramesBlock(Sheet(images: false), prompt));
         Assert.Equal(Frames()["blockWithImages"]!.GetValue<string>(), ClipAutopilotRequestBuilder.FramesBlock(Sheet(images: true), prompt));
         var empty = new ClipAutopilotFrames("", [], [], [], 0);
-        Assert.Equal("\n\nFrames measured on this Mac: none could be read.\nScreens to judge for blur:\n- none\nCover candidates:\n- none",
+        Assert.Equal("\n\nFrames measured on this computer: none could be read.\nScreens to judge for blur:\n- none\nCover candidates:\n- none",
             ClipAutopilotRequestBuilder.FramesBlock(empty, prompt));
     }
 
