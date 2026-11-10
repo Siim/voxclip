@@ -42,17 +42,12 @@ public sealed partial class EditorPage
 
     /// <summary>"Free on your Claude plan" on Claude Code, "Free on your ChatGPT plan" on Codex, "Free on this PC" for a local model, else
     /// "Billed to your {provider} key".</summary>
-    internal static string AskClaudeCost(string connector) => connector switch
+    internal static string AskClaudeCost(string connector) => RewriteThreadDisplay.CostLineFor(connector switch
     {
-        "claude-code" => "Free on your Claude plan",
-        "codex" => "Free on your ChatGPT plan",
-        "ollama" or "lmstudio" => "Free on this PC",
-        "anthropic" => "Billed to your Anthropic key",
-        "openai" => "Billed to your OpenAI key",
-        "xai" => "Billed to your xAI key",
-        "gemini" => "Billed to your Gemini key",
-        _ => ""
-    };
+        "claude-code" => ConnectorId.ClaudeCode, "codex" => ConnectorId.Codex, "ollama" => ConnectorId.Ollama, "lmstudio" => ConnectorId.LmStudio,
+        "anthropic" => ConnectorId.Anthropic, "openai" => ConnectorId.OpenAI, "xai" => ConnectorId.Xai, "gemini" => ConnectorId.Gemini,
+        _ => null
+    });
 
     private void ShowAskClaudePanel()
     {

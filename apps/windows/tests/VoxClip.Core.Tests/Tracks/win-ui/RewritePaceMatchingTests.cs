@@ -123,9 +123,10 @@ public sealed class RewritePaceMatchingTests
         Assert.Contains("SetName(row,", rows);
         Assert.Contains("Discard takes and continue", rows);
         Assert.DoesNotContain("new ContentDialog", rows);
-        var editor = File.ReadAllText(Path.Combine(root, "Controls/TranscriptView.InlineEditing.cs"));
-        Assert.Contains("review.Ordinals.Contains(hunk.Ordinal))?.Fit", editor);
-        Assert.Contains("timing.Copy", editor);
+        // The change's thread replaced the inline edit row: its version row's tooltip is the same fit line.
+        var thread = File.ReadAllText(Path.Combine(root, "ViewModels/RewriteSession.Thread.cs"));
+        Assert.Contains("hunk.Ordinals.Contains(target.Key.Ordinal))?.SpokenTiming", thread);
+        Assert.Contains("ToolTipService.SetToolTip(versionRow, display.FitLine", File.ReadAllText(Path.Combine(root, "Controls/TranscriptView.Thread.cs")));
     }
 
     [Theory]

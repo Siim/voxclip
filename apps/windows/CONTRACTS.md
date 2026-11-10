@@ -1,23 +1,120 @@
 # Windows fixed contracts
 
-### 2026-11-09 — Owed: "✎ My own words" in the Rewrite thread (Mac track/v2-thread-own-words, ADR-R50 "Update: your own words")
+### 2026-11-10 — Windows: the Rewrite thread, "✎ My own words" and the per-phrase keep, the twins of the Mac's ADR-R50 work (track/v2-win-rewrite-thread)
 
-The Mac thread got hand edits back (design.md §6.3 "Talk back to Claude", "Your own words"). Windows owes them with its thread twin (the entry below).
+This replaces the three 2026-11-09 "Owed" pieces: "✎ My own words", "talk back to Claude about a change" and the seam-at-a-cut entry's per-phrase keep. Mac sources: track/v2-rewrite-thread, track/v2-thread-own-words and track/v2-seam-fade-cut (apps/macos/CONTRACTS.md). See design.md §6.3 "Talk back to Claude" and "Your own words", ADR-R50 and ai.md §12.10.
 
-- **Bubble.** "✎ My own words", last after the steady bubbles, always there while the thread shows. Selected while the input takes your words. It is app copy, not part of `rewrite-followup.json`.
-- **Edit mode.**
-  - A click on the bubble, or the shortcut, fills the input with the shown version's words, the cursor at the end.
-  - Placeholder "Your exact words · ↵ applies · Esc cancels"; cost line "Free · nothing is sent".
-  - The bubble again, or Esc, returns to Claude with nothing changed and gives back the Claude draft. A bubble that talks to Claude leaves edit mode first.
-  - The Mac shortcut is ⌥E on the focused change; Windows picks its own (Alt+E collides with menu access keys) and says it.
-- **Apply.** Enter applies the text through the same local rediff as a Claude version, with no request.
-  - A new version marked "your words" ("‹ 3 of 3 › · your words"), and a turn "You · your own words: “…”" with no Claude turn.
-  - Claude's next steps are cleared.
-  - Empty → a cut. The recorded words → nothing to change (left out). The words in the text → nothing changes. A version's exact words show that version.
-- **Takes.** Your words become the session's reply words for the change (the Mac's `acceptThreadWords`), so Keep prices and voices them, the voice made from the typed text. No "Takes are made from the AI's words" dead end.
-- **Requests.** Your words are a version in later requests, never a message.
-- **VoiceOver/Narrator.** The bubble reads "My own words" (selected state exposed). The field reads "Your own words for change {i}". The transcript's actions add "Type your own words for change {i}".
-- **Popover.** This replaces Windows' inline correction row (F2) when the thread lands: F2 then opens the thread for Claude, as on the Mac.
+- **Core** (public, additive; the VoxClip.Core allowlist gains 94 lines).
+  - `Domain/VoiceLab/RewriteFollowup.cs`: `RewriteFollowupKind`, `RewriteFollowupRequest`, `RewriteFollowupReply` and `RewriteFollowupPrompt`. The prompt loads `shared/prompts/rewrite-followup.json` (schema 1, prompt 1) as the Mac's does:
+    - the system prompt, then `sourceBlock` as the cached block;
+    - `changeBlock`, `versionsBlock` and `messagesBlock`, each filled on its own, then `returnLine`, or `versionsReturnLine` with `{count}` = 3;
+    - feature `VoiceRewrite`, effort `Decision` (xhigh), tag `rewrite-followup` or `rewrite-followup-versions`.
+  - The checks match the Mac's:
+    - `Validate` refuses a request with no version, or no message or a blank one, or one over the limits;
+    - the reply's words must be plain spoken text;
+    - alternatives are deduplicated against the versions and each other, and at most 3 are kept;
+    - the note is cut to 20 words with "…";
+    - at most 2 next steps of 1 to 6 words are kept, never a steady or keep bubble;
+    - `Key` compares words with case, spacing and the punctuation around them aside;
+    - characters are counted as grapheme clusters, as Swift's `count` counts them.
+  - `Services/VoiceLab/RewriteFollowupService.cs` sends one request through `LlmRunner` and returns the checked reply. Its `maxOutputTokens` goes through `LlmCatalog.Cap`, as every Windows service's does. The vector pins the prompt's 4,000, which `RewriteFollowupPrompt.Request` returns.
+  - **Vector replay:** `RewriteFollowupReplayTests` (7 tests) replays `shared/fixtures/rewrite-thread/request-cases.json` (`voxclip-rewrite-thread-cases/1`). It asserts the exact keys and counts (5 requests, 6 replies) and `promptSha256`. Every request matches byte for byte and every reply checks as expected. No case needed a deviation; the fixture and its generator are unchanged.
+- **App view model** (`ViewModels/RewriteThread.cs`, `ViewModels/RewriteSession.Thread.cs`): the twin of the Mac's `RewriteThread`, `RewriteThreadState` and `RewriteThreadDisplay`.
+  - **Where a thread shows.** Only for the focused change, while it waits (not excluded), in a review that can change now, with an editable editor and **no paid takes**. On Windows a change with takes is still "waiting"; on the Mac such a change has been kept and has no thread.
+  - **Storage.** Threads are kept per ordinal together with the change's source span; a change whose span moved gets a new thread. They are cleared when a new reply arrives, when the words are edited by hand, and on close.
+  - **Sending.** `SendThreadAsync`, `PressThreadBubbleAsync` ("3 more versions" asks for alternatives), `RetryThreadAsync` and `StopThread`. The input keeps its text until the reply is in. An error shows in place, keeps the text and offers Try Again.
+  - **A version** goes in through `AcceptThreadWords` and becomes the change's words for Keep. `SwitchThreadVersion` sends nothing and adds no undo step. A reply with the same words adds no version, and its note starts "Kept the words as they are." `FoldThread` is Esc; focusing the change again, or `OpenThreadInput`, reopens it.
+  - **`AcceptThreadWords`, the twin of the Mac's `acceptThreadWords`.** It is `EditChange(ordinal, text, wholeChange: true)`.
+    - Windows never had the Mac's "Takes are made from the AI's words" dead end: `EditChange` always made the rediffed hunks the review's own, so they are priced and voiced.
+    - What the twin adds is one hunk per change, so the thread and its ordinal stay. Words that differ from the recording in several places become one voice hunk over the change's recorded words, as the Mac voices a change of several parts. The recorded words leave the change out of the proposal.
+    - The review's plain `EditChange` behaves as before.
+  - **"✎ My own words":** `ToggleThreadOwnWords`, `OpenThreadOwnWords`, `LeaveThreadOwnWords` and `ApplyThreadOwnWords`.
+    - The input fills with the words shown; the draft for Claude comes back when you leave.
+    - Enter applies with no request: "‹ n of n › · your words", the turn "You · your own words: “…”", and Claude's next steps cleared.
+    - Empty words make a cut. The recorded words leave the change out, and the later changes' threads move down with their changes. The words already in the text change nothing. A version's exact words show that version.
+    - Later requests carry your words as a version, never as a message. A bubble that talks to Claude leaves your own words first.
+  - **Keep and Undo.** The keep bubble and Ctrl+Enter in the input are exactly the change's Keep (`SetChangeIncluded(true)`), and the thread folds. A kept voice change stays in the Windows review, included for takes; Windows has no kept state for it. Ctrl+Backspace on an empty input is Undo: the change is left out and has no thread.
+  - **The per-phrase keep (`KeepUnplaceable`, the twin of the Mac's `keepUnplaceable`).**
+    - *Before this package:* when `PlaceAll` refused a change on geometry, the review row carried the refusal copy (for example "This change can't be placed in this take. Your edits are saved.") and had no window or fit. The change was never priced, while the others were. It stayed included and checked, and at Use it added no segment, so it was dropped silently.
+    - *Now:* such a change, when the recording's envelope was read and the refusal is not a collision, keeps its original words. It is excluded through the "Keep original words" path, with an automatic note: "Change {n} keeps your original words: it can't be joined to the recording there." (`UnplaceableReason` also has the Mac's take-edge and insertion reasons). The rest are placed again and priced.
+    - It does not apply after Stop, with paid takes, or without an envelope (then every change is refused as `InvalidInput`). Make it postable's driver ends on the note when nothing is left to voice.
+  - `EditorViewModel.Announce` gives Rewrite steps the editor's Narrator announcements.
+- **View.**
+  - `Controls/TranscriptView.Thread.cs` puts the thread under the paragraph that holds the focused change's last piece, in the scroll flow:
+    - a 2 epx `change.add` rule at 45 % opacity, with no box;
+    - the last two turns;
+    - "‹ n of m ›" with "· N phrase(s) to voice at Keep" or "· text only, free", and the fit line as its tooltip;
+    - the bubbles, keep first, on `change.add`;
+    - the Rewrite consent inline (`InlineConfirmation`);
+    - the input with its cost line, or the working line with Stop;
+    - an error with Try Again.
+  - It is one control that moves with the focus and updates in place, so the input keeps the keys while the proposal refreshes. Editor-host clears keep it.
+  - `Controls/RewritePanel.Thread.cs` is the live send. It takes the project's AI lease, then asks the Rewrite consent inline in the thread for a first send or one billed to a key (`PrivacyText` is now shared with the Rewrite's own approval), then calls `RewriteFollowupService`.
+  - Ask Claude's cost line (`EditorPage.AskClaudeCost`) now reads the one copy, `RewriteThreadDisplay.CostLineFor`.
+  - No new pop-ups, flyouts or dialogs.
+- **Deleted:** the inline correction row for a change ("New words for change {i}", its fit line, "Return saves · Esc cancels" and **Reject Change**). This removes:
+  - `BeginProposalCorrection`, `EditProposalChange` and `EditChangeRequested` (in `TranscriptView` and `EditorPage.Integration`);
+  - the transcript's **Edit** button beside Keep and Undo;
+  - `ShowInlineEditor`'s save, reject, title and hint parameters. It is now the word spelling row only.
+  - The transcript's name now says "F2 talks to Claude about a proposed change"; the two native walk scripts follow it.
+- **Keys** (design.md §6.3 "Change editor" and "Keys"). F2, Enter, a click on a change's new words and the review row's **Edit** open the thread. With no change focused, F2 still corrects spelling. The two Mac keys that collide on Windows:
+  - **Shift+F2** for ⌥E (My own words). Alt+E would reach menu access keys.
+  - **Alt+Page Up / Alt+Page Down** for ⌥← / ⌥→ (versions): in the transcript once the thread has two versions, and in the input while it is empty. Alt+← is Back, and Ctrl+← / Ctrl+→ already move by sentence.
+  - I grepped the App's `KeyboardAccelerator`s, the pane gestures and the key handlers; neither key is used elsewhere.
+  - In the input: Enter sends (or applies your words), Shift+Enter is a new line, and Esc stops, leaves your own words or folds. Ctrl+Enter keeps the change. Ctrl+Backspace undoes it only while the input is empty; with text it deletes a word, as in any Windows field.
+- **Narrator.**
+  - The thread is "Talk to Claude about change {i}". The turns read "You: …" and "Claude: …". The arrows are "Previous version" and "Next version", beside "Version n of m". A ✦ bubble reads "{words}, suggested by Claude".
+  - The input reads "Tell Claude what to change about change {i}", or "Your own words for change {i}" in your-own-words mode.
+  - **✎ My own words** is a `ToggleButton` named "My own words": its pressed state is the selected state.
+  - WinUI has no equivalent of VoiceOver's custom actions, so the focused change's paragraph carries them in its help text: "Talk to Claude about change {i}: F2. Type your own words for change {i}: Shift+F2."
+- **Tests.**
+  - Core `RewriteFollowupReplayTests` (7).
+  - win-ui `RewriteThreadTests` (18):
+    - the slot and bubbles;
+    - a reply through the rediff, voiced from the version, with no project change and no undo;
+    - switching versions sends nothing and adds no undo, and every version and message goes out in order;
+    - "3 more versions" and the same words;
+    - Keep and Undo;
+    - Esc and refocus;
+    - an error with Try Again;
+    - Stop;
+    - every own-words rule;
+    - a version that differs in several places stays one change;
+    - the per-phrase keep, and nothing left out without an envelope;
+    - the Narrator names;
+    - the F2 row removed.
+  - `RewritePaceMatchingTests` now finds the fit line in the thread, not the deleted row.
+  - **Mutations turn tests red** (each built and run, then reverted):
+    - no one-hunk merge;
+    - no per-phrase keep;
+    - Enter with your own words sends to Claude;
+    - a reply not put in the text (8 tests red);
+    - Esc doesn't fold;
+    - only the newest message sent;
+    - in Core: the note not cut, and steady bubbles allowed.
+    - All 8 went red.
+- **Verification** (Mac; `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`):
+  - Windows Core Release: 3,454 tests (3,425 passed, 29 skipped, 0 failed).
+  - Windows Media Release: 1,283 (1,113 passed, 170 skipped, 0 failed).
+  - win-ui Release: 1,430 tests (1,424 passed, 5 skipped, 1 failed). The failure is `VideoVoiceFlowTests.EachVideoGetsItsOwnVoiceAndThePreviousOneIsRemovedThroughTheDeletion`, in both full runs of the final code under a load average of about 25. It touches no code this package changed: it asserts `MakeVideoVoice`'s first progress line right after starting the stubbed work, a race. It passes alone 3 of 3.
+  - `VoxClip.App.TypeCheck` Release: 0 warnings, 0 errors. `check-xaml.py`: 0 problems.
+  - ReleaseBoundary `update`: `VoxClip.txt` (+301, −5: the deleted row's members) and `VoxClip.Core.txt` (+94).
+  - Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests pass, and the tree is clean after them.
+  - `VoxClip.App.csproj` with `-p:EnableWindowsTargeting=true` does not build on macOS: the WinUI XAML compiler crashes ("XamlCompiler output file … output.json was not created"). This is a platform limit, so TypeCheck is the Mac's App compile.
+- **Owed.**
+  - The real-window and Narrator checks on Windows (the user's session):
+    - the thread's layout under the paragraph and the paragraphs moving down;
+    - the input keeping focus across a reply, and the cursor at the end after the bubble;
+    - Shift+F2, Alt+Page Up and Alt+Page Down on real keyboards (including AltGr layouts), and IME composition in the input;
+    - the inline consent row;
+    - Narrator reading the toggle's state, the help text and the turns.
+  - A live Claude Code or Codex thread on Windows.
+  - The native win-arm64 run: Core, Media and the App build with its XAML compiler.
+  - Still shared and owed from the seam-at-a-cut entry: the sample-grid range check.
+- **Next package must know.**
+  - Windows Keep on a voice change only includes it, so the thread folds instead of going away. A Windows "kept" state would let it go as on the Mac.
+  - A thread never shows once takes are paid.
+  - `EditChange` and `AcceptThreadWords` share one body. Change the review's rediff there, not twice.
 
 ### 2026-11-09 — Native batch (win-arm64 VM, 2026-11-09): ran 2026-11-10, every headless check passes (track/v2-win-vm-native)
 
@@ -83,34 +180,7 @@ The Mac package fixed "Voice Only the Changed Phrases" stopping at `seamFadeCros
 
 - **Core `VoiceLabWindowPlanner`** (`Domain/VoiceLab/VoiceLabWindow.cs`): `ClipEdgeSides` (shared with `MoveToClipEdges`), `MoveToCutEdges` (a seam with less kept source beside it than its outer half moves to the cut's edge, absorbing only that sliver), `HoldsAcrossCut` (prepare's rule across the cut, refusing a clip's output edge outside the clip; `HoldsInFullTake` now calls it) and the local `StoredAtCut` (the stored edge, sample over rate, must not cut into an item, else `WindowCrossesWord`). No public API changed; the ReleaseBoundary allowlist gains the three private methods.
 - **Vectors:** `window-cases.json`, `window-all-cases.json` (two cases renamed `all-cut-word-between-collides` and `all-cut-hunk-between-collides`, keys and counts unchanged), `window-clip-edge-cases.json` and `scope-rewrite-plan-cases.json`. Before the twin, 7 Windows replays failed on them; after, `VoiceLabWindowTests`, `VoiceLabWindowAllTests` and `ScopeRewriteTests` pass 64 of 64.
-- **Owes (App, not touched here):** the Mac's per-phrase keep (`RewriteSession.keepUnplaceable`: a geometry refusal keeps that change's original words with the note "Change {n} keeps your original words: it can't be joined to the recording there." and prices the rest). Windows places its review with `PlaceAll` (`ViewModels/RewriteReview.cs`); how it shows a refused hunk there was not checked against the Mac rule. Also shared and owed: the sample-grid range check the Mac entry describes (`VoiceLabProject` validation and the output planner in both Cores, plus the reference render model).
-
-### 2026-11-09 — Owed: talk back to Claude about a change (Mac track/v2-rewrite-thread, ADR-R50)
-
-The Mac has a Rewrite thread under the focused change (design.md §6.3 "Talk back to Claude"). Windows owes its twin.
-
-- **Prompt.** Load `shared/prompts/rewrite-followup.json` (`promptVersion` 1) as the Mac's `RewriteFollowupPrompt` does:
-  - the system prompt;
-  - `sourceBlock` as the cached block;
-  - `changeBlock`, `versionsBlock`, `messagesBlock`, each filled on its own, then `returnLine` or `versionsReturnLine` with `{count}` = 3;
-  - feature `voiceRewrite`, effort `decision`, tag `rewrite-followup` or `rewrite-followup-versions`.
-- **Checks.**
-  - Plain spoken text; alternatives deduplicated against the versions and each other, at most 3.
-  - The note cut to 20 words with "…".
-  - At most 2 next steps of 1 to 6 words, never a steady or keep bubble.
-  - A request with no version or message is refused.
-- **Vector replay.** Replay `shared/fixtures/rewrite-thread/request-cases.json` (`voxclip-rewrite-thread-cases/1`): 5 requests (system, cached block, instruction, schema name, tag, max output tokens) and 6 replies (texts, note, next steps, or `invalidOutput`). Assert its exact keys and counts. It is a new file, so no existing replay changes.
-- **Thread.**
-  - Under the focused pending change's paragraph, in the transcript's flow, with a 2 pt `change.add` rule at 45 % and no box.
-  - The last two turns; "‹ n of m ›" with "· N phrases to voice at Keep" or "· text only, free".
-  - Bubbles: ✓ That's it, keep it (= Keep); up to two ✦ from the last reply; Shorter, Closer to my words, 3 more versions.
-  - The input, with the cost line; the Rewrite consent inline; readiness copy in place with Try Again; Stop.
-- **Rules.**
-  - A version goes in through the local rediff and becomes the reply's own words for that change, so Keep voices it.
-  - Switching versions sends nothing and adds no undo step.
-  - Esc folds the thread; refocusing the change reopens it.
-  - Keys: ↵, ⇧↵, ⌥←/⌥→ while the input is empty, ⌘↩/⌘⌫.
-- **Popover.** The Mac removed its edit popover. Windows' inline correction row (F2) stays until the thread lands, then goes the same way.
+- **Owes:** the sample-grid range check the Mac entry describes (`VoiceLabProject` validation and the output planner in both Cores, plus the reference render model). The App's per-phrase keep landed with track/v2-win-rewrite-thread (2026-11-10 entry).
 
 ### 2026-11-09 — Windows: the speaker's face and unknown eyes on small faces, then the calibration again, package W8 of "Windows sees the picture" (track/v2-win-frames-w8)
 

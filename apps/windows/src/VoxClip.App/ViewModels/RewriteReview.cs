@@ -12,6 +12,9 @@ internal sealed record RewriteHunkReview(VoiceLabDiffHunk Hunk, VoiceLabWindow? 
     internal IReadOnlyList<VoiceLabAudioTag> RequestAudioTags { get; init; } = [];
     /// <summary>The earlier change this one is too close to voice separately (a placement collision that could not merge).</summary>
     internal int? CollidesWith { get; init; }
+    /// <summary>Why placing every change together refused this one on geometry (not a collision), with the recording's envelope read: the
+    /// change can't be joined to the recording there, so it keeps its original words (Mac <c>keepUnplaceable</c>).</summary>
+    internal VoiceLabGeometryException? Unplaceable { get; init; }
     internal string SpokenTiming => Fit?.Copy ?? Refusal ?? "";
 }
 
@@ -59,7 +62,10 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
             }
             catch (Exception exception) when (exception is VoiceLabGeometryException or VoiceLabLengthBudgetException or VoiceLabProjectException)
             {
-                reviews.Add(new(hunk, null, null, null, RewriteSession.Refusal(exception), ordinals));
+                reviews.Add(new(hunk, null, null, null, RewriteSession.Refusal(exception), ordinals)
+                {
+                    Unplaceable = session.Envelope is not null && placement is PlacedOrRefused.Refused { Reason: VoiceLabWindowRefusal.Geometry geometry } ? geometry.Error : null
+                });
             }
         }
         var priced = reviews.Where(session.CanPriceHunk).ToArray();

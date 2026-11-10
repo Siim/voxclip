@@ -252,6 +252,8 @@ public sealed partial class EditorViewModel : ObservableObject
     internal long RewriteSelectionRevision { get; private set; }
     internal void RewriteCaretChanged() => RewriteSelectionRevision++;
     public event EventHandler<string>? Announcement;
+    /// <summary>Tells Narrator what a Rewrite step did, as the editor's own commands do.</summary>
+    internal void Announce(string text) => Announcement?.Invoke(this, text);
 
     public void Select(int index, bool extend = false)
     {

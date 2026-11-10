@@ -371,6 +371,7 @@ internal sealed partial class RewriteSession : IDisposable
             AutoFix.Reset();
             ReplyNextActions = nextActions;
             ReaskProblem = ""; LastReask = null;
+            ResetThreads();
             NewWords = resultText;
             RefreshReview();
             ProposalRevision++;
@@ -407,6 +408,7 @@ internal sealed partial class RewriteSession : IDisposable
         StopReask();
         audioTags = VoiceLabAudioTags.Reanchored(ReviewAudioTags(), NewWords, text);
         InvalidateProposal();
+        ResetThreads();
         scopeHunks = null;
         changeStates.Clear();
         priceOverrides.Clear();
@@ -420,7 +422,12 @@ internal sealed partial class RewriteSession : IDisposable
     {
         if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; ClearMeasuredWording(); pendingExpressions.Clear(); expressionNotes.Clear(); }
         reviewProblem = "";
-        try { Review = RewriteReview.Build(this, prices, synthesisModel); }
+        try
+        {
+            Review = RewriteReview.Build(this, prices, synthesisModel);
+            // A change that can't be joined to the recording keeps its original words, and the rest are placed again without it.
+            for (var pass = 0; pass < Review.Diff.Hunks.Count && KeepUnplaceable(); pass++) Review = RewriteReview.Build(this, prices, synthesisModel);
+        }
         catch (VoiceLabWordDiffException exception)
         {
             Review = null;
@@ -491,6 +498,7 @@ internal sealed partial class RewriteSession : IDisposable
     {
         if (!IsOpen) return;
         IsOpen = false;
+        ResetThreads();
         StopReask();
         StopWordingFit();
         AutoFix.Reset();

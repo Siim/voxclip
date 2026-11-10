@@ -114,7 +114,6 @@ public sealed partial class EditorPage
         Transcript.AttachProposal(null);
         Transcript.KeepChangeRequested = null;
         Transcript.ExcludeChangeRequested = null;
-        Transcript.EditChangeRequested = null;
         previous?.Dispose();
         if (previous is not null) retiredRewriteWork.Add(previous.GenerationCleanup);
     }
@@ -122,7 +121,7 @@ public sealed partial class EditorPage
     private void AttachRewriteProposal(RewriteSession session)
     {
         session.RevealChange = ordinal => Transcript.FocusChange(ordinal);
-        session.EditReviewChange = Transcript.EditProposalChange;
+        session.EditReviewChange = ordinal => Transcript.OpenThread(ordinal);
         Transcript.AttachProposal(session);
         void Publish(object? sender, EventArgs args)
         {
@@ -133,7 +132,6 @@ public sealed partial class EditorPage
         session.Changed += Publish;
         Transcript.KeepChangeRequested = ordinal => session.SetChangeIncluded(ordinal, true);
         Transcript.ExcludeChangeRequested = ordinal => session.SetChangeIncluded(ordinal, false);
-        Transcript.EditChangeRequested = session.EditChange;
         Publish(this, EventArgs.Empty);
     }
 

@@ -150,7 +150,7 @@ function IsSelected($x){$p=$null;if($x.TryGetCurrentPattern([System.Windows.Auto
 function Focused{[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name}
 function InCommandBar($e){$walker=[System.Windows.Automation.TreeWalker]::RawViewWalker;$found=$false;$chain=@();for($p=$e;$p -ne $null;$p=$walker.GetParent($p)){$chain+="$($p.Current.Name) | $($p.Current.ClassName) | $($p.Current.AutomationId)";if($p.Current.ClassName -eq 'CommandBar' -or ($p.Current.ClassName -eq 'ApplicationBar' -and $p.Current.AutomationId -eq 'Commands')){$found=$true}};[IO.File]::AppendAllText((Join-Path $shots 'f6-ancestors.txt'),(($chain -join "`n")+"`n---`n"));return $found}
 function Choose($x){$x.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x0D);Start-Sleep -Milliseconds 600}
-$transcriptName='Transcript. Select words to cut. Enter corrects spelling. F2 edits a proposed change. Control Alt K makes a clip.'
+$transcriptName='Transcript. Select words to cut. Enter corrects spelling. F2 talks to Claude about a proposed change. Control Alt K makes a clip.'
 try{
  if(Get-Process VoxClip -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq $exe}){throw 'Exact app binary already has a process; refusing to attach to it'}
  $report=Join-Path $shots 'self-check.json'
