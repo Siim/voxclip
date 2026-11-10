@@ -19,44 +19,63 @@ The Mac thread got hand edits back (design.md §6.3 "Talk back to Claude", "Your
 - **VoiceOver/Narrator.** The bubble reads "My own words" (selected state exposed). The field reads "Your own words for change {i}". The transcript's actions add "Type your own words for change {i}".
 - **Popover.** This replaces Windows' inline correction row (F2) when the thread lands: F2 then opens the thread for Claude, as on the Mac.
 
-### 2026-11-09 — Native batch (win-arm64 VM, 2026-11-09): not run, the VM hung (track/v2-win-vm-native)
+### 2026-11-09 — Native batch (win-arm64 VM, 2026-11-09): ran 2026-11-10, every headless check passes (track/v2-win-vm-native)
 
-**Result: no native check ran.** The VM (`siim@192.168.64.3`) stopped answering before the batch reached it. Every check below stays owed; the Mac-side preparation is ready for the relaunch.
+**Result: every owed headless native check ran on win-arm64 and passed; one test fix.** The first run (2026-11-09) never reached the VM, which had hung. The user restarted it, and the same approved batch ran on 2026-11-10 at 97612a6c. Windows 11 ARM64 (10.0.26200) VM, 4 GB RAM, 10 cores ("virt-10.0"), .NET SDK 10.0.402. One build at a time with `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, under `C:\voxclip-build\vm.lock`.
 
-- **The VM's state, seen from the Mac** (17:31–18:00 EET):
-  - Ping and SSH (port 22) timed out throughout. The DHCP lease and the ARP entry still name the VM's MAC.
-  - QEMU (pid 37371, up since the 2026-11-05 boot) ran one core at about 100 %, and the VM's disk image was last written at 17:18:47. That looks like a hung guest, not an update.
-  - Nothing reached the VM: no SSH session, no `C:\voxclip-build\vm.lock`, no files copied and no build. UTM and the VM were not touched.
-  - The user chose to stop (2026-11-09). The lead asks the user to restart the VM, clears any lock older than the reboot, and relaunches.
-- **Ready for the relaunch (Mac):**
-  - The Media fixtures, which come from `generate-fixtures.sh` (Mac FFmpeg 6.1.1, HEVC Main 10 by `hevc_videotoolbox`): 19 files, 34 MB, all generated.
-  - **`tools/frames/ocr-probe/` (new): the W4 OCR check.** `Windows.Media.Ocr` needs the App's `net10.0-windows10.0.26100.0`, and every test project is portable `net10.0`, so a `RequiresWindows` xUnit test would need a new Windows-target test project. Instead, a console tool runs the App's `WindowsFrameText.cs` (linked), `QuadFinder` and `FrameScreenScan`.
-    - Inputs: the quad vectors' `phone-upright`, `phone-tilted` and `laptop` frames, and three rendered 1,280 × 720 phone frames with real text from `render_text_frames.py`.
-    - Output: the installed OCR languages, line boxes, quads, screens with and without quads, `ScanAsync`, and the OCR and `QuadFinder` times.
-    - It compiles on the Mac with `-p:EnableWindowsTargeting=true` (0 warnings) and has not run anywhere.
-  - The VM has no FFmpeg archive on the Mac side. The test-only win-arm64 tools (`ffmpeg.json` `testTools.win-arm64`) and the shipping `voxclip-ffmpeg-n9.0.2-win-arm64.zip` must come from the VM's `C:\voxclip-build` cache or be fetched there with `Fetch-Ffmpeg.ps1`.
-- **Still owed natively (headless, over SSH)**, from this file's owed lines:
-  1. Windows Core and Media, Release, in full on win-arm64: totals, passed, skipped and failed, and which `RequiresWindows`/`RequiresFFmpeg` tests ran that the Mac skips. This includes:
-     - `NativeExportCheckerTests` and `NativeCliCheckTests` (export check, exit 8);
-     - `SocialLoudnessNativeExportTests` (−14 LUFS, ≤ −1 dBTP);
-     - `RewriteSourceDecodesOnlyTheRegionsOfARealTrackLongerThanOneChunk`;
-     - `NativeFrameAnalyzerTests` (W5);
-     - `NativeExportCoverTests` (W6: `-cover.jpg` and MP4 `covr`).
-  2. `OnnxFrameFacesTests` with `VOXCLIP_FRAME_FACES=1` (W3/W8): the goldens within tolerance on arm64, and ms per frame (Mac 14.1–14.9 ms; hosted x64 29.2 ms).
-  3. W4: `tools/frames/ocr-probe` on the VM, the OCR languages it has, and recall and speed at 1,280 px. These decide the PP-OCRv4 fallback.
-  4. The WinUI App for win-arm64 (unpackaged, self-contained):
-     - `models/frames/` with both models, `LICENSE-YuNet.txt`, `LICENSE-Apache-2.0.txt` and `NOTICE.txt`, hashes matching the catalogue;
-     - `build/Assert-OnnxRuntimePin.ps1` on that output;
-     - `build/Test-ReleaseBoundary.ps1 -RuntimeIdentifier win-arm64`.
-  5. The decode speed of the analyzer's four software lanes on arm64 (W5), and the clip-edge render (a check; the mixer is unchanged).
-  6. A8 parity against the shipped win-arm64 folder needs a format-2 runtime-terms receipt in the VM data root first (win-ort-pin entry).
-- **Owed to the user's interactive session (real windows, not over SSH):**
+- **Inputs.**
+  - FFmpeg: the pinned test-only win-arm64 tools (`ffmpeg.json` `testTools.win-arm64`, fetched by `Fetch-Ffmpeg.ps1 -TestTools`, SHA-256 checked), as hosted CI uses them. The shipping `voxclip-ffmpeg-n9.0.2-win-arm64.zip` was copied from the VM's older cache, and its size and SHA-256 match the pin; nothing in this batch loads it (shipping acceptance is `verify-vm.sh` with `VOXCLIP_SHIPPING_RID`, not run here).
+  - The Media fixtures from `generate-fixtures.sh` (unchanged since bf8e17b1, so not regenerated), and the speaker model, copied from the VM's cache and checked against `voice-lab-models.json`.
+  - Env as hosted CI (`VOXCLIP_REQUIRE_NATIVE`, `VOXCLIP_REQUIRE_E2E`, `VOXCLIP_CLI`, `VOXCLIP_SPEAKER_MODEL_DIR`), plus `VOXCLIP_REQUIRE_AUDIO_OUTPUT=1` as `verify-windows.ps1` sets it on the VM. Isolated `VOXCLIP_DATA_DIR`; no live or paid calls.
+- **1. Core and Media, Release, in full** (xUnit in-process runner, XML reports diffed against a Mac host run of the same tree):
+
+  | Suite | win-arm64 VM | Mac host |
+  | --- | --- | --- |
+  | Core | 3,447: 3,423 passed, 24 skipped, 0 failed (41 s) | 3,447: 3,418 passed, 29 skipped, 0 failed |
+  | Media | 1,283: 1,265 passed, 18 skipped, 0 failed (268 s) | 1,283: 1,113 passed, 170 skipped, 0 failed |
+  | Media, `VOXCLIP_FRAME_FACES=1` | 1,283: 1,264 passed, 19 skipped, 0 failed (after the fix below) | 1,283: 1,113 passed, 170 skipped, 0 failed |
+
+  - **Media tests the Mac skips that passed on the VM:** 152 by count (170 − 18). Matched by name, there are 142 (Category `RequiresFFmpeg,RequiresWindows` 66, `RequiresFFmpeg` 62, `RequiresWindows` 13, other 1). The rest are theory rows whose names carry platform paths. They include every one this file named as owed:
+    - `NativeExportCheckerTests` and `NativeCliCheckTests` (export check, exit 8);
+    - both `SocialLoudnessNativeExportTests` (−14 LUFS, transients limited);
+    - `RewriteSourceDecodesOnlyTheRegionsOfARealTrackLongerThanOneChunk`;
+    - `NativeFrameAnalyzerTests` (W5) and `NativeExportCoverTests` (W6: `-cover.jpg` and MP4 `covr`);
+    - `NativePipelineTests` (20, including `EditedAudioMatchesKeptSamplesAndBothJoinEdgesAreSilent`, the clip-edge render), `WindowsPipelineTests` (12), `MediaCliE2ETests` (12, with the 10 E2E reports), `VoiceLabAudioMixerTests` (34), `VoiceLabSourceAudioTests` (25) and `SharedRealModelSpeakerVectorsReplayWhenVerifiedLocalAssetsExist` (the arm64 half of the speaker parity).
+  - **The VM's 18 Media skips** are all opt-ins: shipping runtime identity (2, needs `VOXCLIP_SHIPPING_REPORT`), App export evidence (4), microphone scenarios (5), the muted-endpoint audition, caption perf and allocation budgets (2), colour and conversion diagnostics (2), live Whisper, and `SyntheticVerdictsAndMetricsMatchPython` (no real Python on the VM; it passes on the Mac).
+  - **Core:** 23 Core tests the Mac skips passed on the VM: 20 `WindowsProcessTests` (the Job Object twins of the POSIX process tests), plus one each in `AtomicFileTests`, `VoiceConsentTests` and `VoiceLabPricingTests`. The VM skips the 15 POSIX process cases, 3 schema tests that need Python with jsonschema (they pass on the Mac), and the 6 live and informative cases both hosts skip.
+- **2. Face goldens and speed (W3, W8):** all 13 `OnnxFrameFacesTests` pass on arm64 with `VOXCLIP_FRAME_FACES=1` (the 4 goldens within the pinned tolerances, the mesh-rejected box, two faces, concurrent lanes, a missing or altered file).
+  - `TheFacePathSpeedIsPrinted`: **24.2–25.9 ms per 1280×720 frame** run alone (4 runs), and 21.1 and 50.7 ms inside the full suites. The Mac host printed 20.4 ms in its full suite today (earlier 14.1–14.9 ms alone); hosted x64 printed 29.2 ms.
+  - ONNX Runtime's cpuinfo prints "Unknown chip model name 'virt-10.0'" and "unknown CPU uarch" to stderr on this VM. That is noise; the results are unaffected.
+- **3. Windows OCR (W4), `tools/frames/ocr-probe`** (win-arm64 build, 20 runs after 3 warm-ups):
+  - **OCR languages installed: en-US only** (the user-profile engine is en-US, max dimension 10,000).
+  - The drawn frames (`phone-upright`, `phone-tilted`, `laptop`, words as bars): 0 lines, as expected; QuadFinder finds both quads of each; no screen. OCR 39.8 / 39.0 / 4.0 ms median, QuadFinder 15–19 ms.
+  - The rendered 1,280 × 720 phone frames: **every line found** (5/5 at 22 px, 7/7 at 16 px, 3/3 at 24 px turned 3°). Each gives 2 quads (the screen and the phone's body), and `FrameScreenScan` makes **2 framed screens** from them (coverage 0.08–0.14). That is the shared rule: `frame-quad-cases.json` `phone-framed` expects 2 screens too. Without quads, no screen (under the 8-box cluster rule). `ScanAsync` gives the same 2 screens and all text rects.
+  - **Speed at 1,280 px:** OCR median 16.2 ms (5 lines), 16.8 ms (7 lines), 37.4 ms (tilted); QuadFinder 15.8–17.7 ms. So Windows OCR is usable here, and nothing in this run asks for the PP-OCRv4 fallback. Recall on real footage, and on languages other than English, is still unmeasured.
+- **4. Analyzer and cover (W5, W6):** `NativeFrameAnalyzerTests` (15 frames within tolerance on the shipped decoder path) and `NativeExportCoverTests` pass natively. The whole CLI, `analyze-frames --faces-only --video-pass` with the bundled models, on `fillers-chirp.mp4` (30 s, 1280×720 H.264, no faces), runs 9 opening frames in 0.14–0.15 s and 2 sentence frames in 0.14 s; the video pass took 0.19–0.22 s (two runs, cold cache). The CLI needs a runtime-terms receipt first: accepted in the scratch data dir only.
+- **5. The App's output folder (win-arm64, Release):**
+  - `dotnet build` with `-r win-arm64 -p:Platform=ARM64` (76 s), then `Assert-OnnxRuntimePin.ps1`: ONNX Runtime 1.19.2's two DLLs match the package byte for byte.
+  - `Test-ReleaseBoundary.ps1 -RuntimeIdentifier win-arm64`: 4 assemblies pass (VoxClip, Core, Media, voxclip-cli).
+  - The self-contained, unpackaged `dotnet publish` that `vm-release.ps1` runs (343 MB; no signing, Velopack or FFmpeg copy): the ORT pin passes again, and the only `onnxruntime*.dll` are the two pinned ones.
+  - In both the build and the publish output, `models/frames/` has both models with **size and SHA-256 matching `frame-models.json`**, plus `LICENSE-YuNet.txt`, `LICENSE-Apache-2.0.txt` and `NOTICE.txt`, byte-identical to the repo.
+- **Fix (2bc33f52).** `CliAnalyzeFramesTests.WithFacesUnavailableTheCliFailsWithTheMacsCodeAndLine` failed under `VOXCLIP_FRAME_FACES=1`, on the VM and on the Mac host alike. It runs the whole CLI in-process, so with the override (or an enabled catalogue) the real models load and the CLI fails on text recognition instead. It now skips with its reason when faces are installed (the same condition as `TheInstalledFaceSourceFollowsTheCatalogueAndTheOverride`). Red before the fix: 1 failure in the Mac and VM Media runs under the override. After: 0 failures on both.
+- **For the lead (not changed here):**
+  - The Windows plan request's frame summary says "Frames measured on this Mac", because Windows replays the shared `clip-frames/decision-cases.json` wording. Windows needs its own wording, which means a new fixture or a platform field. It is a shared-contract change, so it was left alone.
+  - Under the override, `CliAutopilotTests` logs "the video's frames can't be read, so plans go as text only (MediaException)". Its project points at a stand-in text file, so that line is the designed fallback, not a bug.
+- **Still owed (needs the user's interactive session; can't run over SSH):**
   - the four Make it postable picture rows (opening, face-follow, blur, cover) and the send line in the window;
   - a real Claude Code or Codex image send;
   - the consent UI and the paid voice flows (Create a Voice, Make Takes, Make it postable's voice);
-  - WinUI layout, keyboard and Narrator sweeps listed in the older entries;
-  - a real local Whisper (large-v3-turbo) hearing a real export.
-- **Verification:** no product code changed, so no Windows suite was re-run. Both `check_drift.py` scripts and `tools/schemas/validate.py` pass, and the tree is clean after them.
+  - A8 native parity walks against the shipped folder. These need a format-2 receipt in the walk's data root first (`voxclip-cli --accept-runtime-terms <SHA-256>`; it worked here in scratch);
+  - the WinUI layout, keyboard and Narrator sweeps listed in older entries; a real local Whisper (large-v3-turbo) hearing a real export.
+- **Still owed natively, not in this batch:**
+  - shipping acceptance with the shipping DLLs (`verify-vm.sh` with `VOXCLIP_SHIPPING_RID=win-arm64` and its build report);
+  - the opt-in microphone, muted-endpoint and App-evidence tests listed above;
+  - Windows OCR on real footage, and the screen rule's effect there.
+- **VM disk:** 9.99 GB free before, 7.15 GB at the peak, 9.97 GB after. The lock was released and `C:\voxclip-build\v2-win-vm-native` deleted. The other `C:\voxclip-build` folders were only read (the shipping ZIP and the speaker model were copied out of them). dotnet restore used the VM user's NuGet cache, as every build there does.
+- **Verification:**
+  - Windows Media and Core, Release, in full on the Mac after the fix: Media 1,283 (1,113 passed, 170 skipped, 0 failed), Core 3,447 (3,418 passed, 29 skipped, 0 failed).
+  - The fixed test both ways: with the override it skips (7 run, 1 skipped); without it, it passes (7 of 7).
+  - No shipping assembly changed, so no ReleaseBoundary `update`. Both `check_drift.py` scripts and `tools/schemas/validate.py` pass, and the tree is clean after them.
 
 ### 2026-11-09 — Windows window placement: a seam at a cut, the twin of the Mac rule (track/v2-seam-fade-cut)
 
