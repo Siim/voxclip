@@ -160,8 +160,16 @@ import VoxClipMedia
     private(set) var phrases: [Phrase]
     private(set) var preparing = false
     private(set) var generating = false
-    private(set) var publishing = false
-    private(set) var preparingVideo = false
+    private(set) var publishing = false { didSet { resumeIdleWaiters() } }
+    private(set) var preparingVideo = false { didSet { resumeIdleWaiters() } }
+    /// `settleBackgroundWork` callers waiting for `publishing` and `preparingVideo` to clear.
+    @ObservationIgnored private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+    private func resumeIdleWaiters() {
+        guard !publishing, !preparingVideo, !idleWaiters.isEmpty else { return }
+        let waiters = idleWaiters
+        idleWaiters = []
+        for waiter in waiters { waiter.resume() }
+    }
     /// Who is publishing the selection while `publishing` is true, for `diagnostics`.
     enum PublishPurpose: String { case video = "video preparation", lipsync = "lip sync", use = "Use" }
     @ObservationIgnored private(set) var publishPurpose: PublishPurpose?
@@ -362,17 +370,45 @@ import VoxClipMedia
         // any) instead of returning early, so "prepare, then refresh lip sync" and Use never act on half-prepared video.
         await settleVideoPreparation()
         guard needsVideoPreparation else { return }
-        let task = Task { await runVideoPreparation(at: date) }
-        videoPreparation = task
-        await task.value
-        if videoPreparation == task { videoPreparation = nil }
+        await startVideoPreparation(at: date).value
     }
     private var videoPreparation: Task<Void, Never>?
+    @ObservationIgnored private var videoPreparationTurn = UUID()
+    /// Starts a preparation that `settleVideoPreparation` sees from this moment on, not only once its task first runs;
+    /// it forgets itself when it ends, so a finished one never reads as running.
+    private func startVideoPreparation(at date: Date) -> Task<Void, Never> {
+        let turn = UUID()
+        videoPreparationTurn = turn
+        let task = Task {
+            await runVideoPreparation(at: date)
+            if videoPreparationTurn == turn { videoPreparation = nil }
+        }
+        videoPreparation = task
+        return task
+    }
     /// Waits for a running `prepareVideoChoices`, and for any newer choices the callers waiting on it prepared after it.
     private func settleVideoPreparation() async {
         while let running = videoPreparation {
             await running.value
             if videoPreparation == running { videoPreparation = nil }
+        }
+    }
+    /// Waits until no work the plan started on its own holds it busy (voice-lab §8.2.2 "A reword waits for the take's own
+    /// video"): a video preparation and any newer choices prepared after it, a publish of the selection (lip sync's offers
+    /// or preview, Use, a preparation queued after lip sync's publish), and a quote being prepared. A take that lands
+    /// starts all of these without a click. A paid run (`generating`) is not waited for, and a retired plan returns at once.
+    private func settleBackgroundWork() async {
+        while stillCurrent {
+            if let running = videoPreparation {
+                await running.value
+                if videoPreparation == running { videoPreparation = nil }
+            } else if publishing || preparingVideo {
+                await withCheckedContinuation { idleWaiters.append($0) }
+            } else if preparing, !generating, let quote = operation {
+                await quote.value
+                // Its owner clears `preparing` when the quote ends; one that is still set is no longer this quote's.
+                if operation == quote, preparing { return }
+            } else { return }
         }
     }
 
@@ -636,13 +672,15 @@ import VoxClipMedia
 
     /// Puts a new wording on one phrase and prices a take of it. A wording without the phrase's bridge words can't be
     /// placed or priced: it is refused, and the phrase keeps its words (false).
-    /// A take that just landed starts its own video preparation (`autoChooseVideo` matching or cutting the video to it),
-    /// which publishes the take while it runs. The new wording replaces that video anyway, so the price waits for it to
-    /// settle instead of being refused over it (the measured round's "couldn't be priced" after a long take). `stillAsked`
-    /// is the caller's own check, made again after that wait: false refuses, with nothing changed.
+    /// A take that just landed starts work of its own: its video preparation (`autoChooseVideo` matching or cutting the
+    /// video to it), then lip sync's offers, which publish the take again when that video isn't prepared, and possibly a
+    /// quote. The new wording replaces that work's result anyway, so the price waits for all of it to settle
+    /// (`settleBackgroundWork`) instead of being refused over it (the measured round's "couldn't be priced" after a long
+    /// take, CI 42715860857). `stillAsked` is the caller's own check, made again after that wait: false refuses, with
+    /// nothing changed. `rewordingRefusal` says which check refused.
     @discardableResult func prepareRewording(_ text: String, phrase index: Int,
                                              stillAsked: () -> Bool = { true }) async -> Bool {
-        await settleVideoPreparation()
+        await settleBackgroundWork()
         rewordingRefusal = refusal(rewording: text, phrase: index, stillAsked: stillAsked)
         guard rewordingRefusal == nil else { return false }
         phrases[index].audioTags = VoiceLabAudioTags.reanchored(phrases[index].audioTags, from: phrases[index].text, to: text)
@@ -1272,8 +1310,9 @@ import VoxClipMedia
         defer {
             publishing = false; publishPurpose = nil
             // Lip sync's publish can refuse a video preparation that an automatic choice started meanwhile (ADR-R39: no
-            // click follows to start it again); it starts once this one ends, so Use never waits on a preparation nobody runs.
-            if onlyChosen, !preparingVideo, videoPreparation == nil, needsVideoPreparation { Task { await prepareVideoChoices() } }
+            // click follows to start it again); it starts once this one ends, so Use never waits on a preparation nobody
+            // runs. It is tracked from here, so a reword arriving before its task runs waits for it too.
+            if onlyChosen, !preparingVideo, videoPreparation == nil, needsVideoPreparation { _ = startVideoPreparation(at: Date()) }
         }
         let selected = selectedPhrases.filter { !onlyChosen || $0.videoChoice != nil }
         guard !selected.isEmpty, selected.allSatisfy({ phrase in

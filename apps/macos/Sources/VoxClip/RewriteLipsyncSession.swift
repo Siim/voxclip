@@ -116,6 +116,11 @@ import VoxClipMedia
             let (offers, all) = try await backend.offers()
             guard revision == turn, offers.values.allSatisfy({ $0.isCurrent() }) else { return }
             self.offers = offers; self.allOffer = all; problem = ""
+        } catch ClipTakePlan.Failure.stale {
+            // The takes changed while the offers were made (a reworded phrase is priced, a take is made): they end
+            // quietly, and the refresh after that change makes fresh ones.
+            guard revision == turn else { return }
+            offers = [:]; allOffer = nil
         } catch {
             guard revision == turn else { return }
             offers = [:]; allOffer = nil
