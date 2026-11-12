@@ -28,7 +28,7 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
     private readonly VoiceConsentStore store = new(data, timeProvider);
     /// <summary>The speaker check for a language. The App makes no speaker check while the parity gate is closed, so this is null and
     /// every free local step (learning, the rebuild and per-video finders) says it is unavailable.</summary>
-    private VoiceSpeakerProbe? Speaker(string language) => (speaker ?? (_ => VoiceSpeakerProbe.From(VoiceSpeakerCheck.Unavailable)))(language);
+    private VoiceSpeakerProbe? Speaker(string language) => (speaker ?? (code => VoiceSpeakerProbe.From(SpeakerChecks.For(data, code))))(language);
     public IReadOnlyList<string> LearningProjects() => learningProjects?.Invoke() ?? [];
     public bool LearningAvailable(string language) => Enabled && Speaker(language) is not null;
     public async Task<VoiceLabProjectSource?> ReadProjectAsync(string projectPath, CancellationToken ct)
@@ -51,16 +51,19 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
     }
     /// <summary>The attested creation a rebuild runs through (§6.12): one enrollment per backend, so a prepared plan is still there at the
     /// priced click. It has no speaker check while the parity gate is closed, so its preparation refuses with SpeakerUnavailable.</summary>
-    private (ElevenLabsRegion Region, ElevenLabsVoiceLab Client, VoiceEnrollment Enrollment)? rebuildCreation;
-    private (ElevenLabsVoiceLab Client, VoiceEnrollment Enrollment) RebuildCreation(CancellationToken ct)
+    private (ElevenLabsRegion Region, string Language, ElevenLabsVoiceLab Client, VoiceEnrollment Enrollment)? rebuildCreation;
+    /// <summary>The creation for a language's voice (null: the one already prepared), with that language's speaker check.</summary>
+    private (ElevenLabsVoiceLab Client, VoiceEnrollment Enrollment) RebuildCreation(CancellationToken ct, string? language = null)
     {
         RequireEnabled(ct);
         var selected = region();
-        if (rebuildCreation is { } current && current.Region == selected) return (current.Client, current.Enrollment);
+        if (rebuildCreation is { } current && current.Region == selected && (language is null || current.Language == language))
+            return (current.Client, current.Enrollment);
         rebuildCreation?.Client.Dispose();
+        var code = language ?? "en";
         var client = new ElevenLabsVoiceLab(keys, selected, log, VoiceLabPrices.Load());
-        var enrollment = new VoiceEnrollment(store, client, clock: clock);
-        rebuildCreation = (selected, client, enrollment);
+        var enrollment = new VoiceEnrollment(store, client, speaker: SpeakerChecks.For(data, code), clock: clock);
+        rebuildCreation = (selected, code, client, enrollment);
         return (client, enrollment);
     }
     public async Task<VoiceRebuildFind> FindRebuildAsync(string recordId, IReadOnlyList<string> projects, Func<int, int, Task> progress, CancellationToken ct)
@@ -83,7 +86,7 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
     public async Task<VoiceRebuildQuote> PrepareRebuildAsync(VoiceConsentRecord old, VoiceRebuildFind found, VoiceConsentAttestations attestations,
         string displayName, CancellationToken ct)
     {
-        var (client, enrollment) = RebuildCreation(ct);
+        var (client, enrollment) = RebuildCreation(ct, old.Language);
         // The new voice goes to the account that holds the old one.
         await client.ValidateCreatorAsync(old.CreatorIdentity, ct).ConfigureAwait(false);
         var id = Guid.NewGuid().ToString("D");
@@ -172,7 +175,7 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
         // The closed parity gate: no speaker check, so nothing is created, sent or paid for.
         RequireEnabled(ct);
         if (Speaker(anchor.Language) is null) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-        var (client, enrollment) = RebuildCreation(ct);
+        var (client, enrollment) = RebuildCreation(ct, anchor.Language);
         await client.ValidateCreatorAsync(anchor.CreatorIdentity, ct).ConfigureAwait(false);
         var plan = await enrollment.PrepareProjectPlanAsync(Guid.NewGuid().ToString("D"), anchor.Language, anchor.Attestations, displayName,
             ((VoiceRebuildFinder.Found)found.Ticket).Samples, Enabled, removeBackgroundNoise: found.RemovesBackgroundNoise, ct: ct).ConfigureAwait(false);

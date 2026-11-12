@@ -38,7 +38,7 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
     {
         this.data = data; this.enabled = enabled; this.plan = plan; this.consent = consent;
         this.clock = clock ?? TimeProvider.System;
-        this.speakerAvailable = speakerAvailable ?? (() => VoiceSpeakerCheck.Unavailable.Available);
+        this.speakerAvailable = speakerAvailable ?? (() => SpeakerChecks.For(data, "en").Available);
         this.transcribe = transcribe;
         var shared = SharedResources.ResolveRoot();
         text = JsonSerializer.Deserialize<VoiceConsentText>(File.ReadAllBytes(Path.Combine(shared, "voice-lab", "statements.json")), new JsonSerializerOptions(JsonSerializerDefaults.Web))
@@ -48,7 +48,7 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
         prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(shared, "catalog", "voice-lab.json")));
         store = new(data, clock);
         client = new(keys, region, log, prices);
-        enrollment = new(store, client, transcribe is null ? null : ScribeAsync, clock: clock);
+        enrollment = new(store, client, transcribe is null ? null : ScribeAsync, speakerAvailable is null ? SpeakerChecks.For(data, "en") : null, clock: clock);
     }
 
     public bool Enabled => enabled();

@@ -17,15 +17,17 @@ internal sealed class RewriteGenerationBackend : IDisposable
     private readonly VoiceLabTakeStorage storage;
     private readonly VoiceLabDispatchGate gate = new();
     private readonly Func<bool> current;
+    private readonly DataLocations data;
     internal VoiceLabTakeRun Runner { get; }
     internal RewriteGenerationBackend(DataLocations data, IKeyProvider keys, ILog log, VoiceLabPriceCatalog prices,
-        ElevenLabsRegion region, string projectId, Func<bool> current, Func<Action, Task> onUi, VoiceLabLocalTiming? localTiming = null)
+        ElevenLabsRegion region, string projectId, string language, Func<bool> current, Func<Action, Task> onUi, VoiceLabLocalTiming? localTiming = null)
     {
         this.current = current;
+        this.data = data;
         store = new(data);
         client = new(keys, region, log, prices, new VoiceLabSpendLedger(data));
         storage = new(projectId, Path.Combine(data.Root, "VoiceLab"), Path.Combine(data.Root, "VoiceLabScratch"));
-        Runner = new(client, store, VoiceSpeakerCheck.Unavailable,
+        Runner = new(client, store, SpeakerChecks.For(data, language),
             storage, gate,
             async ct =>
             {
@@ -45,7 +47,7 @@ internal sealed class RewriteGenerationBackend : IDisposable
     internal async Task<RewriteGenerationChoices> DiscoverAsync(string language, CancellationToken ct)
     {
         RequireCurrent(ct);
-        VoiceSpeakerCheck.Unavailable.ValidateAvailability();
+        SpeakerChecks.For(data, language).ValidateAvailability();
         var models = (await client.DiscoverModelsAsync(ct)).Where(model => model.SpeechRoute is not null && model.Languages.Contains(language)).ToArray();
         RequireCurrent(ct);
         var remote = await client.ListOwnClonesAsync(ct);

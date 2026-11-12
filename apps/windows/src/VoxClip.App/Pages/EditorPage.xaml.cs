@@ -711,7 +711,7 @@ if (insertion ||
         bool Current() => session.GenerationIsCurrent && App.Services.VoiceLabEnabled &&
             ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log) == region;
         var backend = new RewriteGenerationBackend(App.Services.Data, App.Services.Keys, App.Services.Log,
-            VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi, App.Services.LocalTiming);
+            VoiceLabPrices.Load(), region, session.Project.Id, session.Project.Transcript?.Language ?? "en", Current, OnUi, App.Services.LocalTiming);
         IVoiceLabTakeRunner runner = backend.Runner;
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
         var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? "", VoiceLabSourceAudio.RewriteSourceAsync);

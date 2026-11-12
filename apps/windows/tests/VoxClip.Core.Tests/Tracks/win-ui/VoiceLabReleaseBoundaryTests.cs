@@ -77,7 +77,7 @@ public sealed class VoiceLabReleaseBoundaryTests
         var keys = new ForbiddenKeys();
         await using var log = new SilentLog();
         using var backend = new RewriteGenerationBackend(data, keys, log, VoiceLabPrices.Load(), ElevenLabsRegion.Default,
-            "isolated-test", () => VoiceLabBeta.IsAvailable(enabled, accepted, internalBuild), action => { action(); return Task.CompletedTask; });
+            "isolated-test", "en", () => VoiceLabBeta.IsAvailable(enabled, accepted, internalBuild), action => { action(); return Task.CompletedTask; });
         Assert.False(VoiceSpeakerCheck.WindowsNativeParityVerified);
         Assert.False(VoiceSpeakerCheck.Unavailable.Available);
         if (Expected(enabled, accepted, internalBuild))
@@ -106,7 +106,7 @@ public sealed class VoiceLabReleaseBoundaryTests
         await using var log = new SilentLog();
         VoxClip.Media.VoiceLab.VoiceLabLocalTiming timing = (_, _, _, _) => Task.FromResult<IReadOnlyList<VoiceLabWord>>([]);
         using (var backend = new RewriteGenerationBackend(data, keys, log, VoiceLabPrices.Load(), ElevenLabsRegion.Default,
-            "isolated-test", () => false, action => { action(); return Task.CompletedTask; }, timing))
+            "isolated-test", "en", () => false, action => { action(); return Task.CompletedTask; }, timing))
             Assert.Same(timing, backend.Runner.LocalTiming);
         Assert.Equal(0, keys.Reads);
         Assert.Contains("VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi, App.Services.LocalTiming);", Source("Pages/EditorPage.xaml.cs"));
