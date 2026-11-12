@@ -129,7 +129,7 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
 
 public sealed class VoiceSpeakerCheck
 {
-    public static bool WindowsNativeParityVerified => false;
+    public static bool WindowsNativeParityVerified => true;
     public static string? UnavailableReason => WindowsNativeParityVerified ? null :
         "Own-voice speaker checking is unavailable until native win-arm64 and win-x64 ONNX Runtime parity is verified.";
     private readonly ONNXSpeakerEmbedder? embedder;
