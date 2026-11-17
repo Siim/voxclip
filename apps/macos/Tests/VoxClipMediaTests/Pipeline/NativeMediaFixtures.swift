@@ -245,27 +245,49 @@ actor NativeMediaFixtures {
     private nonisolated func muxRoundedTail(_ composition: AVComposition, to destination: URL) async throws {
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
         writer.movieTimeScale = 1000
-        var inputs: [(AVAssetTrack, AVAssetWriterInput.SampleBufferReceiver)] = []
+        var feeds: [TrackFeed] = []
         for track in try await composition.load(.tracks) {
             let input = AVAssetWriterInput(mediaType: track.mediaType, outputSettings: nil,
                 sourceFormatHint: try await track.load(.formatDescriptions).first)
-            inputs.append((track, writer.inputReceiver(for: input)))
+            let reader = try AVAssetReader(asset: composition)
+            let provider = reader.outputProvider(for: AVAssetReaderTrackOutput(track: track, outputSettings: nil))
+            feeds.append(TrackFeed(reader: reader, provider: provider, receiver: writer.inputReceiver(for: input)))
         }
         guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
         writer.startSession(atSourceTime: .zero)
-        for (track, receiver) in inputs {
-            let reader = try AVAssetReader(asset: composition)
-            let provider = reader.outputProvider(for: AVAssetReaderTrackOutput(track: track, outputSettings: nil))
-            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-            while let sample = try await MediaReadQueue.next(provider) { try await receiver.append(sample) }
-            guard reader.status == .completed else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-            receiver.finish()
+        // Every track feeds at once, as the exporter's pumps do. A writer holds back an input that runs ahead of the
+        // others, so writing all the video before any audio can wait forever on a slow runner: CI 43994454734 stalled
+        // here past the 120 s generation limit, where it usually takes 1.5 s (hosted-CI trap 9).
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for feed in feeds {
+                    group.addTask {
+                        guard feed.reader.startReading() else { throw feed.reader.error ?? CocoaError(.fileReadUnknown) }
+                        while let sample = try await MediaReadQueue.next(feed.provider) { try await feed.receiver.append(sample) }
+                        guard feed.reader.status == .completed else { throw feed.reader.error ?? CocoaError(.fileReadUnknown) }
+                        feed.receiver.finish()
+                    }
+                }
+                try await group.waitForAll()
+            }
+        } catch {
+            for feed in feeds { feed.reader.cancelReading() }
+            writer.cancelWriting()
+            throw error
         }
         let duration = try await composition.load(.duration)
         writer.endSession(atSourceTime: CMTimeConvertScale(duration, timescale: 1000, method: .roundAwayFromZero))
         await writer.finishWriting()
         guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
         try roundMoviePresentationEndsUp(destination)
+    }
+
+    /// One track's reader and its writer input, fed in its own task. Each is touched only by that task once the group
+    /// starts, and the writer outlives the group.
+    private struct TrackFeed: @unchecked Sendable {
+        let reader: AVAssetReader
+        let provider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>
+        let receiver: AVAssetWriterInput.SampleBufferReceiver
     }
 
     private nonisolated func roundMoviePresentationEndsUp(_ destination: URL) throws {
