@@ -69,7 +69,8 @@ extension HeavyMediaTests {
         // The realistic pass only: ✦ Ask Claude on a selection (DebugRewriteSmokeAskClaude.swift) makes no takes, and
         // S-clip-controls exports a clip at 1.25× with the Muted look and checks its length and caption alignment.
         // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.
-        let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls", "S-claude-does-it-all"]
+        // S-claude-check-pending drops one before Claude Code's status check has run, and waits for it with no click.
+        let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls", "S-claude-does-it-all", "S-claude-check-pending"]
         // Talk back to Claude in the transcript (DebugRewriteSmokeThread.swift): a reply, the arrows and "That's it, keep it"
         // to Use; "3 more versions" and Undo; "My own words", kept, to Use. Both passes.
         let thread = ["S-thread", "S-thread-more", "S-thread-own"]

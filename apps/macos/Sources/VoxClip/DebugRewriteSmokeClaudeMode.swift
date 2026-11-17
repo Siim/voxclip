@@ -31,6 +31,10 @@ extension DebugRewriteSmoke {
                    requiresCompletion: false, fixture: Fixture(rewrites: [], voice: RewriteSmokeVoiceScript(exactFit: true))) { harness in
             try await harness.claudeDoesItAll()
         },
+        Definition(id: "S-claude-check-pending", title: "✦ Claude does it all on a video transcribed before Claude Code's status check: it waits, then goes on",
+                   requiresCompletion: false, fixture: Fixture(rewrites: [], voice: RewriteSmokeVoiceScript(exactFit: true))) { harness in
+            try await harness.claudeModeCheckPending()
+        },
     ] }
 }
 
@@ -57,8 +61,19 @@ extension DebugRewriteSmoke {
     }
 }
 
+/// A Claude mode scenario's editor and scripted Claude Code, with the settings to put back.
+@MainActor struct ClaudeModeSmokeStage {
+    let editor: EditorModel
+    let fake: ClaudeModeSmokeConnector
+    let consents: ConsentLog
+    let folder: URL
+    let restore: () -> Void
+}
+
 extension DebugRewriteSmoke.Harness {
-    func claudeDoesItAll() async throws {
+    /// A newly dropped, transcribed video with no clips, Claude mode on (top 3, $2) and Claude Code chosen. `detected`
+    /// runs Claude Code's status check first, as the harness picker does; otherwise nothing has checked it yet.
+    func claudeModeStage(_ scenario: String, detected: Bool, copied: @escaping (String) -> Void) async throws -> ClaudeModeSmokeStage {
         // Claude picks each clip's caption look, as in the hand-edited benchmark: three clips, three styles.
         let looks = ["marker", "minimal", "punch-in"]
         var picked: [Int: String] = [:]
@@ -76,16 +91,19 @@ extension DebugRewriteSmoke.Harness {
         let reply = try DebugRewriteSmoke.claudeModeFindReply(words: words)
         let fake = ClaudeModeSmokeConnector(reply: reply)
         let consents = ConsentLog()
-        var copied: [String] = []
+        let methods = app.knownCLIAuthMethods, statuses = app.detectedConnectorStatus
         app.connectorOverride = { _ in fake }
         app.connectorConsentOverride = { _, action, _ in consents.actions.append(action); return true }
-        editor.pasteboardOverride = { copied.append($0) }
-        defer {
+        editor.pasteboardOverride = copied
+        let presetBefore = editor.preset
+        let restore = {
             app.connectorOverride = nil; app.connectorConsentOverride = nil
             editor.smokeExportsDemo = false; editor.pasteboardOverride = nil
             for (key, value) in zip(keys, before) { app.settings.values[key] = value }
+            app.knownCLIAuthMethods = methods; app.detectedConnectorStatus = statuses
+            editor.preset = presetBefore
         }
-        let folder = directory.appendingPathComponent("S-claude-does-it-all", isDirectory: true).appendingPathComponent("export", isDirectory: true)
+        let folder = directory.appendingPathComponent(scenario, isDirectory: true).appendingPathComponent("export", isDirectory: true)
         try? FileManager.default.removeItem(at: folder)
         app.set("llm.connector", .string("claude-code"))
         app.set("export.folder", .string(folder.path))
@@ -93,11 +111,15 @@ extension DebugRewriteSmoke.Harness {
         app.set(ClipsMode.countKey, .number(3))
         app.set(ClipsMode.capKey, .number(2))
         // The script's sentences are 4–8 s: Quotes (5–15 s) keeps them, where Best wants 20 s or more.
-        let presetBefore = editor.preset
         editor.preset = .quotes
-        defer { editor.preset = presetBefore }
-        // Detection, as the harness picker runs it: Claude Code on a plan, so Find Clips sends with no click.
-        if let provider = app.providers.first(where: { $0.id == ConnectorID.claudeCode.rawValue }) { _ = await app.connectorStatus(provider, using: fake) }
+        if detected {
+            // Detection, as the harness picker runs it: Claude Code on a plan, so Find Clips sends with no click.
+            if let provider = app.providers.first(where: { $0.id == ConnectorID.claudeCode.rawValue }) { _ = await app.connectorStatus(provider, using: fake) }
+        } else {
+            // Nothing has checked Claude Code yet in this app: its sign-in is unknown.
+            app.knownCLIAuthMethods = methods.filter { !$0.key.hasPrefix(ConnectorID.claudeCode.rawValue + ":") }
+            app.detectedConnectorStatus[ConnectorID.claudeCode.rawValue] = nil
+        }
         // The newly dropped video: its transcript, and no clips yet.
         var project = editor.project
         project.ai.results = []
@@ -105,6 +127,14 @@ extension DebugRewriteSmoke.Harness {
         project.export.folder = nil
         editor.replace(project, name: "New video")
         editor.smokeExportsDemo = true
+        return ClaudeModeSmokeStage(editor: editor, fake: fake, consents: consents, folder: folder, restore: restore)
+    }
+
+    func claudeDoesItAll() async throws {
+        var copied: [String] = []
+        let stage = try await claudeModeStage("S-claude-does-it-all", detected: true) { copied.append($0) }
+        defer { stage.restore() }
+        let editor = stage.editor, fake = stage.fake, consents = stage.consents, folder = stage.folder
         let steps = editor.undoSteps
 
         try await act("drop a new video; it is transcribed on this Mac; then wait (no clicks)") {
@@ -154,6 +184,44 @@ extension DebugRewriteSmoke.Harness {
     }
 }
 extension DebugRewriteSmoke.Harness {
+    /// MVP53: the transcript lands before anything has checked Claude Code. The card waits on the free status check
+    /// ("Checking Claude Code…"), never says it isn't installed, and goes on with no click once the check finds it on its plan.
+    func claudeModeCheckPending() async throws {
+        let stage = try await claudeModeStage("S-claude-check-pending", detected: false) { _ in }
+        defer { stage.restore() }
+        let editor = stage.editor, fake = stage.fake
+        let unknown = app.cliSignIn(.claudeCode) == nil
+        var waited = "", setUpShown: [String] = []
+        func note() { if case .blocked(.setUp(let reason)) = editor.claudeMode.phase { setUpShown.append(reason) } }
+        try await act("drop a new video; it is transcribed before Claude Code is checked; then wait (no clicks)") {
+            editor.armClaudeMode()
+            editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+            note()
+            waited = "\(editor.claudeMode.phase) · " + editor.claudeModeSteps.map(\.text).joined(separator: " / ")
+            let checking = editor.claudeMode.checking == "Claude Code" && editor.claudeModeSteps.contains { $0.text == "Checking Claude Code…" }
+            if !checking { waited += " · no check shown" }
+            await editor.claudeMode.detection?.value
+            note()
+            await editor.findTask?.value
+            await editor.claudeMode.afterFind?.value
+            note()
+            await editor.claudeMode.task?.value
+            note()
+        }
+        let runs = editor.claudeModeRuns
+        let requests = await fake.requests
+        completed = editor.claudeMode.phase == .done; ended = true
+        makeItAppend([
+            DebugRewriteSmoke.Check(invariant: "P1", passed: unknown && waited.hasPrefix("waiting · ") && !waited.contains("no check shown"),
+                detail: "sign-in unknown at open: \(unknown) · \(waited)"),
+            DebugRewriteSmoke.Check(invariant: "P2", passed: setUpShown.isEmpty, detail: setUpShown.isEmpty ? "never asked to set up" : setUpShown.joined(separator: "; ")),
+            DebugRewriteSmoke.Check(invariant: "P3", passed: requests.count == 1 && stage.consents.actions.allSatisfy { $0 == .findClips }
+                    && editor.claudeMode.phase == .done && runs.count == 3 && runs.allSatisfy { $0.phase == .ready },
+                detail: "\(requests.count) Find Clips request(s) · \(editor.claudeMode.phase) · " + runs.map { "\($0.clipID) \(editor.makeItHeadline($0))" }.joined(separator: "; ")
+                    + (editor.clipError.map { " · " + $0 } ?? "")),
+        ])
+    }
+
     /// E4: each exported clip carries its own caption look (design.md §6.6). The export ledger records the style every
     /// file rendered in; each clip's equals Claude's pick for it, and the three differ.
     func claudeModeLooksCheck(_ editor: EditorModel, runs: [MakeItRun]) -> DebugRewriteSmoke.Check {
