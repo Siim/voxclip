@@ -198,6 +198,7 @@ extension RewriteSession {
     /// The reply is in: the proposal shows in the transcript and as the change list (R2), announced.
     func finishRun(seconds: Double) {
         refreshContext(answered: seconds)
+        editor.app.connectorSendSucceeded()
         // A reply whose changes cannot be reviewed shows R1x with the review's problem.
         guard review != nil else { fail(.message(problem)); return }
         showReplyInTranscript()

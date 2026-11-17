@@ -10,7 +10,7 @@ import VoxClipCore
 
 /// What Claude mode needs from the creator before it can go on, with the one action that fixes it.
 enum ClaudeModeBlocker: Equatable {
-    /// No AI is chosen, or the chosen CLI is missing or signed out: Settings › AI.
+    /// No AI is chosen, or the chosen CLI's status check found it missing, signed out or too old: Settings › AI.
     case setUp(String)
     /// The chosen AI bills each send to a key: Find Clips asks inline first.
     case approveSend(String)
@@ -55,6 +55,14 @@ enum ClaudeModeBlocker: Equatable {
     @ObservationIgnored var task: Task<Void, Never>?
     /// Going on once Find Clips' task has ended.
     @ObservationIgnored var afterFind: Task<Void, Never>?
+    /// The chosen CLI's short name while its free status check runs ("Checking Claude Code…"). A CLI no check has
+    /// looked at yet is not missing: the card waits for the check before it says anything is wrong.
+    var checking: String?
+    /// The status check in flight, and what the last one found for the connector and path it checked.
+    @ObservationIgnored var detection: Task<Void, Never>?
+    @ObservationIgnored var checked: (key: String, status: ConnectorStatus?)?
+    /// A blocked card watches what decides its AI's readiness, and looks again when any of it changes.
+    @ObservationIgnored var watchesReadiness = false
 
     var running: Bool { phase == .running }
 }
@@ -104,7 +112,10 @@ extension EditorModel {
         claudeMode.armed = true
         claudeMode.clock = ClaudeModeClock()
         claudeMode.clock?.begin(.transcribe)
-        if claudeModeOn { claudeMode.phase = .waiting }
+        guard claudeModeOn else { return }
+        claudeMode.phase = .waiting
+        // The check is free and sends nothing, so it runs beside the transcription.
+        _ = claudeModeChecksConnector()
     }
 
     /// Claude mode takes the transcript on: Find Clips after any transcription, not only a free one.
@@ -136,8 +147,65 @@ extension EditorModel {
         guard claudeMode.armed, claudeModeOn, capabilities.edit, transcribed || project.transcript != nil else { return }
         if finding { claudeMode.phase = .waiting; return }
         if !suggestedClips.isEmpty { startClaudeMode(); return }
+        if claudeModeChecksConnector() { claudeMode.phase = .waiting; return }
         if project.ai.results.isEmpty, findClipsIfFree() { claudeMode.clock?.begin(.find); claudeMode.phase = .waiting; return }
         claudeMode.phase = .blocked(claudeModeBlocker)
+        watchClaudeModeReadiness()
+    }
+
+    /// "claude-code:/usr/local/bin/claude": the connector and the CLI path a status check covers.
+    private func claudeModeCheckKey(_ connector: ConnectorID) -> String {
+        connector.rawValue + ":" + app.string("llm.cliPath.\(connector.rawValue)")
+    }
+
+    /// The chosen CLI's sign-in is not known yet: runs its status check (the one Rewrite runs; free, it sends nothing) and
+    /// goes on when it ends. Returns whether Claude waits for it. "Not checked yet" never reads as "isn't installed".
+    private func claudeModeChecksConnector() -> Bool {
+        if claudeMode.detection != nil { return true }
+        guard let connector = ConnectorID(rawValue: app.string("llm.connector")), connector == .claudeCode || connector == .codex,
+              let provider = app.providers.first(where: { $0.id == connector.rawValue }), app.cliSignIn(connector) == nil else { return false }
+        let key = claudeModeCheckKey(connector)
+        if claudeMode.checked?.key == key { return false }
+        claudeMode.checking = provider.shortName
+        let app = self.app
+        claudeMode.detection = Task { [weak self] in
+            let status = await app.connectorStatus(provider)
+            guard let self, !Task.isCancelled else { return }
+            claudeMode.detection = nil
+            claudeMode.checking = nil
+            claudeMode.checked = (key, status)
+            claudeModeContinue()
+        }
+        return true
+    }
+
+    /// A blocked card looks again, and goes on by itself once clear, when its AI's readiness may have changed: a status
+    /// check found a sign-in, a connector send succeeded, Settings closed, or the chosen AI or its path changed.
+    private func watchClaudeModeReadiness() {
+        guard !claudeMode.watchesReadiness else { return }
+        claudeMode.watchesReadiness = true
+        let app = self.app
+        withObservationTracking {
+            _ = app.knownCLIAuthMethods
+            _ = app.detectedConnectorStatus
+            _ = app.connectorReadinessRevision
+            _ = app.connectorSendRevision
+            _ = app.settingsClosedRevision
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.claudeMode.watchesReadiness = false
+                self?.claudeModeRecheck()
+            }
+        }
+    }
+
+    /// Re-evaluates a card blocked on set-up or a send's OK, with a fresh status check. A failed Find Clips waits for its
+    /// own Find Clips Again.
+    func claudeModeRecheck() {
+        guard claudeMode.armed, claudeModeOn, case .blocked(let blocker) = claudeMode.phase else { return }
+        if case .findAgain = blocker { return }
+        claudeMode.checked = nil
+        claudeModeContinue()
     }
 
     /// Why Claude can't find the clips by itself, with the fix.
@@ -148,14 +216,30 @@ extension EditorModel {
         guard let connector = ConnectorID(rawValue: app.string("llm.connector")), app.providers.contains(where: { $0.id == connector.rawValue }) else {
             return .setUp("Claude isn't set up yet. Choose Claude Code in Settings › AI, then Claude starts on its own.")
         }
+        let name = app.providers.first { $0.id == connector.rawValue }?.shortName ?? "Claude Code"
         switch app.llmSendKind(connector) {
         case nil:
-            return .setUp("\(findConnector?.label ?? "Claude Code") isn't installed or signed in. Set it up in Settings › AI.")
-        case .inline(let amount)? where !amount.isEmpty:
-            return .approveSend("\(findConnector?.label ?? "This AI") bills each send to your key, so Claude waits for your OK to find clips.")
+            let checked = claudeMode.checked.flatMap { $0.key == claudeModeCheckKey(connector) ? $0.status : nil }
+            return .setUp(Self.claudeModeSetUpReason(name: name, status: checked))
+        case .confirm?:
+            // An API key, or a CLI signed in with one: each send asks first, inline.
+            return .approveSend("\(name) bills each send to your key, so Claude waits for your OK to find clips.")
         default:
             if let error = clipError { return .findAgain(error) }
             return .approveSend("Claude waits for your OK to read the transcript and find clips.")
+        }
+    }
+
+    /// The set-up card's reason for what the CLI's status check found. Only a check that ran can say it is missing.
+    nonisolated static func claudeModeSetUpReason(name: String, status: ConnectorStatus?) -> String {
+        switch status {
+        case .cliMissing?: return "\(name) isn't installed on this Mac. Install it, then check it in Settings › AI."
+        case .cliSignedOut?: return "\(name) isn't signed in. Sign in once in Terminal, then check it in Settings › AI."
+        case .cliTooOld(let version, _)?:
+            let version = version.trimmingCharacters(in: .whitespacesAndNewlines)
+            let named = version.isEmpty || version == "unknown" ? name : "\(name) \(version)"
+            return "Your \(named) is too old for VoxClip. Update it, then check it in Settings › AI."
+        default: return "VoxClip couldn't check \(name). Check it in Settings › AI."
         }
     }
 
@@ -263,6 +347,7 @@ extension EditorModel {
         } else {
             steps.append(ClaudeStep(id: "transcribed", state: .now, text: transcription.isRunning ? "Transcribing…" : "Waiting for the transcript"))
         }
+        if let name = claudeMode.checking { steps.append(ClaudeStep(id: "checking", state: .now, text: "Checking \(name)…")) }
         if finding {
             steps.append(ClaudeStep(id: "found", state: .now, text: "Finding clips…"))
         } else if claudeMode.found > 0 {

@@ -264,6 +264,181 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.claudeMode.armed, "it starts on its own once fixed")
     }
 
+    // MARK: Readiness: "not checked yet" is not "missing"
+
+    /// Claude Code whose status check waits for `release`, then reports `status` (signed in on the plan when ready), and
+    /// answers Find Clips with `reply`.
+    private actor GatedClaudeCode: LLMConnector {
+        nonisolated let id: ConnectorID = .claudeCode
+        let reply: String
+        var status: ConnectorStatus
+        private var gate: CheckedContinuation<Void, Never>?
+        private var open = false
+        private(set) var checks = 0
+        private(set) var requests = 0
+        init(reply: String, status: ConnectorStatus, gated: Bool) { self.reply = reply; self.status = status; open = !gated }
+        func set(_ next: ConnectorStatus) { status = next }
+        func release() { open = true; gate?.resume(); gate = nil }
+        func status() async -> ConnectorStatus {
+            checks += 1
+            if !open { await withCheckedContinuation { gate = $0 } }
+            return status
+        }
+        func knownCLIAuthMethod() async -> String? { status == .ready ? "claude.ai" : nil }
+        func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture", name: "Fixture", contextTokens: 128_000, source: .curated)] }
+        func contextTokens(model: String) -> Int? { 128_000 }
+        func send(_ request: LLMRequest, model: String) -> RawCompletion { requests += 1; return RawCompletion(text: reply, model: model, stop: .complete) }
+    }
+
+    private struct NewVideo {
+        let app: AppModel
+        let editor: EditorModel
+        let fake: GatedClaudeCode
+        let provider: ProviderChoice
+    }
+
+    /// A newly imported, transcribed video with no clips, Claude mode on and Claude Code chosen, before any status check.
+    private func newVideo(status: ConnectorStatus, gated: Bool) throws -> NewVideo {
+        _ = NSApplication.shared
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        app.loadCatalogue()
+        #expect(app.set(ClipsMode.key, .string(ClipsMode.claude.rawValue)))
+        let shared = try SharedResources.locate()
+        let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        var project = try DebugExplorer.fiveQuestions(from: base)
+        project.edits.clips = []; project.ai.results = []
+        let fake = GatedClaudeCode(reply: try DebugRewriteSmoke.claudeModeFindReply(words: project.transcript?.words ?? []), status: status, gated: gated)
+        app.connectorOverride = { _ in fake }
+        app.connectorConsentOverride = { _, _, _ in true }
+        #expect(app.set("llm.connector", .string("claude-code")))
+        let provider = try #require(app.providers.first { $0.id == "claude-code" })
+        #expect(app.cliSignIn(.claudeCode) == nil, "no status check has run")
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        editor.mediaResolved = true; editor.refresh()
+        editor.undoManager = nil
+        editor.preset = .quotes
+        editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: []) }, fetch: { _ in Data() }, folder: { nil })
+        editor.makeIt.services = MakeItServices(
+            plan: { request, _, _, _ in
+                guard case .clips(let spans) = request.mode else { return ClipAutopilotSeries(plans: []) }
+                return ClipAutopilotSeries(plans: spans.map {
+                    ClipAutopilotPlan(startWord: $0.lowerBound, endWord: $0.upperBound, title: "Clip \($0.lowerBound)", hook: "",
+                                      captions: MakeItPostableTestsPlan.captions, postText: "Post.", score: 8, verdict: .post)
+                })
+            },
+            voice: { _, _ in MakeItRewriteOutcome(result: .voiced(segments: []), spent: 0) },
+            voiceAvailable: { _ in false })
+        return NewVideo(app: app, editor: editor, fake: fake, provider: provider)
+    }
+
+    private func setUpShown(_ phase: ClaudeModeState.Phase) -> Bool {
+        if case .blocked(.setUp) = phase { return true }
+        return false
+    }
+
+    /// The user's MVP53 case: the transcript lands before Claude Code's status check has run. The card waits on the check,
+    /// never says "isn't installed", and goes on by itself once the check finds Claude Code on its plan.
+    @Test(.timeLimit(.minutes(1))) func aTranscriptBeforeTheStatusCheckWaitsForItThenGoesOn() async throws {
+        let video = try newVideo(status: .ready, gated: true)
+        let editor = video.editor
+        defer { editor.close() }
+        editor.armClaudeMode()
+        #expect(editor.claudeMode.checking == "Claude Code", "the free check starts with the transcription")
+        let detection = try #require(editor.claudeMode.detection)
+        // What InlineTranscription does as the transcription ends, while the check still runs.
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        #expect(editor.claudeMode.phase == .waiting && !setUpShown(editor.claudeMode.phase), "\(editor.claudeMode.phase)")
+        #expect(editor.claudeModeSteps.contains { $0.id == "checking" && $0.state == .now && $0.text == "Checking Claude Code…" },
+                "\(editor.claudeModeSteps.map(\.text))")
+        #expect(!editor.finding, "Find Clips waits for the check")
+        await video.fake.release()
+        await detection.value
+        #expect(!setUpShown(editor.claudeMode.phase) && editor.claudeMode.checking == nil, "\(editor.claudeMode.phase)")
+        #expect(video.app.cliSignIn(.claudeCode) == .plan)
+        _ = try await TestDeadline.value(editor.findTask, "Find Clips")
+        await editor.claudeMode.afterFind?.value
+        _ = try await TestDeadline.value(editor.claudeMode.task, "the run")
+        let requests = await video.fake.requests, checks = await video.fake.checks
+        #expect(requests == 1 && checks >= 1, "\(requests) Find Clips request(s), \(checks) check(s)")
+        #expect(editor.claudeMode.phase == .done && editor.claudeModeReady.count == 3, "\(editor.claudeMode.phase) \(editor.clipError ?? "")")
+    }
+
+    /// Only a check that ran can say Claude Code is missing, signed out or too old, each in its own words.
+    @Test(.timeLimit(.minutes(1)), arguments: [
+        (ConnectorStatus.cliMissing, "Claude Code isn't installed on this Mac. Install it, then check it in Settings › AI."),
+        (.cliSignedOut, "Claude Code isn't signed in. Sign in once in Terminal, then check it in Settings › AI."),
+        (.cliTooOld(version: "1.0.2", missing: ["--json-schema"]), "Your Claude Code 1.0.2 is too old for VoxClip. Update it, then check it in Settings › AI."),
+    ])
+    func aCheckThatFindsClaudeCodeMissingSaysWhatToFix(status: ConnectorStatus, reason: String) async throws {
+        let video = try newVideo(status: status, gated: false)
+        let editor = video.editor
+        defer { editor.close() }
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        await editor.claudeMode.detection?.value
+        #expect(editor.claudeMode.phase == .blocked(.setUp(reason)), "\(editor.claudeMode.phase)")
+        #expect(editor.claudeMode.armed && !editor.finding && editor.claudeMode.checking == nil)
+        #expect(await video.fake.requests == 0, "nothing was sent")
+    }
+
+    enum ReadinessTrigger: String, CaseIterable, Sendable { case rewriteSend, settingsClosed, connectorChanged }
+
+    /// A card blocked on set-up looks again, and goes on by itself, once the creator fixes Claude Code: after a Rewrite
+    /// answers through it, when Settings closes, or when the chosen AI changes.
+    @Test(.timeLimit(.minutes(1)), arguments: ReadinessTrigger.allCases)
+    func aBlockedCardLooksAgainAndGoesOn(trigger: ReadinessTrigger) async throws {
+        let video = try newVideo(status: .cliSignedOut, gated: false)
+        let editor = video.editor, app = video.app
+        defer { editor.close() }
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        await editor.claudeMode.detection?.value
+        #expect(setUpShown(editor.claudeMode.phase), "\(editor.claudeMode.phase)")
+        // The creator signs in, in Terminal: nothing in VoxClip knows yet.
+        await video.fake.set(.ready)
+        #expect(setUpShown(editor.claudeMode.phase))
+        switch trigger {
+        case .rewriteSend:
+            // Rewrite's send runs the status check and answers.
+            #expect(try await app.authorizeConnectorRequest(video.provider, connector: video.fake, action: .rewrite, wordCount: 3))
+            app.connectorSendSucceeded()
+        case .settingsClosed: app.settingsClosed()
+        case .connectorChanged: #expect(app.set("llm.cliPath.claude-code", .string("/opt/claude/bin/claude")))
+        }
+        #expect(await TestDeadline.until { editor.finding || editor.claudeMode.phase == .running || editor.claudeMode.phase == .done },
+                "\(trigger): \(editor.claudeMode.phase)")
+        _ = try await TestDeadline.value(editor.findTask, "Find Clips")
+        await editor.claudeMode.afterFind?.value
+        _ = try await TestDeadline.value(editor.claudeMode.task, "the run")
+        #expect(editor.claudeMode.phase == .done && editor.claudeModeReady.count == 3, "\(trigger): \(editor.claudeMode.phase) \(editor.clipError ?? "")")
+    }
+
+    /// Claude Code signed in with an API key bills each send: the check still runs first, and the card then waits for the
+    /// inline OK instead of saying it isn't set up.
+    @Test(.timeLimit(.minutes(1))) func anAPIKeySignInStillWaitsForItsOK() async throws {
+        let video = try newVideo(status: .ready, gated: false)
+        let editor = video.editor
+        defer { editor.close() }
+        video.app.knownCLIAuthMethods = [:]
+        let keyed = KeyedClaudeCode()
+        video.app.connectorOverride = { _ in keyed }
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        await editor.claudeMode.detection?.value
+        #expect(editor.claudeMode.phase == .blocked(.approveSend("Claude Code bills each send to your key, so Claude waits for your OK to find clips.")),
+                "\(editor.claudeMode.phase)")
+        #expect(!editor.finding)
+    }
+
+    private actor KeyedClaudeCode: LLMConnector {
+        nonisolated let id: ConnectorID = .claudeCode
+        func status() -> ConnectorStatus { .ready }
+        func knownCLIAuthMethod() async -> String? { "api_key" }
+        func models(refresh: Bool) -> [LLMModel] { [] }
+        func contextTokens(model: String) -> Int? { 128_000 }
+        func send(_ request: LLMRequest, model: String) -> RawCompletion { RawCompletion(text: "{}", model: model, stop: .complete) }
+    }
+
     // MARK: Money
 
     @Test func theCapStopsTheRunAndContinueApprovesExactlyTheShortfall() async throws {

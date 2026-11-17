@@ -263,6 +263,11 @@ import VoxClipCore
             window.toolbarStyle = .expanded
             window.center()
             settingsWindow = window
+            // A Claude mode card blocked on set-up looks again as Settings closes (design.md §6.7).
+            let model = self.model
+            _ = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+                MainActor.assumeIsolated { model.settingsClosed() }
+            }
         }
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

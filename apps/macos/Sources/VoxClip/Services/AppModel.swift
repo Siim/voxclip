@@ -151,6 +151,12 @@ extension ProviderChoice {
     private(set) var loadingSettings = true
     private(set) var pauseBreathRevision = 0
     private(set) var connectorReadinessRevision = 0
+    /// Counts successful connector sends (a Rewrite's answer) and Settings window closes: a card blocked on the AI's
+    /// readiness looks again on either (design.md §6.7).
+    private(set) var connectorSendRevision = 0
+    private(set) var settingsClosedRevision = 0
+    func connectorSendSucceeded() { connectorSendRevision &+= 1 }
+    func settingsClosed() { settingsClosedRevision &+= 1 }
     var providerStatus: [String: String] = [:]
     var knownCLIAuthMethods: [String: String] = [:]
     var detectedConnectorStatus: [String: ConnectorStatus] = [:]
