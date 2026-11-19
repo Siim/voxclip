@@ -269,7 +269,7 @@ public actor TranscriptionService {
         let identity: EngineRef
         if let provider = engine as? any SpeechCacheIdentityProviding { identity = try await provider.cacheIdentity(for: request.plan) }
         else {
-            let model = request.plan.engine == .elevenlabs ? "scribe_v2" : request.plan.model
+            let model = request.plan.engine == .elevenlabs ? ElevenLabsScribe.modelID : request.plan.model
             var hash: String?
             if engine.engine == .whispercpp, let model, let catalog { hash = try await catalog.model(id: model).files.first(where: { $0.role == "model" })?.sha256 }
             identity = EngineRef(id: engine.engine, modelId: model, modelSha256: hash, engineVersion: "", locale: nil)

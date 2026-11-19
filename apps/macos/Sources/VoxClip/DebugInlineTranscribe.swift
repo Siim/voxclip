@@ -14,7 +14,7 @@ import VoxClipCore
             let flow = editor.transcription
             flow.phase = .choosing; flow.language = name == "f20b" ? "et" : "en"
             flow.engine = name == "f21" ? "elevenlabs" : "local"
-            flow.again = name == "f25"; flow.hasKey = true; flow.rate = 0.22; flow.keytermsSurcharge = 0.2
+            flow.again = name == "f25"; flow.hasKey = true; flow.rate = 0.20; flow.keytermsSurchargePerHour = 0.05
             flow.selectedModel = try await app.modelLibrary.localModel(language: flow.language)
             flow.readiness = name == "f20b" ? .needsModels(ids: [flow.selectedModel!.id], bytes: flow.selectedModel!.totalBytes) : .ready
             for width in [652, 440] {

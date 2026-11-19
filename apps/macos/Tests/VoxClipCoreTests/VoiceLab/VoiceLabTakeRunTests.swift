@@ -281,7 +281,7 @@ struct VoiceLabTakeRunTests {
                 let wave = bytes.subdata(in: start..<(start + size + 8))
                 http.value.withLock { $0.qaWAVs.append(wave) }
                 let tagged = !audioTags.isEmpty && VoiceLabAudioTags.supports(modelID)
-                for (field, value) in [("model_id", "scribe_v2"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", tagged ? "true" : "false"), ("timestamps_granularity", "word")] {
+                for (field, value) in [("model_id", "scribe_v3"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", tagged ? "true" : "false"), ("timestamps_granularity", "word")] {
                     #expect(body.contains("name=\"\(field)\"\r\n\r\n\(value)\r\n"))
                 }
                 let state = http.value.withLock { $0.qa += 1; return $0 }

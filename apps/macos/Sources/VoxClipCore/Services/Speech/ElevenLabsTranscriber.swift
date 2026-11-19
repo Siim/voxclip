@@ -51,7 +51,12 @@ public actor ElevenLabsTranscriber: Transcriber {
         return try await transcribeWithCache(request, cacheURL: key.url(in: directory), progress: progress).raw
     }
     func normalizedRequest(_ request: TranscriptionRequest) async throws -> TranscriptionRequest {
-        try await SpeechRawCacheKey.normalizedRequest(request, catalog: catalog)
+        var normalized = try await SpeechRawCacheKey.normalizedRequest(request, catalog: catalog)
+        // A remembered plan that still names a legacy model runs on the current one.
+        if normalized.plan.engine == .elevenlabs, let model = normalized.plan.model, ElevenLabsScribe.legacyModelIDs.contains(model) {
+            normalized.plan.model = ElevenLabsScribe.modelID
+        }
+        return normalized
     }
     func transcribeWithCache(_ request: TranscriptionRequest, cacheURL: URL, evidence: TranscriptionEvidence? = nil,
                              validate: @escaping @Sendable () async throws -> Void = {},
@@ -88,7 +93,7 @@ public actor ElevenLabsTranscriber: Transcriber {
     private func validateRequest(_ request: TranscriptionRequest) async throws -> Int {
         try Task.checkCancellation()
         guard request.plan.engine == engine, await supports(request.plan.language, model: request.plan.model) else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
-        guard request.plan.model == nil || request.plan.model == "scribe_v2" else { throw VoxClipError.transcriptionFailed("ElevenLabs requires the scribe_v2 model") }
+        guard ElevenLabsScribe.accepts(request.plan.model) else { throw VoxClipError.transcriptionFailed(ElevenLabsScribe.modelRequiredMessage) }
         guard request.audio.durationSeconds.isFinite, request.audio.durationSeconds >= 0.1 else { throw VoxClipError.noSpeech }
         let bytes = try request.audio.wav16k.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard request.audio.durationSeconds <= 36_000, bytes <= 3_000_000_000 else { throw VoxClipError.mediaTooLong(SpeechErrorCopy.duration(request.audio.durationSeconds)) }
@@ -100,7 +105,7 @@ public actor ElevenLabsTranscriber: Transcriber {
                                       progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
         try Task.checkCancellation()
         await logger.register(secret: key)
-        await Log(logger: logger).write(.info, category: "transcribe", message: "engine=elevenlabs model=scribe_v2 bytes=\(bytes) duration=\(request.audio.durationSeconds)")
+        await Log(logger: logger).write(.info, category: "transcribe", message: "engine=elevenlabs model=\(ElevenLabsScribe.modelID) bytes=\(bytes) duration=\(request.audio.durationSeconds)")
         let boundary = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let body = try Self.multipart(request, boundary: boundary)
         defer { try? FileManager.default.removeItem(at: body) }
@@ -150,13 +155,13 @@ public actor ElevenLabsTranscriber: Transcriber {
         throw VoxClipError.offline
     }
     private func cacheKey(_ request: TranscriptionRequest) -> SpeechRawCacheKey {
-        SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        SpeechRawCacheKey(request: request, identity: Self.identity)
     }
     private func mapAndCache(_ data: Data, request: TranscriptionRequest, key: SpeechRawCacheKey, url: URL) async throws -> RawTranscript {
         let response = try? JSONDecoder().decode(JSONValue.self, from: data)
         await cachePaidResponse(SpeechRawCacheEntry(key: key, raw: nil, providerResponse: response, providerResponseBytes: data), at: url)
         try Task.checkCancellation()
-        let raw = try await mapResponse(data, diarize: request.plan.options.diarize)
+        let raw = try await mapResponse(data, diarize: request.plan.options.diarize, language: request.plan.language)
         await cachePaidResponse(SpeechRawCacheEntry(key: key, raw: raw, providerResponse: response, providerResponseBytes: data), at: url)
         guard raw.tokens.contains(where: { ($0.kind ?? .word) == .word }) else { throw VoxClipError.noSpeech }
         return raw
@@ -188,10 +193,14 @@ public actor ElevenLabsTranscriber: Transcriber {
         }
     }
 
-    public func mapResponse(_ data: Data, diarize: Bool) async throws -> RawTranscript {
+    /// The engine every new transcript records; older projects keep the model they recorded.
+    static let identity = EngineRef(id: .elevenlabs, modelId: ElevenLabsScribe.modelID, engineVersion: ElevenLabsScribe.modelID)
+    /// `language` is the request's choice. A reply without a language code (null or missing) takes the forced language,
+    /// or no language for auto, so a paid result is never discarded over it. Unknown reply fields are ignored.
+    public func mapResponse(_ data: Data, diarize: Bool, language choice: LanguageChoice = .auto) async throws -> RawTranscript {
         struct Response: Decodable {
             struct Word: Decodable { let text: String; let type: String; let start: Double?; let end: Double?; let logprob: Double?; let speaker_id: String? }
-            let language_code: String
+            let language_code: String?
             let language_probability: Double?
             let words: [Word]
             let transcription_id: String?
@@ -206,13 +215,15 @@ public actor ElevenLabsTranscriber: Transcriber {
             guard word.type == "word" || word.type == "audio_event" else { return nil }
             return RawToken(text: SpeechText.trim(word.text), start: word.start, end: word.end, conf: word.type == "word" ? word.logprob.map { min(1, max(0, exp($0))) } : nil, speaker: diarize ? word.speaker_id : nil, kind: word.type == "audio_event" ? .event : nil)
         }
-        let language: String
         guard let catalog else { throw VoxClipError.sharedResourcesMissing }
-        language = try await catalog.normalizeLanguage(response.language_code)
+        var reported: String? = response.language_code
+        if reported == nil, case .forced(let code) = choice { reported = code }
+        var language: String?
+        if let reported { language = try await catalog.normalizeLanguage(reported) }
         if let identifier = response.transcription_id, identifier.range(of: "^[A-Za-z0-9._:-]{1,128}$", options: .regularExpression) != nil {
             await Log(logger: logger).write(.info, category: "transcribe", message: "engine=elevenlabs transcription_id=\(identifier) words=\(tokens.count)")
         }
-        return RawTranscript(engine: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: tokens, language: language, languageProbability: response.language_probability, verbatim: true, timing: .native, providerRequestID: response.transcription_id)
+        return RawTranscript(engine: Self.identity, grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: tokens, language: language, languageProbability: response.language_probability, verbatim: true, timing: .native, providerRequestID: response.transcription_id)
     }
 
     private static func validateOptions(_ options: TranscriptionOptions) throws {
@@ -232,7 +243,7 @@ public actor ElevenLabsTranscriber: Transcriber {
         do {
             func write(_ string: String) throws { try output.write(contentsOf: Data(string.utf8)) }
             func part(_ name: String, _ value: String) throws { try write("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n") }
-            try part("model_id", "scribe_v2")
+            try part("model_id", ElevenLabsScribe.modelID)
             if case .forced(let code) = request.plan.language { try part("language_code", SpeechText.primaryLanguage(code)) }
             try part("timestamps_granularity", "word")
             try part("tag_audio_events", "true")

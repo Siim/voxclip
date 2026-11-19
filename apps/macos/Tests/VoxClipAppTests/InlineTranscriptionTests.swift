@@ -179,7 +179,7 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         model.app.providerKeyStoreOverride = keys
         model.app.set("transcription.engineMode", .string("elevenlabs"))
         let flow = model.transcription
-        flow.readiness = .ready; flow.hasKey = true; flow.rate = 0.22
+        flow.readiness = .ready; flow.hasKey = true; flow.rate = 0.20
         flow.keyGuard.reset(now: 100)
         await keys.pauseNextRead()
         let opening = Task { await flow.open() }
@@ -220,11 +220,13 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         model.app.set("transcription.engineMode", .string("elevenlabs"))
         await model.transcription.open()
         let flow = model.transcription
-        #expect(flow.rate == 0.22 && flow.price == "≈ $0.02")
+        #expect(flow.rate == 0.20 && flow.keytermsSurchargePerHour == 0.05 && flow.price == "≈ $0.02")
         flow.keyterms = "VoxClip, TalTech"; flow.speakers = "2"
-        #expect(abs((flow.estimate ?? 0) - 326.0 / 3600 * 0.22 * 1.2) < 0.000001)
+        // Key terms add a flat $0.05 per audio hour (ElevenLabs batch pricing, 17 Nov 2026).
+        let hours: Double = 326.0 / 3600
+        #expect(abs((flow.estimate ?? 0) - hours * 0.25) < 0.000001)
         var longer = model.project; longer.media.source.durationSeconds = 3600; model.document.replaceProject(longer)
-        #expect(flow.price == "≈ $0.26")
+        #expect(flow.price == "≈ $0.25")
         flow.hasKey = true; flow.language = "et"
         let result = try transcript()
         var plan: TranscriptionPlan?

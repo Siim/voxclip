@@ -211,7 +211,7 @@ struct TranscriptionServiceTests {
     @Test func keySeparatesOptionsAndAudioTracks() throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         var request = try SpeechTestFiles.request(root)
-        let identity = EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2")
+        let identity = EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3")
         let original = try SpeechRawCacheKey(request: request, identity: identity).digest()
         request.plan.options.diarize = true
         #expect(try SpeechRawCacheKey(request: request, identity: identity).digest() != original)
@@ -291,7 +291,7 @@ private struct CountingSpeechEngine: Transcriber {
             for index in 0..<1000 { progress(TranscriptionProgress(stage: .transcribing, fraction: Double(index) / 1000)) }
             if let afterProgress { await afterProgress() } else { try await Task.sleep(for: delay) }
             await activity.end(engine, job: job)
-            return RawTranscript(engine: EngineRef(id: engine, modelId: engine == .elevenlabs ? "scribe_v2" : nil, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native)
+            return RawTranscript(engine: EngineRef(id: engine, modelId: engine == .elevenlabs ? "scribe_v3" : nil, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native)
         } catch { await activity.end(engine, job: job); throw error }
     }
 }

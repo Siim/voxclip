@@ -17,7 +17,7 @@ struct SpeechCacheSafetyTests {
 
     @Test(arguments: [
         ("engine", VoxClipErrorCode.transcriptionLanguageUnsupported, "ElevenLabs can't transcribe et."),
-        ("model", .transcriptionFailed, "Transcription stopped: ElevenLabs requires the scribe_v2 model. Your video is still here."),
+        ("model", .transcriptionFailed, "Transcription stopped: ElevenLabs requires the scribe_v3 model. Your video is still here."),
         ("short", .noSpeech, "We didn't hear any words. Check the audio track or choose the language."),
         ("long", .mediaTooLong, "ElevenLabs accepts up to 10 hours. This take is 10:00:01."),
         ("key", .keyMissing, "Add your ElevenLabs key in Settings to use it."),
@@ -62,7 +62,7 @@ struct SpeechCacheSafetyTests {
     func wrappedEngineKeepsPaidResponse(_ retainedResponse: Bool) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let request = try SpeechTestFiles.request(root.appendingPathComponent("Cache/synthetic-content"))
-        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3"))
         let directory = request.audio.wav16k.deletingLastPathComponent().appendingPathComponent("transcripts")
         let url = try key.url(in: directory)
         if retainedResponse {
@@ -115,7 +115,7 @@ struct SpeechCacheSafetyTests {
             do { _ = try await service.transcribe(request, using: engine, envelope: nil); Issue.record("Expected mapping failure") }
             catch let error as VoxClipError { #expect(error.code == .providerError) }
         }
-        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3"))
         let entry = try SpeechRawCacheEntry.read(key.url(in: root.appendingPathComponent("Cache/synthetic-content/transcripts")))
         #expect(entry.raw == nil)
         #expect(entry.providerResponseBytes == body)
@@ -125,7 +125,7 @@ struct SpeechCacheSafetyTests {
     @Test func retainedResponseRemapsWithoutKeyAndReportsCacheHit() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let request = try SpeechTestFiles.request(root)
-        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3"))
         let directory = root.appendingPathComponent("Cache/synthetic-content/transcripts")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try SpeechRawCacheEntry(key: key, raw: nil, providerResponse: nil, providerResponseBytes: RecordedSpeech.scribe).write(key.url(in: directory))
@@ -141,7 +141,7 @@ struct SpeechCacheSafetyTests {
     func unreadableEntryIsSetAsideBeforeANewUpload(_ seed: String) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let request = try SpeechTestFiles.request(root)
-        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3"))
         let directory = root.appendingPathComponent("Cache/synthetic-content/transcripts")
         let url = try key.url(in: directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -171,7 +171,7 @@ struct SpeechCacheSafetyTests {
     func foreignCreatedAtStillServesThePaidResponse(_ form: String) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let request = try SpeechTestFiles.request(root)
-        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3"))
         let directory = root.appendingPathComponent("Cache/synthetic-content/transcripts")
         let url = try key.url(in: directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -221,7 +221,7 @@ struct SpeechCacheSafetyTests {
         #expect(!first.fromCache && second.fromCache)
         #expect(calls.withLock { $0 } == 1)
         #expect(delays.withLock { $0 } == Array([0.05, 0.1, 0.05, 0.1].prefix(restoreOnRetry)))
-        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3"))
         let cached = try SpeechRawCacheEntry.read(key.url(in: directory))
         #expect(cached.providerResponseBytes == RecordedSpeech.scribe)
         #expect(cached.raw != nil)

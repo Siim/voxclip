@@ -140,7 +140,7 @@ struct ModelStoreTests {
     @Test func cacheKeyCanonicalizationAndExplicitNulls() throws {
         let directory = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: directory) }
         var request = try SpeechTestFiles.request(directory, options: TranscriptionOptions(keyterms: ["z", "a"]))
-        let identity = EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2")
+        let identity = EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3")
         let first = SpeechRawCacheKey(request: request, identity: identity)
         request.plan.options.keyterms.reverse()
         let second = SpeechRawCacheKey(request: request, identity: identity)

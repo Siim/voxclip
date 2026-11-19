@@ -58,7 +58,7 @@ struct LanguageRoutingTests {
         #expect(try LanguageRouter.route(language: .forced("et"), mode: .ask, snapshot: context) == .choose(local: local, cloud: nil))
         var keyed = context
         keyed.hasElevenLabsKey = true
-        #expect(try LanguageRouter.route(language: .auto, mode: .elevenlabs, snapshot: keyed) == .plan(TranscriptionPlan(engine: .elevenlabs, model: "scribe_v2", language: .auto)))
+        #expect(try LanguageRouter.route(language: .auto, mode: .elevenlabs, snapshot: keyed) == .plan(TranscriptionPlan(engine: .elevenlabs, model: "scribe_v3", language: .auto)))
     }
 
     @Test func lowMemoryChoiceComesFromCatalogue() async throws {

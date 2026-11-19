@@ -21,7 +21,7 @@ private actor ApprovalBoundaryKeys: KeyProvider {
     func resumeRead() { continuation?.resume(); continuation = nil }
 }
 
-@Suite("ElevenLabs Scribe v2", .timeLimit(.minutes(1)), .offlineFixtures)
+@Suite("ElevenLabs Scribe", .timeLimit(.minutes(1)), .offlineFixtures)
 struct ElevenLabsTests {
     private struct RecordedExpectation: Decodable {
         let schema: String
@@ -120,9 +120,9 @@ struct ElevenLabsTests {
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         #expect(files.count == 1)
         let file = try #require(files.first)
-        #expect(file.lastPathComponent.hasPrefix("elevenlabs-scribe_v2-et-"))
+        #expect(file.lastPathComponent.hasPrefix("elevenlabs-scribe_v3-et-"))
         let cached = try SpeechRawCacheEntry.read(file)
-        let expected = SpeechRawCacheKey(request: try SpeechTestFiles.request(root, language: .forced("et")), identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let expected = SpeechRawCacheKey(request: try SpeechTestFiles.request(root, language: .forced("et")), identity: EngineRef(id: .elevenlabs, modelId: "scribe_v3", engineVersion: "scribe_v3"))
         #expect(cached.key == expected)
         #expect(try cached.key.digest() == expected.digest())
     }
@@ -166,9 +166,9 @@ struct ElevenLabsTests {
             let range = try #require(body.range(of: "name=\"\(name)\"", range: cursor..<body.endIndex))
             cursor = range.upperBound
         }
-        #expect(body.contains("scribe_v2") && body.contains("filename=\"audio.wav\""))
+        #expect(body.contains("scribe_v3") && body.contains("filename=\"audio.wav\""))
         #expect(body.contains("Content-Type: audio/wav\r\n\r\nsynthetic audio bytes"))
-        for forbidden in ["no_verbatim", "file_format", "enable_logging", "source_url"] { #expect(!body.contains(forbidden)) }
+        for forbidden in ["no_verbatim", "file_format", "enable_logging", "source_url", "numbers_format", "secondary_language_codes", "scribe_v2"] { #expect(!body.contains(forbidden)) }
         let auto = try ElevenLabsTranscriber.multipart(SpeechTestFiles.request(directory, language: .auto), boundary: "test")
         #expect(try !String(contentsOf: auto, encoding: .utf8).contains("language_code"))
     }

@@ -50,7 +50,7 @@ public indirect enum SpeechRoutingDecision: Sendable, Equatable {
 
 extension LanguageRouter {
     public static func route(language: LanguageChoice, mode: SpeechEngineMode, snapshot: SpeechRoutingSnapshot) throws -> SpeechRoutingDecision {
-        let cloud = TranscriptionPlan(engine: .elevenlabs, model: "scribe_v2", language: language)
+        let cloud = TranscriptionPlan(engine: .elevenlabs, model: ElevenLabsScribe.modelID, language: language)
         switch mode {
         case .elevenlabs:
             return snapshot.hasElevenLabsKey ? .plan(cloud) : .addKey(local: try route(language: language, mode: .local, snapshot: snapshot))
@@ -84,7 +84,7 @@ extension LanguageRouter {
             return whisperPlan(model, language: primary, snapshot: snapshot)
         }
         let recommended = snapshot.installedRAMBytes < snapshot.lowMemoryThresholdBytes ? defaults.lowMemoryDownload ?? defaults.recommendedDownload : defaults.recommendedDownload
-        return .download(modelID: recommended, alsoOffer: snapshot.hasElevenLabsKey ? TranscriptionPlan(engine: .elevenlabs, model: "scribe_v2", language: .forced(primary)) : nil)
+        return .download(modelID: recommended, alsoOffer: snapshot.hasElevenLabsKey ? TranscriptionPlan(engine: .elevenlabs, model: ElevenLabsScribe.modelID, language: .forced(primary)) : nil)
     }
 
     private static func appleSupports(_ language: String, snapshot: SpeechRoutingSnapshot) -> Bool {

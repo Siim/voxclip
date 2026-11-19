@@ -33,7 +33,8 @@ import VoxClipMedia
     var cancelledNote: String?
     var keyGuard = PaidSendKeyGuard()
     var rate: Double?
-    var keytermsSurcharge = 0.0
+    /// Flat USD per audio hour that key terms add; transcription-models.json `keytermsSurchargePerAudioHour`.
+    var keytermsSurchargePerHour = 0.0
     var spendToday = 0.0
     var spendUncertain = false
     var pendingCost: Double?
@@ -70,8 +71,9 @@ import VoxClipMedia
         let duration: Double = editor.sourceDuration
         let secondsPerHour: Double = 3_600
         let hours: Double = duration / secondsPerHour
-        let multiplier: Double = terms.isEmpty ? 1 : 1 + keytermsSurcharge
-        return hours * rate * multiplier
+        let surcharge: Double = terms.isEmpty ? 0 : keytermsSurchargePerHour
+        let hourly: Double = rate + surcharge
+        return hours * hourly
     }
     static func money(_ value: Double) -> String {
         guard value.isFinite, value >= 0 else { return "unavailable" }
@@ -197,14 +199,15 @@ import VoxClipMedia
         guard request == revision, !Task.isCancelled else { return }
         hasKey = available
         struct Catalog: Decodable {
-            struct Engine: Decodable { struct Pricing: Decodable { let perAudioHour: Double; let keytermsSurchargeFraction: Double }; let id: String; let pricing: Pricing? }
+            struct Engine: Decodable { struct Pricing: Decodable { let perAudioHour: Double; let keytermsSurchargePerAudioHour: Double }; let id: String; let pricing: Pricing? }
             let engines: [Engine]
         }
         if let url = model.app.shared?.root.appendingPathComponent("catalog/transcription-models.json"),
            let data = try? Data(contentsOf: url), let catalog = try? JSONDecoder().decode(Catalog.self, from: data),
            let pricing = catalog.engines.first(where: { $0.id == "elevenlabs" })?.pricing,
-           pricing.perAudioHour.isFinite, pricing.perAudioHour >= 0 {
-            rate = pricing.perAudioHour; keytermsSurcharge = pricing.keytermsSurchargeFraction
+           pricing.perAudioHour.isFinite, pricing.perAudioHour >= 0,
+           pricing.keytermsSurchargePerAudioHour.isFinite, pricing.keytermsSurchargePerAudioHour >= 0 {
+            rate = pricing.perAudioHour; keytermsSurchargePerHour = pricing.keytermsSurchargePerAudioHour
         }
         let total = await model.app.transcriptionSpend.total()
         guard request == revision, !Task.isCancelled else { return }
@@ -250,7 +253,7 @@ import VoxClipMedia
     }
     func makePlan() -> TranscriptionPlan {
         TranscriptionPlan(engine: paid ? .elevenlabs : engine == "apple" ? .appleSpeech : .whispercpp,
-            model: paid ? "scribe_v2" : engine == "local" ? selectedModel?.id : nil, language: language == "auto" ? .auto : .forced(language),
+            model: paid ? ElevenLabsScribe.modelID : engine == "local" ? selectedModel?.id : nil, language: language == "auto" ? .auto : .forced(language),
             options: TranscriptionOptions(diarize: speakers != "off", numSpeakers: Int(speakers), keyterms: terms))
     }
     func adapter(for plan: TranscriptionPlan? = nil) async -> any Transcriber {

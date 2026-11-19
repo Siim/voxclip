@@ -496,8 +496,8 @@ public actor ElevenLabsVoiceLab {
     func prepareQA(language: String, requestID: UUID) throws -> VoiceLabQuote {
         guard language.range(of: #"\A[a-z]{2,3}\z"#, options: .regularExpression) != nil else { throw VoiceLabError.invalidInput }
         return try quote(.speechToText, requestID: requestID, endpoint: "v1/speech-to-text",
-                         fields: [region.rawValue, "scribe_v2", language, String(VoiceLabTakeProcessing.maximumQASeconds)],
-                         model: "scribe_v2", units: VoiceLabTakeProcessing.maximumQASeconds, languageMode: .explicit(language))
+                         fields: [region.rawValue, ElevenLabsScribe.modelID, language, String(VoiceLabTakeProcessing.maximumQASeconds)],
+                         model: ElevenLabsScribe.modelID, units: VoiceLabTakeProcessing.maximumQASeconds, languageMode: .explicit(language))
     }
     public func prepareConsentVerification(wav: Data, language: String, requestID: UUID) throws -> VoiceLabQuote {
         _ = try VoiceConsentAudio.pcm16k(wav)
@@ -508,21 +508,21 @@ public actor ElevenLabsVoiceLab {
         let sampleRate: Double = 16_000
         let seconds: Double = samples / sampleRate
         return try quote(.speechToText, requestID: requestID, endpoint: "v1/speech-to-text",
-            fields: [region.rawValue, "scribe_v2", language, VoiceLabFingerprint.bytes(wav)],
-            model: "scribe_v2", units: seconds, languageMode: .explicit(language))
+            fields: [region.rawValue, ElevenLabsScribe.modelID, language, VoiceLabFingerprint.bytes(wav)],
+            model: ElevenLabsScribe.modelID, units: seconds, languageMode: .explicit(language))
     }
     public func transcribeConsentStatement(wav: Data, language: String, authorization: VoiceLabAuthorization) async throws -> RawTranscript {
         _ = try VoiceConsentAudio.pcm16k(wav)
         let boundary = newBoundary()
-        let parts: [Part] = [.text("model_id", "scribe_v2"), .text("language_code", language),
+        let parts: [Part] = [.text("model_id", ElevenLabsScribe.modelID), .text("language_code", language),
             .text("tag_audio_events", "false"), .text("diarize", "false"), .text("timestamps_granularity", "word"), .file("file", "statement.wav", wav)]
         let body = try multipart(parts, boundary: boundary, limit: maxRequest)
         try claim(authorization, operation: .speechToText, requestID: authorization.requestID, endpoint: "v1/speech-to-text",
-            fields: [region.rawValue, "scribe_v2", language, VoiceLabFingerprint.bytes(wav)])
+            fields: [region.rawValue, ElevenLabsScribe.modelID, language, VoiceLabFingerprint.bytes(wav)])
         let reply = try await send("v1/speech-to-text", method: "POST", body: body,
             contentType: "multipart/form-data; boundary=\"\(boundary)\"", limit: maxResponse, billing: authorization)
         let mapper = ElevenLabsTranscriber(keys: keys, region: region, logger: logger)
-        return try await mapper.mapResponse(reply.bytes, diarize: false)
+        return try await mapper.mapResponse(reply.bytes, diarize: false, language: .forced(language))
     }
     /// `acceptance` is marked once the provider accepts the request, even when its reply then fails.
     func transcribeQA(_ samples: [Float], rate: Int, language: String, authorization: VoiceLabAuthorization,
@@ -531,18 +531,20 @@ public actor ElevenLabsVoiceLab {
         guard rate == 24_000, !samples.isEmpty, samples.count <= Int(VoiceLabTakeProcessing.maximumQASeconds) * rate else { throw VoiceLabError.invalidAudio }
         let wav = try VoiceLabTakeWAV.encode(samples, rate: rate)
         let boundary = newBoundary()
-        let parts: [Part] = [.text("model_id", "scribe_v2"), .text("language_code", language),
+        let parts: [Part] = [.text("model_id", ElevenLabsScribe.modelID), .text("language_code", language),
                             .text("tag_audio_events", hasAudioTags ? "true" : "false"), .text("diarize", "false"),
                             .text("timestamps_granularity", "word"), .file("file", "qa.wav", wav)]
         let body = try multipart(parts, boundary: boundary, limit: maxRequest)
         try Task.checkCancellation()
         try claim(authorization, operation: .speechToText, requestID: authorization.requestID, endpoint: "v1/speech-to-text",
-                  fields: [region.rawValue, "scribe_v2", language, String(VoiceLabTakeProcessing.maximumQASeconds)])
+                  fields: [region.rawValue, ElevenLabsScribe.modelID, language, String(VoiceLabTakeProcessing.maximumQASeconds)])
         let reply = try await send("v1/speech-to-text", method: "POST", body: body,
             contentType: "multipart/form-data; boundary=\"\(boundary)\"", limit: maxResponse, billing: authorization, capability: capability,
             acceptance: acceptance)
         guard let object = try? JSONSerialization.jsonObject(with: reply.bytes) as? [String: Any],
-              let detected = object["language_code"] as? String, let words = object["words"] as? [[String: Any]] else { throw VoiceLabError.malformedResponse }
+              let words = object["words"] as? [[String: Any]] else { throw VoiceLabError.malformedResponse }
+        // A null or missing language code takes the requested language; a different one still fails the check.
+        let detected = object["language_code"] as? String ?? language
         let catalog = try BundledModelCatalog(shared: SharedResources.locate())
         guard try await catalog.normalizeLanguage(detected) == language else { throw VoiceLabError.malformedResponse }
         var result: [VoiceLabWord] = []
@@ -552,7 +554,7 @@ public actor ElevenLabsVoiceLab {
                   start.isFinite, end.isFinite, start >= previous, end > start, end <= Double(samples.count) / Double(rate) else { throw VoiceLabError.malformedResponse }
             result.append(VoiceLabWord(text: text, start: start, end: end, synthetic: true)); previous = end
         }
-        return (result, receipt("v1/speech-to-text", model: "scribe_v2", voice: nil, authorization: authorization, reply: reply))
+        return (result, receipt("v1/speech-to-text", model: ElevenLabsScribe.modelID, voice: nil, authorization: authorization, reply: reply))
     }
 
     public func createOwnClone(_ request: VoiceLabCloneRequest, policy: OwnVoicePolicy,

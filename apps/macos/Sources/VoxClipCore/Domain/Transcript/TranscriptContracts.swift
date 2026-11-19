@@ -326,7 +326,7 @@ public func findUnlabeledSpeech(_ words: [TimedWord], envelope: AudioEnvelope) t
 /// Language choice does not silently change a local job into an upload; transcription §11.
 public enum LanguageRouter {
     public static func route(language: LanguageChoice, preferred: TranscriptEngine, installedModels: [String]) throws -> TranscriptionPlan {
-        if preferred == .elevenlabs { return TranscriptionPlan(engine: preferred, model: "scribe_v2", language: language) }
+        if preferred == .elevenlabs { return TranscriptionPlan(engine: preferred, model: ElevenLabsScribe.modelID, language: language) }
         if preferred == .appleSpeech {
             guard case .forced(let code) = language, SpeechText.primaryLanguage(code) != "et" else { throw SpeechErrorCopy.unsupported(.appleSpeech, language: language) }
             return TranscriptionPlan(engine: preferred, language: language)

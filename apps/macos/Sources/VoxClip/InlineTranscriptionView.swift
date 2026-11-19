@@ -159,7 +159,7 @@ import VoxClipCore
                     ForEach(1...32, id: \.self) { Text("\($0)").tag(String($0)) }
                 }
                 TextField("Keyterms, comma-separated", text: $transcription.keyterms).textFieldStyle(.roundedBorder)
-                if !transcription.terms.isEmpty { Text("Key terms add \(Int(transcription.keytermsSurcharge * 100))% to the estimate.").font(.system(size: 11)) }
+                if !transcription.terms.isEmpty { Text("Key terms add \(InlineTranscription.money(transcription.keytermsSurchargePerHour)) per audio hour to the estimate.").font(.system(size: 11)) }
             }
         }.padding(.vertical, 4)
     }
