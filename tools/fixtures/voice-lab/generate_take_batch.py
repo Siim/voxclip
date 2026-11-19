@@ -17,7 +17,7 @@ An independent standard-library reference of the rules in shared/fixtures/voice-
   are neither sent nor discarded: every earlier request has ended by then, in the ledger or never to be sent.
 
 Per-take quotes use the catalog list prices: TTS bills the window's characters on eleven_v3, and every take's QA quote is
-the bounded 290 s of scribe_v2. Two runs give identical bytes."""
+the bounded 290 s of scribe_v3. Two runs give identical bytes."""
 import decimal
 import json
 from decimal import Decimal, ROUND_HALF_UP
@@ -35,7 +35,7 @@ CANDIDATES = 3
 MAXIMUM_WINDOWS = 32 // (2 * CANDIDATES)
 SAMPLE_RATE = 24_000
 QA_SECONDS = 290
-TTS_MODEL, QA_MODEL, UNLISTED_MODEL = 'eleven_v3', 'scribe_v2', 'eleven_unlisted'
+TTS_MODEL, QA_MODEL, UNLISTED_MODEL = 'eleven_v3', 'scribe_v3', 'eleven_unlisted'
 USD_QUANTUM = Decimal('1e-10')
 CENT = Decimal('0.01')
 BASIS, UNKNOWN = 'bounded-tts-and-scribe', 'unknown'
@@ -211,10 +211,10 @@ def steps(*rows):
 
 cases = [
     case('three-windows-inline', 'Three phrases of 40, 25 and 60 characters: nine takes under $0.50, inline.', three()),
-    case('three-windows-just-below-limit', 'Nine takes of 470 characters: $0.4979, inline, shown rounded as $0.50.',
-         three((470, 470, 470))),
-    case('three-windows-crossing-limit', 'Nine takes of 480 characters: $0.5051 confirms once for the whole batch.',
-         three((480, 480, 480))),
+    case('three-windows-just-below-limit', 'Nine takes of 490 characters: $0.4978, inline, shown rounded as $0.50.',
+         three((490, 490, 490))),
+    case('three-windows-crossing-limit', 'Nine takes of 510 characters: $0.5122 confirms once for the whole batch.',
+         three((510, 510, 510))),
     case('three-windows-crossing-cap', 'The inline batch takes the month from $4.90 past a $5 cap: it confirms with the cap '
          'sentence.', three(), cap={'limit': '5', 'spent': '4.9'}),
     case('three-windows-reaching-cap', 'The inline batch takes the month exactly to the $5 cap: that does not cross.',
@@ -222,7 +222,7 @@ cases = [
     case('three-windows-already-past-cap', 'The month is already past the cap before the batch: nothing crosses.',
          three(), cap={'limit': '5', 'spent': '5.5'}),
     case('three-windows-crossing-limit-and-cap', 'Over $0.50 and crossing a $12.50 cap: one confirmation with both.',
-         three((480, 480, 480)), cap={'limit': '12.5', 'spent': '12.25'}),
+         three((510, 510, 510)), cap={'limit': '12.5', 'spent': '12.25'}),
     case('price-unknown', 'A model without a list price makes the batch\'s price unknown: it confirms.',
          [window(48_000, 96_000, 40, modelId=UNLISTED_MODEL), window(120_000, 168_000, 25, modelId=UNLISTED_MODEL),
           window(192_000, 240_000, 60, modelId=UNLISTED_MODEL)]),

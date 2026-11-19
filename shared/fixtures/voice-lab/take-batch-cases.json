@@ -25,7 +25,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -43,7 +43,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -61,7 +61,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -70,19 +70,19 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       }
     },
     {
       "id": "three-windows-just-below-limit",
-      "description": "Nine takes of 470 characters: $0.4979, inline, shown rounded as $0.50.",
+      "description": "Nine takes of 490 characters: $0.4978, inline, shown rounded as $0.50.",
       "windows": [
         {
           "recordId": "voice-record",
@@ -91,14 +91,14 @@
           "contentKey": "source-content",
           "startSample": 48000,
           "endSample": 96000,
-          "characters": 470,
+          "characters": 490,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0376",
-            "credits": 470
+            "usd": "0.0392",
+            "credits": 490
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -109,14 +109,14 @@
           "contentKey": "source-content",
           "startSample": 120000,
           "endSample": 168000,
-          "characters": 470,
+          "characters": 490,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0376",
-            "credits": 470
+            "usd": "0.0392",
+            "credits": 490
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -127,14 +127,14 @@
           "contentKey": "source-content",
           "startSample": 192000,
           "endSample": 240000,
-          "characters": 470,
+          "characters": 490,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0376",
-            "credits": 470
+            "usd": "0.0392",
+            "credits": 490
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -143,7 +143,7 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.4978999998",
+          "usd": "0.4977999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
@@ -155,7 +155,7 @@
     },
     {
       "id": "three-windows-crossing-limit",
-      "description": "Nine takes of 480 characters: $0.5051 confirms once for the whole batch.",
+      "description": "Nine takes of 510 characters: $0.5122 confirms once for the whole batch.",
       "windows": [
         {
           "recordId": "voice-record",
@@ -164,14 +164,14 @@
           "contentKey": "source-content",
           "startSample": 48000,
           "endSample": 96000,
-          "characters": 480,
+          "characters": 510,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0384",
-            "credits": 480
+            "usd": "0.0408",
+            "credits": 510
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -182,14 +182,14 @@
           "contentKey": "source-content",
           "startSample": 120000,
           "endSample": 168000,
-          "characters": 480,
+          "characters": 510,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0384",
-            "credits": 480
+            "usd": "0.0408",
+            "credits": 510
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -200,14 +200,14 @@
           "contentKey": "source-content",
           "startSample": 192000,
           "endSample": 240000,
-          "characters": 480,
+          "characters": 510,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0384",
-            "credits": 480
+            "usd": "0.0408",
+            "credits": 510
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -216,7 +216,7 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.5050999998",
+          "usd": "0.5121999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
@@ -244,7 +244,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -262,7 +262,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -280,7 +280,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -292,13 +292,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "confirm",
-          "text": "This will cost about $0.19 on your ElevenLabs account. This takes you past your $5 limit for ElevenLabs this month."
+          "text": "This will cost about $0.17 on your ElevenLabs account. This takes you past your $5 limit for ElevenLabs this month."
         }
       }
     },
@@ -320,7 +320,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -338,7 +338,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -356,25 +356,25 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
       ],
       "cap": {
         "limit": "5",
-        "spent": "4.8105000002"
+        "spent": "4.8250000001"
       },
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       }
     },
@@ -396,7 +396,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -414,7 +414,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -432,7 +432,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -444,13 +444,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       }
     },
@@ -465,14 +465,14 @@
           "contentKey": "source-content",
           "startSample": 48000,
           "endSample": 96000,
-          "characters": 480,
+          "characters": 510,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0384",
-            "credits": 480
+            "usd": "0.0408",
+            "credits": 510
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -483,14 +483,14 @@
           "contentKey": "source-content",
           "startSample": 120000,
           "endSample": 168000,
-          "characters": 480,
+          "characters": 510,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0384",
-            "credits": 480
+            "usd": "0.0408",
+            "credits": 510
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -501,14 +501,14 @@
           "contentKey": "source-content",
           "startSample": 192000,
           "endSample": 240000,
-          "characters": 480,
+          "characters": 510,
           "takes": 3,
           "synthesis": {
-            "usd": "0.0384",
-            "credits": 480
+            "usd": "0.0408",
+            "credits": 510
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -520,7 +520,7 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.5050999998",
+          "usd": "0.5121999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
@@ -548,7 +548,7 @@
             "credits": null
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -566,7 +566,7 @@
             "credits": null
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -584,7 +584,7 @@
             "credits": null
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -621,7 +621,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -630,7 +630,7 @@
       "expected": {
         "estimate": {
           "units": 3,
-          "usd": "0.0627666666",
+          "usd": "0.0579333333",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
@@ -658,7 +658,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -676,7 +676,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -694,7 +694,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -712,7 +712,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -730,7 +730,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -739,13 +739,13 @@
       "expected": {
         "estimate": {
           "units": 15,
-          "usd": "0.289833333",
+          "usd": "0.2656666665",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.29"
+          "text": "≈ $0.27"
         }
       }
     },
@@ -767,7 +767,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -785,7 +785,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -803,7 +803,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -821,7 +821,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -839,7 +839,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -857,7 +857,7 @@
             "credits": 20
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -885,7 +885,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -903,7 +903,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -931,7 +931,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -949,7 +949,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -977,7 +977,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -995,7 +995,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1023,7 +1023,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1041,7 +1041,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1069,7 +1069,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1087,7 +1087,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1115,7 +1115,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1133,7 +1133,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1161,7 +1161,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1179,7 +1179,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1207,7 +1207,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1225,7 +1225,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1243,7 +1243,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1252,13 +1252,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       },
       "run": [
@@ -1272,7 +1272,7 @@
                 "request": [0, 0, "synthesis"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1894999998",
+                  "usd": "0.1749999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1281,7 +1281,7 @@
                 "request": [0, 0, "qa"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1862999998",
+                  "usd": "0.1717999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1290,7 +1290,7 @@
                 "request": [0, 1, "synthesis"],
                 "remaining": {
                   "units": 8,
-                  "usd": "0.1685777776",
+                  "usd": "0.1556888888",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1299,7 +1299,7 @@
                 "request": [0, 1, "qa"],
                 "remaining": {
                   "units": 8,
-                  "usd": "0.1653777776",
+                  "usd": "0.1524888888",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1308,7 +1308,7 @@
                 "request": [0, 2, "synthesis"],
                 "remaining": {
                   "units": 7,
-                  "usd": "0.1476555554",
+                  "usd": "0.1363777777",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1317,7 +1317,7 @@
                 "request": [0, 2, "qa"],
                 "remaining": {
                   "units": 7,
-                  "usd": "0.1444555554",
+                  "usd": "0.1331777777",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1326,13 +1326,13 @@
             "next": 1,
             "sent": {
               "units": 3,
-              "usd": "0.0627666666",
+              "usd": "0.0579333333",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 6,
-              "usd": "0.1267333332",
+              "usd": "0.1170666666",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -1349,7 +1349,7 @@
                 "request": [1, 0, "synthesis"],
                 "remaining": {
                   "units": 6,
-                  "usd": "0.1267333332",
+                  "usd": "0.1170666666",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1358,7 +1358,7 @@
                 "request": [1, 0, "qa"],
                 "remaining": {
                   "units": 6,
-                  "usd": "0.1247333332",
+                  "usd": "0.1150666666",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1367,13 +1367,13 @@
             "next": 2,
             "sent": {
               "units": 4,
-              "usd": "0.0824888888",
+              "usd": "0.0760444444",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 3,
-              "usd": "0.0675666666",
+              "usd": "0.0627333333",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -1395,7 +1395,7 @@
                 "request": [2, 0, "synthesis"],
                 "remaining": {
                   "units": 3,
-                  "usd": "0.0675666666",
+                  "usd": "0.0627333333",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1404,7 +1404,7 @@
                 "request": [2, 1, "synthesis"],
                 "remaining": {
                   "units": 2,
-                  "usd": "0.0450444444",
+                  "usd": "0.0418222222",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1413,7 +1413,7 @@
                 "request": [2, 1, "qa"],
                 "remaining": {
                   "units": 2,
-                  "usd": "0.0402444444",
+                  "usd": "0.0370222222",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1422,7 +1422,7 @@
                 "request": [2, 2, "synthesis"],
                 "remaining": {
                   "units": 1,
-                  "usd": "0.0225222222",
+                  "usd": "0.0209111111",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1431,7 +1431,7 @@
                 "request": [2, 2, "qa"],
                 "remaining": {
                   "units": 1,
-                  "usd": "0.0177222222",
+                  "usd": "0.0161111111",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1440,7 +1440,7 @@
             "next": null,
             "sent": {
               "units": 7,
-              "usd": "0.1323333332",
+              "usd": "0.1226666666",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -1479,7 +1479,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1497,7 +1497,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1515,7 +1515,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1524,13 +1524,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       },
       "run": [
@@ -1544,7 +1544,7 @@
                 "request": [0, 0, "synthesis"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1894999998",
+                  "usd": "0.1749999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1553,7 +1553,7 @@
                 "request": [0, 1, "synthesis"],
                 "remaining": {
                   "units": 8,
-                  "usd": "0.1685777776",
+                  "usd": "0.1556888888",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1562,7 +1562,7 @@
                 "request": [0, 1, "qa"],
                 "remaining": {
                   "units": 8,
-                  "usd": "0.1653777776",
+                  "usd": "0.1524888888",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1571,13 +1571,13 @@
             "next": 1,
             "sent": {
               "units": 1,
-              "usd": "0.0209222222",
+              "usd": "0.0193111111",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 6,
-              "usd": "0.1267333332",
+              "usd": "0.1170666666",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -1599,7 +1599,7 @@
                 "request": [1, 0, "synthesis"],
                 "remaining": {
                   "units": 6,
-                  "usd": "0.1267333332",
+                  "usd": "0.1170666666",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1608,7 +1608,7 @@
                 "request": [1, 0, "qa"],
                 "remaining": {
                   "units": 6,
-                  "usd": "0.1247333332",
+                  "usd": "0.1150666666",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1617,13 +1617,13 @@
             "next": 2,
             "sent": {
               "units": 2,
-              "usd": "0.0406444444",
+              "usd": "0.0374222222",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 3,
-              "usd": "0.0675666666",
+              "usd": "0.0627333333",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -1649,7 +1649,7 @@
                 "request": [2, 0, "synthesis"],
                 "remaining": {
                   "units": 3,
-                  "usd": "0.0675666666",
+                  "usd": "0.0627333333",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1658,7 +1658,7 @@
                 "request": [2, 0, "qa"],
                 "remaining": {
                   "units": 3,
-                  "usd": "0.0627666666",
+                  "usd": "0.0579333333",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1667,7 +1667,7 @@
             "next": null,
             "sent": {
               "units": 3,
-              "usd": "0.0631666666",
+              "usd": "0.0583333333",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -1713,7 +1713,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1731,7 +1731,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1749,7 +1749,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1758,13 +1758,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       },
       "run": [
@@ -1778,7 +1778,7 @@
                 "request": [0, 0, "synthesis"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1894999998",
+                  "usd": "0.1749999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1846,7 +1846,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1864,7 +1864,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -1882,7 +1882,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -1891,13 +1891,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       },
       "run": [
@@ -1911,7 +1911,7 @@
                 "request": [0, 0, "synthesis"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1894999998",
+                  "usd": "0.1749999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1920,7 +1920,7 @@
                 "request": [0, 0, "qa"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1862999998",
+                  "usd": "0.1717999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1929,13 +1929,13 @@
             "next": 1,
             "sent": {
               "units": 1,
-              "usd": "0.0209222222",
+              "usd": "0.0193111111",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 6,
-              "usd": "0.1267333332",
+              "usd": "0.1170666666",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -1957,7 +1957,7 @@
                 "request": [1, 0, "synthesis"],
                 "remaining": {
                   "units": 6,
-                  "usd": "0.1267333332",
+                  "usd": "0.1170666666",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -1966,7 +1966,7 @@
             "next": null,
             "sent": {
               "units": 2,
-              "usd": "0.0229222222",
+              "usd": "0.0213111111",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -2015,7 +2015,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -2033,7 +2033,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -2051,7 +2051,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -2060,13 +2060,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       },
       "run": [
@@ -2080,7 +2080,7 @@
                 "request": [0, 0, "synthesis"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1894999998",
+                  "usd": "0.1749999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -2089,7 +2089,7 @@
                 "request": [0, 0, "qa"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1862999998",
+                  "usd": "0.1717999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -2098,13 +2098,13 @@
             "next": 1,
             "sent": {
               "units": 1,
-              "usd": "0.0209222222",
+              "usd": "0.0193111111",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 6,
-              "usd": "0.1267333332",
+              "usd": "0.1170666666",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -2126,7 +2126,7 @@
                 "request": [1, 0, "synthesis"],
                 "remaining": {
                   "units": 6,
-                  "usd": "0.1267333332",
+                  "usd": "0.1170666666",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -2135,7 +2135,7 @@
                 "request": [1, 0, "qa"],
                 "remaining": {
                   "units": 6,
-                  "usd": "0.1247333332",
+                  "usd": "0.1150666666",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -2144,13 +2144,13 @@
             "next": 2,
             "sent": {
               "units": 2,
-              "usd": "0.0406444444",
+              "usd": "0.0374222222",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 3,
-              "usd": "0.0675666666",
+              "usd": "0.0627333333",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -2175,7 +2175,7 @@
             "next": null,
             "sent": {
               "units": 2,
-              "usd": "0.0406444444",
+              "usd": "0.0374222222",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
@@ -2223,7 +2223,7 @@
             "credits": 40
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -2241,7 +2241,7 @@
             "credits": 25
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         },
@@ -2259,7 +2259,7 @@
             "credits": 60
           },
           "qa": {
-            "usd": "0.0177222222",
+            "usd": "0.0161111111",
             "credits": null
           }
         }
@@ -2268,13 +2268,13 @@
       "expected": {
         "estimate": {
           "units": 9,
-          "usd": "0.1894999998",
+          "usd": "0.1749999999",
           "credits": null,
           "basis": "bounded-tts-and-scribe"
         },
         "kind": {
           "kind": "inline",
-          "text": "≈ $0.19"
+          "text": "≈ $0.17"
         }
       },
       "run": [
@@ -2304,7 +2304,7 @@
                 "request": [0, 0, "synthesis"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1894999998",
+                  "usd": "0.1749999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -2313,7 +2313,7 @@
                 "request": [0, 0, "qa"],
                 "remaining": {
                   "units": 9,
-                  "usd": "0.1862999998",
+                  "usd": "0.1717999999",
                   "credits": null,
                   "basis": "bounded-tts-and-scribe"
                 }
@@ -2322,13 +2322,13 @@
             "next": 1,
             "sent": {
               "units": 1,
-              "usd": "0.0209222222",
+              "usd": "0.0193111111",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },
             "remaining": {
               "units": 6,
-              "usd": "0.1267333332",
+              "usd": "0.1170666666",
               "credits": null,
               "basis": "bounded-tts-and-scribe"
             },

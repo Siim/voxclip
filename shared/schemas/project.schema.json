@@ -1007,7 +1007,7 @@
                 "null"
               ],
               "maxLength": 128,
-              "description": "Catalogue model id (models[].id in shared/catalog/transcription-models.json) for whispercpp, \"scribe_v2\" for ElevenLabs, null for Apple. Swift must map its property to this key with explicit CodingKeys."
+              "description": "Catalogue model id (models[].id in shared/catalog/transcription-models.json) for whispercpp, \"scribe_v3\" (or \"scribe_v2\" in older projects) for ElevenLabs, null for Apple. Swift must map its property to this key with explicit CodingKeys."
             },
             "modelSha256": {
               "type": [

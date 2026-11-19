@@ -331,7 +331,7 @@ ESTIMATES += [
     estimate_case('isolator-0.06-seconds-one-credit', ISOLATOR, None, 0.06),
     estimate_case('voice-changer-any-model', CHANGER, 'eleven_multilingual_sts_v2', 10),
     estimate_case('voice-changer-0.1-seconds', CHANGER, 'eleven_multilingual_sts_v2', 0.1),
-    estimate_case('scribe-1-hour', SCRIBE, 'scribe_v2', 3600),
+    estimate_case('scribe-1-hour', SCRIBE, 'scribe_v3', 3600),
     estimate_case('alignment-tiny-duration', ALIGNMENT, None, 0.00001),
     estimate_case('tts-spec-60-characters-3-candidates', TTS, 'eleven_v3', 60, 3),
     estimate_case('tts-default-multiplier', TTS, 'eleven_multilingual_v2', 60, 1, None),

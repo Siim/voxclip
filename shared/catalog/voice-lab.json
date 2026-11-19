@@ -5,11 +5,11 @@
     {
       "provider": "elevenlabs",
       "operation": "speechToText",
-      "model": "scribe_v2",
+      "model": "scribe_v3",
       "unit": "second",
       "formula": "perHour",
-      "usdParameters": { "perHour": "0.22" },
-      "checked": "2026-10-25",
+      "usdParameters": { "perHour": "0.20" },
+      "checked": "2026-11-19",
       "source": "https://elevenlabs.io/pricing/api"
     },
     {

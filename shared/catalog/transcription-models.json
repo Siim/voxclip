@@ -18,7 +18,7 @@
       "kind": "cloud",
       "platforms": ["macos", "windows"],
       "endpoint": "https://api.elevenlabs.io/v1/speech-to-text",
-      "modelId": "scribe_v2",
+      "modelId": "scribe_v3",
       "languages": ["*"],
       "autoLanguage": true,
       "verbatim": true,
@@ -35,15 +35,16 @@
       },
       "pricing": {
         "currency": "USD",
-        "perAudioHour": 0.22,
-        "keytermsSurchargeFraction": 0.20,
+        "perAudioHour": 0.20,
+        "keytermsSurchargePerAudioHour": 0.05,
         "keytermsMinimumBilledSecondsOver100Terms": 20,
         "silenceIsBilled": true,
-        "asOf": "2026-10-25",
-        "source": "https://elevenlabs.io/pricing/api"
+        "asOf": "2026-11-19",
+        "source": "https://elevenlabs.io/pricing/api",
+        "pricingNote": "Batch Scribe (v3 and v2) is $0.20 per audio hour; keyterm prompting adds a flat $0.05 per audio hour (changelog 17 Nov 2026). Transcript editing (+$0.07/h) is not used."
       },
       "languageQuality": {
-        "et": "Excellent tier (WER <= 5%) per https://elevenlabs.io/docs/overview/capabilities/speech-to-text",
+        "et": "Excellent tier (WER <= 5%) per https://elevenlabs.io/docs/overview/capabilities/speech-to-text; the tier is the Scribe v2 figure, and Scribe v3 also supports Estonian",
         "en": "Excellent tier (WER <= 5%)"
       }
     },
