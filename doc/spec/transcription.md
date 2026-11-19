@@ -32,7 +32,7 @@ Goals:
 
 1. Every engine produces the same `TimedWord` list on the source presentation timeline, accurate enough to cut between words: median boundary error at most 50 ms after refinement.
 2. Fillers are visible. A verbatim engine emits them as words. For an engine that drops them, audible sound in the gaps becomes an `unlabeledSpeech` item that "Cut fillers" can remove.
-3. Estonian and English, often mixed, work well. Estonian runs on device on the TalTech verbatim Whisper fine-tune, or in the cloud on ElevenLabs Scribe v2.
+3. Estonian and English, often mixed, work well. Estonian runs on device on the TalTech verbatim Whisper fine-tune, or in the cloud on ElevenLabs Scribe v3.
 4. Nothing leaves the device unless the user chose ElevenLabs, and then only the audio track. Local never silently becomes cloud.
 5. Raw engine results are cached per source, so a paid transcription is not repeated by accident.
 
@@ -84,9 +84,9 @@ public enum TimingSource: String, Codable, Sendable {
 
 public struct EngineRef: Codable, Hashable, Sendable {
     public var id: TranscriptEngine
-    public var modelId: String?          // "scribe_v2", a catalogue models[].id, or nil for apple-speech
+    public var modelId: String?          // "scribe_v3" ("scribe_v2" in older projects), a catalogue models[].id, or nil for apple-speech
     public var modelSha256: String?      // whispercpp: the catalogue sha256 of the model file; else nil
-    public var engineVersion: String     // "whisper.cpp 1.9.5 (b5454)", "Whisper.net 1.9.1 (whisper.cpp 1.8.5)", "macOS 26.1 Speech", "scribe_v2"
+    public var engineVersion: String     // "whisper.cpp 1.9.5 (b5454)", "Whisper.net 1.9.1 (whisper.cpp 1.8.5)", "macOS 26.1 Speech", "scribe_v3"
     public var locale: String?           // apple-speech: Locale.identifier(.bcp47) actually used; else nil
     enum CodingKeys: String, CodingKey { case id, modelId, modelSha256, engineVersion, locale }   // explicit: never "modelID"
 }
@@ -200,7 +200,7 @@ public enum LanguageChoice: Codable, Hashable, Sendable { case auto; case forced
 public struct TranscriptionOptions: Codable, Hashable, Sendable {
     public var diarize = false            // elevenlabs only
     public var numSpeakers: Int? = nil    // elevenlabs only, with diarize
-    public var keyterms: [String] = []    // elevenlabs only; +20% cost
+    public var keyterms: [String] = []    // elevenlabs only; +$0.05 per audio hour
     public var dtw = true                 // whispercpp only
 }
 
@@ -560,7 +560,7 @@ Discourse fillers (`like`, `you know`, `nagu`, `noh`, `tead`, `tähendab`, `ütl
 
 ---
 
-## 8. ElevenLabs Scribe v2 (batch)
+## 8. ElevenLabs Scribe v3 (batch)
 
 ### 8.1 Request
 
@@ -576,7 +576,7 @@ Multipart parts, in this order, with the file last:
 
 | Part | Value | Rule |
 |---|---|---|
-| `model_id` | `scribe_v2` | always |
+| `model_id` | `scribe_v3` | always. The id lives in one place per platform (`ElevenLabsScribe`), pinned by tests to `shared/catalog/transcription-models.json` `modelId` and the speechToText row of `shared/catalog/voice-lab.json` |
 | `language_code` | BCP 47 primary subtag, e.g. `et` | only for `LanguageChoice.forced`; omitted for auto |
 | `timestamps_granularity` | `word` | always |
 | `tag_audio_events` | `true` | always |
@@ -591,6 +591,9 @@ Never send:
 - `enable_logging`: zero retention is enterprise-only.
 - `file_format`: the WAV header describes the audio, so the default `other` is right.
 - `source_url`, `cloud_storage_url`, `webhook`, `use_multi_channel`, `entity_detection`, `entity_redaction`, `transcript_edit`, `detect_speaker_roles`, `temperature`, `seed`.
+- `numbers_format` and `secondary_language_codes` (new in Scribe v3): not sent until a separate decision.
+
+**Older plans and projects (2026-11-19).** Scribe v3 replaced Scribe v2 for every new request. A remembered or persisted plan that still names `scribe_v2` runs on `scribe_v3`; any other model is refused with "ElevenLabs requires the scribe_v3 model", identically on both platforms. A v3 run has its own raw-cache key (the key's `model` is `scribe_v3`), so a v2 cache entry is never served for it. Projects and caches made with `scribe_v2` open and read exactly as before: their `EngineRef` keeps `scribe_v2`, and saved files are never rewritten. Transcribe Again on such a project makes a new `scribe_v3` transcript at the current price.
 
 Settings → Transcription → ElevenLabs → Advanced → Region sets `base` for every ElevenLabs call in the app:
 
@@ -636,10 +639,10 @@ Each `words[]` item has `text`, `type`, `logprob` (≤ 0), `start` and `end` (nu
 
 Then:
 
-- `language`: normalise `language_code` with `languageCodes.iso639_3` from the catalogue (the docs show both `eng` and `en`). Two-letter codes are kept as they are.
+- `language`: normalise `language_code` with `languageCodes.iso639_3` from the catalogue (the docs show both `eng` and `en`). Two-letter codes are kept as they are. ElevenLabs marks `language_code` nullable in some responses: a null or missing code takes the forced language, or none (unknown language) for auto. A paid result is never discarded over it.
 - `languageProbability = language_probability`, `providerRequestID = transcription_id`.
 - `timing = .native`, `verbatim = true`, `grouping = (.lastToken, .single, false)`.
-- `engine = EngineRef(id: .elevenlabs, modelId: "scribe_v2", modelSha256: nil, engineVersion: "scribe_v2", locale: nil)`.
+- `engine = EngineRef(id: .elevenlabs, modelId: "scribe_v3", modelSha256: nil, engineVersion: "scribe_v3", locale: nil)`. Transcripts made before 2026-11-19 keep `scribe_v2`.
 
 Unknown response fields are ignored. A 200 whose body is not a chunk response, for example one with `transcripts[]`, is a `providerError` ("unexpected response shape").
 
@@ -674,7 +677,7 @@ ElevenLabs transcribes files longer than 8 minutes in parallel internally, with 
 
 ### 8.5 Cost, privacy, key test
 
-- **Cost line**, shown in the inline Mac Transcribe block, Windows right-panel Transcribe job and the engine picker: `durationHours × 0.22 USD`, × 1.2 when keyterms are used (catalogue `pricing`). Silence is billed. Format "≈ $0.04", with two significant digits and "< $0.01" as the minimum. The Windows job requires the priced click for every cloud run, separates first-use privacy permission from that run's approval, and never starts a cloud run after merely saving a key. Its current daily display is explicitly an in-memory session estimate, not an account balance or a persistent daily ledger; noncached successful results count once, and interrupted uploads remain unconfirmed. See `doc/windows-v2-workflows.md` for the remaining Core evidence and shell status seams.
+- **Cost line**, shown in the inline Mac Transcribe block, Windows right-panel Transcribe job and the engine picker: `durationHours × 0.20 USD`, plus `durationHours × 0.05 USD` when keyterms are used (catalogue `pricing`: `perAudioHour`, `keytermsSurchargePerAudioHour`; ElevenLabs batch pricing of 17 Nov 2026). Silence is billed. Format "≈ $0.04", with two significant digits and "< $0.01" as the minimum. The Windows job requires the priced click for every cloud run, separates first-use privacy permission from that run's approval, and never starts a cloud run after merely saving a key. Its current daily display is explicitly an in-memory session estimate, not an account balance or a persistent daily ledger; noncached successful results count once, and interrupted uploads remain unconfirmed. See `doc/windows-v2-workflows.md` for the remaining Core evidence and shell status seams.
 - **Privacy line**: "Sends the audio track to ElevenLabs. ElevenLabs keeps it under its terms." (`doc/design.md` §10).
 - **Mac v2: explicit approval on every run.** The transcript's inline block shows “Uploads this video's audio to ElevenLabs with your key.” and **Upload and Transcribe · ≈ $X**, from duration × the bundled catalogue rate (plus keyterms). The first priced click stores `transcription.cloudConsent.elevenlabs = true` and authorizes that run. Before it, show “{duration} of sound, no video frames. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. Asked once.” Later runs omit the terms, but still require the priced click. Missing keys use an inline secure field and a visible Save Key button, disabled while the field is empty or saving. Keep the priced transcription primary visible and disabled until the saved key and existing media, readiness and estimate checks allow it. Explain “Paste your ElevenLabs key above, then choose Save Key.” Saving makes no request and does not approve transcription. Never auto-focus the paid primary. Ignore key repeat, pre-row Return and Return within its first 0.5 s; ⌘Return approves explicitly. Space plays. Cancel/Not now uploads nothing and stores no consent. Headless tests use stub transcribers and the same controller as the UI.
 - **Windows first-use consent (until this inline flow is ported).** Before the first upload, the existing ContentDialog says “Transcribe with ElevenLabs?” and “ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent.” [Continue] stores the consent and uploads; [Cancel] sends nothing.
@@ -1042,7 +1045,7 @@ The resulting defaults:
 
 | Language | macOS, `local` | Windows, `local` | Cloud |
 |---|---|---|---|
-| `et` | TalTech verbatim Q8_0 (874 MB). Apple is never used for Estonian. | TalTech verbatim Q8_0 (874 MB); Q4_0 (474 MB) on machines with less than 8 GB RAM | ElevenLabs Scribe v2 (Estonian in the "Excellent", ≤ 5% WER, tier) |
+| `et` | TalTech verbatim Q8_0 (874 MB). Apple is never used for Estonian. | TalTech verbatim Q8_0 (874 MB); Q4_0 (474 MB) on machines with less than 8 GB RAM | ElevenLabs Scribe v3 (Estonian supported; the "Excellent", ≤ 5% WER, tier was published for Scribe v2) |
 | `en` | Apple Speech (no in-app download), unless small.en is installed | Whisper large-v3-turbo Q5_0 (574 MB); small.en Q5_1 (190 MB) on machines with less than 8 GB RAM | ElevenLabs |
 | Other Apple locales (de, fr, es, it, pt, ja, ko, zh, hi, …) | Apple Speech | Whisper large-v3-turbo Q5_0 | ElevenLabs |
 | Other Whisper languages (fi, lv, lt, ru, pl, uk, …) | Whisper large-v3-turbo Q5_0 | Whisper large-v3-turbo Q5_0 | ElevenLabs |
@@ -1337,7 +1340,7 @@ Apple: a recorded list of `(result, runs, ranges, confidence)` converts to the e
   - Transcribe `shared/fixtures/transcription/hello-um.wav`, still to be recorded: about 6 s of English with one "um".
   - Assert the words "hello" and "today" start within 150 ms of the annotation, and that one filler is present (as a word or as `…`).
 - `VOXCLIP_TEST_APPLE_SPEECH=1` (or `VOXCLIP_LIVE_TESTS=1`), in a signed app build on macOS 26 or later: run the same clip through `apple-speech` with `en-US`.
-- `VOXCLIP_LIVE_TESTS=1` and `VOXCLIP_ELEVENLABS_API_KEY` set, local runs only: run the same clip through Scribe v2. Assert `language == "en"` and that the filler is kept as a word.
+- `VOXCLIP_LIVE_TESTS=1` and `VOXCLIP_ELEVENLABS_API_KEY` set, local runs only: run the same clip through Scribe v3. Assert `language == "en"` and that the filler is kept as a word.
 
 ### 16.4 Quality acceptance before the 0.1.0 defaults are final
 
@@ -1347,7 +1350,7 @@ Build a 10-minute bilingual test set from the author's own takes: Estonian with 
 
 | Candidate | Measure |
 |---|---|
-| ElevenLabs Scribe v2 | WER, filler recall, median and p90 word-start error after refinement |
+| ElevenLabs Scribe v3 | WER, filler recall, median and p90 word-start error after refinement |
 | TalTech Q8_0, DTW on and off | the same, plus real-time factor on an M1-class Mac and a mid-range Windows x64 machine (Vulkan and CPU) |
 | TalTech Q5_K and Q4_0 | WER change against Q8_0 |
 | Whisper large-v3-turbo Q5_0 (English), with and without the filler prompt | filler recall |
