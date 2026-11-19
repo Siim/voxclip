@@ -19,7 +19,7 @@ swift run voxclip-cli models --help
 swift run voxclip-cli version
 ```
 
-The first resolve downloads the pinned argument parser and official whisper xcframework; no transcription model is downloaded. Package.resolved is part of this package. No Xcode project or SwiftPM resource bundle is needed.
+The first resolve downloads the pinned argument parser, the official whisper xcframework and the ONNX Runtime binary from download.onnxruntime.ai; no transcription model is downloaded. The ONNX Runtime Swift package itself is an unmodified copy in `Vendor/` (see `Vendor/README.md`), since GitHub no longer serves Microsoft's repository. Package.resolved is part of this package. No Xcode project or SwiftPM resource bundle is needed.
 
 The app is one main window (ADR-R29): a sidebar with Home, the open project's Full take, kept clips and suggestions; the transcript page with its selection bar; the viewer with Captions; and the timeline. Each project stays a `.voxclip` `NSDocument` attached to that window (architecture §2.6). Import, transcription, word editing, clips, Find Clips, captions, export and the share helpers are integrated; doc/design.md describes the interface. Voice Lab generation is planned for 0.1.0 behind an explicit beta opt-in; its implementation is owned by the Voice Lab track.
 

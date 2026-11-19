@@ -10,7 +10,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", exact: "1.8.2"),
-        .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager", exact: "1.19.2"),
+        // Microsoft's v1.19.2 (bbc428e1), kept in the repo since GitHub stopped serving it on 2026-11-17; see Vendor/README.md.
+        .package(path: "Vendor/onnxruntime-swift-package-manager"),
     ],
     targets: [
         .binaryTarget(

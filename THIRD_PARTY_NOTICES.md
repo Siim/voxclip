@@ -967,7 +967,7 @@ Libraries linked into or shipped with the apps. SwiftPM, NuGet, the .NET SDK run
 | swift-argument-parser 1.8.2 (`6a52f3251125d74daf04fcbd5e6f08a75d074382`) | `voxclip-cli` argument parsing | Apache-2.0 (text above), with runtime library exception below |
 #### ONNX Runtime SwiftPM 1.19.2
 
-The official `microsoft/onnxruntime-swift-package-manager` package is pinned to `v1.19.2`, commit `bbc428e168a0374eb7d0503cdb7c73fdc1d99751`. The binary archive `https://download.onnxruntime.ai/pod-archive-onnxruntime-c-1.19.2.zip` has SHA-256 `28787ee2f966a2c47eb293322c733c5dc4b5e3327cec321c1fe31a7c698edf68`. No Extensions product or extra execution provider is selected. The Apple CPU build uses MLAS, not Intel MKL; the all-platform upstream notices below do not authorize adding MKL to the Mac app.
+The official `microsoft/onnxruntime-swift-package-manager` package is pinned to `v1.19.2`, commit `bbc428e168a0374eb7d0503cdb7c73fdc1d99751`. Since 2026-11-19 an unmodified copy of that commit is kept in `apps/macos/Vendor/onnxruntime-swift-package-manager`, because GitHub no longer serves Microsoft's repository; `apps/macos/Vendor/README.md` says how to check it. The binary archive `https://download.onnxruntime.ai/pod-archive-onnxruntime-c-1.19.2.zip` has SHA-256 `28787ee2f966a2c47eb293322c733c5dc4b5e3327cec321c1fe31a7c698edf68`. No Extensions product or extra execution provider is selected. The Apple CPU build uses MLAS, not Intel MKL; the all-platform upstream notices below do not authorize adding MKL to the Mac app.
 
 Exact `LICENSE` from the pinned SwiftPM package:
 

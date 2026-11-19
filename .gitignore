@@ -32,6 +32,8 @@ AppPackages/
 
 # Local models, media and caches
 *.onnx
+# The vendored ONNX Runtime package keeps its upstream test model (apps/macos/Vendor/README.md).
+!apps/macos/Vendor/onnxruntime-swift-package-manager/**/*.onnx
 # The Windows face models, bundled and hash-checked (ADR-R48 Windows; apps/windows/models/frames/NOTICE.txt).
 !apps/windows/models/frames/*.onnx
 *.bin
