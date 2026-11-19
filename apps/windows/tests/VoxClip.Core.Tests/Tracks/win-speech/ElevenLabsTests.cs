@@ -28,7 +28,7 @@ public sealed class ElevenLabsTests
             if (diarize) expected.Add("num_speakers");
             expected.AddRange(["keyterms", "keyterms", "file"]);
             Assert.Equal(expected, names);
-            Assert.Equal("scribe_v2", await parts[0].ReadAsStringAsync(ct));
+            Assert.Equal("scribe_v3", await parts[0].ReadAsStringAsync(ct));
             Assert.Equal("et", await parts[1].ReadAsStringAsync(ct));
             Assert.Equal("word", await parts[2].ReadAsStringAsync(ct));
             Assert.Equal("true", await parts[3].ReadAsStringAsync(ct));
@@ -38,6 +38,8 @@ public sealed class ElevenLabsTests
             Assert.Equal(await File.ReadAllBytesAsync(files.Wav, ct), await parts[^1].ReadAsByteArrayAsync(ct));
             Assert.DoesNotContain("no_verbatim", names);
             Assert.DoesNotContain("file_format", names);
+            Assert.DoesNotContain("numbers_format", names);
+            Assert.DoesNotContain("secondary_language_codes", names);
             return StubHttp.Json(Response);
         });
         var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);

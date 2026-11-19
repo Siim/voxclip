@@ -16,7 +16,7 @@ using VoxClip.Core.Services.Settings;
 
 namespace VoxClip.Core.Services.Speech;
 
-/// <summary>File-streamed Scribe v2 batch requests with explicit cloud selection; transcription §8.</summary>
+/// <summary>File-streamed Scribe batch requests (<see cref="ElevenLabsScribe.ModelId"/>) with explicit cloud selection; transcription §8.</summary>
 public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
 {
     private static readonly string UserAgent = BuildUserAgent();
@@ -183,7 +183,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                     reporting.Report(new(TranscriptionStage.Uploading, 1));
                     reporting.Report(new(TranscriptionStage.Transcribing, null));
                 });
-                multipart.Add(new StringContent("scribe_v2"), "model_id");
+                multipart.Add(new StringContent(ElevenLabsScribe.ModelId), "model_id");
                 if (forcedLanguage is not null) multipart.Add(new StringContent(forcedLanguage), "language_code");
                 multipart.Add(new StringContent("word"), "timestamps_granularity");
                 multipart.Add(new StringContent("true"), "tag_audio_events");
@@ -239,7 +239,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                     request.Observe?.Invoke(new(TranscriptionEvidenceKind.Completed, raw.ProviderRequestId ?? acceptedId));
                     var requestId = raw.ProviderRequestId is { } identifier && Regex.IsMatch(identifier, "^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant)
                         ? identifier : "unavailable";
-                    log.Write(LogLevel.Info, "transcribe", FormattableString.Invariant($"elevenlabs scribe_v2; bytes {bytes}; duration {request.Audio.DurationSeconds:F3}; request {requestId}"));
+                    log.Write(LogLevel.Info, "transcribe", FormattableString.Invariant($"elevenlabs {ElevenLabsScribe.ModelId}; bytes {bytes}; duration {request.Audio.DurationSeconds:F3}; request {requestId}"));
                     return raw;
                 }
             }
@@ -275,7 +275,8 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
     private async Task<RawTranscript> MapAsync(JsonElement body, bool diarize, LanguageChoice choice, CancellationToken ct)
     {
         if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("words", out var words) || words.ValueKind != JsonValueKind.Array ||
-            !body.TryGetProperty("language_code", out var language) || language.ValueKind != JsonValueKind.String || body.TryGetProperty("transcripts", out _))
+            body.TryGetProperty("language_code", out var language) && language.ValueKind is not (JsonValueKind.String or JsonValueKind.Null) ||
+            body.TryGetProperty("transcripts", out _))
             throw UnexpectedResponse();
         var tokens = new List<RawToken>();
         var unknown = new HashSet<string>(StringComparer.Ordinal);
@@ -297,10 +298,12 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 diarize && word.TryGetProperty("speaker_id", out var speaker) && speaker.ValueKind == JsonValueKind.String ? speaker.GetString() : null,
                 kind == "audio_event" ? WordKind.Event : null, 0));
         }
-        var code = choice is LanguageChoice.Forced forced ? forced.Code : language.GetString()!;
-        return new(new(Engine, "scribe_v2", null, "scribe_v2", null), 1,
+        // A null or missing language code takes the forced language, or none for auto, so a paid result is never
+        // discarded over it. Unknown reply fields are ignored.
+        var code = choice is LanguageChoice.Forced forced ? forced.Code : language.ValueKind == JsonValueKind.String ? language.GetString() : null;
+        return new(new(Engine, ElevenLabsScribe.ModelId, null, ElevenLabsScribe.ModelId, null), 1,
             new(GroupingEnd.LastToken, GroupingConfidence.Single, false), tokens,
-            await catalog.NormalizeLanguageAsync(code, ct).ConfigureAwait(false), Number(body, "language_probability"), true, TimingSource.Native,
+            code is null ? null : await catalog.NormalizeLanguageAsync(code, ct).ConfigureAwait(false), Number(body, "language_probability"), true, TimingSource.Native,
             body.TryGetProperty("transcription_id", out var identifier) && identifier.ValueKind == JsonValueKind.String ? identifier.GetString() : null);
     }
 
@@ -393,7 +396,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
         SpeechCopy.ValidateIdentifiers(plan);
         if (plan.Engine != TranscriptEngine.Elevenlabs)
             throw SpeechCopy.Unsupported(TranscriptEngine.Elevenlabs, plan.Language is LanguageChoice.Forced language ? language.Code : "auto");
-        if (plan.Model is not (null or "scribe_v2")) throw SpeechCopy.Failed("ElevenLabs requires the scribe_v2 model");
+        if (!ElevenLabsScribe.Accepts(plan.Model)) throw SpeechCopy.Failed(ElevenLabsScribe.ModelRequiredMessage);
         ValidateOptions(plan.Options);
     }
 

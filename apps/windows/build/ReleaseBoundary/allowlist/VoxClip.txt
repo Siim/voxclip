@@ -14,7 +14,7 @@ literal "claude_ai"
 literal "eleven_multilingual_v2"
 literal "eleven_v4"
 literal "oauth_token"
-literal "scribe_v2"
+literal "scribe_v3"
 member VoxClip.App.App :: field private services
 member VoxClip.App.App :: method internal NewWindow()
 member VoxClip.App.App :: method internal OpenSettings()

@@ -152,7 +152,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
         {
             try
             {
-                price = VoiceLabPricing.Estimate(VoiceLabPricedOperation.ElevenLabsSpeechToText, "scribe_v2",
+                price = VoiceLabPricing.Estimate(VoiceLabPricedOperation.ElevenLabsSpeechToText, VoxClip.Core.Services.Speech.ElevenLabsScribe.ModelId,
                     baseline.Project.Media.Source.DurationSeconds, 1, null, VoiceLabPrices.Load()).Usd;
                 PrimaryButtonText = price is { } amount ? "Upload and Transcribe · " + VoiceLabCostPresentation.Format(amount) : "Price unavailable";
             }

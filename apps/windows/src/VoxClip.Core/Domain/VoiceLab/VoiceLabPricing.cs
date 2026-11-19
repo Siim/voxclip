@@ -10,7 +10,7 @@ namespace VoxClip.Core.Domain.VoiceLab;
 /// and the unit the caller counts in; Voice Lab §3.2.</summary>
 public sealed record VoiceLabPricedOperation(string Provider, string Operation, string? Endpoint, string Unit)
 {
-    /// <summary>ElevenLabs Scribe v2, in seconds of audio.</summary>
+    /// <summary>ElevenLabs Scribe (<c>ElevenLabsScribe.ModelId</c>), in seconds of audio.</summary>
     public static readonly VoiceLabPricedOperation ElevenLabsSpeechToText = new("elevenlabs", "speechToText", null, "second");
     /// <summary>ElevenLabs Voice Isolator, in seconds of audio.</summary>
     public static readonly VoiceLabPricedOperation ElevenLabsAudioIsolation = new("elevenlabs", "audioIsolation", null, "second");

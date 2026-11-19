@@ -786,7 +786,7 @@ public sealed partial class VoiceLabTakeRunTests
             Assert.Equal("/v1/speech-to-text", path);
             Qa++;
             var text = Encoding.Latin1.GetString(bytes);
-            foreach (var field in new[] { ("model_id", "scribe_v2"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", "false"), ("timestamps_granularity", "word") })
+            foreach (var field in new[] { ("model_id", "scribe_v3"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", "false"), ("timestamps_granularity", "word") })
                 Assert.Contains("name=\"" + field.Item1 + "\"\r\n\r\n" + field.Item2 + "\r\n", text);
             var offset = bytes.AsSpan().IndexOf("RIFF"u8);
             Assert.True(offset >= 0);

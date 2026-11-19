@@ -214,8 +214,8 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public VoiceLabPreparedAction PrepareQa(string language, string recordId, Guid requestId, bool tagAudioEvents = false)
     {
         if (!CloneLanguage.IsMatch(language) || string.IsNullOrWhiteSpace(recordId)) throw Invalid();
-        return actions.Prepare(QaFingerprint(language, recordId, tagAudioEvents), Quoted(VoiceLabOperation.SpeechToText, "scribe_v2", VoiceLabTakeProcessing.MaximumQaSeconds),
-            new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", "scribe_v2", null,
+        return actions.Prepare(QaFingerprint(language, recordId, tagAudioEvents), Quoted(VoiceLabOperation.SpeechToText, ElevenLabsScribe.ModelId, VoiceLabTakeProcessing.MaximumQaSeconds),
+            new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", ElevenLabsScribe.ModelId, null,
                 new(VoiceLabLanguageModeKind.Explicit, language), null, recordId));
     }
     public async Task<VoiceLabQaTranscript> TranscribeQaAsync(float[] samples, int rate, string language, OwnVoicePolicy policy,
@@ -225,12 +225,13 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         policy.Validate();
         var wav = VoiceLabTakeProcessing.EncodeQaWav(samples, rate);
         var id = actions.Claim(authorization, QaFingerprint(language, policy.RecordId, tagAudioEvents), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
-        using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", tagAudioEvents ? "true" : "false"),
+        using var body = Multipart(NewBoundary(), [new("model_id", ElevenLabsScribe.ModelId), new("language_code", language), new("tag_audio_events", tagAudioEvents ? "true" : "false"),
             new("diarize", "false"), new("timestamps_granularity", "word"), new("file", null, "qa.wav", wav)]);
         using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization, policy: policy, acceptance: acceptance).ConfigureAwait(false);
         using var json = Parse(reply.Bytes);
         var root = json.RootElement;
-        var detected = RequiredString(root, "language_code");
+        // A null or missing language code takes the requested language; a different one still fails the check.
+        var detected = OptionalString(root, "language_code") ?? language;
         if (await new VoxClip.Core.Services.Models.ModelCatalog().NormalizeLanguageAsync(detected, ct).ConfigureAwait(false) != language ||
             !root.TryGetProperty("words", out var words) || words.ValueKind != JsonValueKind.Array) throw Malformed();
         ct.ThrowIfCancellationRequested();
@@ -246,11 +247,11 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             result.Add(new(text, start, end, true));
             previous = end;
         }
-        return new(Array.AsReadOnly(result.ToArray()), Receipt("/v1/speech-to-text", "scribe_v2", null, id, reply));
+        return new(Array.AsReadOnly(result.ToArray()), Receipt("/v1/speech-to-text", ElevenLabsScribe.ModelId, null, id, reply));
     }
     private string QaFingerprint(string language, string recordId, bool tagAudioEvents)
     {
-        var original = VoiceLabActionGate.Fingerprint(Region.ToString(), "scribe_v2", language, recordId,
+        var original = VoiceLabActionGate.Fingerprint(Region.ToString(), ElevenLabsScribe.ModelId, language, recordId,
             VoiceLabTakeProcessing.MaximumQaSeconds.ToString(CultureInfo.InvariantCulture));
         return tagAudioEvents ? VoiceLabActionGate.Fingerprint(original, "tag_audio_events=true") : original;
     }
@@ -324,16 +325,16 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         VoiceConsentAudio.Pcm16k(wav);
         if (language is not ("en" or "et")) throw Invalid();
         var format = VoiceConsentAudio.ValidateWav(wav);
-        return actions.Prepare(ConsentFingerprint(wav, language), Quoted(VoiceLabOperation.SpeechToText, "scribe_v2", format.Frames / (double)format.Rate),
-            new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", "scribe_v2", null,
+        return actions.Prepare(ConsentFingerprint(wav, language), Quoted(VoiceLabOperation.SpeechToText, ElevenLabsScribe.ModelId, format.Frames / (double)format.Rate),
+            new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", ElevenLabsScribe.ModelId, null,
                 new(VoiceLabLanguageModeKind.Explicit, language), VoiceConsentStore.Hash(wav), null));
     }
-    private string ConsentFingerprint(byte[] wav, string language) => VoiceLabActionGate.Fingerprint(Region.ToString(), "scribe_v2", language, VoiceConsentStore.Hash(wav));
+    private string ConsentFingerprint(byte[] wav, string language) => VoiceLabActionGate.Fingerprint(Region.ToString(), ElevenLabsScribe.ModelId, language, VoiceConsentStore.Hash(wav));
     public async Task<VoxClip.Core.Domain.Transcript.RawTranscript> TranscribeConsentStatementAsync(byte[] wav, string language, VoiceLabAuthorization authorization, CancellationToken ct)
     {
         VoiceConsentAudio.Pcm16k(wav);
         actions.Claim(authorization, ConsentFingerprint(wav, language), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
-        using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", "false"),
+        using var body = Multipart(NewBoundary(), [new("model_id", ElevenLabsScribe.ModelId), new("language_code", language), new("tag_audio_events", "false"),
             new("diarize", "false"), new("timestamps_granularity", "word"), new("file", null, "statement.wav", wav)]);
         using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization).ConfigureAwait(false);
         using var json = Parse(reply.Bytes);

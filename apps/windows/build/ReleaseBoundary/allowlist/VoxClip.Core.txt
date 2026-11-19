@@ -851,6 +851,7 @@ literal "remove_background_noise"
 literal "requires_verification"
 literal "response_format"
 literal "scribe_v2"
+literal "scribe_v3"
 literal "segment_character_range"
 literal "segment_end_beyond_duration"
 literal "segment_input_index"
@@ -17369,6 +17370,11 @@ member VoxClip.Core.Services.Speech.ElevenLabsRegions :: method public BaseUri(V
 member VoxClip.Core.Services.Speech.ElevenLabsRegions :: method public FromSettings(VoxClip.Core.Services.Settings.AppSettings,VoxClip.Core.Services.Logging.ILog)
 member VoxClip.Core.Services.Speech.ElevenLabsRegions :: method public IsResidency(VoxClip.Core.Services.Speech.ElevenLabsRegion)
 member VoxClip.Core.Services.Speech.ElevenLabsRegions :: method public ResidencyHint(VoxClip.Core.Services.Speech.ElevenLabsRegion)
+member VoxClip.Core.Services.Speech.ElevenLabsScribe :: field public ModelId
+member VoxClip.Core.Services.Speech.ElevenLabsScribe :: field public ModelRequiredMessage
+member VoxClip.Core.Services.Speech.ElevenLabsScribe :: method private .cctor()
+member VoxClip.Core.Services.Speech.ElevenLabsScribe :: method public Accepts(string)
+member VoxClip.Core.Services.Speech.ElevenLabsScribe :: method public get_LegacyModelIds()
 member VoxClip.Core.Services.Speech.ElevenLabsTranscriber :: field private UserAgent
 member VoxClip.Core.Services.Speech.ElevenLabsTranscriber :: field private catalog
 member VoxClip.Core.Services.Speech.ElevenLabsTranscriber :: field private endpoint
@@ -19423,6 +19429,7 @@ type VoxClip.Core.Services.Speech.ElevenLabsKeyTestResult
 type VoxClip.Core.Services.Speech.ElevenLabsRegion
 type VoxClip.Core.Services.Speech.ElevenLabsRegionJsonConverter
 type VoxClip.Core.Services.Speech.ElevenLabsRegions
+type VoxClip.Core.Services.Speech.ElevenLabsScribe
 type VoxClip.Core.Services.Speech.ElevenLabsTranscriber
 type VoxClip.Core.Services.Speech.ElevenLabsTranscriber+EnvironmentKeys
 type VoxClip.Core.Services.Speech.ElevenLabsTranscriber+MissingKeys

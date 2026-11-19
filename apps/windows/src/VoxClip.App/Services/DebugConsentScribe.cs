@@ -23,7 +23,7 @@ internal sealed class DebugConsentScribe(string directory)
         var tokens = statement.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var duration = fixture.GetProperty("words").EnumerateArray().Last().GetProperty("end").GetDouble();
         Calls++;
-        return Task.FromResult(new RawTranscript(new(TranscriptEngine.Elevenlabs, "scribe_v2", null, "debug-fixture", "en"), 1,
+        return Task.FromResult(new RawTranscript(new(TranscriptEngine.Elevenlabs, VoxClip.Core.Services.Speech.ElevenLabsScribe.ModelId, null, "debug-fixture", "en"), 1,
             new(GroupingEnd.LastToken, GroupingConfidence.Single, false), tokens.Select((word, index) => new RawToken(word, false,
                 duration * index / tokens.Length, duration * (index + 1) / tokens.Length, 1, null, null, index)).ToArray(),
             "en", 1, true, TimingSource.Native, "consent-scribe-fixture"));

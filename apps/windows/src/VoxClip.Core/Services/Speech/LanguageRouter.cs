@@ -10,7 +10,7 @@ public static class LanguageRouter
     /// <summary>Select an explicit cloud plan or local model; readiness still owns downloads and consent.</summary>
     public static TranscriptionPlan Route(LanguageChoice language, TranscriptEngine preferred, IReadOnlyList<string> installedModels)
     {
-        if (preferred == TranscriptEngine.Elevenlabs) return new(preferred, "scribe_v2", language, new());
+        if (preferred == TranscriptEngine.Elevenlabs) return new(preferred, ElevenLabsScribe.ModelId, language, new());
         if (preferred != TranscriptEngine.Whispercpp)
             throw new VoxClipException(VoxClipErrorCode.TranscriptionFailed, "Transcription stopped: this transcription engine is unavailable. Your video is still here.");
         var catalog = new ModelCatalog();

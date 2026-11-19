@@ -47,7 +47,7 @@ public sealed class VoiceLabDialogueTests
         using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys("synthetic-key"), handler, ElevenLabsRegion.Default, boundary: "voxclip-tags-wire");
         var policy = new OwnVoicePolicy("record", "voice123", true, true, true, true, true);
         var prepared = client.PrepareQa("en", policy.RecordId, Guid.NewGuid(), tagged);
-        var expectedFingerprint = VoiceLabActionGate.Fingerprint(ElevenLabsRegion.Default.ToString(), "scribe_v2", "en", policy.RecordId,
+        var expectedFingerprint = VoiceLabActionGate.Fingerprint(ElevenLabsRegion.Default.ToString(), "scribe_v3", "en", policy.RecordId,
             VoiceLabTakeProcessing.MaximumQaSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (tagged) expectedFingerprint = VoiceLabActionGate.Fingerprint(expectedFingerprint, "tag_audio_events=true");
         Assert.Equal(VoiceLabActionGate.BoundFingerprint(expectedFingerprint, prepared.Estimate, prepared.Review), prepared.Fingerprint);

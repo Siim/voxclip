@@ -64,7 +64,13 @@ public sealed class TranscriptionService : ITranscriptionService
         if (!engines.TryGetValue(request.Plan.Engine, out var engine))
             throw new VoxClipException(VoxClipErrorCode.TranscriptionFailed, "Transcription stopped: this transcription engine is unavailable. Your video is still here.");
         SpeechCopy.ValidateIdentifiers(request.Plan);
-        if (engine is ElevenLabsTranscriber) ElevenLabsTranscriber.ValidatePlan(request.Plan);
+        if (engine is ElevenLabsTranscriber)
+        {
+            ElevenLabsTranscriber.ValidatePlan(request.Plan);
+            // A remembered plan that still names a legacy model runs on the current one.
+            if (request.Plan.Model is { } legacy && ElevenLabsScribe.LegacyModelIds.Contains(legacy))
+                request = request with { Plan = request.Plan with { Model = ElevenLabsScribe.ModelId } };
+        }
         // The job reads the extracted audio and writes raw transcripts into the source's cache entry, so eviction leaves that
         // entry alone until it ends (architecture §8.2).
         using var lease = await CacheKeyRegistry.Shared(Path.Combine(root, "Cache")).LeaseAsync(request.ContentKey, ct).ConfigureAwait(false);
@@ -82,7 +88,7 @@ public sealed class TranscriptionService : ITranscriptionService
             var language = request.Plan.Language is LanguageChoice.Forced forced ? forced.Code.ToLowerInvariant().Split('-')[0] : "auto";
             if (language.Any(character => !char.IsAsciiLetterLower(character))) throw SpeechCopy.InvalidIdentifier(request.Plan.Engine);
             var directory = Path.Combine(root, "Cache", request.ContentKey, "transcripts");
-            var modelId = request.Plan.Engine == TranscriptEngine.Elevenlabs ? "scribe_v2" : request.Plan.Model ?? "none";
+            var modelId = request.Plan.Engine == TranscriptEngine.Elevenlabs ? ElevenLabsScribe.ModelId : request.Plan.Model ?? "none";
             ModelPaths.ValidateId(modelId);
             var cachePath = Path.Combine(directory, $"{EngineName(request.Plan.Engine)}-{modelId}-{language}-{rawKey[..8]}.json");
             // One arrival-ordered wait for a slot of the job's kind and its raw cache entry (transcription §13.4). Holding
@@ -169,7 +175,7 @@ public sealed class TranscriptionService : ITranscriptionService
             writer.WriteEndArray();
             writer.WriteString("language", request.Plan.Language is LanguageChoice.Forced forced ? forced.Code.ToLowerInvariant().Split('-')[0] : null);
             writer.WriteNull("locale");
-            writer.WriteString("model", request.Plan.Engine == TranscriptEngine.Elevenlabs ? "scribe_v2" : request.Plan.Model);
+            writer.WriteString("model", request.Plan.Engine == TranscriptEngine.Elevenlabs ? ElevenLabsScribe.ModelId : request.Plan.Model);
             writer.WriteString("modelSha256", model?.Files.FirstOrDefault(file => file.Role == "model")?.Sha256);
             if (request.Plan.Options.NumSpeakers is { } speakers) writer.WriteNumber("numSpeakers", speakers); else writer.WriteNull("numSpeakers");
             writer.WriteEndObject();

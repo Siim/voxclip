@@ -113,13 +113,13 @@ public sealed class VoiceLabTakeRunTests
     public void ScribeStatementPriceIsExposedThroughTheOperationApi()
     {
         using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), new HttpClientHandler(), ElevenLabsRegion.Default);
-        var price = client.Estimate(VoiceLabOperation.SpeechToText, "scribe_v2", 30);
+        var price = client.Estimate(VoiceLabOperation.SpeechToText, "scribe_v3", 30);
         Assert.Equal("speechToText", price.Operation);
-        Assert.Equal(0.0018333333m, price.Usd);
+        Assert.Equal(0.0016666667m, price.Usd);
         Assert.True(price.Usd < 0.01m);
         var quote = client.PrepareQa("en", "record", Guid.NewGuid());
         Assert.Equal(290, quote.Estimate.Units);
-        Assert.Equal("scribe_v2", quote.Review.ModelId);
+        Assert.Equal("scribe_v3", quote.Review.ModelId);
         Assert.Equal("/v1/speech-to-text", quote.Review.Endpoint);
     }
     [Fact]

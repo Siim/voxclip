@@ -59,7 +59,7 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
     public bool SpeakerCalibrated(string language) => VoiceLabSession.SpeakerCalibrated(language);
     public string? PlanMessage => plan();
     public string VerificationCost => VoiceLabCostPresentation.Kind(VoiceLabPricing.Estimate(
-        VoiceLabPricedOperation.ElevenLabsSpeechToText, "scribe_v2", seconds, 1, null, prices), false, "ElevenLabs").Text;
+        VoiceLabPricedOperation.ElevenLabsSpeechToText, VoxClip.Core.Services.Speech.ElevenLabsScribe.ModelId, seconds, 1, null, prices), false, "ElevenLabs").Text;
     private void Require(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -115,7 +115,7 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
                 if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             }
             finally { Array.Clear(converted); }
-            var request = new TranscriptionRequest(new(TranscriptEngine.Elevenlabs, "scribe_v2", new LanguageChoice.Forced(language), new(Diarize: false)),
+            var request = new TranscriptionRequest(new(TranscriptEngine.Elevenlabs, VoxClip.Core.Services.Speech.ElevenLabsScribe.ModelId, new LanguageChoice.Forced(language), new(Diarize: false)),
                 new(path, frames, seconds, 0, 0), "voice-consent-" + Guid.NewGuid().ToString("N"));
             Require(ct);
             return await (transcribe ?? throw new InvalidOperationException("No fixture Scribe was supplied."))(verifying!, request, ct).ConfigureAwait(false);

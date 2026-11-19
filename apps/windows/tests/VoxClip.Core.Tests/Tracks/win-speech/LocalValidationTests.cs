@@ -16,7 +16,7 @@ public sealed class LocalValidationTests
     [InlineData("empty", "Invalid keyterm: ")]
     [InlineData("words", "Invalid keyterm: one two three four five six")]
     [InlineData("newline", "Invalid keyterm: first\nsecond")]
-    [InlineData("model", "ElevenLabs requires the scribe_v2 model")]
+    [InlineData("model", "ElevenLabs requires the scribe_v3 model")]
     public async Task DirectAndServiceValidationUseExactMacCopyBeforeUploading(string invalid, string reason)
     {
         var options = invalid switch
@@ -110,7 +110,7 @@ public sealed class LocalValidationTests
         foreach (var error in new[] { direct, orchestrated })
         {
             Assert.Equal(VoxClipErrorCode.TranscriptionFailed, error.Code);
-            Assert.Equal("Transcription stopped: ElevenLabs requires the scribe_v2 model. Your video is still here.", error.Message);
+            Assert.Equal("Transcription stopped: ElevenLabs requires the scribe_v3 model. Your video is still here.", error.Message);
         }
         Assert.Equal(0, handler.Calls);
         Assert.False(Directory.Exists(Path.Combine(files.Root, "Cache")));
