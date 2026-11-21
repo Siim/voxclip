@@ -2736,6 +2736,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeJournalReceipt :: method public set_En
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalReceipt :: method public set_Provider(string)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalReceipt :: method public set_Region(string)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement :: method public Settle(string,string,System.Collections.Generic.IEnumerable`1<string>)
+member VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement :: method public SweepStale(string,System.DateTimeOffset)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalTiming :: method private .ctor(VoxClip.Media.VoiceLab.VoiceLabTakeJournalTiming)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalTiming :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalTiming :: method private get_EqualityContract()

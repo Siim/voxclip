@@ -105,6 +105,8 @@ public sealed partial class EditorPage : Page
         // Eviction never strips or removes the entry of a project open in any window, and opening it marks it used.
         if (!demo) { cacheLease = new(App.Services.Cache); cacheLease.Hold(project.Media.Source.ContentKey); }
         projectWrites = new(project, ViewModel.MarkSaved);
+        // The journal settles at the open too, so the takes a project used go even when it never closed cleanly (a crash).
+        SettleTakeJournal();
         ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
         ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
         App.Services.ExportLedger.Changed += LedgerChanged;
@@ -1203,8 +1205,9 @@ if (insertion ||
         EditorSettingsChanged(this, EventArgs.Empty);
         ViewModel.Notice = "This project is still open. You can keep editing.";
     }
-    /// <summary>At the project's close, the take journal lets go of the paid takes this project used (after Use) and of entries 60 days
-    /// unused or whose asset is gone (Mac <c>VoiceLabAssetRetention</c>). Their assets stay; a failure leaves the journal as it was.</summary>
+    /// <summary>At the project's open and close, the take journal lets go of the paid takes this project used (after Use) and of entries
+    /// 60 days unused or whose asset is gone (Mac <c>VoiceLabAssetRetention</c>; the launch sweep, <c>AppServices.InitializeAsync</c>,
+    /// covers projects never reopened). Their assets stay; a failure leaves the journal as it was.</summary>
     private void SettleTakeJournal()
     {
         if (demo || ViewModel?.Project is not { } project) return;
