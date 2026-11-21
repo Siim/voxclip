@@ -293,12 +293,17 @@ extension ProviderChoice {
     }
     private func loadStartup() async {
         let paidRoot = locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        let scratchRoot = locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
         do {
-            _ = try await Task.detached(priority: .utility) {
-                let removed = try VoiceLabAssetStore.recoverStalePartials(paidRoot: paidRoot)
+            let swept = try await Task.detached(priority: .utility) {
+                _ = try VoiceLabAssetStore.recoverStalePartials(paidRoot: paidRoot)
                 try VoiceLabAssetRetention.discoverUnlisted(paidRoot: paidRoot)
-                return removed
+                // Scratch copies of takes that a quit, crash or relaunch left behind (their owner is gone); paid files stay.
+                return Result { try VoiceLabAssetStore.sweepVoiceLabScratch(root: scratchRoot) }
             }.value
+            if case .failure = swept {
+                await log.write(LogEntry(level: .warn, category: "voice-lab", message: "Voice Lab scratch cleanup could not finish; it runs again at the next launch."))
+            }
         }
         catch { await log.write(LogEntry(level: .warn, category: "voice-lab", message: "Voice Lab partial-file recovery could not finish; paid assets were kept.")) }
         recent = Self.isTestSession ? [] : NSDocumentController.shared.recentDocumentURLs
