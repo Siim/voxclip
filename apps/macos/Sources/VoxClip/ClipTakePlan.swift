@@ -44,6 +44,10 @@ import VoxClipMedia
         var blocked: String?
         /// Takes made before the phrase's expression changed, listed as "Before expression" and never chosen automatically.
         var beforeExpression: Set<UUID> = []
+        /// Paid takes that arrived while the plan was not current (an edit, another voice): kept and listed as "made
+        /// before your edit", never chosen automatically, and chosen only by a click once an undo made the plan current
+        /// again, when they match the project as it was made for.
+        var madeBeforeEdit: Set<UUID> = []
         var videoChoice: VoiceLabVideoMode?
         var estimatedVoicedSeconds: Double?
         /// The card's segment (PhraseOwnWords.swift): Suggested, My words or Say it myself. Switching keeps every take.
@@ -788,15 +792,16 @@ import VoxClipMedia
         }.map(\.take)
     }
     /// The take chosen automatically (ADR-R37, ADR-R39): only measured passing takes, never one made before the expression
-    /// changed. Among usable takes the best score wins, as before; when no duration can carry any of them, the one closest
-    /// to the slot, so the automatic fixes reword from the nearest take. A take whose only issue is a join advisory is
-    /// chosen when it ranks best, after any clean take at the same rank (ADR-R39: Claude makes the best decision, the user
-    /// only listens).
+    /// changed or before an edit (`madeBeforeEdit`). Among usable takes the best score wins, as before; when no duration
+    /// can carry any of them, the one closest to the slot, so the automatic fixes reword from the nearest take. A take
+    /// whose only issue is a join advisory is chosen when it ranks best, after any clean take at the same rank (ADR-R39:
+    /// Claude makes the best decision, the user only listens).
     func automaticTake(phrase index: Int) -> Take? {
         guard phrases.indices.contains(index) else { return nil }
         let phrase = phrases[index]
         let measured = phrase.takes.filter {
             $0.row.selectable && $0.row.qa?.values.speakerScore?.isFinite == true && !phrase.beforeExpression.contains($0.id)
+                && !phrase.madeBeforeEdit.contains($0.id)
                 && (!$0.row.requiresJoinAdvisoryAcceptance || (try? $0.row.acceptingJoinAdvisory(at: Date())) != nil)
         }
         let order = ranked(measured, phrase: index)
@@ -822,7 +827,7 @@ import VoxClipMedia
         guard phrases.indices.contains(index), !phrases[index].leftOut, phrases[index].selected == nil else { return nil }
         let phrase = phrases[index]
         let passing = phrase.takes.filter { $0.row.selectable && durationAvailable(take: $0) }
-        let current = passing.filter { !phrase.beforeExpression.contains($0.id) }
+        let current = passing.filter { !phrase.beforeExpression.contains($0.id) && !phrase.madeBeforeEdit.contains($0.id) }
         return ranked(current.isEmpty ? passing : current, phrase: index).first
     }
     /// The duration choices the selected take allows, in the panel's order.
@@ -1238,10 +1243,13 @@ import VoxClipMedia
                 spent = VoiceLabTakeRunQuote.total(of: charges, takes: madeRequests.count)
                 await acceptedChargesChanged()
             }
-            guard (revision == version || stopping), !retired, isCurrent() else {
+            // A paid row is retired only for a plan that was retired or moved on; one that arrives while an edit makes the
+            // plan stale is kept, listed and not chosen (`madeBeforeEdit`), so an undo can still use it.
+            guard (revision == version || stopping), !retired else {
                 await backend?.retire(phrase, row.id)
                 continue
             }
+            let stale = !isCurrent()
             if let existing = phrases[phrase].takes.firstIndex(where: { $0.id == row.id }) {
                 let number = phrases[phrase].takes[existing].number
                 let previous = phrases[phrase].takes[existing].row
@@ -1255,19 +1263,22 @@ import VoxClipMedia
             }
             guard receivedInBatch.insert(row.id).inserted else { continue }
             guard !phrases[phrase].takes.contains(where: { $0.id == row.id }) else { continue }
-            if phrases[phrase].takes.count >= 3, !keepsEveryTake {
-                let number = phrases[phrase].nextTakeNumber
-                if let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
-                    let evicted = phrases[phrase].takes[replaced].id
-                    await backend?.retire(phrase, evicted)
-                    guard (revision == version || stopping), !retired, isCurrent() else {
-                        await backend?.retire(phrase, row.id)
-                        continue
-                    }
-                    phrases[phrase].takes[replaced] = Take(number: number, row: row)
+            if stale { phrases[phrase].madeBeforeEdit.insert(row.id) }
+            // A stale plan replaces no take: every paid one stays until the user discards them.
+            let number = phrases[phrase].nextTakeNumber
+            if phrases[phrase].takes.count >= 3, !keepsEveryTake, !stale,
+               let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
+                let evicted = phrases[phrase].takes[replaced].id
+                await backend?.retire(phrase, evicted)
+                guard (revision == version || stopping), !retired else {
+                    await backend?.retire(phrase, row.id)
+                    continue
                 }
+                if !isCurrent() { phrases[phrase].madeBeforeEdit.insert(row.id) }
+                phrases[phrase].takes[replaced] = Take(number: number, row: row)
             } else {
-                phrases[phrase].takes.append(Take(number: phrases[phrase].takes.count + 1, row: row))
+                let number = (phrases[phrase].takes.map(\.number).max() ?? 0) + 1
+                phrases[phrase].takes.append(Take(number: number, row: row))
             }
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
@@ -1310,7 +1321,8 @@ import VoxClipMedia
         stopAudition()
         defer { lipsync.finishUseTakes() }
         try await lipsync.waitForUseTakes()
-        guard stillCurrent else { invalidate(); throw Failure.stale }
+        // A stale Use keeps the plan and its paid takes: the caller says what changed, and an undo makes it current again.
+        guard stillCurrent else { throw Failure.stale }
         guard canAccept else { throw Failure.noSelection }
         let output = try applyingLipsync(to: await publishSelection(at: date, for: .use))
         if selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) || !output.videoAssets.isEmpty {
@@ -1332,7 +1344,7 @@ import VoxClipMedia
         let version = revision
         try checkCurrent(version)
         try validateContextInputs(inputs)
-        guard !generating, !preparing, !publishing, let backend else { throw Failure.stale }
+        guard !generating, !preparing, !publishing, let backend else { throw Failure.lipsyncBusy }
         publishing = true; publishPurpose = purpose
         defer {
             publishing = false; publishPurpose = nil
@@ -1474,7 +1486,8 @@ import VoxClipMedia
         switch error {
         case Failure.spendingCap: "Your ElevenLabs spending limit was reached. Finished takes are kept."
         case Failure.unknownSpend: "VoxClip can't check your ElevenLabs spending limit. Nothing more was sent."
-        case Failure.stale: "The rewrite changed. Make a fresh takes plan before sending anything."
+        case Failure.stale:
+            "This clip's words or cuts changed after these takes were made, so they can't go in as they are. Your paid takes are kept: undo the edit to use them, or discard them for a fresh price."
         case Failure.noSelection: "Choose a valid video duration for every selected passage before using takes."
         case Failure.noLipsyncOffer: "No complete set of matched takes is ready for lip sync. Nothing was sent."
         case Failure.lipsyncBusy: "Takes or lip sync are still being processed. Wait for that to finish before trying again."

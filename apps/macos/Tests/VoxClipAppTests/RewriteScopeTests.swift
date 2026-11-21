@@ -744,7 +744,8 @@ private final class WorkThreads: Sendable {
         #expect(!generation.rows.isEmpty && session.proposalCount == 1)
         step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
         #expect(session.task.state == .changed && session.proposalCount == 1)
-        #expect(texts(session.task).first?.hasSuffix("Your takes are kept until you close this.") == true)
+        // design.md R3: the paid take is named as kept, never beside "no takes were paid for".
+        #expect(texts(session.task).first == "You edited clip 1, so these changes may no longer fit. Nothing was applied. Your paid take is kept until you close this; Undo brings it back.")
         let footer = session.task.footer
         session.task.footer.primary?.perform()
         let asked = try #require(session.task.confirm)

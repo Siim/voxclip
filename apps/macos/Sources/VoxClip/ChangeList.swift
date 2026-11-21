@@ -131,17 +131,29 @@ extension RewriteSession {
     }
 
     /// A changed inclusion set needs a fresh complete-set placement and quote, never the old set's paid authorization.
+    /// Paid takes stay: their plan is stale while the set differs from the one they were made for, the footer says so with
+    /// Discard Takes beside Keep Working, and including the change again makes them current (voice-lab.md "What counts as
+    /// an edit"). A stale plan with paid work is never retired here.
     private func followIncludedVoice() {
         let included = includedVoice
-        guard included != includedVoicesSeen || takePlan.map({ !$0.isRetired && !$0.stillCurrent }) == true else { return }
-        includedVoicesSeen = included
-        takePlanFailure = nil
-        if hasPaidTakes {
-            takePlan?.invalidate()
+        let inclusionChanged = included != includedVoicesSeen
+        guard inclusionChanged || takePlan.map({ !$0.isRetired && !$0.stillCurrent }) == true else { return }
+        if hasPaidWork {
+            guard inclusionChanged else { return }
+            includedVoicesSeen = included
+            takePlanFailure = nil
+            if takePlan?.stillCurrent == true {
+                if task.confirm?.confirm.id == "discardTakes" { task.dismissConfirm() }
+                return
+            }
             generation?.inputsChanged(prepareNewQuote: false)
-            generation?.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
+            let count = paidTakeCount
+            let takes = count == 1 ? "Your paid take is" : count == 0 ? "Your paid takes are" : "Your \(count) paid takes are"
+            askToDiscardTakes("\(takes) for the changes as they were. Include the change again to use \(count == 1 ? "it" : "them"), or discard \(count == 1 ? "it" : "them") for a fresh price.")
             return
         }
+        includedVoicesSeen = included
+        takePlanFailure = nil
         takePlan?.invalidate(); takePlan = nil
         generation?.inputsChanged()
     }
@@ -590,7 +602,7 @@ extension RewriteSession {
     /// change, asking first when the cost confirms (voice-lab.md §3.1). A footer drawn before the list's inclusions
     /// changed makes no takes of a phrase other than the one the quote is for.
     func makeTakes() {
-        guard current, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
+        guard voiceSpendCurrent, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
         guard !takesBusy, !isReasking else { return }
         takeRowsShown = true
         guard generation != nil else {

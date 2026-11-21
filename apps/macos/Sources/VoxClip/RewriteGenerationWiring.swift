@@ -53,20 +53,23 @@ extension RewriteSession {
             reviewTimingSpeechContext(ordinal: ordinal)
             return
         }
-        guard current, let generation, review != nil, !isReasking, !includedVoice.isEmpty, let takeBackend else { return }
+        guard voiceSpendCurrent, let generation, review != nil, !isReasking, !includedVoice.isEmpty, let takeBackend else { return }
         guard !hasPaidTakes else {
             generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
             return
         }
         // This video's own voice first, when matching is on (voice-lab §6.13): the price is for the voice takes use.
         await ensureVideoVoice()
-        guard current, !hasPaidTakes else { return }
+        guard voiceSpendCurrent, !hasPaidTakes else { return }
         takePlan?.invalidate(); takePlan = nil
         takeQuotePhrase = nil; takeRowsShown = true; takePlanFailure = nil
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,
               project.media.source.audio != nil else { return }
         let revision = self.revision, ordinals = includedVoice
-        let snapshot = editor.project, region = takeRegion
+        // What the takes are made from (`Project.voiceTakeIdentity`): a save, the tab, music, captions, colour, motion and
+        // VoxClip's own rate samples leave it as it is, so they never make paid takes stale.
+        let identity = voiceIdentity(editor.project), region = takeRegion
+        let reviewAtPlan = review
         let commands = localCommands, reviewedChanges = changes, proposalChanges = ownProposal?.changes
         do {
             let final = try editor.voiceLabReviewProject(localCommands: commands)
@@ -90,9 +93,8 @@ extension RewriteSession {
                     return try await self.currentGenerationCap()
                 }, isCurrent: { [weak self, weak generation] in
                     guard let self, let generation else { return false }
-                    var snapshotInputs = editor.project
-                    snapshotInputs.voiceLab.speakingRateSamples = snapshot.voiceLab.speakingRateSamples
-                    return current && snapshotInputs == snapshot && self.revision == revision && includedVoice == ordinals &&
+                    return voiceSpendCurrent && voiceIdentity(editor.project) == identity && !takeWindowsMoved &&
+                        self.revision == revision && includedVoice == ordinals &&
                         localCommands == commands && changes == reviewedChanges && ownProposal?.changes == proposalChanges &&
                         generation.selectedVoiceID == recordID && generation.selectedModelID == (created?.modelID ?? modelID) &&
                         region.map { generationIsCurrent(region: $0) } == true
@@ -120,6 +122,7 @@ extension RewriteSession {
             plan.microphoneStorage = takeStorage
             phraseMicrophone.cancel(); ownWordsEditing = nil
             configureLipsync(plan)
+            takePlanReview = reviewAtPlan
             if let contextReview, let contextRequest {
                 try contextReview.validatePreparedPhrases(plan.phrases, current: contextRequest, envelope: envelope)
                 bindSpeechContext(contextReview, to: plan)
