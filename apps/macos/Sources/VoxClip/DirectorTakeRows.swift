@@ -272,6 +272,11 @@ extension ClipTakePlan.Phrase {
     }
     @Bindable var session: RewriteSession
     @Bindable var generation: RewriteGenerationSession
+    /// The chosen voice's name, or the first voice's. Kept out of `body`: hosted Xcode 26 can't type-check it inline.
+    private var currentVoiceName: String {
+        let selected: VoiceConsentRecord? = generation.voices.first { $0.id == generation.selectedVoiceID }
+        return selected?.voiceName ?? generation.voices.first?.voiceName ?? ""
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
             Text(Self.rewriteModelLabel)
@@ -286,7 +291,7 @@ extension ClipTakePlan.Phrase {
                 }
             } else if session.takesBusy || session.hasPaidTakes || generation.voices.count == 1 {
                 // The voice can't change now (takes made with it are kept): its name, not a disabled picker.
-                Text("Voice: " + (generation.voices.first { $0.id == generation.selectedVoiceID }?.voiceName ?? generation.voices[0].voiceName))
+                Text("Voice: " + currentVoiceName)
             } else {
                 Picker("Voice", selection: Binding(get: { generation.selectedVoiceID ?? "" }, set: { generation.chooseVoice($0) })) {
                     ForEach(generation.voices) { Text($0.voiceName).tag($0.id) }
