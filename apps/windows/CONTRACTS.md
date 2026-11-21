@@ -1,5 +1,26 @@
 # Windows fixed contracts
 
+### 2026-11-21 — Closing Rewrite asks, a leave waits, and the take journal settles at open, close and launch (track/v2-rel-g, package G)
+
+Twin, in part, of the Mac entry of the same date (voice-lab §3.4 item 11, §8.16 item 10; design.md R2 "Closing Rewrite"). D's leave seam did nothing in production, Esc and the panel's X disposed paid takes, a batch over several windows priced an adopted take's synthesis, and the journal was settled only by a take run. Windows saves no Rewrite proposal (voice-lab §3.5).
+
+- **The rule:**
+  - `EditorPage` sets `ProjectLeaveBoundary.HoldsPaidWork = () => rewrite is { IsOpen: true, HasPaidTakes: true }`. `TrySaveBeforeLeavingAsync` catches `ProjectLeaveHeldException`: a Warning notice with its `Copy`, the focus on the Rewrite panel, and false, so opening another project, closing the window and Restart now stop with nothing frozen, saved or closed.
+  - The panel's X and Esc call `RewritePanel.RequestClose`. `RewriteSession.RequestClose()` is true with no paid takes (it closes) and otherwise sets `CloseAsked` and returns false; the footer shows `CloseQuestion(PaidTakeCount)` ("Close Rewrite and discard {n} paid takes?", "1 paid take", "the takes being made") with Keep Working (accent, focused, Esc; `KeepWorking`) and Discard and Close, and announces it.
+  - `VoiceLabTakeBatch` (its estimate and `EstimateOf`) and `VoiceLabTakeRunParts` sum `PricedActions`, so an adopted take is priced at its word check across a run of several windows.
+  - Media `VoiceLabTakeJournalSettlement` (public): `Settle(projectId, paidRoot, referencedFiles)` runs at a project's open and close (`EditorPage.SettleTakeJournal`, with the project's Voice Lab asset files, off the UI thread; IO errors leave the journal as it was) and drops entries whose asset is used, gone or 60 days old. `SweepStale(paidRoot, now)` runs at launch (`AppServices.InitializeAsync`) over every project folder with a journal, skipping links and unreadable folders, and drops gone and aged entries. Assets stay.
+- **Built:** App `RewriteSession.CloseAsked`, `CloseQuestion`, `RequestClose`, `KeepWorking`; `RewritePanel.RequestClose`, `KeepWorking`, `closeQuestion`; `EditorPage.SettleTakeJournal`. Media `VoiceLabTakeJournalSettlement` (`Settle`, `SweepStale`).
+- **Changed:** App `EditorPage.xaml.cs`, `RewritePanel.cs`, `RewriteSession.Review.cs`, `AppServices.cs`; Core `VoiceLabTakeBatch.cs`; Media `VoiceLabTakeJournal.cs`.
+- **Release boundary:** `VoxClip.txt`, `VoxClip.Core.txt` and `VoxClip.Media.txt` regenerated: D's `ProjectLeaveHeldException` and `HoldsPaidWork`, E's journal types and `VoiceLabTakeRun` members, `AdoptedAsset` and `PricedActions`, B's `MinimumPartSeconds`, and this package's members.
+- **Tests:** win-ui `VoiceTakeIdentitySessionTests.ClosingOverPaidTakesAsksFirst`; Core `VoiceLabTakeBatchTests.AnAdoptedTakeIsPricedAtItsWordCheckOnlyAcrossAPartsRun`; Media `VoiceLabTakeJournalTests.TheProjectCloseLetsGoOfTheTakesItUsed`, `TheLaunchSweepDropsGoneAndAgedEntriesOfProjectsNeverOpened`.
+- **Resolved owes:** D's `HoldsPaidWork` wiring and allowlist; E's `PricedActions` in batches and parts runs, the settle at project close, and the allowlists; B's allowlist.
+- **Owes:**
+  - A native run (the VM) of the launch sweep, the close question and the leave notice.
+  - The VoiceLabScratch sweep: `VoiceLabTakeScratch` folders carry no owner record, and `timing/` and `heard/` belong to AppServices.
+  - A saved and restored Rewrite proposal (voice-lab §3.5), and the whole-clip card.
+  - A Discard Takes button (package A).
+  - Only the panel's X and Esc ask: opening another Rewrite (`OpenRewriteAsync`) still calls `RetireRewrite()` over paid takes unasked. (Make it postable already stops with "Finish the open Rewrite first; its paid takes are kept.")
+
 ### 2026-11-21 — A project leave never starts over paid Rewrite takes (track/v2-rel-d, package D)
 
 Twin, in part, of the Mac entry of the same date (voice-lab §8.16 item 10). `ProjectLeaveBoundary.BeginAsync` disposed the Rewrite through `IsLeaving` even when the save then failed, retiring its paid windows.
