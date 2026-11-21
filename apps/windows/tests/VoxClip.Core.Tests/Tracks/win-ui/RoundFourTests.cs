@@ -148,7 +148,8 @@ public sealed class RoundFourTests(ITestOutputHelper output)
             checksum += frame.BracketScale + frame.BracketTranslation + frame.LeftDim + frame.RightDim;
             for (var badge = 0; badge < frame.BadgeCount; badge++) checksum += frame.Badges[badge].Left;
         }
-        for (var index = 0; index < 512; index++) Tick(index);
+        // Warm every input the measured loop reaches (pointer index % 960 is the widest), so no first use lands in the window.
+        for (var index = 0; index < 960; index++) Tick(index);
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var index = 0; index < 4096; index++) Tick(index);
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
