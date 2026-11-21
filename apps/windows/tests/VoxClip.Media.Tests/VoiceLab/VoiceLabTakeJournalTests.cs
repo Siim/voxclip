@@ -158,4 +158,20 @@ public sealed class VoiceLabTakeJournalTests : IDisposable
         foreach (var asset in document["assets"]!.AsArray())
             Assert.True(File.Exists(Path.Combine(root, project, asset!["assetId"]!.GetValue<string>() + ".wav")));
     }
+
+    /// <summary>The App's settle at a project's close (<c>EditorPage.SettleTakeJournal</c>): an entry whose asset the project used goes,
+    /// unused current ones stay adoptable.</summary>
+    [Fact]
+    public void TheProjectCloseLetsGoOfTheTakesItUsed()
+    {
+        var document = Document();
+        var project = Journal(document);
+        var entries = document["entries"]!.AsArray().Select(node => Entry(node!)).ToArray();
+        var before = VoiceLabTakeJournal.List(project, root).Count;
+        var used = VoiceLabTakeJournal.List(project, root).First();
+        Assert.True(VoiceLabTakeJournalSettlement.Settle(project, root, [used.AssetFile]) >= 1);
+        var kept = VoiceLabTakeJournal.List(project, root).Select(entry => entry.AssetFile).ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain(used.AssetFile, kept);
+        Assert.True(kept.Count >= 1 && kept.Count < before, $"{kept.Count} of {before} of {entries.Length}");
+    }
 }

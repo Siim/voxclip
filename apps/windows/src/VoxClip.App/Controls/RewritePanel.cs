@@ -25,6 +25,8 @@ internal sealed partial class RewritePanel : Grid
     private readonly TextBlock estimate = Ui.Text("");
     private readonly TextBlock problem = Ui.Text("");
     private readonly StackPanel confirmation = Ui.Stack(8);
+    /// <summary>The inline close question over paid takes (<see cref="RequestClose"/>), collapsed until asked.</summary>
+    private readonly StackPanel closeQuestion = new() { Spacing = 8, Visibility = Visibility.Collapsed };
     private InlineApproval? approval;
     private ShellTextFocus? textFocus;
     private bool requestingApproval;
@@ -122,7 +124,7 @@ internal sealed partial class RewritePanel : Grid
         AutomationProperties.SetAutomationId(close, "Rewrite.Close");
         ToolTipService.SetToolTip(close, "Close Rewrite (Esc)");
         AutomationProperties.SetAcceleratorKey(close, "Esc");
-        close.Click += (_, _) => Close();
+        close.Click += (_, _) => RequestClose();
         Grid.SetColumn(close, 3); header.Children.Add(close);
         body.Children.Add(header);
         body.Children.Add(taskStatus);
@@ -169,6 +171,7 @@ internal sealed partial class RewritePanel : Grid
         disclosureText = Small(RewriteSession.AiDisclosureLine);
         AutomationProperties.SetAutomationId(disclosureText, "Rewrite.Disclosure");
         Grid.SetColumn(disclosureText, 1); disclosure.Children.Add(disclosureText);
+        footerContent.Children.Add(closeQuestion);
         footerContent.Children.Add(disclosure);
         acceptBlocker.TextWrapping = TextWrapping.Wrap;
         AutomationProperties.SetAutomationId(acceptBlocker, "Rewrite.AcceptBlocker");
@@ -521,7 +524,37 @@ internal sealed partial class RewritePanel : Grid
             return;
         }
         if (args.Key != VirtualKey.Escape) return;
-        Close(); args.Handled = true;
+        // Esc answers the close question with its default, Keep Working; otherwise it closes, asking first over paid takes.
+        if (session.CloseAsked) KeepWorking(); else RequestClose();
+        args.Handled = true;
+    }
+    /// <summary>The panel's X and Esc: closes, or asks inline first while the session holds paid takes (design.md R2 "Closing
+    /// Rewrite"). Keep Working has the focus, so Enter and Esc keep the takes; only Discard and Close disposes them.</summary>
+    private void RequestClose()
+    {
+        if (session.RequestClose()) { Close(); return; }
+        if (!session.CloseAsked) return;
+        closeQuestion.Children.Clear();
+        var question = RewriteSession.CloseQuestion(session.PaidTakeCount);
+        var text = Ui.Text(question);
+        AutomationProperties.SetAutomationId(text, "Rewrite.CloseQuestion");
+        var keep = Ui.Button("Keep Working", KeepWorking, accent: true);
+        var discard = Ui.Button("Discard and Close", Close);
+        SetName(keep, "Keep Working"); SetName(discard, "Discard and Close");
+        AutomationProperties.SetAutomationId(keep, "Rewrite.KeepWorking");
+        AutomationProperties.SetAutomationId(discard, "Rewrite.DiscardAndClose");
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        buttons.Children.Add(keep); buttons.Children.Add(discard);
+        closeQuestion.Children.Add(text); closeQuestion.Children.Add(buttons);
+        closeQuestion.Visibility = Visibility.Visible;
+        keep.Focus(FocusState.Programmatic);
+        Ui.Announce(this, question, "rewrite", AutomationNotificationProcessing.ImportantMostRecent);
+    }
+    private void KeepWorking()
+    {
+        session.KeepWorking();
+        closeQuestion.Children.Clear();
+        closeQuestion.Visibility = Visibility.Collapsed;
     }
     private bool NativeReturnTarget(DependencyObject? target)
     {

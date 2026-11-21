@@ -82,6 +82,16 @@ internal sealed record VoiceLabTakeJournalEntry(string Schema, string AssetFile,
     internal bool Adoptable => Checks is null || Checks.HardFailures.Count == 0;
 }
 
+/// <summary>The App's settle of a project's take journal at the project's close (Mac <c>VoiceLabAssetRetention</c>): the entries of the
+/// assets the project now uses (after Use; <c>projectId/assetId.wav</c>) go, as do entries whose asset is gone or that are 60 days old
+/// and unused. Their assets stay.</summary>
+public static class VoiceLabTakeJournalSettlement
+{
+    /// <summary>Returns how many entries went.</summary>
+    public static int Settle(string projectId, string paidRoot, IEnumerable<string> referencedFiles) =>
+        VoiceLabTakeJournal.Settle(projectId, paidRoot, referencedFiles.ToHashSet(StringComparer.Ordinal), DateTimeOffset.UtcNow);
+}
+
 /// <summary>The journal of one project's paid takes (Mac <c>VoiceLabTakeJournal</c>), under <c>&lt;paid root&gt;/&lt;projectId&gt;/takes/</c>:
 /// <c>&lt;assetId&gt;.json</c>, each written to a temporary file, flushed and moved into place, so a crash leaves the old entry or the
 /// new one and at most a <c>.partial</c> file that nothing reads. A take run adopts an entry over the same words, voice and model
