@@ -32,7 +32,8 @@ public sealed class VoiceLabTakeBatch
         }
         Id = id ?? Guid.NewGuid();
         Windows = Array.AsReadOnly(windows.Select(window => window with { Input = window.Input.Snapshot() }).ToArray());
-        Estimate = VoiceLabTakeRunQuote.Total(Windows.SelectMany(window => window.Quote.Actions).Select(action => action.Estimate.ToCostEstimate()), TakeCount);
+        // An adopted take's synthesis is approved with the set but never sent or charged: only its word check is priced.
+        Estimate = VoiceLabTakeRunQuote.Total(Windows.SelectMany(window => window.Quote.PricedActions).Select(action => action.Estimate.ToCostEstimate()), TakeCount);
     }
     public static void Validate(IReadOnlyList<VoiceLabTakeInput> inputs) => Validate(inputs, MaximumWindows);
     /// <summary>The batch rules across a whole run of parts: one voice, language, model and source, in source order.</summary>
@@ -52,7 +53,7 @@ public sealed class VoiceLabTakeBatch
     public CostEstimate EstimateOf(IReadOnlySet<Guid> requestIds)
     {
         var takes = Windows.SelectMany(window => window.Quote.Takes).ToArray();
-        var quotes = takes.SelectMany(take => new[] { take.Synthesis, take.Qa }).Where(action => requestIds.Contains(action.Review.RequestId));
+        var quotes = takes.SelectMany(take => take.PricedActions).Where(action => requestIds.Contains(action.Review.RequestId));
         int touched = takes.Count(take => requestIds.Contains(take.Synthesis.Review.RequestId) || requestIds.Contains(take.Qa.Review.RequestId));
         return VoiceLabTakeRunQuote.Total(quotes.Select(action => action.Estimate.ToCostEstimate()), touched);
     }
@@ -75,7 +76,7 @@ public sealed class VoiceLabTakeRunParts
         Windows = Array.AsReadOnly(Parts.SelectMany(part => part.Windows).ToArray());
         if (Windows.SelectMany(window => window.Quote.Actions).Select(action => action.Token).Distinct().Count() != Windows.Sum(window => window.Quote.Actions.Count))
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        Estimate = VoiceLabTakeRunQuote.Total(Windows.SelectMany(window => window.Quote.Actions).Select(action => action.Estimate.ToCostEstimate()), TakeCount);
+        Estimate = VoiceLabTakeRunQuote.Total(Windows.SelectMany(window => window.Quote.PricedActions).Select(action => action.Estimate.ToCostEstimate()), TakeCount);
     }
     public VoiceLabCostPresentationResult Kind(VoiceLabMonthlyCap? cap = null) =>
         VoiceLabCostPresentation.Kind(Estimate, false, VoiceLabTakeBatch.ProviderName, cap);

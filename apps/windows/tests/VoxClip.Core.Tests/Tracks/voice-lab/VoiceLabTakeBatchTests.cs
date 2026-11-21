@@ -126,6 +126,25 @@ public sealed class VoiceLabTakeBatchTests
         }
         Assert.Equal(limit, ledger);
     }
+    /// <summary>A take adopted from the journal (Mac <c>VoiceLabTakeRun.adoptedQuote</c>) is charged its word check only, in the
+    /// window's quote, the batch, a request set's estimate and a whole parts run alike: its synthesis is approved and never sent.</summary>
+    [Fact]
+    public void AnAdoptedTakeIsPricedAtItsWordCheckOnlyAcrossAPartsRun()
+    {
+        var row = Rows(Vectors()["cases"]).First(); var windows = Rows(row["windows"]).Select(value => Window(value, 24000)).ToArray();
+        var take = windows[0].Quote.Takes[0];
+        var adopted = windows.ToArray();
+        adopted[0] = windows[0] with { Quote = new(Guid.NewGuid(), [take with { AdoptedAsset = "project/asset.wav" }]) };
+        decimal check = take.Qa.Estimate.Usd!.Value;
+        decimal others = windows.Skip(1).SelectMany(window => window.Quote.PricedActions).Sum(action => action.Estimate.Usd!.Value);
+        Assert.Equal(check, adopted[0].Quote.Estimate.Usd);
+        var batch = new VoiceLabTakeBatch(adopted);
+        Assert.Equal(check + others, batch.Estimate.Usd);
+        Assert.Equal(check, batch.EstimateOf(new HashSet<Guid> { take.Synthesis.Review.RequestId, take.Qa.Review.RequestId }).Usd);
+        var parts = new VoiceLabTakeRunParts(adopted);
+        Assert.Equal(check + others, parts.Estimate.Usd);
+        Assert.Equal(adopted.Sum(window => window.Quote.Estimate.Usd), parts.Estimate.Usd);
+    }
     [Fact]
     public void DuplicateRequestsAndQaWithoutSynthesisAreRefusedWithoutProgress()
     {
