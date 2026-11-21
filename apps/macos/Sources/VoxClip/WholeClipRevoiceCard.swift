@@ -23,7 +23,9 @@ import VoxClipCore
             case .choose: choose
             case .running: running
             case .review: review
-            case .used: Text("✓ Whole clip revoiced and in your clip. Undo takes it back.").foregroundStyle(DesignValues.color("text.secondary"))
+            case .used: Text(session.usedVoiceOnly ? "✓ The whole clip's voice is in your clip, without lip sync. Undo takes it back."
+                                                   : "✓ Whole clip revoiced and in your clip. Undo takes it back.")
+                    .foregroundStyle(DesignValues.color("text.secondary"))
             case .stopped(let line): stopped(line)
             }
         }

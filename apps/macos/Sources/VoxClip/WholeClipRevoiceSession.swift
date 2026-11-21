@@ -141,6 +141,9 @@ import VoxClipMedia
         /// Puts kept entries back on the parts when they are no longer applied (for free: nothing is sent). True when the
         /// parts hold them now, or there is nothing to put back.
         var restoreLipsync: @MainActor ([Int: RewriteLipsyncSession.Applied]) async -> Bool = { _ in true }
+        /// Puts the paid voice in without lip sync: its parts as ordinary Voice Lab segments over the matched picture, one
+        /// undo step, no whole-clip record (the project format is unchanged). Free: nothing is sent.
+        var useVoiceOnly: @MainActor (Voice) async throws -> Void = { _ in throw Stop.unavailable }
     }
     /// Why the last run stopped: the step, the refused part (1-based) of a placement refusal, and whether trying again
     /// would only stop the same way (a placement refusal, or a stop before anything paid was sent).
@@ -194,6 +197,8 @@ import VoxClipMedia
     private(set) var synced: Synced?
     private(set) var match: WholeClipRevoiceRecord.Match?
     private(set) var record: WholeClipRevoiceRecord?
+    /// The paid voice went in without lip sync (Use the Voice Without Lip Sync): `.used` with no whole-clip record.
+    private(set) var usedVoiceOnly = false
     private(set) var ledger = WholeClipRevoiceLedger()
     private(set) var started: Date?
     private(set) var progress: Double?
@@ -769,6 +774,38 @@ import VoxClipMedia
         await use()
     }
 
+    /// A paid voice for this script whose lip sync can't run: the run stopped at the lip sync (a failure, a lost submit
+    /// answer, a lip sync that couldn't be put back), or at the Fit on the lip sync's own check. Its words still match.
+    var canUseVoiceOnly: Bool {
+        guard isStopped, failure?.atUse != true, !stoppedForInputs, let voice, voice.key.script == script?.text,
+              ledger.paid(voice.key) else { return false }
+        switch stoppedAt {
+        case .lipsync?: return true
+        case .fit?: return stopError is LipsyncFailed || (stopError as? Unsent)?.error is LipsyncFailed
+        default: return false
+        }
+    }
+
+    /// Use the Voice Without Lip Sync (lead decision): the paid voice goes in as ordinary Voice Lab segments over the
+    /// matched picture, free. Only the user's click takes it; ✦ Claude does it all never does (the result has no lip sync).
+    /// A failure keeps the stop and its actions, and says the clip is unchanged.
+    func useVoiceOnly() async {
+        guard let backend, canUseVoiceOnly, let voice else { return }
+        do {
+            try await backend.useVoiceOnly(voice)
+            record = nil
+            usedVoiceOnly = true
+            phase = .used
+        } catch {
+            if case Stop.voiceInputsChanged = error {
+                await stopped(error, backend: backend)
+                return
+            }
+            backend.report("whole clip failure step=voiceOnly " + Self.failureKind(error))
+            phase = .stopped("Couldn't put the voice in without lip sync: " + Self.copy(error) + " Your clip is unchanged." + paidNote)
+        }
+    }
+
     /// Undo on Review, Start Over or the patch: the original audio and video stay, and the paid voice is let go (what it
     /// cost stays in the spent total).
     func discard() async {
@@ -777,7 +814,7 @@ import VoxClipMedia
         phase = .choose; voice = nil; synced = nil; match = nil; steps = [:]; upgradeUSD = nil; picture = nil
         failure = nil; stopError = nil; stoppedAt = nil; shorterWording = nil; upgradeNote = nil
         syncedEntries = [:]; lipsyncKept = false; submissionUnconfirmed = false; checkedFal = false; upgradeKept = false
-        baseScript = nil; rewordRound = 0
+        baseScript = nil; rewordRound = 0; usedVoiceOnly = false
     }
 
     /// Undo after Use (the autopilot's step list).

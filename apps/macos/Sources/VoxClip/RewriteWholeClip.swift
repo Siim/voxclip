@@ -153,6 +153,18 @@ extension RewriteSession {
     ///   the retry comes second (ADR-R46). The patch says when it drops a paid voice.
     func wholeClipStoppedActions() -> [PanelAction] {
         guard let session = wholeClip, session.isStopped else { return [] }
+        var actions = wholeClipStopActions(session)
+        // A paid voice whose lip sync can't run can still go in, free (lead decision): just before the patch, which drops it.
+        if session.canUseVoiceOnly {
+            let voiceOnly = PanelAction(id: "wholeClipVoiceOnly", title: "Use the Voice Without Lip Sync · free") { [weak self] in
+                self?.useWholeClipVoiceOnly()
+            }
+            actions.insert(voiceOnly, at: actions.firstIndex { $0.id == "wholeClipPatch" } ?? actions.endIndex)
+        }
+        return actions
+    }
+
+    private func wholeClipStopActions(_ session: WholeClipRevoiceSession) -> [PanelAction] {
         let paid = session.voiceSpent > 0
         let patch = PanelAction(id: "wholeClipPatch", title: paid ? "Voice Only the Changed Phrases (drops the paid voice)" : "Voice Only the Changed Phrases") { [weak self] in
             self?.patchInstead()
@@ -253,6 +265,14 @@ extension RewriteSession {
     @discardableResult func useWholeClipAgain() -> Task<Void, Never> {
         Task { [weak self] in
             await self?.wholeClip?.useAgain()
+            self?.refreshWholeClipPanel()
+        }
+    }
+
+    /// Use the Voice Without Lip Sync · free (a user click only).
+    @discardableResult func useWholeClipVoiceOnly() -> Task<Void, Never> {
+        Task { [weak self] in
+            await self?.wholeClip?.useVoiceOnly()
             self?.refreshWholeClipPanel()
         }
     }
@@ -361,6 +381,9 @@ extension RewriteSession {
             self?.wholeClipPlan?.lipsync.applied ?? [:]
         }, restoreLipsync: { [weak self] entries in
             await self?.restoreWholeClipLipsync(entries) ?? false
+        }, useVoiceOnly: { [weak self] voice in
+            guard let self else { throw CancellationError() }
+            try await putInWholeClipVoiceOnly(voice)
         })
     }
 
@@ -901,6 +924,19 @@ extension RewriteSession {
                                  localCommands: localCommands, videoAssets: made.videoAssets, wholeClip: record)
         editor.announce("Whole clip revoiced. Undo takes it back.")
         return record
+    }
+
+    /// Use the Voice Without Lip Sync: the paid parts go in as ordinary Voice Lab segments over the picture matched to
+    /// them (source, cut or VoxClip's own retime), one undo step, and no whole-clip record, so the project format is
+    /// unchanged. Free: the picture match is local, and a lip sync on some parts is taken off (it stays in the plan).
+    private func putInWholeClipVoiceOnly(_ voice: WholeClipRevoiceSession.Voice) async throws {
+        let plan = try await wholeClipMatchPicture()
+        guard wholeClipPlanScript?.text == voice.key.script else { throw wholeClipInputsChanged(plan) }
+        for phrase in Array(plan.lipsync.applied.keys) { plan.lipsync.undo(phrase) }
+        let made = try await plan.acceptance()
+        try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
+                                 localCommands: localCommands, videoAssets: made.videoAssets)
+        editor.announce("Whole-clip voice put in without lip sync. Undo takes it back.")
     }
 }
 

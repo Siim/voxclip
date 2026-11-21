@@ -62,6 +62,9 @@ import Testing
         var overruns: [Double?] = []
         /// Thrown instead of the cancel when the held lip sync is cancelled: fal.ai's billed, kept result (C's set-aside).
         var cancelledError: (any Error)?
+        /// Each voice put in without lip sync (its script), and what the next such Use throws, then cleared.
+        var voiceOnlyUses: [String] = []
+        var voiceOnlyError: (any Error)?
         weak var session: WholeClipRevoiceSession?
     }
 
@@ -172,6 +175,9 @@ import Testing
             guard !entries.isEmpty else { return true }
             if stubs.applied.isEmpty, !stubs.refuseRestore { stubs.applied = entries }
             return Set(stubs.applied.keys) == Set(entries.keys)
+        }, useVoiceOnly: { voice in
+            if let error = stubs.voiceOnlyError { stubs.voiceOnlyError = nil; throw error }
+            stubs.voiceOnlyUses.append(voice.key.script)
         })
     }
 
@@ -634,16 +640,16 @@ import Testing
         await session.refreshQuote()
         session.start()
         await session.waitForRun()
-        #expect(rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipRetry", "wholeClipPatch"], "a provider failure can succeed on a retry")
+        #expect(rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipRetry", "wholeClipVoiceOnly", "wholeClipPatch"], "a provider failure can succeed on a retry")
         session.start()
         await session.waitForRun()
-        #expect(rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipPatch", "wholeClipRetry"], "the same stop twice: the patch leads")
-        // A local failure offers no priced Try Again at all.
+        #expect(rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipVoiceOnly", "wholeClipPatch", "wholeClipRetry"], "the same stop twice: the patch leads the paid ones")
+        // A local failure offers no priced Try Again at all; the paid voice can still go in without lip sync, free.
         stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncPreparationError.unsupportedVideo, local: true)
         session.start()
         await session.waitForRun()
         let actions = rewrite.wholeClipStoppedActions()
-        #expect(actions.map(\.id) == ["wholeClipPatch"] && !actions.contains { $0.priced })
+        #expect(actions.map(\.id) == ["wholeClipVoiceOnly", "wholeClipPatch"] && !actions.contains { $0.priced })
     }
 
     @Test func anAutomaticRunPutsTheResultInWithNoClick() async {
@@ -987,7 +993,7 @@ import Testing
         await session.waitForRun()
         #expect(stubs.lipsyncs.count == 1, "an automatic run never resubmits")
         let actions = live.rewrite.wholeClipStoppedActions()
-        #expect(actions.map(\.id) == ["wholeClipCheckedFal", "wholeClipPatch"], "\(actions.map(\.id))")
+        #expect(actions.map(\.id) == ["wholeClipCheckedFal", "wholeClipVoiceOnly", "wholeClipPatch"], "\(actions.map(\.id))")
         #expect(actions[0].title == "I Checked fal.ai · Lip Sync Again · \(VoiceLabCostPresentation.format(Decimal(string: "1.55")!)) (fal.ai may charge twice)")
         stubs.lipsyncError = nil
         session.lipsyncAfterCheckingFal()
@@ -995,6 +1001,54 @@ import Testing
         #expect(session.phase == .review && stubs.lipsyncs.count == 2 && stubs.voices.count == 1 && stubs.pictures.count == 1,
                 "only the lip sync ran again")
         #expect(!session.submissionUnconfirmed)
+    }
+
+    /// no-voice-only-and-late-checks (lead decision): a paid voice whose lip sync can't run goes in without it, free, as
+    /// ordinary Voice Lab segments; only the user's click does it. A stop before the picture matched offers no such Use.
+    @Test func aPaidVoiceWhoseLipSyncCantRunCanGoInWithoutIt() async throws {
+        let live = try live()
+        defer { close(live) }
+        let stubs = Stubs()
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncPreparationError.unsupportedVideo, local: true)
+        let session = session(stubs)
+        live.rewrite.wholeClip = session
+        await session.refreshQuote()
+        session.start(automatic: true, budget: 10)
+        await session.waitForRun()
+        #expect(session.isStopped && stubs.voiceOnlyUses.isEmpty, "an automatic run never takes it")
+        let actions = live.rewrite.wholeClipStoppedActions()
+        #expect(actions.map(\.id) == ["wholeClipVoiceOnly", "wholeClipPatch"], "\(actions.map(\.id))")
+        #expect(actions[0].title == "Use the Voice Without Lip Sync · free" && !actions[0].priced)
+        // A failed Use keeps the stop and the action; the clip is unchanged.
+        stubs.voiceOnlyError = VoiceLabProjectError.staleRenderContract
+        await session.useVoiceOnly()
+        guard case .stopped(let line) = session.phase else { Issue.record("\(session.phase)"); return }
+        #expect(line.hasPrefix("Couldn't put the voice in without lip sync:") && line.contains("Your clip is unchanged."), "\(line)")
+        #expect(live.rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipVoiceOnly", "wholeClipPatch"])
+        await session.useVoiceOnly()
+        #expect(session.phase == .used && session.usedVoiceOnly && session.record == nil)
+        #expect(stubs.voiceOnlyUses == [Self.script.text] && stubs.voices.count == 1 && stubs.used == 0, "the paid voice, nothing new")
+        // The Fit step's own lip-sync check refused after the voice was paid: offered. A picture that can't be matched or a
+        // stop at the voice: not offered.
+        for (error, offered) in [(WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.http(422), local: true) as any Error, true),
+                                 (WholeClipRevoiceSession.Unmatched(error: VoiceLabProjectError.staleRenderContract), false)] {
+            let stubs = Stubs()
+            stubs.pictureError = error
+            let session = self.session(stubs)
+            live.rewrite.wholeClip = session
+            await session.refreshQuote()
+            session.start()
+            await session.waitForRun()
+            #expect(session.failure?.step == .fit && session.canUseVoiceOnly == offered, "\(error)")
+            #expect(live.rewrite.wholeClipStoppedActions().contains { $0.id == "wholeClipVoiceOnly" } == offered)
+        }
+        let unvoiced = Stubs()
+        unvoiced.voiceError = VoiceLabError.network
+        let stopped = self.session(unvoiced)
+        await stopped.refreshQuote()
+        stopped.start()
+        await stopped.waitForRun()
+        #expect(stopped.isStopped && !stopped.canUseVoiceOnly, "no paid voice")
     }
 
     /// Billed results on cancel: fal.ai finished the job just as Cancel landed. The charge is counted, the result is kept,
