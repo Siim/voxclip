@@ -202,6 +202,7 @@ struct VoiceLabTakeRunTests {
         /// the loudness check's context) and its takes reach Scribe.
         let later: VoiceLabTakeRun
         let laterInput: VoiceLabTakeInput
+        let storage: VoiceLabTakeStorage
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
@@ -364,8 +365,125 @@ struct VoiceLabTakeRunTests {
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: lastWindow,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true, hardJoinSmoothing: hardJoinSmoothing)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input,
-                       later: later, laterInput: laterInput)
+                       later: later, laterInput: laterInput, storage: storage)
     }
+    // MARK: Paid takes are kept (voice-lab §3)
+
+    private func journal(_ fixture: Fixture) -> [VoiceLabTakeJournalEntry] {
+        VoiceLabTakeJournal.list(projectID: fixture.storage.projectId, paidRoot: fixture.storage.paidRoot)
+    }
+    private func sent(_ fixture: Fixture) -> (synthesis: Int, qa: Int) { fixture.http.value.withLock { ($0.seeds.count, $0.qa) } }
+    /// One paid, passing take of `fixture.input` from `fixture.run`, with its stored asset.
+    private func payForOneTake(_ fixture: Fixture) async throws -> (row: VoiceLabTakeRow, asset: VoiceLabAsset) {
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.best, "Failures: \(result.rows.map(\.failure))")
+        return (row, try #require(await fixture.run.paidAsset(for: row.id)))
+    }
+
+    /// A paid take is journaled the moment it arrives. Once its run is gone (Rewrite closed, or VoxClip relaunched), the
+    /// next run over the same words, voice and model adopts it: nothing is synthesized, the quote prices only the word check,
+    /// the take passes the same checks, and Use publishes the same asset file under the paid request's own ID. Preparing
+    /// again then buys a new take, never the same one twice. The take used to be paid for again.
+    @Test func aPaidTakeIsAdoptedForFreeByTheNextRun() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (paidRow, paid) = try await payForOneTake(fixture)
+        let receipt = try #require(paidRow.receipt)
+        let entries = journal(fixture)
+        #expect(entries.map(\.assetFile) == [paid.file] && entries.first?.requestID == receipt.requestID.uuidString.lowercased())
+        #expect(entries.first?.key == VoiceLabTakeJournalKey(input: fixture.input, voiceID: "fixtureOwnVoice"))
+        #expect(entries.first?.alignment?.recovered == false && entries.first?.assetSha256 == paid.sha256)
+        #expect(sent(fixture) == (1, 1))
+        let spent = try #require(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd)
+        await fixture.run.invalidate()
+
+        let quote = try await fixture.later.prepare(fixture.input)
+        let take = try #require(quote.takes.first)
+        #expect(quote.takes.count == 1 && take.adoptedAsset == paid.file)
+        #expect(take.synthesis.estimate.usd == 0 && quote.estimate.usd == take.qa.estimate.usd && quote.estimate.usd ?? 0 > 0)
+        let result = try await fixture.later.execute(quote, approved: true)
+        let row = try #require(result.best, "Failures: \(result.rows.map(\.failure))")
+        #expect(row.adoptedAsset == paid.file && row.receipt == receipt && row.selectable && row.qaReceipt != nil)
+        #expect(row.acceptedRequestIDs == [take.synthesis.requestID, take.qa.requestID])
+        #expect(sent(fixture) == (1, 2), "the word check runs again; nothing is synthesized")
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == spent + (take.qa.estimate.usd ?? 0))
+        let (published, _) = try await fixture.later.publishForAcceptance(row, input: fixture.input, at: fixture.clock.now())
+        #expect(published.assets.first?.file == paid.file && published.assets.first?.sha256 == paid.sha256)
+        #expect(published.chunks.first?.requestId == receipt.requestID.uuidString)
+        await fixture.later.cancel(keepingTakes: true)
+        let again = try await fixture.later.prepare(fixture.input)
+        #expect(again.takes.count == 3 && again.takes.allSatisfy { $0.adoptedAsset == nil })
+        await fixture.later.invalidate()
+    }
+
+    /// A run never adopts a take a live run holds, its own included (Try Another buys a new take), and one take is reserved
+    /// for one prepared set at a time; dropping the set lets the next run adopt it.
+    @Test func aPaidTakeIsNeverAdoptedTwice() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (_, paid) = try await payForOneTake(fixture)
+        let own = try await fixture.run.prepare(fixture.input, candidates: 1)
+        #expect(own.takes.allSatisfy { $0.adoptedAsset == nil })
+        await fixture.run.cancel(keepingTakes: true)
+        let held = try await fixture.later.prepare(fixture.input, candidates: 1)
+        #expect(held.takes.allSatisfy { $0.adoptedAsset == nil }, "the paying run still holds its take")
+        await fixture.later.cancel()
+        await fixture.run.invalidate()
+        let first = try await fixture.later.prepare(fixture.input)
+        let second = try await fixture.run.prepare(fixture.input)
+        #expect(first.takes.first?.adoptedAsset == paid.file && second.takes.count == 3 && second.takes.allSatisfy { $0.adoptedAsset == nil })
+        await fixture.run.cancel()
+        await fixture.later.cancel()
+        let third = try await fixture.run.prepare(fixture.input)
+        #expect(third.takes.first?.adoptedAsset == paid.file)
+        await fixture.run.invalidate(); await fixture.later.invalidate()
+        #expect(sent(fixture) == (1, 1))
+    }
+
+    /// Adoption needs the same request: other words or another pace buy a new take, and a withdrawn consent record stops
+    /// adoption like any other take, before or after the price.
+    @Test(arguments: ["pace", "words", "consent before", "consent after"]) func adoptionNeedsTheSameRequestAndActiveConsent(_ change: String) async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        _ = try await payForOneTake(fixture)
+        await fixture.run.invalidate()
+        switch change {
+        case "pace", "words":
+            let input = change == "pace" ? fixture.input.replacingPace(0.8) : VoiceLabTakeInput(text: "Hello there", modelID: fixture.input.modelID,
+                recordID: fixture.input.recordID, language: "en", seed: 1, contentKey: fixture.input.contentKey, source: fixture.input.source,
+                sourceEnvelope: fixture.input.sourceEnvelope, sourceSampleRate: fixture.input.sourceSampleRate, items: fixture.input.items,
+                window: fixture.input.window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true, hardJoinSmoothing: false)
+            let quote = try await fixture.later.prepare(input)
+            #expect(quote.takes.count == 3 && quote.takes.allSatisfy { $0.adoptedAsset == nil })
+            await fixture.later.cancel()
+        case "consent before":
+            _ = try await fixture.store.beginDeletion(fixture.input.recordID, region: .default, at: Date())
+            await #expect(throws: (any Error).self) { try await fixture.later.prepare(fixture.input) }
+        default:
+            let quote = try await fixture.later.prepare(fixture.input)
+            #expect(quote.takes.first?.adoptedAsset != nil)
+            _ = try await fixture.store.beginDeletion(fixture.input.recordID, region: .default, at: Date())
+            let result = try? await fixture.later.execute(quote, approved: true)
+            #expect(result?.rows.contains(where: \.selectable) != true)
+        }
+        #expect(sent(fixture) == (1, 1))
+    }
+
+    /// A take whose timing was recovered from its word check is journaled with that timing, and is adopted with it.
+    @Test func aRecoveredTakeIsJournaledWithItsTimingAndAdopted() async throws {
+        let fixture = try await fixture({ $0.malformedAlignment = true }, modelID: "eleven_v4")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (row, paid) = try await payForOneTake(fixture)
+        let entry = try #require(journal(fixture).first)
+        #expect(entry.assetFile == paid.file && entry.alignment?.recovered == true)
+        #expect(entry.alignment?.characters.map(\.character) == row.generated?.alignment?.map(\.character))
+        await fixture.run.invalidate()
+        let quote = try await fixture.later.prepare(fixture.input)
+        #expect(quote.takes.first?.adoptedAsset == paid.file)
+        let result = try await fixture.later.execute(quote, approved: true)
+        #expect(result.best?.adoptedAsset == paid.file, "Failures: \(result.rows.map(\.failure))")
+        #expect(sent(fixture) == (1, 2))
+        await fixture.later.invalidate()
+    }
+
     @Test func newTakeRunCarriesHardJoinMetadataThroughQA() async throws {
         let fixture = try await fixture({ $0.duration = 3.72 }, hardJoinSmoothing: true)
         defer { try? FileManager.default.removeItem(at: fixture.root) }

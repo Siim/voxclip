@@ -96,9 +96,15 @@ public struct VoiceLabTakeQuote: Sendable, Equatable {
     public let seed: UInt32
     public let synthesis: VoiceLabQuote
     public let qa: VoiceLabQuote
-    package init(index: Int, seed: UInt32, synthesis: VoiceLabQuote, qa: VoiceLabQuote) {
-        self.index = index; self.seed = seed; self.synthesis = synthesis; self.qa = qa
+    /// Set when the take adopts a paid take from the project's journal (`<projectId>/<assetId>.wav`, voice-lab §3 "Paid
+    /// takes are kept"): nothing is synthesized, so `synthesis` is a local quote priced at zero that never reaches the
+    /// provider, and only the word check (`qa`) is sent.
+    public let adoptedAsset: String?
+    package init(index: Int, seed: UInt32, synthesis: VoiceLabQuote, qa: VoiceLabQuote, adoptedAsset: String? = nil) {
+        self.index = index; self.seed = seed; self.synthesis = synthesis; self.qa = qa; self.adoptedAsset = adoptedAsset
     }
+    /// The quotes the provider prices and is sent: the word check alone for an adopted take.
+    package var providerQuotes: [VoiceLabQuote] { adoptedAsset == nil ? [synthesis, qa] : [qa] }
 }
 
 public struct VoiceLabTakeRunQuote: Sendable, Equatable, Identifiable {
@@ -109,8 +115,11 @@ public struct VoiceLabTakeRunQuote: Sendable, Equatable, Identifiable {
     public let estimate: CostEstimate
     package init(id: UUID, takes: [VoiceLabTakeQuote], preparedAt: Date) {
         self.id = id; self.takes = takes; self.preparedAt = preparedAt; expiresAt = preparedAt.addingTimeInterval(300)
-        estimate = Self.total(of: takes.flatMap { [$0.synthesis.estimate, $0.qa.estimate] }, takes: takes.count)
+        // An adopted take's synthesis is already paid for: the run charges only its word check.
+        estimate = Self.total(of: takes.flatMap { take in take.providerQuotes.map(\.estimate) }, takes: takes.count)
     }
+    /// What the provider prices and is sent for this set (`VoiceLabTakeQuote.providerQuotes`), in run order.
+    package var providerQuotes: [VoiceLabQuote] { takes.flatMap(\.providerQuotes) }
     /// The sum of take quotes' estimates, `takes` units of "take": `usd` is unknown when any estimate's is, and so are
     /// `credits`. A run and a take batch (`VoiceLabTakeBatch`) present their totals this way.
     package static func total(of estimates: [CostEstimate], takes: Int) -> CostEstimate {
@@ -340,6 +349,9 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     public let failure: VoiceLabTakeFailure?
     public let voiceCheck: VoiceLabTakeVoiceCheck
     public let acceptedJoinAdvisory: VoiceLabJoinAdvisory?
+    /// The journal asset this take adopted (`VoiceLabTakeQuote.adoptedAsset`). Its `receipt` is the paid request's own, from
+    /// an earlier run, so that request is not this run's: the row counts its zero-priced local synthesis request instead.
+    public let adoptedAsset: String?
     public var hasJoinAdvisory: Bool { qa?.verdict == .passedWithAdvisory }
     public var requiresJoinAdvisoryAcceptance: Bool { hasJoinAdvisory && acceptedJoinAdvisory == nil }
     public var automaticallySelectable: Bool { selectable && !hasJoinAdvisory }
@@ -362,7 +374,7 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
         guard acceptance.validates(jump: jump, createdAt: date) else { throw VoiceLabProjectError.qaRejected }
         return Self(id: id, index: index, seed: seed, receipt: receipt, audio: audio, qa: qa, score: score, failure: failure,
             qaReceipt: qaReceipt, generated: generated, quote: quote, accepted: acceptedRequestIDs, voiceCheck: voiceCheck,
-            acceptedJoinAdvisory: acceptedJoinAdvisory ?? acceptance)
+            acceptedJoinAdvisory: acceptedJoinAdvisory ?? acceptance, adoptedAsset: adoptedAsset)
     }
     public var fits: Bool {
         if let audio, case .exact = audio.fit { return true }
@@ -371,13 +383,15 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     package init(id: UUID, index: Int, seed: UInt32, receipt: VoiceLabReceipt? = nil, audio: VoiceLabTakeAudio? = nil,
                  qa: VoiceLabTakeQAResult? = nil, score: Double? = nil, failure: VoiceLabTakeFailure? = nil,
                  qaReceipt: VoiceLabReceipt? = nil, generated: VoiceLabAudioResult? = nil, quote: VoiceLabTakeQuote? = nil,
-                 accepted: Set<UUID> = [], voiceCheck: VoiceLabTakeVoiceCheck = .perTake, acceptedJoinAdvisory: VoiceLabJoinAdvisory? = nil) {
+                 accepted: Set<UUID> = [], voiceCheck: VoiceLabTakeVoiceCheck = .perTake, acceptedJoinAdvisory: VoiceLabJoinAdvisory? = nil,
+                 adoptedAsset: String? = nil) {
         self.voiceCheck = voiceCheck
         self.acceptedJoinAdvisory = acceptedJoinAdvisory
         self.id = id; self.index = index; self.seed = seed; self.receipt = receipt; self.audio = audio
         self.qa = qa; self.score = score; self.failure = failure
         self.qaReceipt = qaReceipt; self.generated = generated; self.quote = quote
-        acceptedRequestIDs = accepted.union([receipt?.requestID, qaReceipt?.requestID].compactMap { $0 })
+        self.adoptedAsset = adoptedAsset
+        acceptedRequestIDs = accepted.union([adoptedAsset == nil ? receipt?.requestID : nil, qaReceipt?.requestID].compactMap { $0 })
     }
 }
 extension VoiceLabTakeRow {
@@ -397,7 +411,8 @@ extension VoiceLabTakeRow {
         } ?? (hardFailures.isEmpty ? self.failure : .qa(hardFailures))
         return Self(id: id, index: index, seed: seed, receipt: receipt, audio: audio, qa: checked,
                     score: self.score, failure: failure, qaReceipt: qaReceipt, generated: generated,
-                    quote: quote, accepted: acceptedRequestIDs, voiceCheck: check, acceptedJoinAdvisory: acceptedJoinAdvisory)
+                    quote: quote, accepted: acceptedRequestIDs, voiceCheck: check, acceptedJoinAdvisory: acceptedJoinAdvisory,
+                    adoptedAsset: adoptedAsset)
     }
 }
 
