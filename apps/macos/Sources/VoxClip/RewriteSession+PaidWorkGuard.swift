@@ -155,7 +155,13 @@ extension RewriteSession {
         if reason == .close || reason == .revert, let shown = task.confirm, shown.confirm.id != "discardPaidWork" {
             bringQuestionForward(shown.confirm.id)
             if let waiting {
-                whenQuestionAnswered(waiting)
+                // The status bar says the revert waits, where the other Rewrite notices show, until the revert runs again.
+                let editor = self.editor
+                editor.rewriteNotice = Self.revertWaitsNotice
+                whenQuestionAnswered { [weak editor] in
+                    if editor?.rewriteNotice == Self.revertWaitsNotice { editor?.rewriteNotice = nil }
+                    waiting()
+                }
                 editor.announce(Self.revertWaitsNotice)
             }
             return
