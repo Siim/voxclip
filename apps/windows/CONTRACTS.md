@@ -12,7 +12,7 @@ Twin, in part, of the Mac entry of the same date (voice-lab §8.16 item 10). `Pr
   - Release boundary: `VoxClip.txt` lacks `ProjectLeaveHeldException` (type, `.ctor`, `Copy`) and `ProjectLeaveBoundary.get_/set_HoldsPaidWork`. Regenerate with `ReleaseBoundary update`.
   - Windows has no whole-clip runner, so there is no Claude-mode hand-back to twin yet.
 
-### 2026-11-21 — Paid takes are journaled and reused for free (track/v2-rel-e, package E)
+### 2026-11-21 — Paid takes are journaled and reused without paying for their voice again (track/v2-rel-e, package E)
 
 Twin of the Mac entry of the same date (voice-lab §3.4 item 11).
 
