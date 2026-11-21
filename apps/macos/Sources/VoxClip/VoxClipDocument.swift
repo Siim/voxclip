@@ -482,9 +482,26 @@ extension UTType {
     @MainActor func adoptOpenedLocation(_ url: URL?) { fileURL = url }
     /// Harness sessions never autosave a never-saved project into the user's Autosave
     /// Information folder. One a check gave an autosave location still autosaves there.
+    /// A test process also skips the timed autosave of a document whose folder a finished test already deleted: it
+    /// can only fail, and its error would come up as an app-modal alert (see `presentError`).
     override public func autosave(withImplicitCancellability autosavingIsImplicitlyCancellable: Bool, completionHandler: @escaping (Error?) -> Void) {
         if AppModel.isTestSession, fileURL == nil, autosavedContentsFileURL == nil { completionHandler(nil); return }
+        if TestProcess.isRunning, let folder = fileURL?.deletingLastPathComponent(), !FileManager.default.fileExists(atPath: folder.path) {
+            completionHandler(nil); return
+        }
         super.autosave(withImplicitCancellability: autosavingIsImplicitlyCancellable, completionHandler: completionHandler)
+    }
+    /// Errors a test process would have shown in an app-modal alert, newest last.
+    @MainActor static var errorsPresentedInTests: [String] = []
+    /// No one dismisses an app-modal alert in a test process. One left up blocks every later AppKit action, so the rest
+    /// of the run fails (2026-11-21: an in-place autosave into a deleted test folder broke the command-field and shell
+    /// tests). A test process records the error and writes it to standard error instead.
+    override public func presentError(_ error: Error) -> Bool {
+        guard TestProcess.isRunning else { return super.presentError(error) }
+        let line = "VoxClipDocument: not showing an alert in a test process: \(error.localizedDescription)"
+        Self.errorsPresentedInTests.append(line)
+        FileHandle.standardError.write(Data((line + "\n").utf8))
+        return false
     }
     #endif
 }
