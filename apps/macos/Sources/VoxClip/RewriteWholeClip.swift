@@ -405,6 +405,10 @@ extension RewriteSession {
             try await putInWholeClipVoiceOnly(voice)
         }, persist: { [weak self] in
             self?.persistPaidWork()
+        }, voiceKey: { [weak self] script in
+            // As `wholeClipVoice` makes it: the voice chosen now, on the wording-fit model.
+            guard let recordID = self?.generation?.selectedVoiceID else { return nil }
+            return .init(script: script.text, recordId: recordID, model: VoiceLabWordingFit.modelID)
         })
     }
 
@@ -611,6 +615,14 @@ extension RewriteSession {
         let inputsCurrent = wholeClipInputsCurrency()
         weak var created: ClipTakePlan?
         let model = VoiceLabWordingFit.modelID
+        // A voice paid before a relaunch (`WholeClipRevoiceSession.restore`) is put back only with the voice and model it
+        // was made with, at no more than the price its Try Again showed: the journal's takes are adopted and only their
+        // word checks are paid. Another voice, or a higher price, sends nothing.
+        let restored = wholeClip?.restoredVoiceKey.flatMap { $0.script == script.text ? $0 : nil }
+        if let restored, restored.recordId != recordID || restored.model != model {
+            throw Session.Stop.voiceInputsChanged(clip: wholeClipClipNumber, usd: wholeClip?.restoredVoices[restored] ?? 0, voiceSwitched: true)
+        }
+        let restoredApproval = restored == nil ? nil : (wholeClip?.restoredVoiceUSD ?? wholeClip?.quote?.voiceUSD)
         let plan: ClipTakePlan
         do {
             let final = try editor.voiceLabReviewProject(localCommands: localCommands)
@@ -673,6 +685,16 @@ extension RewriteSession {
         }
         guard plan.problem.isEmpty, let approval = plan.approvalID else {
             throw Session.Stop.noVoice(plan.problem.isEmpty ? "The voice couldn't be priced. Nothing was sent." : plan.problem)
+        }
+        if restored != nil {
+            // The click approved putting the paid voice back at its Try Again's price; a fresh price above it (a part the
+            // journal no longer gives back) waits for its own click at the new price.
+            guard let approved = restoredApproval, let fresh = plan.estimate?.usd, fresh <= approved else {
+                let fresh = plan.estimate?.usd
+                retireWholeClipVoicePlan()
+                if let fresh { wholeClip?.repriceRestoredVoice(fresh) }
+                throw Session.Stop.noVoice("The price to put your paid voice back changed. Nothing new was sent. Review the new price before retrying.")
+            }
         }
         progress("\(plan.phrases.count == 1 ? "one take" : "\(plan.phrases.count) parts, one take")")
         await plan.start(approved: true, quoteID: approval)

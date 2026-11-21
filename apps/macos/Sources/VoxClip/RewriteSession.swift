@@ -130,6 +130,10 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored var restoredProposal: RewriteSavedProposal?
     /// What `persistPaidWork` last wrote, so an unchanged proposal is not written again.
     @ObservationIgnored var savedProposalData: Data?
+    /// How many of the restored proposal's paid patch takes the journal could give back when it was restored.
+    @ObservationIgnored var restoredTakesKept = 0
+    /// The last `savedProposalInputs` and the project it was made from.
+    @ObservationIgnored var savedInputsDigest: (project: Project, digest: String)?
     /// An edit outside the scope moved the windows the plan's paid takes were made for (`move`): the plan and its takes
     /// stay, but it is not current until an undo moves the windows back or the takes are discarded (`discardPaidTakes`).
     var takeWindowsMoved = false
@@ -486,8 +490,10 @@ struct RewriteChange: Equatable, Sendable {
             return nil
         }
         let runs = editor.llmRuns
-        // A new run replaces the saved proposal (closing over paid work asked first); the journal keeps its takes.
-        forgetSavedProposal()
+        // A new run replaces this Rewrite's own saved proposal (closing over paid work asked first); the journal keeps its
+        // takes. A record this Rewrite neither restored nor wrote (its scope read differently when it opened) stays for an
+        // Undo that makes it match again, or until its 60 days are up.
+        if restoredProposal != nil || savedProposalData != nil { forgetSavedProposal() }
         replaced = hasRun ? Replaced(shown: task.shown, changes: changes, review: review, setAside: setAside, proposal: ownProposal,
                                      proposalID: proposalID, replyParts: replyParts, leftOutUnavailable: leftOutUnavailable) : nil
         hasRun = true
@@ -694,13 +700,18 @@ struct RewriteChange: Equatable, Sendable {
         receive(found)
         guard review != nil else { changes = []; problem = ""; return false }
         hasRun = true
-        instruction = saved.instruction
+        // What the creator asked this time waits for Rewrite Again when it is neither the default nor what the saved
+        // proposal asked: the proposal and its paid work come back first, and a line says the instruction waits.
+        let waiting = Self.waitingInstruction(instruction, saved: saved.instruction, defaultInstruction: editor.defaultRewriteItem?.instruction)
+        if waiting == nil { instruction = saved.instruction }
         restoredProposal = saved
+        restoredTakesKept = Set(saved.patchRequests).intersection(adoptableJournalRequests()).count
         wordingFit.completed = true
         wordingFit.kept = Set(saved.kept)
         pricedAnyway = Set(saved.pricedAnyway)
         refreshContext()
         if let note = restoredPaidWorkNote { autoFix.notes.append(note) }
+        if let waiting { autoFix.notes.append(Self.instructionWaitsNote(waiting)) }
         showReplyInTranscript()
         if var proposal = ownProposal {
             for (offset, change) in saved.changes.enumerated() {
@@ -710,8 +721,20 @@ struct RewriteChange: Equatable, Sendable {
             editor.proposal = proposal
         }
         showProposal()
-        editor.announce(restoredPaidWorkNote ?? "Your Rewrite from before VoxClip closed is back.")
+        let back = restoredPaidWorkNote ?? "Your Rewrite from before VoxClip closed is back."
+        editor.announce(waiting.map { back + " " + Self.instructionWaitsNote($0) } ?? back)
         return true
+    }
+    /// The instruction a restored proposal leaves waiting: `asked`, when it is neither empty, the default tone's
+    /// (`EditorModel.defaultRewriteItem`, what an empty Ask field asks) nor the one the saved proposal answered.
+    static func waitingInstruction(_ asked: String, saved: String, defaultInstruction: String?) -> String? {
+        let trimmed = asked.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, asked != saved, asked != defaultInstruction else { return nil }
+        return trimmed
+    }
+    /// "“Make it funnier” waits: Rewrite Again asks it, and asks first before your paid work goes."
+    static func instructionWaitsNote(_ instruction: String) -> String {
+        "“" + instruction + "” waits: Rewrite Again asks it, and asks first before your paid work goes."
     }
     /// A selection's reply as the AI wrote it: its diff against the selected words.
     func receivePassage(_ text: String) throws {
@@ -822,7 +845,7 @@ struct RewriteChange: Equatable, Sendable {
         reviewing?.cancel(); reviewing = nil
     }
     /// A run has started on this session: a later run replaces what it showed.
-    @ObservationIgnored private var hasRun = false
+    @ObservationIgnored private(set) var hasRun = false
     /// The transcript's proposal when it is this session's.
     var ownProposal: TranscriptProposal? { editor.proposal.flatMap { $0.id == proposalID ? $0 : nil } }
     #if DEBUG

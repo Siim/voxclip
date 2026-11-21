@@ -714,8 +714,8 @@ extension RewriteSession {
     /// voice, else the anchor, never a voice made from another video (voice-lab §6.13, §6.12).
     func wireInitialVoice() {
         generation?.voicePreference = { [weak self] in self?.initialVoicePreference ?? .init() }
-        // Paid takes, or a whole clip's paid voice or lip sync, keep the voice they were made with (`holdsPaidVoice`).
-        generation?.keepsVoice = { [weak self] in self.map { $0.hasPaidTakes || $0.holdsPaidVoice } ?? true }
+        // Paid takes, or a whole clip's paid voice or lip sync, keep the voice they were made with (`keepsChosenVoice`).
+        generation?.keepsVoice = { [weak self] in self?.keepsChosenVoice ?? true }
     }
     /// What the first voice choice knows in this video. The per-video book's voices are other videos' except this
     /// video's own; a voice waiting to be removed is no video's to start with.
@@ -724,8 +724,9 @@ extension RewriteSession {
         let book = voiceLab.perVideoBook
         let own = book.video(project.media.source.contentKey)?.recordId
         let made = Set(book.videos.map(\.recordId) + book.removals.map(\.recordId))
-        // A proposal restored with its paid work keeps the voice it was made with.
-        return .init(preferred: restoredProposal?.voiceRecordID ?? preferredVoiceForVideo, anchor: voiceLab.anchorVoice(language: project.transcript?.language)?.id,
+        // A proposal restored with its paid work keeps the voice it was made with: its whole clip's, else its takes'.
+        let restored = restoredWholeClipVoice?.recordId ?? restoredProposal?.voiceRecordID
+        return .init(preferred: restored ?? preferredVoiceForVideo, anchor: voiceLab.anchorVoice(language: project.transcript?.language)?.id,
                      otherVideos: made.subtracting([own].compactMap { $0 }))
     }
 }

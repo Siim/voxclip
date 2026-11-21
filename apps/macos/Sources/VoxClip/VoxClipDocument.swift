@@ -169,10 +169,16 @@ extension UTType {
     /// Reading the project again (File › Revert, a version from Browse All Versions, the file changed on disk) replaces the
     /// project an open Rewrite's paid work was made over. While it holds unused or running paid work the revert waits: the
     /// Rewrite asks inline ("Revert the project and discard …?", Keep Working the default). Discard and Revert discards the
-    /// Rewrite at once, then reverts.
+    /// Rewrite at once, then reverts. With another question up in Rewrite (a price to approve), that one is answered first,
+    /// then the revert comes back and asks, or reverts when nothing paid is left to ask about.
     override public func revert(toContentsOf url: URL, ofType typeName: String) throws {
         if let editor = editorModel, let session = editor.openRewrite, session.asksBeforeClosing {
-            session.confirmDiscardPaidWork(.revert) { [weak self, weak editor] in
+            session.confirmDiscardPaidWork(.revert, waiting: { [weak self] in
+                guard let self else { return }
+                do { try revert(toContentsOf: url, ofType: typeName) }
+                catch let error as CocoaError where error.code == .userCancelled {}
+                catch { presentError(error) }
+            }) { [weak self, weak editor] in
                 guard let self else { return }
                 editor?.discardRewrite(returnFocus: false)
                 do { try revert(toContentsOf: url, ofType: typeName) } catch { presentError(error) }

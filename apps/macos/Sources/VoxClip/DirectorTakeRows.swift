@@ -114,10 +114,11 @@ extension RewriteSession {
     }
     var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing || $0.preparingVideo } ?? false }
     /// The take rows' voice can't change now (its name shows, not a picker): takes are being made, paid work made with it
-    /// is kept (the patch's takes, a whole clip's voice or lip sync: `hasPaidWork`), or there is only one voice.
+    /// is kept (the patch's takes, a whole clip's voice or lip sync: `hasPaidWork`), or there is only one voice. A whole
+    /// clip restored after a relaunch whose voice isn't chosen locks nothing: choosing it puts that voice back.
     var voiceLocked: Bool {
         let busy: Bool = takesBusy
-        let paid: Bool = hasPaidWork
+        let paid: Bool = hasPaidWork && !restoredVoiceAwaitingChoice
         let only: Bool = (generation?.voices.count ?? 0) <= 1
         return busy || paid || only
     }

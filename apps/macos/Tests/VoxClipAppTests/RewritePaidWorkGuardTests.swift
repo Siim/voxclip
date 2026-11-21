@@ -289,8 +289,11 @@ import UniformTypeIdentifiers
         let document = fixture.editor.document
         let url = fixture.root.appendingPathComponent("revert.voxclip")
         let type = UTType.voxclipProject.identifier
+        // A plain save to the document's own file: an untitled document's Save As asks AppKit for name suggestions later,
+        // which a test process can't answer.
+        document.fileURL = url
         let saved = await withTestDeadline(returning: false) { continuation in
-            document.save(to: url, ofType: type, for: .saveAsOperation) { error in continuation.resume(returning: error == nil) }
+            document.save(to: url, ofType: type, for: .saveOperation) { error in continuation.resume(returning: error == nil) }
         }
         try #require(saved)
         // A document left with a file in the fixture's folder would autosave there after the test; it goes back to untitled.
@@ -303,6 +306,37 @@ import UniformTypeIdentifiers
         #expect(throws: CocoaError(.userCancelled)) { try document.revert(toContentsOf: url, ofType: type) }
         fixture.session.task.confirm?.confirm.perform()
         #expect(!fixture.session.isOpen && fixture.editor.openRewrite == nil, "Discard and Revert reverts")
+    }
+
+    /// A revert that lands while another question is up in Rewrite (a price to approve) waits for it: that question stays
+    /// and comes forward, the status bar says the revert waits, and once the question is answered the revert asks
+    /// ("Revert the project and discard …?"). It used to be dropped, leaving the document out of date with nothing saying so.
+    @Test func aRevertWaitsForTheQuestionShownAndAsksAfterIt() async throws {
+        let fixture = try await fixture(.takes)
+        defer { fixture.close() }
+        let session = fixture.session
+        let document = fixture.editor.document
+        let url = fixture.root.appendingPathComponent("revert-waits.voxclip")
+        let type = UTType.voxclipProject.identifier
+        // A plain save to the document's own file: an untitled document's Save As asks AppKit for name suggestions later,
+        // which a test process can't answer.
+        document.fileURL = url
+        let saved = await withTestDeadline(returning: false) { continuation in
+            document.save(to: url, ofType: type, for: .saveOperation) { error in continuation.resume(returning: error == nil) }
+        }
+        try #require(saved)
+        defer { document.fileURL = nil }
+        session.task.ask(PanelConfirm(question: "Send 2 phrases to ElevenLabs?",
+            cancel: PanelAction(id: "keepQuote", title: "Cancel") { [weak session] in session?.task.dismissConfirm() },
+            confirm: PanelAction(id: "approveQuote", title: "Send") { [weak session] in session?.task.dismissConfirm() }))
+        #expect(throws: CocoaError(.userCancelled)) { try document.revert(toContentsOf: url, ofType: type) }
+        #expect(session.task.confirm?.confirm.id == "approveQuote", "the question shown stays")
+        #expect(fixture.editor.lastAnnouncement == RewriteSession.revertWaitsNotice, "\(String(describing: fixture.editor.lastAnnouncement))")
+        session.task.confirm?.cancel.perform()
+        #expect(await TestDeadline.until { session.task.confirm?.confirm.id == "discardPaidWork" }, "the revert asks once the question is answered")
+        asks(fixture, "Revert the project and discard ")
+        session.task.confirm?.confirm.perform()
+        #expect(!session.isOpen && fixture.editor.openRewrite == nil, "Discard and Revert reverts")
     }
 
     /// paid-wholeclip-voice-unguarded: the take rows' voice picker locks over paid work, a paid whole clip with no patch
@@ -321,6 +355,40 @@ import UniformTypeIdentifiers
         #expect(!session.hasPaidWork)
         generation.chooseVoice(nil)
         #expect(generation.selectedVoiceID == nil, "with nothing paid the voice can change")
+    }
+
+    /// A whole clip restored after a relaunch whose voice isn't the one chosen (none yet here): nothing paid was made with
+    /// the voice chosen, so the generation lets it change, and choosing the voice the whole clip was made with puts it back
+    /// (its Try Again comes back for the word checks); from then on that voice is kept. The generation used to refuse
+    /// every choice over the restored whole clip, so its voice could never be chosen again.
+    @Test func aRestoredWholeClipLetsTheVoiceItWasMadeWithBeChosen() async throws {
+        let fixture = try await fixture(.wholeClip)
+        defer { fixture.close() }
+        let session = fixture.session
+        try DebugRewriteGeneration.install("voice", in: session)
+        let generation = try #require(session.generation)
+        let own = try #require(generation.selectedVoiceID)
+        session.wholeClip = nil
+        generation.chooseVoice(nil)
+        try #require(generation.selectedVoiceID == nil)
+        let script = WholeClipRevoiceSessionTests.script
+        let whole = WholeClipRevoiceSession()
+        var backend = WholeClipRevoiceSessionTests.backend(WholeClipRevoiceSessionTests.Stubs())
+        backend.voiceKey = { [weak generation] script in generation?.selectedVoiceID.map { .init(script: script.text, recordId: $0, model: "eleven_v4") } }
+        whole.backend = backend
+        await whole.refreshQuote()
+        whole.restore(.init(script: script, baseScript: script, voices: [.init(script: script.text, recordId: own, model: "eleven_v4"): Decimal(string: "0.06")!],
+                            lipsyncs: [:], billed: [:], voiceUSD: Decimal(string: "0.01")))
+        session.wholeClip = whole
+        #expect(session.hasPaidWork && session.restoredVoiceAwaitingChoice && !session.keepsChosenVoice, "nothing paid was made with no voice")
+        #expect(!whole.restoredVoiceChosen && whole.stoppedForInputs, "no Try Again over a voice that can't come back")
+        #expect(whole.retryUSD == Decimal(string: "1.61"), "never the word checks' price under another voice: \(String(describing: whole.retryUSD))")
+        generation.chooseVoice(own)
+        #expect(generation.selectedVoiceID == own, "the voice the whole clip was made with can be chosen")
+        #expect(whole.restoredVoiceChosen && !whole.stoppedForInputs && !session.restoredVoiceAwaitingChoice && session.keepsChosenVoice)
+        #expect(whole.retryUSD == Decimal(string: "1.56"), "Try Again: the word checks and the lip sync still to pay: \(String(describing: whole.retryUSD))")
+        generation.chooseVoice(nil)
+        #expect(generation.selectedVoiceID == own, "now the paid voice keeps it")
     }
 
     // MARK: Closes the app starts

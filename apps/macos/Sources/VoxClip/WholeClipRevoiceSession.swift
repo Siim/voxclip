@@ -155,6 +155,9 @@ import VoxClipMedia
         /// Something paid, or where the run stopped, changed: the live one saves the Rewrite with its whole clip beside the
         /// project's Voice Lab data (`RewriteSession.persistPaidWork`), so a relaunch or a crash offers it back.
         var persist: @MainActor () -> Void = {}
+        /// The key a voice of `script` would carry if made now: the voice chosen and the model. Nil while no voice is chosen.
+        /// A voice restored after a relaunch comes back for free only under its own key (`restoredVoiceChosen`).
+        var voiceKey: @MainActor (WholeClipScript) -> WholeClipRevoiceLedger.VoiceKey? = { _ in nil }
     }
     /// Why the last run stopped: the step, the refused part (1-based) of a placement refusal, and whether trying again
     /// would only stop the same way (a placement refusal, or a stop before anything paid was sent).
@@ -293,18 +296,55 @@ import VoxClipMedia
     }
 
     /// What Try Again would pay for the whole clip: what's left after the paid steps, and nothing for a lip sync already
-    /// paid over this voice and picture (the ledger) or a kept result.
+    /// paid over this voice and picture (the ledger) or a kept result. Once the Fit step matched the picture, the lip sync
+    /// is priced on that picture, as its step pays it.
     var retryUSD: Decimal? {
-        guard let quote, let voicePrice = quote.voiceUSD, let lipsyncPrice = quote.lipsyncUSD else { return nil }
+        guard let quote, let voicePrice = quote.voiceUSD, let quoted = quote.lipsyncUSD else { return nil }
         let kept = voice.flatMap { $0.key.script == script?.text && ledger.paid($0.key) ? $0 : nil }
-        // A voice paid before a relaunch comes back for its parts' word checks; its lip sync for free.
-        let restored = kept == nil && restoredVoices.keys.contains { $0.script == script?.text }
+        // A voice paid before a relaunch comes back for its parts' word checks, and its lip sync for free, only under its own
+        // key: the voice and model chosen now are the ones it was made with.
+        let restored = kept == nil ? restoredVoiceChosen : false
         let remainingVoice = kept != nil ? 0 : restored ? (restoredVoiceUSD ?? voicePrice) : (backend?.unfinishedVoicePrice() ?? voicePrice)
         let lipsyncPaid = synced.map { synced in
             kept.map { ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: $0.key, retime: synced.factor, model: synced.model)) } ?? false
         } ?? false
-        let lipsyncRestored = restored && restoredLipsyncs.keys.contains { $0.voice.script == script?.text && $0.model == .standard }
+        let restoredKey = restoredVoiceKey
+        let lipsyncRestored = restored && restoredLipsyncs.keys.contains { $0.voice == restoredKey && $0.model == .standard }
+        let matched: Decimal? = picture != nil ? ((try? backend?.lipsyncPrice(synced?.model ?? .standard)) ?? nil) : nil
+        let lipsyncPrice = matched ?? quoted
         return remainingVoice + (lipsyncKept || lipsyncPaid || lipsyncRestored ? 0 : lipsyncPrice)
+    }
+
+    /// The voice paid before a relaunch (`restore`) for the card's script, while it is still to come back.
+    var restoredVoiceKey: WholeClipRevoiceLedger.VoiceKey? {
+        guard let text = script?.text else { return nil }
+        return restoredVoices.keys.filter { $0.script == text }.min { $0.recordId < $1.recordId }
+    }
+
+    /// The restored voice is the one a voice of the script would be made with now (`Backend.voiceKey`): its voice and model
+    /// are chosen, so the journal gives its parts back for their word checks. False while another voice (or none) is
+    /// chosen: nothing paid comes back then, and nothing is paid in its place.
+    var restoredVoiceChosen: Bool {
+        guard let key = restoredVoiceKey, let script else { return false }
+        return backend?.voiceKey(script) == key
+    }
+
+    /// The stopped card's line under a restored voice, as things are now: what Try Again puts back and for how much, or,
+    /// while its voice isn't chosen, that it can't come back. Nil with nothing restored.
+    var restoredVoiceNote: String? {
+        guard isStopped, restoredVoiceKey != nil else { return nil }
+        guard restoredVoiceChosen else {
+            return "The voice it was made with isn't chosen now, so it can't be put back. Nothing was sent. Start Over pays for a new voice."
+        }
+        let price = restoredVoiceUSD.map { $0 > 0 ? " for its word checks (\(VoiceLabCostPresentation.format($0)))" : " for free" } ?? ""
+        return "Try Again puts it back\(price), without voicing it again."
+    }
+
+    /// The fresh price of putting the restored voice back (its parts' word checks priced again) went up past what the
+    /// button approved: the button carries the new price, which its own click approves.
+    func repriceRestoredVoice(_ usd: Decimal) {
+        guard restoredVoiceKey != nil else { return }
+        restoredVoiceUSD = usd
     }
 
     /// Prices the card and reads the fal.ai key. Free.
@@ -488,6 +528,11 @@ import VoxClipMedia
                 if script == base, !backend.partlyVoiced(script), !restoredVoices.keys.contains(where: { $0.script == script.text }) {
                     script = try await rewordBeforePaying(script, backend: backend)
                 }
+            }
+            // A voice paid before a relaunch comes back only with the voice and model it was made with: with another one
+            // chosen, or none, nothing is voiced in its place and nothing is sent (Start Over pays for a new one).
+            if !voicePaid(script), let restored = restoredVoiceKey, restored.script == script.text, !restoredVoiceChosen {
+                throw Stop.voiceInputsChanged(clip: quote?.clipNumber ?? 1, usd: restoredVoices[restored] ?? 0, voiceSwitched: true)
             }
             var voice = try await voiceStep(script, backend: backend)
             // Fit: free, on the clip as edited. Only a voice too long for it asks for a measured wording, which is checked
@@ -971,9 +1016,9 @@ import VoxClipMedia
                                                                     : "Script · \(restored.script.words) words, reworded to fit")
         failure = Failure(step: .voice, part: nil, repeats: false, kind: "restored")
         stoppedAt = .voice; currentStep = .voice
-        let lipsync = restored.lipsyncs.isEmpty ? "" : " and lip sync"
-        let price = restored.voiceUSD.map { $0 > 0 ? " for its word checks (\(VoiceLabCostPresentation.format($0)))" : " for free" } ?? ""
-        phase = .stopped("Your paid whole-clip voice\(lipsync) from before VoxClip closed is kept. Try Again puts it back\(price)." + paidNote)
+        // What Try Again does with it depends on the voice chosen, which can change: `restoredVoiceNote` says it.
+        let kept = restored.lipsyncs.isEmpty ? "voice from before VoxClip closed is kept." : "voice and lip sync from before VoxClip closed are kept."
+        phase = .stopped("Your paid whole-clip " + kept + paidNote)
     }
 
     /// The last run stopped at the Fit step and the clip's script is still the one it stopped for: Try Again would meet
@@ -988,6 +1033,8 @@ import VoxClipMedia
     var stoppedForInputs: Bool {
         guard isStopped else { return false }
         if case Stop.voiceInputsChanged? = stopError { return true }
+        // A restored voice whose voice or model isn't the one chosen now (`restoredVoiceChosen`).
+        if restoredVoiceKey != nil, !restoredVoiceChosen { return true }
         guard heldVoiceSpent > 0, let baseScript, let now = try? backend?.script() else { return false }
         return now != baseScript
     }
@@ -1012,6 +1059,8 @@ import VoxClipMedia
     /// An Undo made the paid voice match again: Try Again uses it.
     var inputsRestored: Bool {
         guard stoppedForInputs, let backend, let baseScript, (try? backend.script()) == baseScript else { return false }
+        // A restored voice is usable again once its own voice and model are chosen.
+        if restoredVoiceKey != nil { return restoredVoiceChosen }
         return voice.map { backend.voiceCurrent($0) } ?? true
     }
 

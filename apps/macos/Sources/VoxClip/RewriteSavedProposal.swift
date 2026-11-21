@@ -66,9 +66,11 @@ struct RewriteSavedProposal: Codable, Equatable {
     var kept: [Int]
     var pricedAnyway: [Int]
     var voiceRecordID: String?
-    /// The patch's paid takes when it was saved, and what they cost.
+    /// The patch's paid takes when it was saved, what they cost, and their journal requests, which say how many can still
+    /// come back with their word check only.
     var patchTakes: Int
     var patchUSD: Decimal
+    var patchRequests: [String]
     var wholeClip: WholeClip?
     var savedAt: Date
 }
@@ -156,21 +158,62 @@ extension RewriteSession {
                                       projectId: project.id, scope: savedProposalScope)
     }
 
-    /// The digest of what the scope reads (`inside`): the same after a relaunch when nothing in the scope changed.
+    /// The digest of what the scope reads (`inside`), as a relaunch reads it: the same after a relaunch when nothing in the
+    /// scope changed. The project goes through the document's own encoding and decoding first, so what a save rounds or
+    /// orders (dates to the millisecond, cuts in transcript order, NFC text) digests the same before the quit and after:
+    /// a project imported or transcribed this session holds `Date()`s finer than its .voxclip file keeps. Cached for the
+    /// project it was made from.
     var savedProposalInputs: String? {
-        // A plain sorted encoding: the scoped inputs are no document of their own (their save dates are cleared), so they
-        // are neither validated nor dated as one.
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(inside(project))).map(VoiceLabFingerprint.bytes)
+        if let cached = savedInputsDigest, cached.project == project { return cached.digest }
+        let digest = Self.inputsDigest(inside(Self.asReopened(project)))
+        if let digest { savedInputsDigest = (project, digest) }
+        return digest
     }
 
-    /// The restored proposal's paid patch takes, as a note: "Your 2 paid takes from before VoxClip closed are kept: Make
-    /// Takes uses them again and pays only for their word checks." Nil once a plan holds takes again, or when none.
+    /// `project` as the .voxclip file gives it back (`JSONProjectStore.encode` then `decode`); as it is when it can't be
+    /// encoded (it couldn't be saved either).
+    static func asReopened(_ project: Project) -> Project {
+        (try? JSONProjectStore.decode(JSONProjectStore.encode(project))) ?? project
+    }
+
+    /// A plain sorted encoding of the scoped inputs, every date as whole milliseconds as the document writes them: the
+    /// scoped inputs are no document of their own (their save dates are cleared), so they are neither validated nor dated
+    /// as one.
+    static func inputsDigest(_ inputs: Project) -> String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(UTCTimestamp.milliseconds(from: date) ?? 0)
+        }
+        return (try? encoder.encode(inputs)).map(VoiceLabFingerprint.bytes)
+    }
+
+    /// The restored proposal's paid patch takes the journal can still give back (`restoredTakesKept`, read at restore), as
+    /// a note: "Your 2 paid takes from before VoxClip closed are kept: Make Takes uses them again and pays only for the word
+    /// checks.", or "1 of your 2 paid takes …" when some are gone. Nil once a plan holds takes again, or when none is left.
     var restoredPaidWorkNote: String? {
-        guard let saved = restoredProposal, saved.patchTakes > 0, takePlan == nil else { return nil }
-        let takes = saved.patchTakes == 1 ? "Your paid take from before VoxClip closed is kept" : "Your \(saved.patchTakes) paid takes from before VoxClip closed are kept"
-        return takes + ": Make Takes uses \(saved.patchTakes == 1 ? "it" : "them") again and pays only for the word checks."
+        guard let saved = restoredProposal, saved.patchTakes > 0, takePlan == nil, restoredTakesKept > 0 else { return nil }
+        let kept = min(restoredTakesKept, saved.patchTakes)
+        let lead = kept < saved.patchTakes ? "\(kept) of your \(saved.patchTakes) paid takes from before VoxClip closed \(kept == 1 ? "is" : "are") kept"
+            : kept == 1 ? "Your paid take from before VoxClip closed is kept" : "Your \(kept) paid takes from before VoxClip closed are kept"
+        return lead + ": Make Takes uses \(kept == 1 ? "it" : "them") again and pays only for the word checks."
+    }
+
+    /// The journal requests whose paid take can still come back for its word check: adoptable (no check failed it) and
+    /// within the journal's 60 days.
+    func adoptableJournalRequests(now: Date = Date()) -> Set<String> {
+        let paidRoot = editor.app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        return Set(VoiceLabTakeJournal.list(projectID: project.id, paidRoot: paidRoot)
+            .filter { $0.adoptable && now.timeIntervalSince($0.createdAt) < VoiceLabTakeJournal.unusedLifetime }.map(\.requestID))
+    }
+
+    /// The journal requests of the patch's paid takes (its plan's cloned-voice takes and the generation's).
+    private var patchTakeRequests: [String] {
+        let planned = takePlan?.phrases.flatMap { phrase in
+            phrase.takes.filter { $0.source == .clonedVoice }.compactMap { $0.row.receipt?.requestID.uuidString.lowercased() }
+        } ?? []
+        return planned + (generation?.rows.compactMap { $0.receipt?.requestID.uuidString.lowercased() } ?? [])
     }
 
     /// Saves the proposal with its unused paid work, or removes the record when nothing paid is left unused. Free; an
@@ -184,16 +227,18 @@ extension RewriteSession {
         let restored = takePlan == nil ? restoredProposal : nil
         let patchTakes = planTakes > 0 ? planTakes : (restored?.patchTakes ?? 0)
         let patchUSD = planTakes > 0 ? planUSD : (restored?.patchUSD ?? 0)
+        let patchRequests = planTakes > 0 ? patchTakeRequests : (restored?.patchRequests ?? [])
         guard whole != nil || patchTakes > 0 else {
             if savedProposalData != nil || restoredProposal != nil { forgetSavedProposal() }
             return
         }
         guard let url = savedProposalURL, let inputs = savedProposalInputs else { return }
         let states = Dictionary((ownProposal?.changes ?? []).map { ($0.ordinal, $0.state) }, uniquingKeysWith: { first, _ in first })
-        let record = RewriteSavedProposal(projectId: project.id, scope: savedProposalScope, inputs: inputs, instruction: instruction,
+        // A restored proposal keeps what it answered, even while another instruction waits for Rewrite Again.
+        let record = RewriteSavedProposal(projectId: project.id, scope: savedProposalScope, inputs: inputs, instruction: restoredProposal?.instruction ?? instruction,
             changes: changes.enumerated().map { .init($0.element, state: states[$0.offset + 1] ?? .pending) },
             kept: wordingFit.kept.sorted(), pricedAnyway: pricedAnyway.sorted(), voiceRecordID: generation?.selectedVoiceID ?? restoredProposal?.voiceRecordID,
-            patchTakes: patchTakes, patchUSD: patchUSD, wholeClip: whole, savedAt: Date(timeIntervalSince1970: 0))
+            patchTakes: patchTakes, patchUSD: patchUSD, patchRequests: patchRequests, wholeClip: whole, savedAt: Date(timeIntervalSince1970: 0))
         guard let shape = try? RewriteSavedProposalStore.encode(record), shape != savedProposalData else { return }
         var dated = record
         dated.savedAt = Date()
@@ -235,10 +280,13 @@ extension RewriteSession {
             }
         }
         guard !voices.isEmpty else { return nil }
-        return .init(script: script, baseScript: whole.savedBaseScript ?? script,
-                     voices: voices.map { .init(key: $0.key, usd: $0.value) }.sorted { $0.key.recordId < $1.key.recordId },
-                     lipsyncs: lipsyncs.map { .init(key: $0.key, usd: $0.value) }.sorted { $0.key.retime < $1.key.retime },
-                     billed: whole.billedLipsyncs, parts: parts, partRequests: requests)
+        let savedVoices: [RewriteSavedProposal.VoiceEntry] = voices.map { RewriteSavedProposal.VoiceEntry(key: $0.key, usd: $0.value) }
+            .sorted { $0.key.recordId < $1.key.recordId }
+        let savedLipsyncs: [RewriteSavedProposal.LipsyncEntry] = lipsyncs.map { RewriteSavedProposal.LipsyncEntry(key: $0.key, usd: $0.value) }
+            .sorted { $0.key.retime < $1.key.retime }
+        let base: WholeClipScript = whole.savedBaseScript ?? script
+        return RewriteSavedProposal.WholeClip(script: script, baseScript: base, voices: savedVoices, lipsyncs: savedLipsyncs,
+                                              billed: whole.billedLipsyncs, parts: parts, partRequests: requests)
     }
 
     /// Puts the restored whole clip on a fresh card: a stop whose Try Again puts the paid voice back for its parts' word
@@ -257,9 +305,7 @@ extension RewriteSession {
     private func restoredVoiceUSD(_ saved: RewriteSavedProposal.WholeClip) -> Decimal? {
         guard saved.parts > 0, saved.partRequests.count == saved.parts,
               let catalog = prices ?? editor.app.shared.flatMap({ try? VoiceLabPriceCatalog.load(shared: $0) }) else { return nil }
-        let paidRoot = editor.app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
-        let journal = VoiceLabTakeJournal.list(projectID: project.id, paidRoot: paidRoot)
-        let adoptable = Set(journal.filter(\.adoptable).map(\.requestID))
+        let adoptable = adoptableJournalRequests()
         guard saved.partRequests.allSatisfy(adoptable.contains),
               let check = try? VoiceLabPricing.estimate(operation: .elevenLabsSpeechToText, model: ElevenLabsScribe.modelID,
                                                         units: VoiceLabTakeProcessing.maximumQASeconds, catalog: catalog).usd else { return nil }
