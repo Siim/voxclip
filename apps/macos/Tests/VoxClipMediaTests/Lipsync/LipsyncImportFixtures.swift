@@ -188,6 +188,13 @@ actor LipsyncImportHTTP: LipsyncHTTPClient {
     var deleteBody = #"{"cdn_delete_results":[{"link":"https://v3.fal.media/files/fixture/output.mp4","exception":null}]}"#
     var deleteStatus = 200
     private let barrier: LipsyncImportBarrier?
+    /// Status answers to give, in order, before the default COMPLETED; and one status GET to hold.
+    private var statuses: [(Int, String)] = []
+    private var statusHold: LipsyncImportBarrier?
+    private(set) var statusPolls = 0
+    private(set) var cancels = 0
+    /// The last status said the job is still queued or running: its result isn't there yet (fal.ai answers 400).
+    private var running = false
     /// Each stub's own request ID (the free re-import runs once per attempt in a process).
     let requestID = UUID().uuidString.lowercased()
 
@@ -195,6 +202,8 @@ actor LipsyncImportHTTP: LipsyncHTTPClient {
         self.bytes = bytes; self.app = app; self.barrier = barrier; self.maker = maker
     }
     func failDownloads(_ value: Bool) { downloadFails = value }
+    func answerStatus(_ replies: [(Int, String)]) { statuses += replies }
+    func holdNextStatus(_ barrier: LipsyncImportBarrier) { statusHold = barrier }
     func setDelete(status: Int, body: String) { deleteStatus = status; deleteBody = body }
 
     func send(_ request: URLRequest, limit: Int, permit: VoiceDispatchPermit?) async throws -> LipsyncHTTPResponse {
@@ -212,14 +221,28 @@ actor LipsyncImportHTTP: LipsyncHTTPClient {
             submits += 1
             body = "{\"request_id\":\"\(requestID)\",\"status_url\":\"\(prefix)/status\",\"response_url\":\"\(prefix)\",\"cancel_url\":\"\(prefix)/cancel\"}"
         } else if request.httpMethod == "PUT" {
+            cancels += 1
             return .init(status: 202, body: Data(#"{"status":"CANCELLATION_REQUESTED"}"#.utf8))
         } else if request.httpMethod == "DELETE" {
             deletions += 1
             return .init(status: deleteStatus, body: Data(deleteBody.utf8))
         } else if request.url?.path.hasSuffix("/status") == true {
+            statusPolls += 1
+            if let hold = statusHold {
+                statusHold = nil
+                await hold.block()
+                try Task.checkCancellation()
+            }
+            if !statuses.isEmpty {
+                let (status, text) = statuses.removeFirst()
+                if status == 200 { running = text.contains("IN_PROGRESS") || text.contains("IN_QUEUE") }
+                return .init(status: status, body: Data(text.utf8))
+            }
+            running = false
             body = #"{"status":"COMPLETED"}"#
         } else {
             resultFetches += 1
+            if running { return .init(status: 400, body: Data(#"{"detail":"Request is still in progress"}"#.utf8)) }
             let size = maker == nil ? ",\"file_size\":\(bytes.count)" : ""
             body = "{\"video\":{\"url\":\"https://v3.fal.media/files/fixture/output.mp4\",\"content_type\":\"video/mp4\"\(size)}}"
         }

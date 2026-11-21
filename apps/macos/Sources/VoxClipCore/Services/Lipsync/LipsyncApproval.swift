@@ -4,6 +4,28 @@ public enum LipsyncError: Error, Sendable, Equatable {
     case approvalRequired, expiredQuote, invalidInput, unsupportedModel, busy, unknownJob
     case unsafeURL, invalidResponse, responseTooLarge, invalidMedia, unsafeFile
     case missingKey, network, http(Int), submissionUncertain, deadlineExceeded
+    /// fal.ai failed the accepted job itself (its status or result carried `error`/`error_type`): its sanitized error type
+    /// ("face_not_detected"), never its message. fal.ai may bill a job it failed.
+    case providerFailed(String)
+    /// The earlier paid job is still in fal.ai's queue or running: nothing new is paid, and checking again is free.
+    case stillRunning
+
+    /// fal.ai's `error_type` as a short log-safe token: lower-case letters, digits and `_`, at most 48 of them.
+    public static func providerFailure(_ value: Any?) -> LipsyncError {
+        let text = (value as? String)?.lowercased() ?? ""
+        let token = String(text.unicodeScalars.filter { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" }.prefix(48))
+        return .providerFailed(token.isEmpty ? "provider_error" : token)
+    }
+
+    /// A failure that may pass if the same request is sent again: the network, a timeout, a body VoxClip couldn't read, or
+    /// fal.ai's 408, 429 and 5xx answers. 401, 403, 404, 422, a failed job, a deadline and cancellation are not.
+    public var isTransient: Bool {
+        switch self {
+        case .network, .invalidResponse, .responseTooLarge: true
+        case .http(let status): status == 408 || status == 429 || (500...599).contains(status)
+        default: false
+        }
+    }
 }
 
 public struct LipsyncSignedInput: Sendable, Equatable {
@@ -34,6 +56,18 @@ public struct LipsyncSignedInput: Sendable, Equatable {
 
 public enum LipsyncLimits {
     public static let maximumVideoBytes = 512 * 1_024 * 1_024
+    /// The uplink an upload's time limit assumes: 2 Mbit/s (250 kB/s). A transfer's whole-transfer timeout is
+    /// `transferSeconds(bytes)`, and the video upload must finish while its signed input still outlives the job's deadline.
+    public static let assumedBytesPerSecond: Double = 250_000
+    /// 60 s plus `bytes` at the assumed uplink.
+    public static func transferSeconds(_ bytes: Int) -> Double { 60 + Double(max(0, bytes)) / assumedBytesPerSecond }
+    /// The most the window's video upload may weigh: within `maximumVideoBytes`, and small enough to upload at the assumed
+    /// uplink while its one-hour signed URL still outlives the job's deadline (`FalLipsyncProvider` refuses a quote whose
+    /// inputs expire within the deadline and 2 minutes), with a tenth to spare for the container and the audio upload.
+    public static var uploadBudgetBytes: Int {
+        let seconds = 3_600 - deadlineSeconds - 120 - 60
+        return Int((min(Double(maximumVideoBytes), seconds * assumedBytesPerSecond) * 0.9).rounded(.down))
+    }
     public static let maximumJSONBytes = 1_024 * 1_024
     public static let maximumPolls = 140
     public static let deadlineSeconds: Double = 1_800

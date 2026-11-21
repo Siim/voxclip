@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 import VoxClipCore
@@ -24,12 +25,30 @@ public struct LipsyncAttempt: Codable, Sendable, Equatable {
     /// The upload's picture fingerprint (`LipsyncPictureFingerprint`): the upload's H.264 differs when the window is
     /// prepared again, so a record whose video hash differs is matched by its audio hash and this.
     var picture: Data?
+    /// The result was imported as this paid video asset (`<projectId>/<assetId>.mp4` under the paid store; its `sha256` is
+    /// the output's). The record then stays as the window's imported index: the same inputs get this file again, for free,
+    /// after a SHA-256 check, until it is 30 days old or its file is gone.
+    public var importedAsset: VoiceLabVideoAsset?
+    public var importedAt: Date?
+    public var colorWarning: Bool?
 
     public init(job: LipsyncJob, quote: LipsyncQuote, neededSeconds: Double) {
         requestID = job.remoteID; provider = job.model.provider; model = job.model.id; quoteID = quote.id
         syncMode = quote.options.syncMode; seed = quote.options.seed; estimate = quote.estimate; submittedAt = job.submittedAt
         videoSHA256 = quote.video.sha256; audioSHA256 = quote.audio.sha256
         self.neededSeconds = neededSeconds; uploadedSeconds = quote.outputDurationSeconds; fps = quote.fps
+    }
+
+    /// The attempt an imported result came from (its provenance and asset): a result set aside after it came back paid
+    /// carries it, so a whole clip's stop counts its charge and its request ID.
+    public init(imported result: ImportedLipsyncResult) {
+        let provenance = result.provenance
+        requestID = provenance.requestID; provider = provenance.provider; model = provenance.model; quoteID = provenance.quoteID
+        syncMode = provenance.syncMode; seed = provenance.seed; estimate = provenance.estimate; submittedAt = provenance.submittedAt
+        videoSHA256 = provenance.videoInputSHA256; audioSHA256 = provenance.audioInputSHA256
+        neededSeconds = result.asset.durationSeconds; uploadedSeconds = max(provenance.estimate.units, result.asset.durationSeconds)
+        fps = result.asset.frameRate
+        importedAsset = result.asset; importedAt = provenance.importedAt; colorWarning = result.colorWarning
     }
 
     /// The sidecar's name: the quote's input hashes.
@@ -41,10 +60,14 @@ public struct LipsyncAttempt: Codable, Sendable, Equatable {
 }
 
 /// The paid attempts of one project, under `VoiceLab/<projectId>/lipsync-attempts/` (0700): `<video>-<audio>.json` (0600)
-/// and, after a failed import, the downloaded result `<video>-<audio>.mp4` (0600). A record goes when a later import of it
-/// succeeds or the attempt is discarded; a new paid attempt over the same inputs replaces it. No project-format change.
+/// and, after a failed import, the downloaded result `<video>-<audio>.mp4` (0600). A good import marks its record imported
+/// (`markImported`) and drops the kept file: the record is then the window's imported index, kept 30 days or until its
+/// asset is gone (`prune`). A record goes when the attempt is discarded; a new paid attempt over the same inputs replaces
+/// it. No project-format change.
 public enum LipsyncAttemptStore {
     static let folder = "lipsync-attempts"
+    /// How long an imported index entry finds its asset again.
+    static let importedLifetime: TimeInterval = 30 * 24 * 60 * 60
 
     public static func record(_ attempt: LipsyncAttempt, projectID: String, paidRoot: URL) throws {
         try validate(attempt, projectID: projectID)
@@ -68,7 +91,9 @@ public enum LipsyncAttemptStore {
         }
     }
 
-    /// The attempt over these inputs, if one reached fal.ai and was not finished.
+    /// The record over these exact input hashes, if a job over them reached fal.ai: an attempt not imported yet (its result
+    /// at fal.ai or kept beside it), or the window's imported index entry (`importedAsset` set), whose asset is not checked
+    /// here (`importedResult` checks it).
     public static func load(videoSHA256: String, audioSHA256: String, projectID: String, paidRoot: URL) -> LipsyncAttempt? {
         guard isHash(videoSHA256), isHash(audioSHA256) else { return nil }
         return try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts -> LipsyncAttempt? in
@@ -141,7 +166,83 @@ public enum LipsyncAttemptStore {
             .appendingPathComponent("\(attempt.key).mp4")
     }
 
-    /// The attempt is finished (imported) or let go: its record and any kept result go.
+    /// The attempt's result was imported as `result.asset`: its record stays, marked imported (the window's imported index),
+    /// and its kept file, now the asset, goes. Fsynced before fal.ai's copy is deleted.
+    public static func markImported(_ attempt: LipsyncAttempt, result: ImportedLipsyncResult, projectID: String, paidRoot: URL) throws {
+        var imported = attempt
+        imported.keptResult = false
+        imported.importedAsset = result.asset
+        imported.importedAt = result.provenance.importedAt
+        imported.colorWarning = result.colorWarning
+        try record(imported, projectID: projectID, paidRoot: paidRoot)
+        _ = try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts in
+            if unlinkat(attempts, "\(attempt.key).mp4", 0) == 0 { _ = fsync(attempts) }
+        }
+    }
+
+    /// The imported index's result for `attempt`, when its asset file is still there, a regular file whose SHA-256 is the
+    /// recorded output's: a local file, free, never fetched again (no once-per-run recovery claim).
+    static func importedResult(_ attempt: LipsyncAttempt, projectID: String, paidRoot: URL) -> ImportedLipsyncResult? {
+        guard let asset = attempt.importedAsset, let importedAt = attempt.importedAt,
+              (try? VoiceLabAssetNaming.videoFile(projectId: projectID, assetId: asset.id)) == asset.file,
+              sha256(asset, projectID: projectID, paidRoot: paidRoot) == asset.sha256 else { return nil }
+        let provenance = LipsyncResultProvenance(provider: attempt.provider, model: attempt.model, requestID: attempt.requestID,
+            quoteID: attempt.quoteID, videoInputSHA256: attempt.videoSHA256, audioInputSHA256: attempt.audioSHA256,
+            outputSHA256: asset.sha256, syncMode: attempt.syncMode, seed: attempt.seed, submittedAt: attempt.submittedAt,
+            importedAt: importedAt, estimate: attempt.estimate)
+        var result = ImportedLipsyncResult(asset: asset, url: paidRoot.appendingPathComponent(asset.file), provenance: provenance,
+                                           colorWarning: attempt.colorWarning ?? false)
+        result.recovered = true
+        return result
+    }
+
+    /// The asset file's SHA-256, read without following links; nil when it is missing or not a regular file.
+    private static func sha256(_ asset: VoiceLabVideoAsset, projectID: String, paidRoot: URL) -> String? {
+        guard let root = try? LipsyncLocalPath.openDirectory(paidRoot) else { return nil }
+        defer { Darwin.close(root) }
+        let project = openat(root, projectID, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard project >= 0 else { return nil }
+        defer { Darwin.close(project) }
+        let descriptor = openat(project, "\(asset.id).mp4", O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { return nil }
+        let input = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? input.close() }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              (12...Int64(LipsyncLimits.maximumVideoBytes)).contains(info.st_size) else { return nil }
+        var hash = SHA256(), count: Int64 = 0
+        while let data = try? input.read(upToCount: 1_024 * 1_024), !data.isEmpty {
+            count += Int64(data.count)
+            guard count <= info.st_size else { return nil }
+            hash.update(data: data)
+        }
+        guard count == info.st_size else { return nil }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Drops imported index entries 30 days after their import, or once their asset file is gone. Only the record goes:
+    /// an asset a project uses stays where it is.
+    static func prune(projectID: String, paidRoot: URL, now: Date) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: paidRoot.appendingPathComponent(projectID, isDirectory: true)
+            .appendingPathComponent(folder, isDirectory: true).path)) ?? []
+        let records = names.filter { $0.hasSuffix(".json") && !$0.hasPrefix(".") }
+        guard !records.isEmpty else { return }
+        _ = try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts in
+            var removed = false
+            for name in records {
+                guard let attempt = read(attempts, name, projectID: projectID), let asset = attempt.importedAsset else { continue }
+                let expired = attempt.importedAt.map { now.timeIntervalSince($0) > importedLifetime } ?? true
+                var info = stat()
+                let present = (try? VoiceLabAssetNaming.videoFile(projectId: projectID, assetId: asset.id)) == asset.file
+                    && fstatat(AT_FDCWD, paidRoot.appendingPathComponent(asset.file).path, &info, AT_SYMLINK_NOFOLLOW) == 0
+                    && info.st_mode & S_IFMT == S_IFREG
+                if expired || !present { removed = unlinkat(attempts, name, 0) == 0 || removed }
+            }
+            if removed { _ = fsync(attempts) }
+        }
+    }
+
+    /// The attempt is let go (or its imported index entry no longer finds its asset): its record and any kept result go.
     public static func discard(_ attempt: LipsyncAttempt, projectID: String, paidRoot: URL) {
         _ = try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts in
             unlinkat(attempts, "\(attempt.key).mp4", 0)
@@ -157,7 +258,9 @@ public enum LipsyncAttemptStore {
               isHash(attempt.videoSHA256), isHash(attempt.audioSHA256), attempt.neededSeconds.isFinite,
               (3...LipsyncLimits.maximumUploadSeconds).contains(attempt.neededSeconds),
               attempt.uploadedSeconds.isFinite, attempt.uploadedSeconds >= attempt.neededSeconds,
-              attempt.uploadedSeconds <= LipsyncLimits.maximumUploadSeconds, attempt.fps.isFinite, (1...120).contains(attempt.fps)
+              attempt.uploadedSeconds <= LipsyncLimits.maximumUploadSeconds, attempt.fps.isFinite, (1...120).contains(attempt.fps),
+              attempt.importedAsset.map({ (try? VoiceLabAssetNaming.videoFile(projectId: projectID, assetId: $0.id)) == $0.file
+                  && isHash($0.sha256) }) ?? true
         else { throw LipsyncError.invalidInput }
     }
 

@@ -40,6 +40,42 @@ import Testing
         #expect(body["sync_mode"] as? String == "cut_off")
     }
 
+    /// The account's slot is reserved before the uploads: while another run's job holds it, a lip sync refuses at once with
+    /// nothing uploaded (before: it uploaded both files, then waited 5 minutes for the slot and failed).
+    @Test func aHeldSlotRefusesBeforeAnyUpload() async throws {
+        let root = try LipsyncProviderFixtures.directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let clock = LipsyncFixtureClock(), queue = LipsyncProviderFixtures.queue(clock)
+        let other = try LipsyncProviderFixtures.provider(LipsyncFixtureHTTP([.json(200, LipsyncProviderFixtures.receipt())]), clock: clock, queue: queue)
+        let running = try await LipsyncProviderFixtures.quote(other)
+        _ = try await other.submit(running, approval: LipsyncProviderFixtures.approval(other, quote: running, root: root))
+        let own = root.appendingPathComponent("own")
+        try FileManager.default.createDirectory(at: own, withIntermediateDirectories: false)
+        let (video, audio) = try LipsyncProviderFixtures.uploadFiles(own)
+        let (store, record) = try await LipsyncProviderFixtures.consent(own)
+        let http = LipsyncFixtureHTTP([]), provider = try LipsyncProviderFixtures.provider(http, clock: clock, queue: queue)
+        await #expect(throws: LipsyncError.busy) {
+            _ = try await provider.prepareApprovedUpload(video: video, audio: audio, options: .init(syncMode: .cutOff),
+                fps: 30, consentStore: store, recordID: record, acceptsPaidJob: true, acceptsMediaTransfer: true)
+        }
+        #expect(await http.requests.isEmpty)
+    }
+
+    /// A failed upload gives the reserved slot back, so the next lip sync can start.
+    @Test func aFailedUploadGivesTheSlotBack() async throws {
+        let root = try LipsyncProviderFixtures.directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (video, audio) = try LipsyncProviderFixtures.uploadFiles(root)
+        let (store, record) = try await LipsyncProviderFixtures.consent(root)
+        let clock = LipsyncFixtureClock(), queue = LipsyncProviderFixtures.queue(clock)
+        let provider = try LipsyncProviderFixtures.provider(LipsyncFixtureHTTP([.json(200, initiate), .json(403, "")]), clock: clock, queue: queue)
+        await #expect(throws: LipsyncError.http(403)) {
+            _ = try await provider.prepareApprovedUpload(video: video, audio: audio, options: .init(syncMode: .cutOff),
+                fps: 30, consentStore: store, recordID: record, acceptsPaidJob: true, acceptsMediaTransfer: true)
+        }
+        #expect(!(await queue.isHeld(account: "fal")))
+    }
+
     @Test func missingInlineApprovalDoesNotUpload() async throws {
         let root = try LipsyncProviderFixtures.directory()
         defer { try? FileManager.default.removeItem(at: root) }

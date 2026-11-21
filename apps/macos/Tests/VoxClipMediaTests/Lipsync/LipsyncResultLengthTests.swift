@@ -36,6 +36,14 @@ struct LipsyncResultLengthTests {
         (try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("\(projectID)/lipsync-attempts").path).sorted()) ?? []
     }
 
+    /// After a good import only the attempt's record stays, marked imported with the stored asset: the window's imported
+    /// index, so the same inputs find the asset again for free. Its kept file is gone (it is the asset now).
+    private func indexed(_ imported: ImportedLipsyncResult, quote: LipsyncQuote, root: URL) -> Bool {
+        let key = "\(quote.video.sha256)-\(quote.audio.sha256)"
+        let entry = LipsyncAttemptStore.load(videoSHA256: quote.video.sha256, audioSHA256: quote.audio.sha256, projectID: projectID, paidRoot: root)
+        return attempts(root) == ["\(key).json"] && entry?.importedAsset == imported.asset && entry?.keptResult == false
+    }
+
     /// The phrase path (sync-3, cut_off) and the whole-clip path (lipsync-2, remap) both import the example's shape: sent
     /// with the margin, it comes back 5 frames short of the upload and is cut back to the voice's length from its start.
     @Test(arguments: [(3, SyncMode.cutOff), (1, SyncMode.remap)])
@@ -55,7 +63,7 @@ struct LipsyncResultLengthTests {
         #expect(abs(Int(levels[134]) - Int(FalShapedResult.level(134))) <= 6)
         #expect(await http.submits == 1)
         #expect(await http.deletions == 1)
-        #expect(attempts(root).isEmpty)
+        #expect(indexed(imported, quote: quote, root: root))
         let line = await log.lines.first { $0.hasPrefix("lipsync result check=duration") }
         #expect(line == "lipsync result check=duration got=5.833 expected=5.625 uploaded=6.025 fps=24 short_frames=0 dropped_frames=5 outcome=trim")
     }
@@ -126,7 +134,7 @@ struct LipsyncResultLengthTests {
         #expect(attempts(root) == ["\(key).json", "\(key).mp4"])
     }
 
-    /// A restart with a fixed build finds the sidecar: the kept result imports for free and the attempt is finished.
+    /// A restart with a fixed build finds the sidecar: the kept result imports for free and the attempt is indexed.
     @Test func aKeptResultFromAnEarlierRunImportsForFree() async throws {
         let root = try LipsyncImportFixture.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let uploadFrames = Int((LipsyncLimits.uploadSeconds(needed) * 24).rounded(.up))
@@ -144,7 +152,7 @@ struct LipsyncResultLengthTests {
         #expect(abs(imported.asset.durationSeconds - needed) <= 1.0 / 24)
         #expect(await http.submits == 1)
         #expect(await http.downloads == 0)
-        #expect(attempts(root).isEmpty)
+        #expect(indexed(imported, quote: quote, root: root))
     }
 
     /// A download that fails leaves fal.ai's copy (no payload delete), and Try Again fetches the result again by request ID,
@@ -173,6 +181,6 @@ struct LipsyncResultLengthTests {
         #expect(refetch.value(forHTTPHeaderField: "Authorization") == "Key synthetic-import-fixture-key")
         #expect(await http.submits == 1)
         #expect(await http.deletions == 1)
-        #expect(attempts(root).isEmpty)
+        #expect(indexed(imported, quote: quote, root: root))
     }
 }

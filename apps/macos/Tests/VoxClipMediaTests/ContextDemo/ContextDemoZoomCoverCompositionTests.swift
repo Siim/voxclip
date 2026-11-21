@@ -4,7 +4,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-private func zoomCoverProject(duration: Double, source: URL? = nil, paidRoot: URL? = nil) throws -> Project {
+func zoomCoverProject(duration: Double, source: URL? = nil, paidRoot: URL? = nil) throws -> Project {
     var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
     project.media.source.audio!.sampleRate = 48_000
     if let source {
@@ -61,7 +61,7 @@ private func zoomCoverProject(duration: Double, source: URL? = nil, paidRoot: UR
     return project
 }
 
-private func zoomCoverWave(rate: Int, seconds: Double, frequency: Double) -> Data {
+func zoomCoverWave(rate: Int, seconds: Double, frequency: Double) -> Data {
     let frames = Int(seconds * Double(rate))
     var data = Data()
     func text(_ value: String) { data.append(contentsOf: value.utf8) }
@@ -79,7 +79,7 @@ private func zoomCoverWave(rate: Int, seconds: Double, frequency: Double) -> Dat
     return data
 }
 
-private func zoomCoverRequest(project: Project, paidRoot: URL) throws -> RenderRequest {
+func zoomCoverRequest(project: Project, paidRoot: URL) throws -> RenderRequest {
     let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
     let input = try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight,
         paidRoot: paidRoot, prepared: prepared)
@@ -257,7 +257,13 @@ struct ContextDemoZoomCoverNativeTests {
         #expect(result.recovered && result.provenance.requestID == thrown?.attempt.requestID)
         #expect(await http.submits == 1)
         #expect(await http.uploads.count == 2)
+        // The imported result is indexed: the same window gets it again, for free, with nothing fetched.
+        let fetches = await http.resultFetches
+        let reused = try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3], mayPay: false)
+        #expect(reused.asset == result.asset && reused.recovered)
+        #expect(await http.resultFetches == fetches)
         // A free Try Again with nothing left to recover never pays.
+        LipsyncAttemptStore.discard(attempt, projectID: projectID, paidRoot: root)
         await #expect(throws: LipsyncRecoveryFailed.self) {
             _ = try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3], mayPay: false)
         }

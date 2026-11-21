@@ -6,8 +6,15 @@ package struct LipsyncHTTPResponse: Sendable {
     package let status: Int
     package let body: Data
     package let contentType: String?
-    package init(status: Int, body: Data, contentType: String? = "application/json") {
+    /// A 429 or 503's `Retry-After` in seconds (delta-seconds only; an HTTP date is ignored), at most 10 minutes.
+    package let retryAfter: Double?
+    package init(status: Int, body: Data, contentType: String? = "application/json", retryAfter: Double? = nil) {
         self.status = status; self.body = body; self.contentType = Self.mediaType(contentType)
+        self.retryAfter = retryAfter.flatMap { $0.isFinite && $0 >= 0 ? min($0, 600) : nil }
+    }
+
+    static func retryAfter(_ header: String?) -> Double? {
+        header.flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
     }
 
     static func mediaType(_ header: String?) -> String? {
@@ -29,8 +36,21 @@ package protocol LipsyncHTTPClient: Sendable {
 struct URLSessionLipsyncHTTPClient: LipsyncHTTPClient {
     var configure: @Sendable (URLSessionConfiguration) -> Void = { _ in }
     func send(_ request: URLRequest, limit: Int, permit: VoiceDispatchPermit?) async throws -> LipsyncHTTPResponse {
-        try await LipsyncHTTPTransfer(limit: limit, upload: request.httpMethod == "PUT" && request.httpBody != nil,
-                                      configure: configure).run(request, permit: permit)
+        var request = request
+        // URLSession would otherwise offer its own list, br included, which the transfer refuses (it reads gzip and deflate).
+        if request.value(forHTTPHeaderField: "Accept-Encoding") == nil { request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding") }
+        return try await LipsyncHTTPTransfer(limit: limit, upload: request.httpMethod == "PUT" && request.httpBody != nil,
+                                             configure: configure).run(request, permit: permit)
+    }
+
+    /// The idle and whole-transfer timeouts. JSON: at most 30 s each (or the request's own, shorter, deadline). An upload or
+    /// a media download waits up to 120 s or 30 s between bytes, and gets `LipsyncLimits.transferSeconds` of its bytes (the
+    /// upload's body, a download's limit) in all: 60 s plus 2 Mbit/s, so a long window's upload or result is never cut off
+    /// at a fixed two minutes.
+    static func timeouts(upload: Bool, download: Bool, bytes: Int, requested: TimeInterval) -> (request: TimeInterval, resource: TimeInterval) {
+        if upload { return (120, LipsyncLimits.transferSeconds(bytes)) }
+        if download { return (min(30, requested), LipsyncLimits.transferSeconds(bytes)) }
+        return (min(30, requested), min(30, requested))
     }
 
     func download(_ request: URLRequest, to file: URL, limit: Int) async throws {
@@ -116,8 +136,12 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil; configuration.urlCache = nil; configuration.urlCredentialStorage = nil
         configuration.httpShouldSetCookies = false; configuration.connectionProxyDictionary = [:]
-        configuration.timeoutIntervalForRequest = min(upload ? 120 : 30, request.timeoutInterval)
-        configuration.timeoutIntervalForResource = descriptor == nil && !upload ? min(30, request.timeoutInterval) : 120
+        let timeouts = URLSessionLipsyncHTTPClient.timeouts(upload: upload, download: descriptor != nil,
+                                     bytes: upload ? request.httpBody?.count ?? 0 : limit, requested: request.timeoutInterval)
+        configuration.timeoutIntervalForRequest = timeouts.request
+        configuration.timeoutIntervalForResource = timeouts.resource
+        var request = request
+        request.timeoutInterval = timeouts.request
         configure(configuration)
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
@@ -157,9 +181,16 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
             else if descriptor == nil && (200...299).contains(response.statusCode) && !upload &&
                 !LipsyncHTTPResponse.isJSON(mime) { failure = .invalidResponse }
             else { failure = nil }
-            state.withLock { $0.response = response; $0.failure = failure }
-        } else { failure = .invalidResponse; state.withLock { $0.failure = failure } }
-        completionHandler(failure == nil ? .allow : .cancel)
+            // An earlier failure stands: a refused redirect's 3xx arrives here next and must stay unsafeURL.
+            let kept = state.withLock { state -> LipsyncError? in
+                state.response = response; state.failure = state.failure ?? failure
+                return state.failure
+            }
+            completionHandler(kept == nil ? .allow : .cancel)
+        } else {
+            state.withLock { $0.failure = $0.failure ?? .invalidResponse }
+            completionHandler(.cancel)
+        }
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
@@ -196,7 +227,8 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
                 return (state.continuation, .failure(LipsyncError.invalidResponse))
             }
             return (state.continuation, .success(LipsyncHTTPResponse(status: response.statusCode, body: state.bytes,
-                contentType: response.value(forHTTPHeaderField: "Content-Type"))))
+                contentType: response.value(forHTTPHeaderField: "Content-Type"),
+                retryAfter: LipsyncHTTPResponse.retryAfter(response.value(forHTTPHeaderField: "Retry-After")))))
         }
         value.0?.resume(with: value.1)
     }

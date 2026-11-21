@@ -155,7 +155,9 @@ struct FalLipsyncProviderTests {
         #expect(await provider.status(quoteID: quote.id) == nil)
     }
 
-    @Test(arguments: [200, 408, 499, 500, 503, 504]) func ambiguousQueueReplyNeverTriggersAnotherPOST(status: Int) async throws {
+    /// 500, 502 and 504 after the body was sent (and a 2xx without a request ID, 408, 499) can't prove fal.ai didn't queue a
+    /// billed job: the charge is unknown and nothing is sent again by itself.
+    @Test(arguments: [200, 408, 499, 500, 502, 504]) func ambiguousQueueReplyNeverTriggersAnotherPOST(status: Int) async throws {
         let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let http = LipsyncFixtureHTTP([.json(status, #"{"error":"synthetic failure"}"#)])
         let provider = try Fixtures.provider(http), quote = try await Fixtures.quote(provider)
@@ -180,14 +182,51 @@ struct FalLipsyncProviderTests {
         #expect(await http.requests.count == 1)
     }
 
-    @Test func malformedReceiptIsNotSalvagedByInventingFollowUpURLs() async throws {
+    /// A 503 is fal.ai refusing before it queues anything (voice-lab §9.4 step 6): the submit is sent again, and a receipt
+    /// after it is the job. Before: the 503 meant "charge unknown" and the clip was blocked.
+    @Test func aSubmitRefusedWith503IsSentAgainAndItsReceiptAccepted() async throws {
         let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
-        let reply = #"{"status":"IN_QUEUE","request_id":"\#(Fixtures.requestID)","status_url":"https://fixture.invalid/status"}"#
-        let http = LipsyncFixtureHTTP([.json(200, reply)]), provider = try Fixtures.provider(http)
-        let quote = try await Fixtures.quote(provider), approval = try await Fixtures.approval(provider, quote: quote, root: root)
-        await #expect(throws: LipsyncError.submissionUncertain) { _ = try await provider.submit(quote, approval: approval) }
-        #expect(await provider.status(quoteID: quote.id)?.job == nil)
+        let clock = LipsyncFixtureClock()
+        let http = LipsyncFixtureHTTP([.retry(503, #"{"detail":"no capacity"}"#, 7), .json(200, Fixtures.receipt())])
+        let provider = try Fixtures.provider(http, clock: clock), quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        #expect(job.remoteID == Fixtures.requestID)
+        #expect(await provider.status(quoteID: quote.id)?.billing == .accepted)
+        #expect(await http.requests.filter { $0.httpMethod == "POST" }.count == 2)
+        #expect(clock.state.withLock { $0.sleeps } == [.seconds(7)], "the answer's Retry-After")
+    }
+
+    /// Three 503s: still nothing queued, so the stop is "not submitted" (no charge), never "charge unknown".
+    @Test func aSubmitStill503AfterTwoRetriesWasNotSubmitted() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let clock = LipsyncFixtureClock()
+        let http = LipsyncFixtureHTTP(Array(repeating: .json(503, #"{"detail":"no capacity"}"#), count: 3))
+        let provider = try Fixtures.provider(http, clock: clock), quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        await #expect(throws: LipsyncError.http(503)) { _ = try await provider.submit(quote, approval: approval) }
+        #expect(await http.requests.count == 3)
+        #expect(clock.state.withLock { $0.sleeps } == [.seconds(1), .seconds(2)])
+        #expect(await provider.status(quoteID: quote.id) == nil)
+    }
+
+    /// Once a valid request ID is read, a follow-up URL that fails the exact owner/app path check is built from the queue
+    /// path: the known paid job is kept (the key only ever goes to queue.fal.run). Before: the ID was dropped as "charge
+    /// unknown" and the job could never be fetched.
+    @Test func aReceiptsRequestIDSurvivesAFollowUpURLThatFailsThePathCheck() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let log = LipsyncFixtureLog()
+        let reply = #"{"status":"IN_QUEUE","request_id":"\#(Fixtures.requestID)","status_url":"https://queue.fal.run/fal-ai/sync-lipsync/v3/requests/\#(Fixtures.requestID)/status","cancel_url":"https://fixture.invalid/cancel"}"#
+        let http = LipsyncFixtureHTTP([.json(200, reply)]), provider = try Fixtures.provider(http, logger: log)
+        let quote = try await Fixtures.quote(provider, modelIndex: 3), approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        let base = "https://queue.fal.run/fal-ai/sync-lipsync/requests/\(Fixtures.requestID)"
+        #expect(job.remoteID == Fixtures.requestID)
+        #expect(job.statusURL?.absoluteString == base + "/status" && job.responseURL?.absoluteString == base
+            && job.cancelURL?.absoluteString == base + "/cancel")
+        #expect(await provider.status(quoteID: quote.id)?.billing == .accepted)
         #expect(await http.requests.count == 1)
+        #expect(await log.messages.contains("lipsync provider=fal event=receipt-urls-rebuilt count=2"))
     }
 
     @Test func approvalIsBoundToExactOptionsAndMediaQuote() async throws {
@@ -294,12 +333,16 @@ struct FalLipsyncProviderTests {
         #expect(await http.requests.last?.httpMethod == "PUT")
     }
 
+    /// A receipt pointing elsewhere keeps its job on fal.ai's own queue paths: the key never goes to the other host.
     @Test func hostileReceiptNeverReceivesTheKey() async throws {
         let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
-        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt(host: "127.0.0.1"))]), provider = try Fixtures.provider(http)
+        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt(host: "127.0.0.1")), .json(200, Fixtures.inProgress)])
+        let provider = try Fixtures.provider(http)
         let quote = try await Fixtures.quote(provider), approval = try await Fixtures.approval(provider, quote: quote, root: root)
-        await #expect(throws: LipsyncError.submissionUncertain) { _ = try await provider.submit(quote, approval: approval) }
-        #expect(await http.requests.count == 1)
+        let job = try await provider.submit(quote, approval: approval)
+        #expect(try await provider.poll(job) == .running(progress: nil))
+        let requests = await http.requests
+        #expect(requests.count == 2 && requests.allSatisfy { $0.url?.host == "queue.fal.run" })
     }
 
     @Test func providerErrorsAreFixedCopyAndCleanupFailureIsNotHidden() async throws {
@@ -329,6 +372,89 @@ struct FalLipsyncProviderTests {
         #expect(!messages.contains("synthetic-lipsync-fixture-key"))
         #expect(await log.secrets.contains(quote.video.url.absoluteString))
         #expect(await log.secrets.contains(quote.audio.url.absoluteString))
+    }
+
+    /// One failed status poll no longer ends a paid run (MVP 00:25:30): it is tried again after a backoff, logged with its
+    /// stage and status (no URL or key), and the job's result is returned. Before: wait() threw http(502) at once.
+    @Test func aStatusPollThatFailsOnceIsTriedAgain() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let log = LipsyncFixtureLog(), clock = LipsyncFixtureClock()
+        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt()), .json(502, #"{"detail":"bad gateway"}"#),
+                                      .json(200, Fixtures.inProgress), .json(200, Fixtures.completed), .json(200, Fixtures.output)])
+        let provider = try Fixtures.provider(http, clock: clock, logger: log), quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        #expect(try await provider.wait(job) == Fixtures.result)
+        #expect(await log.messages.contains("lipsync provider=fal event=poll-failed stage=status status=502 reason=http"))
+        #expect(clock.state.withLock { $0.sleeps } == [.seconds(5), .seconds(5), .seconds(5)])
+    }
+
+    /// A result fetch that times out and a 429 with Retry-After are passing failures too; the wait honours Retry-After.
+    @Test func aResultFetchFailureAndARateLimitAreTriedAgain() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let log = LipsyncFixtureLog(), clock = LipsyncFixtureClock()
+        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt()), .json(200, Fixtures.completed), .network,
+                                      .retry(429, #"{"detail":"slow down"}"#, 30), .json(200, Fixtures.completed), .json(200, Fixtures.output)])
+        let provider = try Fixtures.provider(http, clock: clock, logger: log), quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        #expect(try await provider.wait(job) == Fixtures.result)
+        let messages = await log.messages
+        #expect(messages.contains("lipsync provider=fal event=poll-failed stage=result status=unknown reason=network"))
+        #expect(messages.contains("lipsync provider=fal event=poll-failed stage=status status=429 reason=http"))
+        #expect(clock.state.withLock { $0.sleeps } == [.seconds(5), .seconds(5), .seconds(30)])
+    }
+
+    /// A key fal.ai refuses (403) is not a passing failure: the wait stops at once, without cancelling the job.
+    @Test func aRefusedPollStopsAtOnce() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt()), .json(403, #"{"detail":"forbidden"}"#)])
+        let provider = try Fixtures.provider(http), quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        await #expect(throws: LipsyncError.http(403)) { _ = try await provider.wait(job) }
+        #expect(await http.requests.count == 2)
+        #expect(await provider.status(quoteID: quote.id)?.cancelled == false)
+    }
+
+    /// fal.ai failing the job is its own error, with its sanitized error type, never "the media didn't pass the file checks".
+    @Test func aJobFalFailedIsAProviderFailureWithItsType() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let log = LipsyncFixtureLog()
+        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt()),
+            .json(200, #"{"status":"COMPLETED","error":"No face https://private.example/x","error_type":"Face_Not_Detected <b>"}"#)])
+        let provider = try Fixtures.provider(http, logger: log), quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        await #expect(throws: LipsyncError.providerFailed("face_not_detectedb")) { _ = try await provider.wait(job) }
+        #expect(!(await log.messages.joined().contains("private.example")))
+    }
+
+    /// fal.ai's File fields may be null: a null content type, size or name reads as absent.
+    @Test func nullResultFileFieldsAreAbsent() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let output = #"{"video":{"url":"https://v3.fal.media/files/fixture/result.mp4","content_type":null,"file_size":null,"file_name":null}}"#
+        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt()), .json(200, Fixtures.completed), .json(200, output)])
+        let provider = try Fixtures.provider(http), quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        #expect(try await provider.poll(job) == .done(Fixtures.result))
+    }
+
+    /// A free re-fetch asks the request's status first: while fal.ai still runs it, it keeps checking within the job's
+    /// deadline, then stops as still running (free to check again), never GETting a result that isn't there.
+    @Test func aRefetchOfAStillRunningJobStopsAsStillRunning() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let clock = LipsyncFixtureClock()
+        let http = LipsyncFixtureHTTP(Array(repeating: .json(200, Fixtures.inProgress), count: 4))
+        let provider = try Fixtures.provider(http, clock: clock)
+        let file = root.appendingPathComponent("result.mp4")
+        await #expect(throws: LipsyncError.stillRunning) {
+            try await provider.refetch(requestID: Fixtures.requestID, model: provider.models[3], to: file, until: clock.now().addingTimeInterval(16))
+        }
+        let requests = await http.requests
+        #expect(requests.count == 4 && requests.allSatisfy { $0.url?.path.hasSuffix("/status") == true })
+        #expect(await http.downloads.isEmpty)
     }
 }
 #endif

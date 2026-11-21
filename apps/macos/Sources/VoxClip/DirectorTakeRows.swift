@@ -315,7 +315,10 @@ extension ClipTakePlan.Phrase {
         .onChange(of: session.editor.app.voiceLabSession.records) { _, _ in generation.inputsChanged() }
         .onChange(of: session.editor.app.connectorReadinessRevision) { _, _ in Task { await session.takePlan?.lipsync.refresh() } }
         .onChange(of: session.editor.app.string("voiceLab.monthlyCapUsd.fal")) { _, _ in Task { await session.takePlan?.lipsync.refresh() } }
-        .task(id: session.takePlan?.phrases.map { "\($0.selectedID?.uuidString ?? "")-\($0.videoChoice?.rawValue ?? "")-\($0.text)" }) {
+        // Fresh lip-sync offers when a take, its duration or its words change, and when an offer on screen went stale
+        // (the plan changed under it): a stale offer is never left clickable.
+        .task(id: (session.takePlan?.phrases.map { "\($0.selectedID?.uuidString ?? "")-\($0.videoChoice?.rawValue ?? "")-\($0.text)" } ?? [])
+                  + [session.takePlan?.lipsync.hasStaleOffer == true ? "stale" : "current"]) {
             await session.takePlan?.lipsync.refresh()
         }
         .onDisappear { session.takePlan?.stopAudition() }

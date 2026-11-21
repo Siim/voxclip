@@ -14,6 +14,8 @@ private final class LipsyncHTTPFixtureProtocol: URLProtocol {
         var barrier: LipsyncFixtureBarrier?
         var redirect: URL?
         var observe: (@Sendable (URLRequest) -> Void)?
+        /// After a refused redirect, deliver the 3xx itself as the response (as URLSession does over the network).
+        var deliverRedirect = false
     }
     static let replies = Mutex<[String: [Reply]]>([:])
     private struct WorkerState {
@@ -47,6 +49,10 @@ private final class LipsyncHTTPFixtureProtocol: URLProtocol {
             guard !owner.worker.withLock({ $0.stopped }), !Task.isCancelled else { return }
             if let redirect = reply.redirect {
                 owner.client?.urlProtocol(owner, wasRedirectedTo: URLRequest(url: redirect), redirectResponse: response)
+                if reply.deliverRedirect, !owner.worker.withLock({ $0.stopped }), !Task.isCancelled {
+                    owner.client?.urlProtocol(owner, didReceive: response, cacheStoragePolicy: .notAllowed)
+                    for chunk in reply.chunks { owner.client?.urlProtocol(owner, didLoad: chunk) }
+                }
                 if !owner.worker.withLock({ $0.stopped }), !Task.isCancelled {
                     owner.client?.urlProtocolDidFinishLoading(owner)
                 }
@@ -162,10 +168,62 @@ struct LipsyncHTTPClientTests {
         await #expect(throws: LipsyncError.responseTooLarge) { _ = try await http.send(URLRequest(url: encodedOversized), limit: 32, permit: nil) }
     }
 
+    /// A JSON request asks for gzip or deflate itself, so URLSession never offers br (which the transfer refuses); an answer
+    /// in an encoding nobody asked for is still refused. A media download asks for identity.
     @Test(arguments: ["br", "gzip, deflate", "identity-bogus"]) func unsupportedEncodingsAreRejected(encoding: String) async {
+        let asked = Mutex<String?>(nil)
         let url = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "application/json", "Content-Encoding": encoding],
-                                                           chunks: [Data("{}".utf8)]))
+            chunks: [Data("{}".utf8)], observe: { request in asked.withLock { $0 = request.value(forHTTPHeaderField: "Accept-Encoding") } }))
         await #expect(throws: LipsyncError.invalidResponse) { _ = try await http.send(URLRequest(url: url), limit: 1_024, permit: nil) }
+        #expect(asked.withLock { $0 } == "gzip, deflate")
+    }
+
+    @Test func aJSONRequestAsksForGzipOrDeflateAndADownloadForIdentity() async throws {
+        let root = try LipsyncProviderFixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let asked = Mutex<[String?]>([])
+        let observe: @Sendable (URLRequest) -> Void = { request in asked.withLock { $0.append(request.value(forHTTPHeaderField: "Accept-Encoding")) } }
+        let json = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "application/json"], chunks: [Data("{}".utf8)], observe: observe))
+        _ = try await http.send(URLRequest(url: json), limit: 1_024, permit: nil)
+        let media = LipsyncHTTPFixtureProtocol.register(.init(chunks: [header], observe: observe))
+        try await http.download(URLRequest(url: media), to: root.appendingPathComponent("result.mp4"), limit: 1_024)
+        #expect(asked.withLock { $0 } == ["gzip, deflate", "identity"])
+    }
+
+    /// A refused redirect's 3xx then arrives as the response: it stays unsafeURL. Before: the JSON call saw "HTTP 302" (at a
+    /// submit, "charge unknown") and a download a file-check failure.
+    @Test func aRefusedRedirectOfAJSONRequestStaysUnsafe() async throws {
+        let target = URL(string: "https://127.0.0.1/never-requested")!
+        let url = LipsyncHTTPFixtureProtocol.register(.init(status: 302, headers: ["Content-Type": "application/json", "Location": target.absoluteString],
+                                                           chunks: [Data("{}".utf8)], redirect: target, deliverRedirect: true))
+        await #expect(throws: LipsyncError.unsafeURL) { _ = try await http.send(URLRequest(url: url), limit: 1_024, permit: nil) }
+        let root = try LipsyncProviderFixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let media = LipsyncHTTPFixtureProtocol.register(.init(status: 302, headers: ["Content-Type": "text/html", "Location": target.absoluteString],
+                                                             chunks: [Data("moved".utf8)], redirect: target, deliverRedirect: true))
+        await #expect(throws: LipsyncError.unsafeURL) {
+            try await http.download(URLRequest(url: media), to: root.appendingPathComponent("result.mp4"), limit: 1_024)
+        }
+    }
+
+    /// An upload or a media download gets 60 s plus its bytes at 2 Mbit/s in all, never a fixed two minutes: a 300 MB
+    /// window upload has 1,260 s. JSON stays at 30 s.
+    @Test func transferTimeoutsScaleWithTheBytes() async throws {
+        let big = URLSessionLipsyncHTTPClient.timeouts(upload: true, download: false, bytes: 300_000_000, requested: 60)
+        #expect(big.resource > 120 && big.resource == 1_260 && big.request == 120)
+        let result = URLSessionLipsyncHTTPClient.timeouts(upload: false, download: true, bytes: LipsyncLimits.maximumVideoBytes, requested: 60)
+        #expect(result.resource > 2_000 && result.request == 30)
+        let json = URLSessionLipsyncHTTPClient.timeouts(upload: false, download: false, bytes: 1_024, requested: 30)
+        #expect(json.request == 30 && json.resource == 30)
+        // The configuration a real PUT gets.
+        let seen = Mutex<[TimeInterval]>([])
+        let client = URLSessionLipsyncHTTPClient(configure: { configuration in
+            configuration.protocolClasses = [LipsyncHTTPFixtureProtocol.self]
+            seen.withLock { $0.append(configuration.timeoutIntervalForResource) }
+        })
+        let target = LipsyncHTTPFixtureProtocol.register(.init(status: 200, headers: [:], chunks: []))
+        var put = URLRequest(url: target)
+        put.httpMethod = "PUT"; put.httpBody = Data(count: 2_500_000)
+        _ = try await client.send(put, limit: 1_024, permit: nil)
+        #expect(seen.withLock { $0 } == [70])
     }
 
     @Test func compressedMediaIsNotPublished() async throws {
