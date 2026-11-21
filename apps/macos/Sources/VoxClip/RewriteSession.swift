@@ -303,6 +303,13 @@ struct RewriteChange: Equatable, Sendable {
     /// The session applies its own changes (Apply, Use Takes): the edit that follows is not an edit in its scope. Set only
     /// around the synchronous edit (`ownEdit`), so an edit the user makes while takes publish is still followed.
     @ObservationIgnored private var applying = false
+    /// The scope before and after Rewrite's last own whole-clip commit (`commitOwnEdit`): the editor's Undo back to `before`
+    /// and Redo back to `after` are the card's own (`followOwnCommit`).
+    struct OwnCommit {
+        let before: Project
+        let after: Project
+    }
+    @ObservationIgnored private var ownCommit: OwnCommit?
     /// The review being built again, off the main actor, after an edit outside the scope moved the session on (`move`).
     /// Make Takes and Use Takes wait for it.
     @ObservationIgnored private(set) var reviewing: Task<Void, Never>?
@@ -1080,7 +1087,7 @@ struct RewriteChange: Equatable, Sendable {
     /// The patch's paid takes as a stop names them: ("Your 3 paid takes (≈ $0.12) are kept", "them"), ("Your paid take
     /// is kept", "it"), or ("Your paid takes are kept", "them") while the first are still being made.
     var paidTakesKept: (kept: String, pronoun: String) {
-        let takes = paidTakeCount
+        let takes = paidTakeCount > 0 ? paidTakeCount : restoredPendingTakes
         let usd = takePlan.flatMap { $0.isRetired ? nil : $0.spent.usd }
         let cost = usd.map { $0 > 0 ? " (" + VoiceLabCostPresentation.format($0) + ")" : "" } ?? ""
         if takes == 1 { return ("Your paid take\(cost) is kept", "it") }
@@ -1129,8 +1136,9 @@ struct RewriteChange: Equatable, Sendable {
         if editor.app.shell.editor === editor, !editor.app.shell.viewerShown { editor.app.shell.toggleViewer() }
         editor.announce(question)
     }
-    /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then).
-    var changeNeedsDiscard: Bool { hasPaidTakes && !applyingTextFixesOnly }
+    /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then): this
+    /// Rewrite's own, or those saved before VoxClip closed that Make Takes would adopt for these words.
+    var changeNeedsDiscard: Bool { (hasPaidTakes || restoredTakesPending) && !applyingTextFixesOnly }
     func confirmPaidProposalChange(waiting: RewriteThreadState.Waiting? = nil, perform: @escaping @MainActor () -> Void) -> Bool {
         guard changeNeedsDiscard else { return false }
         confirmDiscardChanges(waiting: waiting) { [weak self] in
@@ -1148,6 +1156,8 @@ struct RewriteChange: Equatable, Sendable {
     private func discardPaidPlan(perform: @MainActor () -> Void) {
         takePlan?.invalidate(); takePlan = nil
         generation?.invalidate()
+        // The user let the takes go: those saved before a relaunch go too, and the saved record with them.
+        letGoOfRestoredTakes()
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil
         surroundingSentenceOrdinal = nil; takeQuotePhrase = nil
         perform()
@@ -1267,6 +1277,33 @@ struct RewriteChange: Equatable, Sendable {
         defer { applying = false }
         return try edit()
     }
+    /// Rewrite's own commit of the whole clip (Use Whole Clip, Use the Voice Without Lip Sync), which leaves the session open
+    /// on its card: `follow` doesn't take it for an edit in the scope (it used to show R3, "Nothing was applied", over a
+    /// commit that went in), and the session moves on to the committed project, so the card shows it used and an edit after
+    /// it is followed from there. The editor's Undo and Redo of that one step are followed as the card's own
+    /// (`followOwnCommit`).
+    func commitOwnEdit(_ edit: () throws -> Void) rethrows {
+        let before = project
+        try ownEdit(edit)
+        let after = editor.project.scoped(to: project.edits.activeClipId)
+        ownCommit = OwnCommit(before: before, after: after)
+        project = after; derive()
+    }
+    /// The editor's Undo (⌘Z) of Rewrite's own whole-clip commit puts the card back where Use was clicked, its paid voice and
+    /// lip sync unused again: closing asks first, the saved record is written again, so a relaunch offers them back, and
+    /// Use puts them in again for free. Redo puts the commit back, and the card is used again. True when `next` is either.
+    private func followOwnCommit(_ next: Project) -> Bool {
+        guard let commit = ownCommit, let whole = wholeClip, !whole.running, case .proposal = task.state else { return false }
+        let scoped = inside(next)
+        let undo = whole.phase == .used && scoped == inside(commit.before)
+        let redo = whole.useWasUndone && scoped == inside(commit.after)
+        guard undo || redo else { return false }
+        // The project first: the record written again is the one a relaunch over this project reads.
+        project = next; derive()
+        if undo { whole.useUndone() } else { whole.useRedone() }
+        refreshWholeClipPanel()
+        return true
+    }
     /// The free changes still pending as edit commands: cuts of words not cut yet, and corrections.
     var localCommands: [EditCommand] { pendingFree.flatMap(editor.commands) }
     func close() {
@@ -1291,6 +1328,7 @@ struct RewriteChange: Equatable, Sendable {
             editor.closeRewrite(returnFocus: false)
             return
         }
+        if followOwnCommit(next) { return }
         let unchanged = after == before
         if task.state == .changed {
             guard unchanged else { return }

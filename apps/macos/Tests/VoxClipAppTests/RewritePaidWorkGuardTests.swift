@@ -332,8 +332,12 @@ import UniformTypeIdentifiers
         #expect(throws: CocoaError(.userCancelled)) { try document.revert(toContentsOf: url, ofType: type) }
         #expect(session.task.confirm?.confirm.id == "approveQuote", "the question shown stays")
         #expect(fixture.editor.lastAnnouncement == RewriteSession.revertWaitsNotice, "\(String(describing: fixture.editor.lastAnnouncement))")
+        // Shown, not only spoken: the status bar's Rewrite notice says the revert waits, until the revert runs again.
+        #expect(fixture.editor.rewriteNotice == RewriteSession.revertWaitsNotice, "\(String(describing: fixture.editor.rewriteNotice))")
+        #expect(fixture.editor.statusRewriteNotice?.spoken == RewriteSession.revertWaitsNotice)
         session.task.confirm?.cancel.perform()
         #expect(await TestDeadline.until { session.task.confirm?.confirm.id == "discardPaidWork" }, "the revert asks once the question is answered")
+        #expect(fixture.editor.rewriteNotice == nil, "the waiting line goes once the revert runs: \(String(describing: fixture.editor.rewriteNotice))")
         asks(fixture, "Revert the project and discard ")
         session.task.confirm?.confirm.perform()
         #expect(!session.isOpen && fixture.editor.openRewrite == nil, "Discard and Revert reverts")

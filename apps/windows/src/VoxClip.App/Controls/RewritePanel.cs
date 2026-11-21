@@ -533,16 +533,33 @@ internal sealed partial class RewritePanel : Grid
     private void RequestClose()
     {
         if (session.RequestClose()) { Close(); return; }
+        ShowCloseQuestion(null);
+    }
+    /// <summary>Another Rewrite would open in this one's place (the toolbar, the menu, a tone, a shell job): over paid takes it asks
+    /// here first, as closing does (Mac <c>askBeforeReplacing</c>): "Start a new Rewrite and discard 3 paid takes?" with Keep Working,
+    /// the default, and Discard and Rewrite, which disposes them and runs <paramref name="replay"/>, the press again.</summary>
+    internal void AskBeforeReplacing(Func<Task> replay)
+    {
+        if (session.RequestClose()) { Close(); _ = replay(); return; }
+        ShowCloseQuestion(replay);
+    }
+    private void ShowCloseQuestion(Func<Task>? replay)
+    {
         if (!session.CloseAsked) return;
         closeQuestion.Children.Clear();
-        var question = RewriteSession.CloseQuestion(session.PaidTakeCount);
+        var question = RewriteSession.CloseQuestion(session.PaidTakeCount, newRewrite: replay is not null);
         var text = Ui.Text(question);
         AutomationProperties.SetAutomationId(text, "Rewrite.CloseQuestion");
         var keep = Ui.Button("Keep Working", KeepWorking, accent: true);
-        var discard = Ui.Button("Discard and Close", Close);
-        SetName(keep, "Keep Working"); SetName(discard, "Discard and Close");
+        var title = replay is null ? "Discard and Close" : "Discard and Rewrite";
+        var discard = Ui.Button(title, () =>
+        {
+            Close();
+            if (replay is not null) _ = replay();
+        });
+        SetName(keep, "Keep Working"); SetName(discard, title);
         AutomationProperties.SetAutomationId(keep, "Rewrite.KeepWorking");
-        AutomationProperties.SetAutomationId(discard, "Rewrite.DiscardAndClose");
+        AutomationProperties.SetAutomationId(discard, replay is null ? "Rewrite.DiscardAndClose" : "Rewrite.DiscardAndRewrite");
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         buttons.Children.Add(keep); buttons.Children.Add(discard);
         closeQuestion.Children.Add(text); closeQuestion.Children.Add(buttons);

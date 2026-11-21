@@ -34,6 +34,8 @@ public sealed partial class EditorPage
     /// the field, and sends it at once; a send that asks first asks inline in the panel.</summary>
     private async Task RewriteAsAsync(RewriteAsRequest request)
     {
+        // Over the open Rewrite's paid takes the tone asks first, there; its Discard and Rewrite runs the tone again.
+        if (AskBeforeReplacingRewrite(() => RewriteAsAsync(request))) return;
         if (request.Words is { } words)
         {
             ViewModel.Select(words.First);

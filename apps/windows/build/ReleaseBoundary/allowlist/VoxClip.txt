@@ -788,6 +788,7 @@ member VoxClip.App.Controls.RewritePanel :: field private wordingChoice
 member VoxClip.App.Controls.RewritePanel :: field private wordingFit
 member VoxClip.App.Controls.RewritePanel :: field private words
 member VoxClip.App.Controls.RewritePanel :: method internal .ctor(VoxClip.App.ViewModels.RewriteSession,System.Func`1<bool>,VoxClip.App.MainWindow)
+member VoxClip.App.Controls.RewritePanel :: method internal AskBeforeReplacing(System.Func`1<System.Threading.Tasks.Task>)
 member VoxClip.App.Controls.RewritePanel :: method internal CloseForHost()
 member VoxClip.App.Controls.RewritePanel :: method internal SendNowAsync()
 member VoxClip.App.Controls.RewritePanel :: method internal add_Closed(System.EventHandler)
@@ -851,6 +852,7 @@ member VoxClip.App.Controls.RewritePanel :: method private RequestClose()
 member VoxClip.App.Controls.RewritePanel :: method private SendProposalAsync()
 member VoxClip.App.Controls.RewritePanel :: method private SendTellTheAiAsync()
 member VoxClip.App.Controls.RewritePanel :: method private SetName(Microsoft.UI.Xaml.DependencyObject,string)
+member VoxClip.App.Controls.RewritePanel :: method private ShowCloseQuestion(System.Func`1<System.Threading.Tasks.Task>)
 member VoxClip.App.Controls.RewritePanel :: method private ShowVoiceApprovalAsync(VoxClip.App.ViewModels.InlineApproval)
 member VoxClip.App.Controls.RewritePanel :: method private Small(string)
 member VoxClip.App.Controls.RewritePanel :: method private SpendChanged(object,System.EventArgs)
@@ -878,10 +880,12 @@ member VoxClip.App.Controls.RightColumn :: field private voiceTab
 member VoxClip.App.Controls.RightColumn :: method internal .ctor(VoxClip.App.Controls.CaptionsPanel)
 member VoxClip.App.Controls.RightColumn :: method internal CloseRewrite()
 member VoxClip.App.Controls.RightColumn :: method internal RequestSourcePlayback(VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.Controls.RightColumn :: method internal RevealRewrite(VoxClip.App.Controls.RewritePanel)
 member VoxClip.App.Controls.RightColumn :: method internal ShowRewrite(VoxClip.App.Controls.RewritePanel)
 member VoxClip.App.Controls.RightColumn :: method internal TryShow(VoxClip.App.ViewModels.EditorViewModel,VoxClip.App.Controls.InlineEditorJob)
 member VoxClip.App.Controls.RightColumn :: method internal add_SourcePlaybackRequested(System.EventHandler)
 member VoxClip.App.Controls.RightColumn :: method internal get_FocusTarget()
+member VoxClip.App.Controls.RightColumn :: method internal get_HeldJobLabel()
 member VoxClip.App.Controls.RightColumn :: method internal remove_SourcePlaybackRequested(System.EventHandler)
 member VoxClip.App.Controls.RightColumn :: method private .cctor()
 member VoxClip.App.Controls.RightColumn :: method private CloseJob()
@@ -1825,11 +1829,13 @@ member VoxClip.App.Pages.EditorPage :: method internal UpdateShellChrome()
 member VoxClip.App.Pages.EditorPage :: method internal get_CorrectionOpen()
 member VoxClip.App.Pages.EditorPage :: method internal get_FindClips()
 member VoxClip.App.Pages.EditorPage :: method internal get_IsDemo()
+member VoxClip.App.Pages.EditorPage :: method internal get_LeaveHeldByPaidWork()
 member VoxClip.App.Pages.EditorPage :: method internal get_MediaPath()
 member VoxClip.App.Pages.EditorPage :: method internal get_ShellStatus()
 member VoxClip.App.Pages.EditorPage :: method internal get_Tabs()
 member VoxClip.App.Pages.EditorPage :: method private ApproveAskClaudeSendAsync(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,int,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private ApproveMakeItSendAsync(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,System.Threading.CancellationToken)
+member VoxClip.App.Pages.EditorPage :: method private AskBeforeReplacingRewrite(System.Func`1<System.Threading.Tasks.Task>)
 member VoxClip.App.Pages.EditorPage :: method private AskClaudeSendAsync(VoxClip.App.ViewModels.AskClaudeAsk,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private AspectChanged(object,Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private AspectLoaded(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -2339,7 +2345,9 @@ member VoxClip.App.Services.ProviderEntry :: method public set_Label(string)
 member VoxClip.App.Services.ProviderEntry :: method public set_Metadata(System.Text.Json.JsonElement)
 member VoxClip.App.Services.ProviderEntry :: method public set_WireId(string)
 member VoxClip.App.Services.RedirectedLaunchSelection :: method internal FilePath(System.Collections.Generic.IReadOnlyList`1<string>,string)
+member VoxClip.App.Services.RestartNotice :: field internal HeldByPaidWork
 member VoxClip.App.Services.RestartPreparation :: field public Busy
+member VoxClip.App.Services.RestartPreparation :: field public HeldByPaidWork
 member VoxClip.App.Services.RestartPreparation :: field public Ready
 member VoxClip.App.Services.RestartPreparation :: field public SaveFailed
 member VoxClip.App.Services.RestartPreparation :: field public TransitionActive
@@ -2348,6 +2356,7 @@ member VoxClip.App.Services.RestartResult :: field public AlreadyPreparing
 member VoxClip.App.Services.RestartResult :: field public Busy
 member VoxClip.App.Services.RestartResult :: field public Cancelled
 member VoxClip.App.Services.RestartResult :: field public Dispatched
+member VoxClip.App.Services.RestartResult :: field public HeldByPaidWork
 member VoxClip.App.Services.RestartResult :: field public SaveFailed
 member VoxClip.App.Services.RestartResult :: field public SettingsFailed
 member VoxClip.App.Services.RestartResult :: field public TransitionActive
@@ -6023,7 +6032,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal ChooseDuration(i
 member VoxClip.App.ViewModels.RewriteSession :: method internal ChooseOfferedTakeAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ChooseVoiceForWindowsAsync(string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ChooseWordingAsync(VoxClip.App.ViewModels.PhraseWording,int)
-member VoxClip.App.ViewModels.RewriteSession :: method internal CloseQuestion(int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal CloseQuestion(int,bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureGeneration(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureGenerationFactory(System.Func`2<int,VoxClip.App.ViewModels.RewriteGeneration>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureInlineConsent(System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<bool>,bool)
@@ -6104,6 +6113,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal RecordPhraseAsyn
 member VoxClip.App.ViewModels.RewriteSession :: method internal RecordedText(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal Refusal(System.Exception)
 member VoxClip.App.ViewModels.RewriteSession :: method internal RemoveExpression(int,int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal ReplaceHeldNotice(string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal RequestClose()
 member VoxClip.App.ViewModels.RewriteSession :: method internal RetryThreadAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ReviewDiff()
@@ -8579,6 +8589,7 @@ type VoxClip.App.Services.ProjectFactory
 type VoxClip.App.Services.ProviderCatalog
 type VoxClip.App.Services.ProviderEntry
 type VoxClip.App.Services.RedirectedLaunchSelection
+type VoxClip.App.Services.RestartNotice
 type VoxClip.App.Services.RestartPreparation
 type VoxClip.App.Services.RestartResult
 type VoxClip.App.Services.RewriteGenerationBackend

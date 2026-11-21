@@ -235,10 +235,14 @@ extension UTType {
                 guard let other = document as? VoxClipDocument else { return false }
                 return other !== self && other.project.id == project.id
             })
-            retainedVoiceLabFiles.formUnion(VoiceLabAssetRetention.references(in: project))
+            let inUse = VoiceLabAssetRetention.references(in: project)
+            retainedVoiceLabFiles.formUnion(inUse)
             do {
+                // Every file of the session's history stays; only what the project as it closes uses ends a paid take's
+                // journal entry, so a take or whole clip Use put in and Undo took out again stays adoptable after a relaunch.
                 try VoiceLabAssetRetention.closeProject(projectId: project.id,
-                    paidRoot: editorModel.app.locations.root.appendingPathComponent("VoiceLab"), references: retainedVoiceLabFiles, allowDeletion: voiceLabActivityReady && !anotherOpen,
+                    paidRoot: editorModel.app.locations.root.appendingPathComponent("VoiceLab"), references: retainedVoiceLabFiles, inUse: inUse,
+                    allowDeletion: voiceLabActivityReady && !anotherOpen,
                     recheckReferences: {
                         var references = self.retainedVoiceLabFiles.union(VoiceLabAssetRetention.references(in: self.project))
                         for case let document as VoxClipDocument in NSDocumentController.shared.documents {

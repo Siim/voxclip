@@ -25,8 +25,10 @@ extension RewriteSession {
     }
 
     /// Unused or running paid work, which closing asks about and Claude mode never closes over: `hasPaidWork`, less a used
-    /// whole clip's lip sync, which its plan still lists as applied after Use put it in the project.
+    /// whole clip's lip sync, which its plan still lists as applied after Use put it in the project, and the paid takes
+    /// saved before VoxClip closed that wait for Make Takes to adopt them (`restoredTakesPending`).
     var hasUnusedPaidWork: Bool {
+        if restoredTakesPending { return true }
         guard hasPaidWork else { return false }
         guard !hasPaidPatchWork, wholeClip?.phase == .used else { return true }
         return wholeClipPlan?.lipsync.running == true
@@ -103,6 +105,8 @@ extension RewriteSession {
             }
         }
         if let whole = wholeClip, whole.phase != .used { usd += whole.spent }
+        // Takes saved before VoxClip closed, at what they cost, when the journal still gives every one of them back.
+        if let saved = restoredProposal, restoredPendingTakes == saved.patchTakes { usd += saved.patchUSD }
         return usd
     }
 
@@ -119,6 +123,8 @@ extension RewriteSession {
             if synced == 1 { parts.append("1 lip sync") } else if synced > 1 { parts.append("\(synced) lip syncs") }
             if takePlan?.lipsync.running == true { parts.append("a lip sync still running") }
         }
+        let restored = restoredPendingTakes
+        if restored == 1 { parts.append("1 paid take") } else if restored > 1 { parts.append("\(restored) paid takes") }
         if let whole = wholeClip, whole.phase != .used, whole.running || whole.spent > 0 || wholeClipPlan?.lipsync.hasPaidWork == true {
             if whole.running { parts.append(whole.spent > 0 ? "the paid whole-clip voice, still being made" : "the whole-clip voice being made") }
             else if whole.synced != nil || wholeClipPlan?.lipsync.applied.isEmpty == false { parts.append("the paid whole-clip voice and lip sync") }
@@ -155,7 +161,13 @@ extension RewriteSession {
         if reason == .close || reason == .revert, let shown = task.confirm, shown.confirm.id != "discardPaidWork" {
             bringQuestionForward(shown.confirm.id)
             if let waiting {
-                whenQuestionAnswered(waiting)
+                // The status bar says the revert waits, where the other Rewrite notices show, until the revert runs again.
+                let editor = self.editor
+                editor.rewriteNotice = Self.revertWaitsNotice
+                whenQuestionAnswered { [weak editor] in
+                    if editor?.rewriteNotice == Self.revertWaitsNotice { editor?.rewriteNotice = nil }
+                    waiting()
+                }
                 editor.announce(Self.revertWaitsNotice)
             }
             return

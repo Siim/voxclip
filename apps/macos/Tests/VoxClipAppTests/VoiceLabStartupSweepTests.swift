@@ -42,5 +42,34 @@ private actor SweepSettingsStore: SettingsStore {
         #expect(names.contains(live.name) && names.contains("calibration-timing"), "\(names)")
         withExtendedLifetime((left, live)) {}
     }
+
+    /// Launch sweeps saved Rewrite proposals 60 days unused, beside the scratch: they used to go only when one was read, so
+    /// a project never opened again kept its records forever. Records still in their 60 days stay, and so does a
+    /// temporary file a write may still be making; one left by a crash an hour ago or more goes.
+    @Test func launchSweepsSavedRewritesSixtyDaysUnused() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-startup-rewrite-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let paidRoot = root.appendingPathComponent("VoiceLab", isDirectory: true)
+        func record(_ project: String, savedAt: Date) throws -> URL {
+            let url = try #require(RewriteSavedProposalStore.url(paidRoot: paidRoot, projectId: project, scope: "full"))
+            let saved = RewriteSavedProposal(projectId: project, scope: "full", inputs: "x", instruction: "", changes: [], kept: [], pricedAnyway: [],
+                                             voiceRecordID: nil, patchTakes: 1, patchUSD: 0.04, patchRequests: [], wholeClip: nil, savedAt: savedAt)
+            try RewriteSavedProposalStore.write(RewriteSavedProposalStore.encode(saved), to: url)
+            return url
+        }
+        let old = try record("p-old", savedAt: Date().addingTimeInterval(-61 * 86_400))
+        let fresh = try record("p-fresh", savedAt: Date().addingTimeInterval(-59 * 86_400))
+        let folder = fresh.deletingLastPathComponent()
+        let crashed = folder.appendingPathComponent(".x.json.crashed.partial"), writing = folder.appendingPathComponent(".x.json.writing.partial")
+        try Data([1]).write(to: crashed); try Data([1]).write(to: writing)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-2 * 3_600)], ofItemAtPath: crashed.path)
+        let app = AppModel(settingsStore: SweepSettingsStore(exports: root.appendingPathComponent("Exports")),
+                           locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        app.voiceRecoveryForTests = {}
+        await app.start()
+        #expect(!FileManager.default.fileExists(atPath: old.path), "a record 60 days unused goes at launch")
+        #expect(FileManager.default.fileExists(atPath: fresh.path), "one still in its 60 days stays")
+        #expect(!FileManager.default.fileExists(atPath: crashed.path) && FileManager.default.fileExists(atPath: writing.path))
+    }
 }
 #endif

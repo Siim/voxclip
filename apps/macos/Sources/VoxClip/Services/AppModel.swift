@@ -296,6 +296,8 @@ extension ProviderChoice {
         let scratchRoot = locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
         do {
             let swept = try await Task.detached(priority: .utility) {
+                // Saved Rewrite proposals 60 days unused go at launch too, not only when one is read (voice-lab §3.5).
+                RewriteSavedProposalStore.sweepStale(paidRoot: paidRoot)
                 _ = try VoiceLabAssetStore.recoverStalePartials(paidRoot: paidRoot)
                 try VoiceLabAssetRetention.discoverUnlisted(paidRoot: paidRoot)
                 // Scratch copies of takes that a quit, crash or relaunch left behind (their owner is gone); paid files stay.

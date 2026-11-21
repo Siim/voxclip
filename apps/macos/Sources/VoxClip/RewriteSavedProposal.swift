@@ -44,14 +44,14 @@ struct RewriteSavedProposal: Codable, Equatable {
         var usd: Decimal
     }
     /// The whole clip's paid work: its script, what each voice and lip sync cost, fal.ai's charges for failed attempts,
-    /// and the journal requests of the voice's parts, which say whether every part can come back with its word check only.
+    /// and the journal requests of the voice's parts, which say which parts can come back with their word check only.
     struct WholeClip: Codable, Equatable {
         var script: WholeClipScript
         var baseScript: WholeClipScript
         var voices: [VoiceEntry]
         var lipsyncs: [LipsyncEntry]
         var billed: [String: Decimal]
-        /// The voice's parts, and the journal requests of those whose paid take was made.
+        /// The voice's parts, and the journal request of each part's paid take, in part order ("" for a part with none).
         var parts: Int
         var partRequests: [String]
     }
@@ -99,12 +99,15 @@ extension RewriteSavedProposal.Change {
     }
 }
 
-/// Where saved proposals live: `<data>/VoiceLab/<projectId>/rewrite/<sha256 of the scope>.json`, owner-only, written
-/// atomically. The Voice Lab's asset retention reads only audio and video files there, so it never takes one.
+/// Where saved proposals live: `<data>/VoiceLab/<projectId>/rewrite/<sha256 of the scope>.json`, owner-only from the
+/// moment it exists (0600 in a 0700 folder), written atomically and fsynced. The Voice Lab's asset retention reads only
+/// audio and video files there, so it never takes one. A launch sweeps the records 60 days unused (`sweepStale`).
 enum RewriteSavedProposalStore {
+    static let folderName = "rewrite"
+
     static func url(paidRoot: URL, projectId: String, scope: String) -> URL? {
         guard !projectId.isEmpty, projectId != ".", projectId != "..", !projectId.contains("/") else { return nil }
-        return paidRoot.appendingPathComponent(projectId, isDirectory: true).appendingPathComponent("rewrite", isDirectory: true)
+        return paidRoot.appendingPathComponent(projectId, isDirectory: true).appendingPathComponent(folderName, isDirectory: true)
             .appendingPathComponent(VoiceLabFingerprint.bytes(Data(scope.utf8)) + ".json")
     }
 
@@ -128,16 +131,74 @@ enum RewriteSavedProposalStore {
         return try encoder.encode(saved)
     }
 
+    /// Writes `data` at `url` atomically: a temporary file created 0600 in the record's folder (forced to 0700, also when
+    /// it already exists), written and fsynced, then renamed over the record and the folder fsynced. No moment shows the
+    /// record with other permissions, half written, or under its name before it is complete.
     static func write(_ data: Data, to url: URL) throws {
         let folder = url.deletingLastPathComponent()
+        try ownerOnlyFolder(folder)
+        let temporary = folder.appendingPathComponent("." + url.lastPathComponent + "." + UUID().uuidString.lowercased() + ".partial")
+        let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
+        var renamed = false
+        defer {
+            close(descriptor)
+            if !renamed { unlink(temporary.path) }
+        }
+        // The umask can only take bits away; the mode is set exactly on the temporary file, before it has the record's name.
+        guard fchmod(descriptor, 0o600) == 0 else { throw CocoaError(.fileWriteNoPermission) }
+        try data.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                let written = Darwin.write(descriptor, buffer.baseAddress!.advanced(by: offset), buffer.count - offset)
+                if written < 0, errno == EINTR { continue }
+                guard written > 0 else { throw CocoaError(.fileWriteUnknown) }
+                offset += written
+            }
+        }
+        guard fsync(descriptor) == 0, rename(temporary.path, url.path) == 0 else { throw CocoaError(.fileWriteUnknown) }
+        renamed = true
+        let directory = open(folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        if directory >= 0 { _ = fsync(directory); close(directory) }
+    }
+
+    /// The records' folder, 0700: made so, or set so when it already exists with other permissions. A link or a file in
+    /// its place is refused.
+    static func ownerOnlyFolder(_ folder: URL) throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try data.write(to: url, options: [.atomic])
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        var info = stat()
+        guard lstat(folder.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid() else { throw CocoaError(.fileWriteNoPermission) }
+        if info.st_mode & 0o777 != 0o700 { guard chmod(folder.path, 0o700) == 0 else { throw CocoaError(.fileWriteNoPermission) } }
     }
 
     static func remove(_ url: URL?) {
         guard let url else { return }
         try? FileManager.default.removeItem(at: url)
+    }
+
+    /// The launch's sweep, beside the Voice Lab scratch sweep (`AppModel.loadStartup`): every project's records 60 days
+    /// unused, unreadable or of another schema go (`load`), and temporary files a quit or crash left mid-write an hour ago
+    /// or more. Records still in their 60 days stay. Returns how many files went; one folder's failure never stops the rest.
+    @discardableResult static func sweepStale(paidRoot: URL, now: Date = Date()) -> Int {
+        let manager = FileManager.default
+        guard let projects = try? manager.contentsOfDirectory(at: paidRoot, includingPropertiesForKeys: nil) else { return 0 }
+        var removed = 0
+        for project in projects {
+            let folder = project.appendingPathComponent(folderName, isDirectory: true)
+            var info = stat()
+            guard lstat(folder.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+                  let names = try? manager.contentsOfDirectory(atPath: folder.path) else { continue }
+            for name in names {
+                let file = folder.appendingPathComponent(name)
+                if name.hasPrefix("."), name.hasSuffix(".partial") {
+                    let modified = (try? manager.attributesOfItem(atPath: file.path)[.modificationDate] as? Date) ?? now
+                    if now.timeIntervalSince(modified) >= 60 * 60, (try? manager.removeItem(at: file)) != nil { removed += 1 }
+                } else if name.hasSuffix(".json"), load(file, now: now) == nil, !manager.fileExists(atPath: file.path) {
+                    removed += 1
+                }
+            }
+        }
+        return removed
     }
 }
 
@@ -208,7 +269,8 @@ extension RewriteSession {
             .filter { $0.adoptable && now.timeIntervalSince($0.createdAt) < VoiceLabTakeJournal.unusedLifetime }.map(\.requestID))
     }
 
-    /// The journal requests of the patch's paid takes (its plan's cloned-voice takes and the generation's).
+    /// The journal requests of the patch's paid takes (its plan's cloned-voice takes and the generation's). An adopted
+    /// take's receipt is the journal entry's own, so a second relaunch finds it under the same request.
     private var patchTakeRequests: [String] {
         let planned = takePlan?.phrases.flatMap { phrase in
             phrase.takes.filter { $0.source == .clonedVoice }.compactMap { $0.row.receipt?.requestID.uuidString.lowercased() }
@@ -216,18 +278,54 @@ extension RewriteSession {
         return planned + (generation?.rows.compactMap { $0.receipt?.requestID.uuidString.lowercased() } ?? [])
     }
 
-    /// Saves the proposal with its unused paid work, or removes the record when nothing paid is left unused. Free; an
-    /// unchanged record is not written again, and a proposal with nothing paid reads nothing.
+    /// Paid patch takes saved before VoxClip closed that the journal can still give back, while no plan holds paid patch
+    /// work again (before Make Takes adopts them, or while its price waits for the click): unused paid work, which
+    /// closing, a new run and a change of the proposal ask about first (`hasUnusedPaidWork`, `changeNeedsDiscard`).
+    var restoredTakesPending: Bool { restoredPendingTakes > 0 }
+
+    /// How many of `restoredTakesPending`'s takes the journal can give back; 0 when none pends.
+    var restoredPendingTakes: Int {
+        guard let saved = restoredProposal, saved.patchTakes > 0, restoredTakesKept > 0, !hasPaidPatchWork else { return 0 }
+        return min(restoredTakesKept, saved.patchTakes)
+    }
+
+    /// The user let the patch's paid takes go (Discard Takes, Discard Changes): the takes saved before a relaunch go with
+    /// them, so the next write finds nothing of them to keep and is not offered them back.
+    func letGoOfRestoredTakes() {
+        guard restoredProposal != nil else { return }
+        restoredProposal?.patchTakes = 0
+        restoredProposal?.patchUSD = 0
+        restoredProposal?.patchRequests = []
+        restoredTakesKept = 0
+    }
+
+    /// Saves the proposal with its unused paid work. Free; an unchanged record is not written again, and a proposal with
+    /// nothing paid reads nothing. The record stays while the proposal or its take plan is open, whatever the plan holds
+    /// at the moment: a plan only priced, or still adopting the takes saved before a relaunch, keeps those takes in it. It
+    /// goes on Use (Use Takes, Use Whole Clip, Use the Voice Without Lip Sync), on an explicit discard (the paid-work
+    /// question's Discard, Discard Takes, Discard Changes, Undo on a whole clip's Review or the patch over it), on a new
+    /// run of the Rewrite that restored or wrote it (which asks first over unused paid work), and after 60 days unused. The
+    /// editor's Undo of Use Whole Clip, with Rewrite open, makes the work unused again, and it is written again.
     func persistPaidWork() {
-        guard isOpen, !paidWorkUsed, ownProposal != nil else { return }
+        guard isOpen else { return }
+        // Use Whole Clip, or Use the Voice Without Lip Sync, put the whole clip's paid work into the project as one undo
+        // step (Rewrite's own commit, `commitOwnEdit`): the record goes, and a relaunch never offers that work back to put
+        // in or pay for again. The editor's Undo of that step writes it again (`WholeClipRevoiceSession.useUndone`).
+        if wholeClip?.phase == .used, !hasPaidPatchWork {
+            if savedProposalData != nil || restoredProposal != nil { forgetSavedProposal() }
+            return
+        }
+        guard !paidWorkUsed, ownProposal != nil else { return }
         let whole = savedWholeClip
         let planTakes = hasPaidPatchWork ? paidTakeCount : 0
         let planUSD = hasPaidPatchWork ? (takePlan.flatMap { $0.isRetired ? nil : $0.spent.usd } ?? 0) : 0
-        // Takes saved before a relaunch are still the proposal's until a plan holds takes again.
-        let restored = takePlan == nil ? restoredProposal : nil
+        // Takes saved before a relaunch are still the proposal's until a plan holds paid takes again: Make Takes' price
+        // before its click, or a plan still adopting them, holds none yet.
+        let restored = planTakes > 0 ? nil : restoredProposal
         let patchTakes = planTakes > 0 ? planTakes : (restored?.patchTakes ?? 0)
         let patchUSD = planTakes > 0 ? planUSD : (restored?.patchUSD ?? 0)
         let patchRequests = planTakes > 0 ? patchTakeRequests : (restored?.patchRequests ?? [])
+        // Nothing paid is left in this Rewrite: only the explicit discards above get here with a record to remove.
         guard whole != nil || patchTakes > 0 else {
             if savedProposalData != nil || restoredProposal != nil { forgetSavedProposal() }
             return
@@ -273,7 +371,8 @@ extension RewriteSession {
         var requests = restoredProposal?.wholeClip?.partRequests ?? []
         if let plan = wholeClipPlan, wholeClipPlanScript == script, !plan.isRetired {
             parts = plan.phrases.count
-            requests = plan.phrases.compactMap { plan.automaticTake(phrase: $0.id)?.row.receipt?.requestID.uuidString.lowercased() }
+            // In part order, so each part's word check or new voice can be priced on its own (`restoredVoiceUSD`).
+            requests = plan.phrases.map { plan.automaticTake(phrase: $0.id)?.row.receipt?.requestID.uuidString.lowercased() ?? "" }
             // Parts paid of a voice not finished yet come back through the journal too.
             if voices.isEmpty, let usd = plan.spent.usd, plan.spent.units > 0, let record = generation?.selectedVoiceID {
                 voices[.init(script: script.text, recordId: record, model: plan.modelID ?? VoiceLabWordingFit.modelID)] = usd
@@ -290,25 +389,45 @@ extension RewriteSession {
     }
 
     /// Puts the restored whole clip on a fresh card: a stop whose Try Again puts the paid voice back for its parts' word
-    /// checks (every part still in the journal, adoptable) and the paid lip sync for free.
+    /// checks, and the paid lip sync for free, when every part is still in the journal (adoptable); otherwise it voices
+    /// the parts that can't come back and lip syncs the clip again, priced so before the click.
     func restoreWholeClip(into session: WholeClipRevoiceSession) {
         guard let saved = restoredProposal?.wholeClip else { return }
         restoredProposal?.wholeClip = nil
+        let catalog = prices ?? editor.app.shared.flatMap { try? VoiceLabPriceCatalog.load(shared: $0) }
+        let adoptable = adoptableJournalRequests()
+        let back = saved.partRequests.filter { !$0.isEmpty && adoptable.contains($0) }.count
         session.restore(.init(script: saved.script, baseScript: saved.baseScript,
                               voices: Dictionary(saved.voices.map { ($0.key, $0.usd) }, uniquingKeysWith: +),
                               lipsyncs: Dictionary(saved.lipsyncs.map { ($0.key, $0.usd) }, uniquingKeysWith: +),
-                              billed: saved.billed, voiceUSD: restoredVoiceUSD(saved)))
+                              billed: saved.billed, voiceUSD: Self.restoredVoiceUSD(saved, adoptable: adoptable, catalog: catalog),
+                              parts: saved.parts, partsBack: min(back, saved.parts), checkUSD: catalog.flatMap(Self.wordCheckUSD)))
     }
 
-    /// What putting the restored voice back costs: each part's word check, when every part's paid take is in the journal
-    /// and adoptable; nil otherwise (the voice is priced as new).
-    private func restoredVoiceUSD(_ saved: RewriteSavedProposal.WholeClip) -> Decimal? {
-        guard saved.parts > 0, saved.partRequests.count == saved.parts,
-              let catalog = prices ?? editor.app.shared.flatMap({ try? VoiceLabPriceCatalog.load(shared: $0) }) else { return nil }
-        let adoptable = adoptableJournalRequests()
-        guard saved.partRequests.allSatisfy(adoptable.contains),
-              let check = try? VoiceLabPricing.estimate(operation: .elevenLabsSpeechToText, model: ElevenLabsScribe.modelID,
-                                                        units: VoiceLabTakeProcessing.maximumQASeconds, catalog: catalog).usd else { return nil }
-        return check * Decimal(saved.partRequests.count)
+    /// One take's word check, as a take's quote prices it.
+    static func wordCheckUSD(_ catalog: VoiceLabPriceCatalog) -> Decimal? {
+        try? VoiceLabPricing.estimate(operation: .elevenLabsSpeechToText, model: ElevenLabsScribe.modelID,
+                                      units: VoiceLabTakeProcessing.maximumQASeconds, catalog: catalog).usd
+    }
+
+    /// What putting the restored voice back costs, part by part as the fresh plan prices it: a part whose paid take the
+    /// journal gives back (adoptable, under 60 days) only its word check; any other part a new voice of its words and its
+    /// word check. Nil when that can't be made exact (no prices, or parts the record doesn't line up with): the card then
+    /// prices the voice as new (`WholeClipRevoiceSession.restoredRetryVoiceUSD`).
+    static func restoredVoiceUSD(_ saved: RewriteSavedProposal.WholeClip, adoptable: Set<String>,
+                                 catalog: VoiceLabPriceCatalog?) -> Decimal? {
+        let parts = saved.script.parts
+        guard saved.parts > 0, saved.partRequests.count == saved.parts, parts.count == saved.parts, let catalog,
+              let check = wordCheckUSD(catalog) else { return nil }
+        var usd = Decimal(0)
+        for (part, request) in zip(parts, saved.partRequests) {
+            usd += check
+            if !request.isEmpty, adoptable.contains(request) { continue }
+            let characters: Double = Double(part.text.unicodeScalars.count)
+            guard let voice = try? VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
+                                                            units: characters, catalog: catalog).usd else { return nil }
+            usd += voice
+        }
+        return usd
     }
 }

@@ -32,13 +32,25 @@ internal sealed partial class RewriteSession
     /// <summary>Closing Rewrite (the panel's X, Esc) asked first because it holds paid takes (Mac <c>confirmDiscardPaidWork(.close)</c>,
     /// design.md R2 "Closing Rewrite"): the question shows inline with Keep Working, the default, and Discard and Close.</summary>
     internal bool CloseAsked { get; private set; }
-    /// <summary>"Close Rewrite and discard 3 paid takes?", or "the takes being made" while the first are still being made.</summary>
-    internal static string CloseQuestion(int takes) => takes switch
+    /// <summary>"Close Rewrite and discard 3 paid takes?", or "the takes being made" while the first are still being made. Another
+    /// Rewrite opening in this one's place (<paramref name="newRewrite"/>, Mac <c>.newRewrite</c>) asks "Start a new Rewrite and discard
+    /// 3 paid takes?".</summary>
+    internal static string CloseQuestion(int takes, bool newRewrite = false)
     {
-        0 => "Close Rewrite and discard the takes being made?",
-        1 => "Close Rewrite and discard 1 paid take?",
-        _ => $"Close Rewrite and discard {takes} paid takes?",
-    };
+        var lead = newRewrite ? "Start a new Rewrite" : "Close Rewrite";
+        return takes switch
+        {
+            0 => lead + " and discard the takes being made?",
+            1 => lead + " and discard 1 paid take?",
+            _ => $"{lead} and discard {takes} paid takes?",
+        };
+    }
+    /// <summary>Another Rewrite was asked for over paid takes while this one's panel can't come forward to ask: nothing opens, and the
+    /// editor's notice names the step that shows Rewrite again. A job that stays holds the column (<paramref name="job"/>, its label):
+    /// "Finish or close Export to see Rewrite, then use or discard its paid takes before starting another. They are kept."</summary>
+    internal static string ReplaceHeldNotice(string? job) => string.IsNullOrWhiteSpace(job)
+        ? "Rewrite has paid takes you haven't used. Use or discard them in Rewrite before starting another. They are kept."
+        : $"Finish or close {job} to see Rewrite, then use or discard its paid takes before starting another. They are kept.";
     /// <summary>Close Rewrite, Esc or the panel's X: true when it may close now. Paid takes not used or discarded yet are never
     /// disposed unasked: it asks (<see cref="CloseAsked"/>) and returns false, and nothing changes until the answer.</summary>
     internal bool RequestClose()

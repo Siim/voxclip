@@ -602,6 +602,7 @@ public sealed partial class EditorPage : Page
 if (insertion ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
 !ViewModel.HasTranscript) return;
+        if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction))) return;
         RetireRewrite();
         var opening = ++rewriteOpenRevision;
         ViewModel.CaptionDrag.Cancel();
@@ -634,6 +635,29 @@ if (insertion ||
         if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite);
         ShowRewriteSession(rewrite, instruction);
         await rewrite.SetInstructionAsync(instruction ?? "");
+    }
+    /// <summary>Another Rewrite would replace the open one while it holds paid takes not used or discarded yet (Mac
+    /// <c>askBeforeReplacing</c>, design.md R2 "Closing Rewrite"): nothing is retired unasked. The open one's panel comes forward and
+    /// asks "Start a new Rewrite and discard 3 paid takes?" with Keep Working, the default, and Discard and Rewrite, which disposes the
+    /// takes and runs <paramref name="replay"/> (the press again). When the panel can't come forward, the editor's notice says how to
+    /// go on. True when it asked or refused, so nothing opens now.</summary>
+    private bool AskBeforeReplacingRewrite(Func<Task> replay)
+    {
+        if (rewrite is not { IsOpen: true, HasPaidTakes: true } open) return false;
+        if (rightContent is not null && rewritePanel is { } panel && ReferenceEquals(panel.Session, open))
+        {
+            SetViewerVisible(true);
+            if (rightContent.RevealRewrite(panel))
+            {
+                SizeStage();
+                panel.AskBeforeReplacing(() => RunAsync(replay, "Rewrite"));
+                return true;
+            }
+        }
+        EditorNotice.Severity = InfoBarSeverity.Warning;
+        // The job that keeps the column is named, so the way to Rewrite is clear: finish or close it first.
+        ViewModel.Notice = RewriteSession.ReplaceHeldNotice(rightContent?.HeldJobLabel);
+        return true;
     }
     /// <summary>Shows <paramref name="rewrite"/> in the Rewrite panel: a new one, or Make it postable's with paid takes.</summary>
     private void ShowRewriteSession(RewriteSession rewrite, string? instruction)
@@ -1164,6 +1188,9 @@ if (insertion ||
     {
         AiModified.Visibility = ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId) ? Visibility.Visible : Visibility.Collapsed;
     }
+    /// <summary>The open Rewrite holds paid takes not used or discarded yet, so a leave (a close, another project, a restart) never
+    /// starts: <see cref="TrySaveBeforeLeavingAsync"/> says so in the editor and returns false without saving.</summary>
+    internal bool LeaveHeldByPaidWork => leave.HoldsPaidWork?.Invoke() == true;
     internal async Task<bool> TrySaveBeforeLeavingAsync()
     {
         if (ViewModel.Busy)
