@@ -2990,9 +2990,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.task.headline.sub == "Listen, pick a take, then use them.", "\(session.task.headline)")
     }
 
-    /// Every take too long and failing its word check (MVP13's dead end, cause a): a failed take is fixed by what failed
-    /// first (one automatic Try another), then the passing take still too long gets the measured shorter reword, and a
-    /// take of the new wording is made with no click; Use is all that's left.
+    /// Every take too long and failing its word check (MVP13's dead end, cause a): with no take selected the measured
+    /// reword still runs from the closest take, and a take of the new wording is made with no click; Use is all that's left.
     @Test func allTakesTooLongAreRewordedAndRetakenWithNoClick() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         // An automatic round must move toward the slot (voice-lab §8.2.2): a too-long take gets a shorter wording.
@@ -3005,10 +3004,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         try approvePrice(session)
         await settle(session)
         #expect(await connector.requests.count == 1)
-        #expect(ClipTakeHTTP.state.withLock { $0.texts } == [first, first, "Corrected Hi"])
-        #expect(plan.phrases[0].takes.count == 3 && plan.phrases[0].selected?.row.selectable == true)
-        #expect(plan.phrases[0].selected?.number == 3 && session.autoFix.triedAnother == [0] && session.autoFix.rounds[0] == 2)
-        #expect(session.autoFix.lines.isEmpty)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts } == [first, "Corrected Hi"])
+        #expect(plan.phrases[0].takes.count == 2 && plan.phrases[0].selected?.row.selectable == true)
+        #expect(plan.phrases[0].selected?.number == 2 && session.autoFix.rounds[0] == 1 && session.autoFix.lines.isEmpty)
         #expect(session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
         #expect(session.task.headline.sub == "Listen, pick a take, then use them.")
     }
