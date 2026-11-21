@@ -994,6 +994,24 @@ private final class Calls: Sendable {
         #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
     }
 
+    /// A whole clip Claude mode can't do here with nothing paid (a stop before anything was sent) patches, and leaves no
+    /// pick behind: a pick is for its own proposal, so the patch's Rewrite and any later one start from the default (the
+    /// whole clip) again. It used to write a patch pick that the next card cleared anyway, with a comment that said the
+    /// clip's Rewrites wouldn't offer the whole clip again.
+    @Test func aClaudeModePatchLeavesNoPickForTheClip() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.video = 30.6
+        stubs.voiceError = WholeClipRevoiceSession.Unsent(error: ClipTakePlan.Failure.nothingToVoice)
+        installLiveWholeClip(fixture, stubs: stubs)
+        let run = try await claudeModeRunLive(fixture)
+        #expect(stubs.voices.isEmpty && stubs.lipsyncs.isEmpty, "nothing was paid for the whole clip: \(stubs.order)")
+        #expect(fixture.calls.all.contains { $0.hasPrefix("voice ") }, "the changed phrases were voiced instead: \(fixture.calls.all)")
+        #expect(fixture.editor.wholeClipPicks["clip-main"]?.whole != false, "Claude mode's patch writes no patch pick: \(String(describing: fixture.editor.wholeClipPicks["clip-main"]))")
+        #expect(run.rows.contains { $0.id == "wholeClip" }, "\(run.rows.map { "\($0.id): \($0.text)" })")
+    }
+
     /// Claude mode over the fixture's suggestion with the live whole-clip services the test installed.
     private func claudeModeRunLive(_ fixture: Fixture) async throws -> MakeItRun {
         let editor = fixture.editor

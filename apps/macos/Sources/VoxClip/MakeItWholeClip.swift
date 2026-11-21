@@ -298,8 +298,8 @@ extension MakeItServices {
             session?.startWholeClip(automatic: true, budget: budget)
         }, report: { line in Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: line)) } })
         keepsOpen = outcome.holdsPaidWork
-        // The patch goes on: this clip's pick is the patch, so its phrases' Rewrites don't offer the whole clip again.
-        if outcome.patches { editor.wholeClipPicks[request.clipID] = WholeClipPick(whole: false, proposal: session.proposalID) }
+        // A patch closes this Rewrite (nothing paid is in it) and leaves no pick: a pick is for its own proposal, so the
+        // patch's Rewrite and any later one offer the whole clip from the default again (`wholeClipCard`).
         return outcome
     }
 }
