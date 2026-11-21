@@ -985,9 +985,26 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let saved = RewriteSavedProposal(projectId: "p1", scope: "clip:c1", inputs: "x", instruction: "", changes: [], kept: [], pricedAnyway: [],
                                          voiceRecordID: nil, patchTakes: 1, patchUSD: 0.04, patchRequests: [], wholeClip: nil,
                                          savedAt: Date(timeIntervalSince1970: 1_800_000_000))
+        // A folder already there with other permissions (an earlier build, a copy) is made owner-only too.
+        let folder = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+        // Written twice: the second replaces the first through its own temporary file.
+        try RewriteSavedProposalStore.write(RewriteSavedProposalStore.encode(saved), to: url)
         try RewriteSavedProposalStore.write(RewriteSavedProposalStore.encode(saved), to: url)
         let mode = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
         #expect(mode?.intValue == 0o600)
+        let folderMode = try FileManager.default.attributesOfItem(atPath: folder.path)[.posixPermissions] as? NSNumber
+        #expect(folderMode?.intValue == 0o700, "the folder is 0700 even when it was there: \(String(describing: folderMode))")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == [url.lastPathComponent], "no temporary file is left")
+        // Owner-only from the start: the mode is set on the temporary file before the rename, never by a chmod after it
+        // (which left the record readable by others for a moment under its own name).
+        let repository = try SharedResources.locate().root.deletingLastPathComponent()
+        let source = try String(contentsOf: repository.appendingPathComponent("apps/macos/Sources/VoxClip/RewriteSavedProposal.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "static func write(_ data: Data, to url: URL) throws {"))
+        let end = try #require(source.range(of: "static func ownerOnlyFolder", range: start.upperBound..<source.endIndex))
+        let body = source[start.upperBound..<end.lowerBound]
+        let chmod = try #require(body.range(of: "fchmod(descriptor, 0o600)")), rename = try #require(body.range(of: "rename(temporary.path, url.path)"))
+        #expect(chmod.lowerBound < rename.lowerBound && body.contains("O_CREAT | O_EXCL") && !body.contains("setAttributes"))
         #expect(RewriteSavedProposalStore.load(url, now: saved.savedAt.addingTimeInterval(59 * 86_400)) == saved)
         #expect(RewriteSavedProposalStore.load(url, now: saved.savedAt.addingTimeInterval(61 * 86_400)) == nil)
         #expect(!FileManager.default.fileExists(atPath: url.path))
