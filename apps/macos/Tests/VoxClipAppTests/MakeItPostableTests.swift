@@ -713,8 +713,8 @@ private final class Calls: Sendable {
 
     // MARK: Paid work stays in Rewrite (Claude mode never discards it)
 
-    /// The take fixture's Rewrite (five questions, words 12…25) with paid takes.
-    private func paidTakesSession() throws -> (EditorModel, RewriteSession) {
+    /// The take fixture's Rewrite (five questions, words 12…25, the reply `passage`) with paid takes.
+    private func paidTakesSession(passage: String = "A clearer way to explain what happened in this passage.") throws -> (EditorModel, RewriteSession) {
         _ = NSApplication.shared
         let app = AppModel(settingsStore: RegressionSettingsStore())
         app.settings.values["voiceLab.enabled"] = .bool(true)
@@ -729,7 +729,7 @@ private final class Calls: Sendable {
         let session = RewriteSession(editor: editor, scope: .selection(12...25),
             envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)), connector: connector)
         editor.rewrite = session
-        try session.receivePassage("A clearer way to explain what happened in this passage.")
+        try session.receivePassage(passage)
         session.finishRun(seconds: 1)
         try DebugRewriteGeneration.install("ready", in: session)
         session.showProposal()
@@ -767,6 +767,26 @@ private final class Calls: Sendable {
         guard case .keptAsRecorded = result else { Issue.record("\(String(describing: result))"); return }
         #expect(!session.isOpen && editor.openRewrite == nil && session.task.confirm == nil)
         #expect(!editor.announcements.contains { $0.hasPrefix("Close Rewrite and discard") })
+    }
+
+    /// The same with a text fix pending: the footer's primary is Apply 1 text fix, whose own close asked over the paid takes
+    /// and left the Rewrite open, so every later rewrite of the run stopped with "Finish the open Rewrite first". The fix
+    /// goes in and the Rewrite closes with no question left up.
+    @Test func paidTakesNoPhraseCanUseCloseTheSettledRewriteAfterItsTextFix() async throws {
+        // "Um," is cut (a free text fix) and "one" is said in your voice.
+        let (editor, session) = try paidTakesSession(passage: "invites one story rather than a yes or no answer. how do you")
+        defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        for index in plan.phrases.indices { plan.leaveOut(phrase: index) }
+        session.showProposal()
+        try #require(session.task.footer.primary?.id == "apply" && session.asksBeforeClosing, "\(session.task.footer)")
+        let driver = MakeItRewriteDriver(editor: editor, request: MakeItRewriteRequest(range: 12...25, text: "A clearer way.", clipID: "", budget: 1))
+        let result = await driver.finishAsRecorded(session, spent: 0)
+        guard case .keptAsRecorded(let line) = result else { Issue.record("\(String(describing: result))"); return }
+        #expect(line.hasSuffix(" Its text fixes are applied."), "\(line)")
+        #expect(!session.isOpen && editor.openRewrite == nil && session.task.confirm == nil)
+        #expect(!editor.announcements.contains { $0.hasPrefix("Close Rewrite and discard") })
+        #expect(editor.editState()?.cutWordIds.contains("fq-23") == true, "the text fix is in")
     }
 
     /// Make it postable's Rewrite never closes an open Rewrite holding a paid whole clip: it stops with "needs you", and the

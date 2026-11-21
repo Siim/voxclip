@@ -23,9 +23,13 @@ import Testing
         func close() { editor.close(); try? FileManager.default.removeItem(at: root) }
     }
 
-    /// The five-questions project open in the app's shell, Rewrite of words 12…25 with a reply in, and `paid` work in it:
-    /// the take fixture's paid takes, or a whole clip's paid voice and lip sync in Review (≈ $1.61).
-    private func fixture(_ paid: Paid = .wholeClip) async throws -> Fixture {
+    private static func fiveQuestions() throws -> Project {
+        try DemoEditing.loadFixture(SharedResources.locate().root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
+    }
+
+    /// The five-questions project open in the app's shell, Rewrite of words 12…25 (or `range` on `clip`'s tab) with a reply
+    /// in, and `paid` work in it: the take fixture's paid takes, or a whole clip's paid voice and lip sync in Review (≈ $1.61).
+    private func fixture(_ paid: Paid = .wholeClip, clip: String? = nil, range: ClosedRange<Int> = 12...25) async throws -> Fixture {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-paid-guard-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -33,15 +37,14 @@ import Testing
         app.settings.values["voiceLab.enabled"] = .bool(true)
         app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
-        let shared = try SharedResources.locate()
-        let project = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
         let shell = app.shell
-        await shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try Self.fiveQuestions(), demo: true), selection: clip.map(SidebarItem.clip) ?? .fullTake)
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
         editor.refresh()
+        try #require(editor.project.edits.activeClipId == clip)
         let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
-        let session = RewriteSession(editor: editor, scope: .selection(12...25),
+        let session = RewriteSession(editor: editor, scope: .selection(range),
             envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)), connector: connector)
         editor.rewrite = session
         try session.receivePassage("A clearer way to explain what happened in this passage.")
@@ -184,11 +187,154 @@ import Testing
         #expect(!fixture.editor.isLeaving && shell.document != nil)
         fixture.session.task.confirm?.cancel.perform()
         #expect(fixture.session.isOpen && fixture.session.hasUnusedPaidWork, "Keep Working keeps the work")
-        // Discard and Close runs the close again, which no longer asks; this time the save is refused, so the project stays.
+        // Discard and Close discards the Rewrite at once and runs the close again, which no longer asks; this time the save
+        // is refused, so the project stays, and no later leave skips a question (nothing is left to skip it by).
         #expect(await shell.closeProject() == false)
         fixture.session.task.confirm?.confirm.perform()
-        #expect(await TestDeadline.until { !fixture.session.isOpen && !shell.injectSaveFailure && !fixture.editor.isLeaving })
+        #expect(!fixture.session.isOpen && fixture.editor.openRewrite == nil, "Discard and Close discards before the leave runs again")
+        #expect(await TestDeadline.until { !shell.injectSaveFailure && !fixture.editor.isLeaving })
         #expect(fixture.editor.openRewrite == nil && shell.document != nil)
+    }
+
+    /// A leave started from Home (opening another project, an import, a recovered autosave) asks where the creator can see
+    /// it: the question brings the project out of Home. The project that would replace it waits open for the answer, even an
+    /// untitled one with no file or autosave: Keep Working refuses it as its caller would, and Discard and Close attaches it.
+    /// It used to ask on the hidden editor, and Discard and Close did nothing for an untitled project.
+    @Test func aLeaveFromHomeAsksInFrontAndAnUntitledProjectWaitsForTheAnswer() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let shell = fixture.shell
+        let opened = fixture.editor.document
+        shell.selection = .home
+        try #require(shell.showsHome)
+        let other = VoxClipDocument(project: try Self.fiveQuestions(), demo: true)
+        try #require(other.fileURL == nil && other.autosavedContentsFileURL == nil)
+        var refusals = 0
+        #expect(await shell.replaceProject(with: other, refused: { refusals += 1 }) == false)
+        asks(fixture, "Close the project and discard ")
+        #expect(await TestDeadline.until { !shell.showsHome }, "the question comes out of Home")
+        #expect(shell.holdsForPaidWork(other) && shell.document === opened && refusals == 0, "the untitled project waits open")
+        // Keep Working: the open project and its paid work stay; the waiting project is refused as its caller would.
+        fixture.session.task.confirm?.cancel.perform()
+        #expect(refusals == 1 && !shell.holdsForPaidWork(other) && shell.document === opened && fixture.session.isOpen)
+        // Asked again from Home; Discard and Close attaches this same untitled project.
+        shell.selection = .home
+        #expect(await shell.replaceProject(with: other, refused: { refusals += 1 }) == false)
+        #expect(await TestDeadline.until { !shell.showsHome })
+        fixture.session.task.confirm?.confirm.perform()
+        #expect(await TestDeadline.until { shell.document === other }, "Discard and Close opens the waiting project")
+        #expect(!fixture.session.isOpen && refusals == 1 && !shell.holdsForPaidWork(other))
+        #expect(await shell.closeProject())
+    }
+
+    // MARK: The Rewrite's clip goes away
+
+    /// Remove on the open Rewrite's own clip asks first, inline on that tab, and nothing is removed before the answer: Keep
+    /// Working keeps the clip and the paid takes; Discard and Remove removes it. After that nothing waits on a question: a
+    /// Rewrite of Full Take opens. The clip used to go first, leaving a question on no tab that blocked every later Rewrite.
+    @Test func removingTheRewritesClipAsksFirstAndNothingWaitsAfterDiscard() async throws {
+        let fixture = try await fixture(.takes, clip: "fq-clip-1", range: 12...21)
+        defer { fixture.close() }
+        let editor = fixture.editor, session = fixture.session
+        try #require(editor.rewrite === session && session.project.edits.activeClipId == "fq-clip-1")
+        var hasClip: Bool { editor.project.edits.clips.contains { $0.id == "fq-clip-1" } }
+        editor.removeClip("fq-clip-1")
+        asks(fixture, "Remove this clip and discard ")
+        #expect(session.task.confirm?.confirm.title == "Discard and Remove" && hasClip, "nothing is removed before the answer")
+        session.task.confirm?.cancel.perform()
+        #expect(hasClip && session.isOpen && session.hasUnusedPaidWork, "Keep Working keeps the clip and its takes")
+        editor.removeClip("fq-clip-1")
+        session.task.confirm?.confirm.perform()
+        #expect(!hasClip && !session.isOpen && editor.openRewrite == nil)
+        editor.runRewrite(scope: .fullTake)
+        _ = await editor.rewriteOpenTask?.value
+        #expect(editor.openRewrite != nil && editor.openRewrite !== session, "a new Rewrite opens")
+    }
+
+    /// A clip gone without Remove (an Undo, a run's own edit) leaves its Rewrite on no tab where it could ask: it closes, the
+    /// status bar says what went with it, and a Rewrite of Full Take or Make it postable's next Rewrite is never held up by a
+    /// question nobody can see.
+    @Test func aRewriteWhoseClipWentAwayClosesSayingSoAndNothingWaitsOnIt() async throws {
+        let fixture = try await fixture(.takes, clip: "fq-clip-1", range: 12...21)
+        defer { fixture.close() }
+        let editor = fixture.editor, session = fixture.session
+        try #require(editor.apply([.removeClip(id: "fq-clip-1"), .setActiveClip(clipId: nil)], name: "Make it postable"))
+        #expect(!session.isOpen && editor.openRewrite == nil && session.task.confirm == nil)
+        #expect(editor.rewriteNotice?.hasPrefix("Rewrite closed with its clip, discarding ") == true, "\(String(describing: editor.rewriteNotice))")
+        editor.runRewrite(scope: .fullTake)
+        _ = await editor.rewriteOpenTask?.value
+        #expect(editor.openRewrite != nil && editor.openRewrite !== session, "a new Rewrite opens")
+    }
+
+    /// The same session, kept open with its clip gone (no tab follows it here), never asks where nobody can see: it asks
+    /// nothing before closing (`asksBeforeClosing`), so another Rewrite, Make it postable or a project close goes on.
+    @Test func aSessionOnNoTabNeverAsks() async throws {
+        let fixture = try await fixture(.takes, clip: "fq-clip-1", range: 12...21)
+        defer { fixture.close() }
+        let session = fixture.session
+        fixture.editor.onClipsChange = nil; fixture.editor.onActiveClipChange = nil
+        try #require(fixture.editor.apply([.removeClip(id: "fq-clip-1"), .setActiveClip(clipId: nil)], name: "Make it postable"))
+        try #require(session.isOpen && session.hasUnusedPaidWork)
+        #expect(!session.canAskAboutPaidWork && !session.asksBeforeClosing)
+        #expect(fixture.editor.closeRewrite(returnFocus: false) && !session.isOpen && session.task.confirm == nil)
+    }
+
+    // MARK: Closes the app starts
+
+    /// A close the app starts (a tab sync, a video that went missing, AI changes until AppModel calls the seam) never
+    /// replaces a question already up, such as a price to approve: that one stays. An AI change through the seam leaves a
+    /// Rewrite holding paid work open as it is (the AI never makes paid work stale), and closes one with nothing paid.
+    @Test func appStartedClosesKeepAQuestionAlreadyUpAndAnAIChangeKeepsPaidWork() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let editor = fixture.editor, session = fixture.session
+        session.task.ask(PanelConfirm(question: "Make 3 takes · ≈ $0.12?", cancel: PanelAction(id: "cancelQuote", title: "Cancel") {},
+                                      confirm: PanelAction(id: "approveTakeQuote", title: "Make Takes") {}))
+        #expect(editor.closeRewrite(returnFocus: false) == false)
+        #expect(session.task.confirm?.confirm.id == "approveTakeQuote" && session.isOpen, "the price question stays")
+        editor.rewriteConnectorChanged()
+        #expect(session.isOpen && editor.openRewrite === session && session.task.confirm?.confirm.id == "approveTakeQuote")
+        session.task.dismissConfirm()
+        session.wholeClip = nil
+        try #require(!session.hasUnusedPaidWork)
+        editor.rewriteConnectorChanged()
+        #expect(!session.isOpen && editor.openRewrite == nil, "with nothing paid it closes, as before")
+    }
+
+    /// Claude mode's whole clip comes to `needsYou`, and its Rewrite stays open, by one predicate: unused paid work. A stop
+    /// holding a voice that cost nothing (adopted for free) is no paid work, so it patches and Rewrite closes; a paid one
+    /// stays; an unconfirmed lip-sync charge holds the clip too, so no phrase is voiced over it.
+    @Test func theWholeClipOutcomeAndItsRewriteFollowOnePredicate() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let session = fixture.session
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.invalidInput, local: true)
+        var backend = WholeClipRevoiceSessionTests.backend(stubs)
+        let voice = backend.voice
+        backend.voice = { script, progress in
+            let made = try await voice(script, progress)
+            return .init(key: made.key, seconds: made.seconds, parts: made.parts, usd: 0)
+        }
+        let free = WholeClipRevoiceSession()
+        free.backend = backend
+        free.start(); await free.waitForRun()
+        try #require(free.isStopped && free.voice != nil && free.spent == 0, "\(free.phase) \(free.spent)")
+        session.wholeClip = free
+        #expect(!free.holdsPaidWork && !session.hasUnusedPaidWork)
+        let unpaid = WholeClipAutoOutcome(free, holdsPaidWork: session.hasUnusedPaidWork)
+        #expect(unpaid.patches && !unpaid.holdsPaidWork && unpaid == WholeClipAutoOutcome(free), "\(unpaid)")
+        let paidStubs = WholeClipRevoiceSessionTests.Stubs()
+        paidStubs.failLipsync = true
+        let paid = WholeClipRevoiceSession()
+        paid.backend = WholeClipRevoiceSessionTests.backend(paidStubs)
+        paid.start(); await paid.waitForRun()
+        session.wholeClip = paid
+        #expect(paid.isStopped && paid.holdsPaidWork && session.hasUnusedPaidWork)
+        let kept = WholeClipAutoOutcome(paid, holdsPaidWork: session.hasUnusedPaidWork)
+        guard case .needsYou = kept else { Issue.record("\(kept)"); return }
+        #expect(kept.holdsPaidWork && !kept.patches)
+        #expect(WholeClipAutoOutcome.submissionUnconfirmed("", spent: 1).holdsPaidWork, "an unconfirmed charge holds the clip")
     }
 
     /// Quit with paid work in an open Rewrite: the quit is cancelled and the question asks in that Rewrite; Discard and Quit
@@ -204,7 +350,8 @@ import Testing
         asks(fixture, "Quit VoxClip and discard ")
         #expect(fixture.session.task.confirm?.confirm.title == "Discard and Quit" && quits == 0)
         fixture.session.task.confirm?.confirm.perform()
-        #expect(quits == 1)
+        // Discard and Quit discards that Rewrite at once, so the quit it starts again never skips another one's question.
+        #expect(quits == 1 && !fixture.session.isOpen && delegate.rewriteHoldingPaidWork == nil)
     }
 
     // MARK: The video's voice

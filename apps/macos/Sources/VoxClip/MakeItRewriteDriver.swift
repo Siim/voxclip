@@ -37,9 +37,10 @@ import VoxClipCore
         guard voiceLabOn else {
             return MakeItRewriteOutcome(result: .unavailable("Turn on Voice Lab and make your voice to voice rewrites. Nothing was sent."))
         }
-        // An open Rewrite with paid work (takes, or a whole clip's voice or lip sync) is the creator's to finish.
+        // An open Rewrite with paid work (takes, or a whole clip's voice or lip sync) is the creator's to finish, where they
+        // can see it; one on no tab (its clip gone) can't be, so it closes and says so (`EditorModel.closeRewrite`).
         if let open = editor.openRewrite, open.isOpen {
-            guard !open.hasUnusedPaidWork, editor.closeRewrite(returnFocus: false) else {
+            guard !open.asksBeforeClosing, editor.closeRewrite(returnFocus: false) else {
                 return MakeItRewriteOutcome(result: .needsYou("Finish the open Rewrite first. " + open.paidWorkKept.kept + "."))
             }
         }
@@ -217,13 +218,12 @@ import VoxClipCore
         let reason = !keptBlocked.isEmpty ? "It doesn't sound like your voice here, so nothing was sent."
             : !problem.isEmpty ? problem : session.autoFix.notes.last ?? "Your words stay as recorded."
         pressed = "Make it postable presses [\(primary.title)]"
-        if primary.id == "closeRewrite", session.asksBeforeClosing {
-            // Every phrase keeps its recorded audio by Rewrite's own rules, so none of its paid takes can go in: the Rewrite
-            // is complete and closes, as Done did before it asked about such takes (S-duration-claude, DC1).
-            editor.discardRewrite(returnFocus: false)
-        } else {
+        // Every phrase keeps its recorded audio by Rewrite's own rules, so none of its paid takes can go in: the Rewrite is
+        // complete. Done, or Apply N text fixes once the fixes are in, closes it with no question left up, as both did before
+        // closing asked about such takes (S-duration-claude, DC1); nothing waits on the creator for takes no phrase can use.
+        editor.closingUnasked {
             primary.perform()
-            if session.isOpen, !session.hasUnusedPaidWork { editor.closeRewrite(returnFocus: false) }
+            if session.isOpen { editor.closeRewrite(returnFocus: false) }
         }
         return .keptAsRecorded(primary.id == "apply" ? reason + " Its text fixes are applied." : reason)
     }
