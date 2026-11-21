@@ -681,8 +681,13 @@ extension EditorModel {
         // the patch would sound stitched and the price fits the cap (ADR-R46).
         let rewrites = operations.filter { $0.decision == .rewrite }
         let whole = rewrites.isEmpty || makeItStopped(run) || !style.rewrites ? nil : await makeItWholeClip(rewrites, run: run, services: services)
-        if let row = whole?.row { rows.append(row) }
-        if !rewrites.isEmpty, !makeItStopped(run), whole?.revoiced != true {
+        if var row = whole?.row {
+            // A whole clip that fell back says its phrases are voiced instead, unless Stop came first.
+            if whole?.patchFollows == true, makeItStopped(run) { row.text = "Kept your words: the whole clip couldn't be revoiced" }
+            rows.append(row)
+        }
+        // A whole clip holding paid work stays in Rewrite for the creator: its phrases are not voiced again on top of it.
+        if !rewrites.isEmpty, !makeItStopped(run), whole?.revoiced != true, whole?.holdsPaidWork != true {
             run.line("Voicing \(rewrites.count) \(rewrites.count == 1 ? "fix" : "fixes")…")
             for operation in rewrites where !makeItStopped(run) {
                 guard case .rewrite(let scope, let text) = operation.action, case .selection(let range) = scope else { continue }
@@ -1098,7 +1103,12 @@ extension EditorModel {
             guard let row = run.rows.first(where: { $0.change == .hook }) else { return }
             run.openChoice = run.openChoice == row.id ? nil : row.id
         case .phrase(let range):
-            if let rewrite, rewrite.isOpen, rewrite.rewriteScope == .selection(range) { onShowPanelJob?(.rewrite); return }
+            // The open Rewrite of these words shows on the run's clip, also from another tab (a whole clip kept for the
+            // creator); it is never sent again from here.
+            if let open = openRewrite, open.isOpen, open.rewriteScope == .selection(range) {
+                if rewrite !== open { _ = setScope(open.project.edits.activeClipId) }
+                onShowPanelJob?(.rewrite); return
+            }
             _ = setScope(run.clipID)
             runRewrite(scope: .selection(range))
         case .question(let index): run.openQuestion = run.openQuestion == index ? nil : index

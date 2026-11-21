@@ -19,26 +19,73 @@ struct WholeClipAutoQuote: Equatable {
 
 enum WholeClipAutoOutcome: Equatable {
     case revoiced(WholeClipRevoiceRecord, spent: Decimal)
+    /// It stopped with nothing paid, in a way a later try could pass: the changed phrases are voiced instead.
     case failed(String, spent: Decimal)
     case submissionUnconfirmed(String, spent: Decimal)
-    /// The whole clip can't be done here: a part that can't be placed, a stop before anything was sent, a picture that can't
-    /// be matched, a lip sync that failed on this Mac, or a voice that can't fit the clip as edited within these rules (its
-    /// voice paid). The changed phrases are voiced instead, with the line saying why (ADR-R46).
+    /// The whole clip can't be done here, with nothing paid: a part that can't be placed, a stop before anything was sent, a
+    /// picture that can't be matched or a lip sync that can't run on this Mac before the voice. The changed phrases are
+    /// voiced instead, with the line saying why (ADR-R46).
     case patchInstead(String, spent: Decimal)
+    /// It stopped holding paid work the automatic run couldn't finish within its rules (a voice that can't fit, a lip sync
+    /// that failed, a part still unverified after its one Try Again, both paid steps done but Use refused): Rewrite stays open
+    /// with it, nothing is voiced on top, and the review sends the creator there (ai.md §12.9).
+    case needsYou(String, spent: Decimal)
 
-    /// What a finished automatic run comes to.
+    /// What a finished automatic run comes to. A run that paid for anything never patches: the patch would pay again for
+    /// words the whole clip's voice already says.
     @MainActor init(_ session: WholeClipRevoiceSession) {
         switch session.phase {
         case .used:
             self = session.record.map { .revoiced($0, spent: session.spent) } ?? .failed("The whole clip couldn't be put in.", spent: session.spent)
         case .stopped(let line) where session.submissionUnconfirmed:
             self = .submissionUnconfirmed(line, spent: session.spent)
+        case .stopped(let line) where session.holdsPaidWork:
+            self = .needsYou(line, spent: session.spent)
         case .stopped(let line):
-            // A stop that would only repeat (whatever was paid for the voice is charged to the run) or a Fit stop patches.
+            // A stop that would only repeat, or a Fit stop, patches; with nothing paid, so does any other stop (`failed`).
             let patches = session.failure?.repeats == true || session.failure?.step == .fit
             self = patches ? .patchInstead(line, spent: session.spent) : .failed(line, spent: session.spent)
-        default: self = .failed("The whole clip didn't finish.", spent: session.spent)
+        default:
+            self = session.holdsPaidWork ? .needsYou("The whole clip didn't finish.", spent: session.spent)
+                : .failed("The whole clip didn't finish.", spent: session.spent)
         }
+    }
+}
+
+extension WholeClipRevoiceSession {
+    /// Paid work this whole clip holds that is not in the clip: a paid voice (or verified parts of one), a lip sync, or
+    /// fal.ai's charge for a failed one whose result is kept.
+    var holdsPaidWork: Bool { phase != .used && (spent > 0 || voice != nil || synced != nil || lipsyncKept) }
+
+    /// What Claude mode's one automatic Try Again would pay (ai.md §12.9, "Auto-resolve stuck states"), or nil when it may not
+    /// take it within `budget`, what the run could spend when it started. A lip sync whose paid result is kept is re-imported
+    /// for free; a voice that stopped in a way a retry can pass (a part that failed its checks, a provider error) is voiced
+    /// again when the retry's whole price fits what is left. Never after a charge fal.ai can't confirm (only the creator's
+    /// "I checked fal.ai" goes on from there), a stale stop, or a stop the paid voice no longer matches.
+    func automaticRetryUSD(budget: Decimal) -> Decimal? {
+        guard isStopped, !submissionUnconfirmed, let failure, Self.retriesOnItsOwn(failure), let usd = retryUSD else { return nil }
+        if lipsyncKept, usd == 0 { return 0 }
+        guard failure.step == .voice, !failure.repeats, usd <= budget - spent else { return nil }
+        return usd
+    }
+
+    /// A stop a retry over the same inputs could pass: not stale, and not one the paid voice no longer matches, read from the
+    /// failure's own type and case (`RewriteSession.failureKind`).
+    static func retriesOnItsOwn(_ failure: Failure) -> Bool {
+        !["case=stale", "StaleStop", "case=voiceInputsChanged", "case=retainedVoiceChanged"].contains { failure.kind.contains($0) }
+    }
+
+    /// Claude mode's run of this whole clip: `start` with what may be spent, then at most one automatic Try Again
+    /// (`automaticRetryUSD`) with what is left, and what it came to. `report` gets the retry's log line.
+    func runAutomatically(budget: Decimal, start: @MainActor (Decimal) -> Void, report: @MainActor (String) -> Void = { _ in }) async -> WholeClipAutoOutcome {
+        start(budget)
+        await waitForRun()
+        if let usd = automaticRetryUSD(budget: budget) {
+            report("make-it whole clip try again step=\(failure?.step ?? .voice) usd=\(usd)")
+            start(budget - spent)
+            await waitForRun()
+        }
+        return WholeClipAutoOutcome(self)
     }
 }
 
@@ -50,6 +97,11 @@ extension EditorModel {
         var offer: MakeItRow?
         /// True when the whole clip was revoiced, so the per-phrase voice steps don't run.
         var revoiced = false
+        /// The whole clip stopped holding paid work, kept in Rewrite for the creator (`WholeClipAutoOutcome.needsYou`): the
+        /// per-phrase voice steps don't run over it, as they would pay again for the same words. Music still runs.
+        var holdsPaidWork = false
+        /// The row says the changed phrases are voiced instead; if they aren't (Stop), it says the words were kept.
+        var patchFollows = false
     }
 
     /// Claude mode only (a run with the video's spend pool): revoices the whole clip in place of patching when the rule says
@@ -67,7 +119,8 @@ extension EditorModel {
         case .revoice:
             run.line("Revoicing the whole clip…")
             let outcome = await services.revoiceWholeClip(request, self)
-            return WholeClipStep(row: makeItWholeClipRow(outcome, run: run, reason: quote.reason), revoiced: outcome.isRevoiced)
+            return WholeClipStep(row: makeItWholeClipRow(outcome, request: request, run: run, reason: quote.reason), revoiced: outcome.isRevoiced,
+                                 holdsPaidWork: outcome.holdsPaidWork, patchFollows: outcome.patches)
         }
     }
 
@@ -90,7 +143,7 @@ extension EditorModel {
                          change: .wholeClip, actionTitle: title)
     }
 
-    private func makeItWholeClipRow(_ outcome: WholeClipAutoOutcome, run: MakeItRun, reason: WholeClipRevoice.Reason?) -> MakeItRow {
+    private func makeItWholeClipRow(_ outcome: WholeClipAutoOutcome, request: WholeClipAutoRequest, run: MakeItRun, reason: WholeClipRevoice.Reason?) -> MakeItRow {
         switch outcome {
         case .revoiced(let record, let spent):
             run.charge(spent)
@@ -108,7 +161,15 @@ extension EditorModel {
         case .failed(let line, let spent):
             run.charge(spent)
             run.voiceSpent += spent
-            return MakeItRow(id: "wholeClip", kind: .note, text: "Kept your words: the whole clip couldn't be revoiced", detail: line)
+            return MakeItRow(id: "wholeClip", kind: .note, text: "Voiced only the changed phrases: the whole clip didn't finish", detail: line)
+        case .needsYou(let line, let spent):
+            // Its paid voice (and any lip sync) stays in Rewrite; Change shows it there, and nothing is voiced on top.
+            run.charge(spent)
+            run.voiceSpent += spent
+            let log = app.log
+            Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: "make-it whole clip kept in rewrite for the creator")) }
+            return MakeItRow(id: "wholeClip", kind: .note, text: "Finish the whole clip in Rewrite: its paid voice is kept", detail: line,
+                             change: .phrase(request.range), actionTitle: "Show in Rewrite")
         case .patchInstead(let line, let spent):
             run.charge(spent)
             run.voiceSpent += spent
@@ -133,7 +194,7 @@ extension EditorModel {
             let approved = WholeClipAutoRequest(clipID: request.clipID, range: request.range, rewrites: request.rewrites, budget: price)
             let outcome = await services.revoiceWholeClip(approved, self)
             guard run.rows.indices.contains(index) else { return }
-            run.rows[index] = makeItWholeClipRow(outcome, run: run, reason: quote.reason)
+            run.rows[index] = makeItWholeClipRow(outcome, request: approved, run: run, reason: quote.reason)
             run.seconds = makeItRenderedSeconds(run.clipID)
         }
     }
@@ -141,6 +202,14 @@ extension EditorModel {
 
 extension WholeClipAutoOutcome {
     var isRevoiced: Bool { if case .revoiced = self { true } else { false } }
+    var holdsPaidWork: Bool { if case .needsYou = self { true } else { false } }
+    /// The changed phrases are voiced on their own next: nothing was paid and nothing waits on the creator.
+    var patches: Bool {
+        switch self {
+        case .failed, .patchInstead: true
+        case .revoiced, .submissionUnconfirmed, .needsYou: false
+        }
+    }
 }
 
 // MARK: - The live services
@@ -164,17 +233,17 @@ extension MakeItServices {
         return parts.joined(separator: " ")
     }
 
-    /// Opens Rewrite over the whole clip with the planned words, its voice discovered, and its whole-clip card made.
+    /// Opens Rewrite over the whole clip with the planned words, its voice discovered, and its whole-clip card made. An open
+    /// Rewrite holding unused or running paid work (takes, a whole clip's voice or lip sync) is never closed for it: nil.
     @MainActor static func openWholeClip(_ request: WholeClipAutoRequest, editor: EditorModel) async -> RewriteSession? {
         // The quote's session goes on to the revoice: one Rewrite, one voice plan, nothing quoted twice.
         if let open = editor.openRewrite, open.isOpen, open.rewriteScope == .selection(request.range), let whole = open.wholeClip,
-           whole.phase == .choose, !open.hasPaidTakes {
+           whole.phase == .choose, !open.hasUnusedPaidWork {
             await whole.refreshQuote()
             return open
         }
         if let open = editor.openRewrite, open.isOpen {
-            guard !open.hasPaidTakes else { return nil }
-            editor.closeRewrite(returnFocus: false)
+            guard !open.hasUnusedPaidWork, editor.closeRewrite(returnFocus: false) else { return nil }
         }
         guard let session = MakeItRewriteDriver.openSession(editor: editor, range: request.range, text: wholeClipPassage(request, editor: editor)) else { return nil }
         #if DEBUG
@@ -193,19 +262,32 @@ extension MakeItServices {
         return WholeClipAutoQuote(reason: quote.reason, price: quote.wholeUSD)
     }
 
+    /// Claude mode's revoice: the run within the request's budget, at most one automatic Try Again
+    /// (`WholeClipRevoiceSession.runAutomatically`), and Rewrite closed only when it holds no paid work. A paid voice or lip
+    /// sync the run couldn't finish stays in Rewrite for the creator (`needsYou`); Claude mode never discards it.
     @MainActor static func liveRevoiceWholeClip(_ request: WholeClipAutoRequest, editor: EditorModel) async -> WholeClipAutoOutcome {
         guard let session = await openWholeClip(request, editor: editor), let whole = session.wholeClip else {
             return .failed("Rewrite couldn't open this clip. Nothing was sent.", spent: 0)
         }
-        defer { if session.isOpen, !whole.submissionUnconfirmed { editor.closeRewrite(returnFocus: false) } }
+        defer { if session.isOpen, !session.hasUnusedPaidWork, !whole.submissionUnconfirmed { editor.closeRewrite(returnFocus: false) } }
         guard let price = whole.quote?.wholeUSD, let budget = request.budget, price <= budget else {
             return .failed("Revoicing the whole clip passes this video's cap. Nothing was sent.", spent: 0)
         }
-        session.startWholeClip(automatic: true)
-        await whole.waitForRun()
-        let outcome = WholeClipAutoOutcome(whole)
+        let log = editor.app.log
+        let outcome = await whole.runAutomatically(budget: budget, start: { [weak session] left in
+            session?.startAutomaticWholeClip(budget: left)
+        }, report: { line in Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: line)) } })
         // The patch goes on: this clip's pick is the patch, so its phrases' Rewrites don't offer the whole clip again.
-        if case .patchInstead = outcome { editor.wholeClipPicks[request.clipID] = false }
+        if outcome.patches { editor.wholeClipPicks[request.clipID] = false }
         return outcome
+    }
+}
+
+extension RewriteSession {
+    /// The automatic run's start within `budget` (what Claude mode may still spend on it). The seam for package B's
+    /// `startWholeClip(automatic:budget:)`, which lets an automatic run voice a shorter wording only within that budget;
+    /// until it lands the budget is checked before the run and before its one Try Again (`automaticRetryUSD`).
+    fileprivate func startAutomaticWholeClip(budget: Decimal) {
+        startWholeClip(automatic: true)
     }
 }

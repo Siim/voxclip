@@ -8,6 +8,8 @@ import Testing
 @testable import VoxClipMedia
 @testable import VoxClip
 
+@MainActor private final class StopCount { var count = 0 }
+
 private final class Calls: Sendable {
     private let value = Mutex<[String]>([])
     var all: [String] { value.withLock { $0 } }
@@ -790,6 +792,87 @@ private final class Calls: Sendable {
         guard case .needsYou(let line) = outcome.result else { Issue.record("\(outcome)"); return }
         #expect(line == "Finish the open Rewrite first. Your paid whole-clip voice is kept.")
         #expect(open.isOpen && editor.openRewrite === open && whole.phase == .review && open.task.confirm == nil)
+    }
+
+    /// Claude mode over the fixture's suggestion, with the whole clip quoted at $1.50 of a $2 cap and revoiced by `revoice`.
+    private func claudeModeRun(_ fixture: Fixture, revoice: @escaping @MainActor (WholeClipAutoRequest) async -> WholeClipAutoOutcome) async throws -> MakeItRun {
+        let editor = fixture.editor
+        editor.makeIt.services?.wholeClipQuote = { _, _ in WholeClipAutoQuote(reason: .manyWords(revoiced: 3, spoken: 5), price: Decimal(string: "1.5")!) }
+        editor.makeIt.services?.revoiceWholeClip = { request, _ in await revoice(request) }
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.makeTopPostable(1, budget: MakeItBudget(cap: 2))
+        await editor.makeIt.waitForQueue()
+        return try #require(editor.makeIt.run(for: "clip-main"))
+    }
+
+    /// The live automatic run's mapping and its one Try Again (`runAutomatically`) over stub steps.
+    private func automatically(_ backend: WholeClipRevoiceSession.Backend, request: WholeClipAutoRequest) async -> WholeClipAutoOutcome {
+        let session = WholeClipRevoiceSession()
+        session.backend = backend
+        // As the live service does: the card's free price first (`openWholeClip`), which Try Again is priced from.
+        await session.refreshQuote()
+        return await session.runAutomatically(budget: request.budget ?? 0) { _ in session.start(automatic: true) }
+    }
+
+    /// A lip sync that failed with its paid result kept is tried again on its own, for free, and the whole clip is revoiced:
+    /// the patch never runs on top. It used to close Rewrite, drop the paid voice and pay for the phrases.
+    @Test func aKeptLipSyncIsTriedAgainForFreeAndThePatchNeverRuns() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.recoveredRequest = "request-1"
+        var backend = WholeClipRevoiceSessionTests.backend(stubs)
+        let lipsync = backend.lipsync
+        backend.lipsync = { voice, factor, model, progress in
+            guard stubs.lipsyncs.isEmpty else { return try await lipsync(voice, factor, model, progress) }
+            stubs.lipsyncs.append(model)
+            throw WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.invalidResponse, local: false, usd: Decimal(string: "1.55"),
+                                                       requestID: "request-1", freeRetry: true)
+        }
+        let run = try await claudeModeRun(fixture) { await automatically(backend, request: $0) }
+        #expect(stubs.voices.count == 1 && stubs.lipsyncs.count == 2 && stubs.used == 1, "one voice, the lip sync again for free, then Use")
+        #expect(run.rows.first { $0.id == "wholeClip" }?.text == "Revoiced the whole clip in your voice, lip synced")
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
+        #expect(run.spent == Decimal(string: "1.61"), "the kept result is paid once")
+    }
+
+    /// A voice part that failed its checks is voiced again on its own when the retry fits what is left of the cap, and the
+    /// patch never runs.
+    @Test func anUnfinishedVoicePartIsTriedAgainWithinTheCap() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        var backend = WholeClipRevoiceSessionTests.backend(stubs)
+        let voice = backend.voice
+        let stopped = StopCount()
+        backend.voice = { script, progress in
+            guard stopped.count > 0 else {
+                stopped.count += 1
+                throw WholeClipRevoiceSession.Stop.partVoice(part: 2, reason: "The take dropped a word.", checks: [])
+            }
+            return try await voice(script, progress)
+        }
+        let run = try await claudeModeRun(fixture) { await automatically(backend, request: $0) }
+        #expect(stopped.count == 1 && stubs.voices.count == 1 && stubs.used == 1, "the part is voiced again, then the clip is used")
+        #expect(run.rows.first { $0.id == "wholeClip" }?.text == "Revoiced the whole clip in your voice, lip synced")
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
+    }
+
+    /// A whole clip that stops holding paid work the run can't finish (here a lip sync that fails twice with nothing kept)
+    /// is left in Rewrite for the creator: the row says so and the phrases are not voiced on top.
+    @Test func aPaidWholeClipThatCantFinishNeedsYouAndIsNotPatched() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.failLipsync = true
+        let backend = WholeClipRevoiceSessionTests.backend(stubs)
+        let run = try await claudeModeRun(fixture) { await automatically(backend, request: $0) }
+        #expect(stubs.voices.count == 1 && stubs.lipsyncs.count == 1, "a paid lip sync is never retried on its own: \(stubs.lipsyncs)")
+        let row = try #require(run.rows.first { $0.id == "wholeClip" })
+        let shows = if case .phrase? = row.change { true } else { false }
+        #expect(row.text == "Finish the whole clip in Rewrite: its paid voice is kept" && shows && row.actionTitle == "Show in Rewrite", "\(row)")
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
+        #expect(run.spent == Decimal(string: "0.06"), "only the voice was paid")
     }
 
     // MARK: Tones (design.md §6.6 Tone row, §6.7 review row)
