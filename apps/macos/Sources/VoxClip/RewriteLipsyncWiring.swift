@@ -41,7 +41,8 @@ extension RewriteSession {
               !plan.lipsync.usingTakes, !takesBusy else { return nil }
         return PanelAction(id: "lipSyncAll", title: "Lip Sync All \(offer.phraseIDs.count) · ≈ \(offer.price)", priced: true) { [weak self, weak plan] in
             guard let self, let plan, current, takePlan === plan else { return }
-            plan.lipsync.start(offer)
+            // A refusal (the takes changed, a lip sync still running) says why under the rows and makes fresh offers.
+            plan.lipsync.press(offer)
             showProposal()
         }
     }
@@ -83,6 +84,11 @@ extension RewriteSession {
         }, changed: { [weak self] in
             await app.refreshMonthlySpend()
             self?.showProposal()
+        }, report: { line in
+            // An offer failure's kind or a result set aside: never a URL, key or file name.
+            let entry = LogEntry(level: .warn, category: "rewrite", message: line)
+            let log = app.log
+            Task { await log.write(entry) }
         })
     }
 }
