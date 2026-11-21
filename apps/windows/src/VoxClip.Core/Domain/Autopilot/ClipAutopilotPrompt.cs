@@ -86,7 +86,7 @@ public sealed partial class ClipAutopilotPrompt
     private readonly JsonNode transcript;
     private readonly JsonNode request;
 
-    /// <summary>The prompt's own version (6 adds the tone).</summary>
+    /// <summary>The active clip-plan prompt's version.</summary>
     public int PromptVersion { get; }
     /// <summary>SHA-256 of the file's bytes with CRLF read as LF.</summary>
     public string Sha256 { get; }
@@ -177,15 +177,37 @@ public sealed partial class ClipAutopilotPrompt
         if (!looks.ToHashSet().SetEquals(Enum.GetValues<ClipLook>())) throw Missing();
         var templateValues = limits.TemplateValues();
         templateValues["looks"] = string.Join("\n", lookLines);
-        PromptVersion = version;
+        var schema = document["schema"]!.DeepClone().AsObject();
+        string? zoomSection = null;
+        var clipVersion = version;
+        if (document["directionalZooms"] is { } directional)
+        {
+            var direction = AiJson.Get(directional, "directionSchema");
+            if (Int(AiJson.Get(directional, "promptVersion")) is not { } newVersion || newVersion <= version ||
+                AiJson.String(AiJson.Get(directional, "section")) is not { Length: > 0 } section ||
+                AiJson.String(AiJson.Get(direction, "type")) != "string" ||
+                !AiJson.Array(AiJson.Get(direction, "enum")).Select(AiJson.String).ToHashSet(StringComparer.Ordinal)
+                    .SetEquals(Enum.GetValues<ClipAutopilotZoomDirection>().Select(value => value.Name())) ||
+                AiJson.Get(AiJson.Get(AiJson.Get(schema["properties"], "zooms"), "items"), "properties") is not JsonObject fields ||
+                fields.ContainsKey("direction")) throw Missing();
+            fields["direction"] = direction!.DeepClone();
+            clipVersion = newVersion;
+            zoomSection = section;
+            templateValues["minDirectionalZoomSeconds"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MinimumDirectionalSeconds);
+            templateValues["maxDirectionalZoomSeconds"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MaximumDirectionalSeconds);
+            templateValues["minZoomScale"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MinimumDirectionalScale);
+            templateValues["maxDirectionalZoomScale"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MaximumDirectionalScale);
+            templateValues["minDirectionalZoomSpacing"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MinimumStartSpacing);
+        }
+        PromptVersion = clipVersion;
         Sha256 = sha256;
-        System = SystemPrompt(document, "plan", templateValues);
+        System = SystemPrompt(document, "plan", templateValues, zoomSection);
         MomentsSystem = SystemPrompt(document, "moments", templateValues);
         Limits = limits;
         Defaults = new(style, new(family, weight), textCase, words, under, scale, score);
         Looks = looks;
         SchemaName = name;
-        Schema = document["schema"]!.DeepClone().AsObject();
+        Schema = schema;
         MomentsSchemaName = momentsName;
         MomentsSchema = document["momentsSchema"]!.DeepClone().AsObject();
         ClipOutputTokens = clipTokens;
@@ -202,11 +224,12 @@ public sealed partial class ClipAutopilotPrompt
         properties.All(item => item.Value is JsonObject) &&
         AiJson.Array(schema["required"]).All(key => AiJson.String(key) is { } text && properties.ContainsKey(text));
 
-    private static string SystemPrompt(JsonObject document, string key, IReadOnlyDictionary<string, string> values)
+    private static string SystemPrompt(JsonObject document, string key, IReadOnlyDictionary<string, string> values, string? zoomSection = null)
     {
         var names = AiJson.Array(document["system"]?[key]).Select(AiJson.String).OfType<string>().ToArray();
         if (names.Length == 0) throw Missing();
-        var parts = names.Select(name => AiJson.String(document["sections"]?[name]) is { Length: > 0 } text ? text : throw Missing());
+        var parts = names.Select(name => name == "zooms" && zoomSection is not null ? zoomSection :
+            AiJson.String(document["sections"]?[name]) is { Length: > 0 } text ? text : throw Missing());
         return Fill(string.Join("\n\n", parts), values);
     }
 

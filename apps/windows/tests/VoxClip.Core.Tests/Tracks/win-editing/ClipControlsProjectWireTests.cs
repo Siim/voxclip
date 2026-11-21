@@ -33,6 +33,63 @@ public sealed class ClipControlsProjectWireTests
     public void FormatIsItsOwnFile() => Assert.Equal("voxclip-clip-controls-wire-cases/1", Cases()["format"]!.GetValue<string>());
 
     [Fact]
+    public void MacColorAdjustmentsRoundTripAndSurviveWindowsEdits()
+    {
+        var document = Fixture();
+        document["clipControls"]![0]!["colorAdjustments"] = JsonNode.Parse("""{"brightness":-100,"contrast":1e2,"saturation":27.0,"warmth":-14}""");
+        var project = ProjectSerialization.Deserialize(document.ToJsonString());
+        var original = Assert.Single(project.ClipControls);
+        var adjustments = new ClipColorAdjustments(-100, 100, 27, -14);
+        Assert.Equal(adjustments, original.ColorAdjustments);
+        Assert.Equal(ClipLook.Muted, original.Look);
+        var edited = ClipControlsProject.SettingLook(ClipLook.Warm, original.ClipId,
+            ClipControlsProject.SettingSpeed(1.5, original.ClipId, project));
+        var serialized = ProjectSerialization.Serialize(edited);
+        var saved = JsonNode.Parse(serialized)!["clipControls"]![0]!["colorAdjustments"]!;
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"brightness":-100,"contrast":100,"saturation":27,"warmth":-14}"""), saved));
+        Assert.Equal(original with { Speed = 1.5, Look = ClipLook.Warm }, Assert.Single(ProjectSerialization.Deserialize(serialized).ClipControls));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("""{"brightness":20,"contrast":0,"saturation":0}""")]
+    [InlineData("""{"brightness":20,"contrast":0,"saturation":0,"Warmth":0}""")]
+    [InlineData("""{"brightness":20,"contrast":0,"saturation":0,"warmth":0,"tint":1}""")]
+    [InlineData("""{"brightness":0,"contrast":0,"saturation":0,"warmth":0}""")]
+    [InlineData("""{"brightness":20.5,"contrast":0,"saturation":0,"warmth":0}""")]
+    [InlineData("""{"brightness":101,"contrast":0,"saturation":0,"warmth":0}""")]
+    [InlineData("""{"brightness":20,"contrast":0,"saturation":0,"warmth":-101}""")]
+    [InlineData("""{"brightness":"20","contrast":0,"saturation":0,"warmth":0}""")]
+    [InlineData("""{"brightness":20,"contrast":false,"saturation":0,"warmth":0}""")]
+    public void InvalidMacColorAdjustmentsAreRejected(string json)
+    {
+        var document = Fixture();
+        document["clipControls"]![0]!["colorAdjustments"] = JsonNode.Parse(json);
+        var error = Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        Assert.Equal(VoxClipErrorCode.ProjectUnreadable, error.Code);
+    }
+
+    [Fact]
+    public void AdjustmentsAloneKeepTheControlsInTheClipRenderInput()
+    {
+        var baseline = ProjectSerialization.Deserialize(Fixture().ToJsonString()) with { ClipControls = [] };
+        var defaults = ClipControlsProject.Controls("clip-main", baseline)!;
+        var grade = defaults with { ColorAdjustments = new(8, 22, 18, 0) };
+        var graded = ClipControlsProject.Setting(grade, baseline);
+        Assert.False(grade.IsDefault);
+        Assert.True(grade.ChangesPicture());
+        Assert.False(grade.ChangesAudio());
+        Assert.Equal(grade, ClipRenderInput.Resolve(graded, grade.ClipId, "/data", "/shared")?.Controls);
+        Assert.Null(ClipControlsRendering.Controls(graded, null));
+        var reset = ClipControlsProject.Setting(defaults, graded);
+        Assert.Empty(reset.ClipControls);
+        Assert.False(JsonNode.Parse(ProjectSerialization.Serialize(reset))!.AsObject().ContainsKey("clipControls"));
+        Assert.Throws<VoxClipException>(() => ClipControlsProject.Setting(grade with { ColorAdjustments = new(0, 0, 0, 0) }, baseline));
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Serialize(graded with { ClipControls = [grade with { ColorAdjustments = new(0, 0, 0, 101) }] }));
+    }
+
+    [Fact]
     public void MacProjectsWithClipControlsOpenValidateAndSaveUnchanged()
     {
         var valid = Cases()["valid"]!.AsArray();

@@ -19,6 +19,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     var focusRequest = 0
     var forceOpaque = false
     var policyOverride: EditorAccessibilityPolicy?
+    var editWord: (() -> Void)?
     /// "✦ Rewrite as ▾" opens or closes the tone strip under the bar (design.md §6.3.1); nil hides the verb.
     var rewriteAs: (() -> Void)?
     var stripOpen = false
@@ -42,8 +43,12 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     }
     private var controls: some View {
         HStack(spacing: 4) {
-            // ✦ Rewrite as first (design.md §6.3.1): one click opens the tone strip under the bar, a chip rewrites the words
-            // at once, and ⇧⌘R asks the default tone. Text Rewrite needs no Voice Lab.
+            if let editWord {
+                Button(action: editWord) { label("Edit word", "") }
+                    .focused($focused)
+                    .help("Select a word and type to replace it in the transcript and captions. The audio stays the same.")
+                    .accessibilityIdentifier("voxclip.selectionBar.editWord")
+            }
             if let rewriteAs, !model.selectedIDs.isEmpty, model.capabilities.ai {
                 Button(action: rewriteAs) { label("\u{2726} Rewrite as \u{25BE}", "⇧⌘R") }
                     .background(stripOpen ? DesignValues.color("bg.selectedRow") : .clear, in: RoundedRectangle(cornerRadius: 6))
@@ -52,21 +57,20 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
                     .accessibilityValue(stripOpen ? "Tones shown" : "")
                     .accessibilityIdentifier("voxclip.selectionBar.rewriteAs")
             }
-            // ✦ Ask Claude second (design.md §6.8): one inline field in the right panel; nothing is sent until Return.
-            if model.canAskClaude, model.askClaudeWordSelection != nil {
-                Button { model.openAskClaudeOnSelection(); dismiss() } label: { label("\u{2726} Ask Claude", "") }
-                    .help("Ask Claude to censor, add an overlay or change timing on these words")
-                    .accessibilityLabel("Ask Claude")
-                    .accessibilityIdentifier("voxclip.selectionBar.askClaude")
-                Divider().frame(height: 18)
+            if editWord != nil {
+                Menu {
+                    if model.canAskClaude, model.askClaudeWordSelection != nil {
+                        Button("Ask Claude") { askClaude() }
+                    }
+                    Button("Make Clip") { makeClip() }
+                    Button("Cut") { cut() }
+                    Button("Restore") { restore() }.disabled(!canRestore)
+                } label: { Image(systemName: "ellipsis").frame(minWidth: 26, minHeight: 26) }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .accessibilityLabel("More selection actions").help("More selection actions")
+            } else {
+                rangeActions
             }
-            Button { model.makeClip(); dismiss() } label: { label("Make Clip", "⌥⌘K") }
-                .background(Color(nsColor: .unemphasizedSelectedContentBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                .focused($focused)
-                .help(makeClipHelp)
-            Button { model.cutSelection(); dismiss() } label: { label("Cut", "⌫") }
-            Button { model.cutSelection(restore: true); dismiss() } label: { label("Restore", "⇧⌫") }
-                .disabled(model.selectedWordIDs.isDisjoint(with: model.cutWordIDs) && model.selectedPauseIDs.isDisjoint(with: model.cutPauseIDs))
         }
         .buttonStyle(.plain)
         .disabled(!model.capabilities.edit)
@@ -74,6 +78,29 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
         .foregroundStyle(DesignValues.color("text.primary"))
         .padding(.horizontal, 6)
         .frame(height: 36)
+    }
+    private func askClaude() { model.openAskClaudeOnSelection(); dismiss() }
+    private func makeClip() { model.makeClip(); dismiss() }
+    private func cut() { model.cutSelection(); dismiss() }
+    private func restore() { model.cutSelection(restore: true); dismiss() }
+    private var canRestore: Bool {
+        !model.selectedWordIDs.isDisjoint(with: model.cutWordIDs) || !model.selectedPauseIDs.isDisjoint(with: model.cutPauseIDs)
+    }
+    @ViewBuilder private var rangeActions: some View {
+        if model.canAskClaude, model.askClaudeWordSelection != nil {
+            Button { askClaude() } label: { label("\u{2726} Ask Claude", "") }
+                .help("Ask Claude to censor, add an overlay or change timing on these words")
+                .accessibilityLabel("Ask Claude")
+                .accessibilityIdentifier("voxclip.selectionBar.askClaude")
+            Divider().frame(height: 18)
+        }
+        Button { makeClip() } label: { label("Make Clip", "⌥⌘K") }
+            .background(Color(nsColor: .unemphasizedSelectedContentBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            .focused($focused)
+            .help(makeClipHelp)
+        Button { cut() } label: { label("Cut", "⌫") }
+        Button { restore() } label: { label("Restore", "⇧⌫") }
+            .disabled(!canRestore)
     }
     @ViewBuilder private var surface: some View {
         if forceOpaque || policy.opaqueSelectionBar {

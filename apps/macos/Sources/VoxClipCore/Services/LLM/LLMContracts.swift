@@ -326,7 +326,8 @@ public actor LLMRunner {
             let raw = try await connector.send(current, model: model)
             try Task.checkCancellation()
             do {
-                let parsed = try CanonicalResponseParser.validate(raw, schema: request.schema)
+                let parsed = try CanonicalResponseParser.validate(raw, schema: request.schema,
+                    allowingMissing: request.feature == .clipAutopilot ? ["music", "musicPick"] : [])
                 return LLMResult(object: parsed.object, droppedItems: parsed.droppedItems, model: raw.model, usedFallback: fallback || nativeFallback(connector: connector.id, requested: model, actual: raw.model), usage: raw.usage, requestID: raw.requestID)
             } catch LLMError.invalidOutput(let reason) {
                 guard correction == 0 else { throw LLMError.invalidOutput(reason: reason) }

@@ -258,10 +258,10 @@ public sealed partial class LlmConnector
         if (value["properties"] is JsonObject properties)
         {
             foreach (var property in properties.ToArray()) properties[property.Key] = HttpStructuredSchema(property.Value!);
-            var required = value["required"] is JsonArray keys ? keys.Select(key => key!.GetValue<string>()).ToHashSet(StringComparer.Ordinal) : [];
-            if (!required.SetEquals(properties.Select(property => property.Key)))
-                value["required"] = new JsonArray(properties.Select(property => property.Key).Order(StringComparer.Ordinal)
-                    .Select(key => (JsonNode)JsonValue.Create(key)!).ToArray());
+            var required = value["required"] as JsonArray ?? new JsonArray();
+            var missing = properties.Select(property => property.Key).Except(required.Select(key => key!.GetValue<string>()), StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            foreach (var key in missing) required.Add((JsonNode)JsonValue.Create(key)!);
+            if (value["required"] is null) value["required"] = required;
         }
         if (value["items"] is { } items) value["items"] = HttpStructuredSchema(items);
         return value;

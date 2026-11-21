@@ -2,6 +2,7 @@ import AVKit
 import SwiftUI
 import UniformTypeIdentifiers
 import VoxClipCore
+import VoxClipMedia
 
 @MainActor struct ContextDemoPanel: View {
     @Bindable var session: ContextDemoSession
@@ -44,7 +45,10 @@ import VoxClipCore
                     }
                     Text("Record a webpage or one app window beside your narration. Your source voice continues underneath. Nothing is recorded or run until you review and start.")
                         .foregroundStyle(DesignValues.color("text.secondary"))
-                    if !session.busy { sourceFields }
+                    if !session.busy {
+                        IllustrativeCutawaySection(model: model)
+                        sourceFields
+                    }
                     if let request = session.request {
                         ContextDemoReviewView(request: request, allowsPageScripts: session.allowsPageScripts)
                     }
@@ -59,9 +63,13 @@ import VoxClipCore
                             .id(asset.id)
                         ContextDemoTrimFields(session: session, asset: asset)
                     }
-                    if let document = session.document, !document.placements.isEmpty {
-                        ContextDemoPlacementList(document: document, selected: session.selectedPlacementID,
-                            select: { session.selectPlacement($0) })
+                    if let document = session.document {
+                        let generated = Set(document.assets.filter(IllustrativeCutawayAssets.isGenerated).map(\.id))
+                        let recordings = document.placements.filter { !generated.contains($0.assetId) }
+                        if !recordings.isEmpty {
+                            ContextDemoPlacementList(placements: recordings, selected: session.selectedPlacementID,
+                                select: { session.selectPlacement($0) })
+                        }
                     }
                     if let message = session.message, !message.isEmpty {
                         Text(message).foregroundStyle(DesignValues.color("text.secondary"))
@@ -248,13 +256,13 @@ private struct ContextDemoReviewView: View {
 }
 
 private struct ContextDemoPlacementList: View {
-    let document: ContextDemoDocument
+    let placements: [ContextDemoPlacement]
     let selected: String?
     let select: @MainActor @Sendable (String) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Placed demonstrations").font(VCType.body.font(.semibold)).accessibilityAddTraits(.isHeader)
-            ForEach(document.placements) { placement in
+            ForEach(placements) { placement in
                 Button { select(placement.id) } label: {
                     Label("\(placement.editedStartSeconds.formatted(.number.precision(.fractionLength(2))))–\(placement.editedEndSeconds.formatted(.number.precision(.fractionLength(2)))) seconds",
                         systemImage: placement.id == selected ? "checkmark.circle.fill" : "play.rectangle")

@@ -1,6 +1,11 @@
 {
   "schemaVersion": 2,
   "promptVersion": 9,
+  "directionalZooms": {
+    "promptVersion": 10,
+    "section": "Zooms\n- Leave the framing alone unless a specific spoken beat earns a move. Use zoomIn to draw attention to a key claim, number or punchline; use zoomOut to release emphasis on a resolution, pivot or reflective line. Do not alternate mechanically. Return an empty list when no beat benefits.\n- For each zoom, use direction (zoomIn or zoomOut), word (first spoken word), untilWord (last spoken word) and scale. Anchor both ends to the actual kept phrase in the indexed transcript, with no cuts or tightened pauses inside it. Use {minDirectionalZoomSeconds} to {maxDirectionalZoomSeconds} seconds, with starts at least {minDirectionalZoomSpacing} seconds apart, and a scale from {minZoomScale} to {maxDirectionalZoomScale}. In reason, briefly say why moving in or out on this particular phrase helps the viewer; do not invent a quote or a visual event.",
+    "directionSchema": { "type": "string", "enum": ["zoomIn", "zoomOut"] }
+  },
   "system": {
     "plan": [
       "role",

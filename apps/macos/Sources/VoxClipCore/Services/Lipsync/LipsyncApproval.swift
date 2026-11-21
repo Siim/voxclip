@@ -136,10 +136,14 @@ enum LipsyncURLPolicy {
         guard let host = value.host, resultHosts.contains(host), value.path.hasPrefix("/files/") else { throw LipsyncError.unsafeURL }
     }
 
+    static func queuePath(model: LipsyncModel, requestID: String, suffix: String) -> String {
+        let app = model.id.hasPrefix("fal-ai/latentsync") ? "fal-ai/latentsync" : "fal-ai/sync-lipsync"
+        return "/\(app)/requests/\(requestID)\(suffix)"
+    }
+
     static func queue(_ url: URL, model: LipsyncModel, requestID: String, suffix: String) throws {
         let value = try components(url)
-        let app = model.id.hasPrefix("fal-ai/latentsync") ? "fal-ai/latentsync" : "fal-ai/sync-lipsync"
         guard value.host == "queue.fal.run", value.query == nil,
-              value.percentEncodedPath == "/\(app)/requests/\(requestID)\(suffix)" else { throw LipsyncError.unsafeURL }
+              value.percentEncodedPath == queuePath(model: model, requestID: requestID, suffix: suffix) else { throw LipsyncError.unsafeURL }
     }
 }

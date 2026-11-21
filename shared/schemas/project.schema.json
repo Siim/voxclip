@@ -4086,7 +4086,7 @@
       ]
     },
     "clipControls": {
-      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
+      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds and colorAdjustments are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -4203,6 +4203,55 @@
           "type": "number",
           "minimum": 0,
           "description": "\"Cover frame chosen\": the source second of the clip's cover, written beside each export as <name>-cover.jpg and embedded as its cover art. Omitted when there is none."
+        },
+        "colorAdjustments": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "brightness",
+            "contrast",
+            "saturation",
+            "warmth"
+          ],
+          "description": "Signed color adjustments applied after the base look. Omit when all values are zero.",
+          "properties": {
+            "brightness": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "contrast": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "saturation": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "warmth": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100
+            }
+          },
+          "not": {
+            "properties": {
+              "brightness": {
+                "const": 0
+              },
+              "contrast": {
+                "const": 0
+              },
+              "saturation": {
+                "const": 0
+              },
+              "warmth": {
+                "const": 0
+              }
+            }
+          }
         }
       }
     },

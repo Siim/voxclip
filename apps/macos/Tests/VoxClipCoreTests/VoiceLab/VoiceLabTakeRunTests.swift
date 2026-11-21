@@ -829,6 +829,10 @@ struct VoiceLabTakeRunTests {
         let result = try await fixture.run.execute(quote, approved: true)
         #expect(result.rows.count == 3 && result.best == nil)
         #expect(result.rows.allSatisfy { !$0.selectable && $0.qa?.failures.contains(speakerFailure ? .speaker : .transcript) == true })
+        #expect(fixture.http.value.withLock { $0.qa } == (speakerFailure ? 0 : 3))
+        if speakerFailure {
+            #expect(result.rows.allSatisfy { $0.receipt != nil && $0.qaReceipt == nil && $0.qa?.values.transcriptMatch == nil })
+        }
     }
     /// Recovery buys nothing: one synthesis and one Scribe request per take, as approved, never a fallback request.
     @Test(arguments: [false, true]) func missingOrMalformedAlignmentDoesNotBuyUnspecifiedFallback(malformed: Bool) async throws {

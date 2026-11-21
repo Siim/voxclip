@@ -168,7 +168,9 @@ extension EditorModel {
 
     func motionCueDraft(id: String? = nil) -> MotionCueDraft? {
         guard let clip = activeClip, let bounds = scopeSourceRange else { return nil }
-        if let id, let cue = clipMotionCues.first(where: { $0.id == id }) { return MotionCueDraft(cue: cue, original: cue) }
+        if let id {
+            return clipMotionCues.first(where: { $0.id == id }).map { MotionCueDraft(cue: $0, original: $0) }
+        }
         let selection = selectionSourceRange
         let start = min(bounds.upperBound, max(bounds.lowerBound, selection?.lowerBound ?? sourceTime))
         let end = min(bounds.upperBound, start + MotionCue.maximumDuration, selection?.upperBound ?? (start + 3))

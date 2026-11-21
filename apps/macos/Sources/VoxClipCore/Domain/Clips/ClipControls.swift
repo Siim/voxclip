@@ -1,7 +1,7 @@
 import Foundation
 
 /// The colour look of a clip (design.md §6.9, ai.md §16.2). The planner (`ClipAutopilotPlan.LookID`) and the renderer
-/// share these ids; the Core Image recipes live in VoxClipMedia `ClipLookFilter`.
+/// share these ids; the numbers are in `ClipLookRecipe`.
 public enum ClipLook: String, Codable, Sendable, CaseIterable {
     /// The footage as filmed.
     case original
@@ -61,6 +61,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     /// The clip's own frame; nil keeps the project's export frame.
     public var shape: ClipShape?
     public var look: ClipLook
+    public var colorAdjustments: ClipColorAdjustments?
     /// Source audio level, −24…+12 dB.
     public var gainDb: Double
     public var fadeInSeconds: Double
@@ -87,14 +88,17 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
 
     public init(clipId: String, speed: Double = 1, shape: ClipShape? = nil, look: ClipLook = .original, gainDb: Double = 0,
                 fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0, muteSource: Bool = false, flipHorizontal: Bool = false,
-                rotationDegrees: Int = 0, reframe: ReframeSettings? = nil, coverSeconds: Double? = nil) {
+                rotationDegrees: Int = 0, reframe: ReframeSettings? = nil, coverSeconds: Double? = nil,
+                colorAdjustments: ClipColorAdjustments? = nil) {
         self.clipId = clipId; self.speed = speed; self.shape = shape; self.look = look; self.gainDb = gainDb
         self.fadeInSeconds = fadeInSeconds; self.fadeOutSeconds = fadeOutSeconds; self.muteSource = muteSource
         self.flipHorizontal = flipHorizontal; self.rotationDegrees = rotationDegrees; self.reframe = reframe; self.coverSeconds = coverSeconds
+        self.colorAdjustments = colorAdjustments == .neutral ? nil : colorAdjustments
     }
 
     private enum CodingKeys: String, CodingKey {
         case clipId, speed, shape, look, gainDb, fadeInSeconds, fadeOutSeconds, muteSource, flipHorizontal, rotationDegrees, reframe, coverSeconds
+        case colorAdjustments
     }
 
     public init(from decoder: any Decoder) throws {
@@ -111,6 +115,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         rotationDegrees = try values.decode(Int.self, forKey: .rotationDegrees)
         reframe = try values.decodeIfPresent(ReframeSettings.self, forKey: .reframe)
         coverSeconds = try values.decodeIfPresent(Double.self, forKey: .coverSeconds)
+        colorAdjustments = try values.decodeIfPresent(ClipColorAdjustments.self, forKey: .colorAdjustments)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -127,6 +132,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         try values.encode(rotationDegrees, forKey: .rotationDegrees)
         try values.encodeIfPresent(reframe, forKey: .reframe)
         try values.encodeIfPresent(coverSeconds, forKey: .coverSeconds)
+        try values.encodeIfPresent(colorAdjustments, forKey: .colorAdjustments)
     }
 
     /// The crop centre for an output of `aspect` (width over height): the face's for a portrait or square frame, nil for a
@@ -142,7 +148,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     /// Speed, volume, fades or mute change the clip's audio.
     public var changesAudio: Bool { speed != 1 || gainDb != 0 || fadeInSeconds > 0 || fadeOutSeconds > 0 || muteSource }
     /// Look, flip or rotation change each frame.
-    public var changesPicture: Bool { look != .original || flipHorizontal || rotationDegrees != 0 }
+    public var changesPicture: Bool { look != .original || colorAdjustments != nil || flipHorizontal || rotationDegrees != 0 }
     /// A quarter turn swaps the picture's width and height.
     public var isQuarterTurn: Bool { rotationDegrees == 90 || rotationDegrees == 270 }
 
@@ -216,6 +222,7 @@ public enum ClipControlsProject {
 
     public static func validate(_ entry: ProjectClipControls) throws {
         func require(_ condition: Bool, _ reason: String) throws { if !condition { throw ClipControlsProjectError.invalidEntry(reason) } }
+        if let adjustments = entry.colorAdjustments { try require(adjustments.isValid, "color adjustments") }
         try require(entry.clipId.range(of: identifier, options: .regularExpression) != nil, "clip id")
         try require(entry.speed.isFinite && ProjectClipControls.speedRange.contains(entry.speed), "speed")
         try require(entry.gainDb.isFinite && ProjectClipControls.gainRange.contains(entry.gainDb), "gain")
@@ -237,7 +244,7 @@ public enum ClipControlsProject {
         }
         let keys: Set<String> = ["clipId", "speed", "shape", "look", "gainDb", "fadeInSeconds", "fadeOutSeconds", "muteSource",
                                  "flipHorizontal", "rotationDegrees"]
-        let optional: Set<String> = ["reframe", "coverSeconds"]
+        let optional: Set<String> = ["reframe", "coverSeconds", "colorAdjustments"]
         for entry in entries {
             guard case .object(let object) = entry, Set(object.keys).subtracting(optional) == keys else {
                 throw ClipControlsProjectError.invalidEntry("unknown or missing field")
@@ -251,6 +258,17 @@ public enum ClipControlsProject {
             }
             if let cover = object["coverSeconds"] {
                 guard case .number(let value) = cover, value.isFinite else { throw ClipControlsProjectError.invalidEntry("cover") }
+            }
+            if let adjustments = object["colorAdjustments"] {
+                let controls = ClipColorAdjustments.Control.allCases.map(\.rawValue)
+                let bounds = ClipColorAdjustments.range
+                guard case .object(let fields) = adjustments, Set(fields.keys) == Set(controls),
+                      fields.values.allSatisfy({ value in
+                          guard case .number(let point) = value else { return false }
+                          return point.rounded() == point && (Double(bounds.lowerBound)...Double(bounds.upperBound)).contains(point)
+                      }), fields.values.contains(where: { $0 != .number(0) }) else {
+                    throw ClipControlsProjectError.invalidEntry("color adjustments")
+                }
             }
             func number(_ key: String) -> Bool { if case .number(let value) = object[key] { return value.isFinite } else { return false } }
             func bool(_ key: String) -> Bool { if case .bool = object[key] { return true } else { return false } }
@@ -476,6 +494,17 @@ public struct ClipLookRecipe: Sendable, Equatable {
             // Luma mono, then a gentle S curve: 0.5 + 1.15u − 0.6u³ for u = x − 0.5 (0 → 0, ½ → ½, 1 → 1).
             matrix = Self.saturation(0); bias = [0, 0, 0]; curve = [0, 0.7, 0.9, -0.6]
         }
+    }
+
+    public init(adjustments: ClipColorAdjustments) {
+        let contrast = 1 + Double(adjustments.contrast) * 0.005
+        let saturation = 1 + Double(adjustments.saturation) * 0.01
+        let warmth = Double(adjustments.warmth) * 0.0018
+        let offset = Double(adjustments.brightness) * 0.0016 + (1 - contrast) * 0.5
+        let gains = [1 + warmth, 1.0, 1 - warmth]
+        matrix = zip(Self.saturation(saturation, scale: contrast), gains).map { row, gain in row.map { $0 * gain } }
+        bias = gains.map { offset * $0 }
+        curve = nil
     }
 
     public var isIdentity: Bool { self == ClipLookRecipe(.original) }

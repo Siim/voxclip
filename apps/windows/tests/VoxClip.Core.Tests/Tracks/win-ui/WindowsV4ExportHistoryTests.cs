@@ -1,5 +1,6 @@
 #if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
@@ -12,6 +13,21 @@ public sealed class WindowsV4ExportHistoryTests
 {
     private static Project Fixture(string name = "context-demo/v4-project.voxclip") => ProjectSerialization.Deserialize(File.ReadAllText(
         Path.Combine(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!, "fixtures", name)));
+
+    [Fact]
+    public void MacColorGradeInvalidatesOnlyItsClipExportFingerprint()
+    {
+        var baseline = Fixture("clip-controls/clip-controls-project.voxclip");
+        var original = Assert.Single(baseline.ClipControls);
+        var graded = ClipControlsProject.Setting(original with { ColorAdjustments = new(8, 22, 18, 0) }, baseline);
+        var changed = ClipControlsProject.Setting(original with { ColorAdjustments = new(9, 22, 18, 0) }, graded);
+        var clip = new ExportTarget.Clip(original.ClipId);
+        var full = new ExportTarget.FullEdit();
+        Assert.NotEqual(ExportFingerprint.For(baseline, clip), ExportFingerprint.For(graded, clip));
+        Assert.NotEqual(ExportFingerprint.For(graded, clip), ExportFingerprint.For(changed, clip));
+        Assert.Equal(ExportFingerprint.For(baseline, full), ExportFingerprint.For(graded, full));
+        Assert.Equal(ExportFingerprint.For(baseline, clip), ExportFingerprint.For(ClipControlsProject.Setting(original, graded), clip));
+    }
 
     [Fact]
     public void RemoveClipAndItsMotionUseOneUndoAndExactRedo()

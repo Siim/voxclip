@@ -167,60 +167,79 @@ public actor FalLipsyncProvider: LipsyncProvider {
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("{\"expiration_duration_seconds\":3600}", forHTTPHeaderField: "X-Fal-Object-Lifecycle-Preference")
-        try fresh(quote)
-        try Task.checkCancellation()
-        uncertain = quote.id
-        await diagnostic?.record(.init(stage: .submit))
-        let response: LipsyncHTTPResponse
-        do {
-            var received = try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
-            for attempt in 1...2 where received.status == 429 || (500...599).contains(received.status) {
-                uncertain = nil
-                try await sleep(.seconds(attempt))
-                try fresh(quote)
-                try Task.checkCancellation()
-                uncertain = quote.id
-                received = try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
-            }
-            response = received
-        }
-        catch {
-            if error is VoiceConsentError {
-                uncertain = nil
-                throw error
-            }
-            await log("submit-uncertain")
-            await diagnostic?.record(.init(stage: .failure, error: .submissionUncertain))
-            if Task.isCancelled || error is CancellationError { throw CancellationError() }
-            throw LipsyncError.submissionUncertain
-        }
-        guard (200...299).contains(response.status) else {
-            if (400...599).contains(response.status) {
-                uncertain = nil
-                throw LipsyncError.http(response.status)
-            }
-            throw LipsyncError.submissionUncertain
-        }
-        guard let document = try? json(response) else { throw LipsyncError.submissionUncertain }
-        guard let remoteID = document["request_id"] as? String, UUID(uuidString: remoteID) != nil,
-              entries[remoteID] == nil,
-              let status = (document["status_url"] as? String).flatMap(URL.init(string:)),
-              let result = (document["response_url"] as? String).flatMap(URL.init(string:)),
-              let cancel = (document["cancel_url"] as? String).flatMap(URL.init(string:)) else { throw LipsyncError.submissionUncertain }
-        do {
-            try LipsyncURLPolicy.queue(status, model: quote.model, requestID: remoteID, suffix: "/status")
-            try LipsyncURLPolicy.queue(result, model: quote.model, requestID: remoteID, suffix: "")
-            try LipsyncURLPolicy.queue(cancel, model: quote.model, requestID: remoteID, suffix: "/cancel")
-        } catch { throw LipsyncError.submissionUncertain }
-        let job = LipsyncJob(model: quote.model, remoteID: remoteID, statusURL: status, responseURL: result,
-                             cancelURL: cancel, submittedAt: now())
-        entries[remoteID] = Entry(job: job, quote: quote, started: monotonic(), lease: lease)
-        active = remoteID; uncertain = nil
-        if let spend { entries[remoteID]?.spendWarning = await spend.record(quote.estimate, at: job.submittedAt) }
+        let (job, status) = try await submitToQueue(request, quote: quote, permit: permit)
+        entries[job.remoteID] = Entry(job: job, quote: quote, started: monotonic(), lease: lease)
+        active = job.remoteID; uncertain = nil
+        if let spend { entries[job.remoteID]?.spendWarning = await spend.record(quote.estimate, at: job.submittedAt) }
         await log("accepted")
-        await diagnostic?.record(.init(stage: .submit, requestID: remoteID, status: response.status))
+        await diagnostic?.record(.init(stage: .submit, requestID: job.remoteID, status: status))
         if Task.isCancelled { await self.cancel(job) }
         return job
+    }
+
+    private func submitToQueue(_ request: URLRequest, quote: LipsyncQuote, permit: VoiceDispatchPermit) async throws -> (LipsyncJob, Int) {
+        try fresh(quote)
+        try Task.checkCancellation()
+        await diagnostic?.record(.init(stage: .submit))
+        var retries = 0
+        while true {
+            try fresh(quote)
+            try Task.checkCancellation()
+            uncertain = quote.id
+            let response: LipsyncHTTPResponse
+            do {
+                response = try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
+            } catch let error as VoiceConsentError {
+                uncertain = nil
+                throw error
+            } catch {
+                let failure = await uncertainSubmission(status: nil)
+                if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                throw failure
+            }
+            let status = response.status
+            if (400...499).contains(status), status != 408, status != 499 {
+                uncertain = nil
+                await diagnostic?.record(.init(stage: .submit, status: status, error: .http(status)))
+                if status == 429, retries < 2 {
+                    retries += 1
+                    try await sleep(.seconds(retries))
+                    continue
+                }
+                throw LipsyncError.http(status)
+            }
+            do { return (try queueReceipt(response, model: quote.model), status) }
+            catch { throw await uncertainSubmission(status: status) }
+        }
+    }
+
+    private func uncertainSubmission(status: Int?) async -> LipsyncError {
+        await log("submit-uncertain")
+        await diagnostic?.record(.init(stage: .failure, status: status, error: .submissionUncertain))
+        return .submissionUncertain
+    }
+
+    private func queueReceipt(_ response: LipsyncHTTPResponse, model: LipsyncModel) throws -> LipsyncJob {
+        let document = try json(response)
+        guard let remoteID = document["request_id"] as? String, UUID(uuidString: remoteID) != nil,
+              entries[remoteID] == nil else { throw LipsyncError.invalidResponse }
+        func followUpURL(_ field: String, suffix: String) throws -> URL {
+            let url: URL
+            if let value = document[field], !(value is NSNull) {
+                guard let text = value as? String, let supplied = URL(string: text) else { throw LipsyncError.invalidResponse }
+                url = supplied
+            } else {
+                guard let state = document["status"] as? String, ["IN_QUEUE", "IN_PROGRESS", "COMPLETED"].contains(state)
+                else { throw LipsyncError.invalidResponse }
+                let path = LipsyncURLPolicy.queuePath(model: model, requestID: remoteID, suffix: suffix)
+                url = URL(string: "https://queue.fal.run\(path)")!
+            }
+            try LipsyncURLPolicy.queue(url, model: model, requestID: remoteID, suffix: suffix)
+            return url
+        }
+        return try LipsyncJob(model: model, remoteID: remoteID, statusURL: followUpURL("status_url", suffix: "/status"),
+            responseURL: followUpURL("response_url", suffix: ""), cancelURL: followUpURL("cancel_url", suffix: "/cancel"),
+            submittedAt: now())
     }
 
     public func status(quoteID: UUID) -> LipsyncJobStatus? {
@@ -434,8 +453,8 @@ public actor FalLipsyncProvider: LipsyncProvider {
     public func refetch(requestID: String, model: LipsyncModel, to file: URL) async throws {
         guard models.contains(model), UUID(uuidString: requestID) != nil else { throw LipsyncError.invalidInput }
         let key = try await credential()
-        let app = model.id.hasPrefix("fal-ai/latentsync") ? "fal-ai/latentsync" : "fal-ai/sync-lipsync"
-        let url = URL(string: "https://queue.fal.run/\(app)/requests/\(requestID)")!
+        let path = LipsyncURLPolicy.queuePath(model: model, requestID: requestID, suffix: "")
+        let url = URL(string: "https://queue.fal.run\(path)")!
         try LipsyncURLPolicy.queue(url, model: model, requestID: requestID, suffix: "")
         let body = try json(try await http.send(request(url, method: "GET", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil))
         guard !providerError(body), let video = body["video"] as? [String: Any], let text = video["url"] as? String,
@@ -494,7 +513,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
     private func json(_ response: LipsyncHTTPResponse, accepts: Set<Int> = Set(200...299)) throws -> [String: Any] {
         guard accepts.contains(response.status) else { throw LipsyncError.http(response.status) }
         guard response.body.count <= LipsyncLimits.maximumJSONBytes else { throw LipsyncError.responseTooLarge }
-        guard response.contentType == "application/json" || response.contentType?.hasSuffix("+json") == true,
+        guard LipsyncHTTPResponse.isJSON(response.contentType),
               let result = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any] else { throw LipsyncError.invalidResponse }
         return result
     }
@@ -588,26 +607,43 @@ extension FalLipsyncProvider {
     private func upload(_ file: LipsyncUploadFile, key: String, permit: VoiceDispatchPermit) async throws -> LipsyncSignedInput {
         try Task.checkCancellation()
         let initiatedAt = now()
-        var initiate = request(URL(string: "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3")!, method: "POST", key: key)
-        initiate.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        initiate.setValue("{\"expiration_duration_seconds\":3600}", forHTTPHeaderField: "X-Fal-Object-Lifecycle")
-        initiate.httpBody = try JSONSerialization.data(withJSONObject: ["file_name": file.contentType == "video/mp4" ? "window.mp4" : "mixed.wav", "content_type": file.contentType])
-        let body = try json(await http.send(initiate, limit: LipsyncLimits.maximumJSONBytes, permit: permit))
-        guard let target = (body["upload_url"] as? String).flatMap(URL.init(string:)),
-              let result = (body["file_url"] as? String).flatMap(URL.init(string:)) else { throw LipsyncError.invalidResponse }
-        let components = try LipsyncURLPolicy.components(target)
-        guard let host = components.host, LipsyncURLPolicy.resultHosts.contains(host) || host == "storage.fal.ai" else {
-            throw LipsyncError.unsafeURL
+        var stage = LipsyncDiagnosticEvent.Stage.uploadInitiate
+        var status: Int?
+        do {
+            var initiate = request(URL(string: "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3")!, method: "POST", key: key)
+            initiate.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            initiate.setValue("{\"expiration_duration_seconds\":3600}", forHTTPHeaderField: "X-Fal-Object-Lifecycle")
+            initiate.httpBody = try JSONSerialization.data(withJSONObject: [
+                "file_name": file.contentType == "video/mp4" ? "window.mp4" : "mixed.wav", "content_type": file.contentType
+            ])
+            let initiation = try await http.send(initiate, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
+            status = initiation.status
+            let body = try json(initiation)
+            guard let target = (body["upload_url"] as? String).flatMap(URL.init(string:)),
+                  let result = (body["file_url"] as? String).flatMap(URL.init(string:)) else { throw LipsyncError.invalidResponse }
+            let components = try LipsyncURLPolicy.components(target)
+            guard let host = components.host, LipsyncURLPolicy.resultHosts.contains(host) || host == "storage.fal.ai" else {
+                throw LipsyncError.unsafeURL
+            }
+            try LipsyncURLPolicy.result(result)
+            await logger.register(secret: target.absoluteString)
+            await logger.register(secret: result.absoluteString)
+            await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt)))
+            stage = .upload; status = nil
+            try Task.checkCancellation()
+            var upload = URLRequest(url: target)
+            upload.httpMethod = "PUT"; upload.httpBody = file.data; upload.timeoutInterval = 120
+            upload.setValue(file.contentType, forHTTPHeaderField: "Content-Type")
+            let response = try await http.send(upload, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
+            status = response.status
+            guard (200...299).contains(response.status) else { throw LipsyncError.http(response.status) }
+            await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt), bytes: file.data.count))
+            return try LipsyncSignedInput(uploadedURL: result, file: file, expiresAt: initiatedAt.addingTimeInterval(3600))
+        } catch let error as LipsyncError {
+            await log("upload-failed stage=\(stage.rawValue) status=\(status.map(String.init) ?? "unknown") reason=\(error)")
+            await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt),
+                                           bytes: stage == .upload ? file.data.count : nil, error: error))
+            throw error
         }
-        try LipsyncURLPolicy.result(result)
-        await logger.register(secret: target.absoluteString)
-        await logger.register(secret: result.absoluteString)
-        var upload = URLRequest(url: target)
-        upload.httpMethod = "PUT"; upload.httpBody = file.data; upload.timeoutInterval = 120
-        upload.setValue(file.contentType, forHTTPHeaderField: "Content-Type")
-        let response = try await http.send(upload, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
-        await diagnostic?.record(.init(stage: .upload, status: response.status, seconds: now().timeIntervalSince(initiatedAt), bytes: file.data.count))
-        guard (200...299).contains(response.status) else { throw LipsyncError.http(response.status) }
-        return try LipsyncSignedInput(uploadedURL: result, file: file, expiresAt: initiatedAt.addingTimeInterval(3600))
     }
 }

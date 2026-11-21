@@ -44,7 +44,7 @@ public static partial class ClipAutopilotValidator
         var look = Look(value, corrected, log);
         var speed = Speed(value, corrected, log);
         var (music, pick) = Music(value, corrected, log);
-        var zooms = Zooms(AiJson.Get(value, "zooms"), span, cuts, corrected, log);
+        var zooms = Zooms(AiJson.Get(value, "zooms"), span, cuts, pauseCuts, corrected, log);
         var limits = corrected.Prompt.Limits;
         var fallbackTitle = EditingAlgorithms.ClipTitle(span.Indices.Where(corrected.IsListedWord).Select(corrected.Text)) ?? "";
         var title = Text(AiJson.Get(value, "title"), Math.Min(limits.MaxTitleScalars, EditingLimits.MaxClipTitleCodePoints), "title", log);
@@ -578,10 +578,14 @@ public static partial class ClipAutopilotValidator
 
     /// <summary>Zooms: a listed, uncut word to an <c>untilWord</c> at or after it (shortened to <c>maxZoomSeconds</c>), a clamped scale,
     /// never overlapping an earlier zoom.</summary>
-    private static IReadOnlyList<ClipAutopilotPlan.Zoom> Zooms(JsonNode? value, WordSpan span, IReadOnlyList<ClipAutopilotPlan.Cut> cuts, ClipAutopilotContext context, Log log)
+    private static IReadOnlyList<ClipAutopilotPlan.Zoom> Zooms(JsonNode? value, WordSpan span, IReadOnlyList<ClipAutopilotPlan.Cut> cuts,
+        IReadOnlyList<ClipAutopilotPlan.PauseCut> pauseCuts, ClipAutopilotContext context, Log log)
     {
         var limits = context.Prompt.Limits;
-        bool IsKept(int position) => context.IsListedWord(position) && !cuts.Any(cut => cut.StartWord <= position && position <= cut.EndWord);
+        var tightened = pauseCuts.Select(pause => pause.AfterWord)
+            .Concat(context.Pauses.Where(pause => context.CutPauseIds.Contains(pause.Id)).Select(pause => pause.AfterIndex)).ToHashSet();
+        bool IsCut(int position) => cuts.Any(cut => cut.StartWord <= position && position <= cut.EndWord);
+        bool IsKept(int position) => context.IsListedWord(position) && !IsCut(position);
         var accepted = new List<ClipAutopilotPlan.Zoom>();
         var items = AiJson.Array(value);
         for (var index = 0; index < items.Count; index++)
@@ -590,6 +594,24 @@ public static partial class ClipAutopilotValidator
             var field = "zooms[" + N(index) + "]";
             if (accepted.Count >= limits.MaxZooms) { log.Drop(field, "more than " + N(limits.MaxZooms) + " zooms"); continue; }
             if (AiJson.Integer(AiJson.Get(item, "word")) is not { } word || !span.Contains(word) || !IsKept(word)) { log.Drop(field, "not on a kept word of the clip"); continue; }
+            if (item is JsonObject obj && obj.TryGetPropertyValue("direction", out var directionValue))
+            {
+                if (ClipAutopilotWire.ZoomDirection(AiJson.String(directionValue)) is not { } direction) { log.Drop(field, "unknown zoom direction"); continue; }
+                if (AiJson.Integer(AiJson.Get(item, "untilWord")) is not { } last) { log.Drop(field, "no ending word"); continue; }
+                var zoom = new ClipAutopilotPlan.Zoom(word, last, AiJson.Number(AiJson.Get(item, "scale")) ?? double.NaN,
+                    Text(AiJson.Get(item, "reason"), limits.MaxReasonScalars, field + ".reason", log), direction);
+                if (zoom.SourceRange(context.Words, span) is not { } range || !IsKept(last) ||
+                    new WordSpan(word, last).Indices.Any(position => !context.IsListed(position) || IsCut(position)) ||
+                    tightened.Any(after => word <= after && after < last))
+                { log.Drop(field, "not one kept phrase of 0.6 to 6 seconds inside the clip"); continue; }
+                if (!zoom.HasDirectionalSettings) { log.Drop(field, "missing a reason or outside the restrained scale range"); continue; }
+                if (accepted.Any(other => Math.Abs(context.Words[other.Word].Start - range.Start) <
+                        ClipAutopilotPlan.Zoom.MinimumStartSpacing - ClipAutopilotPlan.Zoom.TimingTolerance ||
+                    (context.Words[other.Word].Start < range.End && context.Words[other.UntilWord].End > range.Start)))
+                { log.Drop(field, "overlaps or starts too close to another zoom"); continue; }
+                accepted.Add(zoom);
+                continue;
+            }
             var until = AiJson.Integer(AiJson.Get(item, "untilWord")) ?? word;
             if (until < word || !span.Contains(until)) { until = Math.Min(Math.Max(until, word), span.End); log.Repair(field + ".untilWord", "moved inside the clip"); }
             var start = context.Words[word].Start;
@@ -608,7 +630,7 @@ public static partial class ClipAutopilotValidator
             }
             accepted.Add(new(word, until, scale, Text(AiJson.Get(item, "reason"), limits.MaxReasonScalars, field + ".reason", log)));
         }
-        return accepted.OrderBy(zoom => zoom.Word).ToArray();
+        return accepted.OrderBy(zoom => context.Words[zoom.Word].Start).ThenBy(zoom => zoom.Word).ToArray();
     }
 
     private static int Score(JsonNode? value, ClipAutopilotContext context, string field, Log log)

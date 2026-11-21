@@ -395,11 +395,15 @@ extension EditorModel {
     var claudeModeSummary: String {
         let runs = claudeModeRuns
         let voiced = runs.flatMap(\.rows).filter { $0.id.hasPrefix("rewrite-") && $0.undoable && !$0.undone }.count
-        let music = runs.flatMap(\.rows).filter { $0.id == "music" && $0.undoable && !$0.undone }
+        let music = runs.compactMap { run -> MusicSource? in
+            guard case .music(let added)? = run.inverses["music"], MusicProject.entry(for: run.clipID, in: project) == added else { return nil }
+            return added.source
+        }
         var parts = [claudeModeSpent]
         parts.append(voiced == 0 ? "your own words" : "\(voiced) \(voiced == 1 ? "phrase" : "phrases") in your voice")
-        if music.contains(where: { $0.text.hasSuffix("(generated)") }) { parts.append("generated music") }
-        else if !music.isEmpty { parts.append("music from the free library") }
+        if music.contains(.generated) { parts.append("generated music") }
+        if music.contains(.library) { parts.append("music from the free library") }
+        if music.contains(.file) { parts.append("music from your folder") }
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 

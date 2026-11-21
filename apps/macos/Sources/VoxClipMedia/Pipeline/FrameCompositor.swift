@@ -137,7 +137,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             let sourceTime = instruction.request.timeline.sourceTime(editedTime)
             // The look grades the picture before any Ask Claude effect: censors cover graded pixels, and pointers, titles
             // and stickers keep their own colours. A colour transform per pixel, so it commutes with the motion crop.
-            if let look = controls?.look, look != .original { image = ClipPicture.look(image, look) }
+            if let controls { image = ClipPicture.grade(image, controls: controls) }
             if let effects = instruction.effects {
                 image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
                                         controls: controls)

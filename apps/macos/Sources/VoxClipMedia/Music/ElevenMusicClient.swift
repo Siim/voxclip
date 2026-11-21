@@ -66,20 +66,23 @@ public final class ElevenMusicClient: Sendable {
 
     /// Sends the approved quote once and returns MP3 bytes. A stale, unknown or already used quote is refused before
     /// anything is sent; a failure is reported, never retried.
-    public func compose(_ quote: MusicQuote) async throws -> Data {
+    public func compose(_ quote: MusicQuote, accepted: @Sendable () async -> Void = {}) async throws -> Data {
         let fresh = quotes.withLock { quotes -> Bool in
             guard quotes[quote.id] == quote else { return false }
             quotes[quote.id] = nil
             return clock() - quote.createdAt <= Self.quoteLifetime
         }
-        guard fresh else { throw VoxClipError.providerError("This price is out of date. Make it again to see the current price.", provider: "elevenlabs") }
+        guard fresh else { throw VoxClipError.providerError("This price is out of date. Search again to see the current price.", provider: "elevenlabs") }
         guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else {
             throw VoxClipError.keyMissing("elevenlabs")
         }
         let request = try request(for: quote, key: key)
         let start = Date()
         let (data, response) = try await http.send(request)
-        if (200..<300).contains(response.statusCode) { _ = await spend?.record(quote.estimate, at: start) }
+        if (200..<300).contains(response.statusCode) {
+            _ = await spend?.record(quote.estimate, at: start)
+            await accepted()
+        }
         switch response.statusCode {
         case 200..<300:
             guard data.count >= 128, data.count <= Self.maximumReplyBytes, Self.looksLikeMP3(data) else {

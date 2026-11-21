@@ -246,13 +246,13 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         var looks = Cases().GetProperty("looks");
         var tolerance = looks.GetProperty("tolerance").GetInt32();
         var original = Swatches(looks);
-        ClipPicture.Look(original, ClipLook.Original, CancellationToken.None);
+        ClipPicture.Grade(original, ClipLook.Original, null, CancellationToken.None);
         Assert.Equal(Swatches(looks).Pixels.ToArray(), original.Pixels.ToArray());
         var worst = 0;
         foreach (var (look, name) in new[] { (ClipLook.Original, "original"), (ClipLook.Muted, "muted"), (ClipLook.Warm, "warm"), (ClipLook.Bw, "bw") })
         {
             var frame = Swatches(looks);
-            ClipPicture.Look(frame, look, CancellationToken.None);
+            ClipPicture.Grade(frame, look, null, CancellationToken.None);
             var goldens = looks.GetProperty("macGoldens").GetProperty(name).EnumerateArray().ToArray();
             for (var index = 0; index < 8; index++)
             {
@@ -266,6 +266,27 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
             }
         }
         output.WriteLine($"looks: largest channel difference from the Mac goldens {worst}");
+    }
+
+    [Theory]
+    [InlineData(ClipLook.Original, 255, 204, 204, 204)]
+    [InlineData(ClipLook.Warm, 255, 190, 207, 215)]
+    [InlineData(ClipLook.Bw, 64, 85, 85, 85)]
+    public void MacColorGradeRunsInPreviewAndExportBeforeOverlays(ClipLook look, int source, int blue, int green, int red)
+    {
+        var controls = Controls(look: look) with { ColorAdjustments = new(0, -80, 0, 0) };
+        var snapshot = Snapshot(new(controls, null)) with { Captions = new(new CaptionStyle(), new(2, 1), [], [], 2) };
+        var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot);
+        var sample = (byte)source;
+        foreach (var preview in new[] { true, false })
+        {
+            byte[] pixels = [sample, sample, sample, 255, sample, sample, sample, 171, 11, 12, 13, 14];
+            var frame = new PixelBuffer(pixels, 2, 1, 12);
+            composer.FinishClipFrame(frame, snapshot, 0, 2, 1, new(0, 0, 2, 1), CancellationToken.None, forPreview: preview);
+            Assert.Equal(new byte[] { (byte)blue, (byte)green, (byte)red, 255, (byte)blue, (byte)green, (byte)red, 171, 11, 12, 13, 14 }, pixels);
+            composer.DrawOverlays(frame, snapshot, 0, preview, null, CancellationToken.None);
+            Assert.Equal(new byte[] { 255, 255, 255, 255, (byte)blue, (byte)green, (byte)red, 171, 11, 12, 13, 14 }, pixels);
+        }
     }
 
     [Fact]

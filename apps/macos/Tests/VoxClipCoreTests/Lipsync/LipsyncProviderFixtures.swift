@@ -87,6 +87,11 @@ actor LipsyncFixtureLog: Redacting {
     func write(_ entry: LogEntry) { messages.append(entry.message) }
 }
 
+actor LipsyncFixtureDiagnostic: LipsyncDiagnosticSink {
+    private(set) var events: [LipsyncDiagnosticEvent] = []
+    func record(_ event: LipsyncDiagnosticEvent) { events.append(event) }
+}
+
 enum LipsyncProviderFixtures {
     static let requestID = "11111111-2222-4333-8444-555555555555"
     static let result = URL(string: "https://v3.fal.media/files/fixture/result.mp4")!
@@ -112,7 +117,7 @@ enum LipsyncProviderFixtures {
                                      durationSeconds: seconds, contentType: video ? "video/mp4" : "audio/wav", byteCount: 1_200)
     }
 
-    static func provider(_ http: LipsyncFixtureHTTP, clock: LipsyncFixtureClock = LipsyncFixtureClock(),
+    static func provider(_ http: any LipsyncHTTPClient, clock: LipsyncFixtureClock = LipsyncFixtureClock(),
                          keys: LipsyncFixtureKeys = LipsyncFixtureKeys(), spend: VoiceLabSpendLedger? = nil,
                          logger: (any Redacting)? = nil) throws -> FalLipsyncProvider {
         let prices = try VoiceLabPriceCatalog.load(shared: SharedResources(root: FixtureLoader.sharedRoot()))
@@ -129,6 +134,15 @@ enum LipsyncProviderFixtures {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("lipsync-fixture-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         return root
+    }
+
+    static func uploadFiles(_ root: URL) throws -> (LipsyncUploadFile, LipsyncUploadFile) {
+        let video = root.appendingPathComponent("window.mp4")
+        let audio = root.appendingPathComponent("mixed.wav")
+        try Data([0, 0, 0, 12] + Array("ftypisom".utf8)).write(to: video)
+        try VoiceLabRequestFixtures.wav(rate: 48_000, frames: 144_000, fill: 400).write(to: audio)
+        return try (LipsyncUploadFile(file: video, durationSeconds: 3, contentType: "video/mp4"),
+            LipsyncUploadFile(file: audio, durationSeconds: 3, contentType: "audio/wav"))
     }
 
     static func consent(_ root: URL) async throws -> (VoiceConsentStore, String) {

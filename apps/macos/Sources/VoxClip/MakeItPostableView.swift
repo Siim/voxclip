@@ -1,3 +1,4 @@
+import ImagePlayground
 import SwiftUI
 import VoxClipCore
 
@@ -16,6 +17,9 @@ import VoxClipCore
                     headline
                     if run.running || run.rows.isEmpty { progress }
                     if !run.rows.isEmpty { decisions }
+                    if run.phase == .ready, !run.illustrationSuggestions.isEmpty {
+                        MakeItIllustrationReview(model: model, run: run)
+                    }
                     if !model.makeItPostCopy(run).isEmpty, !run.running { postText }
                     if !model.makeIt.series.isEmpty { MakeItSeriesList(model: model) }
                 }
@@ -158,6 +162,34 @@ import VoxClipCore
 }
 
 /// One decision: what Claude did and why, with ▶, Undo and Change where they act.
+@MainActor private struct MakeItIllustrationReview: View {
+    let model: EditorModel
+    let run: MakeItRun
+    @Environment(\.supportsImagePlayground) private var supportsImagePlayground
+
+    var body: some View {
+        let suggestions = supportsImagePlayground ? model.makeItIllustrationSuggestions(run) : []
+        if !suggestions.isEmpty {
+            VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
+                Text("Optional illustrations").font(VCType.small.font()).fontWeight(.semibold)
+                ForEach(suggestions) { suggestion in
+                    VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                        Text(verbatim: "“\(suggestion.quote)”")
+                            .font(VCType.callout.font()).fixedSize(horizontal: false, vertical: true)
+                        Text(suggestion.reason)
+                            .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Review illustration") { model.reviewMakeItIllustration(suggestion, in: run) }
+                            .accessibilityLabel(Text(verbatim: "Review illustration for \(suggestion.quote)"))
+                    }
+                    .accessibilityElement(children: .contain)
+                }
+            }
+            .accessibilityIdentifier("voxclip.makeIt.illustrationSuggestions")
+        }
+    }
+}
+
 @MainActor struct MakeItRowView: View {
     let model: EditorModel
     let run: MakeItRun

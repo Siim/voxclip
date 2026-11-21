@@ -117,6 +117,57 @@ import Testing
         #expect(try ProjectJSON.decode(ProjectJSON.encode(editor.project)).clipControls.isEmpty)
     }
 
+    @Test func colorPresetsAdjustmentsAndResetEachUndoWithoutTouchingOtherControls() throws {
+        let fixture = try fixture(undo: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        #expect(ClipPictureControls.label(for: try #require(editor.currentClipControls)) == "As filmed")
+        #expect(step(fixture) { editor.setGain(-3) })
+        let steps = editor.undoSteps
+        #expect(step(fixture) { editor.setColorPreset(.coolFilm) })
+        #expect(ClipSection.summary(try #require(editor.currentClipControls)) == "Cool Film · −3 dB")
+        #expect(!editor.setColorPreset(.coolFilm))
+        #expect(step(fixture) { editor.setColorAdjustment(.warmth, value: -400) })
+        #expect(editor.currentClipControls?.colorAdjustments?.warmth == -100)
+        #expect(ClipSection.summary(try #require(editor.currentClipControls)) == "Custom · −3 dB")
+        #expect(!editor.setColorAdjustment(.warmth, value: -100))
+        #expect(step(fixture) { editor.setColorPreset(.bw) })
+        #expect(editor.currentClipControls?.look == .bw && editor.currentClipControls?.colorAdjustments == nil)
+        #expect(!editor.setColorAdjustment(.saturation, value: 50))
+        #expect(step(fixture) { editor.setColorAdjustment(.brightness, value: 32) })
+        #expect(step(fixture) { editor.resetColorAdjustments() })
+        #expect(editor.undoSteps == steps + 5)
+        #expect(editor.currentClipControls?.look == .bw && editor.currentClipControls?.colorAdjustments == nil)
+        fixture.undo.undo()
+        #expect(editor.currentClipControls?.look == .bw && editor.currentClipControls?.colorAdjustments?.brightness == 32)
+        fixture.undo.undo()
+        fixture.undo.undo()
+        #expect(editor.currentClipControls?.look == .original && editor.currentClipControls?.colorAdjustments?.warmth == -100)
+        fixture.undo.undo()
+        #expect(editor.currentClipControls?.colorAdjustments == ClipColorPreset.coolFilm.adjustments)
+        fixture.undo.undo()
+        #expect(editor.currentClipControls?.colorAdjustments == nil && editor.currentClipControls?.gainDb == -3)
+    }
+
+    @Test func colorOnlyChangesTheClipRenderAndItsExportFingerprint() async throws {
+        let fixture = try fixture()
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        let clipID = "clip-main"
+        let before = try ExportFingerprint.value(editor.project, target: .clip(clipID))
+        let full = try ExportFingerprint.value(editor.project, target: .fullEdit)
+        #expect(editor.setColorAdjustment(.brightness, value: 45))
+        let render = try await editor.renderRequest(target: .clip(clipID))
+        #expect(render.clipControls?.changesPicture == true)
+        #expect(render.clipControls?.changesAudio == false)
+        #expect(render.clipControls?.colorAdjustments?.brightness == 45)
+        #expect(try ExportFingerprint.value(editor.project, target: .clip(clipID)) != before)
+        #expect(try ExportFingerprint.value(editor.project, target: .fullEdit) == full)
+        #expect(editor.setColorPreset(.original))
+        #expect(editor.project.clipControls.isEmpty)
+        #expect(try ExportFingerprint.value(editor.project, target: .clip(clipID)) == before)
+    }
+
     /// Preview and export read the controls from the same request: the clip's speed, look and frame.
     @Test func theRenderRequestCarriesTheClipsControlsAndFrame() async throws {
         let fixture = try fixture()

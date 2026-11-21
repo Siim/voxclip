@@ -59,9 +59,28 @@ public enum ClipAutopilotVerdict
     HoldBack
 }
 
+/// <summary>The direction of a transcript-anchored zoom; a missing direction holds a legacy crop.</summary>
+public enum ClipAutopilotZoomDirection
+{
+    /// <summary>Approach and hold a closer crop, then return to wide.</summary>
+    ZoomIn,
+    /// <summary>Begin close and widen.</summary>
+    ZoomOut
+}
+
 /// <summary>Wire names of the planner's enums, shared by the request, the validator and the plan's JSON.</summary>
 public static class ClipAutopilotWire
 {
+    /// <summary>"zoomIn" or "zoomOut".</summary>
+    public static string Name(this ClipAutopilotZoomDirection direction) => direction switch
+    {
+        ClipAutopilotZoomDirection.ZoomIn => "zoomIn", ClipAutopilotZoomDirection.ZoomOut => "zoomOut", _ => throw new JsonException()
+    };
+    /// <summary>The zoom direction of an exact wire name.</summary>
+    public static ClipAutopilotZoomDirection? ZoomDirection(string? name) => name switch
+    {
+        "zoomIn" => ClipAutopilotZoomDirection.ZoomIn, "zoomOut" => ClipAutopilotZoomDirection.ZoomOut, _ => null
+    };
     /// <summary>"filler", "stumble", "repeat", "falseStart", "tangent" or "other".</summary>
     public static string Name(this ClipAutopilotCutKind kind) => kind switch
     {
@@ -137,7 +156,28 @@ public sealed record ClipAutopilotPlan
     /// <summary>A background track suggestion, instrumental.</summary>
     public sealed record Music(string Title, string Mood, string Prompt, string Reason, double UnderVoiceDb);
     /// <summary>A punch-in from <c>Word</c> to <c>UntilWord</c> at <c>Scale</c>.</summary>
-    public sealed record Zoom(int Word, int UntilWord, double Scale, string Reason);
+    public sealed record Zoom(int Word, int UntilWord, double Scale, string Reason, ClipAutopilotZoomDirection? Direction = null)
+    {
+        internal const double MinimumDirectionalSeconds = 0.6;
+        internal const double MaximumDirectionalSeconds = 6;
+        internal const double MinimumDirectionalScale = 1.05;
+        internal const double MaximumDirectionalScale = 1.2;
+        internal const double MinimumStartSpacing = 5;
+        internal const double TimingTolerance = 1e-9;
+
+        internal bool HasDirectionalSettings => Scale is >= MinimumDirectionalScale and <= MaximumDirectionalScale && !string.IsNullOrWhiteSpace(Reason);
+
+        internal TimeRange? SourceRange(IReadOnlyList<TimedWord> words, WordSpan span)
+        {
+            if (Word < 0 || UntilWord >= words.Count || Word > UntilWord || !span.Contains(Word) || !span.Contains(UntilWord) ||
+                words[Word].Kind != WordKind.Word || words[UntilWord].Kind != WordKind.Word) return null;
+            var start = words[Word].Start;
+            var end = words[UntilWord].End;
+            var minimum = Direction is null ? 0.1 : MinimumDirectionalSeconds;
+            return double.IsFinite(start) && double.IsFinite(end) && start >= 0 && end - start + TimingTolerance >= minimum &&
+                end - start <= MaximumDirectionalSeconds + TimingTolerance ? new(start, end) : null;
+        }
+    }
     /// <summary>Something Claude was unsure of, with the answer the plan follows.</summary>
     public sealed record Question(string Text, string Answer, IReadOnlyList<string> Options);
     /// <summary>What the validator changed or left out of the reply.</summary>
@@ -241,7 +281,12 @@ public sealed record ClipAutopilotPlan
             },
             ["look"] = new JsonObject { ["id"] = ClipLookChoice.Id.Name(), ["reason"] = ClipLookChoice.Reason },
             ["music"] = Array(MusicChoices, item => new JsonObject { ["title"] = item.Title, ["mood"] = item.Mood, ["prompt"] = item.Prompt, ["reason"] = item.Reason, ["underVoiceDb"] = item.UnderVoiceDb }),
-            ["zooms"] = Array(Zooms, item => new JsonObject { ["word"] = item.Word, ["untilWord"] = item.UntilWord, ["scale"] = item.Scale, ["reason"] = item.Reason }),
+            ["zooms"] = Array(Zooms, item =>
+            {
+                var zoom = new JsonObject { ["word"] = item.Word, ["untilWord"] = item.UntilWord, ["scale"] = item.Scale, ["reason"] = item.Reason };
+                if (item.Direction is { } direction) zoom["direction"] = direction.Name();
+                return zoom;
+            }),
             ["postText"] = PostText, ["score"] = Score, ["verdict"] = Verdict.Name(), ["scoreReason"] = ScoreReason, ["lengthReason"] = LengthReason, ["seconds"] = Seconds,
             ["questions"] = Array(Questions, item => new JsonObject { ["question"] = item.Text, ["answer"] = item.Answer, ["options"] = new JsonArray(item.Options.Select(option => (JsonNode)option!).ToArray()) }),
             ["repairs"] = Array(Repairs, item => new JsonObject { ["field"] = item.Field, ["action"] = item.Action, ["detail"] = item.Detail }),
@@ -286,7 +331,8 @@ public sealed record ClipAutopilotPlan
                 SpeedChoice = json["speed"] is { } speed ? new(speed["rate"]!.GetValue<double>(), S(speed["reason"])) : null,
                 MusicChoices = Items(json["music"]).Select(item => new Music(S(item["title"]), S(item["mood"]), S(item["prompt"]), S(item["reason"]), item["underVoiceDb"]!.GetValue<double>())).ToArray(),
                 MusicPick = json["musicPick"] is { } pick ? pick.GetValue<int>() : null,
-                Zooms = Items(json["zooms"]).Select(item => new Zoom(I(item["word"]), I(item["untilWord"]), item["scale"]!.GetValue<double>(), S(item["reason"]))).ToArray(),
+                Zooms = Items(json["zooms"]).Select(item => new Zoom(I(item["word"]), I(item["untilWord"]), item["scale"]!.GetValue<double>(), S(item["reason"]),
+                    item["direction"] is { } direction ? ClipAutopilotWire.ZoomDirection(S(direction)) ?? throw new JsonException() : null)).ToArray(),
                 PostText = S(json["postText"]), Score = I(json["score"]), Verdict = ClipAutopilotWire.Verdict(S(json["verdict"])) ?? throw new JsonException(),
                 ScoreReason = S(json["scoreReason"]), LengthReason = json["lengthReason"] is null ? "" : S(json["lengthReason"]),
                 Seconds = json["seconds"]?.GetValue<double>() ?? 0,

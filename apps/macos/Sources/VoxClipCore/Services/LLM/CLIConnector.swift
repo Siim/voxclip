@@ -138,7 +138,7 @@ public actor CLIConnector: LLMConnector {
         }
         let images = sendableImages(request, detected: detected)
         return try await workspace { directories in
-            let schema = try aiCompactCanonicalSchema(request.schema)
+            let schema = try aiCompactCanonicalSchema(id == .codex ? CanonicalResponseParser.strictSchema(request.schema) : request.schema)
             let arguments: [String]
             let text = (request.cachedBlock.map { $0 + "\n\n" } ?? "") + request.instruction
             var stdin = Data(text.utf8)

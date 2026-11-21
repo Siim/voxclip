@@ -282,6 +282,8 @@ import VoxClipCore
         case 14: if shell.document != nil { shell.selection = .fullTake }; return
         case 16: shell.toggleSidebar(); return
         case 56: if validateMenuItem(item) { shell.toggleTimeline() }; return
+        case 64: if let window = keyShell, let editor = window.editor { window.showPicture(for: editor) }; return
+        case 63: if let window = keyShell, let editor = window.editor { window.showMusic(for: editor) }; return
         // Tabs work in the key window, a Versions window too (impl-plan V3a).
         case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
         // Show Cuts is a view setting, so it works in the key window, a Versions window too.
@@ -434,7 +436,8 @@ import VoxClipCore
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
             case 35, 36, 61: return true
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
-            case 20: return keyEditor != nil
+            case 20, 63: return keyEditor != nil
+            case 64: return keyEditor?.project.media.source.video != nil
             case 18, 19:
                 let timeline = keyEditor?.focusedPane == .timeline
                 item.title = item.tag != 19 ? (timeline ? "Zoom Timeline In" : "Bigger Text") : (timeline ? "Zoom Timeline Out" : "Smaller Text")
@@ -448,6 +451,9 @@ import VoxClipCore
             guard let editor else { return false }
             if editor.mutationEnabled(item.tag) == false { return false }
             if !MenuCommandIndex.isInvoking, commandEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
+            if !MenuCommandIndex.isInvoking, item.keyEquivalentModifierMask.isEmpty, !item.keyEquivalent.isEmpty,
+               let event = commandEvent, event.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent.lowercased(),
+               let transcript = NSApp.keyWindow?.firstResponder as? TranscriptNSTextView, transcript.acceptsWordTyping(event) { return false }
             if !Self.clipRowKeyEnabled(item, event: commandEvent, pane: editor.focusedPane, renaming: model.shell.renaming != nil,
                                        responder: NSApp.keyWindow?.firstResponder, row: model.shell.selection) { return false }
             if [1, 2, 3, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33, 38, 46].contains(item.tag) {
@@ -585,6 +591,8 @@ import VoxClipCore
         command(view, "Show Cuts", 60, "c", [.command, .option])
         command(view, "Show Pauses", 11)
         command(view, "Hide Viewer", 12, "i", [.command, .option])
+        command(view, "Browse Music", 63)
+        command(view, "Picture Looks", 64)
         command(view, "Search or Run a Command…", 61, "k")
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")

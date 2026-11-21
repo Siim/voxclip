@@ -14,10 +14,16 @@ import VoxClipCore
     @State private var zoom = TimelineZoom()
     @State private var exportsSelected = false
     var body: some View {
-        VStack(spacing: 0) {
-            TimelineToolbar(model: model, shell: shell, zoom: zoom, exportsSelected: $exportsSelected)
-            if exportsSelected { TimelineExportsList(model: model) }
-            else { TimelineCanvas(model: model, shell: shell, zoom: zoom) }
+        GeometryReader { geometry in
+            let compactEdits = geometry.size.height < 175
+            VStack(spacing: 0) {
+                TimelineToolbar(model: model, shell: shell, zoom: zoom, exportsSelected: $exportsSelected, compactEdits: compactEdits)
+                if exportsSelected { TimelineExportsList(model: model) }
+                else {
+                    if !compactEdits { TimelineEditBar(model: model) }
+                    TimelineCanvas(model: model, shell: shell, zoom: zoom)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.window"))
@@ -46,8 +52,10 @@ import VoxClipCore
     let model: EditorModel
     let shell: WorkspaceShell
     var zoom = TimelineZoom()
+    let compactEdits: Bool
     @Binding var exportsSelected: Bool
-    init(model: EditorModel, shell: WorkspaceShell, zoom: TimelineZoom = TimelineZoom(), exportsSelected: Binding<Bool> = .constant(false)) {
+    init(model: EditorModel, shell: WorkspaceShell, zoom: TimelineZoom = TimelineZoom(), exportsSelected: Binding<Bool> = .constant(false), compactEdits: Bool = false) {
+        self.compactEdits = compactEdits
         self.model = model; self.shell = shell; self.zoom = zoom; _exportsSelected = exportsSelected
     }
     var body: some View {
@@ -58,7 +66,8 @@ import VoxClipCore
             if !exportsSelected {
             Spacer().frame(width: 10)
             TimelineAxisPicker(model: model)
-            Spacer().frame(width: 14)
+            if compactEdits { TimelineEditBar(model: model, compact: true) }
+            else { Spacer().frame(width: 14) }
             TimelineToolbarButton(symbol: "backward.end.fill", name: "Go to start", help: "Go to Start (Home)") { model.seekTimelineBoundary(end: false) }
                 .accessibilityIdentifier("voxclip.timeline.start")
             TimelineToolbarButton(symbol: model.isPlaying ? "pause.fill" : "play.fill", name: (model.isPlaying ? EditorIconAction.pause : .play).name,
@@ -122,7 +131,7 @@ import VoxClipCore
                 .accessibilityLabel("Track height").accessibilityValue(shell.layout.trackHeight.label)
                 .columnLayoutEvidence("timeline.trackHeight")
             }
-            TimelineZoomControl(zoom: zoom, slider: geometry.size.width >= 800)
+            TimelineZoomControl(zoom: zoom, slider: geometry.size.width >= (compactEdits ? 880 : 800))
             TimelineToolbarButton(symbol: shell.layout.timelineMaximized ? "chevron.down" : "chevron.up", name: shell.layout.timelineMaximized ? "Restore Timeline" : "Maximize Timeline", help: shell.layout.timelineMaximized ? "Restore Timeline" : "Maximize Timeline") { shell.layout.timelineMaximized.toggle() }
                 .accessibilityIdentifier("voxclip.timeline.maximize")
                 .columnLayoutEvidence("timeline.maximize")

@@ -434,6 +434,18 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         return try await plan.acceptance()
     }
 
+    private func lipSyncRender(_ fixture: Fixture) -> VideoDurationRenderPreparer {
+        let source = fixture.root.appendingPathComponent("source.mp4")
+        let paidRoot = fixture.root.appendingPathComponent("VoiceLab")
+        return { project, scope in
+            let preflight = try VoiceLabRenderPreflight.prepare(project: project, scope: scope, paidRoot: paidRoot)
+            let prepared = try #require(preflight)
+            let output = prepared.prepared.outputPlan
+            return RenderRequest(sourceURL: source, plan: EditPlan(sampleRate: output.sampleRate, totalSamples: output.totalSourceSamples),
+                output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000), voiceLab: prepared)
+        }
+    }
+
     private static func advisoryRow(_ row: VoiceLabTakeRow, side: VoiceLabJoinAdvisorySeam.Side = .left) -> VoiceLabTakeRow {
         var values = row.qa!.values
         values.lufsJumpLu = 4
@@ -473,6 +485,131 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         _ = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
         let encoded = try JSONProjectStore.encode(project)
         #expect(try JSONProjectStore.encode(JSONProjectStore.decode(encoded)) == encoded)
+    }
+
+    @Test func wholeClipRetryOnlyQuotesAndSendsUnfinishedVoiceParts() async throws {
+        let fixture = try await fixture(indices: [3, 10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        let originalPrice = try #require(plan.estimate?.usd)
+        ClipTakeHTTP.state.withLock { $0.failFirstQA = 1 }
+        await plan.start(approved: true)
+        let kept = try #require(plan.automaticTake(phrase: 1)?.id)
+        let price = try #require(plan.unfinishedVoicePrice)
+        #expect(plan.unfinishedVoiceParts == [0] && price < originalPrice)
+        await plan.prepareUnfinishedVoiceParts()
+        #expect(plan.estimate?.usd == price)
+        let approval = try #require(plan.approvalID)
+        await plan.start(approved: true, quoteID: approval)
+        #expect(plan.automaticTake(phrase: 1)?.id == kept && plan.unfinishedVoiceParts.isEmpty)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.texts[2] == $0.texts[0] && $0.seeds[2] != $0.seeds[0] })
+    }
+
+    @Test func wholeClipRetriesFailedFalJobWithoutRepublishingOrMakingAnotherVoice() async throws {
+        let fixture = try await fixture(indices: [10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        let (editor, rewrite) = session(fixture)
+        defer { editor.close() }
+        rewrite.wholeClipPlan = plan
+        plan.prepareDurationRender = lipSyncRender(fixture)
+        plan.lipsync.automaticallyRefreshOffers = false
+        var requests: [RenderRequest] = []
+        var models: [WholeClipRevoice.Lipsync] = []
+        plan.lipsync.backend = .init(offers: { [weak plan] in
+            Issue.record("Whole Clip must not prepare background phrase offers")
+            guard let plan else { throw CancellationError() }
+            return try await plan.makeLipsyncOffers()
+        }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { nil }, run: { request, window, _, model, mayPay, _ in
+            requests.append(request); models.append(model)
+            #expect(mayPay)
+            if requests.count == 1 { throw LipsyncError.http(503) }
+            let sha = String(repeating: "a", count: 64)
+            let asset = VoiceLabVideoAsset(id: "fixture-sync", file: "fixture.mp4", sha256: sha,
+                durationSeconds: 5, frameRate: 30, width: 320, height: 180)
+            let estimate = CostEstimate(provider: "fal", operation: "lipsync", units: 5, unit: "second", usd: 0.25, basis: "fixture")
+            let provenance = LipsyncResultProvenance(provider: "fal", model: model.rawValue, requestID: UUID().uuidString.lowercased(),
+                quoteID: UUID(), videoInputSHA256: sha, audioInputSHA256: sha, outputSHA256: sha,
+                syncMode: .cutOff, seed: nil, submittedAt: Date(), importedAt: Date(), estimate: estimate)
+            return ImportedLipsyncResult(asset: asset, url: fixture.root.appendingPathComponent(asset.file), provenance: provenance)
+        }, changed: {})
+
+        let whole = WholeClipRevoiceSession()
+        rewrite.configureWholeClip(whole)
+        var backend = try #require(whole.backend)
+        let words = try #require(fixture.source.transcript?.words)
+        let script = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: hunks([10])))
+        backend.script = { script }
+        backend.videoSeconds = { 4 }
+        backend.voice = { script, _ in
+            await plan.prepare(); await plan.start(approved: true)
+            _ = try #require(plan.phrases[0].selectedID)
+            try chooseSourceDuration(plan)
+            return .init(key: .init(script: script.text, recordId: fixture.record.id, model: "eleven_v3"),
+                         seconds: 4, parts: 1, usd: plan.spent.usd ?? 0)
+        }
+        backend.match = { _ in nil }
+        backend.report = { _ in }
+        whole.backend = backend
+        whole.start()
+        await whole.waitForRun()
+        try #require(whole.failure?.step == .lipsync)
+        #expect(plan.lipsync.errors[0] as? LipsyncError == .http(503))
+        #expect(!plan.lipsync.isRunning(0) && !plan.lipsync.running)
+        let take = try #require(plan.phrases[0].selectedID)
+
+        whole.start()
+        await whole.waitForRun()
+        #expect(whole.phase == .review && whole.failure == nil)
+        #expect(plan.lipsync.applied[0] != nil && plan.lipsync.receipts.count == 2)
+        #expect(models == [.standard, .standard] && requests.count == 2 && requests.first == requests.last)
+        #expect(fixture.publishedIDs == [take])
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    @Test(arguments: [false, true]) func wholeClipOfferWaitsForRefreshPublicationButRejectsChangedInputs(editDuringPublish: Bool) async throws {
+        let fixture = try await fixture(indices: [10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        plan.prepareDurationRender = lipSyncRender(fixture)
+        await plan.prepare(); await plan.start(approved: true)
+        try chooseSourceDuration(plan)
+        let publication = ClipTakeBarrier(), requested = ClipTakeBarrier()
+        fixture.beforePublish = { _ in
+            if !publication.arrived { await publication.pause() }
+        }
+        var checks = 0
+        plan.lipsync.backend = .init(offers: { [weak plan] in
+            guard let plan else { throw CancellationError() }
+            return try await plan.makeLipsyncOffers()
+        }, hasKey: {
+            checks += 1
+            if checks == 2 { requested.finished() }
+            return true
+        }, hasConsent: { true }, acceptConsent: {}, cap: { nil }, run: { _, _, _, _, _, _ in
+            Issue.record("Preparing a lip-sync offer must not dispatch it")
+            throw CancellationError()
+        }, changed: {})
+        let refresh = Task { await plan.lipsync.refresh() }
+        await publication.wait()
+        #expect(plan.publishing && plan.publishPurpose == .lipsync)
+        let whole = Task {
+            if editDuringPublish {
+                await #expect(throws: ClipTakePlan.Failure.stale) { try await plan.makeWholeClipLipsyncOffer(model: .standard) }
+            } else {
+                let offer = try await plan.makeWholeClipLipsyncOffer(model: .standard)
+                #expect(offer.model == .standard && offer.isCurrent())
+            }
+        }
+        await requested.wait()
+        if editDuringPublish { fixture.current = false }
+        publication.resume()
+        try await whole.value
+        await refresh.value
+        #expect(fixture.publishedIDs.count == 1)
+        #expect(plan.lipsync.receipts.isEmpty)
+        if !editDuringPublish { #expect(plan.lipsync.allOffer?.model == .sync3) }
     }
 
     @Test func mixedAdvisoryRunKeepsTheCleanTakeSelectedAndExplicitChoiceSurvivesRetry() async throws {

@@ -23,7 +23,7 @@ public enum ClipAutopilotValidator {
         let look = look(value, context: context, log: &log)
         let speed = speed(value, context: context, log: &log)
         let (music, pick) = music(value, context: context, log: &log)
-        let zooms = zooms(value[ai: "zooms"], span: span, cuts: cuts, context: context, log: &log)
+        let zooms = zooms(value[ai: "zooms"], span: span, cuts: cuts, pauseCuts: pauseCuts, context: context, log: &log)
         let limits = context.prompt.limits
         let fallbackTitle = EditingAlgorithms.clipTitle((span.lowerBound...span.upperBound).filter(context.isListedWord).map(context.text)) ?? ""
         let title = text(value[ai: "title"], limit: min(limits.maxTitleScalars, EditingLimits.maxClipTitleScalars), field: "title", log: &log)
@@ -517,9 +517,11 @@ public enum ClipAutopilotValidator {
 
     /// Zooms: a listed, uncut word inside the span to an `untilWord` at or after it (shortened to `maxZoomSeconds`), a scale
     /// clamped to the limits, never overlapping an earlier zoom.
-    static func zooms(_ value: JSONValue, span: ClosedRange<Int>, cuts: [ClipAutopilotPlan.Cut], context: ClipAutopilotContext,
+    static func zooms(_ value: JSONValue, span: ClosedRange<Int>, cuts: [ClipAutopilotPlan.Cut],
+                      pauseCuts: [ClipAutopilotPlan.PauseCut], context: ClipAutopilotContext,
                       log: inout Log) -> [ClipAutopilotPlan.Zoom] {
         let limits = context.prompt.limits
+        let tightened = Set(pauseCuts.map(\.afterWord)).union(context.pauses.lazy.filter { context.cutPauseIDs.contains($0.id) }.map(\.afterIndex))
         func isKept(_ position: Int) -> Bool {
             context.isListedWord(position) && !cuts.contains { ($0.startWord...$0.endWord).contains(position) }
         }
@@ -528,6 +530,27 @@ public enum ClipAutopilotValidator {
             let field = "zooms[\(index)]"
             guard accepted.count < limits.maxZooms else { log.drop(field, "more than \(limits.maxZooms) zooms"); continue }
             guard let word = integer(item[ai: "word"]), span.contains(word), isKept(word) else { log.drop(field, "not on a kept word of the clip"); continue }
+            if let directionValue = item.aiObject?["direction"] {
+                guard let direction = directionValue.aiString.flatMap(ClipAutopilotPlan.Zoom.Direction.init(rawValue:)) else {
+                    log.drop(field, "unknown zoom direction"); continue
+                }
+                guard let until = integer(item[ai: "untilWord"]) else { log.drop(field, "no ending word"); continue }
+                let zoom = ClipAutopilotPlan.Zoom(word: word, untilWord: until, scale: item[ai: "scale"].aiDouble ?? .nan,
+                    reason: text(item[ai: "reason"], limit: limits.maxReasonScalars, field: field + ".reason", log: &log), direction: direction)
+                guard let range = zoom.sourceRange(in: context.words, within: span), isKept(until),
+                      (word...until).allSatisfy({ position in
+                          context.isListed(position) && !cuts.contains { ($0.startWord...$0.endWord).contains(position) }
+                      }), !(word..<until).contains(where: { tightened.contains($0) }) else {
+                    log.drop(field, "not one kept phrase of 0.6 to 6 seconds inside the clip"); continue
+                }
+                guard zoom.hasDirectionalSettings else { log.drop(field, "missing a reason or outside the restrained scale range"); continue }
+                guard !accepted.contains(where: { other in
+                    abs(context.words[other.word].start - range.lowerBound) < ClipAutopilotPlan.Zoom.minimumStartSpacing - 1e-9
+                        || (context.words[other.word].start < range.upperBound && context.words[other.untilWord].end > range.lowerBound)
+                }) else { log.drop(field, "overlaps or starts too close to another zoom"); continue }
+                accepted.append(zoom)
+                continue
+            }
             var until = integer(item[ai: "untilWord"]) ?? word
             if until < word || !span.contains(until) {
                 until = min(max(until, word), span.upperBound); log.repair(field + ".untilWord", "moved inside the clip")

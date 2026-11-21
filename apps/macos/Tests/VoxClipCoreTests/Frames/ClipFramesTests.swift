@@ -183,7 +183,7 @@ import Testing
 
     @Test func vectorsPinTheCurrentPrompt() throws {
         let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
-        #expect(prompt.promptVersion == 9)
+        #expect(prompt.promptVersion == 10)
         #expect(try Self.fixture()[ai: "sources"][ai: "shared/prompts/clip-autopilot.json"].aiString == prompt.sha256)
         #expect(prompt.system.contains("frames.blur") && prompt.schema[ai: "required"].aiArray.contains(.string("frames")))
         // Windows sends the same prompt (version 9): the frames are measured, and the opening and 9:16 decided, on this computer.

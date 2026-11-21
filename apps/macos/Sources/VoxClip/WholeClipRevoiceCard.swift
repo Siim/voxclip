@@ -205,7 +205,12 @@ import VoxClipCore
         header
         if !session.steps.isEmpty { stepList }
         Text(line).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true)
-        HStack(spacing: 8) {
+        if session.voice != nil {
+            Text("Your whole-clip voice take is kept in this session. Switching to changed phrases gives up this take and starts a separate voice workflow.")
+                .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        ExpressionFlow(spacing: VCTokens.spacingChipGap) {
             let actions = rewrite.wholeClipStoppedActions()
             ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
                 PanelButton(action: action, kind: index == 0 ? .primary : .bordered)

@@ -8,7 +8,7 @@ using SkiaSharp;
 namespace VoxClip.Media.Pipeline;
 
 /// <summary>A clip's picture controls in the shared frame composer (design §6.9; Mac ClipPicture), so preview and export draw the
-/// same frame: the flip and quarter turns on the oriented source before the frame's crop, and the look on the finished frame
+/// same frame: the flip and quarter turns on the oriented source before the frame's crop, and the grade on the finished frame
 /// before effects and captions.</summary>
 internal static class ClipPicture
 {
@@ -46,10 +46,17 @@ internal static class ClipPicture
         }
     }
 
-    /// <summary>Grades <paramref name="frame"/> (BGRA) in place with the look's matrix, bias and cubic. Original leaves it untouched.</summary>
-    internal static void Look(PixelBuffer frame, ClipLook look, CancellationToken ct)
+    /// <summary>Grades <paramref name="frame"/> (BGRA) in place, applying adjustments to the base look before writing bytes.</summary>
+    internal static void Grade(PixelBuffer frame, ClipLook look, ClipColorAdjustments? adjustments, CancellationToken ct)
     {
         var recipe = new ClipLookRecipe(look);
+        var after = adjustments is null ? null : new ClipLookRecipe(adjustments);
+        if (after is { IsIdentity: true }) after = null;
+        if (recipe.IsIdentity && after is not null)
+        {
+            recipe = after;
+            after = null;
+        }
         if (recipe.IsIdentity) return;
         // Per-channel contributions: table[row * 3 + column][value] = matrix[row][column] × value / 255.
         var tables = new float[9][];
@@ -62,6 +69,8 @@ internal static class ClipPicture
             }
         var bias = recipe.Bias.Select(value => (float)value).ToArray();
         var curve = recipe.Curve?.Select(value => (float)value).ToArray();
+        var afterMatrix = after?.Matrix.Select(row => row.Select(value => (float)value).ToArray()).ToArray();
+        var afterBias = after?.Bias.Select(value => (float)value).ToArray();
         var memory = frame.Pixels;
         var stride = frame.Stride;
         var width = frame.Width;
@@ -76,19 +85,32 @@ internal static class ClipPicture
                 for (var channel = 0; channel < 3; channel++)
                 {
                     var value = bias[channel] + tables[channel * 3][red] + tables[channel * 3 + 1][green] + tables[channel * 3 + 2][blue];
-                    value = Math.Clamp(value, 0, 1);
                     if (curve is not null)
                     {
+                        value = Math.Clamp(value, 0, 1);
                         var squared = value * value;
-                        value = Math.Clamp(curve[0] + curve[1] * value + curve[2] * squared + curve[3] * squared * value, 0, 1);
+                        value = curve[0] + curve[1] * value + curve[2] * squared + curve[3] * squared * value;
                     }
                     result[channel] = value;
                 }
-                line[offset + 2] = (byte)MathF.Round(result[0] * 255, MidpointRounding.AwayFromZero);
-                line[offset + 1] = (byte)MathF.Round(result[1] * 255, MidpointRounding.AwayFromZero);
-                line[offset] = (byte)MathF.Round(result[2] * 255, MidpointRounding.AwayFromZero);
+                if (afterMatrix is not null && afterBias is not null)
+                {
+                    for (var channel = 0; channel < 3; channel++)
+                    {
+                        var coefficients = afterMatrix[channel];
+                        line[offset + 2 - channel] = Encode(afterBias[channel] + coefficients[0] * result[0] + coefficients[1] * result[1] + coefficients[2] * result[2]);
+                    }
+                }
+                else
+                {
+                    line[offset + 2] = Encode(result[0]);
+                    line[offset + 1] = Encode(result[1]);
+                    line[offset] = Encode(result[2]);
+                }
             }
         });
+
+        static byte Encode(float value) => (byte)MathF.Round(Math.Clamp(value, 0, 1) * 255, MidpointRounding.AwayFromZero);
     }
 
     /// <summary>A motion cue's crop of the finished frame, scaled back to fill it (Mac CompositionFrameGeometry.fill with Lanczos;

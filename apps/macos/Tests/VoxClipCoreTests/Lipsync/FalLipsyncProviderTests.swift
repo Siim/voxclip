@@ -143,14 +143,31 @@ struct FalLipsyncProviderTests {
         #expect(await http.requests.isEmpty)
     }
 
-    @Test(arguments: [429, 500, 503]) func submitRetriesOnlyTwoTimesAfterExplicitResponse(status: Int) async throws {
+    @Test func submitRetriesOnlyTwoTimesAfterExplicitRateLimit() async throws {
         let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
-        let http = LipsyncFixtureHTTP(Array(repeating: .json(status, #"{"error":"synthetic failure"}"#), count: 3))
-        let provider = try Fixtures.provider(http), quote = try await Fixtures.quote(provider)
+        let http = LipsyncFixtureHTTP(Array(repeating: .json(429, #"{"error":"synthetic failure"}"#), count: 3))
+        let clock = LipsyncFixtureClock()
+        let provider = try Fixtures.provider(http, clock: clock), quote = try await Fixtures.quote(provider)
         let approval = try await Fixtures.approval(provider, quote: quote, root: root)
-        await #expect(throws: LipsyncError.http(status)) { _ = try await provider.submit(quote, approval: approval) }
+        await #expect(throws: LipsyncError.http(429)) { _ = try await provider.submit(quote, approval: approval) }
         #expect(await http.requests.count == 3)
+        #expect(clock.state.withLock { $0.sleeps } == [.seconds(1), .seconds(2)])
         #expect(await provider.status(quoteID: quote.id) == nil)
+    }
+
+    @Test(arguments: [200, 408, 499, 500, 503, 504]) func ambiguousQueueReplyNeverTriggersAnotherPOST(status: Int) async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let http = LipsyncFixtureHTTP([.json(status, #"{"error":"synthetic failure"}"#)])
+        let provider = try Fixtures.provider(http), quote = try await Fixtures.quote(provider)
+        let diagnostic = LipsyncFixtureDiagnostic()
+        await provider.setDiagnostic(diagnostic)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        await #expect(throws: LipsyncError.submissionUncertain) { _ = try await provider.submit(quote, approval: approval) }
+        await #expect(throws: LipsyncError.busy) { _ = try await provider.submit(quote, approval: approval) }
+        #expect(await provider.status(quoteID: quote.id)?.billing == .submissionUncertain)
+        #expect(await http.requests.count == 1)
+        let event = try #require(await diagnostic.events.last)
+        #expect(event.stage == .failure && event.status == status && event.requestID == nil)
     }
 
     @Test func lostSubmissionReceiptBlocksAnotherPaidDispatch() async throws {
@@ -160,6 +177,16 @@ struct FalLipsyncProviderTests {
         await #expect(throws: LipsyncError.submissionUncertain) { _ = try await provider.submit(quote, approval: approval) }
         await #expect(throws: LipsyncError.busy) { _ = try await provider.submit(quote, approval: approval) }
         #expect(await provider.status(quoteID: quote.id)?.billing == .submissionUncertain)
+        #expect(await http.requests.count == 1)
+    }
+
+    @Test func malformedReceiptIsNotSalvagedByInventingFollowUpURLs() async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let reply = #"{"status":"IN_QUEUE","request_id":"\#(Fixtures.requestID)","status_url":"https://fixture.invalid/status"}"#
+        let http = LipsyncFixtureHTTP([.json(200, reply)]), provider = try Fixtures.provider(http)
+        let quote = try await Fixtures.quote(provider), approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        await #expect(throws: LipsyncError.submissionUncertain) { _ = try await provider.submit(quote, approval: approval) }
+        #expect(await provider.status(quoteID: quote.id)?.job == nil)
         #expect(await http.requests.count == 1)
     }
 

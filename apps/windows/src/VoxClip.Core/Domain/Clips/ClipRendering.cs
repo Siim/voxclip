@@ -60,13 +60,29 @@ public sealed class ClipLookRecipe
         }
     }
 
+    /// <summary>The matrix applied after the base look, matching the Mac's encoded RGB grade.</summary>
+    public ClipLookRecipe(ClipColorAdjustments adjustments)
+    {
+        var contrast = 1 + adjustments.Contrast * 0.005;
+        var saturation = 1 + adjustments.Saturation * 0.01;
+        var warmth = adjustments.Warmth * 0.0018;
+        var offset = adjustments.Brightness * 0.0016 + (1 - contrast) * 0.5;
+        double[] gains = [1 + warmth, 1, 1 - warmth];
+        Matrix = Saturation(saturation, contrast);
+        for (var row = 0; row < Matrix.Length; row++)
+            for (var column = 0; column < Matrix[row].Length; column++)
+                Matrix[row][column] *= gains[row];
+        Bias = gains.Select(gain => offset * gain).ToArray();
+        IsIdentity = adjustments.IsNeutral;
+    }
+
     /// <summary>Rows of the colour matrix (red, green, blue).</summary>
     public double[][] Matrix { get; }
     /// <summary>Added after the matrix.</summary>
     public double[] Bias { get; }
     /// <summary>The cubic's coefficients, or null.</summary>
     public double[]? Curve { get; }
-    /// <summary>Original: the frame stays untouched.</summary>
+    /// <summary>Original or neutral: the frame stays untouched.</summary>
     public bool IsIdentity { get; }
 
     private static double[][] Saturation(double s, double scale = 1)
@@ -103,9 +119,13 @@ public static class ClipControlsRendering
     public static bool ChangesAudio(this ProjectClipControls controls)
         => controls.Speed != 1 || controls.GainDb != 0 || controls.FadeInSeconds > 0 || controls.FadeOutSeconds > 0 || controls.MuteSource;
 
-    /// <summary>Look, flip or rotation change each frame.</summary>
+    /// <summary>A color grade, flip or rotation changes each frame.</summary>
     public static bool ChangesPicture(this ProjectClipControls controls)
-        => controls.Look != ClipLook.Original || controls.FlipHorizontal || controls.RotationDegrees != 0;
+        => controls.HasColorGrade() || controls.FlipHorizontal || controls.RotationDegrees != 0;
+
+    /// <summary>A base look other than Original or a stored adjustment grades the picture.</summary>
+    public static bool HasColorGrade(this ProjectClipControls controls)
+        => controls.Look != ClipLook.Original || controls.ColorAdjustments is not null;
 
     /// <summary>A quarter turn swaps the picture's width and height.</summary>
     public static bool IsQuarterTurn(this ProjectClipControls controls) => controls.RotationDegrees is 90 or 270;

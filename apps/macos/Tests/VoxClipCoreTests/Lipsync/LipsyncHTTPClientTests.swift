@@ -13,8 +13,9 @@ private final class LipsyncHTTPFixtureProtocol: URLProtocol {
         var chunks: [Data]
         var barrier: LipsyncFixtureBarrier?
         var redirect: URL?
+        var observe: (@Sendable (URLRequest) -> Void)?
     }
-    static let replies = Mutex<[String: Reply]>([:])
+    static let replies = Mutex<[String: [Reply]]>([:])
     private struct WorkerState {
         var task: Task<Void, Never>?
         var stopped = false
@@ -22,16 +23,25 @@ private final class LipsyncHTTPFixtureProtocol: URLProtocol {
     private let worker = Mutex(WorkerState())
     static func register(_ reply: Reply) -> URL {
         let url = URL(string: "https://fixture.invalid/\(UUID().uuidString)/result.mp4")!
-        replies.withLock { $0[url.absoluteString] = reply }
+        register([reply], for: url)
         return url
+    }
+    static func register(_ sequence: [Reply], for url: URL) {
+        replies.withLock { $0[url.absoluteString] = sequence }
     }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        guard let url = request.url, let reply = Self.replies.withLock({ $0.removeValue(forKey: url.absoluteString) }),
+        guard let url = request.url, let reply = Self.replies.withLock({ replies -> Reply? in
+            guard var remaining = replies.removeValue(forKey: url.absoluteString), !remaining.isEmpty else { return nil }
+            let reply = remaining.removeFirst()
+            if !remaining.isEmpty { replies[url.absoluteString] = remaining }
+            return reply
+        }),
               let response = HTTPURLResponse(url: url, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers) else {
             client?.urlProtocol(self, didFailWithError: LipsyncError.network); return
         }
+        reply.observe?(request)
         let task = Task.detached { [reference = Reference(value: self), reply, response] in
             let owner = reference.value
             guard !owner.worker.withLock({ $0.stopped }), !Task.isCancelled else { return }
@@ -141,11 +151,83 @@ struct LipsyncHTTPClientTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
     }
 
-    @Test func JSONBodiesAreBoundedAndEncodedResponsesAreRejected() async throws {
+    @Test func JSONBodiesAreBoundedBeforeAndAfterDecoding() async throws {
         let oversized = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "application/json"], chunks: [Data(repeating: 32, count: 128)]))
         await #expect(throws: LipsyncError.responseTooLarge) { _ = try await http.send(URLRequest(url: oversized), limit: 32, permit: nil) }
-        let encoded = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "application/json", "Content-Encoding": "gzip"], chunks: [Data("{}".utf8)]))
-        await #expect(throws: LipsyncError.invalidResponse) { _ = try await http.send(URLRequest(url: encoded), limit: 1_024, permit: nil) }
+        let decodedOversized = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "application/json",
+            "Content-Encoding": "gzip", "Content-Length": "28"], chunks: [Data(repeating: 32, count: 128)]))
+        await #expect(throws: LipsyncError.responseTooLarge) { _ = try await http.send(URLRequest(url: decodedOversized), limit: 32, permit: nil) }
+        let encodedOversized = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "application/json",
+            "Content-Encoding": "gzip", "Content-Length": "4096"], chunks: [Data("{}".utf8)]))
+        await #expect(throws: LipsyncError.responseTooLarge) { _ = try await http.send(URLRequest(url: encodedOversized), limit: 32, permit: nil) }
+    }
+
+    @Test(arguments: ["br", "gzip, deflate", "identity-bogus"]) func unsupportedEncodingsAreRejected(encoding: String) async {
+        let url = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "application/json", "Content-Encoding": encoding],
+                                                           chunks: [Data("{}".utf8)]))
+        await #expect(throws: LipsyncError.invalidResponse) { _ = try await http.send(URLRequest(url: url), limit: 1_024, permit: nil) }
+    }
+
+    @Test func compressedMediaIsNotPublished() async throws {
+        let root = try LipsyncProviderFixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = LipsyncHTTPFixtureProtocol.register(.init(headers: ["Content-Type": "video/mp4", "Content-Encoding": "gzip"],
+                                                           chunks: [header]))
+        await #expect(throws: LipsyncError.invalidResponse) {
+            try await http.download(URLRequest(url: url), to: root.appendingPathComponent("result.mp4"), limit: 1_024)
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+    }
+
+    @Test func nonJSONErrorsKeepStatusButSuccessfulHTMLIsRejected() async throws {
+        let headers = ["Content-Type": "text/html; charset=utf-8"], chunks = [Data("<html>Gateway error</html>".utf8)]
+        let rejected = LipsyncHTTPFixtureProtocol.register(.init(status: 429, headers: headers, chunks: chunks))
+        let reply = try await http.send(URLRequest(url: rejected), limit: 1_024, permit: nil)
+        #expect(reply.status == 429 && reply.contentType == "text/html")
+        let intercepted = LipsyncHTTPFixtureProtocol.register(.init(headers: headers, chunks: chunks))
+        await #expect(throws: LipsyncError.invalidResponse) { _ = try await http.send(URLRequest(url: intercepted), limit: 1_024, permit: nil) }
+    }
+
+    @Test func falUploadAndQueueRepliesWorkThroughURLSessionTransport() async throws {
+        typealias Fixture = LipsyncHTTPFixtureProtocol
+        let root = try LipsyncProviderFixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let (video, audio) = try LipsyncProviderFixtures.uploadFiles(root)
+        let (store, record) = try await LipsyncProviderFixtures.consent(root)
+        let initiate = URL(string: "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3")!
+        let submit = URL(string: "https://queue.fal.run/fal-ai/sync-lipsync/v3")!
+        let observed = Mutex<[URLRequest]>([])
+        let observe: @Sendable (URLRequest) -> Void = { request in observed.withLock { $0.append(request) } }
+        let initiationReplies = ["window.mp4", "mixed.wav"].map { name -> Fixture.Reply in
+            let token = UUID().uuidString
+            let upload = URL(string: "https://storage.fal.ai/upload/\(name)?signature=\(token)")!
+            let input = "https://v3b.fal.media/files/b/fixture/\(name)"
+            Fixture.register([.init(status: 204, headers: [:], chunks: [], observe: observe)], for: upload)
+            let document = Data("""
+                {"upload_url":"\(upload.absoluteString)","file_url":"\(input)"}
+                """.utf8)
+            return .init(headers: ["Content-Type": "Application/JSON; charset=utf-8", "Content-Encoding": "gzip",
+                                   "Content-Length": String(document.count - 17)],
+                         chunks: [Data(document.prefix(15)), Data(document.dropFirst(15))], observe: observe)
+        }
+        Fixture.register(initiationReplies, for: initiate)
+        let receipt = #"{"status":"IN_QUEUE","request_id":"\#(LipsyncProviderFixtures.requestID)","status_url":null,"cancel_url":null}"#
+        Fixture.register([.init(headers: ["Content-Type": "application/json"],
+            chunks: [Data(receipt.utf8)], observe: observe)], for: submit)
+        let provider = try LipsyncProviderFixtures.provider(http)
+        let (quote, approval) = try await provider.prepareApprovedUpload(video: video, audio: audio,
+            options: .init(syncMode: .cutOff), fps: 30, consentStore: store, recordID: record,
+            acceptsPaidJob: true, acceptsMediaTransfer: true)
+        let job = try await provider.submit(quote, approval: approval)
+        #expect(job.remoteID == LipsyncProviderFixtures.requestID)
+        let rootPath = "/fal-ai/sync-lipsync/requests/\(job.remoteID)"
+        #expect(job.responseURL?.path == rootPath)
+        #expect(job.statusURL?.path == rootPath + "/status")
+        #expect(job.cancelURL?.path == rootPath + "/cancel")
+        #expect(await provider.status(quoteID: quote.id)?.billing == .accepted)
+        let requests = observed.withLock { $0 }
+        #expect(requests.map(\.httpMethod) == ["POST", "PUT", "POST", "PUT", "POST"])
+        #expect(requests.map { $0.value(forHTTPHeaderField: "Authorization") != nil } == [true, false, true, false, true])
+        #expect(requests.map { $0.value(forHTTPHeaderField: "Content-Type") } ==
+            ["application/json", "video/mp4", "application/json", "audio/wav", "application/json"])
     }
 }
 #endif

@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 public struct LipsyncDiagnosticEvent: Codable, Sendable {
-    public enum Stage: String, Codable, Sendable { case upload, submit, queued, running, completed, cancel, cleanup, failure }
+    public enum Stage: String, Codable, Sendable { case uploadInitiate, upload, submit, queued, running, completed, cancel, cleanup, failure }
     public let stage: Stage
     public let requestID: String?
     public let status: Int?

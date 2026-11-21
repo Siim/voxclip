@@ -73,13 +73,13 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothStagesInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 9)
+        #expect(prompt.promptVersion == 10)
         for system in [prompt.system, prompt.momentsSystem] {
             #expect(!system.contains("{") && !system.contains("}"))
             #expect(system.contains("Length: 20 to 45 seconds after cuts. Up to 60 s only when the idea cannot land in less"))
         }
         #expect(prompt.system.contains("Never more than \(prompt.limits.maxRewrites) in a clip"))
-        #expect(prompt.system.contains("from 1.05 to 1.35"))
+        #expect(prompt.system.contains("from 1.05 to 1.2"))
         #expect(prompt.system.contains("from 0.75 to 1.5"))
         #expect(prompt.system.contains("- original: the footage as filmed\n- muted: ") && prompt.system.contains("\n- bw: black and white"))
         #expect(prompt.system.contains("Corrections, which fix how a word is written") && !prompt.momentsSystem.contains("Corrections"))
@@ -263,6 +263,17 @@ import Testing
 
     // MARK: Service
 
+    @Test func missingMusicDoesNotDiscardOrResendAnOtherwiseValidPlan() async throws {
+        var reply = try #require(try Self.sendable(Self.reply("valid-clip")).aiObject)
+        reply.removeValue(forKey: "music"); reply.removeValue(forKey: "musicPick")
+        let stub = AutopilotStub(replies: [try JSONValue.object(reply).aiCompact()])
+        let service = ClipAutopilotService(runner: try Self.runner(), shared: try Self.shared())
+        let result = try await service.plan(ClipAutopilotRequest(transcript: try Self.transcript(), mode: .clip(0...29)), connector: stub, model: "fixture")
+        let plan = try #require(result.plan)
+        #expect(plan.music.isEmpty && plan.pickedMusic == nil)
+        #expect(await stub.requests.count == 1)
+    }
+
     @Test func servicePlansThroughTheRunnerAndChecksTheReply() async throws {
         let reply = try Self.sendable(try Self.reply("overlaps"))
         let stub = AutopilotStub(replies: ["not json", try reply.aiCompact()])
@@ -271,7 +282,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 9 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 10 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })

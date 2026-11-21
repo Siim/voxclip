@@ -17,7 +17,7 @@ const sourceBytes = await Promise.all(inputPaths.map(path => readFile(join(root,
 const [clipFinder, aiTighten, catalog] = sourceBytes.map(text => JSON.parse(text))
 const prompts = { clipFinder, aiTighten }
 const sourceHashes = Object.fromEntries(inputPaths.map((path, index) => [path, sha256(sourceBytes[index].replace(/\r\n/g, '\n'))]))
-// The Voice Lab prompts feed only their own request files, so each of those records just its prompt.
+// The Voice Lab request datasets and the Codex output-schema cases track their prompt inputs.
 const voiceLabPaths = { voiceRewrite: 'shared/prompts/voice-rewrite.json', patchRewrite: 'shared/prompts/patch-rewrite.json', wordingFit: 'shared/prompts/voice-rewrite-fit.json' }
 const voiceLabBytes = Object.fromEntries(await Promise.all(Object.entries(voiceLabPaths).map(async ([name, path]) => [name, await readFile(join(root, path), 'utf8')])))
 const voiceLabPrompts = Object.fromEntries(Object.entries(voiceLabBytes).map(([name, text]) => [name, JSON.parse(text)]))
@@ -573,6 +573,7 @@ for (const [id, input, expected] of [
 ]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', ...input }, expected,
   'doc/spec/ai.md §4.5; §6.9', 'LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.')
 const datasetSources = { 'voice-rewrite-requests': voiceLabSources('voiceRewrite'), 'patch-rewrite-requests': voiceLabSources('patchRewrite'),
+  'connector-requests': { ...sourceHashes, [voiceLabPaths.voiceRewrite]: voiceLabSources('voiceRewrite')[voiceLabPaths.voiceRewrite], ...voiceLabSources('patchRewrite') },
   'cli-replies': { ...voiceLabSources('voiceRewrite'), 'shared/catalog/llm-providers.json': sourceHashes['shared/catalog/llm-providers.json'] } }
 for (const [suffix, stderr, message, classified = 'cliFailed'] of [
   ['leading-blank', '\n  Request failed.  \nignored', 'Request failed.'],
@@ -598,6 +599,21 @@ const testRequest = { feature: 'test', system: catalog.testRequest.system, cache
 for (const connector of catalog.connectors) {
   const options = baselineOptions(connector)
   add('connector-requests', `connection-test-${connector.id}`, 'connector-request', { request: testRequest, connector: connector.id, options }, renderConnector(testRequest, connector, catalog, options), 'doc/spec/ai.md §10.2; §6')
+}
+// Exercise the actual schema file passed to Codex, including optional fields inside array items.
+for (const name of ['voiceRewrite', 'patchRewrite']) {
+  const { schemaName, schema } = voiceLabPrompts[name]
+  const request = { ...testRequest, schemaName, schema }
+  const expected = renderConnector(request, connectors.codex, catalog)
+  const checkRequired = node => {
+    if (node.properties) {
+      equal([...node.required].sort(), Object.keys(node.properties).sort(), `${name}: Codex requires every property`)
+      Object.values(node.properties).forEach(checkRequired)
+    }
+    if (node.items) checkRequired(node.items)
+  }
+  checkRequired(JSON.parse(expected.files['<io>/schema.json']))
+  add('connector-requests', `codex-strict-${name}`, 'connector-request', { request, connector: 'codex', options: {} }, expected, 'doc/spec/ai.md §2.2; §6.9')
 }
 const variants = [
   ['anthropic-no-fallback-beta', 'anthropic', { serverSideFallback: false }],

@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import VoxClipCore
 @testable import VoxClip
@@ -18,6 +19,66 @@ import Testing
         model.beginCorrection()
         try #require(model.correctionID == id)
         model.correctionText = text
+    }
+
+    private func key(_ chars: String, code: UInt16, window: NSWindow, flags: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+            isARepeat: false, keyCode: code))
+    }
+
+    @Test func typingAShuttleLetterReplacesOneWordAndSavesOneUndoableCorrection() throws {
+        _ = NSApplication.shared
+        let model = try editor(); defer { model.close() }
+        let original = model.project
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        model.select("w3")
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 420, height: 360)); defer { pane.close() }
+        try #require(pane.window.makeFirstResponder(pane.text))
+        let j = try key("j", code: 38, window: pane.window)
+        try #require(pane.text.acceptsWordTyping(j))
+        pane.text.keyDown(with: j)
+        let field = try #require(pane.text.correctionFieldForTests)
+        let input = try #require(field.currentEditor() as? NSTextView)
+        #expect(pane.window.firstResponder === input && input.string == "j" && !model.isPlaying)
+        input.keyDown(with: try key("a", code: 0, window: pane.window))
+        #expect(input.string == "ja" && !undo.canUndo)
+        undo.beginUndoGrouping()
+        input.keyDown(with: try key("\r", code: 36, window: pane.window))
+        undo.endUndoGrouping()
+        #expect(model.correctionID == nil && model.project.edits.corrections["w3"] == "ja")
+        let saved = try JSONProjectStore.decode(JSONProjectStore.encode(model.project))
+        #expect(saved.edits.corrections["w3"] == "ja" && saved.transcript == original.transcript && saved.voiceLab == original.voiceLab)
+        #expect(model.rewrite == nil && undo.canUndo)
+        undo.undo()
+        #expect(model.project.edits == original.edits && !undo.canUndo)
+    }
+
+    @Test func compactToolbarEditsInPlaceAndRangeOrUnfocusedKeysKeepTheirMeaning() throws {
+        _ = NSApplication.shared
+        let model = try editor(); defer { model.close() }
+        model.select("w3")
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 348, height: 360)); defer { pane.close() }
+        let j = try key("j", code: 38, window: pane.window)
+        _ = pane.window.makeFirstResponder(pane.text)
+        #expect(!pane.text.acceptsWordTyping(try key(" ", code: 49, window: pane.window)))
+        #expect(!pane.text.acceptsWordTyping(try key("z", code: 6, window: pane.window, flags: .command)))
+        pane.text.showSelectionBar()
+        let host = try #require(pane.text.selectionBarAuditView as? NSHostingView<SelectionBar>)
+        let open = try #require(host.rootView.editWord)
+        open()
+        let field = try #require(pane.text.correctionFieldForTests)
+        let input = try #require(field.currentEditor() as? NSTextView)
+        #expect(input.string == "today" && input.selectedRange().length == 5 && !pane.text.selectionBarVisible)
+        input.keyDown(with: try key("r", code: 15, window: pane.window))
+        input.keyDown(with: try key("\u{1b}", code: 53, window: pane.window))
+        #expect(model.project.edits.corrections.isEmpty && model.correctionID == nil)
+        _ = pane.window.makeFirstResponder(nil)
+        #expect(!pane.text.acceptsWordTyping(j))
+        _ = pane.window.makeFirstResponder(pane.text)
+        model.select("w4", extend: true); pane.update()
+        #expect(!pane.text.acceptsWordTyping(j))
+        #expect(model.project.edits.corrections.isEmpty && model.rewrite == nil)
     }
 
     @Test func selectingAnotherWordSavesTheOpenCorrection() throws {

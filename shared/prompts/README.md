@@ -13,6 +13,8 @@ its SHA-256 in the deliberate voice-rewrite/CLI request hash manifest changes.
 
 The macOS and Windows apps send the same prompts to every LLM connector. The prompt text, presets, limits and output schemas live only in this folder. Neither app may keep a copy of prompt text in source code.
 
+`clip-autopilot.json` keeps the version 9 base and defines the version 10 `directionalZooms` extension. An adopter replaces only its clip-plan zoom section and adds the `direction` field to the zoom item schema. The canonical reader accepts legacy entries without that field; strict output modes require it.
+
 | File | Feature | Milestone |
 | --- | --- | --- |
 | `clip-finder.json` | AI clip finding (`promptVersion` 2; version 2 sends numbered sentence lines, `transcriptBlock.line`, and the reply names `start_line` and `end_line`, ai.md §11.3 and §11.6): system prompt, request templates, presets (Best moments, Hooks, One per topic, Quotes, Custom), limits, output schema `clips` | M1 |
@@ -52,7 +54,7 @@ Both apps ship these files unchanged, copied at build time. They never download 
 1. Edit the JSON here and bump `promptVersion`.
 2. Regenerate the request fixtures with `npm --prefix tools/fixtures/llm run generate`, review the diff, and update any affected golden vectors in `doc/spec/ai.md` §13 in the same change.
 3. Run both test suites.
-4. Keep the canonical schema subset: every object has `additionalProperties: false`, `required` is a subset of its properties (optional additive fields are allowed), and the only keywords are `type`, `properties`, `required`, `additionalProperties`, `items` and string `enum`. Supplied optional fields are validated. Mac HTTP strict-schema shaping promotes optional properties to required; canonical and CLI schemas retain optionality.
+4. Keep the canonical schema subset: every object has `additionalProperties: false`, `required` is a subset of its properties (optional additive fields are allowed), and the only keywords are `type`, `properties`, `required`, `additionalProperties`, `items` and string `enum`. Supplied optional fields are validated. HTTP structured outputs and Codex CLI schema files promote optional properties to required at every depth on both platforms; canonical requests, Claude Code, and reply validation retain optionality.
 
 Voice and patch Rewrite are `promptVersion` 3: both replies may add the optional
 structured `nextActions` (at most four `{label, instruction, ordinals?}` one-click

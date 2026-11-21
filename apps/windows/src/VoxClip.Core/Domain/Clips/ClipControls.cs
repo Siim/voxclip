@@ -35,19 +35,50 @@ public enum ClipShape
     [JsonStringEnumMemberName("4:5")] PortraitFourFive
 }
 
-/// <summary>One clip's speed, frame, look, source volume, fades, mute, flip and rotation; schema v4, design §6.9.
+/// <summary>Signed color adjustments layered over a clip's base look, in whole points from -100 to 100.</summary>
+[JsonConverter(typeof(ClipColorAdjustmentsJsonConverter))]
+public sealed record ClipColorAdjustments(int Brightness, int Contrast, int Saturation, int Warmth)
+{
+    internal bool IsNeutral => Brightness == 0 && Contrast == 0 && Saturation == 0 && Warmth == 0;
+    internal bool IsValid => !IsNeutral && Brightness is >= -100 and <= 100 && Contrast is >= -100 and <= 100 &&
+        Saturation is >= -100 and <= 100 && Warmth is >= -100 and <= 100;
+}
+
+internal sealed class ClipColorAdjustmentsJsonConverter : JsonConverter<ClipColorAdjustments>
+{
+    public ClipColorAdjustmentsJsonConverter() { }
+
+    public override ClipColorAdjustments Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using var document = JsonDocument.ParseValue(ref reader);
+        return ClipControlsProject.ReadColorAdjustments(document.RootElement);
+    }
+
+    public override void Write(Utf8JsonWriter writer, ClipColorAdjustments value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("brightness", value.Brightness);
+        writer.WriteNumber("contrast", value.Contrast);
+        writer.WriteNumber("saturation", value.Saturation);
+        writer.WriteNumber("warmth", value.Warmth);
+        writer.WriteEndObject();
+    }
+}
+
+/// <summary>One clip's speed, frame, color, source volume, fades, mute, flip and rotation; schema v4, design §6.9.
 /// Every key is written, null included, as the Mac Core writes it, except the optional <paramref name="Reframe"/> ("9:16 follows
-/// your face") and <paramref name="CoverSeconds"/> (the cover's source second), ADR-R48 part 2, which are omitted when null.
+/// your face"), <paramref name="CoverSeconds"/> (the cover's source second), and <paramref name="ColorAdjustments"/>, omitted when null.
 /// An entry at its defaults is never stored.</summary>
 public sealed record ProjectClipControls(string ClipId, double Speed, ClipShape? Shape, ClipLook Look, double GainDb,
     double FadeInSeconds, double FadeOutSeconds, bool MuteSource, bool FlipHorizontal, int RotationDegrees,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? CoverSeconds = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? CoverSeconds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClipColorAdjustments? ColorAdjustments = null)
 {
     /// <summary>Every control at its default.</summary>
     [JsonIgnore]
     public bool IsDefault => Speed == 1 && Shape is null && Look == ClipLook.Original && GainDb == 0 && FadeInSeconds == 0 &&
-        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null;
+        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null && ColorAdjustments is null;
 
     /// <summary>The face-follow centre (0–1 from the top left of the source) for an output of width over height
     /// <paramref name="outputAspect"/>: only in face mode and for 9:16 and 1:1 (16:9 ignores it). Twin of the Mac <c>cropCenter</c>.</summary>
@@ -96,6 +127,7 @@ public static class ClipControlsProject
             if (entry.Reframe is { } reframe)
                 Require(reframe.Mode == ReframeSettings.FaceMode && reframe.Zoom == 1 && reframe.CenterX is >= 0 and <= 1 && reframe.CenterY is >= 0 and <= 1);
             if (entry.CoverSeconds is { } cover) Require(double.IsFinite(cover) && cover >= 0);
+            if (entry.ColorAdjustments is { } adjustments) Require(adjustments.IsValid);
             Require(!entry.IsDefault && clips.Contains(entry.ClipId) && seen.Add(entry.ClipId));
         }
     }
@@ -108,7 +140,7 @@ public static class ClipControlsProject
         {
             Require(entry.ValueKind == JsonValueKind.Object);
             var keys = entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
-            keys.Remove("reframe"); keys.Remove("coverSeconds");
+            keys.Remove("reframe"); keys.Remove("coverSeconds"); keys.Remove("colorAdjustments");
             Require(keys.SetEquals("clipId speed shape look gainDb fadeInSeconds fadeOutSeconds muteSource flipHorizontal rotationDegrees".Split(' ')));
             if (entry.TryGetProperty("reframe", out var reframe))
             {
@@ -118,6 +150,7 @@ public static class ClipControlsProject
                 foreach (var key in new[] { "zoom", "centerX", "centerY" }) Number(reframe.GetProperty(key));
             }
             if (entry.TryGetProperty("coverSeconds", out var cover)) Number(cover);
+            if (entry.TryGetProperty("colorAdjustments", out var adjustments)) ReadColorAdjustments(adjustments);
             Require(entry.GetProperty("clipId").ValueKind == JsonValueKind.String && entry.GetProperty("look").ValueKind == JsonValueKind.String);
             Require(entry.GetProperty("shape").ValueKind is JsonValueKind.String or JsonValueKind.Null);
             foreach (var key in new[] { "speed", "gainDb", "fadeInSeconds", "fadeOutSeconds" }) Number(entry.GetProperty(key));
@@ -126,6 +159,24 @@ public static class ClipControlsProject
             Require(rotation.ValueKind == JsonValueKind.Number && rotation.TryGetInt32(out var degrees) && degrees is 0 or 90 or 180 or 270);
             Require(entry.GetProperty("look").GetString() is "original" or "muted" or "warm" or "bw");
             Require(entry.GetProperty("shape").ValueKind == JsonValueKind.Null || entry.GetProperty("shape").GetString() is "16:9" or "9:16" or "1:1" or "4:5");
+        }
+    }
+
+    internal static ClipColorAdjustments ReadColorAdjustments(JsonElement value)
+    {
+        Require(value.ValueKind == JsonValueKind.Object);
+        var names = value.EnumerateObject().Select(property => property.Name).ToArray();
+        Require(names.Length == 4 && names.ToHashSet(StringComparer.Ordinal).SetEquals(["brightness", "contrast", "saturation", "warmth"]));
+        var adjustments = new ClipColorAdjustments(Point("brightness"), Point("contrast"), Point("saturation"), Point("warmth"));
+        Require(adjustments.IsValid);
+        return adjustments;
+
+        int Point(string name)
+        {
+            var point = value.GetProperty(name);
+            if (point.ValueKind == JsonValueKind.Number && point.TryGetDecimal(out var number) && number is >= -100 and <= 100 && decimal.Truncate(number) == number)
+                return (int)number;
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Invalid clip controls.");
         }
     }
 

@@ -199,103 +199,7 @@ import VoxClipCore
         if case .motion(let cue) = row.operation.action {
             Button("Edit the zoom in Motion") { model.openMotionCueJob(id: cue.id, in: model.app.shell) }.buttonStyle(.link)
         } else if let effect = model.askClaudeEffect(row.id) {
-            VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
-                nudgeRow("Start", effect.start) { value in model.adjustAskClaudeEffect(row.id) { $0.start = value } }
-                if effect.kind != .sound {
-                    nudgeRow("End", effect.end) { value in model.adjustAskClaudeEffect(row.id) { $0.end = value } }
-                }
-                if effect.kind.usesText, effect.kind != .sticker {
-                    AskClaudeTextEditor(text: effect.text ?? "") { text in model.adjustAskClaudeEffect(row.id) { $0.text = text } }
-                }
-                if effect.kind.usesPosition {
-                    Picker("Position", selection: Binding(get: { effect.position ?? .top }, set: { value in model.adjustAskClaudeEffect(row.id) { $0.position = value } })) {
-                        ForEach(Self.positions(effect.kind), id: \.self) { Text(Self.positionName($0)).tag($0) }
-                    }
-                    .frame(height: 24).accessibilityIdentifier("voxclip.askClaude.position")
-                }
-                if effect.kind == .sticker {
-                    Stepper("Size \(Int(((effect.scale ?? 1) * 100).rounded()))%", value: Binding(get: { effect.scale ?? 1 }, set: { value in
-                        model.adjustAskClaudeEffect(row.id) { $0.scale = min(ClipEffect.scaleRange.upperBound, max(ClipEffect.scaleRange.lowerBound, value)) }
-                    }), in: ClipEffect.scaleRange, step: 0.25)
-                }
-                if effect.kind.usesRect {
-                    rectNudges(row.id)
-                    note("Drag the box on the viewer to move it.")
-                }
-                if effect.kind.isTracked {
-                    Picker("Follow", selection: Binding(get: { effect.tracking ?? ClipEffect.Tracking.none }, set: { value in model.retrackAskClaudeEffect(row.id, tracking: value) })) {
-                        Text("Hold still").tag(ClipEffect.Tracking.none)
-                        Text("A face").tag(ClipEffect.Tracking.face)
-                        Text("The moving subject").tag(ClipEffect.Tracking.saliency)
-                    }
-                    .frame(height: 24).accessibilityIdentifier("voxclip.askClaude.tracking")
-                }
-                if effect.kind == .sound, let id = effect.sound?.id {
-                    Picker("Sound", selection: Binding(get: { id }, set: { value in model.adjustAskClaudeEffect(row.id) { effect in
-                        let seconds = AskClaudeValidator.soundSeconds[value] ?? 0.45
-                        effect.sound = .init(source: .bundled, id: value, durationSeconds: seconds, title: value.capitalized, license: "cc0")
-                        effect.end = effect.start + seconds
-                    } })) {
-                        ForEach(ClipEffect.bundledSoundIDs, id: \.self) { Text($0.capitalized).tag($0) }
-                    }
-                    .frame(height: 24)
-                }
-            }
-            .padding(VCTokens.spacingCardPadding)
-            .background(DesignValues.color("bg.window"), in: RoundedRectangle(cornerRadius: 6))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Adjust \(row.title)")
-            .accessibilityIdentifier("voxclip.askClaude.adjuster")
-        }
-    }
-
-    private func nudgeRow(_ title: String, _ value: Double, set: @escaping (Double) -> Void) -> some View {
-        HStack(spacing: VCTokens.spacingRowGap) {
-            Text(title).foregroundStyle(DesignValues.color("text.secondary")).frame(width: 44, alignment: .leading)
-            Text(String(format: "%.2f s", value)).font(DesignValues.mono(11)).frame(width: 64, alignment: .leading)
-            Button { set(value - 0.1) } label: { Image(systemName: "minus") }.buttonStyle(.borderless)
-                .accessibilityLabel("\(title) earlier by a tenth of a second")
-            Button { set(value + 0.1) } label: { Image(systemName: "plus") }.buttonStyle(.borderless)
-                .accessibilityLabel("\(title) later by a tenth of a second")
-        }
-        .frame(height: 24)
-    }
-
-    private func rectNudges(_ id: String) -> some View {
-        HStack(spacing: VCTokens.spacingLabelGap) {
-            Text("Box").foregroundStyle(DesignValues.color("text.secondary")).frame(width: 44, alignment: .leading)
-            ForEach([("arrow.left", "left", -0.02, 0.0), ("arrow.right", "right", 0.02, 0.0), ("arrow.up", "up", 0.0, -0.02), ("arrow.down", "down", 0.0, 0.02)], id: \.1) { item in
-                Button { model.adjustAskClaudeEffect(id) { effect in
-                    guard var rect = effect.rect else { return }
-                    rect.x += item.2; rect.y += item.3; effect.rect = rect
-                } } label: { Image(systemName: item.0) }.buttonStyle(.borderless).accessibilityLabel("Move the box \(item.1)")
-            }
-            Button { model.adjustAskClaudeEffect(id) { effect in effect.rect = effect.rect.map { Self.scaled($0, 0.9) } } } label: { Image(systemName: "minus.magnifyingglass") }
-                .buttonStyle(.borderless).accessibilityLabel("Make the box smaller")
-            Button { model.adjustAskClaudeEffect(id) { effect in effect.rect = effect.rect.map { Self.scaled($0, 1.1) } } } label: { Image(systemName: "plus.magnifyingglass") }
-                .buttonStyle(.borderless).accessibilityLabel("Make the box bigger")
-        }
-        .frame(height: 24)
-    }
-
-    static func scaled(_ rect: ClipEffect.Rect, _ factor: Double) -> ClipEffect.Rect {
-        let width = rect.width * factor, height = rect.height * factor
-        return ClipEffect.Rect(x: rect.midX - width / 2, y: rect.midY - height / 2, width: width, height: height).clamped
-    }
-
-    static func positions(_ kind: ClipEffect.Kind) -> [ClipEffect.Position] {
-        switch kind {
-        case .title: [.top, .center, .bottom]
-        case .lowerThird: [.bottomLeft, .bottomRight]
-        case .progress: [.top, .bottom]
-        default: [.topLeft, .topRight, .center, .bottomLeft, .bottomRight]
-        }
-    }
-
-    static func positionName(_ position: ClipEffect.Position) -> String {
-        switch position {
-        case .top: "Top"; case .center: "Centre"; case .bottom: "Bottom"; case .topLeft: "Top left"; case .topRight: "Top right"
-        case .bottomLeft: "Bottom left"; case .bottomRight: "Bottom right"
+            ProjectEffectControls(model: model, effect: effect, title: row.title, viewerHandles: true).id(effect.id)
         }
     }
 
@@ -338,16 +242,132 @@ import VoxClipCore
     }
 }
 
+/// Shared by the run review and the timeline. The stored effect is the editing target.
+@MainActor struct ProjectEffectControls: View {
+    let model: EditorModel
+    let effect: ClipEffect
+    let title: String
+    var viewerHandles = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
+            nudgeRow("Start", effect.start) { value in model.adjustProjectEffect(effect) { $0.start = value } }
+            if effect.kind != .sound {
+                nudgeRow("End", effect.end) { value in model.adjustProjectEffect(effect) { $0.end = value } }
+            }
+            if effect.kind.usesText, effect.kind != .sticker {
+                AskClaudeTextEditor(text: effect.text ?? "") { text in model.adjustProjectEffect(effect) { $0.text = text } }
+            }
+            if effect.kind.usesPosition {
+                Picker("Position", selection: Binding(get: { effect.position ?? .top }, set: { value in model.adjustProjectEffect(effect) { $0.position = value } })) {
+                    ForEach(Self.positions(effect.kind), id: \.self) { Text(Self.positionName($0)).tag($0) }
+                }
+                .frame(height: 24).accessibilityIdentifier("voxclip.askClaude.position")
+            }
+            if effect.kind == .sticker {
+                Stepper("Size \(Int(((effect.scale ?? 1) * 100).rounded()))%", value: Binding(get: { effect.scale ?? 1 }, set: { value in
+                    model.adjustProjectEffect(effect) { $0.scale = min(ClipEffect.scaleRange.upperBound, max(ClipEffect.scaleRange.lowerBound, value)) }
+                }), in: ClipEffect.scaleRange, step: 0.25)
+            }
+            if effect.kind.usesRect {
+                rectNudges
+                if viewerHandles { Text("Drag the box on the viewer to move it.").font(.caption) }
+            }
+            if effect.kind.isTracked {
+                Picker("Follow", selection: Binding(get: { effect.tracking ?? ClipEffect.Tracking.none }, set: { value in model.retrackProjectEffect(effect, tracking: value) })) {
+                    Text("Hold still").tag(ClipEffect.Tracking.none)
+                    Text("A face").tag(ClipEffect.Tracking.face)
+                    Text("The moving subject").tag(ClipEffect.Tracking.saliency)
+                }
+                .frame(height: 24).accessibilityIdentifier("voxclip.askClaude.tracking")
+            }
+            if effect.kind == .sound, let id = effect.sound?.id {
+                Picker("Sound", selection: Binding(get: { id }, set: { value in model.adjustProjectEffect(effect) { effect in
+                    let seconds = AskClaudeValidator.soundSeconds[value] ?? 0.45
+                    effect.sound = .init(source: .bundled, id: value, durationSeconds: seconds, title: value.capitalized, license: "cc0")
+                    effect.end = effect.start + seconds
+                } })) {
+                    ForEach(ClipEffect.bundledSoundIDs, id: \.self) { Text($0.capitalized).tag($0) }
+                }
+                .frame(height: 24)
+            }
+        }
+        .padding(VCTokens.spacingCardPadding)
+        .background(DesignValues.color("bg.window"), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Adjust \(title)")
+        .accessibilityIdentifier("voxclip.askClaude.adjuster")
+    }
+
+    private func nudgeRow(_ title: String, _ value: Double, set: @escaping (Double) -> Void) -> some View {
+        HStack(spacing: VCTokens.spacingRowGap) {
+            Text(title).foregroundStyle(DesignValues.color("text.secondary")).frame(width: 44, alignment: .leading)
+            Text(String(format: "%.2f s", value)).font(DesignValues.mono(11)).frame(width: 64, alignment: .leading)
+            Button { set(value - 0.1) } label: { Image(systemName: "minus") }.buttonStyle(.borderless)
+                .accessibilityLabel("\(title) earlier by a tenth of a second")
+            Button { set(value + 0.1) } label: { Image(systemName: "plus") }.buttonStyle(.borderless)
+                .accessibilityLabel("\(title) later by a tenth of a second")
+        }
+        .frame(height: 24)
+    }
+
+    private var rectNudges: some View {
+        HStack(spacing: VCTokens.spacingLabelGap) {
+            Text("Box").foregroundStyle(DesignValues.color("text.secondary")).frame(width: 44, alignment: .leading)
+            ForEach([("arrow.left", "left", -0.02, 0.0), ("arrow.right", "right", 0.02, 0.0), ("arrow.up", "up", 0.0, -0.02), ("arrow.down", "down", 0.0, 0.02)], id: \.1) { item in
+                Button { model.adjustProjectEffect(effect) { effect in
+                    guard var rect = effect.rect else { return }
+                    rect.x += item.2; rect.y += item.3; effect.rect = rect
+                } } label: { Image(systemName: item.0) }.buttonStyle(.borderless).accessibilityLabel("Move the box \(item.1)")
+            }
+            Button { model.adjustProjectEffect(effect) { effect in effect.rect = effect.rect.map { Self.scaled($0, 0.9) } } } label: { Image(systemName: "minus.magnifyingglass") }
+                .buttonStyle(.borderless).accessibilityLabel("Make the box smaller")
+            Button { model.adjustProjectEffect(effect) { effect in effect.rect = effect.rect.map { Self.scaled($0, 1.1) } } } label: { Image(systemName: "plus.magnifyingglass") }
+                .buttonStyle(.borderless).accessibilityLabel("Make the box bigger")
+        }
+        .frame(height: 24)
+    }
+
+    static func scaled(_ rect: ClipEffect.Rect, _ factor: Double) -> ClipEffect.Rect {
+        let width = rect.width * factor, height = rect.height * factor
+        return ClipEffect.Rect(x: rect.midX - width / 2, y: rect.midY - height / 2, width: width, height: height).clamped
+    }
+
+    static func positions(_ kind: ClipEffect.Kind) -> [ClipEffect.Position] {
+        switch kind {
+        case .title: [.top, .center, .bottom]
+        case .lowerThird: [.bottomLeft, .bottomRight]
+        case .progress: [.top, .bottom]
+        default: [.topLeft, .topRight, .center, .bottomLeft, .bottomRight]
+        }
+    }
+
+    static func positionName(_ position: ClipEffect.Position) -> String {
+        switch position {
+        case .top: "Top"; case .center: "Centre"; case .bottom: "Bottom"; case .topLeft: "Top left"; case .topRight: "Top right"
+        case .bottomLeft: "Bottom left"; case .bottomRight: "Bottom right"
+        }
+    }
+
+}
+
 /// The overlay text editor: commits on Return, as one undo step.
 @MainActor private struct AskClaudeTextEditor: View {
-    @State var text: String
+    let text: String
     let commit: (String) -> Void
+    @State private var draft: String
+    init(text: String, commit: @escaping (String) -> Void) {
+        self.text = text; self.commit = commit; _draft = State(initialValue: text)
+    }
+    private var trimmed: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var valid: Bool { !trimmed.isEmpty && trimmed.unicodeScalars.count <= ClipEffect.maximumTitleScalars && !trimmed.unicodeScalars.contains { $0.properties.generalCategory == .control } }
+    private func apply() { if valid { commit(trimmed); draft = trimmed } }
     var body: some View {
-        TextField("Text", text: $text)
-            .textFieldStyle(.roundedBorder)
-            .onSubmit { let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines); if !trimmed.isEmpty { commit(String(trimmed.unicodeScalars.prefix(ClipEffect.maximumTitleScalars))) } }
-            .accessibilityLabel("Overlay text")
-            .accessibilityIdentifier("voxclip.askClaude.text")
+        HStack {
+            TextField("Title text", text: $draft).textFieldStyle(.roundedBorder).onSubmit(apply)
+                .accessibilityLabel("Overlay text").accessibilityIdentifier("voxclip.askClaude.text")
+            Button("Apply", action: apply).disabled(!valid || trimmed == text)
+        }
+        .onChange(of: text) { _, value in draft = value }
     }
 }
 

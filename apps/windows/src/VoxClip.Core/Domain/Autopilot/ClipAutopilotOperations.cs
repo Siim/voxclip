@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -40,7 +41,7 @@ public abstract record ClipAutopilotAction
     /// <summary>The whole clip at a speed, pitch kept (clip controls).</summary>
     public sealed record Speed(string ClipId, ClipAutopilotPlan.Speed Choice) : ClipAutopilotAction;
     /// <summary>A punch-in cue for the clip; pending on Windows, which does not render motion cues yet.</summary>
-    public sealed record Motion(MotionCue Cue) : ClipAutopilotAction;
+    public sealed record Motion(MotionCue Cue, ClipAutopilotZoomDirection? Direction = null) : ClipAutopilotAction;
     /// <summary>The picked track; pending on Windows.</summary>
     public sealed record Music(ClipAutopilotMusicCue Cue) : ClipAutopilotAction;
     /// <summary>The first 2 seconds' text, applied as the clip's title card.</summary>
@@ -134,12 +135,42 @@ public static partial class ClipAutopilotMapping
         Add("captions", ClipAutopilotDecision.Captions, new ClipAutopilotAction.Captions(settings, file is null ? captions.Font : null), captions.Reason);
         Add("look", ClipAutopilotDecision.Look, new ClipAutopilotAction.Look(clipId, plan.ClipLookChoice), plan.ClipLookChoice.Reason);
         if (plan.SpeedChoice is { } speed) Add("speed", ClipAutopilotDecision.Speed, new ClipAutopilotAction.Speed(clipId, speed), speed.Reason);
+        var zoomRanges = new List<TimeRange>();
+        var corrections = new Dictionary<string, string>(state.Corrections, StringComparer.Ordinal);
+        foreach (var correction in plan.Corrections) corrections[words[correction.Word].Id] = correction.Text;
         for (var index = 0; index < plan.Zooms.Count; index++)
         {
             var zoom = plan.Zooms[index];
-            var cue = new MotionCue(string.Join('-', clipId, "zoom", index.ToString(System.Globalization.CultureInfo.InvariantCulture)), clipId, words[zoom.Word].Start, words[zoom.UntilWord].End,
-                [new MotionKeyframe(0, zoom.Scale, 0.5, 0.5), new MotionKeyframe(1, zoom.Scale, 0.5, 0.5)]);
-            Add("zoom-" + index, ClipAutopilotDecision.Zoom, new ClipAutopilotAction.Motion(cue), zoom.Reason);
+            if (zoom.SourceRange(words, new(plan.StartWord, plan.EndWord)) is not { } range || zoom.Scale is not (>= 1 and <= MaximumZoomScale) ||
+                zoomRanges.Any(other => other.Start < range.End && range.Start < other.End)) continue;
+            var key = "zoom-" + index.ToString(CultureInfo.InvariantCulture);
+            var cueId = clipId + "-" + key;
+            var reason = zoom.Reason;
+            if (zoom.Direction is not null)
+            {
+                var phraseSpan = new WordSpan(zoom.Word, zoom.UntilWord);
+                if (!zoom.HasDirectionalSettings || phraseSpan.Indices.Any(position => state.CutWordIds.Contains(words[position].Id)) ||
+                    plan.Cuts.Any(cut => phraseSpan.Overlaps(new(cut.StartWord, cut.EndWord))) ||
+                    zoomRanges.Any(other => Math.Abs(other.Start - range.Start) < ClipAutopilotPlan.Zoom.MinimumStartSpacing - ClipAutopilotPlan.Zoom.TimingTolerance)) continue;
+                var phrase = string.Join(" ", phraseSpan.Indices.Select(position => words[position]).Where(word => word.Kind == WordKind.Word)
+                    .Select(word => corrections.GetValueOrDefault(word.Id, word.Text)));
+                var letters = StringInfo.ParseCombiningCharacters(phrase);
+                var excerpt = letters.Length > 96 ? phrase[..letters[95]] + "…" : phrase;
+                reason = $"“{excerpt}” · {reason}";
+                cueId = string.Create(CultureInfo.InvariantCulture, $"{clipId}-zoom-{zoom.Word}-{zoom.UntilWord}");
+            }
+            MotionKeyframe Frame(double progress, double scale = 1) => new(progress, scale, 0.5, 0.5);
+            IReadOnlyList<MotionKeyframe> frames = zoom.Direction switch
+            {
+                ClipAutopilotZoomDirection.ZoomIn => [Frame(0), Frame(0.28, zoom.Scale), Frame(0.70, zoom.Scale), Frame(1)],
+                ClipAutopilotZoomDirection.ZoomOut => [Frame(0, zoom.Scale), Frame(0.18, zoom.Scale), Frame(1)],
+                null => [Frame(0, zoom.Scale), Frame(1, zoom.Scale)],
+                _ => []
+            };
+            if (frames.Count == 0) continue;
+            var cue = new MotionCue(cueId, clipId, range.Start, range.End, frames);
+            Add(key, ClipAutopilotDecision.Zoom, new ClipAutopilotAction.Motion(cue, zoom.Direction), reason);
+            zoomRanges.Add(range);
         }
         if (plan.PickedMusic is { } picked)
             Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.Music(new(clipId, picked, plan.MusicChoices.Where(item => item != picked).ToArray(), EditedSeconds(plan, state))), picked.Reason);
@@ -170,8 +201,8 @@ public static partial class ClipAutopilotMapping
         return Math.Max(0, seconds);
     }
 
-    /// <summary>Applies what the editor can, in order, to a copy of <paramref name="project"/>: edits, captions, zooms (motion cues, set
-    /// once at the end with the v4 upgrade, replacing a cue with the same id, as Mac ClipAutopilotOperations.apply), share text, the
+    /// <summary>Applies what the editor can, in order, to a copy of <paramref name="project"/>: edits, captions, zooms (motion cues
+    /// wholly on kept footage and not replacing or overlapping an existing cue), share text, the
     /// look and speed, the hook as the clip's title card (timed on the clip as the operations before it left it), Ask Claude's effects,
     /// a stretch over a whole clip as its speed, translated captions, and ducking music that exists. Stretches over part of a clip,
     /// rewrites and music come back as pending: a clip plays at one speed, a rewrite needs a paid voice, and music needs a source to
@@ -180,7 +211,6 @@ public static partial class ClipAutopilotMapping
     {
         var result = project;
         var pending = new List<ClipAutopilotOperation>();
-        var cues = new List<MotionCue>();
         foreach (var operation in operations)
         {
             switch (operation.Action)
@@ -190,7 +220,10 @@ public static partial class ClipAutopilotMapping
                     result = EditingEngine.ApplyToProject(result, EditingEngine.Reduce(state, edit.Operation, result.Ai.Results));
                     break;
                 case ClipAutopilotAction.Captions captions: result = result with { Captions = captions.Settings }; break;
-                case ClipAutopilotAction.Motion motion: cues.Add(motion.Cue); break;
+                case ClipAutopilotAction.Motion motion:
+                    if (AddingMotionCue(motion.Cue, result) is { } withCue) result = withCue;
+                    else pending.Add(operation);
+                    break;
                 case ClipAutopilotAction.ShareText share:
                     var texts = new Dictionary<string, string>(result.Share.Captions, StringComparer.Ordinal) { [share.ClipId] = share.Text };
                     result = result with { Share = new(texts) };
@@ -216,12 +249,31 @@ public static partial class ClipAutopilotMapping
                 default: pending.Add(operation); break;
             }
         }
-        if (cues.Count > 0) result = WithMotionCues(cues, result);
         return (result, pending);
     }
 
-    /// <summary><paramref name="project"/> with <paramref name="cues"/> added, each replacing a cue with its id; the v4 upgrade and the
-    /// clip check are <c>ContextDemoProject.SettingMotionCues</c>'s.</summary>
+    /// <summary>Adds each permissible cue, leaving the project unchanged for declined cues.</summary>
     public static Project WithMotionCues(IReadOnlyList<MotionCue> cues, Project project) =>
-        ContextDemoProject.SettingMotionCues(project.MotionCues.Where(cue => !cues.Any(added => added.Id == cue.Id)).Concat(cues).ToArray(), project);
+        cues.Aggregate(project, (current, cue) => AddingMotionCue(cue, current) ?? current);
+
+    /// <summary>Adds a cue only on one kept source interval without replacing or overlapping existing cues; null when declined.</summary>
+    public static Project? AddingMotionCue(MotionCue cue, Project project)
+    {
+        if (project.Transcript is not { } transcript || project.Edits.Clips.FirstOrDefault(clip => clip.Id == cue.ClipID) is not { } clip ||
+            project.MotionCues.Any(existing => existing.Id == cue.Id ||
+                (existing.ClipID == cue.ClipID && existing.SourceStart < cue.SourceEnd && cue.SourceStart < existing.SourceEnd))) return null;
+        var words = transcript.Words.ToList();
+        var first = words.FindIndex(word => word.Id == clip.StartWordId);
+        var last = words.FindIndex(word => word.Id == clip.EndWordId);
+        if (first < 0 || last < first) return null;
+        try
+        {
+            var bounds = EditingAlgorithms.ClipTimes(words, first, last, clip.LeadInSeconds);
+            if (cue.SourceStart < bounds.Start || cue.SourceEnd > bounds.End || ClipHookTitle.Timeline(project, cue.ClipID) is not { } edits ||
+                !edits.Kept.Any(interval => interval.StartSample - 0.5 <= cue.SourceStart * edits.SampleRate &&
+                    cue.SourceEnd * edits.SampleRate <= interval.EndSample + 0.5)) return null;
+            return ContextDemoProject.SettingMotionCues([.. project.MotionCues, cue], project);
+        }
+        catch (Exception exception) when (exception is VoxClipException or ContextDemoException) { return null; }
+    }
 }

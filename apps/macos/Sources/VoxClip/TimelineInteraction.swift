@@ -25,6 +25,10 @@ import VoxClipCore
     private var keyHead: String?
     private var keySelection: Set<String> = []
     var active: Bool { drag != nil }
+    var trimHint: String? {
+        guard case .trim(_, let start, _, let index?, _) = drag else { return nil }
+        return "\(start ? "In" : "Out"): \(model.text(model.words[index]).prefix(24))"
+    }
     var followsPlayhead: Bool { if case .overview? = drag { return true }; return drag == nil }
     private var current: Context { Context(axis: model.timelineAxis, scope: model.activeClip?.id, revision: model.projectRevision, showsSurroundingContext: model.showsSurroundingContext) }
     init(canvas: TimelineCanvasView) { self.canvas = canvas }
@@ -74,9 +78,13 @@ import VoxClipCore
             guard preview != nil || hypot(point.x - press.x, point.y - press.y) >= 3 else { return }
             let snap = snaps(event)
             let index = model.timelineTrimIndex(clip, start: start, time: time(point), on: model.timelineAxis, snap: snap)
-            let edge = index.map { model.timelineTime(source: start ? model.words[$0].start : model.words[$0].end, on: model.timelineAxis) }
-            let raw = time(point).clamped(to: 0...max(0, model.timelineLength(on: model.timelineAxis)))
-            drag = .trim(clip: clip, start: start, point: press, index: index, time: snap ? edge : raw)
+            let edge = index.flatMap { i -> Double? in
+                guard let first = model.index(clip.startWordId), let last = model.index(clip.endWordId),
+                      let span = try? clipTimes(model.words, startIndex: start ? i : first, endIndex: start ? last : i,
+                                                leadIn: start && i != first ? nil : clip.leadInSeconds) else { return nil }
+                return model.timelineTime(source: start ? span.start : span.end, on: model.timelineAxis)
+            }
+            drag = .trim(clip: clip, start: start, point: press, index: index, time: edge)
             canvas.apply()
         case nil: break
         }
@@ -105,7 +113,7 @@ import VoxClipCore
         let lower = canvas.headerWidth + canvas.viewport.x(range.lowerBound)
         let upper = canvas.headerWidth + canvas.viewport.x(range.upperBound)
         let left = abs(point.x - lower), right = abs(point.x - upper)
-        guard min(left, right) <= TimelineMetrics.reach else { return nil }
+        guard min(left, right) <= TimelineMetrics.trimReach else { return nil }
         return (clip, left <= right)
     }
     private func seekOverview(_ point: NSPoint) {

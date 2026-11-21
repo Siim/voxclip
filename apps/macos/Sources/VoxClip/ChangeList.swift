@@ -159,6 +159,16 @@ extension RewriteSession {
             guard let self else { return }
             editor.runRewrite(scope: rewriteScope)
         }
+        // Once whole-clip processing starts its own card owns the actions, including failure recovery.
+        // Offering Make Takes here would sell new phrase audio alongside the already-paid whole voice.
+        if let whole = wholeClip {
+            switch whole.phase {
+            case .running, .review, .stopped:
+                return ProposalContent(set: set, headline: PanelHeadline(text: "Whole-clip revoice"), cards: [.wholeClip],
+                                       footer: PanelFooter(), askAgain: nil)
+            case .choose, .used: break
+            }
+        }
         guard !items.isEmpty else {
             return ProposalContent(set: set, headline: headline,
                                    cards: [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],

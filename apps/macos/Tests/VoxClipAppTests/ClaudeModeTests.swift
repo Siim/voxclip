@@ -878,6 +878,27 @@ extension ClaudeModeTests {
         #expect(!run.rows.contains { $0.id == "wholeClipOffer" })
     }
 
+    @Test func anUnconfirmedLipSyncStopsTheBatchBeforeItCanBuyPhraseVoices() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        editor.makeIt.services?.wholeClipQuote = { _, _ in .init(reason: .manyWords(revoiced: 3, spoken: 5), price: 1.5) }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.submissionUncertain, local: false, usd: 1.44)
+        editor.makeIt.services?.revoiceWholeClip = { _, _ in
+            let session = WholeClipRevoiceSession()
+            session.backend = WholeClipRevoiceSessionTests.backend(stubs)
+            session.start(automatic: true); await session.waitForRun()
+            return WholeClipAutoOutcome(session)
+        }
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode(); editor.claudeModeTranscribed(started: false); await editor.claudeMode.task?.value
+        let run = try #require(editor.claudeModeRuns.first { $0.clipID == "clip-main" })
+        #expect(run.phase == .stopped && run.rows.contains { $0.text == "Stopped to check the lip-sync charge" })
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") } && stubs.voices.count == 1 && stubs.lipsyncs.count == 1)
+        #expect(editor.claudeMode.budget?.spent == 0.06)
+    }
+
     @Test func overTheCapThePatchRunsAndTheOfferWaitsUnpaidUntilClicked() async throws {
         let fixture = try fixture()
         defer { close(fixture) }

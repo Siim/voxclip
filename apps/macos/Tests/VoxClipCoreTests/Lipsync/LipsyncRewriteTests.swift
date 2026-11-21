@@ -93,10 +93,10 @@ import Testing
         #expect(throws: (any Error).self) { try VoiceLabRenderValidation.validate(invalid) }
     }
 
-    @Test(arguments: [429, 500, 503]) func explicitRetryableSubmitResponseRetries(status: Int) async throws {
+    @Test func explicitRateLimitAllowsALaterReceipt() async throws {
         let root = try LipsyncProviderFixtures.directory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let http = LipsyncFixtureHTTP([.json(status, "{}"), .json(200, LipsyncProviderFixtures.receipt())])
+        let http = LipsyncFixtureHTTP([.json(429, "{}"), .json(200, LipsyncProviderFixtures.receipt())])
         let provider = try LipsyncProviderFixtures.provider(http)
         let quote = try await LipsyncProviderFixtures.quote(provider)
         let approval = try await LipsyncProviderFixtures.approval(provider, quote: quote, root: root)

@@ -36,7 +36,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case look(clipID: String, look: ClipAutopilotPlan.Look)
         /// The whole clip played at `speed.rate`, pitch kept (clip controls, design.md §6.9).
         case speed(clipID: String, speed: ClipAutopilotPlan.Speed)
-        /// A punch-in cue for the clip.
+        /// A framing cue for the clip.
         case motion(MotionCue)
         /// The music package's input; `apply` leaves it pending.
         case music(ClipAutopilotMusicCue)
@@ -127,11 +127,39 @@ public enum ClipAutopilotMapping {
         add("captions", .captions, .captions(settings, pendingFont: file == nil ? plan.captions.font : nil), plan.captions.reason)
         add("look", .look, .look(clipID: clipID, look: plan.look), plan.look.reason)
         if let speed = plan.speed { add("speed", .speed, .speed(clipID: clipID, speed: speed), speed.reason) }
+        var zoomRanges: [Range<Double>] = []
+        var corrections = state.corrections
+        for correction in plan.corrections { corrections[words[correction.word].id] = correction.text }
         for (index, zoom) in plan.zooms.enumerated() {
-            let frame = MotionKeyframe(progress: 0, scale: zoom.scale)
-            let cue = MotionCue(id: "\(clipID)-zoom-\(index)", clipID: clipID, sourceStart: words[zoom.word].start, sourceEnd: words[zoom.untilWord].end,
-                                keyframes: [frame, MotionKeyframe(progress: 1, scale: zoom.scale)])
-            add("zoom-\(index)", .zoom, .motion(cue), zoom.reason)
+            guard let range = zoom.sourceRange(in: words, within: plan.startWord...plan.endWord),
+                  !zoomRanges.contains(where: { $0.overlaps(range) }),
+                  zoom.scale.isFinite, (1...MotionCue.maximumScale).contains(zoom.scale) else { continue }
+            let frames: [MotionKeyframe]
+            let cueID: String
+            var reason = zoom.reason
+            if let direction = zoom.direction {
+                guard zoom.hasDirectionalSettings,
+                      !(zoom.word...zoom.untilWord).contains(where: { state.cutWordIds.contains(words[$0].id) }),
+                      !plan.cuts.contains(where: { $0.startWord <= zoom.untilWord && zoom.word <= $0.endWord }),
+                      !zoomRanges.contains(where: { abs($0.lowerBound - range.lowerBound) < ClipAutopilotPlan.Zoom.minimumStartSpacing - 1e-9 }) else { continue }
+                let phrase = words[zoom.word...zoom.untilWord].filter { $0.kind == .word }
+                    .map { corrections[$0.id] ?? $0.text }.joined(separator: " ")
+                let excerpt = phrase.count > 96 ? String(phrase.prefix(95)) + "…" : phrase
+                reason = "“\(excerpt)” · \(reason)"
+                cueID = "\(clipID)-zoom-\(zoom.word)-\(zoom.untilWord)"
+                switch direction {
+                case .zoomIn: frames = [.init(progress: 0), .init(progress: 0.28, scale: zoom.scale),
+                                        .init(progress: 0.7, scale: zoom.scale), .init(progress: 1)]
+                case .zoomOut: frames = [.init(progress: 0, scale: zoom.scale), .init(progress: 0.18, scale: zoom.scale),
+                                         .init(progress: 1)]
+                }
+            } else {
+                cueID = "\(clipID)-zoom-\(index)"
+                frames = [.init(progress: 0, scale: zoom.scale), .init(progress: 1, scale: zoom.scale)]
+            }
+            let cue = MotionCue(id: cueID, clipID: clipID, sourceStart: range.lowerBound, sourceEnd: range.upperBound, keyframes: frames)
+            add("zoom-\(index)", .zoom, .motion(cue), reason)
+            zoomRanges.append(range)
         }
         if let picked = plan.pickedMusic {
             add("music", .music, .music(ClipAutopilotMusicCue(clipID: clipID, picked: picked,
@@ -179,13 +207,14 @@ public enum ClipAutopilotMapping {
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
-        var cues: [MotionCue] = []
         var effects: [ClipEffect] = []
         for operation in operations {
             switch operation.action {
             case .edit(let command): try result.applyEditing(command)
             case .captions(let settings, _): result.captions = settings
-            case .motion(let cue): cues.append(cue)
+            case .motion(let cue):
+                guard let next = addingMotionCue(cue, to: result) else { pending.append(operation); continue }
+                result = next
             case .shareText(let clipID, let text): result.share.captions[clipID] = text
             case .effect(let effect): effects.append(effect)
             case .musicDucking(let clipID, let on):
@@ -207,11 +236,25 @@ public enum ClipAutopilotMapping {
             }
         }
         result = try ClipEffects.adding(effects, to: result)
-        if !cues.isEmpty {
-            // Motion cues need the v4 project; the Context demo path upgrades and checks them against the clips.
-            let kept = result.motionCues.filter { cue in !cues.contains { $0.id == cue.id } }
-            result = try ContextDemoProject.settingMotionCues(kept + cues, in: result)
-        }
         return (result, pending)
+    }
+
+    public static func addingMotionCue(_ cue: MotionCue, to project: Project) -> Project? {
+        guard cue.isValid, let transcript = project.transcript,
+              let clip = project.edits.clips.first(where: { $0.id == cue.clipID }),
+              let bounds = clipIndices(clip, words: transcript.words),
+              let times = try? clipTimes(transcript.words, clip: clip, startIndex: bounds.lowerBound, endIndex: bounds.upperBound),
+              cue.sourceStart >= times.start, cue.sourceEnd <= times.end,
+              !project.motionCues.contains(where: { existing in
+                  existing.id == cue.id || (existing.clipID == cue.clipID && existing.sourceStart < cue.sourceEnd && cue.sourceStart < existing.sourceEnd)
+              }), let state = try? EditState(transcript: transcript, edits: project.edits),
+              let segments = try? buildSegments(state, activeClip: clip) else { return nil }
+        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+        guard let edits = try? buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: rate,
+                                             pauseKeepSeconds: state.pauseKeepSeconds),
+              edits.kept.contains(where: { interval in
+                  Double(interval.startSample) - 0.5 <= cue.sourceStart * rate && cue.sourceEnd * rate <= Double(interval.endSample) + 0.5
+              }) else { return nil }
+        return try? ContextDemoProject.settingMotionCues(project.motionCues + [cue], in: project)
     }
 }

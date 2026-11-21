@@ -60,7 +60,7 @@ extension RewriteSession {
         }
         guard let usd = session.quote?.wholeUSD else { return nil }
         // Try Again pays only what's left; a kept lip-sync result is re-imported for free ("Try Again · free").
-        let remaining = retry ? session.retryUSD ?? usd : max(0, usd - session.spent)
+        let remaining = retry ? session.retryUSD ?? usd : usd
         let price = remaining > 0 ? " · " + VoiceLabCostPresentation.format(remaining) : retry ? " · free" : ""
         return PanelAction(id: retry ? "wholeClipRetry" : "wholeClipRevoice", title: (retry ? "Try Again" : "Revoice Whole Clip") + price, priced: true) { [weak self] in
             self?.startWholeClip()
@@ -103,7 +103,7 @@ extension RewriteSession {
     }
 
     func startWholeClip(automatic: Bool = false) {
-        guard let session = wholeClip, let clip = wholeClipID, !session.running else { return }
+        guard let session = wholeClip, let clip = wholeClipID, !session.running, !session.submissionUnconfirmed else { return }
         editor.wholeClipPicks[clip] = true
         session.start(automatic: automatic)
         editor.announce("Revoicing the whole clip.")
@@ -120,8 +120,9 @@ extension RewriteSession {
         editor.wholeClipPicks[clip] = false
         Task { [weak self] in
             await self?.wholeClip?.discard()
-            self?.wholeClipPlan?.invalidate(); self?.wholeClipPlan = nil
+            self?.retireWholeClipVoicePlan()
             self?.wholeClip = nil
+            self?.retiredWholeClipVoiceSpend = 0
             self?.refreshWholeClipPanel()
         }
     }
@@ -187,6 +188,12 @@ extension RewriteSession {
             return try await wholeClipReword(script, target: target, voiceSeconds: voice, videoSeconds: video)
         }, estimate: { [weak self] script in
             self?.wholeClipEstimate(script)
+        }, unfinishedVoicePrice: { [weak self] in
+            guard let plan = self?.wholeClipPlan, plan.stillCurrent else { return nil }
+            return plan.unfinishedVoicePrice
+        }, unsettledVoiceSpend: { [weak self] in
+            guard let self else { return 0 }
+            return retiredWholeClipVoiceSpend + (wholeClipPlanSettled ? 0 : wholeClipPlan?.spent.usd ?? 0)
         }, picture: { [weak self] voice in
             guard let self else { throw CancellationError() }
             return try await wholeClipPicture(voice)
@@ -206,7 +213,7 @@ extension RewriteSession {
         }, undo: { [weak editor] record in
             editor?.removeWholeClip(record)
         }, discard: { [weak self] in
-            self?.wholeClipPlan?.invalidate(); self?.wholeClipPlan = nil
+            self?.retireWholeClipVoicePlan()
         }, report: { [weak editor] line in
             guard let log = editor?.app.log else { return }
             Task { await log.write(LogEntry(level: .warn, category: "voice-lab", message: line)) }
@@ -279,6 +286,14 @@ extension RewriteSession {
                      voiceNote: matched ? "matched to this video" : "")
     }
 
+    private func retireWholeClipVoicePlan() {
+        if !wholeClipPlanSettled { retiredWholeClipVoiceSpend += wholeClipPlan?.spent.usd ?? 0 }
+        wholeClipPlan?.invalidate()
+        wholeClipPlan = nil
+        wholeClipPlanScript = nil
+        wholeClipPlanSettled = false
+    }
+
     /// The Voice step: a take plan over the script's parts, priced, then made under the click's approval.
     private func wholeClipVoice(_ script: WholeClipScript, progress: @escaping @MainActor (String) -> Void) async throws -> WholeClipRevoiceSession.Voice {
         // The lip sync needs a fal.ai key: without one, no voice is paid for that could never be lip synced.
@@ -292,6 +307,27 @@ extension RewriteSession {
         }
         guard current, let generation, let recordID = generation.selectedVoiceID, let takeBackend, let envelope else {
             throw WholeClipRevoiceSession.Unsent(error: WholeClipRevoiceSession.Stop.noVoice("Make your voice in Rewrite first. Nothing was sent."))
+        }
+        if let kept = wholeClipPlan, wholeClipPlanScript == script {
+            guard kept.stillCurrent else { throw WholeClipRevoiceSession.Unsent(error: ClipTakePlan.Failure.stale) }
+            if let blocked = kept.phrases.first(where: { $0.blocked != nil }) {
+                throw WholeClipRevoiceSession.Unsent(error: WholeClipRevoiceSession.Stop.noVoice((blocked.blocked ?? "The voice is blocked.") + " Nothing new was sent."))
+            }
+            if !kept.unfinishedVoiceParts.isEmpty {
+                let approvedPrice = kept.unfinishedVoicePrice ?? wholeClip?.quote?.voiceUSD
+                await kept.prepareUnfinishedVoiceParts()
+                try Task.checkCancellation()
+                guard let approval = kept.approvalID, let approvedPrice, let freshPrice = kept.estimate?.usd else {
+                    throw WholeClipRevoiceSession.Stop.noVoice(kept.problem.isEmpty ? "The remaining voice parts couldn't be priced. Nothing new was sent." : kept.problem)
+                }
+                guard freshPrice <= approvedPrice else {
+                    throw WholeClipRevoiceSession.Stop.noVoice("The price for the remaining parts changed. Nothing new was sent. Review the new price before retrying.")
+                }
+                progress("retrying \(kept.unfinishedVoiceParts.count) unfinished parts")
+                await kept.start(approved: true, quoteID: approval)
+                try Task.checkCancellation()
+            }
+            return try finishWholeClipVoice(kept, script: script, recordID: recordID)
         }
         // The plan: free, and the same every time for the same clip, so a stop here is one Try Again would only repeat.
         let snapshot = editor.project
@@ -336,12 +372,15 @@ extension RewriteSession {
         plan.publishOverride = publishOverride
         #endif
         configureLipsync(plan)
+        plan.lipsync.automaticallyRefreshOffers = false
         plan.connect(takeBackend(plan.phrases.count) { [weak plan] request, start in
             guard let plan else { throw CancellationError() }
             try await plan.dispatch(request, start: start)
         })
-        wholeClipPlan?.invalidate()
+        retireWholeClipVoicePlan()
         wholeClipPlan = plan
+        wholeClipPlanScript = script
+        wholeClipPlanSettled = false
         progress("pricing \(plan.phrases.count == 1 ? "one part" : "\(plan.phrases.count) parts")")
         await plan.prepare()
         #if DEBUG
@@ -357,15 +396,30 @@ extension RewriteSession {
         progress("\(plan.phrases.count == 1 ? "one take" : "\(plan.phrases.count) parts, one take")")
         await plan.start(approved: true, quoteID: approval)
         try Task.checkCancellation()
+        return try finishWholeClipVoice(plan, script: script, recordID: recordID)
+    }
+
+    private func finishWholeClipVoice(_ plan: ClipTakePlan, script: WholeClipScript, recordID: String) throws -> WholeClipRevoiceSession.Voice {
+        guard plan.stillCurrent else { throw WholeClipRevoiceSession.Unsent(error: ClipTakePlan.Failure.stale) }
         // The voice as said: each take's speech between its trims, before any pause of the layout.
         var seconds = 0.0
         for phrase in plan.phrases {
             guard let take = plan.automaticTake(phrase: phrase.id), let audio = take.row.audio, plan.select(take: take.id, phrase: phrase.id) else {
-                throw WholeClipRevoiceSession.Stop.noVoice("Part \(phrase.id + 1)'s take didn't pass its checks. " + (plan.problem.isEmpty ? "" : plan.problem))
+                let row = phrase.takes.last?.row
+                let reason = phrase.blocked ?? row.flatMap(TakeFailurePresentation.reason(for:))
+                    ?? (row?.voiceCheck.evidence?.mode == .unmeasured ? "There wasn't enough speech to verify the voice for automatic use." : nil)
+                    ?? (plan.problem.isEmpty ? "No verified take was available." : plan.problem)
+                let kept = plan.phrases.count - plan.unfinishedVoiceParts.count
+                let saved = kept > 0 ? " \(kept) verified \(kept == 1 ? "part is" : "parts are") kept for retry." : ""
+                let failure = WholeClipRevoiceSession.Stop.partVoice(part: phrase.id + 1, reason: reason + saved,
+                                                                    checks: row?.qa?.failures ?? [])
+                if phrase.blocked != nil { throw WholeClipRevoiceSession.Unsent(error: failure) }
+                throw failure
             }
             seconds += Double(audio.fit.plan.trimEndFrame - audio.fit.plan.trimStartFrame) / Double(audio.sampleRate)
         }
-        return .init(key: .init(script: script.text, recordId: recordID, model: plan.modelID ?? model), seconds: seconds,
+        wholeClipPlanSettled = true
+        return .init(key: .init(script: script.text, recordId: recordID, model: plan.modelID ?? VoiceLabWordingFit.modelID), seconds: seconds,
                      parts: plan.phrases.count, usd: plan.spent.usd ?? 0)
     }
 
@@ -398,7 +452,7 @@ extension RewriteSession {
     /// throws what actually failed.
     func wholeClipMatchPicture() async throws -> ClipTakePlan {
         typealias Session = WholeClipRevoiceSession
-        guard let plan = wholeClipPlan else { throw ClipTakePlan.Failure.stale }
+        guard let plan = wholeClipPlan, plan.stillCurrent else { throw ClipTakePlan.Failure.stale }
         for phrase in plan.phrases where plan.lipsync.applied[phrase.id] != nil { plan.lipsync.undo(phrase.id) }
         plan.retryVideoPreparation()
         if let left = plan.phrases.first(where: \.leftOut) { throw Session.Stop.pictureUnmatched(part: left.id + 1) }
@@ -410,6 +464,7 @@ extension RewriteSession {
         }
         await plan.prepareVideoChoices()
         try Task.checkCancellation()
+        guard plan.stillCurrent, wholeClipPlan === plan else { throw ClipTakePlan.Failure.stale }
         if let left = plan.phrases.first(where: \.leftOut) { throw Session.Stop.pictureUnmatched(part: left.id + 1) }
         if let error = plan.videoPreparationFailure { throw Session.Unmatched(error: error) }
         return plan
@@ -425,10 +480,8 @@ extension RewriteSession {
             guard let video = project.media.source.video else { throw LipsyncPreparationError.unsupportedVideo }
             _ = try LipsyncWindowPreparation.uploadSize(video)
         } catch { throw Session.LipsyncFailed(error: error, local: true) }
-        await plan.lipsync.refresh()
-        guard plan.lipsync.keyAvailable else { throw Session.LipsyncFailed(error: LipsyncError.missingKey, local: true) }
         do {
-            guard try await plan.makeLipsyncOffers(model: .standard).1 != nil else { throw ClipTakePlan.Failure.stale }
+            _ = try await plan.makeWholeClipLipsyncOffer(model: .standard)
         } catch let error as LipsyncError {
             throw Session.LipsyncFailed(error: error, local: true)
         } catch is CancellationError {
@@ -452,10 +505,15 @@ extension RewriteSession {
                                   progress: @escaping @MainActor (Double?) -> Void) async throws -> WholeClipRevoiceSession.Synced {
         typealias Session = WholeClipRevoiceSession
         let plan = try await wholeClipMatchPicture()
-        await plan.lipsync.refresh()
-        guard plan.lipsync.keyAvailable else { throw Session.LipsyncFailed(error: LipsyncError.missingKey, local: true) }
-        let (_, all) = try await plan.makeLipsyncOffers(model: model)
-        guard let offer = all, plan.lipsync.start(offer) else { throw ClipTakePlan.Failure.stale }
+        let offer: RewriteLipsyncSession.Offer
+        do {
+            var prepared = try await plan.makeWholeClipLipsyncOffer(model: model)
+            if wholeClip?.lipsyncKept == true { prepared.mayPay = false }
+            offer = prepared
+            try plan.lipsync.startChecked(offer)
+        } catch let error as LipsyncError {
+            throw Session.LipsyncFailed(error: error, local: true)
+        }
         let watcher = Task { [weak plan] in
             while let plan, plan.lipsync.running, !Task.isCancelled {
                 if case .running(_, let value) = plan.lipsync.states[offer.phraseIDs.first ?? 0] { progress(value) }
@@ -476,7 +534,7 @@ extension RewriteSession {
                 let error = plan.lipsync.errors[phrase] ?? LipsyncError.invalidResponse
                 let attempt = (error as? LipsyncAttemptFailure)?.attempt
                 throw Session.LipsyncFailed(error: error, local: RewriteLipsyncSession.isLocal(error),
-                    usd: mayBill ? attempt?.estimate.usd ?? offer.estimate.usd : nil, requestID: attempt?.requestID,
+                    usd: mayBill ? attempt?.estimate.usd : nil, requestID: attempt?.requestID,
                     freeRetry: plan.lipsync.freeRetries.contains(phrase))
             }
             throw CancellationError()

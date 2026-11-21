@@ -38,6 +38,22 @@ public sealed class ClipRenderVectorTests
     }
 
     [Fact]
+    public void MacColorAdjustmentsUseEncodedLumaContrastBrightnessAndChannelGains()
+    {
+        var recipe = new ClipLookRecipe(new ClipColorAdjustments(25, 20, -50, 50));
+        Assert.False(recipe.IsIdentity);
+        var graded = recipe.Apply([0.2, 0.4, 0.8]);
+        Assert.Equal(0.34062282, graded[0], 10);
+        Assert.Equal(0.422498, graded[1], 10);
+        Assert.Equal(0.58467318, graded[2], 10);
+        var desaturated = new ClipLookRecipe(new ClipColorAdjustments(0, 0, -100, 0));
+        Assert.All(desaturated.Apply([1, 0, 0]), channel => Assert.Equal(0.2126, channel, 10));
+        var highContrast = new ClipLookRecipe(new ClipColorAdjustments(0, 100, 0, 0));
+        Assert.Equal([0d, 0.5d, 1d], highContrast.Apply([0, 0.5, 1]));
+        Assert.True(new ClipLookRecipe(new ClipColorAdjustments(0, 0, 0, 0)).IsIdentity);
+    }
+
+    [Fact]
     public void RenderedLengthsDivideTheEditedLengthBySpeed()
     {
         foreach (var item in Cases().GetProperty("speed").EnumerateArray())

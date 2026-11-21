@@ -41,9 +41,9 @@ import VoxClipCore
                     }
                 case .failed(let reason, let price, let mayBill):
                     Text(RewriteLipsyncSession.failureLine(phrase: phrase, reason: reason, price: price, mayBill: mayBill,
-                                                          free: session.freeRetries.contains(phrase)))
+                                                          free: session.freeRetries.contains(phrase), unconfirmed: session.submissionUnconfirmed(phrase)))
                         .foregroundStyle(DesignValues.color("status.warning"))
-                    approval(retry: true)
+                    if !session.submissionUnconfirmed(phrase) { approval(retry: true) }
                     Text("or keep the original video")
                 case .cancelled(let price):
                     Text("Lip sync cancelled. fal.ai may still charge \(price). Your original video is kept.")
@@ -91,7 +91,8 @@ import VoxClipCore
         switch session.states[phrase] {
         case .running: return [Self.cancelLabel(phrase)]
         case .done: return [Self.playLabel(phrase), Self.undoLabel(phrase)]
-        case .failed, .cancelled: return approval("Try Again")
+        case .failed: return session.submissionUnconfirmed(phrase) ? [] : approval("Try Again")
+        case .cancelled: return approval("Try Again")
         case nil: return approval("Lip Sync")
         }
     }

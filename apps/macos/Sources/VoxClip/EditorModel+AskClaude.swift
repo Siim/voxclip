@@ -305,6 +305,7 @@ extension EditorModel {
         switch operation.action {
         case .stretch: return "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."
         case .musicDucking: return "This clip has no music to duck."
+        case .motion: return "This cue overlaps existing motion or no longer fits the clip. Nothing changed."
         default: return "Not available yet. Nothing changed."
         }
     }
@@ -324,14 +325,15 @@ extension EditorModel {
     }
 
     /// The row's paid click: a rewrite opens Rewrite on its words with Claude's wording, where the take's exact price is
-    /// one more inline click; music opens the Captions panel's Music section with the mood. Nothing is spent here.
+    /// one more inline click; music opens the Music panel with the mood. Nothing is spent here.
     func runPaidAskClaudeRow(_ id: String) {
         guard let run = askClaude.run, let row = run.rows.first(where: { $0.id == id }) else { return }
         switch row.operation.action {
         case .rewrite(let scope, let text):
             runRewrite(scope: scope, instruction: "Say exactly: \(text)", verb: "Rewrite")
         case .music(let cue):
-            app.shell.choosePanelJob(.captions, for: self)
+            musicPanel.setDirections(cue.musicBrowserBriefs, model: self)
+            app.shell.showMusic(for: self)
             announce("Music: \(cue.picked.mood). Pick a track in Music.")
         default: return
         }
@@ -420,11 +422,11 @@ extension EditorModel {
     /// `project` with `operations` taken out: their effects and zooms removed, corrections, cuts and ducking back to `base`.
     func undone(_ operations: [ClipAutopilotOperation], base: Project?, from project: Project) throws -> Project {
         var next = project
-        var effects = Set<String>(), cues = Set<String>()
+        var effects = Set<String>(), cues: [MotionCue] = []
         for operation in operations {
             switch operation.action {
             case .effect(let effect): effects.insert(effect.id)
-            case .motion(let cue): cues.insert(cue.id)
+            case .motion(let cue): cues.append(cue)
             case .edit(.correct(let id, _)): next.edits.corrections[id] = base?.edits.corrections[id]
             case .edit(.cutSelection(let ids)):
                 let before = Set(base?.edits.cutWordIds ?? [])
@@ -446,7 +448,8 @@ extension EditorModel {
             }
         }
         next = try ClipEffects.removing(effects, from: next)
-        if !cues.isEmpty { next = try ContextDemoProject.settingMotionCues(next.motionCues.filter { !cues.contains($0.id) }, in: next) }
+        let kept = next.motionCues.filter { !cues.contains($0) }
+        if kept != next.motionCues { next = try ContextDemoProject.settingMotionCues(kept, in: next) }
         return next
     }
 
@@ -461,6 +464,11 @@ extension EditorModel {
     /// Replaces an applied effect with `change` applied, as one undo step ("Adjust Blur").
     func adjustAskClaudeEffect(_ id: String, name: String? = nil, _ change: (inout ClipEffect) -> Void) {
         guard let current = askClaudeEffect(id) else { return }
+        adjustProjectEffect(current, name: name, change)
+    }
+
+    func adjustProjectEffect(_ current: ClipEffect, name: String? = nil, _ change: (inout ClipEffect) -> Void) {
+        guard capabilities.edit, project.clipEffects.first(where: { $0.id == current.id }) == current else { return }
         var effect = current
         change(&effect)
         effect.start = max(0, effect.start)
@@ -472,15 +480,15 @@ extension EditorModel {
         if effect.rect != current.rect || effect.start != current.start || effect.end != current.end, effect.kind.isTracked { effect.track = [] }
         guard effect != current, (try? ClipEffects.validate(effect, projectId: project.id)) != nil,
               let next = try? ClipEffects.adding([effect], to: project) else { return }
-        replace(next, name: name ?? "Adjust \(Self.rowTitle(ClipAutopilotOperation(id: id, decision: .overlay, action: .effect(effect), reason: "")))")
+        replace(next, name: name ?? "Adjust \(Self.rowTitle(ClipAutopilotOperation(id: effect.id, decision: .overlay, action: .effect(effect), reason: "")))")
     }
 
     /// Changes what a blur or pixelate follows. Hold still keeps its rect; a face or the moving subject is tracked again on
     /// this Mac (Vision), then stored as one undo step.
-    func retrackAskClaudeEffect(_ id: String, tracking: ClipEffect.Tracking) {
-        guard let current = askClaudeEffect(id), current.kind.isTracked, current.tracking != tracking else { return }
+    func retrackProjectEffect(_ current: ClipEffect, tracking: ClipEffect.Tracking) {
+        guard capabilities.edit, project.clipEffects.first(where: { $0.id == current.id }) == current, current.kind.isTracked, current.tracking != tracking else { return }
         guard tracking != ClipEffect.Tracking.none, mediaResolved, project.media.source.video != nil else {
-            adjustAskClaudeEffect(id, name: "Hold the blur still") { $0.tracking = tracking; $0.track = [] }
+            adjustProjectEffect(current, name: "Hold the blur still") { $0.tracking = tracking; $0.track = [] }
             return
         }
         let source = URL(fileURLWithPath: project.media.source.absolutePath)
@@ -490,8 +498,8 @@ extension EditorModel {
         Task { [self] in
             defer { askClaude.progress = nil }
             let track = (try? await ClipEffectVision.track(source: source, effect: effect)) ?? []
-            guard askClaudeEffect(id) == current else { return }
-            adjustAskClaudeEffect(id, name: "Track the blur") { $0.tracking = tracking; $0.track = track }
+            guard project.clipEffects.first(where: { $0.id == current.id }) == current else { return }
+            adjustProjectEffect(current, name: "Track the blur") { $0.tracking = tracking; $0.track = track }
         }
     }
 
@@ -501,15 +509,11 @@ extension EditorModel {
         return (id, effect)
     }
 
-    /// A press on an effect in the FX lane opens its Adjust editor, from the run that made it; a Make it postable hook's
-    /// title card opens its review with the hook's field.
+    /// Open the persisted effect even after reopening a project or running another operation.
     func adjustAskClaudeEffect(fromTimeline effectID: String) {
-        guard let run = askClaude.run, let row = run.rows.first(where: { row in
-            if case .effect(let effect) = row.operation.action { effect.id == effectID } else { false }
-        }), row.status == .applied else { makeItEditHook(effectID: effectID); return }
-        askClaude.adjusting = row.id
-        askClaude.inView = true
-        app.shell.choosePanelJob(.askClaude, for: self)
+        guard timelineEditableEffects.contains(where: { $0.id == effectID }) else { return }
+        timelineEffectID = effectID
+        timelineEffectsOpen = true
     }
 
     // MARK: Timeline

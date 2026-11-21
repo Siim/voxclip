@@ -44,12 +44,22 @@ public struct LipsyncRun: Sendable {
                 options: LipsyncOptions(syncMode: window.syncMode), fps: prepared.fps, consentStore: consentStore,
                 recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true, model: chosen)
         } catch { throw LipsyncNotSubmitted.wrap(error) }
-        let job = try await provider.submit(quote, approval: approval)
+        let job: LipsyncJob
+        do { job = try await provider.submit(quote, approval: approval) }
+        catch {
+            // Once the POST may have crossed the boundary, its failed response cannot prove that it was free.
+            if await provider.status(quoteID: quote.id)?.billing == .submissionUncertain { throw LipsyncError.submissionUncertain }
+            if case LipsyncError.http(let status) = error, (400...499).contains(status) {
+                throw LipsyncNotSubmitted(error: error, queueRefused: true)
+            }
+            throw LipsyncNotSubmitted.wrap(error)
+        }
+        var attempt = LipsyncAttempt(job: job, quote: quote, neededSeconds: prepared.neededSeconds)
+        attempt.picture = prepared.picture
+        var recorded = false
         do {
             // The attempt's sidecar: written as soon as fal.ai accepted the job, so its result is never lost.
-            var attempt = LipsyncAttempt(job: job, quote: quote, neededSeconds: prepared.neededSeconds)
-            attempt.picture = prepared.picture
-            do { try LipsyncAttemptStore.record(attempt, projectID: projectID, paidRoot: paidRoot) }
+            do { try LipsyncAttemptStore.record(attempt, projectID: projectID, paidRoot: paidRoot); recorded = true }
             catch { await provider.note("lipsync attempt record=unwritten") }
             _ = try await provider.wait(job) { state in
                 switch state {
@@ -65,9 +75,16 @@ public struct LipsyncRun: Sendable {
             // The import already kept what it could and cleaned up at fal.ai.
             throw failure
         } catch {
-            if Task.isCancelled || error is CancellationError { await provider.cancel(job) }
+            if Task.isCancelled || error is CancellationError {
+                await provider.cancel(job); await provider.cleanup(job); throw CancellationError()
+            }
+            // Keep the accepted request identity even when polling fails. A failed result can be terminal;
+            // cleanup only deletes terminal/cancelled payloads. A still-running result is eligible for a free GET.
             await provider.cleanup(job)
-            throw error
+            let status = await provider.status(quoteID: quote.id)
+            let withinRetention = attempt.refetchable(at: await provider.date())
+            let recoverable = recorded && status?.cancelled == false && status?.cleanup == .pending && withinRetention
+            throw LipsyncAttemptFailure(error: error, attempt: attempt, freeRetry: recoverable)
         }
     }
 }
@@ -76,6 +93,7 @@ public struct LipsyncRun: Sendable {
 /// cannot have charged for it. Local preparation errors, a missing key and cancellation keep their own types.
 public struct LipsyncNotSubmitted: Error, Sendable {
     public let error: any Error
+    public var queueRefused = false
 
     static func wrap(_ error: any Error) -> any Error {
         if error is CancellationError || error is LipsyncPreparationError || error as? LipsyncError == .missingKey { return error }

@@ -155,6 +155,11 @@ extension EditorModel {
         // the word on the left, not the first word after the closed cut.
         let lastSample = axis == .edited && upper > lower ? max(lower, upper - 1 / (renderTimeline?.sampleRate ?? 48_000)) : upper
         let sourceUpper = timelineSourceTime(lastSample, on: axis)
+        // A drag entirely within a known pause selects that pause, not the nearest spoken word.
+        if upper > lower, let pause = pause(at: sourceLower), sourceLower < pause.end, sourceUpper <= pause.end {
+            selectedWordIDs = []; selectedPauseIDs = [pause.id]
+            return snap ? timelineSelection(on: axis) : lower...upper
+        }
         let first: Int?, last: Int?
         if snap {
             first = timelineSelectionBoundary(source: sourceLower, start: true, on: axis)
@@ -171,9 +176,9 @@ extension EditorModel {
         if first <= last { span = first...last }
         else if let word = word(at: (sourceLower + sourceUpper) / 2, nearest: true), let index = index(word.id) { span = index...index }
         else { return nil }
-        let words = words, pauses = pauseByAfterIndex, cutPauses = cutPauseIDs
+        let words = words, pauses = pauseByAfterIndex
         selectedWordIDs = Set(words[span].map(\.id))
-        selectedPauseIDs = Set(span.dropLast().compactMap { pauses[$0]?.id }.filter(cutPauses.contains))
+        selectedPauseIDs = Set(span.dropLast().compactMap { pauses[$0]?.id })
         return snap ? timelineSelection(on: axis) : lower...upper
     }
 

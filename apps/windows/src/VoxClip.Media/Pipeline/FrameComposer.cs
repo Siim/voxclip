@@ -227,8 +227,8 @@ public sealed class FrameComposer : IFrameComposer
         }
     }
 
-    /// <summary>The clip's look, Ask Claude's picture effects and its motion on the scaled frame, before captions (Mac FrameCompositor
-    /// order): the look grades the picture first, so censors cover graded pixels and pointers, titles and stickers keep their colours;
+    /// <summary>The clip's color grade, Ask Claude's picture effects and its motion on the scaled frame, before captions (Mac FrameCompositor
+    /// order): the picture is graded first, so censors cover graded pixels and pointers, titles and stickers keep their colours;
     /// then censors and pointers in picture space through <paramref name="crop"/> of the <paramref name="pictureWidth"/> ×
     /// <paramref name="pictureHeight"/> oriented source, at the freeze-held source time; then the clip's motion cue crops the finished
     /// picture (in output coordinates, so a flipped or turned clip zooms where it is seen); then titles, lower thirds, stickers and the
@@ -238,7 +238,7 @@ public sealed class FrameComposer : IFrameComposer
         CancellationToken ct, bool forPreview = false, PreviewFrameFailures? failures = null)
     {
         if (snapshot.Clip is not { } clip) return;
-        if (clip.Controls is { Look: not ClipLook.Original } controls) ClipPicture.Look(output, controls.Look, ct);
+        if (clip.Controls is { } controls && controls.HasColorGrade()) ClipPicture.Grade(output, controls.Look, controls.ColorAdjustments, ct);
         var timeline = snapshot.Timeline;
         var sourceTime = timeline.SourceTime(editedTime);
         var frames = clip.Effects is { } input ? effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot)) : null;

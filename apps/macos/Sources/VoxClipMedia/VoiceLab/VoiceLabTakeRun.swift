@@ -380,6 +380,13 @@ public actor VoiceLabTakeRun {
                 if let score {
                     await pool.measured(id: take.synthesis.requestID, voiced: voiced, record: value.record,
                                         phrase: phraseID, passed: score >= value.record.speaker.threshold)
+                    if score < value.record.speaker.threshold, qaReceipt == nil {
+                        let qa = VoiceLabTakeQAResult(values: VoiceLabQA(speakerScore: score), failures: [.speaker])
+                        rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
+                            receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]), generated: generated, quote: take))
+                        await progress(rows)
+                        continue
+                    }
                 }
                 try await validate(value, revision: expected)
                 let inside: [String]

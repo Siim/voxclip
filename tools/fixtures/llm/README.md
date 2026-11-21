@@ -38,8 +38,9 @@ mode writes outside its output directory, apart from `check`'s temporary files.
 Inputs are the worktree's `shared/prompts/{clip-finder,ai-tighten}.json`,
 `shared/catalog/llm-providers.json`, and the existing editing fixture
 `shared/fixtures/editing/pauses/label-to-fixed.json`, plus
-`shared/prompts/voice-rewrite.json` for `voice-rewrite-requests.json` and `cli-replies.json` only and
-`shared/prompts/patch-rewrite.json` for `patch-rewrite-requests.json` only. Prompt/catalog
+`shared/prompts/voice-rewrite.json` for `voice-rewrite-requests.json` and `cli-replies.json`, and
+`shared/prompts/patch-rewrite.json` for `patch-rewrite-requests.json`. Both rewrite prompts also supply
+their production schemas to the Codex output-file regressions in `connector-requests.json`. Prompt/catalog
 SHA-256s are recorded in every output after normalizing source-file CRLF to LF
 (a Voice Lab request file records only its own prompt); there are no
 absolute checkout paths or timestamps. Scoped `.gitattributes` files pin both

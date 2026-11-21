@@ -15,6 +15,7 @@ enum TimelineMetrics {
         var maxY: CGFloat { y + height }
     }
     static let toolbar: CGFloat = 28
+    static let editBar: CGFloat = 28
     /// The track headers' column. Lanes start after it.
     static let header: CGFloat = 112
     /// Lane after a fitted range, where the Out bracket and the last label sit (notes.md:
@@ -22,6 +23,7 @@ enum TimelineMetrics {
     static let trailing: CGFloat = 8
     /// How near the pointer In, Out or a closed cut's seam must be to take a drag or a double-click.
     static let reach: CGFloat = 5
+    static let trimReach: CGFloat = 12
     static let overview = Row(y: 0, height: 24)
     static let ruler = Row(y: 24, height: 22)
     /// V1, A1, CC, FX, M1 and E1 (Ask Claude's effects) at the default track height (M).
@@ -132,7 +134,7 @@ struct TimelineContent: Equatable {
     let motion = MotionLane()
     let music = MusicLane()
     /// E1: Ask Claude's effects (design.md §6.8), drawn like the FX motion lane.
-    let effects = MotionLane(hint: "\u{2726} Ask Claude adds effects here", noClipHint: "\u{2726} Ask Claude adds effects here", defaultLabel: "Effect")
+    let effects = MotionLane(hint: "Use Titles & effects to add a title", noClipHint: "Use Titles & effects to add a title", defaultLabel: "Effect")
     let trackClip = TimelineTrackClip()
     let headers = [TrackHeaderView(id: "V1", name: "Video"), TrackHeaderView(id: "A1", name: "Voice"), TrackHeaderView(id: "CC", name: "Captions"),
                    TrackHeaderView(id: "FX", name: "Motion"), TrackHeaderView(id: "M1", name: "Music"), TrackHeaderView(id: "E1", name: "Effects")]
@@ -186,7 +188,7 @@ struct TimelineContent: Equatable {
         headers[3].action = { [weak self] in self?.openMotionCue() }
         headers[4].action = { [weak self] in
             guard let self else { return }
-            (self.shell ?? self.model.app.shell).choosePanelJob(.captions, for: self.model)
+            (self.shell ?? self.model.app.shell).showMusic(for: self.model)
         }
         addSubview(overlay)
         addSubview(horizontalScroller); addSubview(verticalScroller)
@@ -198,7 +200,7 @@ struct TimelineContent: Equatable {
             self.layoutLanes()
         }
         configureAccessibility()
-        toolTip = "Click to seek. Drag to select words. Option-drag bypasses snapping. Double-click a cut to restore it."
+        toolTip = "Drag across the waveform, then Cut selection. Drag an In or Out bracket to trim by word. Double-click a cut to restore it."
         layoutLanes()
         observations = [
             ShellObservation { [weak self] in self?.renderContent() },
@@ -380,7 +382,7 @@ struct TimelineContent: Equatable {
         overview.state = TimelineOverviewLane.State(clips: content.clips, takeLength: content.takeLength,
                                                     sourceRange: overviewRange, window: windowLower...max(windowLower, windowUpper),
                                                     takeLabel: durationLabel(overviewRange.upperBound - overviewRange.lowerBound))
-        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: interaction.selection ?? content.selection, changes: content.changes)
+        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection, changes: content.changes, trimHint: interaction.trimHint)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
@@ -396,9 +398,10 @@ struct TimelineContent: Equatable {
         music.state = MusicLane.State(viewport: viewport, music: content.music)
         effects.state = MotionLane.State(viewport: viewport, cues: content.effects, hasClip: true)
         updateScrollers()
+        updateEdgeCursors()
         onZoom?(zoomValue)
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
-        overlay.showWash((interaction.selection ?? content.selection).map { range in
+        overlay.showWash(content.selection.map { range in
             let lower = viewport.x(range.lowerBound), upper = viewport.x(range.upperBound)
             return NSRect(x: lower, y: top, width: max(0, upper - lower), height: max(0, min(trackClip.frame.maxY, TimelineMetrics.rows(trackHeight).last!.maxY - verticalOffset) - top))
         })
@@ -409,16 +412,35 @@ struct TimelineContent: Equatable {
     /// In and Out on the axis, with the edge being dragged at the word it would land on.
     private var shownInOut: ClosedRange<Double>? { interaction.inOut(content.inOut) }
 
+    private var edgeCursorRects: [NSRect] = []
+    private func updateEdgeCursors() {
+        let rects: [NSRect] = content.inOut.flatMap { edges in
+            guard model.capabilities.edit else { return nil }
+            let lane = NSRect(x: headerWidth, y: TimelineMetrics.ruler.y, width: laneWidth, height: TimelineMetrics.ruler.height)
+            return [edges.lowerBound, edges.upperBound].map { time in
+                NSRect(x: headerWidth + viewport.x(time) - TimelineMetrics.trimReach, y: lane.minY,
+                       width: 2 * TimelineMetrics.trimReach, height: lane.height).intersection(lane)
+            }.filter { !$0.isEmpty }
+        } ?? []
+        guard rects != edgeCursorRects else { return }
+        edgeCursorRects = rects; self.window?.invalidateCursorRects(for: self)
+    }
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        for rect in edgeCursorRects { addCursorRect(rect, cursor: .resizeLeftRight) }
+    }
+
     // MARK: Pointer and keys
 
     override func mouseDown(with event: NSEvent) {
         let point = motion.convert(event.locationInWindow, from: nil)
-        if motion.bounds.contains(point), point.x >= headerWidth {
+        let inTracks = trackClip.frame.contains(convert(event.locationInWindow, from: nil))
+        if inTracks, motion.bounds.contains(point), point.x >= headerWidth {
             openMotionCue(id: motion.cueID(at: point))
             return
         }
         let effectPoint = effects.convert(event.locationInWindow, from: nil)
-        if effects.bounds.contains(effectPoint), effectPoint.x >= headerWidth, let id = effects.cueID(at: effectPoint) {
+        if inTracks, effects.bounds.contains(effectPoint), effectPoint.x >= headerWidth, let id = effects.cueID(at: effectPoint) {
             model.adjustAskClaudeEffect(fromTimeline: id)
             return
         }
@@ -759,6 +781,7 @@ struct TimelineOverviewLabel: Equatable {
         var inOut: ClosedRange<Double>?
         var selection: ClosedRange<Double>?
         var changes: [ClosedRange<Double>] = []
+        var trimHint: String?
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     static let labelFont = VCType.label.nsMono()
@@ -810,6 +833,15 @@ struct TimelineOverviewLabel: Equatable {
             brackets.lineWidth = 1.5
             DesignValues.nsColor("clip.label").setStroke()
             brackets.stroke()
+            if let hint = state.trimHint {
+                let font = Self.labelFont
+                let width = ceil((hint as NSString).size(withAttributes: [.font: font]).width) + 10
+                let handle = hint.hasPrefix("In:") ? inX : outX
+                let left = max(lane.minX, min(lane.maxX - width, handle + 5))
+                DesignValues.nsColor("bg.selectedRow").setFill()
+                NSBezierPath(roundedRect: CGRect(x: left, y: 2, width: width, height: height - 4), xRadius: 3, yRadius: 3).fill()
+                Self.draw(hint, font: font, color: DesignValues.nsColor("text.primary"), x: left + 5, baseline: height / 2 + font.xHeight / 2)
+            }
         }
         context.restoreGState()
     }
@@ -1294,7 +1326,7 @@ struct TimelineOverviewLabel: Equatable {
 
     func cueID(at point: NSPoint) -> String? {
         let time = state.viewport.time(atX: point.x - headerWidth)
-        return state.cues.first(where: { $0.range.contains(time) })?.id
+        return state.cues.last(where: { $0.range.contains(time) })?.id
     }
 
     override func drawLane(in context: CGContext) {
@@ -1331,7 +1363,7 @@ struct TimelineOverviewLabel: Equatable {
         var music: TimelineMusic?
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
-    static let emptyHint = "Add music in Captions"
+    static let emptyHint = "Choose background music"
     private static let hintFont = NSFont.systemFont(ofSize: 11)
 
     override func drawLane(in context: CGContext) {
@@ -1426,7 +1458,7 @@ enum TrackHeight: String, CaseIterable {
         }
         if trackID == "M1" {
             button.setAccessibilityLabel("Choose background music")
-            button.toolTip = "Choose music in the Captions panel"
+            button.toolTip = "Browse background music"
         }
         needsDisplay = true
     }

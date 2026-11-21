@@ -64,6 +64,7 @@ import VoxClipMedia
     /// Phrases whose last paid attempt failed with its result kept: their Try Again re-imports it for free.
     private(set) var freeRetries: Set<Int> = []
     @ObservationIgnored var backend: Backend?
+    @ObservationIgnored var automaticallyRefreshOffers = true
     @ObservationIgnored private var pending: [Offer] = []
     @ObservationIgnored private var active: Offer?
     @ObservationIgnored private var operation: Task<Void, Never>?
@@ -81,10 +82,11 @@ import VoxClipMedia
     static let firstUse = "fal.ai receives this phrase's video and new audio. VoxClip asks fal.ai to delete the result after download, which your key's permissions must allow; uploads and results expire after one hour. Clicking Lip Sync approves the transfer and charge."
 
     /// The failed row's line (design.md, Takes: lip sync): what happened, then what fal.ai charged and whether Try Again is free.
-    static func failureLine(phrase: Int, reason: String, price: String, mayBill: Bool, free: Bool) -> String {
+    static func failureLine(phrase: Int, reason: String, price: String, mayBill: Bool, free: Bool, unconfirmed: Bool = false) -> String {
         let lead = "Couldn't lip sync phrase \(phrase + 1): \(reason)"
-        guard mayBill else { return lead + " No upload or charge." }
-        return lead + " fal.ai charged for the attempt (\(price))." + (free ? " Its result is kept, so Try Again is free." : "")
+        if unconfirmed { return lead }
+        guard mayBill else { return lead + " No new lip-sync charge." }
+        return lead + " fal.ai accepted the job (estimated cost: \(price))." + (free ? " Try Again checks the same job for free." : "")
     }
 
     func previewFailed() { problem = "Couldn't play the lip-synced preview. Your takes and original video are safe." }
@@ -98,7 +100,7 @@ import VoxClipMedia
     }
 
     func refresh() async {
-        guard let backend, !usingTakes else { return }
+        guard automaticallyRefreshOffers, let backend, !usingTakes else { return }
         guard !refreshing else { refreshAgain = true; return }
         let revision = turn
         refreshing = true
@@ -115,8 +117,10 @@ import VoxClipMedia
             guard !usingTakes else { refreshAfterUse = true; return }
             let (offers, all) = try await backend.offers()
             guard revision == turn, offers.values.allSatisfy({ $0.isCurrent() }) else { return }
-            self.offers = offers; self.allOffer = all; problem = ""
-        } catch ClipTakePlan.Failure.stale {
+            self.offers = offers
+            self.allOffer = all.flatMap { $0.phraseIDs.contains(where: submissionUnconfirmed) ? nil : $0 }
+            problem = ""
+        } catch ClipTakePlan.Failure.stale, ClipTakePlan.Failure.lipsyncBusy {
             // The takes changed while the offers were made (a reworded phrase is priced, a take is made): they end
             // quietly, and the refresh after that change makes fresh ones.
             guard revision == turn else { return }
@@ -128,6 +132,14 @@ import VoxClipMedia
         }
     }
 
+    func requireKey() async throws {
+        guard let backend else { throw ClipTakePlan.Failure.noLipsyncOffer }
+        let available = await backend.hasKey()
+        try Task.checkCancellation()
+        keyAvailable = available
+        guard available else { throw LipsyncError.missingKey }
+    }
+
     func capWarning(for offer: Offer) -> String? {
         guard let cap = monthlyCap, let cost = offer.estimate.usd, cap.spent + cost > cap.limit else { return nil }
         return VoiceLabCostPresentation.capWarning(cap: cap.limit, providerName: "fal.ai")
@@ -136,18 +148,27 @@ import VoxClipMedia
     /// Queues `offer`; false when it can't start (no key, Use running, a stale or already started offer), so a caller
     /// never reads an earlier attempt's state as this one's.
     @discardableResult func start(_ offer: Offer) -> Bool {
-        guard let backend, keyAvailable, !usingTakes, offer.isCurrent(),
-              !receipts.contains(where: { $0.id == offer.id }),
-              offer.phraseIDs.allSatisfy({ !isRunning($0) && applied[$0] == nil }) else { return false }
+        do { try startChecked(offer); return true } catch { return false }
+    }
+
+    func startChecked(_ offer: Offer) throws {
+        try Task.checkCancellation()
+        guard offer.isCurrent() else { throw ClipTakePlan.Failure.stale }
+        guard let backend, !offer.phraseIDs.isEmpty else { throw ClipTakePlan.Failure.noLipsyncOffer }
+        guard keyAvailable else { throw LipsyncError.missingKey }
+        guard !offer.phraseIDs.contains(where: submissionUnconfirmed) else { throw LipsyncError.submissionUncertain }
+        guard !usingTakes, !offer.phraseIDs.contains(where: isRunning) else { throw ClipTakePlan.Failure.lipsyncBusy }
+        guard !receipts.contains(where: { $0.id == offer.id }), offer.phraseIDs.allSatisfy({ applied[$0] == nil }) else {
+            throw ClipTakePlan.Failure.lipsyncAlreadyStarted
+        }
         var offer = offer
         // A free Try Again re-imports the paid attempt's kept result and never pays (design.md, Stopped).
-        offer.mayPay = !offer.phraseIDs.contains { freeRetries.contains($0) }
+        offer.mayPay = offer.mayPay && !offer.phraseIDs.contains { freeRetries.contains($0) }
         backend.acceptConsent(); consentAccepted = true
         receipts.append(Receipt(id: offer.id, phraseIDs: offer.phraseIDs, estimate: offer.estimate))
         for phrase in offer.phraseIDs { states[phrase] = .running(started: Date(), progress: nil); errors[phrase] = nil }
         pending.append(offer)
         if operation == nil { operation = Task { [weak self] in await self?.drain() } }
-        return true
     }
 
     private func drain() async {
@@ -180,15 +201,14 @@ import VoxClipMedia
                 }
             } catch {
                 for phrase in offer.phraseIDs where applied[phrase] == nil {
-                    if Task.isCancelled || error is CancellationError { states[phrase] = .cancelled(price: offer.price) }
+                    if (Task.isCancelled || error is CancellationError) && error as? LipsyncError != .submissionUncertain { states[phrase] = .cancelled(price: offer.price) }
                     else {
-                        let local = Self.isLocal(error) || error is LipsyncRecoveryFailed
                         let reason = Self.reason(error)
                         let failure = error as? LipsyncAttemptFailure
                         // A failed free Try Again charged nothing new; its earlier attempt's charge was already shown.
                         // fal.ai can have charged only for a job it was sent: not before the submit, nor for a free Try Again.
                         states[phrase] = .failed(reason: reason, price: failure.map { VoiceLabCostPresentation.format($0.attempt.estimate.usd ?? 0) } ?? offer.price,
-                                                 mayBill: !local && offer.mayPay && !(error is LipsyncNotSubmitted))
+                                                 mayBill: offer.mayPay && (failure != nil || error as? LipsyncError == .submissionUncertain))
                         if failure?.freeRetry == true { freeRetries.insert(phrase) } else { freeRetries.remove(phrase) }
                         errors[phrase] = error
                     }
@@ -206,6 +226,8 @@ import VoxClipMedia
             if case .running(let started, _) = states[phrase] { states[phrase] = .running(started: started, progress: value) }
         }
     }
+
+    func submissionUnconfirmed(_ phrase: Int) -> Bool { errors[phrase] as? LipsyncError == .submissionUncertain }
 
     func isRunning(_ phrase: Int) -> Bool {
         if case .running = states[phrase] { return true }
@@ -266,13 +288,17 @@ import VoxClipMedia
 
     static func reason(_ error: any Error) -> String {
         if let failure = error as? LipsyncAttemptFailure { return reason(failure.error) }
-        if let unsent = error as? LipsyncNotSubmitted { return reason(unsent.error) }
+        if let unsent = error as? LipsyncNotSubmitted {
+            return (unsent.queueRefused ? "The lip-sync request was declined. " : "Stopped before submitting a lip-sync job. ") + reason(unsent.error)
+        }
         if let check = error as? LipsyncResultCheck { return check.copy }
         if error is LipsyncRecoveryFailed { return "VoxClip couldn't get fal.ai's earlier result back (fal.ai keeps it for an hour). Nothing new was paid." }
         if let local = error as? LipsyncPreparationError, let copy = local.errorDescription { return copy }
         if error as? LipsyncError == .invalidInput { return "This part is outside the lip sync's limits (3 s to 5 min of video). Your original video is unchanged." }
         if error as? LipsyncError == .missingKey { return "Lip sync needs your fal.ai key." }
-        if error as? LipsyncError == .submissionUncertain { return "The submission response was lost. Check fal.ai before trying another paid job." }
+        if error as? LipsyncError == .invalidResponse { return "VoxClip couldn't read the response from fal.ai." }
+        if error as? LipsyncError == .invalidMedia { return "The media didn't pass the lip-sync file checks." }
+        if error as? LipsyncError == .submissionUncertain { return "VoxClip couldn't confirm whether fal.ai accepted the job or charged for it. Check the request history in your fal.ai account before starting another paid job." }
         if case LipsyncError.http(let status) = error { return "fal.ai returned HTTP \(status)." }
         return "The job could not be completed. Your original video and edits are safe."
     }

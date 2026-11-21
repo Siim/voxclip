@@ -224,6 +224,37 @@ private actor MotionCueTestSettings: SettingsStore {
         return done()
     }
 
+    @Test func makeItReviewChangeOpensExactCueAndUndoPreservesManualChanges() throws {
+        let model = try editor(); defer { model.close() }
+        let first = try draft(model, start: 11, end: 13).cue
+        let second = try draft(model, start: 20, end: 22).cue
+        let project = try ContextDemoProject.settingMotionCues([first, second], in: model.project)
+        model.document.replaceProject(project); model.refresh()
+        let run = MakeItRun(clipID: "motion-clip", cap: nil)
+        run.phase = .ready
+        let firstChange = MakeItChange.motion(cueID: first.id), secondChange = MakeItChange.motion(cueID: second.id)
+        run.rows = [MakeItRow(id: "zoom-0", text: "Zoom in", undoable: true, change: firstChange),
+                    MakeItRow(id: "zoom-1", text: "Zoom out", undoable: true, change: secondChange)]
+        run.inverses = ["zoom-0": .motion(added: first), "zoom-1": .motion(added: second)]
+        model.makeIt.insert(run)
+
+        #expect(model.setScope("other-clip"))
+        model.makeItChange(secondChange, run: run)
+        #expect(model.app.shell.panelJob(for: model) == .motion && model.activeClip?.id == run.clipID)
+        let editing = try #require(model.motionCueEditing)
+        #expect(editing.draft.original == second)
+        editing.setFrameValue(.scale, to: 1.15)
+        #expect(editing.apply(model: model))
+        let manualRevision = editing.draft.cue
+        model.makeItUndo("zoom-1", in: run)
+        #expect(!run.rows[1].undone && model.project.motionCues.contains(manualRevision))
+        model.closeMotionCueJob(in: model.app.shell)
+        model.makeItUndo("zoom-0", in: run)
+        model.makeItChange(firstChange, run: run)
+        #expect(run.rows[0].undone && model.project.motionCues == [manualRevision] && model.motionCueEditing == nil)
+        #expect(!model.openMotionCueJob(id: first.id, in: model.app.shell))
+    }
+
     @Test func fxButtonOpensTheMotionJobInTheExistingHostWithoutEditing() async throws {
         let model = try editor(); defer { model.close() }
         let shell = WorkspaceShell(app: model.app)

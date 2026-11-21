@@ -110,9 +110,18 @@ file picker for the same types.
 an optional Eleven Music prompt and a reason; the autopilot planner's music suggestion (title, mood, prompt, reason)
 maps onto it. The result is at most one candidate per source, ordered library, generated, file: the best library match,
 one priced generation not yet made, and the user's own file when one shares a word of three or more letters with the
-brief. A source that cannot answer (offline, rate-limited, no key) adds a note and never hides the others. The App's
-`MusicPanel.suggest(_:model:)` is the entry point for Claude's suggestion (`settled()` waits for it); the search field
-calls it with the user's words.
+brief. A source that cannot answer (offline, rate-limited, no key) adds a note and never hides the others. This
+shortlist is separate from the Mac Free tracks browser: a manual search pages through eligible library tracks,
+without requesting an Eleven Music price or restricting the results to one suggestion.
+
+On Mac, Make it postable and Claude mode leave an existing track and its mix alone, and skip music when the clip style
+sets it to Off. The planner is still asked for music. If it omits the music fields, the app accepts the rest of the
+plan without a correction send and searches for a quiet instrumental bed. It tries the free search results and then
+the configured folder (matching names first), using the same local import and credit rules as Use. Only a track that
+can be opened as audio and attached to the clip gets a success row and Undo. If none works, the row says no music
+was added. Missing music in the plan never authorizes generation. With an explicit music cue, the existing generation
+and spend-cap rules still apply when there are no free suggestions. If generation is unavailable, the review shows
+the source's key or price note; otherwise it explains why generation wasn't attempted or why the track failed.
 
 ## 4. Mix
 
@@ -147,24 +156,29 @@ Music."; own files need no line. The Export job's post text for a target appends
 
 ## 6. Interface (Mac)
 
-The Music section sits under the Captions panel's property rows, in their look: an uppercase MUSIC heading (with Remove
-while a track is in use), the rows, the search field and Add a file…, then Volume while a track is in use.
+Choose **Music** in the header beneath the viewer to browse or change the current clip’s soundtrack. This labelled button stays visible when the panel scrolls. The timeline’s M1 music button opens the same panel, including when the viewer is hidden. You can also use **View → Browse Music** or type “music” in command search (⌘K). Opening Music does not replace a track or create an Undo step.
 
-- Each row: ▶ (■ while playing; it stops the editor's playback and any other row), the title with the creator, reason
-  and length, a source badge (CC BY, CC0, PD, Eleven, Yours) and Use. A generation not yet made has no ▶ and a
-  "Make · $x" button with its "Sends this prompt…" line. The track in use is the first row, marked Using, and ▶ plays the
-  stored file.
-- Without suggestions the rows are the Music folder's first three files; with neither, "Search for music, or add a file
-  of your own." Notes from the sources show under the rows.
+- Choose a **Mood** to edit its Openverse search words and Eleven Music brief. Planner directions come first when
+  available; the baseline directions also work offline. Selecting or editing a direction doesn't search or add music.
+- The Free tracks, Eleven Music and My files tabs keep the sources easy to reach. Search shows all eligible Openverse
+  matches directly below the Free tracks search field, with **More free tracks** when another page is available.
+  Rows show the title, available creator and length, license, track source and available attribution. Preview stops
+  the editor's playback and any other audition. Pick is what adds the track. A failed search or preview is reported
+  inline; a failed next page leaves already-loaded tracks visible. The Music folder's files can also be previewed and picked.
+- An Eleven Music brief has no audio yet. Get price does not generate music. Make & use shows what it sends and
+  approves one version of that brief. The current track is marked Using, and Preview plays the stored file when available.
 - One Volume slider, −40 to 0 dB in half-dB steps, applied when the drag ends.
-- The footer always names the next step: "Next: ▶ to listen, then Use.", "Next: search, or add a file.", "It dips
-  while you talk and fades out at the end. Next: Export. The credit goes in the post text." A failure shows inline with
-  Dismiss and "Nothing was changed. Try another track, or try this one again."
+- The footer names the next step. On Mac, **Make & use** uses the exact candidate and provider that supplied the price.
+  The quoted length includes the clip’s playback speed. A different brief, clip, source, region or quoted duration
+  requires a new price. One click consumes the quote; a failed request is never retried automatically. The Mac
+  automatic run counts the estimate against its cap when Eleven Music accepts the request, even if the returned
+  audio cannot be imported.
 - No sheets or alerts; Add a file… uses the system file picker (listed in the pop-up inventory).
-- Every change (Use, Remove, Volume) goes through the editor's undoable replace and reloads the preview.
+- Picking a replacement keeps the current level, ducking and fades. Pick, Turn off and Volume go through the editor's
+  undoable replace and reload the preview.
 
 The timeline's M1 lane, below FX, draws the track across the clip with ramps for its fades and "♪ title · −20 dB · dips
-under voice"; empty, it reads "Add music in Captions". The M1 header's ♪ button opens the Captions panel.
+under voice"; empty, it reads "Choose background music". The M1 header’s ♪ button opens Music.
 
 ## 7. Tests
 

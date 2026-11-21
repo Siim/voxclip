@@ -118,6 +118,9 @@ struct RewriteChange: Equatable, Sendable {
     /// "How should it sound?" (ADR-R46): the whole-clip revoice's card and run, and its take plan over the script's parts.
     var wholeClip: WholeClipRevoiceSession?
     @ObservationIgnored var wholeClipPlan: ClipTakePlan?
+    @ObservationIgnored var wholeClipPlanScript: WholeClipScript?
+    @ObservationIgnored var wholeClipPlanSettled = false
+    var retiredWholeClipVoiceSpend: Decimal = 0
     var speechContextOffer: RewriteSpeechContextReview?
     private var requestedSurroundingSentenceOrdinal: Int?
     var surroundingSentenceOrdinal: Int? {

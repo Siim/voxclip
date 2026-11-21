@@ -120,14 +120,38 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         }
     }
 
-    /// A punch-in from the start of `word` to the end of `untilWord`, at `scale` (at most `MotionCue.maximumScale`).
+    /// A motion cue from the start of `word` to the end of `untilWord`. Older plans with no direction hold `scale`.
     public struct Zoom: Codable, Sendable, Equatable {
+        public enum Direction: String, Codable, Sendable, CaseIterable { case zoomIn, zoomOut }
+
+        static let minimumDirectionalSeconds = 0.6
+        static let maximumDirectionalSeconds = 6.0
+        static let minimumDirectionalScale = 1.05
+        static let maximumDirectionalScale = 1.2
+        static let minimumStartSpacing = 5.0
+
         public var word: Int
         public var untilWord: Int
         public var scale: Double
         public var reason: String
-        public init(word: Int, untilWord: Int, scale: Double, reason: String) {
-            self.word = word; self.untilWord = untilWord; self.scale = scale; self.reason = reason
+        public var direction: Direction?
+        public init(word: Int, untilWord: Int, scale: Double, reason: String, direction: Direction? = nil) {
+            self.word = word; self.untilWord = untilWord; self.scale = scale; self.reason = reason; self.direction = direction
+        }
+
+        func sourceRange(in words: [TimedWord], within span: ClosedRange<Int>) -> Range<Double>? {
+            guard span.contains(word), span.contains(untilWord), word <= untilWord,
+                  words.indices.contains(word), words.indices.contains(untilWord),
+                  words[word].kind == .word, words[untilWord].kind == .word else { return nil }
+            let start = words[word].start, end = words[untilWord].end
+            let minimum = direction == nil ? MotionCue.minimumDuration : Self.minimumDirectionalSeconds
+            guard start.isFinite, end.isFinite, start >= 0,
+                  end - start + 1e-9 >= minimum, end - start <= Self.maximumDirectionalSeconds + 1e-9 else { return nil }
+            return start..<end
+        }
+
+        var hasDirectionalSettings: Bool {
+            (Self.minimumDirectionalScale...Self.maximumDirectionalScale).contains(scale) && !AIText.trim(reason).isEmpty
         }
     }
 

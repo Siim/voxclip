@@ -133,16 +133,44 @@ public struct ClipAutopilotPrompt: Sendable {
         guard Set(looks) == Set(ClipAutopilotPlan.LookID.allCases) else { throw VoxClipError.sharedResourcesMissing }
         var templateValues = limits.templateValues
         templateValues["looks"] = lookLines.joined(separator: "\n")
-        self.promptVersion = version
+        let directional = document[ai: "directionalZooms"]
+        var schema = document[ai: "schema"]
+        var zoomSection: String?
+        var clipVersion = version
+        if directional != .null {
+            let direction = directional[ai: "directionSchema"]
+            guard let newVersion = directional[ai: "promptVersion"].aiInt, newVersion > version,
+                  let section = directional[ai: "section"].aiString, !section.isEmpty,
+                  direction[ai: "type"].aiString == "string",
+                  Set(direction[ai: "enum"].aiArray.compactMap(\.aiString)) == Set(ClipAutopilotPlan.Zoom.Direction.allCases.map(\.rawValue)),
+                  var root = schema.aiObject, var properties = schema[ai: "properties"].aiObject,
+                  var zooms = properties["zooms"]?.aiObject, var item = zooms["items"]?.aiObject,
+                  var fields = item["properties"]?.aiObject, fields["direction"] == nil else { throw VoxClipError.sharedResourcesMissing }
+            fields["direction"] = direction
+            item["properties"] = .object(fields)
+            zooms["items"] = .object(item)
+            properties["zooms"] = .object(zooms)
+            root["properties"] = .object(properties)
+            schema = .object(root)
+            guard CanonicalResponseParser.validateSchemaSubset(schema) else { throw VoxClipError.sharedResourcesMissing }
+            clipVersion = newVersion
+            zoomSection = section
+            templateValues["minDirectionalZoomSeconds"] = String(ClipAutopilotPlan.Zoom.minimumDirectionalSeconds)
+            templateValues["maxDirectionalZoomSeconds"] = String(Int(ClipAutopilotPlan.Zoom.maximumDirectionalSeconds))
+            templateValues["minZoomScale"] = String(ClipAutopilotPlan.Zoom.minimumDirectionalScale)
+            templateValues["maxDirectionalZoomScale"] = String(ClipAutopilotPlan.Zoom.maximumDirectionalScale)
+            templateValues["minDirectionalZoomSpacing"] = String(Int(ClipAutopilotPlan.Zoom.minimumStartSpacing))
+        }
+        self.promptVersion = clipVersion
         self.sha256 = sha256
-        self.system = try Self.system(document, "plan", templateValues)
+        self.system = try Self.system(document, "plan", templateValues, zoomSection: zoomSection)
         self.momentsSystem = try Self.system(document, "moments", templateValues)
         self.limits = limits
         self.defaults = ClipAutopilotDefaults(styleID: style, font: .init(family: family, weight: weight), textCase: textCase,
                                               wordsPerCaption: words, underVoiceDb: under, zoomScale: scale, score: score)
         self.looks = looks
         self.schemaName = name
-        self.schema = document[ai: "schema"]
+        self.schema = schema
         self.momentsSchemaName = momentsName
         self.momentsSchema = document[ai: "momentsSchema"]
         self.clipOutputTokens = clipTokens
@@ -154,11 +182,12 @@ public struct ClipAutopilotPrompt: Sendable {
     }
 
     /// One system prompt: the `sections` its list names, joined by blank lines, with every `{name}` filled.
-    static func system(_ document: JSONValue, _ key: String, _ values: [String: String]) throws -> String {
+    static func system(_ document: JSONValue, _ key: String, _ values: [String: String], zoomSection: String? = nil) throws -> String {
         let names = document[ai: "system"][ai: key].aiArray.compactMap(\.aiString)
         guard !names.isEmpty else { throw VoxClipError.sharedResourcesMissing }
         let parts = try names.map { name in
-            guard let text = document[ai: "sections"][ai: name].aiString, !text.isEmpty else { throw VoxClipError.sharedResourcesMissing }
+            let override = name == "zooms" ? zoomSection : nil
+            guard let text = override ?? document[ai: "sections"][ai: name].aiString, !text.isEmpty else { throw VoxClipError.sharedResourcesMissing }
             return text
         }
         return try fill(parts.joined(separator: "\n\n"), values)

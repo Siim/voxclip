@@ -22,11 +22,17 @@ enum ClipPicture {
         return result.transformed(by: CGAffineTransform(translationX: -result.extent.minX, y: -result.extent.minY))
     }
 
-    /// The look's colour transform: per-pixel matrices and one cubic, so the same numbers render on any platform
-    /// (`ClipLookRecipe` in VoxClipCore). Original returns the image untouched, so a clip without a look renders
-    /// bit-exactly as before.
+    static func grade(_ image: CIImage, controls: ProjectClipControls) -> CIImage {
+        let base = look(image, controls.look)
+        guard let adjustments = controls.colorAdjustments else { return base }
+        return apply(ClipLookRecipe(adjustments: adjustments), to: base)
+    }
+
     static func look(_ image: CIImage, _ look: ClipLook) -> CIImage {
-        let recipe = ClipLookRecipe(look)
+        look == .original ? image : apply(ClipLookRecipe(look), to: image)
+    }
+
+    private static func apply(_ recipe: ClipLookRecipe, to image: CIImage) -> CIImage {
         guard !recipe.isIdentity else { return image }
         let rows = recipe.matrix
         var result = image.applyingFilter("CIColorMatrix", parameters: [

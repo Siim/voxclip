@@ -99,7 +99,7 @@ struct RewriteLipsyncSessionTests {
         #expect(price == VoiceLabCostPresentation.format(Decimal(string: "0.45")!))
         #expect(session.freeRetries == [0])
         #expect(RewriteLipsyncSession.failureLine(phrase: 0, reason: reason, price: price, mayBill: mayBill, free: true)
-            == "Couldn't lip sync phrase 1: fal.ai's video came back 0.2 s shorter than the voice. fal.ai charged for the attempt (≈ $0.45). Its result is kept, so Try Again is free.")
+            == "Couldn't lip sync phrase 1: fal.ai's video came back 0.2 s shorter than the voice. fal.ai accepted the job (estimated cost: ≈ $0.45). Try Again checks the same job for free.")
         let retry = try #require(session.offers[0])
         #expect(RewriteLipsyncControls.price(retry, free: session.freeRetries.contains(0)) == "free")
         session.start(retry)
@@ -118,7 +118,36 @@ struct RewriteLipsyncSessionTests {
         await session.waitForRun()
         guard case .failed(let reason, _, let mayBill) = session.states[0] else { Issue.record("not failed"); return }
         #expect(!mayBill && session.freeRetries.isEmpty)
-        #expect(reason == "The job could not be completed. Your original video and edits are safe.")
+        #expect(reason == "Stopped before submitting a lip-sync job. The media didn't pass the lip-sync file checks.")
+    }
+
+    @Test func anExplicitlyFreeOfferStaysFreeEvenWithoutAPhraseMarker() async throws {
+        let (session, template, _) = try setup()
+        var sent: [Bool] = []
+        var offer = template; offer.mayPay = false
+        session.backend = .init(offers: { ([0: template], template) }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { nil },
+            run: { _, _, _, _, mayPay, _ in sent.append(mayPay); throw LipsyncRecoveryFailed(error: LipsyncError.unknownJob) }, changed: {})
+        await session.refresh(); session.start(offer); await session.waitForRun()
+        #expect(sent == [false])
+    }
+
+    @Test func anUnconfirmedSubmissionBlocksIndividualAndCombinedRetries() async throws {
+        let (session, offer, _) = try setup()
+        var submitted = 0
+        session.backend = .init(offers: {
+            let next = RewriteLipsyncSession.Offer(id: UUID(), request: offer.request, windows: offer.windows, estimate: offer.estimate,
+                recordID: offer.recordID, dependencies: offer.dependencies, isCurrent: { true })
+            return ([0: next], next)
+        }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { nil }, run: { _, _, _, _, _, _ in
+            submitted += 1; throw LipsyncError.submissionUncertain
+        }, changed: {})
+        await session.refresh(); session.start(offer); await session.waitForRun()
+        guard case .failed(let reason, let price, let mayBill) = session.states[0] else { Issue.record("expected a stop"); return }
+        let line = RewriteLipsyncSession.failureLine(phrase: 0, reason: reason, price: price, mayBill: mayBill, free: false,
+            unconfirmed: session.submissionUnconfirmed(0))
+        #expect(line.contains("couldn't confirm") && !line.contains("No new lip-sync charge") && !line.contains("charged for the attempt"))
+        let fresh = try #require(session.offers[0]); #expect(!session.start(fresh))
+        #expect(session.allOffer == nil && session.receipts.count == 1 && submitted == 1)
     }
 
     @Test func approvalKeyCapAndUndoKeepReceipt() async throws {

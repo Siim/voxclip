@@ -44,8 +44,13 @@ public final class OpenverseMusicClient: Sendable {
     static let minimumBackoff: Duration = .seconds(15)
     static let maximumBackoff: Duration = .seconds(600)
 
+    private struct PageKey: Hashable {
+        let query: String
+        let page: Int
+    }
+
     private struct State {
-        var cache: [String: [MusicCandidate]] = [:]
+        var cache: [PageKey: MusicCatalogPage] = [:]
         var blockedUntil: ContinuousClock.Instant?
         var backoff: Duration = OpenverseMusicClient.minimumBackoff
     }
@@ -57,25 +62,34 @@ public final class OpenverseMusicClient: Sendable {
         self.http = http; self.clock = clock
     }
 
-    public static func searchURL(query: String, pageSize: Int = OpenverseMusicClient.pageSize) -> URL {
+    public static func searchURL(query: String, pageSize: Int = OpenverseMusicClient.pageSize, page: Int = 1) -> URL {
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "license", value: "cc0,by,pdm"),
                                  URLQueryItem(name: "category", value: "music"), URLQueryItem(name: "page_size", value: String(pageSize))]
+        if page > 1 { components.queryItems?.append(URLQueryItem(name: "page", value: String(page))) }
         return components.url!
     }
 
     /// Playable library candidates for `query`, best first for the brief's keywords and the clip's length.
     public func search(_ query: String, keywords: Set<String> = [], clipSeconds: Double = 0) async throws -> [MusicCandidate] {
-        let key = query.lowercased()
-        let cached: [MusicCandidate]? = try state.withLock { state in
+        try await searchPage(query, keywords: keywords, clipSeconds: clipSeconds).candidates
+    }
+
+    public func searchPage(_ query: String, keywords: Set<String> = [], clipSeconds: Double = 0, page: Int = 1) async throws -> MusicCatalogPage {
+        let page = max(1, page)
+        let key = PageKey(query: query.lowercased(), page: page)
+        func rankedPage(_ result: MusicCatalogPage) -> MusicCatalogPage {
+            MusicCatalogPage(candidates: Self.ranked(result.candidates, keywords: keywords, clipSeconds: clipSeconds), nextPage: result.nextPage)
+        }
+        let cached: MusicCatalogPage? = try state.withLock { state in
             if let found = state.cache[key] { return found }
             if let until = state.blockedUntil, clock() < until {
                 throw VoxClipError.rateLimited("The free music library asked VoxClip to wait. Try again in a minute.")
             }
             return nil
         }
-        if let cached { return Self.ranked(cached, keywords: keywords, clipSeconds: clipSeconds) }
-        var request = URLRequest(url: Self.searchURL(query: query))
+        if let cached { return rankedPage(cached) }
+        var request = URLRequest(url: Self.searchURL(query: query, page: page))
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await http.send(request)
         if response.statusCode == 429 {
@@ -90,13 +104,13 @@ public final class OpenverseMusicClient: Sendable {
         guard (200..<300).contains(response.statusCode) else {
             throw VoxClipError.providerError("The free music library replied \(response.statusCode)", provider: "openverse", status: response.statusCode)
         }
-        let candidates = try Self.parse(data)
+        let result = try Self.parsePage(data, page: page)
         state.withLock { state in
-            state.cache[key] = candidates
+            state.cache[key] = result
             state.backoff = Self.minimumBackoff
             state.blockedUntil = nil
         }
-        return Self.ranked(candidates, keywords: keywords, clipSeconds: clipSeconds)
+        return rankedPage(result)
     }
 
     static func retryAfter(_ response: HTTPURLResponse) -> Duration? {
@@ -107,10 +121,15 @@ public final class OpenverseMusicClient: Sendable {
 
     /// Keeps only CC0, CC BY and PDM music with an HTTPS file and landing page, a known audio type and some length.
     public static func parse(_ data: Data) throws -> [MusicCandidate] {
+        try parsePage(data, page: 1).candidates
+    }
+
+    static func parsePage(_ data: Data, page: Int) throws -> MusicCatalogPage {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any], let results = root["results"] as? [[String: Any]] else {
             throw VoxClipError.providerError("The free music library sent an unreadable reply", provider: "openverse")
         }
-        return results.compactMap(candidate)
+        let pageCount = root["page_count"] as? Int ?? 0
+        return MusicCatalogPage(candidates: results.compactMap(candidate), nextPage: pageCount > page ? page + 1 : nil)
     }
 
     static func candidate(_ row: [String: Any]) -> MusicCandidate? {
@@ -118,13 +137,13 @@ public final class OpenverseMusicClient: Sendable {
               let licenseText = (row["license"] as? String)?.lowercased(), allowedLicenses.contains(licenseText),
               let license = MusicLicense(rawValue: licenseText),
               (row["mature"] as? Bool) != true,
-              let file = (row["url"] as? String).flatMap(URL.init(string:)), file.scheme == "https",
+              let file = (row["url"] as? String).flatMap(URL.init(string:)), file.scheme == "https", file.host != nil,
               let landing = row["foreign_landing_url"] as? String, landing.hasPrefix("https://"), landing.count <= 2_048,
-              !landing.contains(where: \.isWhitespace),
+              !landing.contains(where: \.isWhitespace), URL(string: landing)?.host != nil,
               let fileExtension = fileExtension(row["filetype"] as? String, url: file) else { return nil }
         if let category = row["category"] as? String, category != "music" { return nil }
         let duration = (row["duration"] as? NSNumber).map { $0.doubleValue / 1_000 }
-        if let duration, duration < 10 || duration > ProjectMusic.maximumDuration { return nil }
+        if let duration, !duration.isFinite || duration < 10 || duration > ProjectMusic.maximumDuration { return nil }
         let title = clipped(row["title"] as? String, 200) ?? "Untitled"
         let creator = clipped(row["creator"] as? String, 200)
         let attribution = clipped(row["attribution"] as? String, 1_000)
@@ -139,7 +158,7 @@ public final class OpenverseMusicClient: Sendable {
     static func clipped(_ text: String?, _ limit: Int) -> String? {
         guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
         let visible = trimmed.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
-        return String(String.UnicodeScalarView(visible).prefix(limit))
+        return visible.isEmpty ? nil : String(String.UnicodeScalarView(visible).prefix(limit))
     }
 
     static func fileExtension(_ filetype: String?, url: URL) -> String? {

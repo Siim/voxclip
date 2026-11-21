@@ -7,12 +7,14 @@ import VoxClipCore
 
 /// A job of the right column's one panel (notes.md §7).
 enum PanelJob: String, CaseIterable, Sendable {
-    case captions, rewrite, voice, takes, director, demo, motion, export, makeIt, askClaude
+    case captions, music, picture, rewrite, voice, takes, director, demo, motion, export, makeIt, askClaude, timelineEdit
 
     var title: String {
         switch self {
         case .export: "Export"
         case .captions: "Captions"
+        case .music: "Music"
+        case .picture: "Picture"
         case .rewrite: "Rewrite"
         case .voice: "Voice"
         case .takes: "Takes"
@@ -21,6 +23,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .motion: "Motion"
         case .makeIt: "Make it postable"
         case .askClaude: "Ask Claude"
+        case .timelineEdit: "Timeline edit"
         }
     }
     /// The switcher's glyph, in the mockup's order: captions, pencil, waveform, chat.
@@ -28,6 +31,8 @@ enum PanelJob: String, CaseIterable, Sendable {
         switch self {
         case .export: "square.and.arrow.up"
         case .captions: "captions.bubble"
+        case .music: "music.note"
+        case .picture: "camera.filters"
         case .rewrite: "pencil"
         case .voice: "waveform"
         case .takes: "square.stack"
@@ -36,6 +41,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .motion: "viewfinder"
         case .makeIt: "sparkles"
         case .askClaude: "sparkles"
+        case .timelineEdit: "timeline.selection"
         }
     }
 
@@ -44,7 +50,8 @@ enum PanelJob: String, CaseIterable, Sendable {
     /// tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1), and Export while
     /// its job is open (VX), which a render keeps open on any tab.
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
-        var jobs: [PanelJob] = [.captions]
+        var jobs: [PanelJob] = [.captions, .music]
+        if model.project.media.source.video != nil { jobs.append(.picture) }
         if let task = model.panelTask { jobs.append(task.job) }
         if (model.hasVoiceJob || model.currentVoiceFeedback != nil), !jobs.contains(.voice) { jobs.append(.voice) }
         if model.exportJob.isOpen { jobs.append(.export) }
@@ -52,6 +59,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         if model.motionCueEditing != nil { jobs.append(.motion) }
         if model.makeIt.shown != nil { jobs.append(.makeIt) }
         if model.askClaude.isOpen { jobs.append(.askClaude) }
+        if model.timelineEditor != nil { jobs.append(.timelineEdit) }
         return jobs
     }
 }
@@ -111,6 +119,7 @@ extension WorkspaceShell {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
+        if model.timelineEditor != nil { return .timelineEdit }
         // Make it postable drives Rewrite's session itself while it runs: its progress stays in view.
         if model.makeIt.active != nil, jobs.contains(.makeIt), !model.sendConfirmation.isPresented { return .makeIt }
         // ✦ Ask Claude just opened (or answered) stays in view until another job is picked.
@@ -123,9 +132,21 @@ extension WorkspaceShell {
         if task == nil, model.currentVoiceFeedback != nil { return .voice }
         return model.panelTask?.job ?? .captions
     }
+    /// The timeline can be the only visible pane. Reveal the inspector on the same window.
+    func showMusic(for model: EditorModel) {
+        if !viewerShown { toggleViewer() }
+        choosePanelJob(.music, for: model)
+    }
+    func showPicture(for model: EditorModel) {
+        guard model.project.media.source.video != nil else { return }
+        if !viewerShown { toggleViewer() }
+        choosePanelJob(.picture, for: model)
+    }
     /// The switcher's pick. Picking Export records the job it was opened from for its Done.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
+        guard job != .timelineEdit else { return }
+        if model.timelineEditor != nil { model.resetTimelineEditor() }
         let current = panelJob(for: model)
         model.askClaude.inView = job == .askClaude
         if current == .voice, job != .voice { model.app.voiceLabSession.leaveVoiceControls(owner: model) }
@@ -183,9 +204,29 @@ extension WorkspaceShell {
                 if let task = model.panelTask, task.confirm != nil || showsTask { DirectorPanel(task: task, model: model) }
                 else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
                 else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
+                else if job == .picture {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if model.currentClipControls != nil { ClipPictureControls(model: model) }
+                            else { pictureClipPicker }
+                            Divider()
+                            illustratePhrase
+                        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .modifier(EditorPaneFocus(model: model, pane: .panel))
+                }
+                else if job == .music {
+                    ScrollView { MusicSection(model: model).padding(.horizontal, 14).padding(.bottom, 12) }
+                        .scrollBounceBehavior(.basedOnSize)
+                        .modifier(EditorPaneFocus(model: model, pane: .panel))
+                }
                 else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else if job == .demo, let session = model.contextDemoSession { ContextDemoPanel(session: session, model: model) }
                 else if job == .motion, let editing = model.motionCueEditing { MotionCuePanel(model: model, editing: editing, shell: shell) }
+                else if job == .timelineEdit, let route = model.timelineEditor {
+                    TimelineEditorPanel(model: model, shell: shell, route: route).id(route)
+                }
                 else if job == .makeIt, let run = model.makeIt.shown { MakeItPanel(model: model, run: run).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else if job == .askClaude, model.askClaude.isOpen { AskClaudePanel(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
@@ -198,6 +239,32 @@ extension WorkspaceShell {
         .background(DesignValues.color("bg.window"))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voxclip.editor.right")
+    }
+    @ViewBuilder private var illustratePhrase: some View {
+        switch IllustrativeCutawaySession(model: model).readiness {
+        case .ready(let selection):
+            Button { model.openGeneratedIllustrationReview() } label: {
+                Label("Illustrate a phrase…", systemImage: "photo")
+            }.help("Review an illustration for “\(selection.phrase)”.")
+        case .unavailable(let reason):
+            Label("Illustrate a phrase…", systemImage: "photo").foregroundStyle(.secondary)
+            Text(reason).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+        }
+    }
+    private var pictureClipPicker: some View {
+        let clips = model.project.edits.clips.filter { !model.isSuggestion($0.id) }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Choose a clip to adjust its picture").font(VCType.body.font(.semibold))
+            if clips.isEmpty {
+                Text("Select words in the transcript and choose Make Clip from Selection to give that passage its own look.")
+                    .font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
+            }
+            ForEach(clips, id: \.id) { clip in
+                Button { shell.choose(.clip(clip.id), byClick: false); shell.showPicture(for: model) } label: {
+                    Label(model.scopeName(clip.id), systemImage: "film")
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var viewer: ViewerSection {
         #if DEBUG
@@ -219,12 +286,16 @@ extension WorkspaceShell {
         let scope = model.renderedActiveClipID, _ = model.projectRevision
         let context = job == .export ? model.exportJobContext : model.scopeName(scope)
         HStack(spacing: 7) {
-            Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
-                .fixedSize().accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("voxclip.panel.title")
-                .columnLayoutEvidence("panel.title", text: job.title)
+            if job != .music && job != .picture {
+                Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
+                    .fixedSize().accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("voxclip.panel.title")
+                    .columnLayoutEvidence("panel.title", text: job.title)
+            }
             Text(context).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                 .lineLimit(1).truncationMode(.tail)
+                .layoutPriority(job == .music || job == .picture ? 1 : 0)
+                .accessibilityAddTraits(job == .music || job == .picture ? .isHeader : [])
                 .accessibilityIdentifier("voxclip.panel.context")
                 .columnLayoutEvidence("panel.context", text: context)
             if job != .export, let speed = model.clipSpeedBadge {
@@ -235,13 +306,9 @@ extension WorkspaceShell {
                     .accessibilityIdentifier("voxclip.panel.speed")
             }
             Spacer(minLength: 4)
-            HStack(spacing: 1) {
-                ForEach(PanelJob.available(in: model), id: \.self) { candidate in
-                    PanelJobButton(job: candidate, selected: candidate == job) { shell.choosePanelJob(candidate, for: model) }
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Panel")
+            switcher(PanelJob.available(in: model))
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Panel")
         }
         .padding(.leading, 14).padding(.trailing, 6)
         .frame(height: PanelHost.headerHeight - 2)
@@ -254,6 +321,41 @@ extension WorkspaceShell {
         .accessibilityIdentifier("voxclip.panel.header")
         .columnLayoutEvidence("panel.header")
     }
+
+    @ViewBuilder private func switcher(_ jobs: [PanelJob]) -> some View {
+        if jobs.count <= 4 {
+            jobButtons(jobs)
+        } else {
+            // Reserve two labelled entries and the currently open panel. Captions stays
+            // one click away in More when a task such as Rewrite takes its slot.
+            let third: PanelJob = job == .music || job == .picture ? .captions : job
+            let pinned = jobs.filter { $0 == .music || $0 == .picture || $0 == third }
+            ViewThatFits(in: .horizontal) {
+                jobButtons(jobs).fixedSize()
+                HStack(spacing: 2) {
+                    jobButtons(pinned)
+                    Menu {
+                        ForEach(jobs.filter { !pinned.contains($0) }, id: \.self) { item in
+                            Button { shell.choosePanelJob(item, for: model) } label: {
+                                Label(item.title, systemImage: item == job ? "checkmark" : item.symbol)
+                            }
+                        }
+                    } label: { Image(systemName: "ellipsis.circle").frame(width: 26, height: 22) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("More panels").accessibilityLabel("More panels")
+                    .columnLayoutEvidence("panel.more")
+                }
+            }
+        }
+    }
+
+    private func jobButtons(_ jobs: [PanelJob]) -> some View {
+        HStack(spacing: 1) {
+            ForEach(jobs, id: \.self) { item in
+                PanelJobButton(job: item, selected: item == job) { shell.choosePanelJob(item, for: model) }
+            }
+        }
+    }
 }
 
 /// A switcher icon (notes.md `.icb`): text.tertiary, or text.primary on bg.selectedRow
@@ -264,9 +366,13 @@ extension WorkspaceShell {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: job.symbol).font(.system(size: 13))
-                .foregroundStyle(DesignValues.color(selected ? "text.primary" : "text.tertiary"))
-                .frame(width: 26, height: 22)
+            HStack(spacing: 3) {
+                Image(systemName: job.symbol).font(.system(size: 13))
+                if job == .music || job == .picture { Text(job.title).font(VCType.callout.font(.medium)) }
+            }
+                .foregroundStyle(DesignValues.color(selected ? "text.primary" : (job == .music || job == .picture) ? "text.secondary" : "text.tertiary"))
+                .fixedSize()
+                .frame(minWidth: job == .music ? 56 : job == .picture ? 66 : 26, minHeight: 22)
                 .background(selected ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 5))
                 .contentShape(Rectangle())
         }

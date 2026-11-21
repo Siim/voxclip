@@ -168,6 +168,59 @@ import VoxClipCore
         .bw: [[128, 128, 128], [62, 62, 62], [174, 174, 174], [9, 9, 9], [255, 255, 255], [51, 51, 51], [146, 146, 146], [211, 211, 211]],
     ]
 
+    @Test func newPresetsChangeDifferentPartsOfThePicture() {
+        func pixels(_ preset: ClipColorPreset) -> [[Int]] {
+            Self.pixels(ClipPicture.grade(Self.frame(), controls: .init(clipId: "c", look: preset.baseLook,
+                                                                       colorAdjustments: preset.adjustments)))
+        }
+        let original = pixels(.original), pop = pixels(.cleanPop), soft = pixels(.softLight)
+        let cool = pixels(.coolFilm), vintage = pixels(.vintageFade)
+        #expect(pop[1][0] - pop[1][2] > original[1][0] - original[1][2])
+        #expect(soft[0][1] >= original[0][1] + 9)
+        #expect(cool[0][2] >= cool[0][0] + 12)
+        #expect(vintage[3][0] >= original[3][0] + 20 && vintage[0][0] >= vintage[0][2] + 12)
+    }
+
+    @Test func individualAdjustmentsRenderOverTheBaseLook() {
+        let image = Self.frame()
+        let original = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c")))
+        #expect(original == Self.pixels(image))
+        let contrast = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", colorAdjustments: .init(contrast: 60))))
+        #expect(contrast[7][0] > original[7][0] && contrast[3][0] < original[3][0])
+        let desaturated = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", colorAdjustments: .init(saturation: -100))))
+        #expect(desaturated.allSatisfy { abs($0[0] - $0[2]) <= 1 })
+        let warm = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", look: .warm)))
+        let combined = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", look: .warm, colorAdjustments: .init(brightness: 50))))
+        #expect(combined[0].max()! - combined[0].min()! >= 18)
+        #expect(zip(warm[0], combined[0]).allSatisfy { $1 - $0 >= 19 })
+    }
+
+    @MainActor @Test(.timeLimit(.minutes(1))) func colorOnlyBrightensBothPreviewAndExport() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await NativeMediaFixtures.shared.file("bars-tone.mov")
+        let plain = Self.request(source, controls: nil)
+        let adjusted = Self.request(source, controls: .init(clipId: "c", colorAdjustments: .init(brightness: 100)))
+        let controller = PreviewPlayerController()
+        defer { controller.close() }
+        try await controller.load(plain)
+        let previewBefore = try await PreviewFramesTests.meanLuma(controller, at: 0.5)
+        try await controller.load(adjusted)
+        let previewAfter = try await PreviewFramesTests.meanLuma(controller, at: 0.5)
+        func exportLuma(_ request: RenderRequest, named name: String) async throws -> Double {
+            let url = directory.appendingPathComponent(name + ".mp4")
+            _ = try await AVExporter().export(ExportJob(render: request, outputURL: url)) { _ in }
+            let pixels = try clipLookFrame(url, at: 0.5)
+            let total = pixels.enumerated().reduce(0) { $1.offset % 4 == 3 ? $0 : $0 + Int($1.element) }
+            return Double(total) / Double(pixels.count * 3 / 4)
+        }
+        let exportBefore = try await exportLuma(plain, named: "plain")
+        let exportAfter = try await exportLuma(adjusted, named: "adjusted")
+        #expect(previewBefore > 20 && previewAfter > previewBefore + 12)
+        #expect(exportAfter > exportBefore + 12)
+        #expect(abs((previewAfter - previewBefore) - (exportAfter - exportBefore)) < 10)
+    }
+
     @Test func looksAreSubtleFixedColourTransforms() throws {
         let original = Self.pixels(Self.frame())
         #expect(Self.near(original, try #require(Self.goldens[.original])), "\(original)")

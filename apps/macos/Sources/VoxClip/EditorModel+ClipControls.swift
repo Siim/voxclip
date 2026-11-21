@@ -30,6 +30,30 @@ extension EditorModel {
         updateClipControls(clipID, name: "Change look", announcing: "Look \(look.label)") { $0.look = look }
     }
 
+    @discardableResult func setColorPreset(_ preset: ClipColorPreset, clipID: String? = nil) -> Bool {
+        guard project.media.source.video != nil else { return false }
+        return updateClipControls(clipID, name: "Change look", announcing: "Look \(preset.label)") { controls in
+            controls.look = preset.baseLook
+            controls.colorAdjustments = preset.adjustments
+        }
+    }
+
+    @discardableResult func setColorAdjustment(_ control: ClipColorAdjustments.Control, value: Int, clipID: String? = nil) -> Bool {
+        guard project.media.source.video != nil else { return false }
+        let bounds = ClipColorAdjustments.range
+        let point = min(bounds.upperBound, max(bounds.lowerBound, value))
+        return updateClipControls(clipID, name: "Change \(control.label.lowercased())", announcing: "\(control.label) \(point)") { controls in
+            guard control != .saturation || controls.look != .bw else { return }
+            var adjustments = controls.colorAdjustments ?? .neutral
+            adjustments[control] = point
+            controls.colorAdjustments = adjustments == .neutral ? nil : adjustments
+        }
+    }
+
+    @discardableResult func resetColorAdjustments(clipID: String? = nil) -> Bool {
+        updateClipControls(clipID, name: "Reset color adjustments", announcing: "Color adjustments reset") { $0.colorAdjustments = nil }
+    }
+
     /// The clip's own frame, or nil for the project's frame.
     @discardableResult func setShape(_ shape: ClipShape?, clipID: String? = nil) -> Bool {
         updateClipControls(clipID, name: "Change clip shape", announcing: "Shape \(shape?.rawValue ?? "as the project")") { $0.shape = shape }

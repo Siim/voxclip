@@ -7,7 +7,17 @@ package struct LipsyncHTTPResponse: Sendable {
     package let body: Data
     package let contentType: String?
     package init(status: Int, body: Data, contentType: String? = "application/json") {
-        self.status = status; self.body = body; self.contentType = contentType
+        self.status = status; self.body = body; self.contentType = Self.mediaType(contentType)
+    }
+
+    static func mediaType(_ header: String?) -> String? {
+        header?.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false).first?
+            .trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
+    static func isJSON(_ mediaType: String?) -> Bool {
+        guard let mediaType else { return false }
+        return mediaType == "application/json" || (mediaType.hasPrefix("application/") && mediaType.hasSuffix("+json"))
     }
 }
 
@@ -26,6 +36,8 @@ struct URLSessionLipsyncHTTPClient: LipsyncHTTPClient {
     func download(_ request: URLRequest, to file: URL, limit: Int) async throws {
         let staged = try LipsyncStagedFile(destination: file)
         defer { staged.discard() }
+        var request = request
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         _ = try await LipsyncHTTPTransfer(limit: limit, descriptor: staged.descriptor, configure: configure).run(request, permit: nil)
         try Task.checkCancellation()
         var header = [UInt8](repeating: 0, count: 12)
@@ -136,12 +148,14 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
                     completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
         let failure: LipsyncError?
         if let response = response as? HTTPURLResponse {
-            let mime = response.mimeType?.lowercased()
-            if response.expectedContentLength > Int64(limit) { failure = .responseTooLarge }
-            else if let encoding = response.value(forHTTPHeaderField: "Content-Encoding"), encoding.lowercased() != "identity" { failure = .invalidResponse }
+            let mime = LipsyncHTTPResponse.mediaType(response.value(forHTTPHeaderField: "Content-Type"))
+            let encoding = contentEncoding(response)
+            let declaredLength = response.value(forHTTPHeaderField: "Content-Length").flatMap(Int64.init)
+            if response.expectedContentLength > Int64(limit) || (declaredLength ?? 0) > Int64(limit) { failure = .responseTooLarge }
+            else if encoding != "identity" && (descriptor != nil || !["gzip", "deflate"].contains(encoding)) { failure = .invalidResponse }
             else if descriptor != nil && (response.statusCode != 200 || mime != "video/mp4") { failure = .invalidMedia }
-            else if descriptor == nil && !(upload && (200...299).contains(response.statusCode)) &&
-                !(mime == "application/json" || mime?.hasSuffix("+json") == true) { failure = .invalidResponse }
+            else if descriptor == nil && (200...299).contains(response.statusCode) && !upload &&
+                !LipsyncHTTPResponse.isJSON(mime) { failure = .invalidResponse }
             else { failure = nil }
             state.withLock { $0.response = response; $0.failure = failure }
         } else { failure = .invalidResponse; state.withLock { $0.failure = failure } }
@@ -177,15 +191,18 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
             if state.cancelled { return (state.continuation, .failure(CancellationError())) }
             if let failure = state.failure { return (state.continuation, .failure(failure)) }
             guard error == nil, let response = state.response else { return (state.continuation, .failure(LipsyncError.network)) }
-            // URLSession hands over a compressed body decoded, while Content-Length (expectedContentLength) counts the
-            // encoded bytes, so the two only have to agree for an identity-encoded response.
-            let encoded = !(response.value(forHTTPHeaderField: "Content-Encoding") ?? "identity").lowercased().hasPrefix("identity")
-            if !encoded, response.expectedContentLength >= 0 && response.expectedContentLength != Int64(state.count) {
+            if contentEncoding(response) == "identity", response.expectedContentLength >= 0,
+               response.expectedContentLength != Int64(state.count) {
                 return (state.continuation, .failure(LipsyncError.invalidResponse))
             }
-            return (state.continuation, .success(LipsyncHTTPResponse(status: response.statusCode, body: state.bytes, contentType: response.mimeType)))
+            return (state.continuation, .success(LipsyncHTTPResponse(status: response.statusCode, body: state.bytes,
+                contentType: response.value(forHTTPHeaderField: "Content-Type"))))
         }
         value.0?.resume(with: value.1)
+    }
+
+    private func contentEncoding(_ response: HTTPURLResponse) -> String {
+        response.value(forHTTPHeaderField: "Content-Encoding")?.trimmingCharacters(in: .whitespaces).lowercased() ?? "identity"
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,

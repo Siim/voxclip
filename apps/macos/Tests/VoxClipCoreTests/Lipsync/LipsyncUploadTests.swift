@@ -4,15 +4,6 @@ import Testing
 @testable import VoxClipCore
 
 @Suite struct LipsyncUploadTests {
-    private func files(_ root: URL) throws -> (LipsyncUploadFile, LipsyncUploadFile) {
-        let video = root.appendingPathComponent("window.mp4")
-        let audio = root.appendingPathComponent("mixed.wav")
-        try Data([0, 0, 0, 12] + Array("ftypisom".utf8)).write(to: video)
-        try VoiceLabRequestFixtures.wav(rate: 48_000, frames: 144_000, fill: 400).write(to: audio)
-        return try (LipsyncUploadFile(file: video, durationSeconds: 3, contentType: "video/mp4"),
-            LipsyncUploadFile(file: audio, durationSeconds: 3, contentType: "audio/wav"))
-    }
-
     private var initiate: String {
         #"{"upload_url":"https://storage.fal.ai/upload/fixture","file_url":"https://v3.fal.media/files/fixture/input.mp4"}"#
     }
@@ -20,7 +11,7 @@ import Testing
     @Test func approvedUploadUsesDocumentedRetentionAndNeverSendsKeyToPut() async throws {
         let root = try LipsyncProviderFixtures.directory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let (video, audio) = try files(root)
+        let (video, audio) = try LipsyncProviderFixtures.uploadFiles(root)
         let (store, record) = try await LipsyncProviderFixtures.consent(root)
         let http = LipsyncFixtureHTTP([.json(200, initiate), .json(200, ""), .json(200, initiate), .json(204, ""),
             .json(200, LipsyncProviderFixtures.receipt(app: "fal-ai/sync-lipsync"))])
@@ -52,7 +43,7 @@ import Testing
     @Test func missingInlineApprovalDoesNotUpload() async throws {
         let root = try LipsyncProviderFixtures.directory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let (video, audio) = try files(root)
+        let (video, audio) = try LipsyncProviderFixtures.uploadFiles(root)
         let (store, record) = try await LipsyncProviderFixtures.consent(root)
         let http = LipsyncFixtureHTTP([]), provider = try LipsyncProviderFixtures.provider(http)
         await #expect(throws: LipsyncError.approvalRequired) {
@@ -60,6 +51,33 @@ import Testing
                 fps: 30, consentStore: store, recordID: record, acceptsPaidJob: false, acceptsMediaTransfer: true)
         }
         #expect(await http.requests.isEmpty)
+    }
+
+    @Test(arguments: [false, true]) func uploadFailuresNeverSendPaidPOST(afterInitiation: Bool) async throws {
+        let root = try LipsyncProviderFixtures.directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (video, audio) = try LipsyncProviderFixtures.uploadFiles(root)
+        let (store, record) = try await LipsyncProviderFixtures.consent(root)
+        let http = LipsyncFixtureHTTP(afterInitiation ? [.json(200, initiate), .json(403, "not logged")] : [.json(200, "{}")])
+        let provider = try LipsyncProviderFixtures.provider(http), diagnostic = LipsyncFixtureDiagnostic()
+        await provider.setDiagnostic(diagnostic)
+        let expected: LipsyncError = afterInitiation ? .http(403) : .invalidResponse
+        await #expect(throws: expected) {
+            _ = try await provider.prepareApprovedUpload(video: video, audio: audio, options: .init(syncMode: .cutOff),
+                fps: 30, consentStore: store, recordID: record, acceptsPaidJob: true, acceptsMediaTransfer: true)
+        }
+        let requests = await http.requests
+        #expect(requests.map(\.httpMethod) == (afterInitiation ? ["POST", "PUT"] : ["POST"]))
+        #expect(!requests.contains { $0.url?.host == "queue.fal.run" })
+        let events = await diagnostic.events
+        let failure = try #require(events.last)
+        #expect(failure.stage == (afterInitiation ? .upload : .uploadInitiate))
+        #expect(failure.status == (afterInitiation ? 403 : 200))
+        #expect(failure.error == String(describing: expected))
+        #expect(failure.requestID == nil)
+        let details = String(decoding: try JSONEncoder().encode(events), as: UTF8.self)
+        #expect(!details.contains("fixture"))
+        #expect(!details.contains("not logged"))
     }
 
     @Test func diagnosticUsesOnlyTypedSafeFieldsAndRefusesUserLibrary() async throws {

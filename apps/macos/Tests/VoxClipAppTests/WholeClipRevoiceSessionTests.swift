@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 @testable import VoxClipCore
-import VoxClipMedia
+@testable import VoxClipMedia
 @testable import VoxClip
 
 /// The whole-clip revoice's run (ADR-R46) on stubs: Script, Voice, Fit and Lip sync in order, the fit on the clip as
@@ -135,6 +135,22 @@ import VoxClipMedia
         #expect(session.isStopped && session.failure?.step == .fit)
     }
 
+    @Test func partialVoiceSpendAndRetryPriceAreSeparateAndTheFailedCheckIsNamed() async {
+        let stubs = Stubs()
+        let session = session(stubs)
+        stubs.voiceError = WholeClipRevoiceSession.Stop.partVoice(part: 2, reason: "The voice did not match.", checks: [.speaker])
+        session.backend?.unfinishedVoicePrice = { Decimal(string: "0.02") }
+        session.backend?.unsettledVoiceSpend = { Decimal(string: "0.06")! }
+        await session.refreshQuote()
+        session.start()
+        await session.waitForRun()
+        #expect(session.failure?.step == .voice && session.failure?.part == 2)
+        #expect(stubs.reports.first?.contains("checks=speaker part=2") == true)
+        #expect(session.spent == Decimal(string: "0.06"))
+        #expect(session.retryUSD == Decimal(string: "1.57"))
+        #expect(stubs.lipsyncs.isEmpty)
+    }
+
     /// The user's live run in MVP44 (2026-11-08), as numbers: 49 spoken words, the clip 0:31.4 as edited, its parts' windows
     /// 48.6 s of source, and a 27 s voice. The fit reads the clip as edited, asks for no longer wording, and goes on to the
     /// lip sync; the run used to ask for ≈ 124 words three times and stop with `cannotFit`.
@@ -168,7 +184,7 @@ import VoxClipMedia
         #expect(stubs.rewords.count == 1 && stubs.voices.count == 1, "no voice for a wording that can't fit: \(stubs.voices)")
         guard case .stopped(let line) = session.phase else { Issue.record("not stopped: \(session.phase)"); return }
         #expect(line.hasPrefix("The shorter wording would still run about 0:35.3 for 0:31 of video, so no new voice was made."), "\(line)")
-        #expect(line.contains("trying again pays only what's left"))
+        #expect(line.contains("Spent so far:"))
         #expect(session.failure?.step == .fit && session.repeatsFit)
         #expect(stubs.lipsyncs.isEmpty && stubs.used == 0)
         // A wording estimated to fit is voiced.
@@ -208,7 +224,7 @@ import VoxClipMedia
         session.start()
         await session.waitForRun()
         guard case .stopped(let line) = session.phase else { Issue.record("not stopped"); return }
-        #expect(line.contains("fal.ai returned HTTP 503.") && line.contains("trying again pays only what's left"))
+        #expect(line.contains("fal.ai returned HTTP 503.") && line.contains("Spent so far:"))
         #expect(session.steps[.lipsync] == .failed("fal.ai returned HTTP 503."))
         stubs.failLipsync = false
         session.start()
@@ -240,10 +256,12 @@ import VoxClipMedia
         await session.waitForRun()
         guard case .stopped(let line) = session.phase else { Issue.record("not stopped"); return }
         let charge = VoiceLabCostPresentation.format(Decimal(string: "1.55")!)
-        #expect(line.hasPrefix("Couldn't lip sync: fal.ai's video came back 0.2 s shorter than the voice. fal.ai charged for the attempt (\(charge)). Its result is kept, so Try Again is free."), "\(line)")
-        #expect(line.contains("What was paid (\(VoiceLabCostPresentation.format(Decimal(string: "1.61")!)))"), "\(line)")
+        #expect(line.hasPrefix("Couldn't lip sync: fal.ai's video came back 0.2 s shorter than the voice. fal.ai accepted the job (estimated cost: \(charge)). Try Again checks the same job for free."), "\(line)")
+        #expect(line.contains("Spent so far: \(VoiceLabCostPresentation.format(Decimal(string: "1.61")!))"), "\(line)")
         #expect(session.spent == Decimal(string: "1.61"))
         #expect(session.retryUSD == 0)
+        let stopped = rewrite.proposalContent()
+        #expect(stopped.cards == [.wholeClip] && stopped.footer == PanelFooter() && stopped.askAgain == nil)
         let retry = try #require(rewrite.wholeClipStoppedActions().first)
         #expect(retry.id == "wholeClipRetry" && retry.title == "Try Again · free", "\(retry.title)")
         // The free re-import moves the charge into the ledger: still 1.61 in all.
@@ -252,25 +270,59 @@ import VoxClipMedia
         await session.waitForRun()
         #expect(session.phase == .review && stubs.voices.count == 1)
         #expect(session.spent == Decimal(string: "1.61"))
+        let review = rewrite.proposalContent()
+        #expect(review.cards == [.wholeClip] && review.footer == PanelFooter() && review.askAgain == nil)
     }
 
     /// A billed failure whose result isn't kept: Try Again pays the lip sync again, and both charges count.
     @Test func aBilledFailureWithNothingKeptPricesTryAgainAndCountsBothCharges() async {
         let stubs = Stubs()
-        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.submissionUncertain, local: false,
-                                                                   usd: Decimal(string: "1.55"), requestID: nil, freeRetry: false)
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncResultCheck.duration(.init(got: 4, needed: 6, uploaded: 7, fps: 30)), local: false,
+                                                                   usd: Decimal(string: "1.55"), requestID: "accepted-job", freeRetry: false)
         let session = session(stubs)
         await session.refreshQuote()
         session.start()
         await session.waitForRun()
         guard case .stopped(let line) = session.phase else { Issue.record("not stopped"); return }
-        #expect(line.contains("fal.ai charged for the attempt") && !line.contains("Try Again is free"), "\(line)")
+        #expect(line.contains("fal.ai accepted the job") && !line.contains("for free"), "\(line)")
         #expect(session.retryUSD == Decimal(string: "1.55"))
         stubs.lipsyncError = nil
         session.start()
         await session.waitForRun()
         #expect(session.phase == .review)
         #expect(session.spent == Decimal(string: "3.16"))
+    }
+
+    @Test(arguments: [false, true]) func aPictureRetryCannotBuySpeechForAChangedTimeline(changeWords: Bool) async throws {
+        let stubs = Stubs()
+        stubs.voiceSeconds = [28.6]; stubs.video = 28.2
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncNotSubmitted(error: LipsyncError.invalidResponse), local: false)
+        let session = session(stubs)
+        session.start(); await session.waitForRun()
+        let kept = try #require(session.voice)
+        #expect(stubs.lipsyncs == [.standard])
+        stubs.lipsyncError = nil
+        if changeWords {
+            // Same audible text; a different source word map invalidates the paid take.
+            let words = Self.words.map { TimedWord(id: "new-" + $0.id, text: $0.text, start: $0.start + 1, end: $0.end + 1) }
+            let mapped = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: []))
+            session.backend?.script = { mapped }
+        } else { stubs.video = 14 }
+        session.start(); await session.waitForRun()
+        #expect(session.isStopped && session.voice == kept)
+        #expect(stubs.lipsyncs == [.standard] && stubs.voices == [kept.key.script] && stubs.rewords.isEmpty)
+    }
+
+    @Test func lostQueueReceiptDoesNotCountTheQuoteOrLetAnotherClickResubmit() async {
+        let stubs = Stubs()
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.submissionUncertain, local: false, usd: 1.55)
+        let session = session(stubs)
+        await session.refreshQuote(); session.start(); await session.waitForRun()
+        guard case .stopped(let line) = session.phase else { Issue.record("expected a stop"); return }
+        #expect(session.failure?.repeats == true && line.contains("couldn't confirm"))
+        #expect(session.spent == 0.06 && session.billedLipsyncs.isEmpty)
+        stubs.lipsyncError = nil; session.start(); await session.waitForRun()
+        #expect(session.isStopped && stubs.lipsyncs.count == 1 && stubs.voices.count == 1)
     }
 
     @Test func theSync3UpgradeReRunsOnlyTheLipSync() async {
@@ -422,7 +474,7 @@ import VoxClipMedia
         await session.waitForRun()
         let copy = "Part 1's picture can't be matched to its voice on the clip as edited. Nothing was sent for lip sync."
         guard case .stopped(let line) = session.phase else { Issue.record("\(session.phase)"); return }
-        #expect(line.hasPrefix(copy) && line.contains("What was paid"), "\(line)")
+        #expect(line.hasPrefix(copy) && line.contains("Spent so far:"), "\(line)")
         #expect(session.steps[.fit] == .failed(copy) && session.steps[.lipsync] == .waiting)
         #expect(stubs.lipsyncs.isEmpty, "no lip-sync call")
         #expect(session.failure == WholeClipRevoiceSession.Failure(step: .fit, part: 1, repeats: true))

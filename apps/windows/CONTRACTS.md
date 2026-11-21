@@ -1461,6 +1461,8 @@ Twin of the Mac entry of the same date. Spec: doc/design.md §6.3.1 "Rewrite as"
 
 ### 2026-11-05 — Windows renders clip controls and Ask Claude's effects in preview and export, instead of refusing (track/v2-win-render-1)
 
+The later Mac color grade is supported too (design §6.9). Windows retains the four signed integer `colorAdjustments` fields across open, save and edits; missing fields, extra fields, null, out-of-range values and all-zero objects are rejected. The grade runs after the base look in `ClipPicture.Grade`, before effects and captions, on the shared preview/export frame path. An adjustment-only clip stays in the render input, and grade values are part of its existing export fingerprint. The Windows editor still has no fine-adjustment sliders or new preset chips.
+
 Twin of the Mac entries track/v2-clip-controls, track/v2-ask-claude and track/v2-wire-1. Spec: doc/design.md §6.8 and §6.9, doc/spec/ai.md §18.5.
 
 - **Core.** `Domain/Clips/ClipRendering.cs`: `ClipSpeedTiming`, `ClipAudioMix` (with the Mac's `fadeFactor`), `ClipLookRecipe` (the same matrix, bias and cubic), and `ClipControlsRendering` (`Controls`, `ChangesAudio`/`ChangesPicture`, `IsQuarterTurn`, `MapAnchor`, `MapRect`, `ClipShape.Size`, `OutputSize`, `VideoBitrate`, `Output`). `Domain/Effects/ClipEffectRendering.cs`: `ClipEffect.Parse` types a stored entry for rendering (`RectAt` over the stored track, `OpacityAt`), `ClipEffectsRenderInput` (`Resolve`, bundled `shared/data/sfx/<id>.wav` or library `<data>/SFX/<file>`, `Picture`, `Audio`, `Freezes`, `PictureTime`, `WithoutSounds`), and `ClipEffectsRendering.Masked`/`MaskingBleeps` (× per letter, mark or number). `ClipEffects.Rendered(project, clipId)`: censors everywhere, others in their own clip. `ComposeSnapshot.Clip` (`ClipRenderInput`: the clip's controls, null for the full video or at the defaults, and the scope's effects), `Speed`, `RenderedSamples`, `RenderedDuration`.
@@ -1883,7 +1885,7 @@ No Windows code changed. `dialogue-cases.json`, `audio-tag-cases.json` and the f
 
 ### 2026-11-03 — Rewrite HTTP strict-schema repair
 
-- **Built.** HTTP structured-output schemas recursively require every object property, including optional `audioTags` inside rewrite edits and annotation array items. OpenAI Responses, OpenAI-compatible Chat, Anthropic, Gemini and Ollama all use this wire-only shape. Already exhaustive schemas retain their required-key order. Canonical schemas, CLI requests and reply validation keep optional annotations.
+- **Built.** HTTP structured-output schemas recursively require every object property, including optional `audioTags` inside rewrite edits and annotation array items. OpenAI Responses, OpenAI-compatible Chat, Anthropic, Gemini and Ollama all use this wire-only shape. Already exhaustive schemas retain their required-key order. Codex CLI uses the same strict shape for its output schema file. Canonical schemas, Claude Code requests and reply validation keep optional annotations.
 - **Verification.** Both new shared-prompt wire regressions fail before the repair. Afterward, **528 focused Release Core tests pass**, including the regenerated shared LLM fixtures, all six HTTP schema shapes and canonical non-mutation. The Release build has zero warnings/errors. The Core shipping inventory adds only the private schema-shaping method. No live requests or CI dispatch.
 - **Deleted / next.** No files deleted. This isolated repair can land before the Windows expression behavior/UI twin; that twin remains in progress.
 

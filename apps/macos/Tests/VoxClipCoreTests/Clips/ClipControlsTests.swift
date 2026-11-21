@@ -86,6 +86,36 @@ import Testing
         }
     }
 
+    @Test func colorAdjustmentsRoundTripAndClearWithoutChangingTheLegacyLook() throws {
+        let input = try FixtureLoader.data(Self.fixture)
+        let original = try ProjectJSON.decode(input)
+        let legacy = try #require(original.clipControls.first)
+        var changed = legacy
+        changed.colorAdjustments = .init(brightness: -100, contrast: 100, saturation: 27, warmth: -14)
+        let project = try ClipControlsProject.setting(changed, in: original)
+        #expect(changed.changesPicture)
+        let encoded = try JSONProjectStore.encode(project)
+        let reopened = try JSONProjectStore.decode(encoded)
+        #expect(reopened.clipControls.first(where: { $0.clipId == legacy.clipId }) == changed)
+        changed.colorAdjustments = nil
+        #expect(changed == legacy)
+        let restored = try ClipControlsProject.setting(changed, in: reopened)
+        #expect(try JSONProjectStore.encode(restored) == JSONProjectStore.encode(original))
+    }
+
+    @Test(arguments: ["null", "{}", #"{"brightness":0,"contrast":0,"saturation":0,"warmth":0}"#,
+                      #"{"brightness":1.5,"contrast":0,"saturation":0,"warmth":0}"#,
+                      #"{"brightness":101,"contrast":0,"saturation":0,"warmth":0}"#,
+                      #"{"brightness":true,"contrast":0,"saturation":0,"warmth":0}"#,
+                      #"{"brightness":1,"contrast":0,"saturation":0,"warmth":0,"gamma":2}"#])
+    func invalidColorAdjustmentsAreRejected(_ json: String) throws {
+        let adjustment = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        let patch = Patch(path: "/clipControls/0/colorAdjustments", value: adjustment, remove: nil)
+        let input = try data(WireCase(id: "invalid-color", patches: [patch], tooNew: nil))
+        #expect(throws: (any Error).self) { try ProjectJSON.decode(input) }
+        #expect(throws: (any Error).self) { try JSONProjectStore.decode(input) }
+    }
+
     @Test func aLegacyProjectSavesUnchangedPromotesOnItsFirstControlAndDropsDefaults() throws {
         var original = try ProjectJSON.decode(FixtureLoader.data("fixtures/projects/interview-take.voxclip"))
         let words = try #require(original.transcript?.words)

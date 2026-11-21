@@ -32,9 +32,36 @@ public struct MusicBrief: Sendable, Equatable {
         let words = (mood + " " + query).lowercased().split { !$0.isLetter && !$0.isNumber }
         return Set(words.map(String.init).filter { $0.count >= 3 })
     }
+
+    public static func browseDirections(_ suggested: [MusicBrief] = []) -> [MusicBrief] {
+        let defaults = [
+            MusicBrief(mood: "Quiet piano", query: "minimal felt piano instrumental",
+                       prompt: "Sparse felt piano with soft room texture and long gaps between notes. Slow, warm and understated, with no drums or vocals. Leave space for speech."),
+            MusicBrief(mood: "Gentle groove", query: "mellow lo fi instrumental beat",
+                       prompt: "An even midtempo lo-fi groove with brushed drums, round bass and short electric piano chords. No lead melody, big transitions or vocals. Keep it under the voice."),
+            MusicBrief(mood: "Ambient texture", query: "ambient soft synth pads instrumental",
+                       prompt: "Slowly shifting airy synth pads, a soft low pulse and a little color at the edges. No beat drop, bright lead or vocals. Stay even beneath speech.")
+        ]
+        var seen = Set<[String]>()
+        var directions = suggested.compactMap { brief -> MusicBrief? in
+            guard !brief.searchText.isEmpty, seen.insert([brief.searchText.lowercased(), brief.compositionPrompt.lowercased()]).inserted else { return nil }
+            let title = brief.mood.trimmingCharacters(in: .whitespacesAndNewlines)
+            return MusicBrief(mood: title.isEmpty ? brief.searchText : title, query: brief.searchText,
+                              prompt: brief.compositionPrompt, reason: brief.reason)
+        }
+        var queries = Set(directions.map { $0.searchText.lowercased() })
+        var prompts = Set(directions.map { $0.compositionPrompt.lowercased() })
+        for fallback in defaults where queries.count < 3 || prompts.count < 3 {
+            let query = fallback.searchText.lowercased(), prompt = fallback.compositionPrompt.lowercased()
+            guard !queries.contains(query) || !prompts.contains(prompt) else { continue }
+            directions.append(fallback)
+            queries.insert(query); prompts.insert(prompt)
+        }
+        return directions
+    }
 }
 
-/// One playable choice in the Music section: a library match, a priced generation not yet made, or the user's file.
+/// A library match, a priced generation not yet made, or the user's file.
 public struct MusicCandidate: Sendable, Equatable, Identifiable {
     public var id: String
     public var source: MusicSource
@@ -79,6 +106,15 @@ public struct MusicSuggestionResult: Sendable, Equatable {
     /// Why a source has nothing to offer (offline, rate-limited, no key), shown beside the list; never blocks the others.
     public var notes: [MusicSource: String]
     public init(candidates: [MusicCandidate] = [], notes: [MusicSource: String] = [:]) { self.candidates = candidates; self.notes = notes }
+}
+
+public struct MusicCatalogPage: Sendable, Equatable {
+    public let candidates: [MusicCandidate]
+    public let nextPage: Int?
+
+    public init(candidates: [MusicCandidate], nextPage: Int? = nil) {
+        self.candidates = candidates; self.nextPage = nextPage
+    }
 }
 
 /// Eleven Music generation length and price; music.md §3.2 and the shared price catalog.

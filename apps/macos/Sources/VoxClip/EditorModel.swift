@@ -61,6 +61,16 @@ struct EditorRenderSnapshot {
     /// empty until the first preview load; CC also reads them as empty while captions are off.
     var captionPages: [CaptionPage] = []
     var timelineZoomStep = 0
+    var timelineEditor: TimelineEditorRoute?
+    var timelineEffectsOpen: Bool {
+        get { timelineEditor?.mode == .effects }
+        set {
+            if newValue { openTimelineEditor(.effects, effectID: timelineEffectID) }
+            else if timelineEffectsOpen { resetTimelineEditor() }
+        }
+    }
+    var timelineEffectID: String?
+    private(set) var timelineEffectsRevision = 0
     var timelineSnapping = true
     /// The selection's first and last word or pause in reading order (a pause follows the
     /// word before it), one id when they are the same. A fold opens while one of them is in
@@ -507,6 +517,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var renderedMotionCues: [MotionCue] = []
     @ObservationIgnored private var renderedMusic: [ProjectMusic] = []
     @ObservationIgnored private var renderedClipControls: [ProjectClipControls] = []
+    @ObservationIgnored private var renderedClipEffects: [ClipEffect] = []
     @ObservationIgnored private(set) var fillerCandidateIDs: Set<String> = []
     @ObservationIgnored private var planningSegments: [EditSegment]?
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
@@ -713,7 +724,9 @@ struct EditorRenderSnapshot {
         if mediaUsable { await updatePreview(load: true); await transcription.openOnImport() }
     }
     func close() {
+        resetTimelineEditor()
         motionCueEditing = nil
+        musicPanel.reset()
         app.voiceLabSession.leaveVoiceControls(owner: self)
         contextDemoSession?.close(); contextDemoSession = nil
         voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }
@@ -729,7 +742,9 @@ struct EditorRenderSnapshot {
         cacheLease?.release(); cacheLease = nil
     }
     func reloadFromDocument(previousProjectID: String) {
+        resetTimelineEditor()
         motionCueEditing = nil
+        musicPanel.reset()
         app.voiceLabSession.leaveVoiceControls(owner: self)
         contextDemoSession?.close(); contextDemoSession = nil
         voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }
@@ -766,6 +781,18 @@ struct EditorRenderSnapshot {
     }
     func refresh() {
         let project = project
+        if let route = timelineEditor, route.projectID != project.id || route.clipID != project.edits.activeClipId {
+            resetTimelineEditor()
+        }
+        defer {
+            if let effectID = timelineEffectID, !timelineEditableEffects.contains(where: { $0.id == effectID }) {
+                timelineEffectID = nil
+            }
+        }
+        if renderedClipEffects != project.clipEffects {
+            renderedClipEffects = project.clipEffects
+            timelineEffectsRevision += 1
+        }
         let words = project.transcript?.words ?? []
         let edits = project.edits
         let transcriptChanged = renderedTranscript != project.transcript
@@ -1066,7 +1093,11 @@ struct EditorRenderSnapshot {
         guard let changed = history?.state else { return }
         guard changed != state || next != project else { return }
         next.edits = changed.projectEdits
-        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id }; next.clipControls.removeAll { $0.clipId == id }; next.captionTranslations.removeAll { $0.clipId == id } }
+        if case .removeClip(let id) = command {
+            next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id }
+            next.clipEffects.removeAll { $0.clipId == id }; next.clipControls.removeAll { $0.clipId == id }
+            next.captionTranslations.removeAll { $0.clipId == id }
+        }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         // Only the scope changed: a tab switch, not an edit (impl-plan item 16).

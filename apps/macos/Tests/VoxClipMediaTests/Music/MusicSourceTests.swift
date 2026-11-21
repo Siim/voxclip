@@ -51,8 +51,8 @@ enum OpenverseFixture {
         return row
     }
 
-    static func reply(_ rows: [[String: Any]]) -> Data {
-        try! JSONSerialization.data(withJSONObject: ["result_count": rows.count, "page_count": 1, "page_size": 20, "page": 1, "results": rows])
+    static func reply(_ rows: [[String: Any]], page: Int = 1, pageCount: Int = 1) -> Data {
+        try! JSONSerialization.data(withJSONObject: ["result_count": rows.count, "page_count": pageCount, "page_size": 20, "page": page, "results": rows])
     }
 
     static let mixed = reply([
@@ -98,6 +98,23 @@ struct OpenverseMusicClientTests {
         _ = try await client.search("Calm Piano", keywords: ["calm"], clipSeconds: 30)
         #expect(http.sent.count == 1)
         #expect(http.sent.first?.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func browserKeepsAllEligibleMatchesAndCachesEachPageSeparately() async throws {
+        let second = OpenverseFixture.reply([OpenverseFixture.row("next", license: "cc0", title: "Next track")], page: 2, pageCount: 2)
+        let firstReply = try JSONSerialization.jsonObject(with: OpenverseFixture.mixed) as? [String: Any]
+        let rows = try #require(firstReply?["results"] as? [[String: Any]])
+        let firstData = OpenverseFixture.reply(rows, pageCount: 2)
+        let http = StubMusicHTTP([.init(status: 200, body: firstData), .init(status: 200, body: second)])
+        let browser = MusicSuggestionService(library: OpenverseMusicClient(http: http), eleven: nil, hasElevenKey: { false }, folder: { nil })
+        let brief = MusicBrief(mood: "calm piano")
+        let first = try await browser.browse(brief, clipSeconds: 30)
+        #expect(first.candidates.count == 4 && first.candidates.first?.id == "openverse-piano" && first.nextPage == 2)
+        let next = try await browser.browse(brief, clipSeconds: 30, page: 2)
+        #expect(next.candidates.map(\.id) == ["openverse-next"] && next.nextPage == nil)
+        #expect(try await browser.browse(brief, clipSeconds: 30, page: 2) == next)
+        #expect(http.sent.count == 2)
+        #expect(http.sent.last?.url?.query?.contains("page=2") == true)
     }
 
     @Test func rateLimitBacksOffUntilRetryAfterPasses() async throws {
@@ -244,7 +261,7 @@ struct MusicSuggestionServiceTests {
                                              hasElevenKey: { false }, folder: { nil })
         let result = await service.candidates(for: MusicBrief(mood: "upbeat"), clipSeconds: 20)
         #expect(result.candidates.isEmpty)
-        #expect(result.notes[.library] == "You're offline, so only your own files are shown.")
+        #expect(result.notes[.library] == "You're offline. The free music library is unavailable.")
         #expect(result.notes[.generated] == "Add an ElevenLabs key in Settings to make music for this clip.")
     }
 

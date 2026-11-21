@@ -61,6 +61,7 @@ import VoxClipMedia
     enum Failure: Error, Equatable {
         /// `index` is the refused hunk's index in the plan's hunks.
         case placement(VoiceLabWindowRefusal, index: Int), spendingCap, unknownSpend, stale, noSelection
+        case noLipsyncOffer, lipsyncBusy, lipsyncAlreadyStarted, missingLipsyncRender
         /// The reviewed changes place no phrase to voice.
         case nothingToVoice
         /// More phrases than one run voices (`maximumPhrases`); `count` is how many the changes placed.
@@ -162,10 +163,10 @@ import VoxClipMedia
     private(set) var generating = false
     private(set) var publishing = false { didSet { resumeIdleWaiters() } }
     private(set) var preparingVideo = false { didSet { resumeIdleWaiters() } }
-    /// `settleBackgroundWork` callers waiting for `publishing` and `preparingVideo` to clear.
+    @ObservationIgnored private var preparingLipsyncRender = false { didSet { resumeIdleWaiters() } }
     @ObservationIgnored private var idleWaiters: [CheckedContinuation<Void, Never>] = []
     private func resumeIdleWaiters() {
-        guard !publishing, !preparingVideo, !idleWaiters.isEmpty else { return }
+        guard !publishing, !preparingVideo, !preparingLipsyncRender, !idleWaiters.isEmpty else { return }
         let waiters = idleWaiters
         idleWaiters = []
         for waiter in waiters { waiter.resume() }
@@ -230,6 +231,7 @@ import VoxClipMedia
     @ObservationIgnored private var backend: Backend?
     @ObservationIgnored var prepareDurationRender: VideoDurationRenderPreparer?
     @ObservationIgnored private var preparedVideoSelection: PreparedVideoSelection?
+    @ObservationIgnored private var preparedLipsyncRender: LipsyncOfferRender?
     @ObservationIgnored private(set) var videoPreparationFailure: (any Error)?
     @ObservationIgnored private var videoRevision = UUID()
     @ObservationIgnored private(set) var inputs: [VoiceLabTakeInput] = []
@@ -249,6 +251,7 @@ import VoxClipMedia
     private var runIndices: [Int] { batchIndices + laterParts.flatMap(\.indices) }
     /// What the later parts of the held run add to `batch`'s estimate.
     private var laterEstimates: [CostEstimate] { laterParts.map(\.priced.estimate) }
+    private var lastVoicePrices: [Int: CostEstimate] = [:]
     /// "Pricing phrase 12 of 34…" while a price is prepared, nil otherwise.
     private(set) var preparationStep: String?
     @ObservationIgnored private var progress: VoiceLabTakeBatchProgress?
@@ -351,6 +354,7 @@ import VoxClipMedia
 
     private func clearPreparedVideo() {
         videoRevision = UUID(); preparedVideoSelection = nil
+        preparedLipsyncRender = nil
         videoPreparationFailure = nil
     }
 
@@ -402,7 +406,7 @@ import VoxClipMedia
             if let running = videoPreparation {
                 await running.value
                 if videoPreparation == running { videoPreparation = nil }
-            } else if publishing || preparingVideo {
+            } else if publishing || preparingVideo || preparingLipsyncRender {
                 await withCheckedContinuation { idleWaiters.append($0) }
             } else if preparing, !generating, let quote = operation {
                 await quote.value
@@ -663,6 +667,23 @@ import VoxClipMedia
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
     }
 
+    var unfinishedVoiceParts: [Int] {
+        phrases.map(\.id).filter { automaticTake(phrase: $0) == nil }
+    }
+
+    var unfinishedVoicePrice: Decimal? {
+        let prices = unfinishedVoiceParts.compactMap { lastVoicePrices[$0]?.usd }
+        guard prices.count == unfinishedVoiceParts.count else { return nil }
+        return prices.reduce(0, +)
+    }
+
+    func prepareUnfinishedVoiceParts() async {
+        guard stillCurrent, phrases.allSatisfy({ $0.blocked == nil }) else { return }
+        let remaining = unfinishedVoiceParts
+        guard !remaining.isEmpty else { return }
+        await prepareQuote(indices: remaining, decoding: inputs.count != phrases.count, candidates: 1, preservePace: true)
+    }
+
     /// The words a rewording of this phrase must begin and end with (voice-lab §8.4), as its take input spells them; nil
     /// when its window has none or before the plan decoded its inputs.
     func bridge(phrase index: Int) -> VoiceLabFitBridge? {
@@ -831,8 +852,8 @@ import VoxClipMedia
         return try? retryPace(phrase: index)
     }
 
-    private func prepareQuote(indices: [Int], decoding: Bool, candidates: Int) async {
-        guard !preparing, !generating, !publishing, !preparingVideo, !retired, operation == nil, let backend else { return }
+    private func prepareQuote(indices: [Int], decoding: Bool, candidates: Int, preservePace: Bool = false) async {
+        guard !Task.isCancelled, !preparing, !generating, !publishing, !preparingVideo, !retired, operation == nil, let backend else { return }
         stopAudition()
         preparing = true; problem = ""; batch = nil; cost = nil; revision += 1
         let version = revision
@@ -856,7 +877,7 @@ import VoxClipMedia
                 } else {
                     for index in indices {
                         let input = inputs[index]
-                        let pace = try retryPace(phrase: index)
+                        let pace = preservePace ? input.pace : try retryPace(phrase: index)
                         inputs[index] = VoiceLabTakeInput(text: input.text, modelID: input.modelID, recordID: input.recordID,
                             language: input.language, seed: nextSeeds[index], contentKey: input.contentKey, source: input.source,
                             sourceEnvelope: input.sourceEnvelope, sourceSampleRate: input.sourceSampleRate, items: input.items,
@@ -918,7 +939,8 @@ import VoxClipMedia
             }
             if revision == version { preparing = false; preparationStep = nil }
         }
-        await operation?.value
+        let child = operation
+        await withTaskCancellationHandler { await child?.value } onCancel: { child?.cancel() }
         if revision == version { operation = nil }
         onMeasuredTakesChanged?()
     }
@@ -928,6 +950,10 @@ import VoxClipMedia
         try checkCurrent(version)
         batch = quoted; batchIndices = indices; progress = VoiceLabTakeBatchProgress(batch: quoted)
         laterParts = later
+        for (index, window) in zip(indices, quoted.windows) { lastVoicePrices[index] = window.quote.estimate }
+        for part in later {
+            for (index, window) in zip(part.indices, part.priced.windows) { lastVoicePrices[index] = window.quote.estimate }
+        }
         let total = Self.sum([quoted.estimate] + laterEstimates)
         estimate = total
         cost = VoiceLabCostPresentation.kind(total, isLipSync: false, providerName: VoiceLabTakeBatch.providerName, cap: cap)
@@ -956,7 +982,7 @@ import VoxClipMedia
     }
 
     func start(approved: Bool, quoteID: UUID?) async {
-        guard approved, !generating, !preparing, !publishing, !preparingVideo, !retired, operation == nil, let batch, let backend else { return }
+        guard !Task.isCancelled, approved, !generating, !preparing, !publishing, !preparingVideo, !retired, operation == nil, let batch, let backend else { return }
         guard quoteID == batch.id else { return }
         stopAudition()
         generating = true; problem = ""; receivedInBatch = []
@@ -1026,7 +1052,8 @@ import VoxClipMedia
             await backend.discard()
             if revision == version { generating = false; runningPhrase = nil; self.batch = nil; cost = nil }
         }
-        await operation?.value
+        let child = operation
+        await withTaskCancellationHandler { await child?.value } onCancel: { child?.cancel() }
         if revision == version { operation = nil }
         onMeasuredTakesChanged?()
     }
@@ -1449,6 +1476,10 @@ import VoxClipMedia
         case Failure.unknownSpend: "VoxClip can't check your ElevenLabs spending limit. Nothing more was sent."
         case Failure.stale: "The rewrite changed. Make a fresh takes plan before sending anything."
         case Failure.noSelection: "Choose a valid video duration for every selected passage before using takes."
+        case Failure.noLipsyncOffer: "No complete set of matched takes is ready for lip sync. Nothing was sent."
+        case Failure.lipsyncBusy: "Takes or lip sync are still being processed. Wait for that to finish before trying again."
+        case Failure.lipsyncAlreadyStarted: "This lip-sync offer has already been used. Nothing new was sent."
+        case Failure.missingLipsyncRender: "VoxClip couldn't prepare the matched video and audio for lip sync."
         case Failure.nothingToVoice: "None of these changes needs a new take. Apply the text changes, or rewrite a part with spoken changes."
         case Failure.tooManyPhrases(let count):
             "These changes make \(count) phrases to voice. Up to \(maximumPhrases) can be voiced in one run: voice the first changes now and rewrite the rest after."
@@ -1498,6 +1529,13 @@ import VoxClipMedia
 }
 
 extension ClipTakePlan {
+    private struct LipsyncOfferRender {
+        let revision: Int
+        let videoRevision: UUID
+        let request: RenderRequest
+        let recordID: String
+    }
+
     private struct LipsyncBinding: Equatable {
         let takeID: UUID?
         let video: VoiceLabVideoMode?
@@ -1510,27 +1548,61 @@ extension ClipTakePlan {
         })
     }
 
+    func makeWholeClipLipsyncOffer(model: WholeClipRevoice.Lipsync) async throws -> RewriteLipsyncSession.Offer {
+        let version = revision, videoTurn = videoRevision
+        try checkCurrent(version)
+        try await lipsync.requireKey()
+        try checkCurrent(version)
+        guard videoTurn == videoRevision else { throw Failure.stale }
+        guard !lipsync.usingTakes, !phrases.contains(where: { lipsync.isRunning($0.id) }) else { throw Failure.lipsyncBusy }
+        let (_, all) = try await makeLipsyncOffers(model: model)
+        guard let all, all.phraseIDs.count == phrases.count else { throw Failure.noLipsyncOffer }
+        return all
+    }
+
     func makeLipsyncOffers(model: WholeClipRevoice.Lipsync = .sync3) async throws -> ([Int: RewriteLipsyncSession.Offer], RewriteLipsyncSession.Offer?) {
-        // A running preparation finishes first, so its render serves the offers instead of a second one being prepared.
-        if let running = videoPreparation { await running.value }
-        guard stillCurrent, !generating, !preparing, let prepareDurationRender else { throw Failure.stale }
+        let version = revision, videoTurn = videoRevision
         let bindings = lipsyncBindings
+        func checkSelection() throws {
+            try checkCurrent(version)
+            guard videoTurn == videoRevision, bindings == lipsyncBindings else { throw Failure.stale }
+        }
+        try checkSelection()
+        while true {
+            await settleVideoPreparation()
+            try checkSelection()
+            guard !generating, !preparing else { throw Failure.lipsyncBusy }
+            if !publishing, !preparingVideo, !preparingLipsyncRender { break }
+            await withCheckedContinuation { idleWaiters.append($0) }
+        }
         let chosen = selectedPhrases.filter { $0.videoChoice != nil }
-        let eligible = chosen.filter { lipsync.applied[$0.id] == nil && !lipsync.isRunning($0.id) }
-        guard !eligible.isEmpty else { return ([:], nil) }
+        func eligiblePhrases() -> [Phrase] { chosen.filter { lipsync.applied[$0.id] == nil && !lipsync.isRunning($0.id) } }
+        guard !eligiblePhrases().isEmpty else { return ([:], nil) }
         // The cut or matched video prepared for these exact choices is the one lip sync uploads; the same choices are
         // never prepared twice. Without one (only kept-source durations, or a phrase still unchosen) it is prepared here.
         let request: RenderRequest, recordID: String
-        if let prepared = preparedVideoSelection, prepared.choices == videoChoices, chosen.count == selectedPhrases.count {
+        if let prepared = preparedVideoSelection, prepared.choices == videoChoices, prepared.acceptance.videoAssets.isEmpty,
+           chosen.count == selectedPhrases.count {
             request = prepared.render.request; recordID = prepared.acceptance.voice?.consentRecordId ?? inputs.first?.recordID ?? ""
+        } else if let prepared = preparedLipsyncRender, prepared.revision == version, prepared.videoRevision == videoTurn {
+            request = prepared.request; recordID = prepared.recordID
         } else {
+            guard let prepareDurationRender else { throw Failure.missingLipsyncRender }
+            preparingLipsyncRender = true
+            defer { preparingLipsyncRender = false }
             let base = try await publishSelection(at: Date(), for: .lipsync, onlyChosen: true)
             let proposed = try VoiceLabEditCommand.acceptAll(segments: base.segments, assets: base.assets, voice: base.voice)
                 .applying(to: project, outputScope: scope, videoAssets: base.videoAssets)
             request = try await prepareDurationRender(proposed, scope)
             recordID = base.voice?.consentRecordId ?? inputs.first?.recordID ?? ""
+            try checkSelection()
+            guard request.voiceLab?.project == proposed, request.voiceLab?.scope == scope else { throw Failure.missingLipsyncRender }
+            preparedLipsyncRender = LipsyncOfferRender(revision: version, videoRevision: videoTurn, request: request, recordID: recordID)
         }
-        guard stillCurrent, bindings == lipsyncBindings, !recordID.isEmpty, let input = request.voiceLab else { throw Failure.stale }
+        guard !recordID.isEmpty else { throw VoiceConsentError.invalidRecord }
+        guard let input = request.voiceLab else { throw Failure.missingLipsyncRender }
+        let eligible = eligiblePhrases()
+        guard !eligible.isEmpty else { return ([:], nil) }
         let plan = input.prepared.outputPlan, rate = Int(plan.sampleRate)
         let total = plan.totalSourceSamples
         let windows = try eligible.map { phrase -> LipsyncWindow in

@@ -59,7 +59,7 @@ extension CanonicalResponseParser {
     }
 
     /// `dropped` counts the items each top-level array lost; `droppedItems` is their sum.
-    public static func validate(_ completion: RawCompletion, schema: JSONValue) throws -> (object: JSONValue, droppedItems: Int, dropped: [String: Int]) {
+    public static func validate(_ completion: RawCompletion, schema: JSONValue, allowingMissing: Set<String> = []) throws -> (object: JSONValue, droppedItems: Int, dropped: [String: Int]) {
         switch completion.stop {
         case .truncated: throw LLMError.truncated
         case .refused(let category): throw LLMError.refused(category: category)
@@ -74,7 +74,7 @@ extension CanonicalResponseParser {
         for key in properties.keys.sorted() {
             let property = properties[key]!
             guard let content = object[key] else {
-                if schema[ai: "required"].aiArray.contains(.string(key)) { throw LLMError.invalidOutput(reason: "missing \"\(key)\"") }
+                if !allowingMissing.contains(key), schema[ai: "required"].aiArray.contains(.string(key)) { throw LLMError.invalidOutput(reason: "missing \"\(key)\"") }
                 continue
             }
             if property[ai: "type"].aiString == "array" {
@@ -116,9 +116,9 @@ extension CanonicalResponseParser {
         guard var object = schema.aiObject else { return schema }
         if let properties = schema[ai: "properties"].aiObject {
             object["properties"] = .object(properties.mapValues(strictSchema))
-            if Set(schema[ai: "required"].aiArray.compactMap(\.aiString)) != Set(properties.keys) {
-                object["required"] = .array(properties.keys.sorted().map(JSONValue.string))
-            }
+            let required = schema[ai: "required"].aiArray.compactMap(\.aiString)
+            let missing = Set(properties.keys).subtracting(required)
+            if !missing.isEmpty { object["required"] = .array((required + missing.sorted()).map(JSONValue.string)) }
         }
         if object["items"] != nil { object["items"] = strictSchema(schema[ai: "items"]) }
         return .object(object)

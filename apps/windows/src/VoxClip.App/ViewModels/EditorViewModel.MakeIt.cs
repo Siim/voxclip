@@ -562,13 +562,18 @@ public sealed partial class EditorViewModel
             }
             case ClipAutopilotAction.Motion motion:
             {
-                // A zoom (motion cue) on the clip, replacing a cue with its id (Mac MakeItPostable .motion); the row plays from 1 s before.
                 var cue = motion.Cue;
-                var previous = next.MotionCues.FirstOrDefault(item => item.Id == cue.Id);
-                next = ClipAutopilotMapping.WithMotionCues([cue], next);
-                var scale = (cue.Keyframes.Count > 0 ? cue.Keyframes[0].Scale : 1).ToString("0.00", CultureInfo.InvariantCulture);
-                return (new MakeItInverse.Motion(cue.Id, previous),
-                    new(operation.Id, $"Zoom to {scale}×") { Detail = operation.Reason, Play = Math.Max(0, cue.SourceStart - 1), Undoable = true });
+                if (ClipAutopilotMapping.AddingMotionCue(cue, next) is not { } withCue) return (null, null);
+                next = withCue;
+                var scale = cue.Keyframes.Max(frame => frame.Scale).ToString("0.00", CultureInfo.InvariantCulture);
+                var label = motion.Direction switch
+                {
+                    ClipAutopilotZoomDirection.ZoomIn => $"Zoom in to {scale}×",
+                    ClipAutopilotZoomDirection.ZoomOut => $"Zoom out from {scale}×",
+                    _ => $"Zoom to {scale}×"
+                };
+                return (new MakeItInverse.Motion(cue.Id, null),
+                    new(operation.Id, label) { Detail = operation.Reason, Play = Math.Max(0, cue.SourceStart - 1), Undoable = true });
             }
             case ClipAutopilotAction.ShareText share:
             {

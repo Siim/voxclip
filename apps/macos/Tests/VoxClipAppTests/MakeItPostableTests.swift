@@ -60,7 +60,8 @@ private final class Calls: Sendable {
         return try Data(contentsOf: url)
     }
 
-    private func fixture(plan: ClipAutopilotPlan = Self.plan(), candidates: [MusicCandidate] = [Self.library],
+    private func fixture(plan: ClipAutopilotPlan = Self.plan(), candidates: [MusicCandidate]? = nil,
+                         notes: [MusicSource: String] = [:],
                          voice: MakeItRewriteOutcome = MakeItRewriteOutcome(result: .voiced(segments: []), spent: Decimal(string: "0.01")!),
                          suggestion: Bool = false) throws -> Fixture {
         _ = NSApplication.shared
@@ -83,8 +84,10 @@ private final class Calls: Sendable {
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         let calls = Calls()
         let bytes = try Self.wav()
-        editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: candidates) },
-            fetch: { candidate in calls.record("fetch \(candidate.id)"); return bytes }, folder: { nil })
+        let available = candidates ?? (plan.music.isEmpty ? [] : [Self.library])
+        editor.musicPanel.services = MusicPanelServices(suggest: { brief, _ in
+            calls.record("music search \(brief.searchText)"); return MusicSuggestionResult(candidates: available, notes: notes)
+        }, fetch: { candidate in calls.record("fetch \(candidate.id)"); return bytes }, folder: { root.appendingPathComponent("source-music") })
         editor.makeIt.services = MakeItServices(
             plan: { request, _, _, _ in
                 calls.record("plan \(request.mode)")
@@ -106,6 +109,26 @@ private final class Calls: Sendable {
         let run = try #require(fixture.editor.makeIt.run(for: clip))
         await run.task?.value
         return run
+    }
+
+    @Test func changingMusicOpensThePlannerAlternativesWithoutFetchingOrReplacingTheTrack() throws {
+        let fixture = try fixture()
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor, run = MakeItRun(clipID: "clip-main", cap: nil)
+        var plan = Self.plan()
+        plan.music.append(.init(title: "Night drive", mood: "soft synth pulse", prompt: "Low instrumental synth pulse",
+                                reason: "Keeps pace with the reveal", underVoiceDb: 20))
+        plan.musicPick = 1
+        run.plan = plan
+        var opened: PanelJob?
+        editor.onShowPanelJob = { opened = $0 }
+        let original = editor.project.music, previousSteps = editor.undoSteps
+        editor.makeItChange(.music, run: run)
+        let choices = editor.musicPanel.directions
+        #expect(opened == .music)
+        #expect(choices.prefix(2).map(\.mood) == ["Night drive", "Calm piano"])
+        #expect(choices.first?.query == "soft synth pulse" && choices.first?.prompt == "Low instrumental synth pulse")
+        #expect(fixture.calls.all.isEmpty && original == editor.project.music && editor.undoSteps == previousSteps)
     }
 
     @Test func oneClickAppliesEveryKindOfDecisionAndListsItInTheReview() async throws {
@@ -138,6 +161,42 @@ private final class Calls: Sendable {
         #expect(editor.makeItHeadline(run) == "Ready to post · \(durationLabel(run.seconds)) · score 8/10")
         #expect(editor.makeItNextStep(run) == "Next: Export. The post text is copied with it.")
         #expect(editor.makeIt.scores["clip-main"]?.score == 8)
+    }
+
+    @Test func directionalZoomReviewNamesTheActualPhraseAndOpensTheSavedCue() async throws {
+        var plan = Self.plan(music: false, rewrite: false)
+        plan.zooms = [.init(word: 6, untilWord: 7, scale: 1.12, reason: "Release on the reveal", direction: .zoomOut)]
+        let fixture = try fixture(plan: plan)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let run = try await run(fixture)
+        let cue = try #require(fixture.editor.project.motionCues.first)
+        let row = try #require(run.rows.first { $0.id == "zoom-0" })
+        let change = try #require(row.change)
+        #expect(cue.id == "clip-main-zoom-6-7" && change == .motion(cueID: cue.id))
+        #expect(row.text == "Zoom out from 1.12×" && row.detail == "“the clipper.” · Release on the reveal")
+        fixture.editor.makeItChange(change, run: run)
+        #expect(fixture.editor.motionCueEditing?.draft.original == cue)
+    }
+
+    @Test(arguments: [true, false])
+    func plannerDoesNotApplyAfterTranscriptOrClipRangeChanges(retimeTranscript: Bool) async throws {
+        let plan = Self.plan(music: false, rewrite: false)
+        let fixture = try fixture(plan: plan)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        var services = try #require(fixture.editor.makeIt.services)
+        services.plan = { _, model, _, _ in
+            var changed = model.project
+            if retimeTranscript { changed.transcript?.words[6].start += 0.01 }
+            else { changed.edits.clips[0].startWordId = "w4" }
+            model.document.replaceProject(changed)
+            model.refresh()
+            return ClipAutopilotSeries(plans: [plan])
+        }
+        fixture.editor.makeIt.services = services
+        let run = try await run(fixture)
+        #expect(run.phase == .failed("This clip changed. Nothing was changed."))
+        #expect(run.rows.isEmpty && fixture.editor.project.motionCues.isEmpty)
+        #expect(fixture.editor.project.edits.cutWordIds == fixture.original.edits.cutWordIds)
     }
 
     @Test func theWholeRunIsOneUndoStepAndEachDecisionUndoesOnItsOwn() async throws {
@@ -183,6 +242,110 @@ private final class Calls: Sendable {
         #expect(editor.project.share.captions["clip-main"] == fixture.original.share.captions["clip-main"])
         #expect(editor.project.clipEffects == fixture.original.clipEffects, "the hook's card goes too")
         #expect(editor.makeIt.run(for: "clip-main") == nil)
+    }
+
+    @Test func missingCueUsesAPlayableLibraryTrackWithCreditAndUndo() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false, rewrite: false), candidates: [Self.generated("0.01"), Self.library])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor, result = try await run(fixture)
+        let entry = try #require(MusicProject.entry(for: "clip-main", in: editor.project))
+        let url = MusicRenderInput.url(for: entry.asset, dataRoot: fixture.root)
+        #expect(try await MusicBedRenderer.durationSeconds(url) == 2)
+        #expect(entry.source == .library && entry.title == Self.library.title && entry.gainDb == ProjectMusic.defaultGainDb)
+        #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch \(Self.library.id)"] && result.spent == 0)
+        let credit = try #require(entry.creditLine)
+        #expect(editor.makeItPostCopy(result).contains(credit))
+        step(fixture.undo) { editor.makeItUndo("music", in: result) }
+        #expect(editor.currentMusic == nil && !editor.makeItPostCopy(result).contains(credit))
+        fixture.undo.undo()
+        #expect(editor.currentMusic == entry && editor.makeItPostCopy(result).contains(credit))
+    }
+
+    @Test func unplayableFreeMatchesFallThroughToARealFolderTrackWithoutPaying() async throws {
+        let fixture = try fixture(candidates: [Self.library, Self.generated("0.01")])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor, calls = fixture.calls, folder = fixture.root.appendingPathComponent("source-music")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let wav = try Self.wav()
+        try Data([0]).write(to: folder.appendingPathComponent("Calm piano.wav"))
+        try wav.write(to: folder.appendingPathComponent("My bed.wav"))
+        editor.musicPanel.services?.fetch = { candidate in calls.record("fetch \(candidate.id)"); return Data([0]) }
+        let result = try await run(fixture)
+        let entry = try #require(editor.currentMusic)
+        #expect(entry.source == .file && entry.title == "My bed" && entry.gainDb == -18)
+        #expect(try Data(contentsOf: MusicRenderInput.url(for: entry.asset, dataRoot: fixture.root)) == wav)
+        #expect(result.rows.first { $0.id == "music" }?.undoable == true)
+        #expect(!calls.all.contains("fetch eleven-1"))
+        editor.claudeMode.clipIDs = ["clip-main"]
+        #expect(editor.claudeModeSummary.contains("music from your folder") && !editor.claudeModeSummary.contains("free library"))
+    }
+
+    @Test func anOmittedCueDoesNotAuthorizeEvenAnAffordableGeneration() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false, rewrite: false), candidates: [Self.generated("0.001")])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let result = try await run(fixture)
+        let row = try #require(result.rows.first { $0.id == "music" })
+        #expect(row.kind == .note && !row.undoable && row.text == "No music added" && row.detail.contains("only free tracks"))
+        #expect(fixture.editor.currentMusic == nil && !fixture.calls.all.contains { $0.hasPrefix("fetch") } && result.spent == 0)
+    }
+
+    @Test func acceptedGenerationCountsAgainstTheCapEvenWhenAudioCannotBeImported() async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [Self.generated("0.001")])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let calls = fixture.calls
+        fixture.editor.musicPanel.services?.generate = { candidate, accepted in
+            calls.record("compose " + candidate.id); await accepted(); return Data([0])
+        }
+        let result = try await run(fixture)
+        #expect(fixture.editor.currentMusic == nil && result.spent == Decimal(string: "0.001")!)
+        #expect(result.rows.first { $0.id == "music" }?.text == "No music added")
+        #expect(calls.all.filter { $0.hasPrefix("compose") } == ["compose eleven-1"])
+    }
+
+    @Test func anExplicitCueCanStillUseItsApprovedGeneration() async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [Self.generated("0.001")])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let result = try await run(fixture)
+        #expect(fixture.editor.currentMusic?.source == .generated && result.spent == Decimal(string: "0.001")!)
+        #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch eleven-1"])
+    }
+
+    @Test(arguments: ["Add an ElevenLabs key in Settings to make music for this clip.", "No current estimate is available."])
+    func noTrackReportsTheGeneratedSourceNote(reason: String) async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [], notes: [.generated: reason])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let result = try await run(fixture)
+        let row = try #require(result.rows.first { $0.id == "music" })
+        #expect(row.text == "No music added" && !row.undoable && row.detail.contains(reason) && !row.detail.contains("cap"))
+        #expect(fixture.editor.currentMusic == nil && result.spent == 0)
+    }
+
+    @Test func anExistingTrackAndItsMixAreNeverReplacedOrOwnedByTheRun() async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        var entry = try await MusicAssetStore.importing(Self.wav(), candidate: Self.library, projectId: editor.project.id, clipId: "clip-main", dataRoot: fixture.root)
+        entry.gainDb = -31; entry.ducking = false
+        let original = try MusicProject.setting(entry, clipId: "clip-main", in: editor.project)
+        step(fixture.undo) { editor.replace(original, name: "Choose my track") }
+        let result = try await run(fixture)
+        let row = try #require(result.rows.first { $0.id == "music" })
+        #expect(editor.currentMusic == entry && !row.undoable && row.text.contains("Kept music"))
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("music search") || $0.hasPrefix("fetch") })
+        editor.makeItUndoAll(result)
+        #expect(MusicProject.entry(for: "clip-main", in: editor.project) == entry)
+    }
+
+    @Test func undoingAnAutomaticPickKeepsALaterManualChoice() async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor, result = try await run(fixture)
+        var own = try #require(editor.currentMusic)
+        own.source = .file; own.license = .own; own.attribution = nil; own.sourceUrl = nil; own.title = "My own track"; own.gainDb = -30
+        let changed = try MusicProject.setting(own, clipId: "clip-main", in: editor.project)
+        step(fixture.undo) { editor.replace(changed, name: "Choose my track") }
+        step(fixture.undo) { editor.makeItUndo("music", in: result) }
+        #expect(editor.currentMusic == own && !editor.makeItPostCopy(result).contains("CC BY"))
     }
 
     @Test func thePriceIsTheCapAndAPriceAboveWhatIsLeftStopsBeforeThatStep() async throws {
@@ -396,10 +559,10 @@ private final class Calls: Sendable {
         let card = try #require(ClipHookTitle.existing(clipID: "clip-main", in: editor.project))
         func row() throws -> String { editor.makeItRowText(try #require(run.rows.first { $0.id == "hook" }), run: run) }
         #expect(try row() == "Claude chose the hook “We ship today”")
-        // The timeline's E1 lane: a press on the card opens its review with the hook's field.
+        // The timeline edits the persisted card without changing which run is in review.
         run.openChoice = nil
         editor.adjustAskClaudeEffect(fromTimeline: card.id)
-        #expect(run.openChoice == "hook" && editor.makeIt.shownClipID == "clip-main")
+        #expect(editor.timelineEffectsOpen && editor.timelineEffectID == card.id && run.openChoice == nil)
         step(fixture.undo) { editor.makeItSetHook("Ship it now", rowID: "hook", run: run) }
         #expect(try row() == "You chose the hook “Ship it now”" && editor.makeItPostCopy(run).hasPrefix("Ship it now\n\n"))
         // ⌘Z puts Claude's words back on the card, and the review follows.
@@ -492,6 +655,7 @@ private final class Calls: Sendable {
         #expect(run.rows.first { $0.id == "rewrite-0" }?.kind == .note, "Rewording Off: the words stay")
         #expect(!fixture.calls.all.contains { $0.hasPrefix("voice") })
         #expect(MusicProject.entry(for: "clip-main", in: editor.project) == nil && run.rows.first { $0.id == "music" } == nil)
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("music search") || $0.hasPrefix("fetch") })
         #expect(editor.makeItStyle.shapes == [.portrait])
         var off = fixed
         off.captions = .off
@@ -528,6 +692,8 @@ private final class Calls: Sendable {
         #expect(editor.makeIt.run(for: "clip-early")?.lines.first == "Waiting for Claude…")
         #expect(editor.makeIt.run(for: "clip-early")?.lines.contains("Reading clip 1 of 2…") == true)
         #expect(editor.keptClips.map(\.id).sorted() == ["clip-early", "clip-main"] && editor.undoSteps == steps + 2)
+        let music = editor.project.music.filter { ["clip-early", "clip-main"].contains($0.clipId ?? "") }
+        #expect(music.count == 2 && Set(music.map(\.id)).count == 2 && music.allSatisfy { $0.title == Self.library.title })
     }
 
     @Test func theDriverPressesOnlyPricedStepsWithinItsBudgetAndNeverGivesUpATake() {

@@ -117,6 +117,16 @@ export function resolveEffort(requested, supported) {
   return null
 }
 
+const strictSchema = value => {
+  const result = { ...value }
+  if (value.properties) {
+    result.properties = Object.fromEntries(Object.entries(value.properties).map(([name, child]) => [name, strictSchema(child)]))
+    if (value.required.length !== Object.keys(value.properties).length) result.required = [...value.required, ...Object.keys(value.properties).filter(key => !value.required.includes(key)).sort()]
+  }
+  if (value.items) result.items = strictSchema(value.items)
+  return result
+}
+
 export function renderConnector(request, connector, catalog, options = {}) {
   const model = options.model ?? connector.defaultModel ?? (connector.id === 'ollama' ? 'gemma4:12b' : 'local-model')
   const modelInfo = connector.models.find(candidate => candidate.id === model)
@@ -156,7 +166,7 @@ export function renderConnector(request, connector, catalog, options = {}) {
       }
     }
     for (const forbidden of connector.cli.forbiddenFlags) assert(!argv.includes(forbidden), `forbidden CLI flag ${forbidden}`)
-    return { kind: 'cli', model, timeoutSeconds: timeout, executable: connector.cli.executable, argv, stdin: user, cwd: '<cwd>', files: connector.id === 'codex' ? { '<io>/schema.json': compactSchema } : {} }
+    return { kind: 'cli', model, timeoutSeconds: timeout, executable: connector.cli.executable, argv, stdin: user, cwd: '<cwd>', files: connector.id === 'codex' ? { '<io>/schema.json': JSON.stringify(strictSchema(schema)) } : {} }
   }
   if (connector.id === 'apple-foundation') {
     return {
@@ -166,15 +176,6 @@ export function renderConnector(request, connector, catalog, options = {}) {
       options: { [options.macOSMajor === 26 ? 'sampling' : 'samplingMode']: 'greedy', maximumResponseTokens: maxOut },
       language: request.language
     }
-  }
-  const strictSchema = value => {
-    const result = { ...value }
-    if (value.properties) {
-      result.properties = Object.fromEntries(Object.entries(value.properties).map(([name, child]) => [name, strictSchema(child)]))
-      if (value.required.length !== Object.keys(value.properties).length) result.required = Object.keys(value.properties).sort()
-    }
-    if (value.items) result.items = strictSchema(value.items)
-    return result
   }
   schema = strictSchema(schema)
   const headers = { ...connector.headers }

@@ -5,7 +5,9 @@
   "sources": {
     "shared/prompts/clip-finder.json": "0f89bd35783ce785195ac22b394104397f77a52600ae88e0172567945372b0f6",
     "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
-    "shared/catalog/llm-providers.json": "43c1919e1a9405c0efee49881ff559fbf21b491b87aec895a0beadee7c5f6bc4"
+    "shared/catalog/llm-providers.json": "43c1919e1a9405c0efee49881ff559fbf21b491b87aec895a0beadee7c5f6bc4",
+    "shared/prompts/voice-rewrite.json": "7364e82dc7090b01ca0853b4f905b6175d17a2d6099498159a9c3b69df8f5b9c",
+    "shared/prompts/patch-rewrite.json": "237b94efad0e698c1f8bf830bd94ee2520de9a9e273f13dcfe0f06ea404621a4"
   },
   "cases": [
     {
@@ -811,6 +813,290 @@
         "cwd": "<cwd>",
         "files": {
           "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-strict-voiceRewrite",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.2; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "voice_rewrite_proposal",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rewrite"
+            ],
+            "properties": {
+              "rewrite": {
+                "type": "string"
+              },
+              "audioTags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "beforeToken",
+                    "tag"
+                  ],
+                  "properties": {
+                    "beforeToken": {
+                      "type": "integer"
+                    },
+                    "tag": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "nextActions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "label",
+                    "instruction"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "instruction": {
+                      "type": "string"
+                    },
+                    "ordinals": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {}
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"low\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"rewrite\",\"audioTags\",\"nextActions\"],\"properties\":{\"rewrite\":{\"type\":\"string\"},\"audioTags\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"beforeToken\",\"tag\"],\"properties\":{\"beforeToken\":{\"type\":\"integer\"},\"tag\":{\"type\":\"string\"}}}},\"nextActions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"label\",\"instruction\",\"ordinals\"],\"properties\":{\"label\":{\"type\":\"string\"},\"instruction\":{\"type\":\"string\"},\"ordinals\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}}}}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-strict-patchRewrite",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.2; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "patch_edits",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "edits"
+            ],
+            "properties": {
+              "edits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "line",
+                    "text",
+                    "reason"
+                  ],
+                  "properties": {
+                    "line": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "audioTags": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "beforeToken",
+                          "tag"
+                        ],
+                        "properties": {
+                          "beforeToken": {
+                            "type": "integer"
+                          },
+                          "tag": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "nextActions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "label",
+                    "instruction"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "instruction": {
+                      "type": "string"
+                    },
+                    "ordinals": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {}
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"low\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"edits\",\"nextActions\"],\"properties\":{\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"line\",\"text\",\"reason\",\"audioTags\"],\"properties\":{\"line\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"audioTags\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"beforeToken\",\"tag\"],\"properties\":{\"beforeToken\":{\"type\":\"integer\"},\"tag\":{\"type\":\"string\"}}}}}}},\"nextActions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"label\",\"instruction\",\"ordinals\"],\"properties\":{\"label\":{\"type\":\"string\"},\"instruction\":{\"type\":\"string\"},\"ordinals\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}}}}}}"
         }
       }
     },

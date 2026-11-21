@@ -136,10 +136,10 @@ public final class MusicSuggestionService: MusicSuggesting {
 
     public func candidates(for brief: MusicBrief, clipSeconds: Double) async -> MusicSuggestionResult {
         var result = MusicSuggestionResult()
-        if let library {
+        if library != nil {
             do {
-                if var match = try await library.search(brief.searchText, keywords: brief.keywords, clipSeconds: clipSeconds).first {
-                    match.reason = brief.reason ?? (match.tags.isEmpty ? nil : match.tags.prefix(3).joined(separator: ", "))
+                if var match = try await browse(brief, clipSeconds: clipSeconds).candidates.first {
+                    match.reason = brief.reason ?? match.reason
                     result.candidates.append(match)
                 } else {
                     result.notes[.library] = "No free track matched \u{201C}\(brief.searchText)\u{201D}. Search other words."
@@ -148,24 +148,10 @@ public final class MusicSuggestionService: MusicSuggesting {
                 result.notes[.library] = Self.note(error)
             }
         }
-        if let eleven {
-            if await hasElevenKey() {
-                do {
-                    let quote = try eleven.quote(prompt: brief.compositionPrompt, clipSeconds: clipSeconds)
-                    let title = brief.mood.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let candidate = MusicCandidate(id: "eleven-" + quote.id.uuidString.lowercased(), source: .generated,
-                                                   title: String((title.isEmpty ? "Made for this clip" : title.prefix(1).uppercased() + title.dropFirst()).prefix(200)),
-                                                   license: .generated, fileExtension: "mp3", prompt: quote.prompt,
-                                                   durationSeconds: Double(quote.lengthSeconds), estimate: quote.estimate,
-                                                   reason: brief.reason ?? "Made to the clip's length")
-                    quotes.withLock { $0[candidate.id] = quote }
-                    result.candidates.append(candidate)
-                } catch {
-                    result.notes[.generated] = Self.note(error)
-                }
-            } else {
-                result.notes[.generated] = "Add an ElevenLabs key in Settings to make music for this clip."
-            }
+        if eleven != nil {
+            let offered = await generation(for: brief, clipSeconds: clipSeconds)
+            result.candidates += offered.candidates
+            result.notes[.generated] = offered.notes[.generated]
         }
         if let own = MusicLibraryFolder.best(MusicLibraryFolder.files(in: folder()), keywords: brief.keywords) {
             var match = own
@@ -175,6 +161,37 @@ public final class MusicSuggestionService: MusicSuggesting {
         return result
     }
 
+    public func browse(_ brief: MusicBrief, clipSeconds: Double, page: Int = 1) async throws -> MusicCatalogPage {
+        guard let library else { throw VoxClipError.providerError("The free music library is unavailable.", provider: "openverse") }
+        let result = try await library.searchPage(brief.searchText, keywords: brief.keywords, clipSeconds: clipSeconds, page: page)
+        let matches = result.candidates.map { candidate in
+            var match = candidate
+            if !match.tags.isEmpty { match.reason = match.tags.prefix(3).joined(separator: ", ") }
+            return match
+        }
+        return MusicCatalogPage(candidates: matches, nextPage: result.nextPage)
+    }
+
+    public func generation(for brief: MusicBrief, clipSeconds: Double) async -> MusicSuggestionResult {
+        guard let eleven else { return .init(notes: [.generated: "Eleven Music pricing is unavailable."]) }
+        guard await hasElevenKey() else {
+            return .init(notes: [.generated: "Add an ElevenLabs key in Settings to make music for this clip."])
+        }
+        do {
+            let quote = try eleven.quote(prompt: brief.compositionPrompt, clipSeconds: clipSeconds)
+            let title = brief.mood.trimmingCharacters(in: .whitespacesAndNewlines)
+            let candidate = MusicCandidate(id: "eleven-" + quote.id.uuidString.lowercased(), source: .generated,
+                                           title: String((title.isEmpty ? "Made for this clip" : title.prefix(1).uppercased() + title.dropFirst()).prefix(200)),
+                                           license: .generated, fileExtension: "mp3", prompt: quote.prompt,
+                                           durationSeconds: Double(quote.lengthSeconds), estimate: quote.estimate,
+                                           reason: brief.reason ?? "Made to the clip's length")
+            quotes.withLock { $0[candidate.id] = quote }
+            return .init(candidates: [candidate])
+        } catch {
+            return .init(notes: [.generated: Self.note(error)])
+        }
+    }
+
     /// The approved quote behind a generated candidate, used once.
     public func quote(for candidate: MusicCandidate) -> MusicQuote? {
         quotes.withLock { $0.removeValue(forKey: candidate.id) }
@@ -182,7 +199,7 @@ public final class MusicSuggestionService: MusicSuggesting {
 
     static func note(_ error: any Error) -> String {
         switch error as? VoxClipError {
-        case .offline: "You're offline, so only your own files are shown."
+        case .offline: "You're offline. The free music library is unavailable."
         case .rateLimited: "The free library asked VoxClip to wait. Try again in a minute."
         default: (error as? LocalizedError)?.errorDescription ?? "This source is not available right now."
         }

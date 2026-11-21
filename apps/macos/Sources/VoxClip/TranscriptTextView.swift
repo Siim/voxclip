@@ -26,7 +26,7 @@ import VoxClipCore
         // An empty dictionary is what stops TextKit 2 from filling the selection; a clear
         // background colour does not.
         text.selectedTextAttributes = [:]
-        text.setAccessibilityLabel("Transcript. Select words, then Delete to cut. Return corrects spelling.")
+        text.setAccessibilityLabel("Transcript. Select one word and type to replace its text. Return edits the word. Delete cuts the selection.")
         text.updateRotors(proposal: false)
         text.configureAccessibilityActions()
         text.installBackdrop()
@@ -1068,7 +1068,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     func showSelectionBar(focus: Bool = false) {
         guard let model, !selecting, !liveScrolling, model.correctionID == nil, !model.findVisible else { return }
         if focus { barFocusRequest += 1; selectionDismissed = false }
-        let view = SelectionBar(model: model, focusRequest: barFocusRequest, rewriteAs: { [weak self] in self?.toggleSelectionStrip() },
+        let view = SelectionBar(model: model, focusRequest: barFocusRequest, editWord: canEditSelectedWord ? { [weak self] in self?.editSelectedWord() } : nil, rewriteAs: { [weak self] in self?.toggleSelectionStrip() },
                                 stripOpen: selectionStripOpen) { [weak self] in
             self?.hideSelectionBar(dismissed: true); self?.window?.makeFirstResponder(self)
         }
@@ -1245,6 +1245,34 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         if modified { states.append("AI modified") }
         return states
     }
+    /// Only a selected, original transcript word can accept typing. A folded cut or a generated
+    /// passage can also map to a source word ID, but editing that ID would change the wrong text.
+    private var canEditSelectedWord: Bool {
+        guard let model, model.capabilities.edit, !model.findVisible, model.correctionID == nil,
+              model.proposal == nil, !model.sendConfirmation.isPresented,
+              model.selectedWordIDs.count == 1, model.selectedPauseIDs.isEmpty,
+              let id = model.selectedWordIDs.first, let index = model.index(id), model.words[index].kind == .word,
+              let span = map.span(id: id), span.id == id, span.selectable, !span.pause, span.ids.isEmpty,
+              selectedRanges.count == 1, selectedRange() == span.range else { return false }
+        return true
+    }
+    private func editSelectedWord() {
+        guard canEditSelectedWord else { return }
+        model?.beginCorrection()
+        updateCorrection()
+    }
+    /// Also used by the application menu: an unmodified J, for instance, belongs to the word
+    /// under edit. Space, Delete, arrows and command shortcuts keep their normal behavior.
+    func acceptsWordTyping(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown, event.modifierFlags.isDisjoint(with: [.command, .control, .function]),
+              let chars = event.characters, event.keyCode != 49, !hasMarkedText(),
+              let window, window.firstResponder === self, canEditSelectedWord else { return false }
+        if chars.isEmpty { return event.modifierFlags.contains(.option) && !(event.charactersIgnoringModifiers ?? "").isEmpty }
+        return chars.unicodeScalars.allSatisfy {
+            !CharacterSet.controlCharacters.contains($0) && !CharacterSet.whitespacesAndNewlines.contains($0)
+                && !(0xF700...0xF8FF).contains($0.value)
+        }
+    }
     override func keyDown(with event: NSEvent) {
         model?.focusedPane = .transcript
         if let row = model?.sendConfirmation, row.isPresented {
@@ -1280,6 +1308,13 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
             if event.keyCode == 126, let first = model.words.first { model.select(first.id); return }
             if event.keyCode == 125, let last = model.words.last { model.select(last.id); return }
             super.keyDown(with: event); return
+        }
+        if acceptsWordTyping(event) {
+            editSelectedWord()
+            // Hand the original keystroke to the native input method, with the existing text
+            // selected. Subsequent keystrokes go straight to the very same field editor.
+            if let editor = correction?.currentEditor() as? NSTextView { editor.keyDown(with: event) }
+            return
         }
         switch event.keyCode {
         case 51, 117:
@@ -1328,7 +1363,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     override func copy(_ sender: Any?) { model?.copySelection() }
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
-        for (title, action) in [("Cut", #selector(cutWords)), ("Restore", #selector(restoreWords)), ("Correct spelling…", #selector(correctWord)), ("Play from here", #selector(playHere)), ("Preview this cut", #selector(previewCut)), ("Make clip from selection", #selector(makeClip)), ("Copy text", #selector(copy(_:)))] { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
+        for (title, action) in [("Cut", #selector(cutWords)), ("Restore", #selector(restoreWords)), ("Correct spelling…", #selector(correctWord)), ("Illustrate phrase…", #selector(illustratePhrase)), ("Play from here", #selector(playHere)), ("Preview this cut", #selector(previewCut)), ("Make clip from selection", #selector(makeClip)), ("Copy text", #selector(copy(_:)))] { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
         let rewrite = NSMenuItem(title: model?.rewriteAsksFirst == true ? "Rewrite…" : "Rewrite", action: #selector(rewriteWords), keyEquivalent: "r")
         rewrite.keyEquivalentModifierMask = [.command, .shift]; rewrite.target = self; menu.addItem(rewrite)
         if let model, model.app.voiceLabRewriteEnabled, let segment = voiceLabSegment {
@@ -1351,6 +1386,11 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         if [#selector(toggleVoiceLab), #selector(deleteVoiceLab), #selector(chooseVoiceLab(_:))].contains(item.action) {
             return model?.app.voiceLabRewriteEnabled == true && voiceLabSegment != nil && model?.capabilities.edit == true && model?.capabilities.exporting == false && model?.capabilities.aiBusy == false
         }
+        if item.action == #selector(illustratePhrase) {
+            guard let model, model.capabilities.edit, !model.selectedWordIDs.isEmpty else { return false }
+            if case .ready = IllustrativeCutawaySession(model: model).readiness { return true }
+            return false
+        }
         if item.action == #selector(rewriteWords) { return model?.capabilities.ai == true && model?.selectedIDs.isEmpty == false }
         if [#selector(cutWords), #selector(restoreWords)].contains(item.action) {
             return model?.capabilities.edit == true && (model?.selectedIDs.isEmpty == false || model?.selectedPauseIDs.isEmpty == false)
@@ -1366,6 +1406,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     @objc private func playHere() { model?.transport(" ", shift: true) }
     @objc private func previewCut() { model?.transport("p") }
     @objc private func makeClip() { model?.makeClip() }
+    @objc private func illustratePhrase() { model?.openGeneratedIllustrationReview() }
     @objc private func rewriteWords() { model?.runRewrite() }
     private var voiceLabSegment: VoiceLabSegment? {
         guard let model else { return nil }
@@ -1397,8 +1438,12 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         // The word's own box, so a word after a fold is not half its kern short (`glyphX`).
         let rect = textBox(of: span.range) ?? convert(window.convertFromScreen(firstRect(forCharacterRange: span.range, actualRange: nil)), from: nil)
         let field = NSTextField(frame: CGRect(x: rect.minX, y: rect.minY, width: max(90, rect.width + 24), height: 28))
-        field.stringValue = model.correctionText; field.font = DesignValues.transcriptFont(size: model.textSize); field.delegate = self; field.setAccessibilityLabel("Correct spelling, audio stays the same")
-        addSubview(field); correction = field; correctionWordID = id; window.makeFirstResponder(field); field.selectText(nil)
+        field.stringValue = model.correctionText; field.font = DesignValues.transcriptFont(size: model.textSize); field.delegate = self; field.setAccessibilityLabel("Edit word, original audio stays the same")
+        addSubview(field); correction = field; correctionWordID = id
+        window.makeFirstResponder(field)
+        // Selecting through the control can end and restart editing, which our focus-loss
+        // handler treats as a commit. Select directly in the already active field editor.
+        field.currentEditor()?.selectAll(nil)
     }
     #if DEBUG
     /// Installs a correction field without a window, for the headless correction tests.

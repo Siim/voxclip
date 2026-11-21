@@ -17,6 +17,8 @@ import Testing
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         var project = try DebugExplorer.fiveQuestions(from: base)
+        // The debug scene uses a display slug; editing a title upgrades the document and requires its real UUID.
+        project.id = base.id
         project.export.aspect = .landscape
         return project
     }
@@ -306,7 +308,7 @@ import Testing
         editor.undoManager = undo
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
-        #expect(PanelJob.available(in: editor) == [.captions, .demo] && shell.panelJob(for: editor) == .captions)
+        #expect(PanelJob.available(in: editor) == [.captions, .music, .picture, .demo] && shell.panelJob(for: editor) == .captions)
         // Rewrite can't be picked while no session can show it.
         shell.choosePanelJob(.rewrite, for: editor)
         #expect(shell.panelJob(for: editor) == .captions)
@@ -315,14 +317,14 @@ import Testing
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
         let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
-        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .demo] && shell.panelJob(for: editor) == .rewrite)
+        #expect(PanelJob.available(in: editor) == [.captions, .music, .picture, .rewrite, .demo] && shell.panelJob(for: editor) == .rewrite)
         // The switcher shows Captions beside the open session, with no undo step and no document change.
         shell.choosePanelJob(.captions, for: editor)
         #expect(shell.panelJob(for: editor) == .captions && session.isOpen)
         #expect(!undo.canUndo && !editor.document.isDocumentEdited && !editor.document.hasUnautosavedChanges)
         // The pick holds across a tab switch and back.
         shell.selection = .clip("five-2")
-        #expect(PanelJob.available(in: editor) == [.captions, .demo] && shell.panelJob(for: editor) == .captions)
+        #expect(PanelJob.available(in: editor) == [.captions, .music, .picture, .demo] && shell.panelJob(for: editor) == .captions)
         shell.selectTab(.clip("five-1"))
         #expect(editor.rewrite === session && shell.panelJob(for: editor) == .captions)
         shell.choosePanelJob(.rewrite, for: editor)
@@ -336,8 +338,36 @@ import Testing
         #expect(shell.panelJob(for: editor) == .rewrite)
         // Text Rewrite needs no Voice Lab (impl-plan V13): with it off the job stays.
         editor.app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .demo] && shell.panelJob(for: editor) == .rewrite)
+        #expect(PanelJob.available(in: editor) == [.captions, .music, .picture, .rewrite, .demo] && shell.panelJob(for: editor) == .rewrite)
         #expect(!undo.canUndo && !editor.document.isDocumentEdited)
+    }
+
+    @Test func timelineEditorsRevealTheInspectorAndReturnWithoutLeakingAcrossClips() async throws {
+        let (shell, editor) = try await openShell()
+        defer { editor.close() }
+        shell.windowWidth = 1280
+        shell.choosePanelJob(.music, for: editor)
+        editor.sourceTime = 1
+        try editor.addTimelineTitle("Timeline title")
+        let title = try #require(editor.timelineEditableEffects.first { $0.text == "Timeline title" })
+        editor.finishTimelineEditor(in: shell)
+        if shell.viewerShown { shell.toggleViewer() }
+
+        editor.adjustAskClaudeEffect(fromTimeline: title.id)
+        #expect(shell.viewerShown && shell.panelJob(for: editor) == .timelineEdit)
+        #expect(editor.timelineEffectsOpen && editor.timelineEffectID == title.id && editor.focusedPane == .panel)
+        var changed = editor.project
+        changed.clipEffects.removeAll { $0.id == title.id }
+        editor.replace(changed, name: "Remove title")
+        #expect(editor.timelineEffectsOpen && editor.timelineEffectID == nil)
+        editor.finishTimelineEditor(in: shell)
+        #expect(shell.panelJob(for: editor) == .music && editor.focusedPane == .timeline)
+
+        shell.selection = .clip("five-1")
+        editor.openTimelineEditor(.trim)
+        #expect(editor.timelineEditor?.mode == .trim && shell.panelJob(for: editor) == .timelineEdit)
+        shell.selection = .clip("five-2")
+        #expect(editor.timelineEditor == nil && shell.panelJob(for: editor) == .music)
     }
 
     /// The header shows the job and the open tab's name, and follows a tab switch and a
@@ -345,11 +375,24 @@ import Testing
     @Test func theHeaderNamesTheJobAndTheOpenTab() async throws {
         let (shell, editor) = try await openShell()
         defer { editor.close() }
-        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director", "Context demo", "Motion", "Export", "Make it postable", "Ask Claude"])
+        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Music", "Picture", "Rewrite", "Voice", "Takes", "Director", "Context demo", "Motion", "Export", "Make it postable", "Ask Claude", "Timeline edit"])
+        // Music and Picture are already labelled in the switcher. Keep Full Take readable
+        // at the narrow inspector size, with both entry points still fully inside the header.
+        for job in [PanelJob.music, .picture] {
+            let compact = markers(PanelHeader(model: editor, shell: shell, job: job).frame(width: 300), size: CGSize(width: 300, height: 30))
+            #expect(compact["panel.title"] == nil)
+            let context = try #require(compact["panel.context"])
+            let music = try #require(compact["panel.job.music"]), picture = try #require(compact["panel.job.picture"])
+            #expect(context.width >= 45 && context.maxX <= music.minX && picture.maxX <= 300)
+        }
         let found = markers(PanelHeader(model: editor, shell: shell, job: .captions).frame(width: 404), size: CGSize(width: 404, height: 30))
         #expect(found["panel.header"]?.size == CGSize(width: 404, height: 30))
         #expect(found["panel.job.captions"]?.size == CGSize(width: 26, height: 22))
-        #expect(found["panel.job.captions"].map { abs($0.maxX - 371) <= 0.5 } == true)
+        let music = try #require(found["panel.job.music"])
+        #expect(music.width >= 56 && music.height == 22)
+        #expect(found["panel.job.captions"].map { $0.maxX < music.minX } == true)
+        let picture = try #require(found["panel.job.picture"])
+        #expect(music.maxX < picture.minX && abs(picture.maxX - 371) <= 0.5)
         #expect(found["panel.job.demo"]?.size == CGSize(width: 26, height: 22))
         #expect(found["panel.job.demo"].map { abs($0.maxX - 398) <= 0.5 } == true)
 

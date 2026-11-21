@@ -81,7 +81,7 @@ LLMResult {                      // what the runner returns to features
 
 Every schema in `shared/prompts/` and the catalog's `testRequest` uses only these keywords: `type` (`object`, `array`, `string`, `integer`, `number`, `boolean`), `properties`, `required`, `additionalProperties: false`, `items`, and `enum` on strings. Every object sets `additionalProperties: false`; `required` is a subset of its properties, allowing optional additive fields such as Rewrite's `audioTags`. Supplied optional fields are structurally validated; absence is valid. Numeric ranges, string lengths, formats, `$ref`, `anyOf`, nullable types and defaults are not allowed.
 
-Both platforms' HTTP wire construction recursively promotes optional properties to required for provider structured-output schemas; the prompt requests an empty annotation array when none apply. Canonical requests and reply validation retain optionality, so older replies remain valid. Existing exhaustive schemas are unchanged. CLI schemas retain the canonical form. A unit test validates every shared schema against this subset. Local structured-generation features must explicitly support a feature's schema before offering it.
+Both platforms' HTTP structured-output requests and Codex CLI `--output-schema` files use the same rule: wire construction recursively promotes optional properties to required for provider structured-output schemas; the prompt requests an empty annotation array when none apply. Canonical requests and reply validation retain optionality, so older replies remain valid. Existing exhaustive schemas are unchanged. Claude Code’s `--json-schema` retains the canonical form. Codex requires all declared keys at every object depth, including objects in arrays; a rewrite without annotations returns `audioTags: []`. A unit test validates every shared schema against this subset. Local structured-generation features must explicitly support a feature's schema before offering it.
 
 ### 2.3 Structural validation
 
@@ -918,7 +918,7 @@ codex exec --json --ephemeral --skip-git-repo-check --ignore-user-config
            -c mcp_servers={}
            -c developer_instructions={TOML basic string of system}
            --disable {f} …                                    for each f in disableFeatures present in features list
-           --output-schema {io}/schema.json                   compact canonical schema
+           --output-schema {io}/schema.json                   compact strict wire schema (§2.2)
            --output-last-message {io}/last.json
            -
 stdin: {cachedBlock}\n\n{instruction}
@@ -1894,7 +1894,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 - **Look** (v2). Read ignoring case and non-letters, so "B&W" is `bw`; "black and white" and "monochrome" are `bw` and "none" is `original`. An unknown look becomes `original` without its reason (a repair). No look is `original`.
 - **Speed** (v2). A rate within 0.005 of 1, or no speed, is no speed. A rate that is not a positive finite number is dropped. Otherwise it is clamped to `minSpeed`…`maxSpeed` (0.75…1.5; a repair) and keeps `speedReason`.
 - **Music.** At most `maxMusic` (3) suggestions, each with a title and a prompt. A prompt without "instrumental" (case-insensitive) gets `music.instrumentalSuffix`. `underVoiceDb` is clamped to 6…30 dB, or the default 18 when unreadable. A pick that names no kept suggestion becomes the first one; there is no pick without suggestions.
-- **Zooms.** The start word must be a kept word of the span, not cut by the plan. `untilWord` moves inside the span when it lies outside it or before `word`. It is then shortened until the zoom lasts at most `maxZoomSeconds` (6 s) and ends on a listed word (a repair). The scale is clamped to 1.05…1.35 (`MotionCue.maximumScale`), or the default 1.15 when unreadable. A zoom overlapping an earlier one is dropped. At most `maxZooms`.
+- **Zooms.** The `directionalZooms` section (prompt version 10) adds `direction` (`zoomIn` for emphasis, `zoomOut` for release) and asks for no cue when there is no useful spoken beat. New cues need a reason, both endpoints on spoken words, one kept phrase of 0.6–6 source seconds with no cut items or tightened pauses inside, at least 5 seconds between starts, and a crop of 1.05×–1.2×. Invalid cues are dropped rather than moved to different words. The list is capped at `maxZooms`. Direction is required in strict connector schemas (including Codex) but optional when reading replies and saved plans. Legacy entries without direction keep the earlier span repair, scale clamping and constant crop.
 - **Score and verdict.** The score is rounded and clamped to 1…10, or the default 5 when unreadable. The verdict is read ignoring case and non-letters ("post first" is `postFirst`). Otherwise it is the one the score implies: 9+ `postFirst`, 7+ `post`, 5+ `casualPost`, else `holdBack`.
 - **Length** (v2). `seconds` is measured as §16.2 says. Past `maxReasonedSeconds` (60 s) the plan gets an `overLength` flag whatever its reason; past `maxTargetSeconds` (45 s) with an empty `lengthReason`, a `longWithoutReason` flag. Flags change nothing in the plan.
 - **Title, hook, questions.** An empty title becomes `EditingAlgorithms.clipTitle` of the span's words. A question needs a question and an answer; options are deduplicated and cut to `maxOptions`; at most `maxQuestions`.
@@ -1914,7 +1914,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 - captions: the project's `CaptionSettings`, with `styleId` and merge-patch overrides `text.transform`, `layout.maxWords` (and `maxLines` 1 for one word), and `font.file`/`family`/`weight` when the font is bundled. Otherwise `pendingFont` names it, and the style's own font renders until it is bundled. The reason is `captions.reason`;
 - the look (v2): `.look(clipID:look:)`, always present, so the review can show "Claude chose Warm · Change". `original` needs no rendering;
 - the speed (v2): `.speed(clipID:speed:)`, only when the plan has one;
-- each zoom: a constant-scale `MotionCue` (`<clipID>-zoom-N`) over the words' source time;
+- each zoom: a `MotionCue` over the indexed words' exact source time; new zoom-ins approach, hold and return to wide, while zoom-outs start close and widen. The review quotes the actual transcript phrase with its reason. Change opens that saved cue's editor, and review Undo removes only an unchanged cue the run added. Make it postable abandons a plan if the transcript words or clip bounds changed while planning. Applying a cue never replaces or overlaps an existing one and rechecks the clip and its kept source intervals. The existing Reduce Motion preview path suppresses the cue without changing the saved edit or export;
 - the music cue: the picked track, the alternatives and `editedSeconds`, the length at the clip's own speed. A bed is staged for the rendered length (design.md §6.9), so a track of `editedSeconds` always covers the clip;
 - the hook text, and the share text (`project.share.captions[clipID]`).
 

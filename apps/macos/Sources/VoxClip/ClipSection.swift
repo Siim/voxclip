@@ -67,7 +67,7 @@ import VoxClipCore
         var parts: [String] = []
         if controls.speed != 1 { parts.append(ProjectClipControls.speedLabel(controls.speed)) }
         if let shape = controls.shape { parts.append(shape.rawValue) }
-        if controls.look != .original { parts.append(controls.look.label) }
+        if controls.look != .original || controls.colorAdjustments != nil { parts.append(ClipPictureControls.label(for: controls)) }
         if controls.muteSource { parts.append("Source muted") } else if controls.gainDb != 0 { parts.append(MusicSection.gainLabel(controls.gainDb)) }
         if controls.fadeInSeconds > 0 || controls.fadeOutSeconds > 0 { parts.append("Fades") }
         if controls.flipHorizontal { parts.append("Flipped") }
@@ -84,21 +84,17 @@ import VoxClipCore
                        label: "Speed", text: ProjectClipControls.speedLabel(drafts.speed ?? controls.speed),
                        draft: { drafts.speed = $0 }) { model.setSpeed($0) }
             }
-            chips(ProjectClipControls.speedPresets.map { ($0, ProjectClipControls.speedLabel($0)) }, selected: controls.speed,
+            Self.chips(ProjectClipControls.speedPresets.map { ($0, ProjectClipControls.speedLabel($0)) }, selected: controls.speed,
                   identifier: "speed", name: "Speed") { model.setSpeed($0) }
             CaptionPropertyRow("Shape", marker: "clip.shape") {
                 Text(controls.shape == nil ? "As the project" : "This clip only").font(VCType.small.font())
                     .foregroundStyle(DesignValues.color("text.tertiary"))
             }
-            chips(ClipShape.allCases.map { ($0, $0.rawValue) }, selected: controls.shape, identifier: "shape", name: "Shape") { shape in
+            Self.chips(ClipShape.allCases.map { ($0, $0.rawValue) }, selected: controls.shape, identifier: "shape", name: "Shape") { shape in
                 // The chosen shape again goes back to the project's frame.
                 model.setShape(controls.shape == shape ? nil : shape)
             }
-            CaptionPropertyRow("Look", marker: "clip.look") {
-                Text(controls.look == .original ? "As filmed" : controls.look.label).font(VCType.small.font())
-                    .foregroundStyle(DesignValues.color("text.tertiary"))
-            }
-            chips(ClipLook.allCases.map { ($0, $0.label) }, selected: controls.look, identifier: "look", name: "Look") { model.setLook($0) }
+            ClipPictureControls(model: model)
             CaptionPropertyRow("Volume", marker: "clip.volume") {
                 if controls.muteSource {
                     // Muted, the level has nothing to act on: say so, with the way back.
@@ -217,7 +213,7 @@ import VoxClipCore
     }
 
     /// A row of capsule chips (the clip style card's chip, one size smaller); the chosen one is marked selected.
-    private func chips<Value: Hashable>(_ options: [(Value, String)], selected: Value?, identifier: String, name: String,
+    static func chips<Value: Hashable>(_ options: [(Value, String)], selected: Value?, identifier: String, name: String,
                                         choose: @escaping (Value) -> Void) -> some View {
         HStack(alignment: .top, spacing: 0) {
             ClipStyleFlowLayout(spacing: VCTokens.spacingChipGap) {

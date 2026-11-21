@@ -50,6 +50,7 @@ enum ContextDemoUIError: Error {
     }
 
     private(set) var phase = Phase.choosing
+    var illustrationReviewRequest: IllustrativeCutawayReviewRequest?
     private(set) var targetKind = ContextDemoTargetKind.webPage
     private(set) var urlText = ""
     private(set) var projectURL: URL?

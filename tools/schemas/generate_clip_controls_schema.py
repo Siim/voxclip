@@ -4,8 +4,8 @@
 Schema-version decision: clip controls stay in schemaVersion 4, as `music` does. Version 4 is unreleased (0.1.0 is
 Unreleased), already carries the optional root features (contextDemo, motionCues, music), and `clipControls` is omitted when
 empty and never stores an entry at its defaults, so a project without clip controls saves byte-identically. Versions 1-3
-must not carry it; storing a clip's first control promotes the project to 4. Windows opens, validates and saves the field
-unchanged and refuses to export a clip that uses it.
+must not carry it; storing a clip's first control promotes the project to 4. Color presets keep the existing look IDs;
+non-neutral adjustments are stored separately.
 
 Idempotent: running it twice leaves the same bytes. Run from anywhere; it rewrites the schema in place.
 """
@@ -44,9 +44,15 @@ def clip_controls_definition():
     fields['coverSeconds'] = {'type': 'number', 'minimum': 0,
                               'description': '"Cover frame chosen": the source second of the clip\'s cover, written beside each '
                                              'export as <name>-cover.jpg and embedded as its cover art. Omitted when there is none.'}
+    color_controls = ['brightness', 'contrast', 'saturation', 'warmth']
+    fields['colorAdjustments'] = {
+        'type': 'object', 'additionalProperties': False, 'required': color_controls,
+        'description': 'Signed color adjustments applied after the base look. Omit when all values are zero.',
+        'properties': {name: {'type': 'integer', 'minimum': -100, 'maximum': 100} for name in color_controls},
+        'not': {'properties': {name: {'const': 0} for name in color_controls}}}
     return {
         'description': 'One clip\'s playback controls; doc/design.md section 6.9. Every required key is written; reframe and '
-                       'coverSeconds are omitted when absent. Runtime also checks that '
+                       'coverSeconds and colorAdjustments are omitted when absent. Runtime also checks that '
                        'the clip exists, that a clip has one entry and that no entry is stored at its defaults.',
         'type': 'object', 'additionalProperties': False, 'required': required, 'properties': fields}
 

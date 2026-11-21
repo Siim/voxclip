@@ -20,6 +20,7 @@ struct WholeClipAutoQuote: Equatable {
 enum WholeClipAutoOutcome: Equatable {
     case revoiced(WholeClipRevoiceRecord, spent: Decimal)
     case failed(String, spent: Decimal)
+    case submissionUnconfirmed(String, spent: Decimal)
     /// The whole clip can't be done here: a part that can't be placed, a stop before anything was sent, a picture that can't
     /// be matched, a lip sync that failed on this Mac, or a voice that can't fit the clip as edited within these rules (its
     /// voice paid). The changed phrases are voiced instead, with the line saying why (ADR-R46).
@@ -30,6 +31,8 @@ enum WholeClipAutoOutcome: Equatable {
         switch session.phase {
         case .used:
             self = session.record.map { .revoiced($0, spent: session.spent) } ?? .failed("The whole clip couldn't be put in.", spent: session.spent)
+        case .stopped(let line) where session.submissionUnconfirmed:
+            self = .submissionUnconfirmed(line, spent: session.spent)
         case .stopped(let line):
             // A stop that would only repeat (whatever was paid for the voice is charged to the run) or a Fit stop patches.
             let patches = session.failure?.repeats == true || session.failure?.step == .fit
@@ -98,6 +101,10 @@ extension EditorModel {
                              detail: (reason.map(WholeClipRevoice.callout) ?? "") + " Laid out on the clip as edited"
                                  + " · \(model) · " + VoiceLabCostPresentation.format(spent),
                              play: nil, undoable: true)
+        case .submissionUnconfirmed(let line, let spent):
+            // The per-video budget cannot authorize more work while the charge for this job is unknown.
+            run.charge(spent); run.voiceSpent += spent; run.cancelled = true
+            return MakeItRow(id: "wholeClip", kind: .note, text: "Stopped to check the lip-sync charge", detail: line)
         case .failed(let line, let spent):
             run.charge(spent)
             run.voiceSpent += spent
@@ -190,7 +197,7 @@ extension MakeItServices {
         guard let session = await openWholeClip(request, editor: editor), let whole = session.wholeClip else {
             return .failed("Rewrite couldn't open this clip. Nothing was sent.", spent: 0)
         }
-        defer { if session.isOpen { editor.closeRewrite(returnFocus: false) } }
+        defer { if session.isOpen, !whole.submissionUnconfirmed { editor.closeRewrite(returnFocus: false) } }
         guard let price = whole.quote?.wholeUSD, let budget = request.budget, price <= budget else {
             return .failed("Revoicing the whole clip passes this video's cap. Nothing was sent.", spent: 0)
         }
