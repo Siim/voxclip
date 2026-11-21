@@ -1,5 +1,76 @@
 # Windows fixed contracts
 
+### 2026-11-21 — A project leave never starts over paid Rewrite takes (track/v2-rel-d, package D)
+
+Twin, in part, of the Mac entry of the same date (voice-lab §8.16 item 10). `ProjectLeaveBoundary.BeginAsync` disposed the Rewrite through `IsLeaving` even when the save then failed, retiring its paid windows.
+
+- **The rule:** `BeginAsync` reads `HoldsPaidWork` first and throws `ProjectLeaveHeldException` before anything freezes, saves or closes. Its `Copy` is "Rewrite has paid takes you haven't used. Use or discard them in Rewrite, then leave this project. They are kept."
+- **Built (App):** `ProjectLeaveBoundary.HoldsPaidWork` (`Func<bool>?`), `ProjectLeaveHeldException` with `Copy`.
+- **Tests:** win-ui `ProjectLeavePaidWorkTests` (new).
+- **Owes:**
+  - `EditorPage.xaml.cs` must set `HoldsPaidWork = () => rewrite?.HasPaidTakes == true` and show the exception's `Copy` as an inline notice. Until then the seam does nothing in production, and a leave, Esc and the panel's X still dispose the Rewrite.
+  - Release boundary: `VoxClip.txt` lacks `ProjectLeaveHeldException` (type, `.ctor`, `Copy`) and `ProjectLeaveBoundary.get_/set_HoldsPaidWork`. Regenerate with `ReleaseBoundary update`.
+  - Windows has no whole-clip runner, so there is no Claude-mode hand-back to twin yet.
+
+### 2026-11-21 — Paid takes are journaled and reused for free (track/v2-rel-e, package E)
+
+Twin of the Mac entry of the same date (voice-lab §3.4 item 11).
+
+- **The rule:**
+  - Media `VoiceLabTakeJournal` writes the same `voxclip-take-journal/1` entry as the Mac beside each paid take (`.<assetId>.json.partial`, flushed, renamed, folder synced), updates its timing and checks (`UpdateTiming`, `UpdateChecks`, `JournalTimingAsync`, `JournalChecksAsync`), and `Match` adopts the newest adoptable entry with the Mac's key, asset and claim rules (`VoiceLabTakeJournalClaims`). An entry with a hard failure is never adopted.
+  - The adopted take's synthesis action is approved with the set (the client pairs each take's requests) but never sent. `VoiceLabTakeQuote.PricedActions` and `VoiceLabTakeRunQuote.PricedActions`, and so `Estimate`, leave it out.
+  - No retention pass: a take run settles its project's journal once before its first adoption (`Settle`: an entry whose asset is used, gone or older than 60 days goes; the asset stays).
+- **Built:** Media `VoiceLabTakeJournal` (`Write`, `UpdateTiming`, `UpdateChecks`, `List`, `Match`, `Remove`, `Settle`), `VoiceLabTakeJournalKey`, `VoiceLabTakeJournalEntry` (`Adoptable`), `VoiceLabTakeJournalChecks`, `VoiceLabTakeJournalClaims`; `VoiceLabTakeRun` `ReserveAdoptionAsync`, `AdoptAsync`, `ReleaseUnused`; Core `VoiceLabTakeQuote.AdoptedAsset`, `PricedActions`, `VoiceLabTakeRow.AdoptedAsset`, `VoiceLabTakeRunQuote.PricedActions`.
+- **Deleted:** `VoiceLabTakeRun.PreservePaidAudioAsync(result, requestId)`; it now takes the pending take and its quote.
+- **Tests:** Media `VoiceLabTakeJournalTests` (new; `SettleDropsUsedGoneAndAgedEntriesAndKeepsTheirAssets`), `VoiceLabTakeRunAdoptionTests` (new; `APaidTakeIsAdoptedForFreeByTheNextRun`, `TakesThatFailedTheirChecksAreNeverAdopted`, `APaidTakeIsNeverAdoptedTwiceAndNeedsActiveConsent`); both replay `take-journal-cases.json` (35 cases). Media 1294 (1124 passed, 170 skipped, 0 failed).
+- **Owes:**
+  - Core `VoiceLabTakeBatch` still sums `Quote.Actions` for the batch estimate, `EstimateOf` and the parts estimate, so a run over several windows prices and counts an adopted take's synthesis (it overstates, never understates). Switch them to `PricedActions` and add a parts-run test with an adopted take.
+  - Dropping a used take's entry at project close: call `Settle` with the project's references, through a public wrapper (`VoiceLabTakeJournal` is internal).
+  - A VoiceLabScratch sweep: `VoiceLabTakeScratch` folders carry no owner record, and `timing/` and `heard/` belong to AppServices.
+  - Release boundary: `VoxClip.Media.txt` lacks the journal types and the new `VoiceLabTakeRun` members, and `VoxClip.Core.txt` the `AdoptedAsset` and `PricedActions` members. Regenerate with `ReleaseBoundary update`.
+
+### 2026-11-21 — Whole-clip parts under 4 s join a neighbour (track/v2-rel-b, package B)
+
+Twin of the Mac's part rule (voice-lab §8.14 item 3). Nothing on Windows runs a whole clip yet.
+
+- **The rule:** `WholeClipRevoice.MinimumPartSeconds` = 4.0. In `WholeClipScript.Parts`, a part under it joins the part before it, else the one after, within `MaximumPartCharacters`; the joined part may pass `MaximumPartSeconds`.
+- **Changed (Core):** `WholeClipRevoiceRules.cs`. **Tests:** `WholeClipRevoiceReplayTests` replays the regenerated `whole-clip-revoice-cases.json` (31 script cases) and asserts the constant. Red without the merge: `parts-merge-a-short-last-part-into-the-one-before` fails. Core 3484 passed, 29 skipped.
+- **Owes:** release boundary: `VoxClip.Core.txt` lacks `WholeClipRevoice :: field public MinimumPartSeconds`.
+
+### 2026-11-21 — The committed baseline passes CI again (track/v2-rel-z, package Z)
+
+- **CI:** the hosted Debug Editor launch smoke builds from `apps/windows`, so `global.json` pins SDK 10; since the `windows-2025-vs2026` image of 2026-11-16 the root build picked SDK 11.0.100 and failed with 230 CsWinRT1032 errors. The step prints the resolved SDK and returns to the root before `launch-smoke.ps1 -Root $PWD.Path`; `StartupCheckTests` pins the order.
+- **Release boundary:** c6c0a000's clip colour adjustments (`ClipColorAdjustments`, its converter, `ClipLookRecipe`, `ClipPicture.Grade`) and directional autopilot zooms are approved in `VoxClip.Core.txt` and `VoxClip.Media.txt` (62 added, 9 stale removed, regenerated from the Release typecheck surrogate).
+- **Tests:** `RoundFourTests` warms all 960 pointer positions before the timeline allocation window (it stopped at 512); the 1024-byte bound is unchanged.
+
+### 2026-11-21 — First takes land more often (track/v2-rel-f, package F)
+
+Twin of the Mac entry of the same date (voice-lab §8.2.2, §8.5, §6.13 item 6).
+
+- **The rule:**
+  - `RewriteSession.StuckReason` uses the Mac's order: provider, timing, too little speech, length (`RewriteGeneration.DurationCarries`: keep source, cut or match, from the take's own fit; Windows renders Cut and Match natively, so no renderer check), word check, voice check, other.
+  - Core `ElevenLabsVoiceLab` lets a dialogue segment end up to `VoiceLabProviderTiming.OverrunTolerance` (0.25 s) past the PCM.
+  - `RewriteGeneration.InitialVoice(voices, preferred, anchor, otherVideos)` never starts with another video's own voice; `VideoVoiceLabChanged` calls `RefreshInitialVoiceAsync` when the per-video book loads, guarded by `!HasPaidTakes`, not running and not accepting.
+- **Built (App):** `RewriteGeneration.AnchorVoice`, `OtherVideoVoices`, `RefreshInitialVoiceAsync`, `DurationCarries`, `ChooseInitialVoice`; `RewriteSession.HardFailures`, `OtherVideoVoices`. The two-argument `InitialVoice` is gone. The release allowlist `VoxClip.txt` was regenerated for them.
+- **Tests:** win-ui `RewriteAutoFixReasonTests` (new; `AFailedWordCheckTooLongForEveryDurationIsRewordedShorter`: one wording request, two takes, no Try another first). Core replays the updated `dialogue-cases.json` and `v4-timing-cases.json`.
+- **Next package:** `VideoVoiceFlowTests.EachVideoGetsItsOwnVoiceAndThePreviousOneIsRemovedThroughTheDeletion` fails when its class runs alone (it reads `first.Line` while the background find can move it on); it passes in the full suite and failed the same way at base.
+
+### 2026-11-21 — Lip-sync reliability (track/v2-rel-c, package C)
+
+Mac only (voice-lab §9). Windows has no lip-sync provider, so nothing changed here.
+
+### 2026-11-21 — Only the user's own edits make paid takes stale (track/v2-rel-a, package A)
+
+Twin of the Mac entry of the same date (voice-lab §8.15 item 8).
+
+- **The rule:**
+  - Core `ProjectVoiceTakeIdentity` (`RewriteInputs`, `Of`, `Key`, `IdentityKey`, `RewriteInputsKey`) is the Mac's `voiceTakeIdentity`, replayed from `shared/fixtures/voice-lab/voice-take-identity-cases.json` (`voxclip-voice-take-identity/1`, 32 cases on `fixtures/music/music-project.voxclip`).
+  - `RewriteSession.EditorChanged` closes the Rewrite only when `RewriteInputsKey` changes; otherwise it moves the session to the edited project. With no paid takes the review is rebuilt and every window whose phrase did not move is kept; with paid takes `TakeWindowsMoved = !SameWindows()`, and `FollowTakeWindows` sets the review line `TakeWindowsMovedCopy()`, cleared when the windows come back.
+  - `GenerationIsCurrent` is `VoiceSpendCurrent && !TakeWindowsMoved && …` and doesn't read the connector. `SettingsChanged` closes the session on a connector change only with no paid takes. A save no longer replaces `Editor.Project`.
+- **Built:** Core `ProjectVoiceTakeIdentity`; App `RewriteSession.VoiceSpendCurrent`, `TakeWindowsMoved`, `FollowTakeWindows`, `TakeWindowsMovedCopy`, `SameWindows`.
+- **Tests:** Core `VoiceTakeIdentityTests` (3) and `VoiceTakeIdentitySessionTests` (4, with real paid rows; `ACutBesidePaidTakesSaysWhyUseWaitsAndUndoBringsThemBack` fails without the line). The lead approved the 22 release-boundary lines at merge (`c49cd56f`).
+- **Owes:** a Discard Takes button: `ReviewIsCurrent` (`RewriteSession.Review.cs`) has to leave out `TakeWindowsMoved`, and `RewritePanel.Review.cs` has to show it.
+
 ### 2026-11-19 — ElevenLabs transcription moves to Scribe v3 (track/v2-scribe-v3)
 
 Twin of the Mac entry of the same date (transcription spec §8, voice-lab §3.2).
