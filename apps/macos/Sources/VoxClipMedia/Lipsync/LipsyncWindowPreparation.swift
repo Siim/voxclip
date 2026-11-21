@@ -58,23 +58,27 @@ public enum LipsyncWindowPreparation {
         return (min(natural, fitting), natural)
     }
 
-    /// The upload's predicted size: the bitrate over its length, and 2 % and 64 KB of container.
-    public static func predictedUploadBytes(bitrate: Int, uploadSeconds: Double) -> Double {
-        Double(bitrate) * uploadSeconds / 8 * 1.02 + 65_536
-    }
-
     /// The lip sync's free checks on this Mac, before anything is paid (a whole clip runs them before its voice): the source
-    /// can be prepared for upload (`uploadSize`), the voice of `outputSeconds` and its tail margin are within the lip sync's
-    /// 3 s to 5 min, and the predicted upload fits `LipsyncLimits.maximumVideoBytes`. Throws `LipsyncPreparationError` or
+    /// can be prepared for upload (`uploadSize`: its size and a frame rate of 1 to 60), and the voice of `outputSeconds` and
+    /// its tail margin are within the lip sync's 3 s to 5 min. There is no separate byte check: `videoBitrate` steps the
+    /// bitrate down until the upload fits `LipsyncLimits.uploadBudgetBytes` at any length, which keeps a tenth of the size
+    /// and time limits for the container and the audio, and the encoded file is checked against
+    /// `LipsyncLimits.maximumVideoBytes` again before it is sent (`LipsyncUploadFile`). Throws `LipsyncPreparationError` or
     /// `LipsyncError.invalidInput`.
     public static func preflight(video: MediaVideo, outputSeconds: Double) throws {
-        let size = try uploadSize(video)
+        _ = try uploadSize(video)
         let upload = LipsyncLimits.uploadSeconds(outputSeconds)
         guard outputSeconds.isFinite, outputSeconds >= 3, upload <= LipsyncLimits.maximumUploadSeconds else { throw LipsyncError.invalidInput }
-        let bitrate = videoBitrate(size: size, fps: video.frameRate, uploadSeconds: upload).bitrate
-        guard predictedUploadBytes(bitrate: bitrate, uploadSeconds: upload) <= Double(LipsyncLimits.maximumVideoBytes) else {
-            throw LipsyncError.invalidInput
-        }
+    }
+
+    /// The request a window's upload is made from: the clean picture, without the clip's controls, effects, captions or
+    /// music (the compositor applies them once over the lip-synced frames, and fal.ai hears the voice without the music bed).
+    /// Requests equal here prepare the same upload of a window, so they find the same paid attempt or imported result.
+    public static func uploadRequest(_ request: RenderRequest) -> RenderRequest {
+        var request = request
+        request.captions = CaptionTrack(); request.captionLayout = nil; request.style = nil
+        request.clipControls = nil; request.effects = nil; request.music = nil
+        return request
     }
 
     public static func prepare(request: RenderRequest, window: LipsyncRenderWindow, scratchRoot: URL,
@@ -82,18 +86,15 @@ public enum LipsyncWindowPreparation {
         let folder = scratchRoot.appendingPathComponent("lipsync-window-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: folder) }
-        var request = request
+        // The window is the clean picture (`uploadRequest`): the compositor applies the clip's controls (flip, turn, frame,
+        // look, speed), its effects and captions once over the lip-synced frames, so none of them is baked in here.
+        var request = uploadRequest(request)
         guard let sourceVideo = request.voiceLab?.project.media.source.video else { throw LipsyncPreparationError.unsupportedVideo }
         let size = try uploadSize(sourceVideo)
         let width = size.width, height = size.height
         let fps = sourceVideo.frameRate
         let bitrate = videoBitrate(size: size, fps: fps, uploadSeconds: window.uploadSeconds(sampleRate: request.timeline.sampleRate))
         request.output = OutputSpec(size: size, fps: fps, videoBitrate: bitrate.bitrate)
-        // The window is the clean picture: the compositor applies the clip's controls (flip, turn, frame, look, speed), its
-        // effects and captions once over the lip-synced frames, so none of them is baked in here, and fal.ai hears the
-        // voice without the music bed.
-        request.captions = CaptionTrack(); request.captionLayout = nil; request.style = nil
-        request.clipControls = nil; request.effects = nil; request.music = nil
         let graph = try await CompositionBuilder().build(request, includeDisclosure: false, allowsFractionalFrameRate: true)
         let rate = request.timeline.sampleRate
         let range = CMTimeRange(start: CMTime(value: window.outputStartSample, timescale: Int32(rate)),

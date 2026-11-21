@@ -115,6 +115,43 @@ struct LipsyncRunRecoveryTests {
         #expect(await fixture.http.uploads.count == 2)
     }
 
+    /// A cancel that lands just as fal.ai says the job is done (the wait's own check, before the import starts): the job is
+    /// billed and never cancelled, and Try Again is free only when it can find the attempt again, by its record on disk.
+    /// With the record unwritable (a file where the attempts folder belongs), the stop says so: no free Try Again that
+    /// could only fail. Before: always `freeRetry`, and the free click found nothing.
+    @Test(arguments: [true, false]) @MainActor func aCancelAsFalFinishesIsFreeToRetryOnlyWhenItsRecordIsThere(writable: Bool) async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let projectID = try #require(fixture.request.voiceLab?.project.id)
+        if !writable {
+            let project = fixture.root.appendingPathComponent(projectID, isDirectory: true)
+            try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try Data("not a folder".utf8).write(to: project.appendingPathComponent(LipsyncAttemptStore.folder))
+        }
+        let run = try fixture.run()
+        let (request, window, recordID) = (fixture.request, fixture.window, fixture.recordID)
+        // Cancelled from its own progress callback when fal.ai reports done: the wait's next check throws.
+        let task = Task {
+            try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3]) { progress in
+                if progress == 1 { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        var thrown: LipsyncAttemptFailure?
+        do {
+            _ = try await task.value
+            Issue.record("the cancel didn't stop the run")
+        } catch let failure as LipsyncAttemptFailure { thrown = failure }
+        let failure = try #require(thrown)
+        #expect(failure.error is CancellationError)
+        #expect(failure.freeRetry == writable)
+        #expect(await fixture.http.cancels == 0, "a finished job is never cancelled")
+        #expect(await fixture.http.deletions == 0, "fal.ai's copy stays until the result is safe here")
+        guard writable else { return }
+        let recovered = try await fixture.execute(try fixture.run(), mayPay: false)
+        #expect(recovered.recovered && recovered.provenance.requestID == failure.attempt.requestID)
+        #expect(await fixture.http.submits == 1)
+    }
+
     /// A priced click over a window whose earlier paid job fal.ai is still running waits for that job, never a new one.
     @Test @MainActor func aPricedClickNeverSubmitsWhileTheEarlierJobStillRuns() async throws {
         let fixture = try await fixture()

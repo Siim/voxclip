@@ -38,8 +38,19 @@ import Testing
         let long = LipsyncWindowPreparation.videoBitrate(size: size, fps: 60, uploadSeconds: upload)
         #expect(long.natural == Int((0.33 * 1920 * 1080 * 60).rounded()))
         #expect(long.bitrate < long.natural)
-        #expect(LipsyncWindowPreparation.predictedUploadBytes(bitrate: long.bitrate, uploadSeconds: upload) <= Double(LipsyncLimits.maximumVideoBytes))
         #expect(Double(long.bitrate) * upload / 8 <= Double(LipsyncLimits.uploadBudgetBytes))
+        // The step-down is the size check (preflight has no byte guard of its own): an upload stepped down to its budget
+        // still fits the size limit with 2 % and 64 KB of container, and the 2 Mbit/s uplink sends it while its signed
+        // upload outlives the job's deadline.
+        let packed = Double(LipsyncLimits.uploadBudgetBytes) * 1.02 + 65_536
+        #expect(packed <= Double(LipsyncLimits.maximumVideoBytes))
+        #expect(packed / LipsyncLimits.assumedBytesPerSecond <= 3_600 - LipsyncLimits.deadlineSeconds - 120)
+        for fps in [24.0, 30, 60] {
+            for seconds in [3.0, 60, 120, 290] {
+                let fitted = LipsyncWindowPreparation.videoBitrate(size: size, fps: fps, uploadSeconds: LipsyncLimits.uploadSeconds(seconds))
+                #expect(Double(fitted.bitrate) * LipsyncLimits.uploadSeconds(seconds) / 8 <= Double(LipsyncLimits.uploadBudgetBytes))
+            }
+        }
         // A short phrase keeps today's quality.
         let short = LipsyncWindowPreparation.videoBitrate(size: size, fps: 30, uploadSeconds: LipsyncLimits.uploadSeconds(6))
         #expect(short.bitrate == short.natural)

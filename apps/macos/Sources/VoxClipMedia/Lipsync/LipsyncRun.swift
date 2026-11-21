@@ -85,6 +85,12 @@ public struct LipsyncRun: Sendable {
         var attempt = LipsyncAttempt(job: job, quote: quote, neededSeconds: prepared.neededSeconds)
         attempt.picture = prepared.picture
         var recorded = false
+        /// A free Try Again finds the attempt only by its record on disk: written when fal.ai accepted the job, or by the
+        /// import (a kept file, the imported index).
+        func findable() -> Bool {
+            recorded || LipsyncAttemptStore.load(videoSHA256: attempt.videoSHA256, audioSHA256: attempt.audioSHA256,
+                                                 projectID: projectID, paidRoot: paidRoot) != nil
+        }
         do {
             // The attempt's sidecar: written as soon as fal.ai accepted the job, so its result is never lost.
             do { try LipsyncAttemptStore.record(attempt, projectID: projectID, paidRoot: paidRoot); recorded = true }
@@ -105,15 +111,17 @@ public struct LipsyncRun: Sendable {
             // The import already kept what it could and cleaned up at fal.ai only once the result was safe here. Try Again
             // is free only when it can find the attempt: its record was written (here, or with a kept file).
             await provider.untrack(job)
-            let findable = recorded || LipsyncAttemptStore.load(videoSHA256: attempt.videoSHA256, audioSHA256: attempt.audioSHA256,
-                                                                projectID: projectID, paidRoot: paidRoot) != nil
-            throw failure.freeRetry && !findable ? LipsyncAttemptFailure(error: failure.error, attempt: failure.attempt, freeRetry: false) : failure
+            throw failure.freeRetry && !findable() ? LipsyncAttemptFailure(error: failure.error, attempt: failure.attempt, freeRetry: false) : failure
         } catch {
-            // A finished job is billed and its result waits at fal.ai (or here): never cancelled or deleted; Try Again
-            // fetches it for free.
+            // A finished job is billed and its result waits at fal.ai: never cancelled or deleted. Try Again fetches it for
+            // free once it can find the attempt: its record is written once more if it wasn't when fal.ai accepted the job.
             if await provider.isDone(job) {
                 await provider.untrack(job)
-                throw LipsyncAttemptFailure(error: error, attempt: attempt, freeRetry: true)
+                if !findable() {
+                    do { try LipsyncAttemptStore.record(attempt, projectID: projectID, paidRoot: paidRoot); recorded = true }
+                    catch { await provider.note("lipsync attempt record=unwritten") }
+                }
+                throw LipsyncAttemptFailure(error: error, attempt: attempt, freeRetry: findable())
             }
             if Task.isCancelled || error is CancellationError {
                 await provider.cancel(job); await provider.cleanup(job); throw CancellationError()

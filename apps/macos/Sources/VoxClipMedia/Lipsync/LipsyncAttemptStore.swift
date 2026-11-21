@@ -91,7 +91,9 @@ public enum LipsyncAttemptStore {
         }
     }
 
-    /// The attempt over these inputs, if one reached fal.ai and was not finished.
+    /// The record over these exact input hashes, if a job over them reached fal.ai: an attempt not imported yet (its result
+    /// at fal.ai or kept beside it), or the window's imported index entry (`importedAsset` set), whose asset is not checked
+    /// here (`importedResult` checks it).
     public static func load(videoSHA256: String, audioSHA256: String, projectID: String, paidRoot: URL) -> LipsyncAttempt? {
         guard isHash(videoSHA256), isHash(audioSHA256) else { return nil }
         return try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts -> LipsyncAttempt? in
