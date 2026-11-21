@@ -553,7 +553,8 @@ public sealed class RewritePanelTests
         session.Edit("Sunday");
         Assert.Null(session.LocalAction);
         Assert.False(session.ApplyLocalChanges());
-        editor.Apply(new EditOperation.SetWordCuts(["w1"], true));
+        // A cut of the Rewrite's own words closes it; one elsewhere moves it on (VoiceTakeIdentitySessionTests).
+        editor.Apply(new EditOperation.SetWordCuts(["w11"], true));
         Assert.False(session.IsOpen);
         Assert.Equal(-1, editor.RewriteStart);
     }
