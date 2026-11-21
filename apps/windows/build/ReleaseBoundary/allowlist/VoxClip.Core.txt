@@ -13484,12 +13484,15 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public Equals(Vo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public GetHashCode()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public get_AdoptedAsset()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public get_Index()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public get_PricedActions()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public get_Qa()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public get_Seed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public get_Synthesis()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public set_AdoptedAsset(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public set_Index(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public set_Qa(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method public set_Seed(uint)
@@ -13508,6 +13511,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_Accepted()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_AcceptedJoinAdvisory()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_AcceptedRequestIds()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_AdoptedAsset()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_Audio()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_AutomaticallySelectable()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_DisplayName()
@@ -13533,6 +13537,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public op_Equality
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Accepted(System.Collections.Generic.IReadOnlySet`1<System.Guid>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_AcceptedJoinAdvisory(VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisory)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_AdoptedAsset(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Audio(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Failure(System.Exception)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Generated(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult)
@@ -13566,6 +13571,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public get_Ac
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public get_Estimate()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public get_ExpiresAt()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public get_Id()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public get_PricedActions()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public get_Takes()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method private PrintMembers(System.Text.StringBuilder)
@@ -14829,6 +14835,7 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumPart
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumPictureSpeed
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumRewordRounds
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumScriptScalars
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MinimumPartSeconds
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public NoFitPhrases
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public WordSharePercent
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method private IdShape(string)
