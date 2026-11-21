@@ -469,7 +469,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             (timing, var characterCount, var tolerated, rawAlignment) = SpeechTiming(row, route == VoiceLabSpeechRoute.TextToDialogue, text, duration);
             if (tolerated is not null)
                 log.Write(LogLevel.Info, "voice-lab", "voicelab speech timing tolerated " + tolerated.LogFields + " route=" + routeName + " model=" + modelId);
-            // Unchanged shared contract (dialogue-cases.json); a refusal here is recovered by the take run (§8.5).
+            // Shared contract (dialogue-cases.json); a refusal here is recovered by the take run (§8.5).
             if (route == VoiceLabSpeechRoute.TextToDialogue) ValidateVoiceSegments(row, voice.Id, characterCount, duration);
         }
         catch (SpeechMetadataFailure failure)
@@ -1026,7 +1026,10 @@ public sealed class ElevenLabsVoiceLab : IDisposable
                 throw Fail("segment_character_range", index);
             if (Number(segment, "start_time_seconds") is not { } begin || Number(segment, "end_time_seconds") is not { } finish || begin < 0 || finish < begin)
                 throw Fail("segment_time_order", index);
-            if (finish > duration + 0.05) throw Fail("segment_end_beyond_duration", index);
+            // The segments are only checked, never used for timing: an end past the PCM is allowed as far as the character
+            // timing's (VoiceLabProviderTiming.OverrunTolerance, which clamps it), so a reply whose alignment is kept is never
+            // refused for its segments alone (Mac validateDialogueSegments).
+            if (finish > duration + VoiceLabProviderTiming.OverrunTolerance) throw Fail("segment_end_beyond_duration", index);
             index++;
         }
     }

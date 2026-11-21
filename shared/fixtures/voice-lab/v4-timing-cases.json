@@ -2794,7 +2794,7 @@
     },
     {
       "id": "segment_end_past_pcm",
-      "note": "The segment also ends 0.12 s past the PCM: recovered by the take run.",
+      "note": "The segment also ends 0.12 s past the PCM, within the character timing tolerance: the alignment is kept.",
       "typed": "I use a similar method as",
       "pcmSamples": 27120,
       "alignment": {
@@ -2892,10 +2892,40 @@
         }
       ],
       "expected": {
-        "outcome": "rejected",
-        "error": "malformedResponse",
-        "check": "segment",
-        "recoveredByTakeRun": true
+        "outcome": "accepted",
+        "path": "original",
+        "words": [
+          {
+            "text": "I",
+            "start": 0.0,
+            "end": 0.05
+          },
+          {
+            "text": "use",
+            "start": 0.1,
+            "end": 0.25
+          },
+          {
+            "text": "a",
+            "start": 0.3,
+            "end": 0.35
+          },
+          {
+            "text": "similar",
+            "start": 0.4,
+            "end": 0.75
+          },
+          {
+            "text": "method",
+            "start": 0.8,
+            "end": 1.1
+          },
+          {
+            "text": "as",
+            "start": 1.13,
+            "end": 1.13
+          }
+        ]
       }
     },
     {
