@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On the Mac, a finished fal.ai lip sync is never paid for twice: it is kept through a cancel, a change in the takes, a failed status check or a full disk, the same part gets it again for free even after a relaunch, one failure no longer makes every later lip sync wait 5 minutes and fail, and a stopped lip sync always offers a way on (Try Again · free, Lip Sync Again with its price, I Checked fal.ai, or Keep Original Video).
 - Transcription with ElevenLabs uses Scribe v3, which makes about a quarter fewer word errors, at $0.20 an audio hour.
 - On the Mac, "✦ Claude does it all" no longer says Claude Code isn't installed or signed in before VoxClip has checked it: it waits on "Checking Claude Code…", then finds the clips by itself, and a blocked card goes on once Claude Code works (after a Rewrite, when Settings closes, or when the AI changes).
 - On the Mac, when Apple's speech service doesn't answer, transcription no longer waits forever: after 15 seconds it says "Apple Speech didn't answer. Try again, or choose On this Mac." with Retry.
