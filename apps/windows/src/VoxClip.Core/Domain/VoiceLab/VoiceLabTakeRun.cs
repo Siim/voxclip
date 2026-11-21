@@ -41,7 +41,15 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
         CutWordIds = System.Collections.Frozen.FrozenSet.ToFrozenSet(CutWordIds, StringComparer.Ordinal),
         Window = Window with { LeftBridgeWordIds = Array.AsReadOnly(Window.LeftBridgeWordIds.ToArray()), RightBridgeWordIds = Array.AsReadOnly(Window.RightBridgeWordIds.ToArray()) } };
 }
-public sealed record VoiceLabTakeQuote(int Index, uint Seed, VoiceLabPreparedAction Synthesis, VoiceLabPreparedAction Qa);
+public sealed record VoiceLabTakeQuote(int Index, uint Seed, VoiceLabPreparedAction Synthesis, VoiceLabPreparedAction Qa)
+{
+    /// <summary>Set when the take adopts a paid take from the project's journal (<c>projectId/assetId.wav</c>, voice-lab §3 "Paid
+    /// takes are kept"; Mac <c>VoiceLabTakeQuote.adoptedAsset</c>): its <see cref="Synthesis"/> is approved with the set but never
+    /// sent, so only the word check (<see cref="Qa"/>) is priced and charged.</summary>
+    public string? AdoptedAsset { get; init; }
+    /// <summary>The actions this take is charged for: the word check alone for an adopted take.</summary>
+    public IReadOnlyList<VoiceLabPreparedAction> PricedActions => AdoptedAsset is null ? [Synthesis, Qa] : [Qa];
+}
 public sealed class VoiceLabTakeRunQuote
 {
     public Guid Id { get; }
@@ -56,8 +64,13 @@ public sealed class VoiceLabTakeRunQuote
         Takes = Array.AsReadOnly(takes.ToArray());
         Actions = Array.AsReadOnly(Takes.SelectMany(take => new[] { take.Synthesis, take.Qa }).ToArray());
         ExpiresAt = Actions.Min(action => action.ExpiresAt);
-        Estimate = Total(Actions.Select(action => action.Estimate.ToCostEstimate()), takes.Count);
+        PricedActions = Array.AsReadOnly(Takes.SelectMany(take => take.PricedActions).ToArray());
+        // An adopted take's synthesis is already paid for: the run charges only its word check.
+        Estimate = Total(PricedActions.Select(action => action.Estimate.ToCostEstimate()), takes.Count);
     }
+    /// <summary>The actions the set is charged for, in run order (<see cref="VoiceLabTakeQuote.PricedActions"/>); <see cref="Actions"/>
+    /// also holds an adopted take's synthesis, which the provider approves with the set and is never sent.</summary>
+    public IReadOnlyList<VoiceLabPreparedAction> PricedActions { get; }
     internal static CostEstimate Total(IEnumerable<CostEstimate> values, int takes)
     {
         var estimates = values.ToArray();
@@ -246,7 +259,11 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
     }
     /// <summary>Accepted status lines, including a paid response that failed before producing a receipt.</summary>
     public IReadOnlySet<Guid> Accepted { get; init; } = System.Collections.Frozen.FrozenSet<Guid>.Empty;
-    public IReadOnlySet<Guid> AcceptedRequestIds => Accepted.Concat(Receipt is null ? [] : new[] { Receipt.ActionId })
+    /// <summary>The journal asset this take adopted (<see cref="VoiceLabTakeQuote.AdoptedAsset"/>). Its <see cref="Receipt"/> is the
+    /// paid request's own, from an earlier run, so that request is not this run's: the row counts the set's unsent synthesis
+    /// action in <see cref="Accepted"/> instead, at no charge.</summary>
+    public string? AdoptedAsset { get; init; }
+    public IReadOnlySet<Guid> AcceptedRequestIds => Accepted.Concat(Receipt is null || AdoptedAsset is not null ? [] : new[] { Receipt.ActionId })
         .Concat(QaReceipt is null ? [] : new[] { QaReceipt.ActionId }).ToHashSet();
     public string DisplayName => "Take " + (Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
     /// <summary>An interrupted take retains paid request IDs without claiming its speech failed QA.</summary>
