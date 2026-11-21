@@ -16,6 +16,9 @@ public enum WholeClipRevoice {
     /// A part of the script is whole sentences spanning at most this much source time (a single longer sentence stays one
     /// part). The mockup's 31 s clip comes to three parts.
     public static let maximumPartSeconds = 12.0
+    /// A part under this much source time joins a neighbour (`WholeClipScript.parts`), so each part has enough speech for its
+    /// voice check on the first run (SpeakerAudio's 3 s window): a lone short part could only be checked on a paid retry.
+    public static let minimumPartSeconds = 4.0
     /// A script part never exceeds the text-to-speech route's limit.
     public static let maximumPartCharacters = 1_000
     /// A shorter voice first speeds the clip's picture up evenly, to at most this (the user, 2026-11-08: "keep the voice as
@@ -170,27 +173,42 @@ public struct WholeClipScript: Equatable, Sendable {
     }
 
     /// The script split at sentence boundaries into parts of at most `maximumPartSeconds` of source time and
-    /// `maximumPartCharacters`; one voice says every part (the mockup's "3 parts, one take").
+    /// `maximumPartCharacters`; one voice says every part (the mockup's "3 parts, one take"). A part under
+    /// `minimumPartSeconds` then joins the part before it, else the one after it, when the two stay within
+    /// `maximumPartCharacters` (they may run past `maximumPartSeconds`); a part that joined the one after it is checked again.
     public var parts: [Part] {
-        var parts: [Part] = []
+        func characters(_ group: [Sentence]) -> Int { group.map(\.text).joined(separator: " ").unicodeScalars.count }
+        func seconds(_ group: [Sentence]) -> Double { (group.last?.end ?? 0) - (group.first?.start ?? 0) }
+        var groups: [[Sentence]] = []
         var group: [Sentence] = []
-        func flush() {
-            guard let first = group.first, let last = group.last else { return }
-            let tokens = group.flatMap(\.tokens)
-            parts.append(Part(text: tokens.joined(separator: " "), words: tokens.count, sourceWordIds: group.flatMap(\.sourceWordIds),
-                              start: first.start, end: last.end))
-            group = []
-        }
         for sentence in sentences {
             if let first = group.first {
-                let seconds = sentence.end - first.start
-                let characters = (group.map(\.text) + [sentence.text]).joined(separator: " ").unicodeScalars.count
-                if seconds > WholeClipRevoice.maximumPartSeconds || characters > WholeClipRevoice.maximumPartCharacters { flush() }
+                let span = sentence.end - first.start
+                if span > WholeClipRevoice.maximumPartSeconds || characters(group + [sentence]) > WholeClipRevoice.maximumPartCharacters {
+                    groups.append(group); group = []
+                }
             }
             group.append(sentence)
         }
-        flush()
-        return parts
+        if !group.isEmpty { groups.append(group) }
+        var index = 0
+        while index < groups.count {
+            if groups.count < 2 || seconds(groups[index]) >= WholeClipRevoice.minimumPartSeconds {
+                index += 1
+            } else if index > 0, characters(groups[index - 1] + groups[index]) <= WholeClipRevoice.maximumPartCharacters {
+                groups[index - 1] += groups.remove(at: index)
+            } else if index + 1 < groups.count, characters(groups[index] + groups[index + 1]) <= WholeClipRevoice.maximumPartCharacters {
+                groups[index] += groups.remove(at: index + 1)
+            } else {
+                index += 1
+            }
+        }
+        return groups.compactMap { group in
+            guard let first = group.first, let last = group.last else { return nil }
+            let tokens = group.flatMap(\.tokens)
+            return Part(text: tokens.joined(separator: " "), words: tokens.count, sourceWordIds: group.flatMap(\.sourceWordIds),
+                        start: first.start, end: last.end)
+        }
     }
 
     /// The parts as Rewrite voice changes, so each goes through the existing take path (window placement, the R40 guard,

@@ -31,6 +31,7 @@ public sealed class WholeClipRevoiceReplayTests
         Assert.Equal(WholeClipRevoice.FitTolerance, constants["fitTolerance"]!.GetValue<double>());
         Assert.Equal(WholeClipRevoice.MaximumRewordRounds, constants["maximumRewordRounds"]!.GetValue<int>());
         Assert.Equal(WholeClipRevoice.MaximumPartSeconds, constants["maximumPartSeconds"]!.GetValue<double>());
+        Assert.Equal(WholeClipRevoice.MinimumPartSeconds, constants["minimumPartSeconds"]!.GetValue<double>());
         Assert.Equal(WholeClipRevoice.MaximumPartCharacters, constants["maximumPartCharacters"]!.GetValue<int>());
         Assert.Equal(WholeClipRevoice.MaximumClipSeconds, constants["maximumClipSeconds"]!.GetValue<double>());
         Assert.Equal(WholeClipLipsyncValues.Standard.RawValue(), constants["standardLipsync"]!.GetValue<string>());
@@ -92,7 +93,7 @@ public sealed class WholeClipRevoiceReplayTests
     [Fact]
     public void TheScriptItsPartsAndTheirVoiceChanges()
     {
-        Assert.Equal(28, Rows("script").Count);
+        Assert.Equal(31, Rows("script").Count);
         foreach (var row in Rows("script"))
         {
             var id = row!["id"]!.GetValue<string>();

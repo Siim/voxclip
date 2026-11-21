@@ -99,6 +99,35 @@ struct WholeClipScriptTests {
         // A short clip is one part.
         #expect(try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: [])).parts.count == 1)
     }
+
+    /// The user's clip shape in wholeclip-short-part-unmeasured: sentences of 6 s, 5.5 s and 1.5 s. The first two fill one
+    /// 12 s part; the 1.5 s sentence used to be voiced alone, too short for its voice check on the first run (SpeakerAudio's
+    /// 3 s window), so the run stopped after paying and its Try Again paid that part again. It joins the part before it now,
+    /// past 12 s; a short first sentence joins the part after it.
+    @Test func noPartIsShorterThanItsVoiceCheckNeeds() throws {
+        func sentences(_ spans: [(Double, Double)]) -> [TimedWord] {
+            spans.enumerated().flatMap { index, span -> [TimedWord] in
+                let middle: Double = (span.0 + span.1) / 2
+                return [TimedWord(id: "s\(index)a", text: "word", start: span.0, end: middle - 0.05),
+                        TimedWord(id: "s\(index)b", text: "end.", start: middle, end: span.1)]
+            }
+        }
+        for spans in [[(0.0, 6.0), (6.2, 11.7), (11.9, 13.4)], [(0.0, 1.5), (1.7, 12.7), (12.9, 20.9)], [(0.0, 11.0), (11.2, 13.2), (13.4, 24.4)]] {
+            let words = sentences(spans)
+            let script = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: []))
+            let parts = script.parts
+            #expect(parts.allSatisfy { $0.end - $0.start >= WholeClipRevoice.minimumPartSeconds }, "\(parts.map { ($0.start, $0.end) })")
+            #expect(parts.flatMap(\.sourceWordIds) == words.map(\.id))
+        }
+        let last = try #require(WholeClipScript.assemble(words: sentences([(0.0, 6.0), (6.2, 11.7), (11.9, 13.4)]), cutWordIds: [], voiceHunks: []))
+        #expect(last.parts.map(\.words) == [6], "the short last sentence joins the 12 s part, past maximumPartSeconds")
+        // Never past maximumPartCharacters: short parts too long to join stay as they are.
+        let wide = (0..<6).map { index in
+            TimedWord(id: "c\(index)", text: String(repeating: "x", count: 600) + ".", start: Double(index) * 0.5, end: Double(index) * 0.5 + 0.4)
+        }
+        let parts = try #require(WholeClipScript.assemble(words: wide, cutWordIds: [], voiceHunks: [])).parts
+        #expect(parts.count == 6 && parts.allSatisfy { $0.text.unicodeScalars.count <= WholeClipRevoice.maximumPartCharacters })
+    }
 }
 
 struct WholeClipFitTests {

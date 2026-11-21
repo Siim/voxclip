@@ -42,8 +42,9 @@ import Testing
         }
     }
     private struct LedgerCase: Decodable { let id: String; let steps: [Step] }
+    private struct Constants: Decodable { let maximumPartSeconds: Double; let minimumPartSeconds: Double; let maximumPartCharacters: Int }
     private struct Cases: Decodable {
-        let format: String; let rule: [RuleCase]; let autoChoice: [ChoiceCase]; let script: [ScriptCase]; let fit: [FitCase]
+        let format: String; let constants: Constants; let rule: [RuleCase]; let autoChoice: [ChoiceCase]; let script: [ScriptCase]; let fit: [FitCase]
         let price: [PriceCase]; let ledger: [LedgerCase]
     }
 
@@ -53,7 +54,11 @@ import Testing
     private func money(_ text: String?) -> Decimal? { text.flatMap { Decimal(string: $0) } }
 
     @Test func formatIsItsOwnFile() throws {
-        #expect(try cases().format == "voxclip-whole-clip-revoice/1")
+        let file = try cases()
+        #expect(file.format == "voxclip-whole-clip-revoice/1")
+        #expect(file.constants.maximumPartSeconds == WholeClipRevoice.maximumPartSeconds)
+        #expect(file.constants.minimumPartSeconds == WholeClipRevoice.minimumPartSeconds)
+        #expect(file.constants.maximumPartCharacters == WholeClipRevoice.maximumPartCharacters)
     }
 
     @Test func theSwitchRuleAndItsCallout() throws {
@@ -89,7 +94,7 @@ import Testing
 
     @Test func theScriptItsPartsAndTheirVoiceChanges() throws {
         let rows = try cases().script
-        #expect(rows.count == 28)
+        #expect(rows.count == 31)
         for row in rows {
             let words = row.words.map(timed)
             let hunks = row.voiceHunks.map { hunk in
