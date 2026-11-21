@@ -885,6 +885,7 @@ member VoxClip.App.Controls.RightColumn :: method internal ShowRewrite(VoxClip.A
 member VoxClip.App.Controls.RightColumn :: method internal TryShow(VoxClip.App.ViewModels.EditorViewModel,VoxClip.App.Controls.InlineEditorJob)
 member VoxClip.App.Controls.RightColumn :: method internal add_SourcePlaybackRequested(System.EventHandler)
 member VoxClip.App.Controls.RightColumn :: method internal get_FocusTarget()
+member VoxClip.App.Controls.RightColumn :: method internal get_HeldJobLabel()
 member VoxClip.App.Controls.RightColumn :: method internal remove_SourcePlaybackRequested(System.EventHandler)
 member VoxClip.App.Controls.RightColumn :: method private .cctor()
 member VoxClip.App.Controls.RightColumn :: method private CloseJob()
@@ -5918,7 +5919,6 @@ member VoxClip.App.ViewModels.RewriteSession :: field internal OwnTakeDisclosure
 member VoxClip.App.ViewModels.RewriteSession :: field internal PriceChangedCopy
 member VoxClip.App.ViewModels.RewriteSession :: field internal ReaskStale
 member VoxClip.App.ViewModels.RewriteSession :: field internal ReaskStopped
-member VoxClip.App.ViewModels.RewriteSession :: field internal ReplaceHeldNotice
 member VoxClip.App.ViewModels.RewriteSession :: field internal ScreeningCopy
 member VoxClip.App.ViewModels.RewriteSession :: field internal SentenceOverlap
 member VoxClip.App.ViewModels.RewriteSession :: field internal SentenceStale
@@ -6113,6 +6113,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal RecordPhraseAsyn
 member VoxClip.App.ViewModels.RewriteSession :: method internal RecordedText(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal Refusal(System.Exception)
 member VoxClip.App.ViewModels.RewriteSession :: method internal RemoveExpression(int,int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal ReplaceHeldNotice(string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal RequestClose()
 member VoxClip.App.ViewModels.RewriteSession :: method internal RetryThreadAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ReviewDiff()

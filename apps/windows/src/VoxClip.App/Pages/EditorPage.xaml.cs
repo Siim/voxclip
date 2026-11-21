@@ -655,7 +655,8 @@ if (insertion ||
             }
         }
         EditorNotice.Severity = InfoBarSeverity.Warning;
-        ViewModel.Notice = RewriteSession.ReplaceHeldNotice;
+        // The job that keeps the column is named, so the way to Rewrite is clear: finish or close it first.
+        ViewModel.Notice = RewriteSession.ReplaceHeldNotice(rightContent?.HeldJobLabel);
         return true;
     }
     /// <summary>Shows <paramref name="rewrite"/> in the Rewrite panel: a new one, or Make it postable's with paid takes.</summary>

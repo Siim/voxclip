@@ -454,7 +454,13 @@ public sealed class RewritePanelTests
         Assert.Contains("rewrite is not { IsOpen: true, HasPaidTakes: true } open", guard);
         Assert.Contains("rightContent.RevealRewrite(panel)", guard);
         Assert.Contains("panel.AskBeforeReplacing(() => RunAsync(replay, \"Rewrite\"))", guard);
-        Assert.Contains("ViewModel.Notice = RewriteSession.ReplaceHeldNotice", guard);
+        // The panel can't come forward while a job that stays holds the column: the notice names that job, the step that shows
+        // Rewrite again. It used to say "Use or discard them in Rewrite" while Rewrite couldn't be seen.
+        Assert.Contains("ViewModel.Notice = RewriteSession.ReplaceHeldNotice(rightContent?.HeldJobLabel);", guard);
+        Assert.Equal("Finish or close Export to see Rewrite, then use or discard its paid takes before starting another. They are kept.",
+            RewriteSession.ReplaceHeldNotice("Export"));
+        Assert.Equal("Rewrite has paid takes you haven't used. Use or discard them in Rewrite before starting another. They are kept.",
+            RewriteSession.ReplaceHeldNotice(null));
         Assert.DoesNotContain("RetireRewrite", guard);
         var tones = AppSource("Pages", "EditorPage.RewriteTones.cs");
         Assert.True(tones.IndexOf("if (AskBeforeReplacingRewrite(() => RewriteAsAsync(request))) return;", StringComparison.Ordinal)
@@ -469,6 +475,7 @@ public sealed class RewritePanelTests
         var reveal = column[column.IndexOf("internal bool RevealRewrite", StringComparison.Ordinal)..column.IndexOf("internal void CloseRewrite", StringComparison.Ordinal)];
         Assert.DoesNotContain("CloseForHost", reveal);
         Assert.DoesNotContain("Close()", reveal);
+        Assert.Contains("internal string? HeldJobLabel => job?.JobLabel;", column);
     }
 
     private static string AppSource(string directory, string name) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", directory, name));

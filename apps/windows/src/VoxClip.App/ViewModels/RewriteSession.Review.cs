@@ -45,9 +45,12 @@ internal sealed partial class RewriteSession
             _ => $"{lead} and discard {takes} paid takes?",
         };
     }
-    /// <summary>Another Rewrite was asked for over paid takes while this one's panel can't come forward to ask (a job in the column
-    /// that stays): nothing opens, and the editor's notice says how to go on.</summary>
-    internal const string ReplaceHeldNotice = "Rewrite has paid takes you haven't used. Use or discard them in Rewrite before starting another. They are kept.";
+    /// <summary>Another Rewrite was asked for over paid takes while this one's panel can't come forward to ask: nothing opens, and the
+    /// editor's notice names the step that shows Rewrite again. A job that stays holds the column (<paramref name="job"/>, its label):
+    /// "Finish or close Export to see Rewrite, then use or discard its paid takes before starting another. They are kept."</summary>
+    internal static string ReplaceHeldNotice(string? job) => string.IsNullOrWhiteSpace(job)
+        ? "Rewrite has paid takes you haven't used. Use or discard them in Rewrite before starting another. They are kept."
+        : $"Finish or close {job} to see Rewrite, then use or discard its paid takes before starting another. They are kept.";
     /// <summary>Close Rewrite, Esc or the panel's X: true when it may close now. Paid takes not used or discarded yet are never
     /// disposed unasked: it asks (<see cref="CloseAsked"/>) and returns false, and nothing changes until the answer.</summary>
     internal bool RequestClose()

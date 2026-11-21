@@ -87,6 +87,9 @@ internal sealed class RightColumn : Grid
         ShowDirector();
         return true;
     }
+    /// <summary>The label of the job that holds the column ("Export", "Find clips"), which the user finishes or closes to see Rewrite
+    /// again; null when none is open.</summary>
+    internal string? HeldJobLabel => job?.JobLabel;
     internal void CloseRewrite()
     {
         rewrite = null;
