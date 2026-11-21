@@ -25,6 +25,9 @@ public struct PreparedLipsyncWindow: Sendable {
     public let neededSeconds: Double
     /// The upload's picture (`LipsyncPictureFingerprint`), which finds a paid attempt again when the encode differs.
     let picture: Data
+    /// The mezzanine's bitrate, and today's 0.33 bits per pixel per frame it was stepped down from to fit the upload budget.
+    public let videoBitrate: Int
+    public let naturalBitrate: Int
 }
 
 public enum LipsyncWindowPreparation {
@@ -43,6 +46,37 @@ public enum LipsyncWindowPreparation {
         return size
     }
 
+    /// The window's video bitrate: today's 0.33 bits per pixel per frame (voice-lab §9.3, about 20 Mbit/s at 1080p30),
+    /// stepped down only as far as the upload of `uploadSeconds` needs to fit `LipsyncLimits.uploadBudgetBytes` (the size
+    /// limit, and the time a 2 Mbit/s uplink has before the signed upload expires). `natural` is today's.
+    public static func videoBitrate(size: PixelSize, fps: Double, uploadSeconds: Double) -> (bitrate: Int, natural: Int) {
+        let pixels = Double(size.width) * Double(size.height)
+        let natural = Int((0.33 * pixels * fps).rounded())
+        guard uploadSeconds.isFinite, uploadSeconds > 0 else { return (natural, natural) }
+        let budgetBits = Double(LipsyncLimits.uploadBudgetBytes) * 8
+        let fitting = Int((budgetBits / uploadSeconds).rounded(.down))
+        return (min(natural, fitting), natural)
+    }
+
+    /// The upload's predicted size: the bitrate over its length, and 2 % and 64 KB of container.
+    public static func predictedUploadBytes(bitrate: Int, uploadSeconds: Double) -> Double {
+        Double(bitrate) * uploadSeconds / 8 * 1.02 + 65_536
+    }
+
+    /// The lip sync's free checks on this Mac, before anything is paid (a whole clip runs them before its voice): the source
+    /// can be prepared for upload (`uploadSize`), the voice of `outputSeconds` and its tail margin are within the lip sync's
+    /// 3 s to 5 min, and the predicted upload fits `LipsyncLimits.maximumVideoBytes`. Throws `LipsyncPreparationError` or
+    /// `LipsyncError.invalidInput`.
+    public static func preflight(video: MediaVideo, outputSeconds: Double) throws {
+        let size = try uploadSize(video)
+        let upload = LipsyncLimits.uploadSeconds(outputSeconds)
+        guard outputSeconds.isFinite, outputSeconds >= 3, upload <= LipsyncLimits.maximumUploadSeconds else { throw LipsyncError.invalidInput }
+        let bitrate = videoBitrate(size: size, fps: video.frameRate, uploadSeconds: upload).bitrate
+        guard predictedUploadBytes(bitrate: bitrate, uploadSeconds: upload) <= Double(LipsyncLimits.maximumVideoBytes) else {
+            throw LipsyncError.invalidInput
+        }
+    }
+
     public static func prepare(request: RenderRequest, window: LipsyncRenderWindow, scratchRoot: URL,
                                detector: FaceDetector? = nil) async throws -> PreparedLipsyncWindow {
         let folder = scratchRoot.appendingPathComponent("lipsync-window-\(UUID().uuidString)", isDirectory: true)
@@ -53,8 +87,8 @@ public enum LipsyncWindowPreparation {
         let size = try uploadSize(sourceVideo)
         let width = size.width, height = size.height
         let fps = sourceVideo.frameRate
-        request.output = OutputSpec(size: size, fps: fps,
-            videoBitrate: Int((0.33 * Double(width) * Double(height) * fps).rounded()))
+        let bitrate = videoBitrate(size: size, fps: fps, uploadSeconds: window.uploadSeconds(sampleRate: request.timeline.sampleRate))
+        request.output = OutputSpec(size: size, fps: fps, videoBitrate: bitrate.bitrate)
         // The window is the clean picture: the compositor applies the clip's controls (flip, turn, frame, look, speed), its
         // effects and captions once over the lip-synced frames, so none of them is baked in here, and fal.ai hears the
         // voice without the music bed.
@@ -95,7 +129,8 @@ public enum LipsyncWindowPreparation {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: audioURL.path)
         return try PreparedLipsyncWindow(video: LipsyncUploadFile(file: videoURL, durationSeconds: upload, contentType: "video/mp4"),
             audio: LipsyncUploadFile(file: audioURL, durationSeconds: upload, contentType: "audio/wav"),
-            width: width, height: height, fps: fps, window: window, neededSeconds: needed, picture: picture)
+            width: width, height: height, fps: fps, window: window, neededSeconds: needed, picture: picture,
+            videoBitrate: bitrate.bitrate, naturalBitrate: bitrate.natural)
     }
 
     /// The tallest face's height as a fraction of the frame, or 0. Synchronous Vision: `prepare` runs it on `VisionQueue`.
