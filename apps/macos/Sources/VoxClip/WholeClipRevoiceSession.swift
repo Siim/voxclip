@@ -108,7 +108,15 @@ import VoxClipMedia
         /// compares it with the clip as edited before the first voice, and a reworded script's with the measured voice.
         var estimate: @MainActor (WholeClipScript) -> Double? = { _ in nil }
         var unfinishedVoicePrice: @MainActor () -> Decimal? = { nil }
+        /// What the voice plan held now has paid for parts of a voice not finished yet (a retired plan's is `retiredVoiceSpend`).
         var unsettledVoiceSpend: @MainActor () -> Decimal = { 0 }
+        /// What plans let go (Start Over, a new voice) had paid for parts of voices never finished: counted, no longer held.
+        var retiredVoiceSpend: @MainActor () -> Decimal = { 0 }
+        /// The voice plan held now is for `script` and has paid for some of its parts: the check before paying keeps them.
+        var partlyVoiced: @MainActor (WholeClipScript) -> Bool = { _ in false }
+        /// What stops the Voice step before anything is sent until something outside the card changes: no voice chosen,
+        /// Voice Lab not ready, a project that can't be edited, or a clip edited since the Rewrite was made. Nil when ready.
+        var voiceReadiness: @MainActor () -> Stop? = { nil }
         /// The picture match and the lip sync's free checks on this Mac, at the Fit step: every part's picture matched to its
         /// laid-out take (the cut recipe, the speed-up and the trims), and the merged window one fal.ai can take. Throws what
         /// failed; nothing is sent.
@@ -255,9 +263,13 @@ import VoxClipMedia
     private(set) var lipsyncKept = false
     /// The last lip sync's submit answer was lost: only the user's "I Checked fal.ai" click starts another (may charge twice).
     private(set) var submissionUnconfirmed = false
-    var spent: Decimal { ledger.total + billedLipsyncs.values.reduce(0, +) + (backend?.unsettledVoiceSpend() ?? 0) }
-    /// What the whole clip's voices cost so far: the paid voices and the parts of one still unfinished.
-    var voiceSpent: Decimal { ledger.voices.values.reduce(0, +) + (backend?.unsettledVoiceSpend() ?? 0) }
+    var spent: Decimal { ledger.total + billedLipsyncs.values.reduce(0, +) + (backend?.unsettledVoiceSpend() ?? 0) + (backend?.retiredVoiceSpend() ?? 0) }
+    /// What the whole clip's voices cost so far: the paid voices and the parts of ones never finished, let go or not.
+    var voiceSpent: Decimal { ledger.voices.values.reduce(0, +) + (backend?.unsettledVoiceSpend() ?? 0) + (backend?.retiredVoiceSpend() ?? 0) }
+    /// What the voice still held cost: the run's voice, or the paid parts of the one its plan is still making. A voice let
+    /// go (Start Over, the patch) or replaced by a shorter wording's counts in `spent`, never here: no stop or label says a
+    /// paid voice is kept or dropped for it.
+    var heldVoiceSpent: Decimal { (voice.flatMap { ledger.voices[$0.key] } ?? 0) + (backend?.unsettledVoiceSpend() ?? 0) }
 
     /// What Try Again would pay for the whole clip: what's left after the paid steps, and nothing for a lip sync already
     /// paid over this voice and picture (the ledger) or a kept result.
@@ -277,18 +289,30 @@ import VoxClipMedia
         quoting = true
         defer { quoting = false }
         keyAvailable = await backend.hasKey()
-        do {
-            let script = try backend.script()
-            // A stopped or reviewed run keeps its own script (a reworded one is what its paid voice says).
-            if phase == .choose { self.script = script }
-            quote = try await backend.quote(script, .standard)
-        } catch { quote = nil }
+        let script = try? backend.script()
+        quotedScript = script
+        guard let script else { quote = nil; return }
+        // A stopped or reviewed run keeps its own script (a reworded one is what its paid voice says).
+        if phase == .choose { self.script = script }
+        quote = try? await backend.quote(script, .standard)
+    }
+
+    /// The script the card's prices were made for: Start Over and the Choose card price the clip as it is, so a change of
+    /// its words or included changes prices it again (`needsRequote`).
+    @ObservationIgnored private(set) var quotedScript: WholeClipScript?
+
+    /// The clip's script is no longer the one the shown price was made for, on a card whose button prices the clip as it
+    /// is now (Choose, or a stop whose way on is Start Over): `refreshQuote` prices it again. Free.
+    var needsRequote: Bool {
+        guard !running, !quoting, phase == .choose || stoppedForInputs, let backend else { return false }
+        return (try? backend.script()) != quotedScript
     }
 
     /// The fal.ai key again (Settings changed): the card then offers the price, or Settings, as it is now. Free.
     func refreshReadiness() async {
         guard let backend else { return }
         keyAvailable = await backend.hasKey()
+        if needsRequote { await refreshQuote() }
     }
 
     /// Revoice Whole Clip · ≈ $X: the click is the approval for one voice and the lip sync at the shown price. Try Again
@@ -339,9 +363,25 @@ import VoxClipMedia
         launch { await $0.perform(model: .standard, retaining: nil) }
     }
 
-    /// The stop's way on is a shorter wording and a round is left: Shorter Wording · free.
+    /// The stop's way on is a shorter wording, a round is left, and an AI is there to ask: Shorter Wording · free.
     var canAskShorterWording: Bool {
-        isStopped && failure?.rewordable == true && rewordRound < WholeClipRevoice.maximumRewordRounds
+        isStopped && failure?.rewordable == true && rewordRound < WholeClipRevoice.maximumRewordRounds && backend?.canReword() == true
+    }
+
+    /// Start Over · ≈ $Y, clicked at `approved`: the clip as it is now is priced first. When it costs more than the click
+    /// approved, nothing is let go or paid: the stop stays, its button carrying the new price, which a new click approves.
+    /// Otherwise the voice that no longer matches is let go (what it cost stays counted) and true: the run may start.
+    func startOver(approved: Decimal) async -> Bool {
+        guard let backend, !running, isStopped else { return false }
+        let script = try? backend.script()
+        let fresh: Quote? = if let script { try? await backend.quote(script, .standard) } else { nil }
+        quotedScript = script
+        quote = fresh
+        keyAvailable = await backend.hasKey()
+        guard let usd = fresh?.wholeUSD, usd <= approved, keyAvailable, !running, isStopped else { return false }
+        await discard()
+        self.script = script
+        return true
     }
 
     /// Shorter Wording · free: asks the AI for a shorter wording again (the Fit step's free round), checks it before
@@ -403,10 +443,10 @@ import VoxClipMedia
                 guard base == baseScript, script.text == retained.key.script, ledger.paid(retained.key) else {
                     throw inputsChanged(usd: ledger.voices[retained.key] ?? retained.usd)
                 }
-            } else if let baseScript, base != baseScript, voiceSpent > 0 {
+            } else if let baseScript, base != baseScript, heldVoiceSpent > 0 {
                 // The clip's words changed since its voice was paid: a Try Again priced for that voice can't buy one for
                 // the new words. Undo brings the paid voice back; Start Over prices the new one.
-                throw inputsChanged(usd: voiceSpent)
+                throw inputsChanged(usd: heldVoiceSpent)
             }
             baseScript = base
             self.script = script
@@ -418,7 +458,9 @@ import VoxClipMedia
                 // reworded before any voice).
                 currentStep = .voice
                 try await backend.preflight()
-                if script == base, spent == 0 { script = try await rewordBeforePaying(script, backend: backend) }
+                // Every first voice of a script gets this check, after Start Over or a paid lip sync too; only parts
+                // already paid for this script keep it as it is (a shorter wording would let them go).
+                if script == base, !backend.partlyVoiced(script) { script = try await rewordBeforePaying(script, backend: backend) }
             }
             var voice = try await voiceStep(script, backend: backend)
             // Fit: free, on the clip as edited. Only a voice too long for it asks for a measured wording, which is checked
@@ -555,6 +597,9 @@ import VoxClipMedia
         steps[.lipsync] = .running("Lip sync · fal.ai \(model.name) · usually 1–2 min")
         do {
             let price = (try? backend.lipsyncPrice(model)).flatMap { $0 }
+            // A lip sync already paid over this voice, picture speed and model is only put back (its imported index), never
+            // paid again, as in a run's own Lip sync step.
+            lipsyncMayPay = !ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model))
             try await lipsyncStep(voice: voice, factor: picture.speed, model: model, backend: backend)
             try Task.checkCancellation()
             steps[.lipsync] = .done("Lip sync · fal.ai \(model.name)" + (price.map { " · " + VoiceLabCostPresentation.format($0) } ?? ""))
@@ -562,9 +607,18 @@ import VoxClipMedia
             upgradeUSD = model == .sync3 ? nil : (try? backend.lipsyncPrice(.sync3)).flatMap { $0 }
             phase = .review
         } catch {
-            checkedFal = false
+            checkedFal = false; lipsyncMayPay = true
             await stopped(error, backend: backend)
         }
+    }
+
+    /// What "I Checked fal.ai · Lip Sync Again" charges: nothing when this lip sync was already paid over the voice and
+    /// picture (it is only put back), else the lip sync's price. Nil while unpriced.
+    var checkedFalUSD: Decimal? {
+        guard let voice, let picture else { return quote?.lipsyncUSD }
+        let model = synced?.model ?? .standard
+        if ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)) { return 0 }
+        return (try? backend?.lipsyncPrice(model)).flatMap { $0 } ?? quote?.lipsyncUSD
     }
 
     private func performShorterWording(_ script: WholeClipScript) async {
@@ -697,19 +751,31 @@ import VoxClipMedia
             var made = Failure(step: step, part: part, repeats: step == .script || Self.repeats(error), kind: kind, again: again)
             made.rewordable = step == .fit && Self.rewordable(error) && rewordRound < WholeClipRevoice.maximumRewordRounds
             failure = made
-            if step == .fit { fitStoppedScript = baseScript }
+            // A plan let go with nothing paid is made fresh by the next click: that Try Again meets no fit it met before.
+            if step == .fit, !Self.isStale(error) { fitStoppedScript = baseScript }
             backend.report("whole clip failure step=\(step) " + kind + (part.map { " part=\($0)" } ?? ""))
         } else if !line.hasPrefix("Cancelled.") {
             line = "Cancelled. Your clip is unchanged."
         }
+        // A plain stale stop means the plan was let go with nothing paid in it (`RewriteSession.checkWholeClipPlan`), or
+        // no plan holds the voice now: that voice can't be laid out or lip synced again, so the next click makes a fresh
+        // one (a free take a journal adopts costs nothing; the button prices it as a new voice) instead of meeting the
+        // same stale stop again.
+        if case ClipTakePlan.Failure.stale? = error as? ClipTakePlan.Failure { forgetVoice() }
         // A stop whose way on is a fresh price (the clip changed, a plan made fresh) prices the clip as it is now. Free.
         if case Stop.voiceInputsChanged = error { await requote(backend) }
         else if Self.isStale(error) { await requote(backend) }
         phase = .stopped(line + paidNote)
     }
 
+    /// Lets go of the run's voice and what was made over it, keeping the ledger (what was paid stays counted).
+    private func forgetVoice() {
+        voice = nil; synced = nil; picture = nil; match = nil; syncedEntries = [:]; lipsyncKept = false
+    }
+
     private func requote(_ backend: Backend) async {
         guard let script = try? backend.script() else { return }
+        quotedScript = script
         if let fresh = try? await backend.quote(script, .standard) { quote = fresh }
         keyAvailable = await backend.hasKey()
     }
@@ -839,8 +905,25 @@ import VoxClipMedia
     var stoppedForInputs: Bool {
         guard isStopped else { return false }
         if case Stop.voiceInputsChanged? = stopError { return true }
-        guard voiceSpent > 0, let baseScript, let now = try? backend?.script() else { return false }
+        guard heldVoiceSpent > 0, let baseScript, let now = try? backend?.script() else { return false }
         return now != baseScript
+    }
+
+    /// The stop is one the Voice step meets until something outside the card changes (`Backend.voiceReadiness`: a voice
+    /// chosen, Voice Lab ready, the project editable again, an Undo back to the Rewrite's clip), and it hasn't yet: Try
+    /// Again waits until it has, so it is never offered to meet the same stop.
+    var waitsForReadiness: Bool {
+        guard isStopped, let stop = stopError.map(Self.cause) as? Stop, Self.isReadiness(stop) else { return false }
+        return backend?.voiceReadiness() != nil
+    }
+
+    /// A stop only the user can take on, which ✦ Claude does it all leaves to them with Rewrite open, never voicing the
+    /// changed phrases on top: money was spent on this clip (a voice, parts of one, a lip sync), a shorter wording waits
+    /// for its priced click, the clip changed under the paid voice, a lost submit answer waits for the user's fal.ai
+    /// check, the paid voice can go in without lip sync, or Use couldn't put the result in.
+    var needsYou: Bool {
+        guard isStopped else { return false }
+        return spent > 0 || shorterWording != nil || stoppedForInputs || submissionUnconfirmed || canUseVoiceOnly || failure?.atUse == true
     }
 
     /// An Undo made the paid voice match again: Try Again uses it.
@@ -859,16 +942,22 @@ import VoxClipMedia
         /// came back, so no voice was made.
         case scriptTooLong(predicted: Double, video: Double)
         case noVoice(String)
-        /// No voice is chosen for the Rewrite.
+        /// No voice is chosen for the Rewrite. Choosing one lets Try Again pass (`waitsForReadiness`).
         case voiceMissing
         /// Voice Lab can't make takes for this Rewrite (its voice provider or the source audio isn't ready).
         case unavailable
+        /// The project can't be edited now (its media or transcript isn't available, or it is read-only).
+        case locked
+        /// Clip `clip`'s words, cuts or pauses changed since this Rewrite was made, with no paid voice held: Undo makes it
+        /// current again; otherwise the Rewrite is sent again for the clip as it is.
+        case rewriteChanged(clip: Int)
         case partVoice(part: Int, reason: String, checks: [VoiceLabTakeQAFailure])
         /// Part `part` (1-based)'s picture allows no cut or kept-source video under its laid-out take.
         case pictureUnmatched(part: Int)
         /// The user edited what the paid voice (`usd`) was made from: its words, cuts, pauses or corrections, the source or the
-        /// clean audio, or chose another voice. Undo makes it usable again; Start Over pays for a new one.
-        case voiceInputsChanged(clip: Int, usd: Decimal)
+        /// clean audio, or (`voiceSwitched`) chose another voice. Undo, or that voice again, makes it usable again; Start
+        /// Over pays for a new one.
+        case voiceInputsChanged(clip: Int, usd: Decimal, voiceSwitched: Bool = false)
         /// A shorter wording of `words` is ready, its voice (`usd`, the lip sync still to pay included) waiting for its own
         /// click (`ShorterWording`).
         case shorterWordingReady(words: Int, usd: Decimal?)
@@ -893,12 +982,22 @@ import VoxClipMedia
             return "The script would run about \(clock(predicted)) for \(clock(video)) of video, and no shorter wording came back, so no voice was made."
         case Stop.noVoice(let reason): return reason
         case Stop.voiceMissing: return "Make your voice in Rewrite first. Nothing was sent."
-        case Stop.unavailable: return "Voice Lab can't make takes for this Rewrite yet. Nothing was sent."
+        case Stop.unavailable: return "Voice Lab can't make takes for this Rewrite yet. Nothing new was sent."
+        case Stop.locked:
+            return "This project can't be edited right now (its media or transcript isn't available), so the whole clip can't go on. Nothing new was sent."
+        case Stop.rewriteChanged(let clip):
+            return "You edited Clip \(clip) after this Rewrite was made, so its changes may no longer fit. Nothing was sent. "
+                + "Undo the edit to go on, or send the Rewrite again."
         case Stop.partVoice(let part, let reason, _): return "Part \(part): " + reason
         case Stop.pictureUnmatched(let part):
             return "Part \(part)'s picture can't be matched to its voice on the clip as edited. Nothing was sent for lip sync."
-        case Stop.voiceInputsChanged(let clip, let usd):
-            return "You edited Clip \(clip) after its voice was made, so the paid voice (\(VoiceLabCostPresentation.format(usd))) no longer matches. "
+        case Stop.voiceInputsChanged(let clip, let usd, let switched):
+            let paid = "the paid voice (\(VoiceLabCostPresentation.format(usd))) no longer matches"
+            if switched {
+                return "You chose another voice after Clip \(clip)'s voice was made, so \(paid). "
+                    + "Choose the voice it was made with again to use it, or start over, which pays for the voice again."
+            }
+            return "You edited Clip \(clip) after its voice was made, so \(paid). "
                 + "Undo the edit to use it, or start over, which pays for the voice again."
         case Stop.shorterWordingReady(let words, let usd):
             return "A shorter wording of \(words) words fits the clip. Voicing it is a new voice" + (usd.map { " (\(VoiceLabCostPresentation.format($0)) with the lip sync)" } ?? "") + "."
@@ -966,6 +1065,14 @@ import VoxClipMedia
         return false
     }
 
+    /// A Voice step stop before anything is sent whose cause the user changes outside the card (`Backend.voiceReadiness`).
+    static func isReadiness(_ stop: Stop) -> Bool {
+        switch stop {
+        case .voiceMissing, .unavailable, .locked, .rewriteChanged: return true
+        default: return false
+        }
+    }
+
     /// A Fit stop a shorter wording can pass: none came back, or one that still runs long.
     private static func rewordable(_ error: any Error) -> Bool {
         switch error {
@@ -989,12 +1096,14 @@ import VoxClipMedia
 
     /// Trying again would only stop the same way: the parts can't be placed, nothing is left to voice, too many parts, the
     /// voice no longer matches the clip, or a stop before anything paid was sent. A network or provider failure can succeed
-    /// on a retry; so can a stop whose cause the user fixes outside the card (a fal.ai key) and a plan the next click makes
-    /// fresh (stale with nothing paid).
+    /// on a retry; so can a stop whose cause the user fixes outside the card (a fal.ai key; a voice chosen, Voice Lab ready,
+    /// an editable project or an Undo, `isReadiness`, whose Try Again waits for it) and a plan the next click makes fresh
+    /// (stale with nothing paid).
     static func repeats(_ error: any Error) -> Bool {
         if let unsent = error as? Unsent {
             if case ClipTakePlan.Failure.stale = unsent.error { return false }
             if cause(unsent.error) as? LipsyncError == .missingKey { return false }
+            if let stop = unsent.error as? Stop, isReadiness(stop) { return false }
             return true
         }
         if case Stop.voiceInputsChanged = error { return true }

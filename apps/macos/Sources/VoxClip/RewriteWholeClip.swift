@@ -41,8 +41,9 @@ extension RewriteSession {
             wholeClip = nil
         }
         if let session = wholeClip {
-            // The changes on the card changed (one included or left out): its price follows them.
-            if session.phase == .choose, !session.quoting, let now = try? session.backend?.script(), now != session.script {
+            // The changes on the card changed (one included or left out, or an edit under a stopped paid voice): the price
+            // on its button (Revoice Whole Clip, Start Over) follows them.
+            if session.needsRequote {
                 Task { [weak self, weak session] in
                     await session?.refreshQuote()
                     self?.refreshWholeClipPanel()
@@ -165,7 +166,8 @@ extension RewriteSession {
     }
 
     private func wholeClipStopActions(_ session: WholeClipRevoiceSession) -> [PanelAction] {
-        let paid = session.voiceSpent > 0
+        // Only a voice still held is one the patch drops: one let go (Start Over) is counted in the spend, not here.
+        let paid = session.heldVoiceSpent > 0
         let patch = PanelAction(id: "wholeClipPatch", title: paid ? "Voice Only the Changed Phrases (drops the paid voice)" : "Voice Only the Changed Phrases") { [weak self] in
             self?.patchInstead()
         }
@@ -174,9 +176,10 @@ extension RewriteSession {
             return [again, patch]
         }
         if session.submissionUnconfirmed {
-            guard let usd = session.quote?.lipsyncUSD else { return [patch] }
-            let checked = PanelAction(id: "wholeClipCheckedFal", title: "I Checked fal.ai · Lip Sync Again · \(VoiceLabCostPresentation.format(usd)) (fal.ai may charge twice)",
-                                      priced: true) { [weak self] in
+            guard let usd = session.checkedFalUSD else { return [patch] }
+            // A lip sync already paid over this voice and picture is only put back: the button says free.
+            let price = usd > 0 ? VoiceLabCostPresentation.format(usd) + " (fal.ai may charge twice)" : "free"
+            let checked = PanelAction(id: "wholeClipCheckedFal", title: "I Checked fal.ai · Lip Sync Again · " + price, priced: usd > 0) { [weak self] in
                 self?.wholeClip?.lipsyncAfterCheckingFal()
                 self?.watchWholeClip()
             }
@@ -186,11 +189,15 @@ extension RewriteSession {
             if session.inputsRestored, let retry = wholeClipPrimary(retry: true) { return [retry, patch] }
             guard session.keyAvailable else { return [wholeClipAddKeyAction(), patch] }
             guard let usd = session.quote?.wholeUSD else { return [patch] }
+            // The click approves this price: Start Over prices the clip again first, and runs only within it.
             let over = PanelAction(id: "wholeClipStartOver", title: "Start Over · " + VoiceLabCostPresentation.format(usd), priced: true) { [weak self] in
-                self?.startWholeClipOver()
+                self?.startWholeClipOver(approved: usd)
             }
             return [over, patch]
         }
+        // A voice chosen, Voice Lab ready, an editable project or an Undo lets the Voice step pass; until then a Try Again
+        // could only meet the same stop.
+        if session.waitsForReadiness { return [patch] }
         let first = session.repeatsFit || session.failure?.again == true
         if let shorter = session.shorterWording {
             let price = shorter.usd.map { " · " + VoiceLabCostPresentation.format($0) } ?? ""
@@ -230,13 +237,15 @@ extension RewriteSession {
         }
     }
 
-    /// Start Over · ≈ $Y: the paid voice that no longer matches is let go (what it cost stays counted), and the clip as it
-    /// is now is priced and revoiced from the start.
-    func startWholeClipOver() {
-        guard let session = wholeClip, !session.running else { return }
-        Task { [weak self, weak session] in
-            await session?.discard()
-            await session?.refreshQuote()
+    /// Start Over · ≈ $Y, clicked at `approved`: the clip as it is now is priced first. Within that price, the paid voice
+    /// that no longer matches is let go (what it cost stays counted) and the clip is revoiced from the start; over it,
+    /// nothing is let go or paid, and the stop shows Start Over at the new price for its own click.
+    @discardableResult func startWholeClipOver(approved: Decimal) -> Task<Void, Never> {
+        Task { [weak self, weak session = wholeClip] in
+            guard let session, await session.startOver(approved: approved) else {
+                self?.refreshWholeClipPanel()
+                return
+            }
             self?.startWholeClip()
         }
     }
@@ -344,8 +353,15 @@ extension RewriteSession {
             guard let plan = self?.wholeClipPlan, plan.stillCurrent else { return nil }
             return plan.unfinishedVoicePrice
         }, unsettledVoiceSpend: { [weak self] in
-            guard let self else { return 0 }
-            return retiredWholeClipVoiceSpend + (wholeClipPlanSettled ? 0 : wholeClipPlan?.spent.usd ?? 0)
+            guard let self, !wholeClipPlanSettled else { return 0 }
+            return wholeClipPlan?.spent.usd ?? 0
+        }, retiredVoiceSpend: { [weak self] in
+            self?.retiredWholeClipVoiceSpend ?? 0
+        }, partlyVoiced: { [weak self] script in
+            guard let self, let plan = wholeClipPlan, wholeClipPlanScript == script else { return false }
+            return plan.spent.units > 0
+        }, voiceReadiness: { [weak self] in
+            self?.wholeClipVoiceReadiness() ?? .unavailable
         }, picture: { [weak self] voice in
             guard let self else { throw CancellationError() }
             return try await wholeClipPicture(voice)
@@ -491,9 +507,26 @@ extension RewriteSession {
         }
     }
 
-    /// The stop for a paid plan that no longer matches the clip: "You edited Clip N after its voice was made…".
+    /// The stop for a paid plan that no longer matches the clip: "You edited Clip N after its voice was made…", or "You
+    /// chose another voice…" when the voice chosen now is not the one its takes were made with.
     private func wholeClipInputsChanged(_ plan: ClipTakePlan) -> WholeClipRevoiceSession.Stop {
-        .voiceInputsChanged(clip: wholeClipID.flatMap(editor.clipNumber) ?? 1, usd: plan.spent.usd ?? 0)
+        let madeWith = plan.phrases.lazy.flatMap(\.takes).compactMap { plan.measuredInput(take: $0.id)?.recordID }.first
+            ?? wholeClip?.voice?.key.recordId
+        let switched = madeWith.map { $0 != generation?.selectedVoiceID } ?? false
+        return .voiceInputsChanged(clip: wholeClipClipNumber, usd: plan.spent.usd ?? 0, voiceSwitched: switched)
+    }
+
+    private var wholeClipClipNumber: Int { wholeClipID.flatMap(editor.clipNumber) ?? 1 }
+
+    /// What stops the whole clip's Voice step before anything is sent, until something outside the card changes; nil when
+    /// it can go on (`WholeClipRevoiceSession.Backend.voiceReadiness`). The card's Try Again waits for it.
+    func wholeClipVoiceReadiness() -> WholeClipRevoiceSession.Stop? {
+        guard isOpen, editor.capabilities.edit else { return .locked }
+        // `voiceSpendCurrent` past the two above: the scope's inputs are not the ones this Rewrite was made for.
+        guard voiceSpendCurrent else { return .rewriteChanged(clip: wholeClipClipNumber) }
+        guard generation?.selectedVoiceID != nil else { return .voiceMissing }
+        guard takeBackend != nil, envelope != nil else { return .unavailable }
+        return nil
     }
 
     /// A stale plan never stops as "nothing was sent" over paid takes: with spend it is kept (stale until Undo or Start
@@ -533,14 +566,18 @@ extension RewriteSession {
         if let patch = takePlan, !hasPaidTakes {
             await patch.stop(); patch.invalidate(); takePlan = nil
         }
-        // What stops the Voice step says what it is: an edit of the scope (a paid voice is kept for Undo), no voice chosen,
-        // or a Voice Lab that can't make takes here. None of them is "make your voice first" unless that is what's missing.
-        guard voiceSpendCurrent else {
-            if let kept = wholeClipPlan, kept.spent.units > 0 { throw wholeClipInputsChanged(kept) }
-            throw ClipTakePlan.Failure.stale
+        // What stops the Voice step says what it is: a project that can't be edited now, an edit of the scope since the
+        // Rewrite (a paid voice is kept for Undo), no voice chosen (a paid voice is kept for choosing it again), or a Voice
+        // Lab that can't make takes here. Each waits for its cause to change before Try Again is offered.
+        if let stop = wholeClipVoiceReadiness() {
+            switch stop {
+            case .rewriteChanged, .voiceMissing:
+                if let kept = wholeClipPlan, kept.spent.units > 0 { throw wholeClipInputsChanged(kept) }
+            default: break
+            }
+            throw stop
         }
-        guard let generation, let recordID = generation.selectedVoiceID else { throw Session.Unsent(error: Session.Stop.voiceMissing) }
-        guard let takeBackend, let envelope else { throw Session.Unsent(error: Session.Stop.unavailable) }
+        guard let generation, let recordID = generation.selectedVoiceID, let takeBackend, let envelope else { throw Session.Stop.unavailable }
         if let kept = wholeClipPlan, wholeClipPlanScript == script {
             try checkWholeClipPlan(kept)
             if let blocked = kept.phrases.first(where: { $0.blocked != nil }) {
@@ -680,13 +717,20 @@ extension RewriteSession {
     private func observeWholeClipMeasuredTakes(_ plan: ClipTakePlan) {
         guard wholeClipPlan === plan, !plan.generating, !plan.preparing,
               let rate = try? VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(reviewInputs)) else { return }
+        try? recordMeasuredTakes(plan, rate: rate)
+    }
+
+    /// Each cloned-voice take of `plan` is one speaking-rate sample (R43): its measured length against the estimate of its
+    /// words at the speaker's `rate`, with its audio tags' allowance. The one calibration loop for every plan's measured
+    /// takes, the patch's (`observeMeasuredTakes`) and the whole clip's, so both read and write the same samples.
+    func recordMeasuredTakes(_ plan: ClipTakePlan, rate: Double) throws {
         for phrase in plan.phrases {
             for take in phrase.takes {
-                guard take.source == .clonedVoice, let audio = take.row.audio, let input = plan.measuredInput(take: take.id),
-                      let estimate = try? VoiceLabPhraseTiming.estimate(text: input.text, rate: rate) else { continue }
-                let allowance = VoiceLabAudioTags.allowance(input.audioTags, text: input.text, modelID: input.modelID)
+                guard take.source == .clonedVoice, let audio = take.row.audio, let input = plan.measuredInput(take: take.id) else { continue }
+                let estimate = try VoiceLabPhraseTiming.estimate(text: input.text, rate: rate)
+                    + VoiceLabAudioTags.allowance(input.audioTags, text: input.text, modelID: input.modelID)
                 recordSpeakingRate(model: input.modelID, recordID: input.recordID, take: take.id,
-                    measured: Double(audio.trimmed.count) / Double(audio.sampleRate) * (input.pace ?? 1), baseline: estimate + allowance)
+                    measured: Double(audio.trimmed.count) / Double(audio.sampleRate) * (input.pace ?? 1), baseline: estimate)
             }
         }
     }
