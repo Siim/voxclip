@@ -456,7 +456,7 @@ internal sealed partial class RewriteSession : IDisposable
     private void RefreshReview(bool preserveGenerations = false)
     {
         // The review is built for the project as it is now, and the generation windows follow it.
-        TakeWindowsMoved = false;
+        TakeWindowsMoved = false; takeWindowsMovedLine = "";
         if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; ClearMeasuredWording(); pendingExpressions.Clear(); expressionNotes.Clear(); }
         reviewProblem = "";
         try
@@ -525,9 +525,43 @@ internal sealed partial class RewriteSession : IDisposable
         if (placement && Review is not null)
         {
             if (!HasPaidTakes) { TakeWindowsMoved = false; RefreshReview(preserveGenerations: true); }
-            else TakeWindowsMoved = !SameWindows();
+            else FollowTakeWindows(!SameWindows());
         }
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+    /// <summary>The line the review shows while <see cref="TakeWindowsMoved"/> (Mac <c>followTakeWindows</c>' question): why Use waits,
+    /// what stays and the way back. An undo that moves the windows back clears it.</summary>
+    private string takeWindowsMovedLine = "";
+    private void FollowTakeWindows(bool moved)
+    {
+        if (moved == TakeWindowsMoved) return;
+        TakeWindowsMoved = moved;
+        if (moved)
+        {
+            takeWindowsMovedLine = TakeWindowsMovedCopy();
+            reviewProblem = takeWindowsMovedLine;
+        }
+        else
+        {
+            if (reviewProblem == takeWindowsMovedLine) reviewProblem = "";
+            takeWindowsMovedLine = "";
+        }
+    }
+    /// <summary>"The words beside these words changed after these takes were made, so they can't go in as they are. Your 2 paid takes
+    /// are kept: undo the edit to use them."</summary>
+    internal string TakeWindowsMovedCopy()
+    {
+        var beside = requestedScope is null ? "these words"
+            : requestedScope.ClipId is { } id ? Editor.Clips.FirstOrDefault(clip => clip.Id == id) is { } row ? $"clip {row.Number}" : "this clip"
+            : "the full take";
+        var count = PaidTakeCount;
+        var (kept, pronoun) = count switch
+        {
+            1 => ("Your paid take is kept", "it"),
+            0 => ("Your paid takes are kept", "them"),
+            _ => ($"Your {count} paid takes are kept", "them"),
+        };
+        return $"The words beside {beside} changed after these takes were made, so they can't go in as they are. {kept}: undo the edit to use {pronoun}.";
     }
     /// <summary>The review built for the project now places every phrase the generation windows were made for where it was.</summary>
     private bool SameWindows()

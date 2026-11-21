@@ -7,6 +7,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
+using static VoxClip.Core.Tests.Tracks.WinUi.RewriteAutoFixTests;
 #else
 using VoxClip.Tests.Support;
 #endif
@@ -124,6 +125,72 @@ public sealed class VoiceTakeIdentitySessionTests
         session.ConfigureGeneration(Generation(session));
         connector = false;
         Assert.True(session.GenerationIsCurrent);
+    }
+
+    /// <summary>Paid takes and another AI connector: the session stays with its takes, current. With nothing paid the connector
+    /// change still ends the proposal.</summary>
+    [Fact]
+    public async Task AnotherConnectorKeepsASessionWithPaidTakesOpen()
+    {
+        var connectorIsCurrent = true;
+        var connector = new Connector(Reply, (_, ordinals) => Rows(ordinals, "x"));
+        using var session = await PricedAsync(connector, new Runner((_, _) => (Fit, Passed)), value =>
+            new RewriteSession(Editor(), 10, 12, Envelope(), new(value, "chosen", "Stub", "local", ""), consent: _ => Task.FromResult(true),
+                connectorIsCurrent: () => connectorIsCurrent));
+        await SettleAsync(session);
+        var generation = session.Generation;
+        Assert.True(session.HasPaidTakes);
+        connectorIsCurrent = false;
+        session.SettingsChanged(true);
+        Assert.True(session.IsOpen && ReferenceEquals(session.Generation, generation) && session.GenerationIsCurrent && session.HasPaidTakes);
+
+        var unpaidCurrent = true;
+        using var unpaid = new RewriteSession(Editor(), 10, 12, Envelope(), null, connectorIsCurrent: () => unpaidCurrent);
+        unpaid.ConfigureGeneration(Generation(unpaid));
+        unpaidCurrent = false;
+        unpaid.SettingsChanged(true);
+        Assert.False(unpaid.IsOpen);
+    }
+
+    /// <summary>The selection's change voices w9 as a bridge (it touches w10). Cutting w9 is an edit beside the selection: the paid takes
+    /// stay, Use waits, and the review says why and how to get them back; an undo makes them current and clears the line. A cut that
+    /// moves no window keeps them current with no line.</summary>
+    [Fact]
+    public async Task ACutBesidePaidTakesSaysWhyUseWaitsAndUndoBringsThemBack()
+    {
+        var editor = BridgedEditor();
+        var connector = new Connector(Reply, (_, ordinals) => Rows(ordinals, "x"));
+        using var session = await PricedAsync(connector, new Runner((_, _) => (Fit, Passed)), value => Session(value, editor: editor));
+        await SettleAsync(session);
+        var windows = session.GenerationWindows.ToArray();
+        Assert.True(session.HasPaidTakes && session.GenerationIsCurrent);
+        Assert.Contains("w9", session.PricedVoiceHunks[0].Window!.LeftBridgeWordIds);
+
+        Assert.True(editor.Apply(new EditOperation.SetWordCuts(["w40"], true)));
+        Assert.True(session.IsOpen && !session.TakeWindowsMoved && session.GenerationIsCurrent && session.Problem.Length == 0);
+
+        Assert.True(editor.Apply(new EditOperation.SetWordCuts(["w9"], true)));
+        Assert.True(session.IsOpen && session.TakeWindowsMoved && session.HasPaidTakes && session.VoiceSpendCurrent);
+        Assert.False(session.GenerationIsCurrent);
+        Assert.Equal(windows, session.GenerationWindows);
+        Assert.Equal(session.TakeWindowsMovedCopy(), session.Problem);
+        Assert.StartsWith("The words beside these words changed after these takes were made, so they can't go in as they are. Your ", session.Problem);
+        Assert.Contains(" kept: undo the edit to use ", session.Problem);
+
+        editor.Undo();
+        Assert.True(session.IsOpen && !session.TakeWindowsMoved && session.GenerationIsCurrent);
+        Assert.Equal("", session.Problem);
+        Assert.Equal(windows, session.GenerationWindows);
+    }
+
+    /// <summary><see cref="Editor"/> with w9 ending where w10 starts, so a change of w10 bridges w9.</summary>
+    private static EditorViewModel BridgedEditor()
+    {
+        var editor = Editor();
+        var project = editor.Project;
+        var words = project.Transcript!.Words.Select(word => word.Id == "w9" ? word with { End = 11 } : word).ToArray();
+        return new(project with { Transcript = project.Transcript with { Words = words } },
+            now: () => new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.Zero));
     }
 
     private static RewriteGeneration Generation(RewriteSession session) =>
