@@ -78,6 +78,15 @@ internal sealed class RightColumn : Grid
         rewrite = panel;
         ShowDirector();
     }
+    /// <summary>Brings the open Rewrite's own panel forward so it can ask its question (another Rewrite asked for over its paid
+    /// takes). A job open in its place closes first when it may; one that stays keeps the column, and the Rewrite and its takes are
+    /// never closed for it (unlike <see cref="ShowRewrite"/>, whose refused panel is a new one). False when it can't come forward.</summary>
+    internal bool RevealRewrite(RewritePanel panel)
+    {
+        if (!ReferenceEquals(rewrite, panel) || !CloseJob()) return false;
+        ShowDirector();
+        return true;
+    }
     internal void CloseRewrite()
     {
         rewrite = null;
