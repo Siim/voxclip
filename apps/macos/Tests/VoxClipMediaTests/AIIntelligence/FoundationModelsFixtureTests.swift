@@ -6,8 +6,10 @@ import Testing
 @testable import VoxClipMedia
 
 enum FoundationModelsFixtures {
-    /// Shared files every comparison reads besides its corpus; each envelope pins them as `sources`.
-    static let sharedInputs = ["catalog/llm-providers.json", "prompts/ai-tighten.json", "prompts/clip-finder.json"]
+    /// Shared files the corpora pin as `sources`, each checked by hash: the catalog and prompts every comparison reads, and
+    /// the two rewrite prompts whose schemas `connector-requests.json`'s Codex cases carry (tools/fixtures/llm/README.md).
+    static let sharedInputs = ["catalog/llm-providers.json", "prompts/ai-tighten.json", "prompts/clip-finder.json",
+                               "prompts/voice-rewrite.json", "prompts/patch-rewrite.json"]
 
     struct Failure: Error, CustomStringConvertible, LocalizedError {
         let description: String
