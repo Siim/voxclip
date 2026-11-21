@@ -4,7 +4,8 @@ import Foundation
 /// before it uploads anything, so a held slot refuses at once (`busy`) with nothing uploaded or paid. The run gives it
 /// back whenever it stops tracking its job: the job finished, failed or was cancelled, a poll gave up, the submit's answer
 /// was lost (the session's own flag blocks a resubmit), or the payload delete failed. A lease no one gives back ends by
-/// itself at its expiry (the job's deadline), so one lost lease never blocks lip sync for the rest of the app's run.
+/// itself at its expiry: the job's deadline (30 minutes) after it is reserved, renewed to the deadline plus 5 minutes once
+/// fal.ai accepts the job (FalLipsyncProvider). One lost lease never blocks lip sync for the rest of the app's run.
 package actor LipsyncProviderQueue {
     package struct Lease: Sendable, Equatable { let account: String; let id: UUID }
     private struct Held { let lease: Lease; var expires: Duration }
