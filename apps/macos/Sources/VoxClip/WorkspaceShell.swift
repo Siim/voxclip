@@ -323,7 +323,10 @@ enum SidebarItem: Hashable {
                 let imported = try await importedDocument(url, app: app)
                 try Task.checkCancellation()
                 NSDocumentController.shared.addDocument(imported)
-                guard await replaceProject(with: imported, fromImport: true) else { imported.close(); return }
+                // An open Rewrite's paid work asks first; its Discard and Close imports the movie again.
+                guard await replaceProject(with: imported, fromImport: true, retry: { [weak self] in await self?.importVideo(url) }) else {
+                    imported.close(); return
+                }
                 // An untitled import is an edited document, so leaving it later
                 // shows the system keep/delete prompt.
                 imported.markEdited()
@@ -380,10 +383,18 @@ enum SidebarItem: Hashable {
     /// `next` is attached. Opening the project that is already open selects Full take.
     /// Returns false, with an inline notice, when the open project stays. Only the
     /// running import may replace the project while it imports.
-    @discardableResult func replaceProject(with next: VoxClipDocument, fromImport: Bool = false) async -> Bool {
+    /// An open Rewrite with paid work asks first (`leave`); its Discard and Close runs `retry`, by default opening `next`
+    /// again from its file or autosave, since a refused `next` is closed by its caller.
+    @discardableResult func replaceProject(with next: VoxClipDocument, fromImport: Bool = false,
+                                           retry: (@MainActor () async -> Void)? = nil) async -> Bool {
         if next === document { selection = .fullTake; return true }
         guard !next.isVersion else { return false }
-        guard await leave(fromImport: fromImport) else { return false }
+        let file = next.fileURL, autosave = next.autosavedContentsFileURL
+        let again: @MainActor () async -> Void = retry ?? { [weak self] in
+            guard let self else { return }
+            if let file { await openProject(at: file) } else if let autosave { await reopenAutosave(autosave) }
+        }
+        guard await leave(fromImport: fromImport, retry: again) else { return false }
         attach(next)
         return true
     }
@@ -391,10 +402,13 @@ enum SidebarItem: Hashable {
     /// Close Project (⌘W): the same boundary, leaving the shell on Home.
     @discardableResult func closeProject() async -> Bool {
         guard document != nil else { return true }
-        guard await leave() else { return false }
+        guard await leave(retry: { [weak self] in _ = await self?.closeProject() }) else { return false }
         selection = .home
         return true
     }
+    /// The open Rewrite whose paid work the user chose to discard for a leave (the question's Discard and Close): the leave
+    /// it runs again goes ahead without asking. Read and cleared as each leave starts.
+    @ObservationIgnored private weak var paidWorkDiscardConfirmed: RewriteSession?
 
     /// A project closed outside the shell, for example by a test. Detaching first keeps
     /// the main window open on Home.
@@ -501,12 +515,26 @@ enum SidebarItem: Hashable {
         return true
     }
 
-    private func leave(fromImport: Bool = false) async -> Bool {
+    /// The leave boundary's first question: an open Rewrite holding unused or running paid work asks inline, in that Rewrite
+    /// ("Close the project and discard 3 paid takes (≈ $0.12)?", Keep Working the default), before anything freezes, saves
+    /// or closes, and the leave returns false. Discard and Close runs `retry` (the same close, open or import again), which
+    /// then goes ahead without asking. Keep Working changes nothing.
+    private func leave(fromImport: Bool = false, retry: @escaping @MainActor () async -> Void) async -> Bool {
         // Opening, closing or locating another project waits for a running import, which
         // would replace it when it finishes (checklist step 3.1).
         if isImporting, !fromImport { notice = Self.busyCopy; return false }
         guard let document, let editor else { return true }
         if leaving || editor.exporting || editor.finding || editor.progress != nil { notice = Self.busyCopy; return false }
+        let confirmed = paidWorkDiscardConfirmed
+        paidWorkDiscardConfirmed = nil
+        if let session = editor.openRewrite, session.asksBeforeClosing, session !== confirmed, session.canAskAboutPaidWork {
+            session.confirmDiscardPaidWork(.closeProject) { [weak self, weak session] in
+                guard let self, let session else { return }
+                paidWorkDiscardConfirmed = session
+                Task { @MainActor in await retry() }
+            }
+            return false
+        }
         // A clip title still being typed is kept before edits freeze.
         endRename()
         leaving = true

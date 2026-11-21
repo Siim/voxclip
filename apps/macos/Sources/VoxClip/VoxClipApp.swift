@@ -170,6 +170,14 @@ import VoxClipCore
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminating else { return .terminateLater }
+        // An open Rewrite's unused or running paid work asks first, inline in that Rewrite ("Quit VoxClip and discard 3 paid
+        // takes (≈ $0.12)?", Keep Working the default), never in an alert; its Discard and Quit quits again without asking.
+        let confirmed = paidWorkQuitConfirmed
+        paidWorkQuitConfirmed = false
+        if !confirmed, let session = rewriteHoldingPaidWork {
+            askBeforeQuitting(session)
+            return .terminateCancel
+        }
         terminating = true
         // A clip title still being typed is kept before the documents are reviewed.
         model.shell.endRename()
@@ -179,6 +187,29 @@ import VoxClipCore
             NSDocumentController.shared.reviewUnsavedDocuments(withAlertTitle: "Quit VoxClip?", cancellable: true, delegate: self, didReviewAllSelector: #selector(reviewedDocuments(_:didReviewAll:contextInfo:)), contextInfo: nil)
         }
         return .terminateLater
+    }
+    /// Set by the paid-work question's Discard and Quit: the quit it starts again goes on without asking.
+    private var paidWorkQuitConfirmed = false
+    /// Quits again after Discard and Quit (`NSApp.terminate`); tests replace it.
+    var requestTermination: @MainActor () -> Void = { NSApp.terminate(nil) }
+    /// The first open Rewrite, in the main window or any open project, holding unused or running paid work it can ask about.
+    var rewriteHoldingPaidWork: RewriteSession? {
+        let documents = NSDocumentController.shared.documents.compactMap { ($0 as? VoxClipDocument)?.editorModel }
+        let editors = [model.shell.editor].compactMap { $0 } + documents
+        return editors.lazy.compactMap(\.openRewrite).first { $0.asksBeforeClosing && $0.canAskAboutPaidWork }
+    }
+    /// Shows the quit question in `session`, in front: its window, its project rather than Home, then its tab and job.
+    private func askBeforeQuitting(_ session: RewriteSession) {
+        let shell = model.shell
+        if shell.editor === session.editor {
+            if shell.showsHome { shell.selection = session.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake }
+            shell.windowController?.window?.makeKeyAndOrderFront(nil)
+        }
+        session.confirmDiscardPaidWork(.quit) { [weak self] in
+            guard let self else { return }
+            paidWorkQuitConfirmed = true
+            requestTermination()
+        }
     }
     @objc private func reviewedDocuments(_ controller: NSDocumentController, didReviewAll: Bool, contextInfo: UnsafeMutableRawPointer?) {
         guard didReviewAll else { terminating = false; NSApp.reply(toApplicationShouldTerminate: false); return }
