@@ -1,5 +1,150 @@
 # macOS implementation contracts
 
+### 2026-11-21 — Nothing closes over paid work, and Claude mode hands it back (track/v2-rel-d, package D)
+
+Close, Esc, the panel's X, a scope switch, Rewrite Again, closing the project, Quit, a video-voice switch and Claude mode dropped unused or running paid takes, a whole clip's voice or a lip sync without asking, and Claude mode then paid for the patch on top. See voice-lab §8.16–§8.17 and design.md R2 "Closing Rewrite" and §6.7 "Paid work is handed back".
+
+- **The rule:**
+  - Unused or running paid work is `RewriteSession.hasUnusedPaidWork`: `hasPaidWork` less a used whole clip's lip sync. Nothing counts once Use put it in the project; a whole clip holding only a voice adopted for free (spent 0) holds none.
+  - `EditorModel.closeRewrite(returnFocus:) -> Bool` asks inline and returns false while `asksBeforeClosing` (`isOpen && hasUnusedPaidWork && canAskAboutPaidWork`). `discardRewrite(returnFocus:)` closes unasked: a confirmed close, the editor closing, DEBUG scenes. Remove and Dismiss on the Rewrite's clip, a new Rewrite on another scope, Rewrite Again after the AI changed, Close Project, opening, importing or recovering a project, and Quit ask too, with their own question and Discard title (`CloseReason`).
+  - The question comes forward where it can be answered (viewer, out of Home, the session's tab, the job), and an app-started `.close` never replaces another question already up. A session on no tab (its clip gone without Remove) never asks: it closes and the status bar says "Rewrite closed with its clip, discarding {summary}."
+  - Leave: the project that would replace the open one waits open for the answer (`WorkspaceShell.holdsForPaidWork`, `PaidWorkWaiting`). Discard and Close and Discard and Quit discard the Rewrite at once; no flag outlives a refused leave. Quit asks before `reviewUnsavedDocuments` (`AppDelegate.rewriteHoldingPaidWork`).
+  - Match this video, the video-voice card, the per-video cleanup and the generation's `keepsVoice` read `holdsPaidVoice`, so the voice under a paid whole-clip voice or lip sync is never switched or removed.
+  - Claude mode: `WholeClipRevoiceSession.runAutomatically(budget:holdsPaidWork:start:report:)` takes at most one automatic Try Again (`automaticRetryUSD`, `retriesOnItsOwn`). `WholeClipAutoOutcome.needsYou` keeps Rewrite open with "Finish the whole clip in Rewrite: its paid voice is kept" and Show in Rewrite; the patch runs only with nothing held. The outcome and Rewrite's close follow one predicate, `hasUnusedPaidWork`. `MakeItRewriteDriver` never presses Keep My Original Audio (gone from `order`), Discard Takes or a close's Discard; `next(in:)` and `useStopped` stop with needsYou, and a settled Rewrite closes through `closingUnasked`.
+- **Built:** `RewriteSession+PaidWorkGuard.swift` (new): `CloseReason`, `hasUnusedPaidWork`, `asksBeforeClosing`, `canAskAboutPaidWork`, `holdsPaidVoice`, `discardWholeClipWork()`, `paidWorkUSD`, `paidWorkSummary`, `discardPaidWorkQuestion(_:)`, `confirmDiscardPaidWork(_:keep:perform:)`. EditorModel: `closeRewrite` → Bool, `discardRewrite`, `closingUnasked(_:)`, `rewriteConnectorChanged()`, `restartRewrite(_:paidWorkConfirmed:)`, asking `removeClip` and `dismiss`. WorkspaceShell: `replaceProject(with:fromImport:attached:refused:)`, `holdsForPaidWork(_:)`, `PaidWorkWaiting`. VoxClipApp: `applicationShouldTerminate` asks, `requestTermination` (test seam). MakeItWholeClip: `WholeClipAutoOutcome.needsYou`, `init(_:holdsPaidWork:)`, `holdsPaidWork`, `patches`; `WholeClipRevoiceSession.holdsPaidWork`, `automaticRetryUSD(budget:)`, `retriesOnItsOwn`, `runAutomatically`; `RewriteSession.startAutomaticWholeClip(budget:)`.
+- **Changed (App):** `EditorModel`, `WorkspaceShell`, `VoxClipApp`, `RewriteVideoVoice`, `VoiceLabSession+PerVideo`, `RewriteGenerationSession` (`keepsVoice` reads `hasPaidTakes || holdsPaidVoice`), `MakeItWholeClip`, `MakeItPostable`, `MakeItRewriteDriver`, `DebugRewrite`, `DebugRewriteSmokeMakeIt` (they discard on purpose).
+- **Inline:** every question is in the Rewrite job's footer; no alert or sheet.
+- **Tests:** App `RewritePaidWorkGuardTests` (new): every close path, Remove and Dismiss, a session on no tab, a leave from Home with an untitled project waiting, Quit, an app-started close behind a price question, and the AI change keeping paid work; `MakeItPostableTests` and `ClaudeModeTests` (a paid whole clip kept, not patched; one predicate for the outcome and the close; a settled Rewrite closes after Apply N text fixes). Red without the change: each new guard test failed on the pre-fix sources. The take-plan autosave test helper now makes its document untitled after the save (`1db65804`), and the lead's `1772324a` skips a timed autosave into a deleted folder in a test process, so no app-modal alert blocks later tests. Full App 1185 and Core 1589 passed.
+- **Windows:** `ProjectLeaveBoundary.HoldsPaidWork` and `ProjectLeaveHeldException` (apps/windows/CONTRACTS.md).
+- **Owes:**
+  - `startAutomaticWholeClip(budget:)` still calls `startWholeClip(automatic: true)` without the budget, so an automatic run never voices a shorter wording (it stops at Fit with `shorterWordingReady`). Pass `budget:`.
+  - `AppModel` keeps its own `rewriteConnectorChanged(in:)` (reads `hasPaidWork`); `EditorModel.rewriteConnectorChanged()` is called only by tests.
+  - The manual voice picker (`DirectorTakeRows`) locks on `hasPaidTakes` only, not `holdsPaidVoice`, and `generation.chooseVoice` is not locked.
+  - `reloadFromDocument` (revert, a change on disk) discards unasked.
+  - A video that goes missing or unreadable, a relink candidate and re-transcription ask, but the change goes ahead under the open Rewrite.
+  - Rewrite Again over paid work with the same AI asks "Discard these {c} changes?" whenever the proposal has changes (`proposalCount > 0`), not the paid-work question.
+  - The real-window gates (rewrite smoke, scene audit) were not run.
+- **Next package:** any new code that closes a Rewrite calls `closeRewrite` and checks its result; `discardRewrite` only after the user confirmed. Keep `WholeClipRevoiceSession.holdsPaidWork` in step with the whole-clip clause of `RewriteSession.hasPaidWork`.
+
+### 2026-11-21 — Every paid take is journaled and reused without paying for its voice again (track/v2-rel-e, package E)
+
+A paid ElevenLabs take lived only in memory until Use, so closing Rewrite, quitting, a crash or a relaunch lost it and the next run paid again; VoiceLabScratch folders of dead processes were never swept; an AI-model change closed a Rewrite holding paid work. See voice-lab §3.4.
+
+- **The rule:**
+  - `VoiceLabTakeJournal` writes `VoiceLab/<projectId>/takes/<assetId>.json` (0700/0600, `.partial` + `F_FULLFSYNC` + rename + folder sync) right after `VoiceLabAssetStore.write`, before any check that can fail. Timing recovery updates `alignment`; settled checks update `checks`.
+  - `prepare` adopts the newest adoptable entry over the same record, voice, model, language, request text, previous and next text and rounded pace, at 24 kHz, with an intact canonical asset: no synthesis is sent, the synthesis quote is $0 (basis `adopted-take`), and only the word check is priced. An entry with a hard failure in `checks` is never adopted. Claims are per process; Try Another never adopts.
+  - Retention (`closeProject`) reads the journal and the lip-sync attempt index once per close and never deletes an asset either names. Entries go after Use, once their asset is gone, or 60 days after `createdAt` when deletion is allowed (`unusedLifetime`).
+  - Launch runs `VoiceLabAssetStore.sweepVoiceLabScratch(root:)` after `recoverStalePartials` and `discoverUnlisted`: an `op-<uuid>` folder whose intent names a dead owner goes; `calibration-timing/`, `timing/`, `heard/`, `lipsync-window-*` and the paid root stay.
+  - An `llm.*` setting change closes Rewrite only without paid work (`AppModel.rewriteConnectorChanged(in:)`); otherwise `rewriteConnectorKeptNotice`, "The AI changed. Your paid takes are kept; Rewrite Again uses the new AI and asks first."
+- **Format:** `voxclip-take-journal/1`, keys `schema`, `assetFile`, `assetSha256`, `requestID` (lowercase), `providerRequestID?`, `recordID`, `voiceID`, `modelID`, `language`, `requestText`, `previousText`, `nextText`, `pace`, `seed`, `sampleRate`, `frames`, `alignment?`, `checks?`, `receipt`, `estimateUSD?` (string), `createdAt` (ISO 8601, whole seconds). Pinned by `shared/fixtures/voice-lab/take-journal-cases.json` (`voxclip-take-journal-cases/1`, 35 cases, `tools/fixtures/voice-lab/generate_take_journal.py`, README beside it).
+- **Built:** Media `VoiceLabTakeJournal` (`write`, `updateTiming`, `updateChecks`, `list`, `match`, `remove`), `VoiceLabTakeJournalKey`, `VoiceLabTakeJournalEntry` (`adoptable`), `VoiceLabTakeJournalClaims`; Core `VoiceLabTakeQuote.adoptedAsset`, `providerQuotes`, `VoiceLabTakeRow.adoptedAsset`; `VoiceLabAssetStore.sweepVoiceLabScratch(root:)`; `AppModel.rewriteConnectorChanged(in:)`.
+- **Deleted:** `VoiceLabAssetRetention.paidReferences`.
+- **Changed:** Media `VoiceLabTakeRun`, `VoiceLabAssetRetention`, `VoiceLabAssetRecovery`; Core `VoiceLabTakeRun`; App `AppModel`.
+- **Inline:** no new pop-up.
+- **Tests:** Media `VoiceLabTakeJournalTests`, `VoiceLabScratchSweepTests` (new), `VoiceLabAssetRetentionTests` (an imported lip sync the index names is kept as a real deletion candidate, the same bytes under another name go; the +8-day journal case); Core `VoiceLabTakeRunTests` (adoption prices the word check only; `aTakeThatFailedItsChecksIsNeverAdopted` for words, speaker and timing); App `RewriteConnectorChangeTests`, `VoiceLabStartupSweepTests`. Red without the `adoptable` filter: the failed-check tests and the shared match cases fail on both platforms. Full Core 1594 and App 1166 passed; Media 678 with one timeout under load that passed alone.
+- **Windows:** the journal twin (apps/windows/CONTRACTS.md).
+- **Owes:**
+  - A whole clip's card price (`RewriteWholeClip` pre-quote) doesn't know a part will be adopted, so it shows the full voice price.
+  - After a relaunch nothing reopens a Rewrite: the proposal and a whole clip's voice, ledger and plan are in memory only. A journaled take comes back only when the same words are voiced again. (Package G.)
+  - `LipsyncAttemptStore.importedAssets(inProject:)`, so retention can drop its own reader of the attempt index.
+  - A whole-clip variant of `RewriteConnectorChangeTests`.
+- **Next package:** an adopted take counts as a made take (`spent.units` 1, the dollars the word check only). `discardPaidTakes()` leaves journal entries; to forget one, call `VoiceLabTakeJournal.remove(assetID:projectID:paidRoot:)`. Whole-clip parts are adopted only when the request is identical, pace included.
+
+### 2026-11-21 — Whole-clip retries can pass and keep what was paid (track/v2-rel-b, package B)
+
+Revoice Whole Clip compared the raw project, so after an autosave Try Again looped on "The rewrite changed"; a paid voice was wrapped as "not sent" and the only button discarded it; matching the picture or Try Again took a paid lip sync off; the voice was paid before free checks; an extra reword was paid without approval. See voice-lab §8.14 and design.md R2 "How should it sound?".
+
+- **The rule:**
+  - Currency: `wholeClipInputsCurrency()` is `voiceSpendCurrent && wholeClipIdentity(editor.project) == identity` (`voiceTakeIdentity` over the clip, captured at plan time) and the chosen voice. The guard is split into named stops: `voiceMissing`, `unavailable`, `locked`, `rewriteChanged` (readiness stops, which wait for their cause through `Backend.voiceReadiness` and `waitsForReadiness`), and a plain `Failure.stale` that lets go of the retired plan's voice so Try Again makes a fresh one.
+  - A paid voice whose inputs changed stops with `Stop.voiceInputsChanged(clip:usd:voiceSwitched:)`; Undo, or that voice again, brings Try Again back (`inputsRestored`); Start Over prices the clip first (`startOver(approved:)`) and runs only within the clicked price.
+  - Lip sync survives Try Again, Fit and the sync-3 upgrade: the plan's applied entries are put back through `RewriteLipsyncSession.restore(_:matching:)` with the whole-clip offer; Use restores first or stops with `lipsyncMissing`.
+  - Before paying: `LipsyncWindowPreparation.preflight`, then a free reword when the calibrated estimate runs past the clip by more than 8% (`scriptTooLong` when none comes back), then the fal.ai key in the Voice step. It runs for every first voice of a script; only parts already paid for it skip it (`Backend.partlyVoiced`).
+  - A manual run voices a shorter wording after a paid voice only by its own click (`shorterWordingReady`, Voice the Shorter Wording); an automatic one only within budget − spent − the lip sync still due. Shorter Wording · free needs an AI (`canAskShorterWording`, `Backend.canReword`).
+  - Use the Voice Without Lip Sync · free (`useVoiceOnly`, `putInWholeClipVoiceOnly`): ordinary Voice Lab segments over the matched picture, no `WholeClipRevoiceRecord`, no project-format change; only the user's click.
+  - I Checked fal.ai never pays again for a lip sync already in the ledger (`checkedFalUSD`, free then).
+  - Parts under 4 s of source join a neighbour (`WholeClipRevoice.minimumPartSeconds`, within `maximumPartCharacters`; they may pass `maximumPartSeconds`).
+  - The script says the changes the wording fit kept as recorded and those whose slot can't hold them (`wholeClipVoiceHunks`).
+  - After the patch was picked the card is one row, Revoice the Whole Clip Instead · ≈ $X (`wholeClipCompact`, `wholeClipInsteadAction`).
+  - Spend: `unsettledVoiceSpend` covers the current plan only, `retiredVoiceSpend` what was let go; `spent` and `voiceSpent` add both; `heldVoiceSpent` is what is still held and drives "(drops the paid voice)" and `stoppedForInputs`.
+- **Built:** `RewriteSession`: `startWholeClip(automatic:budget:)`, `startWholeClipOver(approved:)`, `useWholeClipAgain()`, `useWholeClipVoiceOnly()`, `watchWholeClip()`, `wholeClipInsteadAction()`, `wholeClipAddKeyAction()`, `wholeClipVoiceHunks`, `wholeClipInputsCurrency()`, `wholeClipVoiceReadiness()`, `recordMeasuredTakes(_:rate:)`. `WholeClipRevoiceSession`: `start(automatic:budget:)`, `voiceShorterWording()`, `askShorterWording()`, `lipsyncAfterCheckingFal()`, `upgradeAfterCheckingFal()`, `useAgain()`, `useVoiceOnly()`, `startOver(approved:)`, `refreshReadiness()`, `needsRequote`; state `canAskShorterWording`, `canUseVoiceOnly`, `usedVoiceOnly`, `stoppedForInputs`, `inputsRestored`, `waitsForReadiness`, `needsYou`, `voiceSpent`, `heldVoiceSpent`, `keyAvailable`, `shorterWording`, `upgradeNote`, `checkedFalUSD`, `failure.atUse`, `failure.rewordable`; Stop cases `voiceInputsChanged`, `shorterWordingReady`, `lipsyncMissing`, `voiceMissing`, `unavailable`, `locked`, `rewriteChanged`, `noShorterWording`, `scriptTooLong`. Backend closures (all defaulted): `canReword`, `hasKey`, `preflight`, `voiceCurrent`, `appliedLipsync`, `restoreLipsync`, `useVoiceOnly`, `partlyVoiced`, `voiceReadiness`, `retiredVoiceSpend`.
+- **Deleted:** `Stop.retainedVoiceChanged`, and the raw `now == snapshot` currency.
+- **Changed:** App `RewriteWholeClip`, `WholeClipRevoiceSession`, `WholeClipRevoiceCard`; Core `WholeClipRevoice`; `shared/fixtures/voice-lab/whole-clip-revoice-cases.json` (31 script cases, `minimumPartSeconds`) and `tools/fixtures/voice-lab/generate_whole_clip.py`. The lead's `ffe0dede` and `57b5c39d` split long `DirectorTakeRows` expressions for Xcode 26.
+- **Inline:** every new action is a button on the card.
+- **Tests:** App `WholeClipRevoiceSessionTests` (53, also under the strict pool), among them `aSaveOrMusicNeverMakesThePaidVoiceStaleButAWordEditDoes`, `aPaidLipSyncIsPutBackForFreeAndUseNeverDropsIt`, `aScriptEstimatedTooLongIsRewordedBeforeTheFirstVoice`, `startOverNeverChargesMoreThanTheClickedPrice`, `aStopWithNoVoiceChosenOffersTryAgainOnceOneIs`, `iCheckedFalNeverPaysAgainForALipSyncAlreadyPaid`, `aPaidVoiceWhoseLipSyncCantRunCanGoInWithoutIt`; Core `WholeClipRevoiceTests` and the replay. Red without the change: two sabotage groups (6 and 4 tests) failed. Full Core 1590, Media 671, App 1192 passed.
+- **Windows:** `WholeClipRevoice.MinimumPartSeconds` and the merge in `WholeClipScript.Parts` (apps/windows/CONTRACTS.md).
+- **Owes:**
+  - `RewriteWordingFit.observeMeasuredTakes` still has its own speaking-rate loop; replace it with `try recordMeasuredTakes(plan, rate: rate)`.
+  - `ClipTakePlan.automaticTake` leaves out `madeBeforeEdit` takes, so whole-clip parts that land during an edit are paid again after Undo.
+  - A pick carries over to a new Rewrite session of the same clip (cleared only when the proposal changes within a session, and by Undo Whole Clip).
+  - A real-project test of Use the Voice Without Lip Sync (its live path is tested through stubs), the whole-clip Rewrite smoke and the scene audit.
+- **Next package (D):** map a stopped session that holds a voice to needs-you, never to the patch; never call `startOver`, `lipsyncAfterCheckingFal`, `upgradeAfterCheckingFal` or `useVoiceOnly` automatically; pass `budget:` (still owed, see package D). `Stop.voiceInputsChanged` has a third, defaulted value: match it without bindings or with three.
+
+### 2026-11-21 — The committed baseline passes CI again (track/v2-rel-z, package Z)
+
+The base c6c0a000 failed CI in tests and checks that hadn't followed its own changes. Nothing in the app changed.
+
+- **Changed (tests):** `MacUIIntegrationTests.rightColumnLayout` expects Music and Picture in the right-column switcher, as the in-app audit does (all jobs when they fit, otherwise Music, Picture and the open job with More panels), and its audit gets a 240 s deadline (87–101 s on hosted runners, about 57 s here). `FoundationModelsFixtureTests` checks `prompts/voice-rewrite.json` and `prompts/patch-rewrite.json`, which `connector-requests.json` now lists as sources.
+- **Windows:** CI and allowlists (apps/windows/CONTRACTS.md).
+- **Next package:** a new right-column job needs the audit and this test updated together.
+
+### 2026-11-21 — First takes land more often (track/v2-rel-f, package F)
+
+Auto-fix diagnosed a failed take by its length, so a take that dropped words ran short and was reworded longer; Eleven v4 dialogue timing a little past the audio was thrown away; Rewrite could start with another video's voice. See voice-lab §8.2.2, §8.5 and §6.13 item 6.
+
+- **The rule:**
+  - `RewriteSession.stuckReason`, with no take selectable: provider, timing, too little speech, then length (closest take longer than its slot, its own failures none or only the word check, no duration carries it by `durationCarries(_:plan:)`: source, cut or matched speed), then word check, voice check, other. A selected passing take is reworded only when too long for every duration. A short take is never reworded longer from here.
+  - `ElevenLabsVoiceLab`: a dialogue segment may end up to `VoiceLabProviderTiming.overrunTolerance` (0.25 s) past the PCM.
+  - `RewriteGenerationSession.initialVoice(_:preferred:anchor:otherVideos:)`: preferred, anchor, then the first listed voice, never another video's own; nil shows "choose a voice". The choice is made again when the per-video book loads, while it is still automatic and nothing is paid or running (`voicePreference`, `keepsVoice`).
+- **Built:** `RewriteSession.hardFailures(_:)`, `durationCarries(_:plan:)`, `wireInitialVoice()`, `initialVoicePreference`; `RewriteGenerationSession.VoicePreference`, `voicePreference`, `keepsVoice`, `initialVoice(_:preferred:anchor:otherVideos:)`, DEBUG `discoverForTests`.
+- **Changed:** App `RewriteAutoFix`, `RewriteGenerationSession`, `RewriteSession`; Media `ElevenLabsVoiceLab`; fixtures `dialogue-cases.json` (`segments_past_audio` 0.28 s past, refused; `segments_within_tolerance` 0.12 s past, accepted) and `v4-timing-cases.json` (`segment_end_past_pcm` accepted), with their generators and the fixtures README.
+- **Inline:** no new pop-up.
+- **Tests:** App `RewriteAutoFixReasonTests` (new; among them `aFailedWordCheckTooLongForEveryDurationIsRewordedShorter`) and `RewriteGenerationTests`; Core `VoiceLabDialogueTests`. Red without the change: the new reason tests and the restored MVP13 test fail. Core 1572 passed; App 1134 with one load failure that passed alone.
+- **Windows:** the twin (apps/windows/CONTRACTS.md).
+- **Next package:** `lengthFits` stays for the tried history, the UI and own takes; the stuck-reason length check uses `durationCarries`. To choose a voice elsewhere (a whole clip), use `initialVoicePreference` with `initialVoice`.
+
+### 2026-11-21 — A finished lip sync is kept and recoverable (track/v2-rel-c, package C)
+
+A fal.ai result was thrown away when its offer went stale, a cancel landed late or the import failed; a free retry could be burned while the job still ran; one poll error ended a paid job, and a leaked queue lease blocked lip sync for the rest of the run; brotli replies failed; long windows outgrew the upload limits. See voice-lab §9.3, §9.4 and §9.6 and design.md T3 "Lip sync".
+
+- **The rule:**
+  - A good import keeps the attempt's record as the window's imported index (`importedAsset`, `importedAt`, `colorWarning`); matching inputs get the stored MP4 back for free after a SHA-256 check; entries go after 30 days or once their asset is gone.
+  - Once fal.ai finished a job its download and store run to the end in their own task; a cancel just as it finishes is never sent and throws `LipsyncAttemptFailure(freeRetry:)`, true only when the record is on disk (written once more if needed). A scratch or download failure leaves fal.ai's copy; the payload DELETE runs only once the result is on this Mac.
+  - The recovery asks `/status` first and waits out a running job (`LipsyncError.stillRunning`, "Check Again · free"); its once-per-run claim is spent only by a definite outcome (`LipsyncRecoveryFailed.settled`).
+  - Submit: 429 and 503 are retried at most twice; 500, 502, 504 and a lost answer are `submissionUncertain`, whose only way on is the user's I Checked fal.ai. Poll: passing errors retry with backoff, up to 6 in a row, within the deadline and 140 polls; `event=poll-failed` is logged. A provider error is `providerFailed(<type>)`. A null `content_type`, `file_size` or `file_name` is absent. A receipt with a valid `request_id` keeps its job; a bad follow-up URL is built from the queue path.
+  - One slot per fal.ai account (`LipsyncProviderQueue`), reserved before any upload and given back whenever the run stops tracking its job; a lease nobody gives back expires by itself, 30 minutes after it is reserved and 30 minutes plus 5 after fal.ai accepts the job (`renew` to `LipsyncLimits.deadlineSeconds + 300`: the job's deadline and its download).
+  - Upload: the bitrate steps down only to fit `LipsyncLimits.uploadBudgetBytes` (≈ 364.5 MB); transfers time out at 60 s plus their bytes at 2 Mbit/s; JSON accepts gzip and deflate.
+  - Rows: the button's price is what the click charges, "· free" when it buys nothing (`Offer.freeWindows`, `free`, `charge`, `chargeUSD`); `startChecked` refuses with `.stale` when a counted-free window no longer is; Lip Sync All pays only for the windows it sends; a late or cancelled result is set aside with Try Again · free; every stopped row has an action that can succeed (`failedActions`).
+- **Built:** `RewriteLipsyncSession.restore(_:matching:) -> Bool` (puts back `Applied` entries, now with `seconds`, when nothing runs and every entry matches a current offer, by default Lip Sync All's); `RewriteLipsyncSession.SetAside`; `LipsyncWindowPreparation.uploadRequest(_:)` and `preflight(video:outputSeconds:)`; `LipsyncAttempt(imported:)`; `LipsyncError.providerFailed(String)` and `.stillRunning`; `LipsyncRecoveryFailed.settled`; `LipsyncLimits.uploadBudgetBytes`, `transferSeconds`.
+- **Deleted:** `LipsyncWindowPreparation.predictedUploadBytes`.
+- **Changed:** App `RewriteLipsyncSession`, `RewriteLipsyncControls`, `RewriteLipsyncWiring`, `DirectorTakeRows`; Core `FalLipsyncProvider`, `LipsyncHTTPClient`, `LipsyncProviderQueue`, `LipsyncApproval`; Media `LipsyncRun`, `LipsyncResultImporter`, `LipsyncAttemptStore`, `LipsyncWindowPreparation`.
+- **Inline:** no new pop-up.
+- **Tests:** App `RewriteLipsyncSessionTests` (`anUndoneResultIsOfferedBackForFree`, `lipSyncAllChargesOnlyTheWindowsItBuys`, `aStopAfterFalFinishedKeepsTheFreeRetry`, `aDeterministicLocalStopOffersNoTryAgain`); Core `FalLipsyncProviderTests`, `LipsyncHTTPClientTests`, `LipsyncProviderQueueTests`, `LipsyncUploadTests`; Media `LipsyncRunRecoveryTests` (`aCancelAsFalFinishesIsFreeToRetryOnlyWhenItsRecordIsThere`), `LipsyncResultImporterTests`, `LipsyncUploadSizeTests` (every step-down from 3 to 290 s fits). Red without the change: all five new or changed tests failed. Core 1588 and App 1139 passed.
+- **Windows:** nothing; Windows has no lip-sync provider.
+- **Owes:** after a relaunch the session remembers no results, so a free re-import sits behind a priced button. `RewriteWholeClip` still calls `plan.lipsync.undo` on applied results before a new lip sync (harmless for money: the result stays in the index and in memory).
+- **Next package:** Claude mode never calls `startAfterCheckingFal` or `pressAfterCheckingFal`; Check Again · free and a free Try Again never pay, so they are safe to retry automatically. Retention must protect assets that `lipsync-attempts/*.json` `importedAsset` names (done by package E).
+
+### 2026-11-21 — Only the user's own edits make paid takes stale (track/v2-rel-a, package A)
+
+A takes plan compared the whole raw project, so an autosave, music, a caption or colour change, a tab switch, an AI-model change or Claude mode made paid takes stale, retired late rows, destroyed the plan on Use, and an edit outside the scope invalidated paid takes. See voice-lab §8.15 and design.md R2 "Stale paid takes" and R3.
+
+- **The rule:**
+  - `Project.voiceTakeIdentity(scope:enclosingClipID:)` is `rewriteInputs` with `voiceLab.cleanAudio` (missing = off). `rewriteInputs` now strips `clipStyle` too.
+  - `RewriteSession.voiceSpendCurrent` is `current` without the connector. `staleCause(_:generation:)` against the plan's `TakePlanBasis` (identity, revision, commands, changes, inclusions, proposal changes, voice, model, region) is both the plan's `isCurrent` and its stop's copy (`staleStop`, `ClipTakePlan.StaleStop`, `describeStale`).
+  - A stale `acceptance()` throws without invalidating; a paid row that lands stale is kept in `Phrase.madeBeforeEdit`; `move(to:)` keeps a plan with paid patch work through an edit outside the scope, and a rebuilt review that moves its windows sets `takeWindowsMoved` and asks Keep Working / Discard Takes (`askToDiscardTakes`, `discardPaidTakes()`); `followCurrentTakes()` clears the stop when the takes are current again.
+  - `hasPaidWork` covers the patch and the whole clip and is false after Use (`paidWorkUsed`); `hasPaidPatchWork` is the patch's own, so a whole clip's voice alone never asks about takes.
+  - R3 with paid work names what is kept (`paidWorkKept`, `paidTakesKept`) and never says "no takes were paid for".
+  - The accepted surrounding sentence keeps its reviewed project while the voice identities match (`RewriteSpeechContextReview`).
+- **Built:** `Project.voiceTakeIdentity`; `RewriteSession` `voiceSpendCurrent`, `voiceIdentity(_:)`, `staleCause`, `staleStop`, `hasPaidWork`, `hasPaidPatchWork`, `paidWorkUsed`, `paidWorkKept`, `paidTakesKept`, `takeWindowsMoved`, `takePlanReview`, `discardPaidTakes()`, `askToDiscardTakes(_:)`, `followCurrentTakes()`; `TakePlanBasis`; `ClipTakePlan.StaleStop`, `describeStale`, `Phrase.madeBeforeEdit`.
+- **Deleted:** the raw-project compares in the patch plan and the speech context; the fake windows-moved test.
+- **Changed:** App `Project+RewriteInputs`, `RewriteGenerationWiring`, `ClipTakePlan`, `RewriteSession`, `ChangeList`, `RewriteSpeechContextReview`; shared `voice-take-identity-cases.json` (`voxclip-voice-take-identity/1`, 32 cases).
+- **Inline:** the Discard Takes question is in the Rewrite job's footer.
+- **Tests:** App `RewriteTakeCurrencyTests` (new), `ClipTakePlanTests` (137; among them `cuttingABridgeWordBesideTheScopeAsksAndUndoRestoresThePaidTake`, `aCutJustOutsideTheClipKeepsItsPaidTakeCurrent`, `staleCopyClaimsOnlyWhatIsTrue`, `aStaleUseNamesTheChangeAndAsksToDiscard`, `anAcceptedSurroundingSentenceStaysCurrentThroughAutosaveAndMusic`, `aWholeClipVoiceAloneAsksNothingWhenAChangeIsLeftOut`), `RewriteScopeTests`; 60 currency tests also under the strict pool. Red without the change: each fix reverted failed its tests. Core 1571 passed.
+- **Windows:** `ProjectVoiceTakeIdentity` and the session's move to the edited project (apps/windows/CONTRACTS.md).
+- **Owes:**
+  - The takes rows' play, Try Another and lip-sync actions, `RewriteLipsyncWiring` and the automatic fixes still read the connector-aware `current`, and play also needs `stillCurrent`: stale takes can't be played, and after an AI change those actions wait for Rewrite Again. Move them to `voiceSpendCurrent` and `!isRetired`.
+  - `DirectorTakeRows` doesn't label `madeBeforeEdit` takes "made before your edit".
+- **Next package:** use `voiceSpendCurrent` plus `voiceIdentity(editor.project) == identity` captured at plan time; `acceptance()` no longer invalidates on stale; `Failure.stale` is neutral copy, so a stop after a spend should be a named case.
+
 ### 2026-11-19 — ElevenLabs transcription moves to Scribe v3 (track/v2-scribe-v3)
 
 The user: "scribe v3 is avail so update elevenlabs". ElevenLabs released `scribe_v3` on 9 Nov 2026 on the same `POST /v1/speech-to-text`; Scribe v2 remains available, and existing request parameters work unchanged. Batch Scribe (v3 and v2) is $0.20 per audio hour since 17 Nov 2026, and keyterm prompting is a flat +$0.05 per audio hour. See transcription spec §8 and voice-lab §3.2.
