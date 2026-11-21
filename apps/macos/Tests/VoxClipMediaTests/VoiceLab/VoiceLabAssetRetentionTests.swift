@@ -158,7 +158,8 @@ import VoxClipCore
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(take.file).path))
     }
     /// An imported lip-sync result the attempt index points at (voice-lab §9.4) is kept, so the same inputs get it again
-    /// for free; it used to be deleted after seven days unreferenced in one run, and then paid for again.
+    /// for free. The importer writes no ownership journal, so the file was never a candidate; the index now also names it
+    /// a reference, should a later writer add one.
     @Test func importedLipsyncResultsTheIndexPointsAtAreKept() async throws {
         let root = try LipsyncImportFixture.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let project = LipsyncImportFixture.projectID
