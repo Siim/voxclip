@@ -4,7 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- Rewrite's automatic fixes now retake a phrase whose take dropped words instead of asking Claude for a longer, padded wording, Eleven v4 takes whose timing runs a little past their audio keep it, and Rewrite never starts with the voice made from another video.
+- Rewrite's automatic fixes now make another take of a phrase whose take dropped words, instead of asking for a longer, padded wording; Eleven v4 takes keep their word timing when it runs a little past the audio; and Rewrite never starts with the voice made from another video.
 - Transcription with ElevenLabs uses Scribe v3, which makes about a quarter fewer word errors, at $0.20 an audio hour.
 - On the Mac, "✦ Claude does it all" no longer says Claude Code isn't installed or signed in before VoxClip has checked it: it waits on "Checking Claude Code…", then finds the clips by itself, and a blocked card goes on once Claude Code works (after a Rewrite, when Settings closes, or when the AI changes).
 - On the Mac, when Apple's speech service doesn't answer, transcription no longer waits forever: after 15 seconds it says "Apple Speech didn't answer. Try again, or choose On this Mac." with Retry.
