@@ -3,6 +3,7 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
+import UniformTypeIdentifiers
 @testable import VoxClipCore
 @testable import VoxClipMedia
 @testable import VoxClip
@@ -277,6 +278,49 @@ import Testing
         try #require(session.isOpen && session.hasUnusedPaidWork)
         #expect(!session.canAskAboutPaidWork && !session.asksBeforeClosing)
         #expect(fixture.editor.closeRewrite(returnFocus: false) && !session.isOpen && session.task.confirm == nil)
+    }
+
+    /// reloadFromDocument: File › Revert (or a version, or the file changed on disk) reads the project again under the open
+    /// Rewrite. With paid work the revert waits and the Rewrite asks; Keep Working keeps everything, Discard and Revert
+    /// reverts. It used to discard the Rewrite unasked.
+    @Test(arguments: [Paid.takes, .wholeClip]) func aRevertAsksBeforeItDiscardsPaidWork(paid: Paid) async throws {
+        let fixture = try await fixture(paid)
+        defer { fixture.close() }
+        let document = fixture.editor.document
+        let url = fixture.root.appendingPathComponent("revert.voxclip")
+        let type = UTType.voxclipProject.identifier
+        let saved = await withTestDeadline(returning: false) { continuation in
+            document.save(to: url, ofType: type, for: .saveAsOperation) { error in continuation.resume(returning: error == nil) }
+        }
+        try #require(saved)
+        // A document left with a file in the fixture's folder would autosave there after the test; it goes back to untitled.
+        defer { document.fileURL = nil }
+        #expect(throws: CocoaError(.userCancelled)) { try document.revert(toContentsOf: url, ofType: type) }
+        asks(fixture, "Revert the project and discard ")
+        #expect(fixture.session.task.confirm?.confirm.title == "Discard and Revert")
+        fixture.session.task.confirm?.cancel.perform()
+        #expect(fixture.session.isOpen && fixture.session.hasUnusedPaidWork, "Keep Working keeps the work and the project")
+        #expect(throws: CocoaError(.userCancelled)) { try document.revert(toContentsOf: url, ofType: type) }
+        fixture.session.task.confirm?.confirm.perform()
+        #expect(!fixture.session.isOpen && fixture.editor.openRewrite == nil, "Discard and Revert reverts")
+    }
+
+    /// paid-wholeclip-voice-unguarded: the take rows' voice picker locks over paid work, a paid whole clip with no patch
+    /// takes included, and the generation refuses another voice then too. Both used to read only the patch's takes.
+    @Test func thePickerAndTheGenerationKeepTheVoiceOfAPaidWholeClip() async throws {
+        let fixture = try await fixture(.wholeClip)
+        defer { fixture.close() }
+        let session = fixture.session
+        try DebugRewriteGeneration.install("voice", in: session)
+        let generation = try #require(session.generation)
+        let chosen = try #require(generation.selectedVoiceID)
+        #expect(!session.hasPaidTakes && session.hasPaidWork && session.voiceLocked)
+        generation.chooseVoice(nil)
+        #expect(generation.selectedVoiceID == chosen, "the voice the whole clip was made with stays")
+        session.wholeClip = nil
+        #expect(!session.hasPaidWork)
+        generation.chooseVoice(nil)
+        #expect(generation.selectedVoiceID == nil, "with nothing paid the voice can change")
     }
 
     // MARK: Closes the app starts

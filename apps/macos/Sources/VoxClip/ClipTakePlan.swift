@@ -729,6 +729,14 @@ import VoxClipMedia
         phrases.map(\.id).filter { automaticTake(phrase: $0) == nil }
     }
 
+    /// The whole clip's parts (RewriteWholeClip.swift): paid takes that arrived while the plan was not current were made
+    /// from the plan's own inputs, so once it is current again (an Undo) they are the parts' takes like any other, chosen
+    /// automatically and never paid for again. A phrase plan keeps them for the user's click (`madeBeforeEdit`).
+    func acceptTakesMadeBeforeEdit() {
+        guard stillCurrent else { return }
+        for index in phrases.indices where !phrases[index].madeBeforeEdit.isEmpty { phrases[index].madeBeforeEdit = [] }
+    }
+
     var unfinishedVoicePrice: Decimal? {
         let prices = unfinishedVoiceParts.compactMap { lastVoicePrices[$0]?.usd }
         guard prices.count == unfinishedVoiceParts.count else { return nil }
@@ -1223,31 +1231,25 @@ import VoxClipMedia
         audition.stop()
     }
 
+    /// Plays the phrase's selected take (`play(take:phrase:)`).
     func play(phrase: Int) async {
-        guard stillCurrent, !generating, !preparing, !publishing, phrases.indices.contains(phrase),
-              let take = phrases[phrase].selected else { return }
-        let wasPlaying = audition.isPlaying && audition.takeId == take.id
-        stopAudition()
-        guard !wasPlaying else { return }
-        let turn = auditionTurn
-        guard let audio = await scratch(take: take.id, phrase: phrase), turn == auditionTurn, stillCurrent,
-              phrases[phrase].selectedID == take.id, !generating, !preparing, !publishing else { return }
-        do { try audition.play(audio, takeId: take.id, selectionId: String(phrase)) }
-        catch { report(error) }
+        guard phrases.indices.contains(phrase), let take = phrases[phrase].selected else { return }
+        await play(take: take.id, phrase: phrase)
     }
 
     /// Plays one take's checked mix, failed or not, without selecting it: a failed take stays left out, but the user can
-    /// hear what the checks refused. Toggles like `play(phrase:)`. A take that failed before the checks has no mix, so
-    /// its paid audio plays as the provider returned it (`Phrase.Take.notChecked`).
+    /// hear what the checks refused. Toggles. A take that failed before the checks has no mix, so its paid audio plays as
+    /// the provider returned it (`Phrase.Take.notChecked`). A stale plan's paid takes still play: only a retired plan's
+    /// are gone (voice-lab.md "What counts as an edit").
     func play(take id: UUID, phrase: Int) async {
-        guard stillCurrent, !generating, !preparing, !publishing, phrases.indices.contains(phrase),
+        guard !retired, !generating, !preparing, !publishing, phrases.indices.contains(phrase),
               let take = phrases[phrase].takes.first(where: { $0.id == id }), take.playable else { return }
         if take.notChecked {
             let wasPlaying = audition.isPlaying && audition.takeId == id
             stopAudition()
             guard !wasPlaying else { return }
             let turn = auditionTurn
-            guard let url = await backend?.paidAudio(phrase, id), turn == auditionTurn, stillCurrent,
+            guard let url = await backend?.paidAudio(phrase, id), turn == auditionTurn, !retired,
                   phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
             do { try audition.play(paidAudio: url, takeId: id, selectionId: String(phrase)) }
             catch { report(error) }
@@ -1259,7 +1261,7 @@ import VoxClipMedia
         let turn = auditionTurn
         var found = microphoneTakes[id]?.scratch
         if found == nil { found = await backend?.scratch(phrase, id) }
-        guard let audio = found, turn == auditionTurn, stillCurrent,
+        guard let audio = found, turn == auditionTurn, !retired,
               phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
         do { try audition.play(audio, takeId: id, selectionId: String(phrase)) }
         catch { report(error) }

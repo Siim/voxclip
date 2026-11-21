@@ -299,7 +299,7 @@ extension MakeItServices {
         }, report: { line in Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: line)) } })
         keepsOpen = outcome.holdsPaidWork
         // The patch goes on: this clip's pick is the patch, so its phrases' Rewrites don't offer the whole clip again.
-        if outcome.patches { editor.wholeClipPicks[request.clipID] = false }
+        if outcome.patches { editor.wholeClipPicks[request.clipID] = WholeClipPick(whole: false, proposal: session.proposalID) }
         return outcome
     }
 }

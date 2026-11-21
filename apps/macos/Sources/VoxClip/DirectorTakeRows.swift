@@ -100,17 +100,27 @@ enum TakeFailurePresentation {
 }
 
 extension RewriteSession {
+    /// Listening is free, so a stale plan's paid takes still play (an edit or another voice made them stale, not unheard);
+    /// only a retired plan's takes are gone.
     func playTake(phrase: Int) async {
-        guard current, let takePlan, takePlan.stillCurrent else { return }
+        guard isOpen, let takePlan, !takePlan.isRetired else { return }
         editor.transport("k")
         await takePlan.play(phrase: phrase)
     }
     func playTake(_ take: UUID, phrase: Int) async {
-        guard current, let takePlan, takePlan.stillCurrent else { return }
+        guard isOpen, let takePlan, !takePlan.isRetired else { return }
         editor.transport("k")
         await takePlan.play(take: take, phrase: phrase)
     }
     var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing || $0.preparingVideo } ?? false }
+    /// The take rows' voice can't change now (its name shows, not a picker): takes are being made, paid work made with it
+    /// is kept (the patch's takes, a whole clip's voice or lip sync: `hasPaidWork`), or there is only one voice.
+    var voiceLocked: Bool {
+        let busy: Bool = takesBusy
+        let paid: Bool = hasPaidWork
+        let only: Bool = (generation?.voices.count ?? 0) <= 1
+        return busy || paid || only
+    }
     var usableTakeCount: Int { takePlan.map { $0.canAccept ? $0.phrases.filter { $0.selected?.row.selectable == true }.count : 0 } ?? 0 }
     /// Phrases whose passing take waits for the user's click (ADR-R37: its voice couldn't be measured) while Use is offered.
     var waitingTakePhrases: [Int] {
@@ -163,7 +173,7 @@ extension RewriteSession {
         case .confirm: verb + "…"
         }
         return PanelAction(id: "takeQuote-\(quoteID)", title: title, priced: true) { [weak self, weak plan] in
-            guard let self, let plan, current, takePlan === plan, plan.stillCurrent, plan.approvalID == quoteID, !takesBusy else { return }
+            guard let self, let plan, voiceSpendCurrent, takePlan === plan, plan.stillCurrent, plan.approvalID == quoteID, !takesBusy else { return }
             if case .confirm(let copy) = cost {
                 let confirmID = "approveTakeQuote-\(quoteID)"
                 task.ask(PanelConfirm(question: takeSendLine + "\n" + copy,
@@ -177,21 +187,21 @@ extension RewriteSession {
         }
     }
     private func startTakes(_ plan: ClipTakePlan, phrase: Int?, quoteID: UUID) {
-        guard current, takePlan === plan, plan.stillCurrent, !takesBusy, plan.approvalID == quoteID else { return }
+        guard voiceSpendCurrent, takePlan === plan, plan.stillCurrent, !takesBusy, plan.approvalID == quoteID else { return }
         wordingFit.measured = nil
         // The approved price covers automatic fixes of stuck phrases up to its cap (RewriteAutoFix.swift).
         if phrase == nil { armAutoFix(plan) }
         takesTask = Task { [weak self, weak plan] in
-            guard let self, let plan, current, takePlan === plan else { return }
+            guard let self, let plan, voiceSpendCurrent, takePlan === plan else { return }
             if let phrase { await plan.tryAnother(phrase: phrase, approved: true, quoteID: quoteID) }
             else { await plan.start(approved: true, quoteID: quoteID) }
         }
     }
     func priceAnotherTake(phrase: Int) {
-        guard current, let plan = takePlan, !takesBusy else { return }
+        guard voiceSpendCurrent, let plan = takePlan, !takesBusy else { return }
         focusedTakePhrase = phrase; takeQuotePhrase = phrase
         takesTask = Task { [weak self, weak plan] in
-            guard let self, let plan, current, takePlan === plan else { return }
+            guard let self, let plan, voiceSpendCurrent, takePlan === plan else { return }
             await plan.prepareAnother(phrase: phrase)
         }
     }
@@ -317,7 +327,7 @@ extension ClipTakePlan.Phrase {
                     Button(Self.makeVoiceTitle) { session.editor.openVoiceJob() }
                     Button("Refresh Voices") { Task { await generation.discover(language: session.project.transcript?.language ?? "en") } }
                 }
-            } else if session.takesBusy || session.hasPaidTakes || generation.voices.count == 1 {
+            } else if session.voiceLocked {
                 // The voice can't change now (takes made with it are kept): its name, not a disabled picker.
                 Text("Voice: " + currentVoiceName)
             } else {
@@ -343,6 +353,31 @@ extension ClipTakePlan.Phrase {
             await session.takePlan?.lipsync.refresh()
         }
         .onDisappear { session.takePlan?.stopAudition() }
+    }
+    /// A take button's VoiceOver label: "Phrase 2, take 3, fits, made before your edit".
+    static func takeLabel(_ take: ClipTakePlan.Take, phrase: ClipTakePlan.Phrase) -> String {
+        let fit: String = take.fits ? "fits" : "timing change required"
+        let expression: String = phrase.beforeExpression.contains(take.id) ? ", before expression" : ""
+        let edit: String = phrase.madeBeforeEdit.contains(take.id) ? ", " + madeBeforeEditLabel : ""
+        return "Phrase \(phrase.id + 1), take \(take.number), " + fit + expression + edit
+    }
+    /// A take button's tooltip.
+    static func takeHelp(_ take: ClipTakePlan.Take, phrase: ClipTakePlan.Phrase) -> String {
+        let join: String = take.row.hasJoinAdvisory ? " Its join may sound slightly louder." : ""
+        let base: String = take.fits ? "Select this checked take. It fits the phrase." + join
+            : "This take passed checks but changes the video's duration. Choose a video duration below."
+        guard phrase.madeBeforeEdit.contains(take.id) else { return base }
+        return base + " It was made before your edit: undo the edit to use it."
+    }
+    /// What a paid take that landed while an edit made the plan stale is called (`Phrase.madeBeforeEdit`).
+    static let madeBeforeEditLabel = "made before your edit"
+    /// "Take 2 made before your edit", "Takes 1 and 3 made before your edit", under the phrase's take buttons; nil with none.
+    static func madeBeforeEditLine(_ phrase: ClipTakePlan.Phrase) -> String? {
+        let numbers: [String] = phrase.takes.filter { phrase.madeBeforeEdit.contains($0.id) }.map { String($0.number) }
+        guard !numbers.isEmpty else { return nil }
+        let list: String = numbers.count == 1 ? numbers[0] : numbers.dropLast().joined(separator: ", ") + " and " + numbers[numbers.count - 1]
+        let noun: String = numbers.count == 1 ? "Take " : "Takes "
+        return noun + list + " " + madeBeforeEditLabel
     }
     private func phraseRow(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> some View {
         // A phrase card (doc/design.md §16.1): its lines a row gap apart, the duration and lip sync blocks a group gap.
@@ -382,15 +417,18 @@ extension ClipTakePlan.Phrase {
                         }
                         .buttonStyle(.plain).frame(width: 24, height: 24)
                         .background(phrase.selectedID == take.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
-                        .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), \(take.fits ? "fits" : "timing change required")\(phrase.beforeExpression.contains(take.id) ? ", before expression" : "")")
-                        .help(take.fits ? "Select this checked take. It fits the phrase.\(take.row.hasJoinAdvisory ? " Its join may sound slightly louder." : "")"
-                              : "This take passed checks but changes the video's duration. Choose a video duration below.")
+                        .accessibilityLabel(Self.takeLabel(take, phrase: phrase))
+                        .help(Self.takeHelp(take, phrase: phrase))
                         .accessibilityAddTraits(phrase.selectedID == take.id ? [.isButton, .isSelected] : .isButton)
                     }
                 }
                 Text(session.phraseStatus(phrase, plan: plan)).font(VCType.small.font())
                     .foregroundStyle(DesignValues.color(session.autoFix.lines[phrase.id] == nil ? "text.secondary" : "text.primary"))
                     .columnLayoutEvidence("voice.phrase.\(phrase.id).status", text: session.phraseStatus(phrase, plan: plan))
+            }
+            if let edited = Self.madeBeforeEditLine(phrase) {
+                Text(edited).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                    .columnLayoutEvidence("voice.phrase.\(phrase.id).madeBeforeEdit", text: edited)
             }
             if let history = session.autoFixHistoryLine(phrase, plan: plan) {
                 Text(history).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))

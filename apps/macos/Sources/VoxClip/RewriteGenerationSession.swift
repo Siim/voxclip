@@ -379,9 +379,10 @@ import xlocale
     /// The account's voices and models in place of the provider's (`VoiceLabTakeRun.discover`).
     @ObservationIgnored var discoverForTests: ((String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]))?
     #endif
+    /// Refused while paid work made with the chosen voice is kept (`keepsVoice`): another voice would make it stale.
     func chooseVoice(_ id: String?) {
         guard id == nil || voices.contains(where: { $0.id == id }) else { return }
-        guard id != selectedVoiceID else { return }
+        guard id != selectedVoiceID, keepsVoice?() != true else { return }
         selectedVoiceID = id; inputsChanged()
     }
     /// Moves a plan with paid takes to another model and keeps its takes: true when it moved, false when it could not

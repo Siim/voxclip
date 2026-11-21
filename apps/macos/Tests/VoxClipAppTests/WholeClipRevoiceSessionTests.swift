@@ -1187,17 +1187,46 @@ private struct FalKeyOnly: ProviderKeyStore {
         let session = session(stubs)
         live.rewrite.wholeClip = session
         await session.refreshQuote()
-        live.editor.wholeClipPicks["clip-main"] = false
+        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: false, proposal: live.rewrite.proposalID)
         session.wholeSelected = false
         #expect(live.rewrite.wholeClipCompact)
         let instead = try #require(live.rewrite.wholeClipInsteadAction())
         #expect(instead.id == "wholeClipInstead" && instead.title == "Revoice the Whole Clip Instead · " + VoiceLabCostPresentation.format(Decimal(string: "1.61")!) && instead.priced)
-        live.editor.wholeClipPicks["clip-main"] = true
+        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: true, proposal: live.rewrite.proposalID)
         #expect(!live.rewrite.wholeClipCompact)
         let record = WholeClipRevoiceRecord(id: "wholeclip-1", clipId: "clip-main", segmentIds: ["s"], script: "x", consentRecordId: "r1",
                                             videoRetime: 1, lipsyncModel: WholeClipRevoice.Lipsync.lipsync2.rawValue, usd: 1, match: nil, createdAt: Date())
         live.editor.removeWholeClip(record)
         #expect(live.editor.wholeClipPicks["clip-main"] == nil, "Undo Whole Clip offers it again as the default")
+    }
+
+    /// whole-clip-card-hidden-after-pick: the patch pick is for the proposal it was made on. A new proposal for the clip in a
+    /// later Rewrite starts from the default again (the whole clip, full card), never the compact row the earlier pick left.
+    @Test func aNewProposalInALaterRewriteStartsFromTheWholeClipAgain() async throws {
+        let live = try live()
+        defer { close(live) }
+        let stubs = Stubs()
+        let first = session(stubs)
+        live.rewrite.adopt(TranscriptProposal(clipID: "clip-main", title: "Rewrite clip 1", changes: []))
+        live.rewrite.wholeClip = first
+        first.proposalID = live.rewrite.proposalID
+        await first.refreshQuote()
+        live.rewrite.patchInstead()
+        #expect(live.editor.wholeClipPicks["clip-main"] == WholeClipPick(whole: false, proposal: live.rewrite.proposalID))
+        live.rewrite.close()
+        // A later Rewrite on the same clip with a new reply.
+        let later = RewriteSession(editor: live.editor, scope: .clip("clip-main"), envelope: nil, connector: nil)
+        later.adopt(TranscriptProposal(clipID: "clip-main", title: "Rewrite clip 1", changes: []))
+        let second = session(Stubs())
+        second.proposalID = later.proposalID
+        later.wholeClip = second
+        await second.refreshQuote()
+        #expect(later.proposalID != live.rewrite.proposalID)
+        #expect(!later.wholeClipCompact, "the earlier pick was for another proposal")
+        // The same proposal keeps its pick.
+        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: false, proposal: later.proposalID)
+        #expect(later.wholeClipCompact)
+        later.close()
     }
 
     /// wholeclip-drops-unfit-changes: the whole clip's script says the changes the wording fit kept as recorded (they ran

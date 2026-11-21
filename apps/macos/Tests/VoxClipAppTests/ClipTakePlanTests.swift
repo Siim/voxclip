@@ -608,6 +608,88 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
+    /// Takes that land while an edit makes the plan stale are kept as "made before your edit": the row says so, they still
+    /// play (listening is free), and once an Undo makes the plan current the whole clip's parts take them as made, so its
+    /// Try Again voices nothing again. `automaticTake` used to leave them out, and every part was paid for a second time.
+    @Test func partsMadeBeforeAnEditPlayAndAreTheWholeClipsOwnAfterUndo() async throws {
+        let fixture = try await fixture(indices: [3, 10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        let (editor, rewrite) = session(fixture)
+        defer { editor.close() }
+        await plan.prepare()
+        // The edit lands as the first part's take comes back; nothing more is sent while the plan is stale.
+        fixture.beforeProgress = { [weak fixture] in fixture?.current = false }
+        await plan.start(approved: true)
+        try #require(plan.phrases[0].takes.count == 1 && plan.phrases[0].madeBeforeEdit.count == 1, "\(plan.diagnostics)")
+        #expect(DirectorTakeRows.madeBeforeEditLine(plan.phrases[0]) == "Take 1 made before your edit")
+        let first = try #require(plan.phrases[0].takes.first)
+        #expect(DirectorTakeRows.takeLabel(first, phrase: plan.phrases[0]).hasSuffix(", made before your edit"))
+        #expect(!plan.stillCurrent && plan.unfinishedVoiceParts == [0, 1])
+        _ = plan.select(take: first.id, phrase: 0)
+        await rewrite.playTake(first.id, phrase: 0)
+        #expect(plan.audition.isPlaying && plan.audition.takeId == first.id, "a stale paid take still plays")
+        plan.stopAudition()
+        // Undo: the plan is current again, and its parts are the whole clip's as made.
+        fixture.beforeProgress = nil
+        fixture.current = true
+        #expect(plan.unfinishedVoiceParts == [0, 1], "before: the paid part counts as unfinished and would be voiced again")
+        plan.acceptTakesMadeBeforeEdit()
+        #expect(plan.unfinishedVoiceParts == [1] && plan.automaticTake(phrase: 0)?.id == first.id && plan.phrases[0].madeBeforeEdit.isEmpty)
+        await plan.prepareUnfinishedVoiceParts()
+        let approval = try #require(plan.approvalID)
+        await plan.start(approved: true, quoteID: approval)
+        #expect(plan.unfinishedVoiceParts.isEmpty, "\(plan.diagnostics)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 2, "only the unfinished part was voiced: \(ClipTakeHTTP.state.withLock { $0.texts })")
+    }
+
+    /// Use the Voice Without Lip Sync over the live plan (`putInWholeClipVoiceOnly`): the lip sync fails, and the paid
+    /// voice goes in as ordinary Voice Lab segments, with no whole-clip record and no lip sync left applied.
+    @Test func aPaidVoiceWhoseLipSyncFailsGoesInWithoutItOverTheLivePlan() async throws {
+        let fixture = try await fixture(indices: [10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        let (editor, rewrite) = session(fixture)
+        defer { editor.close() }
+        editor.mediaResolved = true
+        rewrite.wholeClipPlan = plan
+        plan.prepareDurationRender = lipSyncRender(fixture)
+        plan.lipsync.automaticallyRefreshOffers = false
+        plan.lipsync.backend = .init(offers: { [weak plan] in
+            guard let plan else { throw CancellationError() }
+            return try await plan.makeLipsyncOffers()
+        }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { nil }, run: { _, _, _, _, _, _ in
+            throw LipsyncError.http(503)
+        }, changed: {})
+        let whole = WholeClipRevoiceSession()
+        rewrite.configureWholeClip(whole)
+        var backend = try #require(whole.backend)
+        let words = try #require(fixture.source.transcript?.words)
+        let script = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: hunks([10])))
+        rewrite.wholeClipPlanScript = script
+        backend.script = { script }
+        backend.videoSeconds = { 4 }
+        backend.voice = { script, _ in
+            await plan.prepare(); await plan.start(approved: true)
+            _ = try #require(plan.phrases[0].selectedID)
+            try chooseSourceDuration(plan)
+            return .init(key: .init(script: script.text, recordId: fixture.record.id, model: "eleven_v3"), seconds: 4, parts: 1, usd: plan.spent.usd ?? 0)
+        }
+        backend.match = { _ in nil }
+        backend.report = { _ in }
+        whole.backend = backend
+        rewrite.wholeClip = whole
+        whole.start()
+        await whole.waitForRun()
+        try #require(whole.failure?.step == .lipsync && whole.canUseVoiceOnly, "\(whole.phase)")
+        await whole.useVoiceOnly()
+        #expect(whole.phase == .used && whole.usedVoiceOnly && whole.record == nil, "\(whole.phase)")
+        #expect(!editor.project.voiceLab.segments.isEmpty, "the voice is in the clip")
+        #expect(editor.project.voiceLab.wholeClipRevoices?.isEmpty ?? true, "no whole-clip record")
+        #expect(plan.lipsync.applied.isEmpty)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 1, "one voice, paid once")
+    }
+
     @Test(arguments: [false, true]) func wholeClipOfferWaitsForRefreshPublicationButRejectsChangedInputs(editDuringPublish: Bool) async throws {
         let fixture = try await fixture(indices: [10])
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -1854,6 +1936,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         editor.app.settings.values["llm.model.claude-code"] = .string("sonnet")
         #expect(!session.current && session.voiceSpendCurrent)
         #expect(plan.stillCurrent)
+        // The take actions read the voice's own currency: another take is priced and made with the AI changed.
+        session.priceAnotherTake(phrase: 0)
+        await session.takesTask?.value
+        let another = try #require(session.pricedTakeAction(phrase: 0), "\(plan.problem)")
+        another.perform()
+        await session.takesTask?.value
+        await settle(session)
+        #expect(plan.phrases[0].takes.count == 2, "\(plan.diagnostics)")
         #expect(await useFirstTakes(session, plan), "\(plan.problem); \(session.problem)")
     }
 

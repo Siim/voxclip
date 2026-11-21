@@ -2,7 +2,7 @@ import Foundation
 import VoxClipCore
 
 /// Closing with paid work (design.md R2, "Closing Rewrite"): Close Rewrite, Esc, the panel's X, a tab's close, removing the
-/// Rewrite's clip, Rewrite on another scope or with another AI, closing or replacing the project and Quit never drop unused
+/// Rewrite's clip, Rewrite on another scope or with another AI, closing, reverting or replacing the project and Quit never drop unused
 /// or running paid takes, a whole-clip voice or a lip sync unasked. They ask inline, in place of the Rewrite job's footer
 /// and never in an alert: "Close Rewrite and discard 3 paid takes (≈ $0.12)?" with Keep Working, the primary that Return
 /// and Esc choose, and Discard and Close (Discard and Remove, Discard and Rewrite, Discard and Quit). Claude mode never
@@ -18,6 +18,8 @@ extension RewriteSession {
         case newRewrite
         /// Close Project, opening or importing another project in its place.
         case closeProject
+        /// File › Revert, a version from Browse All Versions, or the file changed on disk: the project is read again.
+        case revert
         /// Quit VoxClip.
         case quit
     }
@@ -113,6 +115,7 @@ extension RewriteSession {
         case .removeClip(let suggestion): return (suggestion ? "Dismiss this suggestion" : "Remove this clip") + " and discard \(summary)?"
         case .newRewrite: return "Start a new Rewrite and discard \(summary)?"
         case .closeProject: return "Close the project and discard \(summary)?"
+        case .revert: return "Revert the project and discard \(summary)?"
         case .quit: return "Quit VoxClip and discard \(summary)?"
         }
     }
@@ -124,7 +127,7 @@ extension RewriteSession {
     /// missing) never replaces another question already up, such as a price to approve or a provider to allow: that one
     /// stays and comes forward instead, and the close waits on the creator.
     func confirmDiscardPaidWork(_ reason: CloseReason, keep: (@MainActor () -> Void)? = nil, perform: @escaping @MainActor () -> Void) {
-        if reason == .close, let shown = task.confirm, shown.confirm.id != "discardPaidWork" {
+        if reason == .close || reason == .revert, let shown = task.confirm, shown.confirm.id != "discardPaidWork" {
             bringQuestionForward(shown.confirm.id)
             return
         }
@@ -133,6 +136,7 @@ extension RewriteSession {
         case .close, .closeProject: "Discard and Close"
         case .removeClip(let suggestion): suggestion ? "Discard and Dismiss" : "Discard and Remove"
         case .newRewrite: "Discard and Rewrite"
+        case .revert: "Discard and Revert"
         case .quit: "Discard and Quit"
         }
         task.ask(PanelConfirm(question: question,

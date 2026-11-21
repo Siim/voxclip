@@ -35,11 +35,11 @@ extension RewriteSession {
     /// The card, made on first show and again for a new proposal; its price is fetched in the background (free).
     func wholeClipCard() -> PanelCard? {
         guard offersWholeClip, let clip = wholeClipID else { return nil }
-        // A new proposal for the clip: the earlier pick and price were for other words.
+        // A new proposal for the clip, in this Rewrite or a later one: the earlier pick and price were for other words.
         if let session = wholeClip, session.phase == .choose, session.proposalID != proposalID {
-            editor.wholeClipPicks[clip] = nil
             wholeClip = nil
         }
+        if wholeClip == nil, let pick = editor.wholeClipPicks[clip], pick.proposal != proposalID { editor.wholeClipPicks[clip] = nil }
         if let session = wholeClip {
             // The changes on the card changed (one included or left out, or an edit under a stopped paid voice): the price
             // on its button (Revoice Whole Clip, Start Over) follows them.
@@ -53,7 +53,7 @@ extension RewriteSession {
         }
         let session = WholeClipRevoiceSession()
         session.proposalID = proposalID
-        session.wholeSelected = editor.wholeClipPicks[clip] != false
+        session.wholeSelected = editor.wholeClipPicks[clip]?.whole != false
         configureWholeClip(session)
         #if DEBUG
         editor.wholeClipSmoke?(self, session)
@@ -72,8 +72,8 @@ extension RewriteSession {
 
     /// The patch was picked for this clip: the card is one row, "Revoice the Whole Clip Instead · ≈ $X".
     var wholeClipCompact: Bool {
-        guard let session = wholeClip, session.phase == .choose, let clip = wholeClipID else { return false }
-        return editor.wholeClipPicks[clip] == false
+        guard let session = wholeClip, session.phase == .choose, let clip = wholeClipID, let pick = editor.wholeClipPicks[clip] else { return false }
+        return !pick.whole && pick.proposal == proposalID
     }
 
     /// "Add fal.ai Key…": the lip sync needs the key, so nothing is priced without it (Settings › Voice Lab takes it, and
@@ -222,7 +222,7 @@ extension RewriteSession {
 
     func startWholeClip(automatic: Bool = false, budget: Decimal? = nil) {
         guard let session = wholeClip, let clip = wholeClipID, !session.running, !session.submissionUnconfirmed else { return }
-        editor.wholeClipPicks[clip] = true
+        editor.wholeClipPicks[clip] = WholeClipPick(whole: true, proposal: proposalID)
         session.start(automatic: automatic, budget: budget)
         editor.announce("Revoicing the whole clip.")
         watchWholeClip()
@@ -253,7 +253,7 @@ extension RewriteSession {
     /// The patch, as before: the pick is kept for this clip and the card becomes its compact row.
     func patchInstead() {
         guard let clip = wholeClipID else { return }
-        editor.wholeClipPicks[clip] = false
+        editor.wholeClipPicks[clip] = WholeClipPick(whole: false, proposal: proposalID)
         Task { [weak self] in
             await self?.wholeClip?.discard()
             self?.retireWholeClipVoicePlan()
@@ -346,7 +346,8 @@ extension RewriteSession {
             guard let self else { throw CancellationError() }
             return try await wholeClipReword(script, target: target, voiceSeconds: voice, videoSeconds: video)
         }, canReword: { [weak self] in
-            self?.connector != nil && self?.editor.app.shared != nil
+            // The reword asks the AI this Rewrite was opened with: after an AI change it waits for Rewrite Again.
+            self?.connector != nil && self?.editor.app.shared != nil && self?.current == true
         }, estimate: { [weak self] script in
             self?.wholeClipEstimate(script)
         }, unfinishedVoicePrice: { [weak self] in
@@ -580,6 +581,8 @@ extension RewriteSession {
         guard let generation, let recordID = generation.selectedVoiceID, let takeBackend, let envelope else { throw Session.Stop.unavailable }
         if let kept = wholeClipPlan, wholeClipPlanScript == script {
             try checkWholeClipPlan(kept)
+            // Parts paid while an edit made the plan stale are its own again after the Undo: never voiced twice.
+            kept.acceptTakesMadeBeforeEdit()
             if let blocked = kept.phrases.first(where: { $0.blocked != nil }) {
                 throw Session.Unsent(error: Session.Stop.noVoice((blocked.blocked ?? "The voice is blocked.") + " Nothing new was sent."))
             }
@@ -676,6 +679,7 @@ extension RewriteSession {
     private func finishWholeClipVoice(_ plan: ClipTakePlan, script: WholeClipScript, recordID: String) throws -> WholeClipRevoiceSession.Voice {
         // Paid parts made while the clip changed are kept, never wrapped as "nothing was sent" (Undo makes them current).
         try checkWholeClipPlan(plan)
+        plan.acceptTakesMadeBeforeEdit()
         let edited = (try? editor.voiceLabReviewProject(localCommands: localCommands)).flatMap(wholeClipEditedPlan)
         let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
         // The voice as said: each take's speech between its trims, before any pause of the layout.
