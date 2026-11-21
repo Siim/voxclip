@@ -147,6 +147,8 @@ extension RewriteSession {
             confirm: PanelAction(id: "discardPaidWork", title: title) { [weak self] in
                 guard let self, isOpen, task.confirm?.confirm.id == "discardPaidWork" else { return }
                 task.dismissConfirm()
+                // The user let the paid work go: it is not offered back after a relaunch either.
+                forgetSavedProposal()
                 perform()
             }))
         bringQuestionForward("discardPaidWork")

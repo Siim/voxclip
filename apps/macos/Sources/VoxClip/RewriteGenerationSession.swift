@@ -724,7 +724,8 @@ extension RewriteSession {
         let book = voiceLab.perVideoBook
         let own = book.video(project.media.source.contentKey)?.recordId
         let made = Set(book.videos.map(\.recordId) + book.removals.map(\.recordId))
-        return .init(preferred: preferredVoiceForVideo, anchor: voiceLab.anchorVoice(language: project.transcript?.language)?.id,
+        // A proposal restored with its paid work keeps the voice it was made with.
+        return .init(preferred: restoredProposal?.voiceRecordID ?? preferredVoiceForVideo, anchor: voiceLab.anchorVoice(language: project.transcript?.language)?.id,
                      otherVideos: made.subtracting([own].compactMap { $0 }))
     }
 }

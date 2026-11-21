@@ -55,6 +55,8 @@ extension RewriteSession {
         session.proposalID = proposalID
         session.wholeSelected = editor.wholeClipPicks[clip]?.whole != false
         configureWholeClip(session)
+        // A whole clip saved before VoxClip quit or crashed comes back on its card (`RewriteSavedProposal`).
+        restoreWholeClip(into: session)
         #if DEBUG
         editor.wholeClipSmoke?(self, session)
         #endif
@@ -401,6 +403,8 @@ extension RewriteSession {
         }, useVoiceOnly: { [weak self] voice in
             guard let self else { throw CancellationError() }
             try await putInWholeClipVoiceOnly(voice)
+        }, persist: { [weak self] in
+            self?.persistPaidWork()
         })
     }
 
