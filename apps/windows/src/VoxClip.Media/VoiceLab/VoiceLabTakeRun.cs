@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
 #pragma warning disable CS1591
@@ -17,7 +18,11 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
 {
     private sealed record Pending(VoiceLabTakeRunQuote Quote, VoiceLabTakeInput Input, VoiceConsentRecord Record,
         VoiceLabTakePreflight Preflight, VoiceLabSourceExcerpt Source, float[] Speech, long ModelRevision, long Revision, VoiceLabDispatchBinding Binding,
-        VoiceLabDispatchBinding AcceptanceBinding, IReadOnlyList<VoiceLabAuthorization>? ApprovedAhead = null);
+        VoiceLabDispatchBinding AcceptanceBinding, IReadOnlyList<VoiceLabAuthorization>? ApprovedAhead = null)
+    {
+        /// <summary>The journal entry take 0 adopts (<see cref="VoiceLabTakeQuote.AdoptedAsset"/>), claimed for this run since prepare.</summary>
+        public VoiceLabTakeJournalEntry? Adopted { get; init; }
+    }
     private readonly object sync = new();
     private readonly ElevenLabsVoiceLab client;
     private readonly VoiceConsentStore store;
@@ -29,6 +34,12 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     private readonly Dictionary<Guid, VoiceLabTakeScratch> scratches = [];
     private readonly Dictionary<Guid, VoiceLabAsset> paidAssets = [];
     private readonly Dictionary<Guid, (VoiceLabTakeRow Row, Pending Input)> acceptedRows = [];
+    /// <summary>The journal assets (voice-lab §3 "Paid takes are kept") this run made or adopted, which it never adopts again, and
+    /// this run's claim on them and on the one its prepared set reserves (<see cref="VoiceLabTakeJournalClaims"/>).</summary>
+    private readonly HashSet<string> journalAssets = new(StringComparer.Ordinal);
+    private readonly Guid claimOwner = Guid.NewGuid();
+    /// <summary>Set once this run dropped its project's finished journal entries (<see cref="VoiceLabTakeJournal.Settle"/>).</summary>
+    private bool journalSettled;
     private Pending? pending;
     private Guid? owner;
     private bool preparing;
@@ -53,6 +64,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     internal VoiceLabTakeRun(ElevenLabsVoiceLab client, VoiceConsentStore store, VoiceLabTakeStorage storage,
         VoiceLabDispatchGate inputGate, Func<CancellationToken, Task<bool>> inputsAreCurrent, VoiceLabTakeRunChecks checks)
     { this.client = client; this.store = store; this.storage = storage; this.inputGate = inputGate; this.inputsAreCurrent = inputsAreCurrent; this.checks = checks; }
+    ~VoiceLabTakeRun() => VoiceLabTakeJournalClaims.ReleaseAll(claimOwner);
     private static VoiceLabTakeRunChecks ProductionChecks(VoiceConsentStore store, VoiceSpeakerCheck speaker)
     {
         var guard = new VoiceUseGuard(store, speaker);
@@ -94,6 +106,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         VoiceLabDispatchBinding binding;
         VoiceLabDispatchBinding acceptanceBinding;
         VoiceLabTakeRunQuote? retired;
+        VoiceLabTakeJournalEntry? retiredAdoption;
         lock (sync)
         {
             if (preparing || owner.HasValue) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
@@ -101,12 +114,14 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             version = revision;
             acceptanceBinding = inputGate.Capture();
             binding = preparationGate.Capture(acceptanceBinding);
-            retired = pending?.Quote;
+            retired = pending?.Quote; retiredAdoption = pending?.Adopted;
             pending = null;
         }
+        ReleaseUnused(retiredAdoption);
         if (retired is not null) client.DiscardTakeRun(retired);
         var quotes = new List<VoiceLabTakeQuote>();
         var id = Guid.NewGuid();
+        VoiceLabTakeJournalEntry? adopted = null;
         try
         {
             Check(version, binding, ct);
@@ -124,13 +139,16 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             Check(version, binding, ct);
             var speech = GuardSpeech(snapshot);
             var model = client.ModelRevision;
-            for (var index = 0; index < 3; index++)
+            // A paid take over the same words, voice and model is adopted for free as the set's one take (voice-lab §3 "Paid
+            // takes are kept"). Its synthesis is approved with the set, as the provider pairs each take's requests, and never sent.
+            adopted = await ReserveAdoptionAsync(snapshot, record, ct).ConfigureAwait(false);
+            for (var index = 0; index < (adopted is null ? 3 : 1); index++)
             {
                 var options = snapshot.Options(index);
                 var review = new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, record.ConsentMethod == VoiceConsentMethod.RecordedStatement, true, true)
                     { ConsentMethod = record.ConsentMethod };
                 var synthesis = client.PrepareSynthesis(snapshot.RequestText, snapshot.ModelId, VoiceLabVoiceChoice.Own(record.VoiceId, review), snapshot.Language, options, Guid.NewGuid());
-                try { quotes.Add(new(index, options.Seed, synthesis, client.PrepareQa(snapshot.Language, record.RecordId, Guid.NewGuid(), snapshot.HasRequestTags))); }
+                try { quotes.Add(new(index, options.Seed, synthesis, client.PrepareQa(snapshot.Language, record.RecordId, Guid.NewGuid(), snapshot.HasRequestTags)) { AdoptedAsset = adopted?.AssetFile }); }
                 catch { client.DiscardTakeRun(new(id, [new(index, options.Seed, synthesis, synthesis)])); throw; }
             }
             var quote = new VoiceLabTakeRunQuote(id, quotes);
@@ -140,16 +158,48 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             lock (sync)
             {
                 Check(version, binding, ct);
-                pending = new(quote, snapshot, record, preflight, source, speech, model, version, binding, acceptanceBinding);
+                pending = new(quote, snapshot, record, preflight, source, speech, model, version, binding, acceptanceBinding) { Adopted = adopted };
             }
             return quote;
         }
         catch
         {
             if (quotes.Count > 0) client.DiscardTakeRun(new(id, quotes));
+            ReleaseUnused(adopted);
             throw;
         }
         finally { lock (sync) preparing = false; }
+    }
+    /// <summary>The newest journal entry over <paramref name="input"/>'s words, voice, model and context that no live run holds and
+    /// this run never made or adopted, claimed for this run; null when there is none.</summary>
+    private async Task<VoiceLabTakeJournalEntry?> ReserveAdoptionAsync(VoiceLabTakeInput input, VoiceConsentRecord record, CancellationToken ct)
+    {
+        var key = VoiceLabTakeJournalKey.Of(input, record.VoiceId);
+        HashSet<string> excluded;
+        lock (sync) excluded = new(journalAssets, StringComparer.Ordinal);
+        excluded.UnionWith(VoiceLabTakeJournalClaims.Claimed(storage.PaidRoot, claimOwner));
+        bool settle;
+        lock (sync) { settle = !journalSettled; journalSettled = true; }
+        // Windows has no retention pass: the entries this project is done with (aged out, or their asset gone) go before the first
+        // adoption. Dropping the entries of assets the project uses is the project close's (Settle with its references).
+        if (settle) await Task.Run(() => VoiceLabTakeJournal.Settle(storage.ProjectId, storage.PaidRoot, FrozenSet<string>.Empty, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+        // Another run may claim the same entry meanwhile: the next newest is tried, a few times at most.
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var skip = excluded.ToFrozenSet(StringComparer.Ordinal);
+            var found = await Task.Run(() => VoiceLabTakeJournal.Match(key, storage.ProjectId, storage.PaidRoot, skip), ct).ConfigureAwait(false);
+            if (found is null) return null;
+            if (VoiceLabTakeJournalClaims.Claim(VoiceLabTakeJournalClaims.Key(found.AssetFile, storage.PaidRoot), claimOwner)) return found;
+            excluded.Add(found.AssetFile);
+        }
+        return null;
+    }
+    /// <summary>Lets another run adopt <paramref name="entry"/> again when this run reserved it and never used it.</summary>
+    private void ReleaseUnused(VoiceLabTakeJournalEntry? entry)
+    {
+        if (entry is null) return;
+        lock (sync) if (journalAssets.Contains(entry.AssetFile) || pending?.Adopted?.AssetFile == entry.AssetFile) return;
+        VoiceLabTakeJournalClaims.Release(VoiceLabTakeJournalClaims.Key(entry.AssetFile, storage.PaidRoot), claimOwner);
     }
     /// <summary>Pins exactly this window's prepared set for a batch approval, without sending anything.</summary>
     public Task ApproveAsync(VoiceLabTakeRunQuote quote)
@@ -208,8 +258,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     value = value with { Revision = ++revision };
                     if (!KeepsEarlierTakes)
                     {
-                        var retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
-                        launchCleanup = RetireAsync(retired);
+                        // Earlier sets' takes go; never this set's own: an adopted take's first dispatch is its word check,
+                        // after its audio is staged.
+                        var own = quote.Takes.Select(take => take.Synthesis.Review.RequestId).ToHashSet();
+                        var retired = scratches.Where(pair => !own.Contains(pair.Key)).ToArray();
+                        foreach (var (key, _) in retired) scratches.Remove(key);
+                        foreach (var key in acceptedRows.Keys.Where(key => !own.Contains(key)).ToArray()) acceptedRows.Remove(key);
+                        launchCleanup = RetireAsync(retired.Select(pair => pair.Value).ToArray());
                     }
                 }
             }
@@ -251,6 +306,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     if (retainQuote && revision == value.Revision && client.QuotesAreFresh(quote.Actions)) pending = value with { ApprovedAhead = null };
                     if (owner == execution) { owner = null; running = null; }
                 }
+                ReleaseUnused(value.Adopted);
                 cancellation.Dispose();
             }
         }
@@ -282,34 +338,51 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             VoiceLabTakeAudio? audio = null;
             var synthesisAccepted = new VoiceLabRequestAcceptance();
             var qaAccepted = new VoiceLabRequestAcceptance();
-            // The take's one approved Scribe request (its word check), on the given samples.
+            // An adopted take's synthesis is approved and never sent: the row counts it, at no charge, so the set's progress adds up.
+            IReadOnlySet<Guid> adoptedRequest = take.AdoptedAsset is null ? System.Collections.Frozen.FrozenSet<Guid>.Empty
+                : new[] { take.Synthesis.Review.RequestId }.ToFrozenSet();
+            // The take's one approved Scribe request (its word check), on the given samples. An adopted take's first dispatch is
+            // this one, which moves the run's revision on, so the run's state is read again after it.
             async Task<VoiceLabQaTranscript> WordCheckAsync(float[] samples, int rate)
             {
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("qaAuthorization", value, ct).ConfigureAwait(false);
-                return await client.TranscribeQaAsync(samples, rate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted, value.Input.HasRequestTags).ConfigureAwait(false);
+                var transcript = await client.TranscribeQaAsync(samples, rate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted, value.Input.HasRequestTags).ConfigureAwait(false);
+                await launchCleanup().ConfigureAwait(false);
+                value = current();
+                return transcript;
             }
             try
             {
                 await ValidateAsync(value, ct).ConfigureAwait(false);
+                // An adopted take passes the same consent, record and speaker guard as a paid one before its audio is used.
                 var policy = await checks.Authorize(value.Record, value.Speech, take.Synthesis, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("authorization", value, ct).ConfigureAwait(false);
-                try
+                VoiceLabAsset paid;
+                if (take.AdoptedAsset is { } adoptedAsset)
                 {
-                    generated = await client.SynthesizeAsync(value.Input.RequestText, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
-                        value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId, synthesisAccepted).ConfigureAwait(false);
+                    if (value.Adopted is not { } entry || entry.AssetFile != adoptedAsset) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+                    (generated, paid) = await AdoptAsync(entry, take.Synthesis.Review.RequestId).ConfigureAwait(false);
                 }
-                catch (VoiceLabException error) when (error.Kind is VoiceLabErrorKind.InvalidAlignment or VoiceLabErrorKind.MalformedResponse &&
-                    synthesisAccepted.UnalignedAudio is not null)
+                else
                 {
-                    // The paid PCM decoded but its timing or segment metadata did not validate: recover its timing below.
-                    generated = synthesisAccepted.UnalignedAudio;
+                    try
+                    {
+                        generated = await client.SynthesizeAsync(value.Input.RequestText, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
+                            value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId, synthesisAccepted).ConfigureAwait(false);
+                    }
+                    catch (VoiceLabException error) when (error.Kind is VoiceLabErrorKind.InvalidAlignment or VoiceLabErrorKind.MalformedResponse &&
+                        synthesisAccepted.UnalignedAudio is not null)
+                    {
+                        // The paid PCM decoded but its timing or segment metadata did not validate: recover its timing below.
+                        generated = synthesisAccepted.UnalignedAudio;
+                    }
+                    await launchCleanup().ConfigureAwait(false);
+                    value = current();
+                    if (Suspension is { } afterSynthesis) await afterSynthesis("synthesis").ConfigureAwait(false);
+                    paid = await PreservePaidAudioAsync(generated, take.Synthesis.Review.RequestId, value, take).ConfigureAwait(false);
                 }
-                await launchCleanup().ConfigureAwait(false);
-                value = current();
-                if (Suspension is { } afterSynthesis) await afterSynthesis("synthesis").ConfigureAwait(false);
-                var paid = await PreservePaidAudioAsync(generated, take.Synthesis.Review.RequestId).ConfigureAwait(false);
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 // §8.5 timing recovery: a take whose provider timing does not map to its words is retimed from its own word
                 // check (the approved Scribe request, used once) or, failing that, on device. No new paid request.
@@ -326,8 +399,17 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     var recovered = await WordCheckAsync(samples, 24000).ConfigureAwait(false);
                     qaReceipt = recovered.Receipt;
                     heard = recovered.Words;
-                    var timing = await RecoverTimingAsync(recovered.Words, samples, value.Input, ct).ConfigureAwait(false);
+                    IReadOnlyList<VoiceLabCharacterTiming> timing;
+                    try { timing = await RecoverTimingAsync(recovered.Words, samples, value.Input, ct).ConfigureAwait(false); }
+                    catch (VoiceLabException) when (!ct.IsCancellationRequested)
+                    {
+                        // What the take says can't be lined up with the text: its audio fails this way every time.
+                        await JournalChecksAsync(VoiceLabTakeJournalChecks.TimingUnrecovered, paid).ConfigureAwait(false);
+                        throw;
+                    }
                     generated = generated with { Alignment = timing };
+                    // The journal keeps the recovered timing, so adopting this take later needs no recovery.
+                    await JournalTimingAsync(timing, paid).ConfigureAwait(false);
                     analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight, matchTone: true);
                 }
                 var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, storage.ProjectId, storage.PaidRoot, storage.ScratchRoot, ct).ConfigureAwait(false);
@@ -365,7 +447,9 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     var failed = new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
                         VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
                     pool.Measured(take.Synthesis.Review.RequestId, [], value.Record, PhraseId, passed: false);
-                    rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed));
+                    await JournalChecksAsync(VoiceLabTakeJournalChecks.SpeakerFailed, paid).ConfigureAwait(false);
+                    rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed)
+                        { AdoptedAsset = take.AdoptedAsset, Accepted = adoptedRequest });
                     await progress(rows.AsReadOnly()).ConfigureAwait(false);
                     await ValidateAsync(value, ct).ConfigureAwait(false);
                     continue;
@@ -389,10 +473,12 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold,
                     audio.Seams.Select(seam => seam == audio.PatchStart).ToArray(), audio.SeamExcesses, value.Input.HasRequestTags,
                     VoiceLabTakeQuality.ReplacementWords(value.Input.Text, value.Input.Items, value.Input.Window));
+                // A take that dropped or changed words, clipped or failed its own speaker check does so again: the next run never adopts it.
+                await JournalChecksAsync(VoiceLabTakeJournalChecks.Of(qa, value.Record.Speaker.Threshold), paid).ConfigureAwait(false);
                 var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
                     qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
                 var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank)
-                    { VoiceCheck = vector is null ? VoiceLabTakeVoiceCheck.Waiting : VoiceLabTakeVoiceCheck.PerTake };
+                    { VoiceCheck = vector is null ? VoiceLabTakeVoiceCheck.Waiting : VoiceLabTakeVoiceCheck.PerTake, AdoptedAsset = take.AdoptedAsset, Accepted = adoptedRequest };
                 rows.Add(row);
                 lock (sync) { Check(value.Revision, value.Binding, ct); acceptedRows[row.Id] = (row, value); }
                 if (vector is null)
@@ -420,15 +506,16 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 {
                     // Preserve paid PCM independently of cancellation; failed metadata never enters QA or publication.
                     generated = decoded;
-                    try { await PreservePaidAudioAsync(decoded, take.Synthesis.Review.RequestId).ConfigureAwait(false); }
+                    try { await PreservePaidAudioAsync(decoded, take.Synthesis.Review.RequestId, value, take).ConfigureAwait(false); }
                     catch (VoiceLabAssetStoreException) { /* Keep the original provider validation failure. */ }
                 }
                 value = current();
                 HashSet<Guid> accepted = [];
                 if (synthesisAccepted.Accepted) accepted.Add(take.Synthesis.Review.RequestId);
                 if (qaAccepted.Accepted) accepted.Add(take.Qa.Review.RequestId);
+                if (generated is not null) accepted.UnionWith(adoptedRequest);
                 rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated?.Receipt, qaReceipt, generated, take, audio, Failure: error)
-                    { Accepted = System.Collections.Frozen.FrozenSet.ToFrozenSet(accepted) });
+                    { Accepted = System.Collections.Frozen.FrozenSet.ToFrozenSet(accepted), AdoptedAsset = take.AdoptedAsset });
                 await progress(rows.AsReadOnly()).ConfigureAwait(false);
                 if (Fatal(error) || ct.IsCancellationRequested) return new(rows.AsReadOnly(), End(error));
                 try { await ValidateAsync(value, ct).ConfigureAwait(false); }
@@ -480,12 +567,57 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     }
     private static bool IsTimingFailure(Exception error) => error is VoiceLabException { Kind: VoiceLabErrorKind.InvalidAlignment } ||
         error is VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.AlignmentMismatch or VoiceLabGeometryErrorCode.AlignmentUnavailable or VoiceLabGeometryErrorCode.InvalidWordTiming };
-    private async Task<VoiceLabAsset> PreservePaidAudioAsync(VoiceLabAudioResult result, Guid requestId)
+    /// <summary>Stores the paid PCM as the provider returned it, then its journal entry (voice-lab §3 "Paid takes are kept"), both
+    /// flushed before any check that can fail, so neither a later failure nor a relaunch loses the take. A journal that can't be
+    /// written leaves the take usable in this run and is logged.</summary>
+    private async Task<VoiceLabAsset> PreservePaidAudioAsync(VoiceLabAudioResult result, Guid requestId, Pending value, VoiceLabTakeQuote take)
     {
-        var paid = await Task.Run(() => VoiceLabAssetStore.Write(result.Pcm, result.SampleRate, storage.ProjectId,
-            Guid.NewGuid().ToString("D"), storage.PaidRoot, DateTimeOffset.UtcNow), CancellationToken.None).ConfigureAwait(false);
-        lock (sync) paidAssets[requestId] = paid;
+        var key = VoiceLabTakeJournalKey.Of(value.Input, value.Record.VoiceId, take.Index);
+        var seed = value.Input.Options(take.Index).Seed;
+        var estimate = take.Synthesis.Estimate.Usd;
+        var (paid, journaled) = await Task.Run(() =>
+        {
+            var asset = VoiceLabAssetStore.Write(result.Pcm, result.SampleRate, storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, DateTimeOffset.UtcNow);
+            try
+            {
+                VoiceLabTakeJournal.Write(VoiceLabTakeJournal.Create(asset, result, key, seed, estimate), storage.ProjectId, storage.PaidRoot);
+                return (asset, true);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or VoiceLabException or VoiceLabAssetStoreException) { return (asset, false); }
+        }, CancellationToken.None).ConfigureAwait(false);
+        lock (sync) { paidAssets[requestId] = paid; journalAssets.Add(paid.File); }
+        VoiceLabTakeJournalClaims.Claim(VoiceLabTakeJournalClaims.Key(paid.File, storage.PaidRoot), claimOwner);
+        if (!journaled) client.Note("voicelab take journal unwritten");
         return paid;
+    }
+    /// <summary>The journaled take's stored PCM as the take's audio, claimed by this run for good: no synthesis, nothing charged.</summary>
+    private async Task<(VoiceLabAudioResult Result, VoiceLabAsset Asset)> AdoptAsync(VoiceLabTakeJournalEntry entry, Guid requestId)
+    {
+        lock (sync) journalAssets.Add(entry.AssetFile);
+        var adopted = await Task.Run(() => VoiceLabTakeJournal.Adopt(entry, storage.ProjectId, storage.PaidRoot), CancellationToken.None).ConfigureAwait(false);
+        lock (sync) paidAssets[requestId] = adopted.Asset;
+        client.Note("voicelab take adopted timing=" + (entry.Alignment is null ? "none" : entry.Alignment.Recovered ? "recovered" : "provider"));
+        return adopted;
+    }
+    private async Task JournalTimingAsync(IReadOnlyList<VoiceLabCharacterTiming> timing, VoiceLabAsset paid)
+    {
+        var updated = await Task.Run(() =>
+        {
+            try { VoiceLabTakeJournal.UpdateTiming(paid.File, timing, true, storage.ProjectId, storage.PaidRoot); return true; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or VoiceLabException or VoiceLabAssetStoreException) { return false; }
+        }, CancellationToken.None).ConfigureAwait(false);
+        if (!updated) client.Note("voicelab take journal timing unwritten");
+    }
+    /// <summary>How the take did in its checks, in its journal entry (<see cref="VoiceLabTakeJournalChecks"/>), so a take whose audio
+    /// fails them is never adopted by a later run. A pooled voice check's verdict is the group's and is not written.</summary>
+    private async Task JournalChecksAsync(VoiceLabTakeJournalChecks checks, VoiceLabAsset paid)
+    {
+        var updated = await Task.Run(() =>
+        {
+            try { VoiceLabTakeJournal.UpdateChecks(paid.File, checks, storage.ProjectId, storage.PaidRoot); return true; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or VoiceLabException or VoiceLabAssetStoreException) { return false; }
+        }, CancellationToken.None).ConfigureAwait(false);
+        if (!updated) client.Note("voicelab take journal checks unwritten");
     }
     private async Task ValidateAsync(Pending value, CancellationToken ct)
     {
@@ -514,12 +646,14 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     public Task DiscardPendingAsync()
     {
         VoiceLabTakeRunQuote? quote;
+        VoiceLabTakeJournalEntry? reserved;
         lock (sync)
         {
             if (preparing || owner.HasValue) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-            quote = pending?.Quote; pending = null;
+            quote = pending?.Quote; reserved = pending?.Adopted; pending = null;
         }
         if (quote is not null) client.DiscardTakeRun(quote);
+        ReleaseUnused(reserved);
         return Task.CompletedTask;
     }
     public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => client.QuotesAreFresh(quote.Actions);
@@ -528,27 +662,32 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     public void InvalidatePreparation()
     {
         VoiceLabTakeRunQuote? quote;
+        VoiceLabTakeJournalEntry? reserved;
         lock (sync)
         {
             preparationGate.Invalidate();
-            quote = pending?.Quote; pending = null;
+            quote = pending?.Quote; reserved = pending?.Adopted; pending = null;
         }
         if (quote is not null) client.DiscardTakeRun(quote);
+        ReleaseUnused(reserved);
     }
     public Task CancelAsync() => CancelAsync(false);
     public Task CancelAsync(bool keepingTakes) => StopAsync(VoiceLabTakeRunEnd.Cancelled, keepingTakes);
+    /// <summary>Also lets other runs adopt the takes this run made or adopted: its plan is gone.</summary>
     public Task InvalidateAsync() => StopAsync(VoiceLabTakeRunEnd.Invalidated);
     private async Task StopAsync(VoiceLabTakeRunEnd reason, bool keepingTakes = false)
     {
         VoiceLabTakeScratch[] retired;
         VoiceLabTakeRunQuote? quote;
+        VoiceLabTakeJournalEntry? reserved;
         CancellationTokenSource? cancellation;
         lock (sync)
         {
             stop = reason; revision++;
             if (!keepingTakes) inputGate.Invalidate();
             cancellation = running;
-            quote = pending?.Quote; pending = null;
+            quote = pending?.Quote; reserved = pending?.Adopted; pending = null;
+            if (reason == VoiceLabTakeRunEnd.Invalidated) journalAssets.Clear();
             if (keepingTakes)
             {
                 retired = [];
@@ -563,6 +702,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         try { cancellation?.Cancel(); }
         catch (ObjectDisposedException) { }
         if (quote is not null) client.DiscardTakeRun(quote);
+        if (reason == VoiceLabTakeRunEnd.Invalidated) VoiceLabTakeJournalClaims.ReleaseAll(claimOwner);
+        else ReleaseUnused(reserved);
         await Task.WhenAll(retired.Select(scratch => scratch.InvalidateAsync())).ConfigureAwait(false);
     }
     public async Task RejectAsync(Guid id)
@@ -582,7 +723,9 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         }
         var acceptance = item.Input with { Binding = item.Input.AcceptanceBinding };
         await ValidateAsync(acceptance, ct).ConfigureAwait(false);
-        var publication = scratch.Fitted.Publish(storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, date, id.ToString("D"), item.Row.Seed, scratch.Audio.GainDb, scratch.Audio.TiltDbPerOctave, ct);
+        // The chunk names the request that paid for the audio: the take's own, or an adopted take's earlier one.
+        var request = item.Row.Receipt?.ActionId ?? id;
+        var publication = scratch.Fitted.Publish(storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, date, request.ToString("D"), item.Row.Seed, scratch.Audio.GainDb, scratch.Audio.TiltDbPerOctave, ct);
         await ValidateAsync(acceptance, ct).ConfigureAwait(false);
         if (!scratch.IsValid || item.Row.Receipt?.VoiceId != item.Input.Record.VoiceId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         return (publication, item.Input.Record);

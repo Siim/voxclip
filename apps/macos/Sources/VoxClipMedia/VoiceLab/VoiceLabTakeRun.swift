@@ -35,6 +35,8 @@ public actor VoiceLabTakeRun {
         let creatorFingerprint: String
         /// Pinned in the client by a take batch's one approval (`approve(_:)`), so `execute` skips its own approval.
         var approvedAhead = false
+        /// The journal entry take 0 adopts (`VoiceLabTakeQuote.adoptedAsset`), claimed for this run since `prepare`.
+        var adopted: VoiceLabTakeJournalEntry?
     }
     private enum Abort: Error { case invalidated }
     private let client: ElevenLabsVoiceLab
@@ -47,6 +49,10 @@ public actor VoiceLabTakeRun {
     private let localTiming: VoiceLabLocalTiming?
     private var scratches: [UUID: VoiceLabTakeScratch] = [:]
     private var paidAssets: [UUID: VoiceLabAsset] = [:]
+    /// The journal assets (voice-lab §3 "Paid takes are kept") this run made or adopted, which it never adopts again, and
+    /// this run's claim on them and on the one its prepared set reserves (`VoiceLabTakeJournalClaims`).
+    private var journalAssets: Set<String> = []
+    private nonisolated let claimOwner = UUID()
     private let dispatchIfCurrent: VoiceLabTakeDispatchBoundary
     private nonisolated let dispatchRevision = Mutex(0)
     private var pending: Pending?
@@ -72,6 +78,7 @@ public actor VoiceLabTakeRun {
         self.dispatchIfCurrent = dispatchIfCurrent
         self.storage = storage
     }
+    deinit { VoiceLabTakeJournalClaims.shared.releaseAll(owner: claimOwner) }
     public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
     public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
     /// Where the paid audio of a take this run made is stored, as the provider returned it, so a take that failed before
@@ -115,7 +122,8 @@ public actor VoiceLabTakeRun {
         let currentRevision = revision
         if let pending {
             self.pending = nil
-            await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })
+            releaseReservation(pending.adopted)
+            await client.discardRun(pending.quote.id, quotes: pending.quote.providerQuotes)
         }
         try Task.checkCancellation()
         guard revision == currentRevision else { throw Abort.invalidated }
@@ -133,15 +141,26 @@ public actor VoiceLabTakeRun {
         let id = UUID()
         var takes: [VoiceLabTakeQuote] = []
         var quotes: [VoiceLabQuote] = []
+        // A paid take over the same words, voice and model is adopted for free as the set's one take (voice-lab §3
+        // "Paid takes are kept"); only its word check is priced.
+        let adopted = await reserveAdoption(input, record: record)
         do {
-            for index in 0..<candidates {
+            for index in 0..<(adopted == nil ? candidates : 1) {
                 let options = input.options(take: index)
                 let speech = try await client.prepareSynthesis(text: input.requestText, modelID: input.modelID,
                     voice: .own(voiceID: record.voiceId, policy: policy(record)), language: input.language, options: options, requestID: UUID())
-                quotes.append(speech)
+                let synthesis: VoiceLabQuote
+                if adopted != nil {
+                    // The request is checked as the provider would take it, then never sent: the take reuses paid audio.
+                    await client.discardRun(UUID(), quotes: [speech])
+                    synthesis = Self.adoptedQuote(speech)
+                } else {
+                    synthesis = speech
+                    quotes.append(speech)
+                }
                 let qa = try await client.prepareQA(language: input.language, requestID: UUID())
                 quotes.append(qa)
-                takes.append(VoiceLabTakeQuote(index: index, seed: options.seed, synthesis: speech, qa: qa))
+                takes.append(VoiceLabTakeQuote(index: index, seed: options.seed, synthesis: synthesis, qa: qa, adoptedAsset: adopted?.assetFile))
             }
             let modelRevision = await client.modelRevision()
             try await client.validateTakeAccount(fingerprint, record: record)
@@ -149,12 +168,46 @@ public actor VoiceLabTakeRun {
             guard revision == currentRevision, await inputsAreCurrent(), revision == currentRevision else { throw Abort.invalidated }
             let quote = VoiceLabTakeRunQuote(id: id, takes: takes, preparedAt: quotes.map(\.preparedAt).min() ?? Date())
             pending = Pending(quote: quote, input: input, record: record, preflight: preflight, source: resampled,
-                              sourceSpeech: sourceSpeech, modelRevision: modelRevision, creatorFingerprint: fingerprint)
+                              sourceSpeech: sourceSpeech, modelRevision: modelRevision, creatorFingerprint: fingerprint, adopted: adopted)
             return quote
         } catch {
+            releaseReservation(adopted)
             await client.discardRun(id, quotes: quotes)
             throw error
         }
+    }
+    /// The newest journal entry over `input`'s words, voice, model and context that no live run holds and this run never
+    /// made or adopted, claimed for this run; nil when there is none.
+    private func reserveAdoption(_ input: VoiceLabTakeInput, record: VoiceConsentRecord) async -> VoiceLabTakeJournalEntry? {
+        let key = VoiceLabTakeJournalKey(input: input, voiceID: record.voiceId)
+        let storage = storage, claims = VoiceLabTakeJournalClaims.shared
+        var excluded = journalAssets.union(claims.claimed(under: storage.paidRoot, except: claimOwner))
+        // Another run may claim the same entry meanwhile: the next newest is tried, a few times at most.
+        for _ in 0..<4 {
+            let skip = excluded
+            let found = await Task.detached(priority: .utility) {
+                VoiceLabTakeJournal.match(key, projectID: storage.projectId, paidRoot: storage.paidRoot, excluding: skip)
+            }.value
+            guard let entry = found else { return nil }
+            if claims.claim(VoiceLabTakeJournalClaims.key(entry.assetFile, paidRoot: storage.paidRoot), owner: claimOwner) { return entry }
+            excluded.insert(entry.assetFile)
+        }
+        return nil
+    }
+    /// Lets another run adopt `entry` again when this run reserved it and never used it.
+    private func releaseReservation(_ entry: VoiceLabTakeJournalEntry?) {
+        guard let entry, !journalAssets.contains(entry.assetFile), pending?.adopted?.assetFile != entry.assetFile else { return }
+        VoiceLabTakeJournalClaims.shared.release(VoiceLabTakeJournalClaims.key(entry.assetFile, paidRoot: storage.paidRoot), owner: claimOwner)
+    }
+    /// An adopted take's synthesis quote: the checked request's own fields, a fresh ID and a price of zero. It never reaches
+    /// the client, which holds only the word check's quote.
+    static func adoptedQuote(_ checked: VoiceLabQuote) -> VoiceLabQuote {
+        let free = CostEstimate(provider: checked.estimate.provider, operation: checked.estimate.operation, units: checked.estimate.units,
+                                unit: checked.estimate.unit, usd: 0, credits: 0, basis: "adopted-take")
+        return VoiceLabQuote(id: UUID(), operation: checked.operation, requestID: UUID(), estimate: free, region: checked.region,
+            endpoint: checked.endpoint, languageMode: checked.languageMode, fingerprint: checked.fingerprint,
+            guardAudioHash: checked.guardAudioHash, preparedAt: checked.preparedAt, modelID: checked.modelID,
+            voiceID: checked.voiceID, pace: checked.pace)
     }
     /// The guard's free verdict on each of these phrases before any price (voice-lab §6.9, ADR-R41), on the same speech
     /// the run's own guard reads at dispatch. Phrases that pass against the record's own embedding teach this project's
@@ -187,7 +240,7 @@ public actor VoiceLabTakeRun {
         guard task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote, !value.approvedAhead
         else { throw VoiceLabError.consentRequired }
         let currentRevision = revision
-        let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
+        let quotes = quote.providerQuotes
         try await client.validateTakeAccount(value.creatorFingerprint, record: value.record)
         guard await client.quotesAreFresh(quotes), revision == currentRevision, executionOwner == nil else { throw VoiceLabError.consentRequired }
         try await client.approveRun(quote.id, quotes: quotes)
@@ -210,7 +263,7 @@ public actor VoiceLabTakeRun {
         runningID = quote.id
         pending = nil
         stop = .cancelled
-        let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
+        let quotes = quote.providerQuotes
         let dispatch = VoiceLabRunDispatch(keepingPreviousTakes: keepingPreviousTakes)
         do {
             // A set pinned by a batch approval was fresh when the user approved the batch, and the client holds it since.
@@ -227,6 +280,7 @@ public actor VoiceLabTakeRun {
             try reservation(currentRevision)
         } catch {
             await release(owner: owner, quote: quote, retaining: revision == currentRevision ? value : nil)
+            releaseReservation(value.adopted)
             throw error
         }
         let pool = shortTakePool ?? VoiceLabShortTakePool()
@@ -241,6 +295,7 @@ public actor VoiceLabTakeRun {
             if !checked.isEmpty { await progress(result.rows) }
         }
         await release(owner: owner, quote: quote, retaining: !dispatch.started && revision == currentRevision ? value : nil)
+        releaseReservation(value.adopted)
         return result
     }
     private func release(owner: UUID, quote: VoiceLabTakeRunQuote, retaining value: Pending? = nil) async {
@@ -250,7 +305,7 @@ public actor VoiceLabTakeRun {
             pending = value
             await client.unapproveRun(quote.id)
         } else {
-            await client.discardRun(quote.id, quotes: quote.takes.flatMap { [$0.synthesis, $0.qa] })
+            await client.discardRun(quote.id, quotes: quote.providerQuotes)
         }
         guard executionOwner == owner else { return }
         task = nil; runningID = nil; executionOwner = nil
@@ -265,12 +320,16 @@ public actor VoiceLabTakeRun {
         }
         if let pending {
             self.pending = nil
-            await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })
+            releaseReservation(pending.adopted)
+            await client.discardRun(pending.quote.id, quotes: pending.quote.providerQuotes)
         }
     }
+    /// Also lets other runs adopt the takes this run made or adopted: its plan is gone.
     public func invalidate() async {
         await cancel()
         stop = .invalidated
+        journalAssets.removeAll()
+        VoiceLabTakeJournalClaims.shared.releaseAll(owner: claimOwner)
     }
     private func validate(_ value: Pending, revision expected: Int) async throws {
         try reservation(expected)
@@ -311,25 +370,38 @@ public actor VoiceLabTakeRun {
             var generated: VoiceLabAudioResult?
             var audio: VoiceLabTakeAudio?
             let synthesisAccepted = VoiceLabRequestAcceptance(), qaAccepted = VoiceLabRequestAcceptance()
+            // An adopted take's zero-priced synthesis request counts as made, so the set's progress and spend add up.
+            let adoptedRequest: Set<UUID> = take.adoptedAsset == nil ? [] : [take.synthesis.requestID]
             do {
+                // An adopted take passes the same consent, record and speaker guard as a paid one before its audio is used.
                 let authorization = try await useGuard.authorize(quote: take.synthesis, contentKey: value.input.contentKey,
                     recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
-                try await authorization.capability?.bindDispatch(boundary(request: take.synthesis.requestID, value: value, revision: expected, dispatch: dispatch))
+                try await authorization.capability?.bindDispatch(boundary(request: take.synthesis.requestID, take: take, value: value, revision: expected, dispatch: dispatch))
                 try await validate(value, revision: expected)
                 var result: VoiceLabAudioResult
-                do {
-                    result = try await client.synthesize(text: value.input.requestText, modelID: value.input.modelID,
-                        voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
-                        options: value.input.options(take: take.index), requestID: take.synthesis.requestID,
-                        authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)
-                } catch let error as VoiceLabError where [.invalidAlignment, .malformedResponse].contains(error) && dispatch.started {
-                    // The paid PCM decoded but its timing or segment metadata did not validate: recover its timing below.
-                    guard let decoded = synthesisAccepted.unalignedAudio else { throw error }
-                    result = decoded
+                let paid: VoiceLabAsset
+                if let adoptedAsset = take.adoptedAsset {
+                    guard let entry = value.adopted, entry.assetFile == adoptedAsset else { throw VoiceLabError.consentRequired }
+                    let adopted = try await adopt(entry, requestID: take.synthesis.requestID)
+                    result = adopted.result
+                    paid = adopted.asset
+                    receipt = result.receipt
+                    generated = result
+                } else {
+                    do {
+                        result = try await client.synthesize(text: value.input.requestText, modelID: value.input.modelID,
+                            voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
+                            options: value.input.options(take: take.index), requestID: take.synthesis.requestID,
+                            authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)
+                    } catch let error as VoiceLabError where [.invalidAlignment, .malformedResponse].contains(error) && dispatch.started {
+                        // The paid PCM decoded but its timing or segment metadata did not validate: recover its timing below.
+                        guard let decoded = synthesisAccepted.unalignedAudio else { throw error }
+                        result = decoded
+                    }
+                    receipt = result.receipt
+                    generated = result
+                    paid = try await preservePaidAudio(result, requestID: take.synthesis.requestID, value: value, take: take)
                 }
-                receipt = result.receipt
-                generated = result
-                let paid = try await preservePaidAudio(result, requestID: take.synthesis.requestID)
                 try await validate(value, revision: expected)
                 // §8.5 timing recovery: a take whose provider timing does not map to its words is retimed from its own
                 // word check (the approved Scribe request, used once) or, failing that, on device. No new paid request.
@@ -344,9 +416,17 @@ public actor VoiceLabTakeRun {
                                                          acceptance: qaAccepted)
                     qaReceipt = recognized.receipt
                     heard = recognized.words
-                    let timing = try await recoverTiming(recognized.words, samples: samples, input: value.input)
+                    let timing: [VoiceLabCharacterTiming]
+                    do { timing = try await recoverTiming(recognized.words, samples: samples, input: value.input) }
+                    catch {
+                        // What the take says can't be lined up with the text: its audio fails this way every time.
+                        if !Task.isCancelled { await journalChecks(.timingUnrecovered, of: paid) }
+                        throw error
+                    }
                     result = VoiceLabAudioResult(pcm: result.pcm, sampleRate: result.sampleRate, alignment: timing, receipt: result.receipt)
                     generated = result
+                    // The journal keeps the recovered timing, so adopting this take later needs no recovery.
+                    await journalTiming(timing, of: paid)
                     analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight, matchTone: true)
                 }
                 let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: storage.projectId, paidRoot: storage.paidRoot, scratchRoot: storage.scratchRoot)
@@ -368,11 +448,12 @@ public actor VoiceLabTakeRun {
                     }
                 } catch VoiceConsentError.speakerMismatch {
                     await pool.measured(id: take.synthesis.requestID, voiced: [], record: value.record, phrase: phraseID, passed: false)
+                    await journalChecks(.speakerFailed, of: paid)
                     // This take has already failed locally. Do not spend its approved Scribe request.
                     let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.speaker])
                     rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
                         receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]),
-                        generated: generated, quote: take))
+                        generated: generated, quote: take, accepted: adoptedRequest, adoptedAsset: take.adoptedAsset))
                     await progress(rows)
                     continue
                 }
@@ -381,9 +462,11 @@ public actor VoiceLabTakeRun {
                     await pool.measured(id: take.synthesis.requestID, voiced: voiced, record: value.record,
                                         phrase: phraseID, passed: score >= value.record.speaker.threshold)
                     if score < value.record.speaker.threshold, qaReceipt == nil {
+                        await journalChecks(.speakerFailed, of: paid)
                         let qa = VoiceLabTakeQAResult(values: VoiceLabQA(speakerScore: score), failures: [.speaker])
                         rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
-                            receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]), generated: generated, quote: take))
+                            receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]), generated: generated, quote: take,
+                            accepted: adoptedRequest, adoptedAsset: take.adoptedAsset))
                         await progress(rows)
                         continue
                     }
@@ -410,12 +493,15 @@ public actor VoiceLabTakeRun {
                     speakerScore: score, threshold: value.record.speaker.threshold,
                     audioTags: VoiceLabAudioTags.supports(value.input.modelID) ? value.input.audioTags : [],
                     replacementWords: VoiceLabTakeQuality.replacementWords(text: value.input.text, items: value.input.items, window: value.input.window))
+                // A take that dropped or changed words, or clipped, does so again: the next run never adopts it.
+                await journalChecks(.init(qa, speakerScore: score, threshold: value.record.speaker.threshold), of: paid)
                 let flatness = try VoiceLabLoudness.flatness(processed.trimmed, sampleRate: processed.sampleRate)
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,
                     matchRatio: qa.values.transcriptMatch ?? 0, flatness: flatness)
                 let row = VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
                     audio: processed, qa: qa, score: rank, failure: qa.hardFailures.isEmpty ? nil : .qa(qa.hardFailures),
-                    qaReceipt: qaReceipt, generated: generated, quote: take, voiceCheck: short ? .waiting : .perTake)
+                    qaReceipt: qaReceipt, generated: generated, quote: take, accepted: adoptedRequest,
+                    voiceCheck: short ? .waiting : .perTake, adoptedAsset: take.adoptedAsset)
                 if short {
                     try await pool.append(row, voiced: voiced, record: value.record, speaker: speaker,
                                           store: store, phrase: phraseID, current: inputsAreCurrent)
@@ -435,14 +521,16 @@ public actor VoiceLabTakeRun {
                     // Keep paid PCM even when its timing/segment metadata failed. It is playable, never selectable.
                     generated = decoded
                     receipt = receipt ?? decoded.receipt
-                    _ = try? await preservePaidAudio(decoded, requestID: take.synthesis.requestID)
+                    _ = try? await preservePaidAudio(decoded, requestID: take.synthesis.requestID, value: value, take: take)
                 }
                 // A request the provider accepted is in the spend ledger even when its reply failed and left no receipt.
                 var accepted = Set<UUID>()
                 if synthesisAccepted.accepted { accepted.insert(take.synthesis.requestID) }
                 if qaAccepted.accepted { accepted.insert(take.qa.requestID) }
+                if generated != nil { accepted.formUnion(adoptedRequest) }
                 rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
-                    audio: audio, failure: failure(error), qaReceipt: qaReceipt, generated: generated, quote: take, accepted: accepted))
+                    audio: audio, failure: failure(error), qaReceipt: qaReceipt, generated: generated, quote: take, accepted: accepted,
+                    adoptedAsset: take.adoptedAsset))
                 await progress(rows)
                 if fatal(error) { return VoiceLabTakeRunResult(rows: rows, end: end(error)) }
             }
@@ -457,7 +545,7 @@ public actor VoiceLabTakeRun {
         let capability = VoiceOperationCapability(quote: take.qa, reserve: {
             try await store.dispatchPermit(value.record, requestID: take.qa.requestID)
         }) { try await self.validate(value, revision: expected) }
-        try await capability.bindDispatch(boundary(request: take.qa.requestID, value: value, revision: expected, dispatch: dispatch))
+        try await capability.bindDispatch(boundary(request: take.qa.requestID, take: take, value: value, revision: expected, dispatch: dispatch))
         return try await client.transcribeQA(samples, rate: 24_000, language: value.input.language,
             authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability, acceptance: acceptance,
             hasAudioTags: !value.input.audioTags.isEmpty && VoiceLabAudioTags.supports(value.input.modelID))
@@ -497,20 +585,69 @@ public actor VoiceLabTakeRun {
         guard let error = error as? VoiceLabGeometryError else { return false }
         return [.alignmentMismatch, .alignmentUnavailable, .invalidWordTiming].contains(error)
     }
-    private func preservePaidAudio(_ result: VoiceLabAudioResult, requestID: UUID) async throws -> VoiceLabAsset {
+    /// Stores the paid PCM as the provider returned it, then its journal entry (voice-lab §3 "Paid takes are kept"), both
+    /// flushed before any check that can fail, so neither a later failure nor a relaunch loses the take. A journal that can't
+    /// be written leaves the take usable in this run and is logged.
+    private func preservePaidAudio(_ result: VoiceLabAudioResult, requestID: UUID, value: Pending, take: VoiceLabTakeQuote) async throws -> VoiceLabAsset {
         let storage = storage
-        let paid = try await Task.detached(priority: .utility) {
-            try VoiceLabAssetStore.write(pcm16: result.pcm, sampleRate: result.sampleRate, projectId: storage.projectId,
-                assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: Date())
+        let key = VoiceLabTakeJournalKey(input: value.input, voiceID: value.record.voiceId, take: take.index)
+        let seed = value.input.options(take: take.index).seed, estimate = take.synthesis.estimate.usd
+        let (paid, journaled) = try await Task.detached(priority: .utility) {
+            let createdAt = Date()
+            let paid = try VoiceLabAssetStore.write(pcm16: result.pcm, sampleRate: result.sampleRate, projectId: storage.projectId,
+                assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: createdAt)
+            let entry = VoiceLabTakeJournalEntry(assetFile: paid.file, assetSha256: paid.sha256, requestID: result.receipt.requestID,
+                providerRequestID: result.receipt.providerRequestID, key: key, seed: seed, sampleRate: result.sampleRate,
+                frames: result.pcm.count / 2,
+                alignment: result.alignment.map { .init(recovered: false, characters: $0.map { .init(character: $0.character, start: $0.start, end: $0.end) }) },
+                receipt: .init(provider: result.receipt.provider, region: result.receipt.region.rawValue, endpoint: result.receipt.endpoint),
+                estimateUSD: estimate, createdAt: createdAt)
+            let journaled = (try? VoiceLabTakeJournal.write(entry, projectID: storage.projectId, paidRoot: storage.paidRoot)) != nil
+            return (paid, journaled)
         }.value
         paidAssets[requestID] = paid
+        journalAssets.insert(paid.file)
+        _ = VoiceLabTakeJournalClaims.shared.claim(VoiceLabTakeJournalClaims.key(paid.file, paidRoot: storage.paidRoot), owner: claimOwner)
+        if !journaled { await client.note("voicelab take journal unwritten") }
         return paid
+    }
+    /// The journaled take's stored PCM as the take's audio, claimed by this run for good: no synthesis, nothing charged.
+    private func adopt(_ entry: VoiceLabTakeJournalEntry, requestID: UUID) async throws -> (result: VoiceLabAudioResult, asset: VoiceLabAsset) {
+        journalAssets.insert(entry.assetFile)
+        let storage = storage
+        let adopted = try await Task.detached(priority: .utility) {
+            try VoiceLabTakeJournal.adopt(entry, projectID: storage.projectId, paidRoot: storage.paidRoot)
+        }.value
+        paidAssets[requestID] = adopted.asset
+        await client.note("voicelab take adopted timing=\(entry.alignment == nil ? "none" : entry.alignment?.recovered == true ? "recovered" : "provider")")
+        return adopted
+    }
+    private func journalTiming(_ timing: [VoiceLabCharacterTiming], of paid: VoiceLabAsset) async {
+        let storage = storage
+        let updated = await Task.detached(priority: .utility) {
+            (try? VoiceLabTakeJournal.updateTiming(assetFile: paid.file, timing: timing, recovered: true,
+                                                   projectID: storage.projectId, paidRoot: storage.paidRoot)) != nil
+        }.value
+        if !updated { await client.note("voicelab take journal timing unwritten") }
+    }
+    /// How the take did in its checks, in its journal entry (`VoiceLabTakeJournalEntry.Checks`), so a take whose audio
+    /// fails them is never adopted by a later run. A pooled voice check's verdict is the group's and is not written.
+    private func journalChecks(_ checks: VoiceLabTakeJournalEntry.Checks, of paid: VoiceLabAsset) async {
+        let storage = storage
+        let updated = await Task.detached(priority: .utility) {
+            (try? VoiceLabTakeJournal.updateChecks(assetFile: paid.file, checks: checks, projectID: storage.projectId,
+                                                   paidRoot: storage.paidRoot)) != nil
+        }.value
+        if !updated { await client.note("voicelab take journal checks unwritten") }
     }
     private func policy(_ record: VoiceConsentRecord) -> OwnVoicePolicy {
         OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true,
                        statementVerified: record.consentMethod == .recordedStatement, speakerMatched: true, consentMethod: record.consentMethod)
     }
-    private func boundary(request: UUID, value: Pending, revision expected: Int, dispatch run: VoiceLabRunDispatch) -> VoiceLabDispatchBoundary {
+    /// The run's first dispatch retires the takes of earlier sets, never `take`'s own: an adopted take's first dispatch is
+    /// its word check, after its audio is staged.
+    private func boundary(request: UUID, take: VoiceLabTakeQuote, value: Pending, revision expected: Int,
+                          dispatch run: VoiceLabRunDispatch) -> VoiceLabDispatchBoundary {
         let dispatch = dispatchIfCurrent
         return { [self] start in
             try await self.client.validateTakeAccount(value.creatorFingerprint, record: value.record)
@@ -521,12 +658,13 @@ public actor VoiceLabTakeRun {
                     run.start()
                 }
             }
-            if run.retire(), !run.keepingPreviousTakes { await self.retirePreviousTakes() }
+            if run.retire(), !run.keepingPreviousTakes { await self.retirePreviousTakes(keeping: take.synthesis.requestID) }
         }
     }
-    private func retirePreviousTakes() async {
-        let retired = Array(scratches.values)
-        scratches.removeAll(); paidAssets.removeAll()
+    private func retirePreviousTakes(keeping current: UUID) async {
+        let retired = scratches.filter { $0.key != current }.map(\.value)
+        scratches = scratches.filter { $0.key == current }
+        paidAssets = paidAssets.filter { $0.key == current }
         for scratch in retired { await scratch.invalidate() }
     }
     /// The use-time guard's own refusals, which the same speech always repeats: not the voice owner, or too little of the

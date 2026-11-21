@@ -235,6 +235,17 @@ enum VoiceLabAssetRecovery {
         }
         return removed
     }
+    /// `VoiceLabAssetStore.sweepVoiceLabScratch(root:)`: `recoverIntents` over the scratch root's own top level.
+    static func sweepVoiceLabScratch(root: URL, status: (Int32) -> OwnerStatus = ownerStatus,
+                                     reportRetained: (LogEntry) -> Void = logRetention) throws -> Int {
+        let parent = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        if parent < 0, errno == ENOENT { return 0 }
+        guard parent >= 0 else { throw VoiceLabAssetStoreError.unsafePath(root.lastPathComponent) }
+        defer { close(parent) }
+        let removed = try recoverIntents(parent, status: status, afterOpening: nil, reportRetained: reportRetained)
+        guard VoiceLabPaidRoot.fullSync(parent) else { throw VoiceLabAssetStoreError.unwritable(root.lastPathComponent) }
+        return removed
+    }
     struct Partial: Codable {
         let name: String
         let owner: Owner
@@ -368,5 +379,16 @@ enum VoiceLabAssetRecovery {
     private static func logRetention(_ entry: LogEntry) {
         let logger = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
         Task { await logger.write(entry) }
+    }
+}
+
+extension VoiceLabAssetStore {
+    /// Removes the Voice Lab scratch that processes no longer running left behind (take mixes, fitted audio, asset
+    /// snapshots): each `<root>/op-<uuid>` folder whose `.voxclip-op-<uuid>.intent.json` names an owner, pid and start
+    /// time, that is gone, and then that intent. A folder a running process owns, a folder without an intent, a folder
+    /// holding a subfolder, and everything else in `root` (calibration-timing/, timing/, heard/, lipsync-window-*) stay
+    /// with their owners. Only `root`'s top level is read; the paid root is never touched. Returns how many went.
+    @discardableResult public static func sweepVoiceLabScratch(root: URL) throws -> Int {
+        try VoiceLabAssetRecovery.sweepVoiceLabScratch(root: root)
     }
 }
