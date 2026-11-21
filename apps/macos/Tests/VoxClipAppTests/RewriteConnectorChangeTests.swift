@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import Foundation
 import Testing
@@ -72,3 +73,4 @@ private struct ConnectorChangeKeys: KeyProvider {
         #expect(editor.openRewrite == nil && !session.isOpen && editor.rewriteNotice == nil)
     }
 }
+#endif

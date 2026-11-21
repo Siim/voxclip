@@ -1,3 +1,4 @@
+#if DEBUG
 import Darwin
 import Foundation
 import Testing
@@ -42,3 +43,4 @@ private actor SweepSettingsStore: SettingsStore {
         withExtendedLifetime((left, live)) {}
     }
 }
+#endif
