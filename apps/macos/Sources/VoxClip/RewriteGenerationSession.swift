@@ -61,8 +61,15 @@ import xlocale
     @ObservationIgnored private var quotePreparation: Task<Void, Never>?
     @ObservationIgnored var prepareQuote: (@MainActor () async -> Void)?
     @ObservationIgnored var onInputsChanged: (@MainActor () -> Void)?
-    /// The consent record Rewrite starts with when it is listed (Settings › Voices, "Use the new voice for Rewrite").
-    @ObservationIgnored var preferredVoiceID: (@MainActor () -> String?)?
+    /// What the first voice choice reads from Voice Lab (`RewriteSession.wireInitialVoice`). Its reads are observed: when
+    /// they change (the per-video book loads after the voice records), the choice is made again while nothing is paid.
+    @ObservationIgnored var voicePreference: (@MainActor () -> VoicePreference)?
+    /// Paid or running takes keep the voice they were made with: the first choice is not made again.
+    @ObservationIgnored var keepsVoice: (@MainActor () -> Bool)?
+    /// The voice the first choice picked, while it is still the one chosen.
+    @ObservationIgnored private var automaticVoiceID: String?
+    /// Each watch of the first choice's inputs; a newer one, or `invalidate`, ends the one before.
+    @ObservationIgnored private var voicePreferenceTurn = 0
     @ObservationIgnored var readMonthlyCap: (@MainActor () async throws -> VoiceLabMonthlyCap?)?
     @ObservationIgnored private var preparedCap: VoiceLabMonthlyCap?
     @ObservationIgnored private var activeQuote: VoiceLabTakeRunQuote?
@@ -303,12 +310,18 @@ import xlocale
         guard inputsAreCurrent() else { return }
         let version = revision
         do {
-            let choices = try await run.discover(language: language)
+            let choices: (models: [VoiceLabModel], voices: [VoiceConsentRecord])
+            #if DEBUG
+            if let discoverForTests { choices = try await discoverForTests(language) }
+            else { choices = try await run.discover(language: language) }
+            #else
+            choices = try await run.discover(language: language)
+            #endif
             guard version == revision, inputsAreCurrent(), !Task.isCancelled else { return }
             models = choices.models; voices = choices.voices
             if !voices.contains(where: { $0.id == selectedVoiceID }) { chooseVoice(nil) }
             if !models.contains(where: { $0.id == selectedModelID }) { chooseModel(nil) }
-            if selectedVoiceID == nil { chooseVoice(Self.initialVoice(voices, preferred: preferredVoiceID?())) }
+            if selectedVoiceID == nil { chooseInitialVoice() }
             if let fixedModelID {
                 chooseModel(models.first { $0.id == fixedModelID }?.id)
                 if selectedModelID == nil { problem = "Eleven v4 is not available on this account. New Rewrite takes require Eleven v4." }
@@ -316,11 +329,54 @@ import xlocale
             else if selectedModelID == nil { chooseModel(VoiceLabModel.patchDefault(models)?.id) }
         } catch { problem = reported(error) }
     }
-    /// The voice Rewrite starts with: the one Settings › Voices chose ("Use the new voice for Rewrite") when it is
-    /// listed, otherwise the first listed (the newest).
-    static func initialVoice(_ voices: [VoiceConsentRecord], preferred: String?) -> String? {
-        preferred.flatMap { id in voices.first { $0.id == id }?.id } ?? voices.first?.id
+    /// What the first voice choice knows of Voice Lab (voice-lab §6.13, §6.12).
+    struct VoicePreference: Equatable {
+        /// This video's own voice when it has one, else the anchor (Settings › Voices' "Use the new voice for Rewrite"
+        /// first).
+        var preferred: String?
+        /// The voice per-video voices are made from and fall back to.
+        var anchor: String?
+        /// Voices made from other videos (theirs now, or a previous video's waiting to be removed).
+        var otherVideos: Set<String> = []
     }
+    /// The voice Rewrite starts with: the preferred one when it is listed, else the anchor, else the newest listed voice;
+    /// never a voice made from another video, which would make this video's takes sound like that recording. Nil, and
+    /// the panel asks to choose a voice, when every listed voice is another video's.
+    static func initialVoice(_ voices: [VoiceConsentRecord], preferred: String?, anchor: String? = nil,
+                             otherVideos: Set<String> = []) -> String? {
+        let usable = voices.filter { !otherVideos.contains($0.id) }
+        return [preferred, anchor].compactMap { $0 }.first { id in usable.contains { $0.id == id } } ?? usable.first?.id
+    }
+    private func chooseInitialVoice() {
+        let preference = observeVoicePreference()
+        chooseVoice(Self.initialVoice(voices, preferred: preference.preferred, anchor: preference.anchor, otherVideos: preference.otherVideos))
+        automaticVoiceID = selectedVoiceID
+    }
+    /// Reads what the first choice knows and watches it. Voice Lab assigns its records before the per-video book has
+    /// loaded, and until then another video's voice reads as the anchor: a change makes the choice again
+    /// (`voicePreferenceChanged`).
+    private func observeVoicePreference() -> VoicePreference {
+        voicePreferenceTurn += 1
+        let turn = voicePreferenceTurn
+        guard let voicePreference else { return VoicePreference() }
+        return withObservationTracking { voicePreference() } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, voicePreferenceTurn == turn else { return }
+                voicePreferenceChanged()
+            }
+        }
+    }
+    /// The first choice made again, while it is still the voice chosen and no take is paid or running. Once the user
+    /// chose a voice, or takes were made with this one, nothing is watched any more.
+    private func voicePreferenceChanged() {
+        guard selectedVoiceID == automaticVoiceID, rows.isEmpty, keepsVoice?() != true else { return }
+        guard !voices.isEmpty, phase != .generating, !accepting, inputsAreCurrent() else { _ = observeVoicePreference(); return }
+        chooseInitialVoice()
+    }
+    #if DEBUG
+    /// The account's voices and models in place of the provider's (`VoiceLabTakeRun.discover`).
+    @ObservationIgnored var discoverForTests: ((String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]))?
+    #endif
     func chooseVoice(_ id: String?) {
         guard id == nil || voices.contains(where: { $0.id == id }) else { return }
         guard id != selectedVoiceID else { return }
@@ -638,6 +694,7 @@ import xlocale
         announcement = ""
         input = nil; quotedInput = nil; preparingQuote = false
         activeQuote = nil; approvedCost = nil; confirmCost = nil
+        voicePreferenceTurn += 1
         enqueueCleanup()
     }
     private func enqueueCleanup() {
@@ -646,5 +703,24 @@ import xlocale
             await previous?.value
             await run.invalidate()
         }
+    }
+}
+
+extension RewriteSession {
+    /// Wires the generation's first voice choice (`RewriteGenerationSession.initialVoice`) to Voice Lab: this video's own
+    /// voice, else the anchor, never a voice made from another video (voice-lab §6.13, §6.12).
+    func wireInitialVoice() {
+        generation?.voicePreference = { [weak self] in self?.initialVoicePreference ?? .init() }
+        generation?.keepsVoice = { [weak self] in self?.hasPaidTakes ?? true }
+    }
+    /// What the first voice choice knows in this video. The per-video book's voices are other videos' except this
+    /// video's own; a voice waiting to be removed is no video's to start with.
+    var initialVoicePreference: RewriteGenerationSession.VoicePreference {
+        let voiceLab = editor.app.voiceLabSession
+        let book = voiceLab.perVideoBook
+        let own = book.video(project.media.source.contentKey)?.recordId
+        let made = Set(book.videos.map(\.recordId) + book.removals.map(\.recordId))
+        return .init(preferred: preferredVoiceForVideo, anchor: voiceLab.anchorVoice(language: project.transcript?.language)?.id,
+                     otherVideos: made.subtracting([own].compactMap { $0 }))
     }
 }

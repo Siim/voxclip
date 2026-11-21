@@ -33,7 +33,13 @@ internal sealed partial class RewriteSession
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private void VideoVoiceLabChanged(object? sender, EventArgs args) { if (IsOpen) Changed?.Invoke(this, EventArgs.Empty); }
+    private void VideoVoiceLabChanged(object? sender, EventArgs args)
+    {
+        if (!IsOpen) return;
+        // The per-video book loads after the voice records: each phrase's first voice is chosen again while nothing is paid.
+        if (!HasPaidTakes) foreach (var window in generationWindows.ToArray()) _ = window.RefreshInitialVoiceAsync();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
     private void DisconnectVideoVoice() { if (videoVoiceLab is not null) videoVoiceLab.Changed -= VideoVoiceLabChanged; }
 
     /// <summary>The opt-in applies here: the gate is open, an attested anchor exists and the source media is found.</summary>
@@ -44,11 +50,26 @@ internal sealed partial class RewriteSession
     internal string? PreferredVoiceForVideo =>
         OffersVideoVoiceHere ? videoVoiceLab!.RewriteVoicePreference(Project.Media.Source.ContentKey, Project.Transcript?.Language) : null;
 
-    /// <summary>Every new take window prefers this video's voice, then its own preference.</summary>
+    /// <summary>Voices made from other videos (Mac <c>initialVoicePreference</c>): theirs now, or a previous video's waiting to be removed;
+    /// never this video's own. Rewrite never starts with one.</summary>
+    internal IReadOnlySet<string> OtherVideoVoices
+    {
+        get
+        {
+            if (videoVoiceLab?.PerVideoBook is not { } book) return new HashSet<string>(StringComparer.Ordinal);
+            var own = book.VideoFor(Project.Media.Source.ContentKey)?.RecordId;
+            return book.Videos.Select(video => video.RecordId).Concat(book.Removals.Select(removal => removal.RecordId))
+                .Where(id => id != own).ToHashSet(StringComparer.Ordinal);
+        }
+    }
+
+    /// <summary>Every new take window prefers this video's voice, then its own preference, then the anchor; never another video's voice.</summary>
     private void PreferVideoVoice(RewriteGeneration window)
     {
         var fallback = window.PreferredVoice;
         window.PreferredVoice = () => PreferredVoiceForVideo ?? fallback?.Invoke();
+        window.AnchorVoice = () => videoVoiceLab?.AnchorVoice(Project.Transcript?.Language)?.RecordId;
+        window.OtherVideoVoices = () => OtherVideoVoices;
     }
 
     /// <summary>The voices of this Rewrite's phrases that hold paid takes not used or discarded yet: their voices are kept.</summary>

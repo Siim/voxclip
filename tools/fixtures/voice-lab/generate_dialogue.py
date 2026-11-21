@@ -46,8 +46,11 @@ case('segments_reversed_text', 'malformedResponse', segment={'character_start_in
 case('segments_fractional_index', 'malformedResponse', segment={'character_end_index': 1.5})
 case('segments_boolean_index', 'malformedResponse', segment={'dialogue_input_index': False})
 case('segments_negative_time', 'malformedResponse', segment={'start_time_seconds': -0.001})
-case('segments_past_audio', 'malformedResponse', segment={'end_time_seconds': 0.08})
-case('segments_within_tolerance', segment={'end_time_seconds': 0.03})
+# Segment ends may pass the 0.02 s of PCM by the character timing's 0.25 s tolerance (VoiceLabProviderTiming), never more.
+case('segments_past_audio', 'malformedResponse', segment={'end_time_seconds': 0.3})
+# 0.12 s past the PCM, as eleven_v4 replies do, with the alignment just as far past: accepted, the alignment kept.
+case('segments_within_tolerance', segment={'end_time_seconds': 0.14},
+     alignment={**REPLY['alignment'], 'character_end_times_seconds': [0.01, 0.14]})
 case('alignment_null_and_wrong_voice', 'invalidAlignment', alignment=None, segment={'voice_id': 'other123'})
 case('segments_reversed_time', 'malformedResponse', segment={'start_time_seconds': 0.02, 'end_time_seconds': 0.01})
 case('segments_empty', 'malformedResponse', empty=True)

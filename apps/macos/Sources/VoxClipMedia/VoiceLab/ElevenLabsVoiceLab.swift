@@ -664,7 +664,7 @@ public actor ElevenLabsVoiceLab {
                     message: "voicelab speech timing tolerated \(tolerated.logFields) route=\(route.rawValue) model=\(modelID)"))
             }
             if route == .textToDialogue {
-                // Unchanged shared contract (dialogue-cases.json); a refusal here is recovered by the take run (§8.5).
+                // Shared contract (dialogue-cases.json); a refusal here is recovered by the take run (§8.5).
                 try Self.validateDialogueSegments(row["voice_segments"], voiceID: voice.id, characterCount: characterCount, duration: duration)
             }
             return VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: timing, receipt: provenance)
@@ -1067,7 +1067,10 @@ public actor ElevenLabsVoiceLab {
                   start >= 0, end >= start, end <= count else { throw fail("segment_character_range", index) }
             guard let startTime = number(segment["start_time_seconds"]), let endTime = number(segment["end_time_seconds"]),
                   startTime >= 0, endTime >= startTime else { throw fail("segment_time_order", index) }
-            guard endTime <= duration + 0.05 else { throw fail("segment_end_beyond_duration", index) }
+            // The segments are only checked, never used for timing: an end past the PCM is allowed as far as the
+            // character timing's (`VoiceLabProviderTiming.overrunTolerance`, which clamps it), so a reply whose
+            // alignment is kept is never refused for its segments alone.
+            guard endTime <= duration + VoiceLabProviderTiming.overrunTolerance else { throw fail("segment_end_beyond_duration", index) }
         }
     }
     private static func parseAlignment(_ raw: Any?, text: String, duration: Double) throws -> [VoiceLabCharacterTiming] {

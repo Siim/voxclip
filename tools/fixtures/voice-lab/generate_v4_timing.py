@@ -198,7 +198,7 @@ def strict(alignment, typed, duration):
 
 def segments_ok(case, count):
     duration = case['pcmSamples'] * 2 / 48000
-    return all(s['character_end_index'] <= count and s['end_time_seconds'] <= duration + 0.05 for s in case['voice_segments'])
+    return all(s['character_end_index'] <= count and s['end_time_seconds'] <= duration + OVERRUN for s in case['voice_segments'])
 
 
 def bound(case, path):
@@ -301,7 +301,7 @@ cases = [
          note='A direction the request did not carry.'),
     case('end_slightly_past_pcm', SIMILAR, arrays(SIMILAR), samples=27120, note='Character times end 0.12 s past the PCM.'),
     case('segment_end_past_pcm', SIMILAR, arrays(SIMILAR), samples=27120, segment_end_time=1.25,
-         note='The segment also ends 0.12 s past the PCM: recovered by the take run.'),
+         note='The segment also ends 0.12 s past the PCM, within the character timing tolerance: the alignment is kept.'),
     case('overlapping_characters', SIMILAR, overlapping(SIMILAR), note='Each character starts 10 ms before the previous one ends.'),
     case('different_word', SIMILAR, arrays('I use a different method as'), note='A word really differs.'),
     case('dropped_word', SIMILAR, arrays('I use a method as'), note='A word is missing.'),

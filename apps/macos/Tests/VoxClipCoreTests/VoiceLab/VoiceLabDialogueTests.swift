@@ -134,6 +134,49 @@ struct VoiceLabDialogueTests {
         }
         #expect(problems == [])
     }
+    /// The 2026-11-20 and 11-21 logs: eleven_v4 replies whose voice segment ends about 0.1 s past the PCM ("tolerated
+    /// alignment_end_beyond_duration", then "failed segment_end_beyond_duration index=0") lost their alignment, and the
+    /// take was timed from its word check instead. The segment end now has the character timing's 0.25 s tolerance, so
+    /// the alignment is kept; past it the reply is still refused.
+    @Test func aSegmentEndWithinTheTimingToleranceKeepsTheAlignment() async throws {
+        let rows = try #require(document()["responses"] as? [[String: Any]])
+        func reply(_ name: String) throws -> [String: Any] {
+            try #require(rows.first { $0["case"] as? String == name }?["response"] as? [String: Any], Comment(rawValue: name))
+        }
+        func end(_ row: [String: Any]) throws -> Double {
+            try #require((row["voice_segments"] as? [[String: Any]])?.first?["end_time_seconds"] as? Double)
+        }
+        let within = try reply("segments_within_tolerance"), beyond = try reply("segments_past_audio")
+        let audio = try #require(within["audio_base64"] as? String)
+        let pcm = try #require(Data(base64Encoded: audio))
+        let duration = Double(pcm.count) / 48_000
+        #expect(abs(try end(within) - duration - 0.12) < 1e-9)
+        #expect(try end(beyond) - duration > VoiceLabProviderTiming.overrunTolerance)
+        let alignmentEnd = try #require((within["alignment"] as? [String: Any])?["character_end_times_seconds"] as? [Double]).last
+        #expect(alignmentEnd.map { $0 > duration + 0.05 && $0 <= duration + VoiceLabProviderTiming.overrunTolerance } == true)
+        for (row, kept) in [(within, true), (beyond, false)] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let client = try await lab(response: JSONSerialization.data(withJSONObject: row),
+                logger: RedactingLogger(homeDirectory: "/synthetic-home", directory: directory), diagnosticDirectory: directory)
+            let id = UUID(), options = VoiceLabSpeechOptions(seed: 0), acceptance = VoiceLabRequestAcceptance()
+            let quote = try await client.prepareSynthesis(text: "Hi", modelID: "eleven_v4", voice: voice, language: "en", options: options, requestID: id)
+            let synthesis: () async throws -> VoiceLabAudioResult = { try await client.synthesize(text: "Hi", modelID: "eleven_v4", voice: voice, language: "en", options: options,
+                requestID: id, authorization: VoiceLabAuthorization(quote: quote, approved: true), acceptance: acceptance) }
+            let log: () -> String = { (try? String(contentsOf: directory.appendingPathComponent("voxclip.log"), encoding: .utf8)) ?? "" }
+            if kept {
+                let result = try await synthesis()
+                let timing = try #require(result.alignment)
+                #expect(timing.map(\.character).joined() == "Hi" && timing.allSatisfy { $0.end <= duration })
+                #expect(log().contains("voicelab speech timing tolerated check=alignment_end_beyond_duration"), "\(log())")
+                #expect(!log().contains("segment_end_beyond_duration"), "\(log())")
+            } else {
+                await #expect(throws: VoiceLabError.malformedResponse) { _ = try await synthesis() }
+                #expect(log().contains("voicelab speech timing failed check=segment_end_beyond_duration index=0"), "\(log())")
+                #expect(acceptance.unalignedAudio?.alignment == nil && acceptance.unalignedAudio?.pcm == pcm)
+            }
+        }
+    }
     @Test func diagnosticsUseTestOrExplicitDataRoot() {
         let explicit = ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory(environment: ["VOXCLIP_DATA_DIR": "/tmp/isolated-tags"], arguments: ["Tests.xctest"])
         #expect(explicit.path == "/tmp/isolated-tags/Logs/Diagnostics/VoiceLab")

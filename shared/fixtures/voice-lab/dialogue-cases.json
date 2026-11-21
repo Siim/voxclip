@@ -545,7 +545,7 @@
           {
             "voice_id": "voice123",
             "start_time_seconds": 0,
-            "end_time_seconds": 0.08,
+            "end_time_seconds": 0.3,
             "character_start_index": 0,
             "character_end_index": 2,
             "dialogue_input_index": 0
@@ -569,7 +569,7 @@
           ],
           "character_end_times_seconds": [
             0.01,
-            0.02
+            0.14
           ]
         },
         "normalized_alignment": null,
@@ -577,7 +577,7 @@
           {
             "voice_id": "voice123",
             "start_time_seconds": 0,
-            "end_time_seconds": 0.03,
+            "end_time_seconds": 0.14,
             "character_start_index": 0,
             "character_end_index": 2,
             "dialogue_input_index": 0

@@ -30,6 +30,7 @@
     <Compile Include="RewritePaceMatchingTests.cs" />
     <Compile Include="RewriteWordingFitTests.cs" />
     <Compile Include="RewriteAutoFixTests.cs" />
+    <Compile Include="RewriteAutoFixReasonTests.cs" />
     <Compile Include="RewriteGuardBlockedTests.cs" />
     <Compile Include="RewriteGuardScreenTests.cs" />
     <Compile Include="RewriteDurationSettleTests.cs" />
