@@ -34,6 +34,10 @@ import VoxClipCore
         .accessibilityElement(children: .contain)
         .accessibilityLabel("How should it sound")
         .columnLayoutEvidence("director.wholeClip", text: evidence)
+        // A fal.ai key saved in Settings, or a voice made or removed: the actions are derived again (the price, or Settings).
+        .task(id: "\(rewrite.editor.app.connectorReadinessRevision):\(rewrite.editor.app.voiceLabSession.records.count)") {
+            await session.refreshReadiness()
+        }
     }
 
     private var quote: WholeClipRevoiceSession.Quote? { session.quote }
@@ -49,6 +53,22 @@ import VoxClipCore
     }
 
     @ViewBuilder private var choose: some View {
+        if rewrite.wholeClipCompact { compact } else { full }
+    }
+
+    /// After the patch was picked: one row, so the whole clip stays findable and redoable.
+    @ViewBuilder private var compact: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let action = rewrite.wholeClipInsteadAction() { PanelButton(action: action, kind: .bordered) }
+            Spacer(minLength: 0)
+        }
+        if session.keyAvailable {
+            Text("Says the whole clip again in one voice and lip syncs it. Sends the clip's new words to ElevenLabs and its video to fal.ai with your keys.")
+                .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary")).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var full: some View {
         header
         if let reason = quote?.reason {
             VStack(alignment: .leading, spacing: 6) {
@@ -190,6 +210,9 @@ import VoxClipCore
             Text(WholeClipRevoiceCardLines.matchLine(match, voice: rewrite.wholeClipAnchorName)).font(VCType.small.font())
                 .foregroundStyle(DesignValues.color("text.secondary")).fixedSize(horizontal: false, vertical: true)
         }
+        if let note = session.upgradeNote {
+            Text(note).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true)
+        }
         if let upgrade = rewrite.wholeClipUpgradeAction() {
             PanelButton(action: upgrade, kind: .bordered)
         }
@@ -205,7 +228,7 @@ import VoxClipCore
         header
         if !session.steps.isEmpty { stepList }
         Text(line).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true)
-        if session.voice != nil {
+        if session.voice != nil, !session.stoppedForInputs {
             Text("Your whole-clip voice take is kept in this session. Switching to changed phrases gives up this take and starts a separate voice workflow.")
                 .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                 .fixedSize(horizontal: false, vertical: true)
