@@ -1279,7 +1279,7 @@ member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_CreatedAt(
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_Envelope(VoxClip.Media.Pipeline.EnvelopeMetadata)
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_LastAccessAt(System.DateTimeOffset)
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_Schema(string)
-member VoxClip.Media.Pipeline.ClipPicture :: method internal Look(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Clips.ClipLook,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.ClipPicture :: method internal Grade(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Clips.ClipLook,VoxClip.Core.Domain.Clips.ClipColorAdjustments,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Motion(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.ContextDemo.MotionCropTransform,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Orient(VoxClip.Core.Domain.Captions.PixelBuffer,System.Span`1<byte>,VoxClip.Core.Domain.Clips.ProjectClipControls,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal OrientedSize(int,int,VoxClip.Core.Domain.Clips.ProjectClipControls)
