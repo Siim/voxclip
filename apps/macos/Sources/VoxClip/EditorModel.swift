@@ -198,6 +198,12 @@ struct EditorRenderSnapshot {
     func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil, verb: String = "Rewrite") {
         let replacingPendingSend = sendConfirmation.isPresented
         guard let scope = requested ?? rewriteScopeNow, RewriteEntryPolicy.canRun(editable: capabilities.edit && (capabilities.ai || replacingPendingSend), scope: scope) else { return }
+        // A Rewrite of another scope replaces the open one: its unused or running paid work asks first, inline in that
+        // Rewrite ("Start a new Rewrite and discard 3 paid takes (≈ $0.12)?"); the same scope sends again and asks there.
+        if let open = openRewrite, open.asksBeforeClosing, replacingPendingSend || open.rewriteScope != scope {
+            askBeforeReplacing(open, scope: scope, instruction: instruction, verb: verb)
+            return
+        }
         let previous = sendConfirmation.isPresented ? openRewrite : nil
         let previousFind = sendConfirmation.isPresented ? findTask : nil
         if sendConfirmation.isPresented { sendConfirmation.cancel(); findTask?.cancel(); closeRewrite(returnFocus: false) }
@@ -239,8 +245,26 @@ struct EditorRenderSnapshot {
                 announce(refusal)
                 return
             }
+            // Paid work that arrived while this one got ready asks first, as the press would have.
+            if let open = openRewrite, open.asksBeforeClosing {
+                askBeforeReplacing(open, scope: scope, instruction: instruction, verb: verb)
+                return
+            }
+            // Nothing asks now: a session with no paid work, or one on no tab (its clip gone), which says what went with it.
             closeRewrite(returnFocus: false)
             openRewriteSession(scope: scope, instruction: instruction)
+        }
+    }
+    /// A new Rewrite would replace `open`, which holds unused or running paid work: it asks first, inline in `open`, and
+    /// Discard and Rewrite discards it and runs this press again on the tab it was made on (the question can bring the open
+    /// session's own tab forward to ask).
+    private func askBeforeReplacing(_ open: RewriteSession, scope: RewriteScope, instruction: String?, verb: String) {
+        let tab = project.edits.activeClipId
+        open.confirmDiscardPaidWork(.newRewrite) { [weak self] in
+            guard let self else { return }
+            discardRewrite(returnFocus: false)
+            _ = setScope(tab)
+            runRewrite(scope: scope, instruction: instruction, verb: verb)
         }
     }
     /// Why the last Rewrite press did not start, shown in the status bar until the next press (design.md §6.3.6 Start).
@@ -264,19 +288,36 @@ struct EditorRenderSnapshot {
     /// asks first (design.md §6.3.1 "Proposal open"), inline in the Rewrite job (impl-plan §13.1): "Discard these {c}
     /// changes?" in place of its footer, with Keep Working, the primary that Return and Esc choose, and Discard Changes,
     /// which sends. The job comes to the panel to ask, and VoiceOver hears the question.
+    /// Paid work a resend would drop (the patch's takes, a whole clip's voice or lip sync) asks too, even with no change in
+    /// the proposal. After the AI changed, the send goes to a new Rewrite with that AI (`restartRewrite`), once confirmed.
     func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil, feedback: String? = nil) {
         session.stopWordingFit(refresh: false)
         guard session.isOpen, !session.isProposing else { return }
         cancelRewriteOpen()
+        // The AI changed under paid work that is still current: Rewrite Again is a new Rewrite with the new AI, and the
+        // paid work it drops asks first.
+        if session.asksBeforeClosing, !session.current, session.voiceSpendCurrent {
+            session.confirmDiscardPaidWork(.newRewrite) { [weak self, weak session] in
+                guard let self, let session else { return }
+                restartRewrite(session, paidWorkConfirmed: true)
+            }
+            return
+        }
         let count = session.proposalCount
-        guard count > 0, session.hasPaidTakes || session.hasEditedChanges else {
+        guard session.hasUnusedPaidWork || count > 0 && session.hasEditedChanges else {
             sendAgain(session, instruction: instruction, feedback: feedback)
             return
         }
-        session.confirmDiscardChanges { [weak self, weak session] in
+        // Discard sends again: the run lets go of the patch's takes, and the whole clip's paid voice goes with them.
+        let paid = session.hasUnusedPaidWork
+        let send: @MainActor () -> Void = { [weak self, weak session] in
             guard let self, let session else { return }
+            if paid { session.discardWholeClipWork() }
             sendAgain(session, instruction: instruction, feedback: feedback)
         }
+        // With no change in the proposal (R3, a whole clip), the question names the paid work ("Start a new Rewrite and
+        // discard …?"); else the changes, as before.
+        if count == 0 { session.confirmDiscardPaidWork(.newRewrite, perform: send) } else { session.confirmDiscardChanges(perform: send) }
     }
     /// A next step's re-ask (an AI chip, Change fewer words or the free-text field) in `session`: only its phrases can
     /// change, so nothing else is discarded; paid takes still ask first, inline (RewriteNextSteps.swift).
@@ -321,23 +362,78 @@ struct EditorRenderSnapshot {
         app.set("llm.connector", .string(id))
         restartRewrite(session)
     }
-    func restartRewrite(_ session: RewriteSession) {
+    /// Opens `session` again with the AI chosen now (R0's Use, a run after the AI changed). Its unused or running paid work
+    /// asks first, unless the user just confirmed it (`paidWorkConfirmed`).
+    func restartRewrite(_ session: RewriteSession, paidWorkConfirmed: Bool = false) {
         guard openRewrite === session, session.isOpen else { return }
-        guard RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: session.rewriteScope) else {
-            closeRewrite(returnFocus: false)
+        let runs = RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: session.rewriteScope)
+        if session.asksBeforeClosing, !paidWorkConfirmed {
+            session.confirmDiscardPaidWork(runs ? .newRewrite : .close) { [weak self, weak session] in
+                guard let self, let session else { return }
+                restartRewrite(session, paidWorkConfirmed: true)
+            }
+            return
+        }
+        guard runs else {
+            discardRewrite(returnFocus: false)
             rewriteNotice = Self.rewriteUnavailableNotice
             announce(Self.rewriteUnavailableNotice)
             return
         }
         let scope = session.rewriteScope, instruction = session.instruction
-        closeRewrite(returnFocus: false)
+        discardRewrite(returnFocus: false)
         openRewriteSession(scope: scope, instruction: instruction)
     }
     var rewriteConnectorSignature: [String] {
         let id = app.string("llm.connector")
         return [id, app.string("llm.model.\(id)"), app.string("llm.baseUrl.\(id)"), app.string("llm.cliPath.\(id)")]
     }
-    func closeRewrite(returnFocus: Bool = true) {
+    /// Closes the open Rewrite: Close Rewrite, Esc, the panel's X, a tab's close, Done, a change of the video or transcript
+    /// under it, and every other close. With unused or running paid work it asks first instead, inline in the Rewrite
+    /// ("Close Rewrite and discard 3 paid takes (≈ $0.12)?", Keep Working the default) and returns false; Discard and Close
+    /// closes it then. Another question already up in it (a price, a provider to allow) stays, and the close waits for the
+    /// creator. A session whose clip went away without Remove or Dismiss (an Undo, a run's own edit) shows on no tab to ask
+    /// on, so it closes, and the status bar says what went with it. True when it closed (or nothing was open).
+    @discardableResult func closeRewrite(returnFocus: Bool = true) -> Bool {
+        if let session = openRewrite, session.asksBeforeClosing, !closesUnasked {
+            // A Rewrite still getting ready is replaced by this close, as before.
+            cancelRewriteOpen()
+            session.confirmDiscardPaidWork(.close) { [weak self, weak session] in
+                guard let self, let session, openRewrite === session else { return }
+                discardRewrite(returnFocus: returnFocus)
+            }
+            return false
+        }
+        if let session = openRewrite, session.isOpen, session.hasUnusedPaidWork, !session.canAskAboutPaidWork {
+            let line = "Rewrite closed with its clip, discarding \(session.paidWorkSummary)."
+            rewriteNotice = line
+            announce(line)
+            let log = app.log
+            Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: "rewrite closed with its removed clip; its paid work was discarded")) }
+        }
+        discardRewrite(returnFocus: returnFocus)
+        return true
+    }
+    /// Runs `body` with every close of the open Rewrite going ahead unasked: a close its caller already decided over paid
+    /// work no phrase can use (Make it postable's settled Rewrite, `MakeItRewriteDriver.finishAsRecorded`).
+    func closingUnasked(_ body: () -> Void) {
+        let outer = closesUnasked
+        closesUnasked = true
+        defer { closesUnasked = outer }
+        body()
+    }
+    @ObservationIgnored private var closesUnasked = false
+    /// The AI choice changed (Settings, the AI picker: `AppModel`'s `llm.*` settings). An open Rewrite closes, as it did,
+    /// unless it holds unused or running paid work: then it stays as it is, its takes and whole clip still usable, because
+    /// the AI never makes paid work stale (design.md R3). A reply still on its way from the old AI is set aside when it
+    /// lands (R3 "AI changed"), and Rewrite Again asks before it starts over with the new AI (`sendRewriteAgain`).
+    func rewriteConnectorChanged() {
+        if let session = openRewrite, session.asksBeforeClosing { return }
+        closeRewrite(returnFocus: false)
+    }
+    /// Closes the open Rewrite with whatever it holds, asking nothing: a close the user already confirmed (the question's
+    /// Discard, a leave they confirmed), the editor closing, and the DEBUG scenes that discard on purpose.
+    func discardRewrite(returnFocus: Bool = true) {
         cancelRewriteOpen(); openRewrite?.close(); openRewrite = nil
         transcriptRevision += 1
         if returnFocus { _ = focusTranscript(in: window) }
@@ -553,8 +649,9 @@ struct EditorRenderSnapshot {
         cacheLease = app.leaseOpenProject(contentKey: key)
     }
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
-    /// change a project that is leaving.
-    var isLeaving = false { didSet { if isLeaving { app.voiceLabSession.leaveVoiceControls(owner: self); contextDemoSession?.close(); contextDemoSession = nil; motionCueEditing = nil; voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }; transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) } } }
+    /// change a project that is leaving. Its Rewrite is discarded without asking: the boundary asked about its paid work
+    /// before setting this (`WorkspaceShell.leave`).
+    var isLeaving = false { didSet { if isLeaving { app.voiceLabSession.leaveVoiceControls(owner: self); contextDemoSession?.close(); contextDemoSession = nil; motionCueEditing = nil; voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }; transcription.close(); sendConfirmation.cancel(); discardRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
@@ -734,7 +831,7 @@ struct EditorRenderSnapshot {
         cancelMediaRelink()
         transcription.close()
         sendConfirmation.cancel()
-        closeRewrite(returnFocus: false)
+        discardRewrite(returnFocus: false)
         previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); waveformTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
@@ -751,7 +848,8 @@ struct EditorRenderSnapshot {
         cancelMediaRelink()
         sendConfirmation.cancel()
         transcription.close()
-        closeRewrite(returnFocus: false)
+        // The document was read again (a revert, a change on disk): the session's project is gone with it.
+        discardRewrite(returnFocus: false)
         app.openProjectKeys[previousProjectID] = nil
         // The project stays open while its video is checked again, even if it is missing (architecture §8.2).
         holdCacheEntry()
@@ -1231,7 +1329,22 @@ struct EditorRenderSnapshot {
         activate(sortedClips[min(sortedClips.count - 1, max(0, position + direction))])
     }
     func removeClip(_ id: String) {
+        guard !asksBeforeRemoving(id, suggestion: false, then: { [weak self] in self?.removeClip(id) }) else { return }
         rowAction([.removeClip(id: id)] + focusNext(after: id), name: "Remove clip", announcing: clipNumber(id).map { "Clip \($0) removed." } ?? "Clip removed.")
+    }
+    /// Remove or Dismiss on the open Rewrite's own clip (its tab, or the clip it rewrites) while it holds unused or running
+    /// paid work: asks first, inline in that Rewrite on its tab ("Remove this clip and discard 3 paid takes (≈ $0.12)?",
+    /// Keep Working the default), and true. Discard and Remove (Dismiss) discards the Rewrite and runs `then`, the removal
+    /// again. Without the question the clip's Rewrite would close with it, on no tab where it could still ask.
+    private func asksBeforeRemoving(_ id: String, suggestion: Bool, then: @escaping @MainActor () -> Void) -> Bool {
+        guard capabilities.edit, let session = openRewrite, session.asksBeforeClosing,
+              session.project.edits.activeClipId == id || session.rewriteScope == .clip(id) else { return false }
+        session.confirmDiscardPaidWork(.removeClip(suggestion: suggestion)) { [weak self, weak session] in
+            guard let self, let session, openRewrite === session else { return }
+            discardRewrite(returnFocus: false)
+            then()
+        }
+        return true
     }
 
     // Clips in the sidebar (design §3.4 and §6.2): kept clips number 1…n in transcript
@@ -1302,7 +1415,10 @@ struct EditorRenderSnapshot {
         guard !ids.isEmpty, apply(ids.map { .setClipSelected(id: $0, selected: true) }, name: "Keep all suggestions") else { return }
         announce(ids.count == 1 ? "Clip \(keptClips.count) kept." : "\(ids.count) clips kept.")
     }
-    func dismiss(_ id: String) { rowAction([.removeClip(id: id)] + focusNext(after: id), name: "Dismiss suggestion", announcing: "Suggestion dismissed.") }
+    func dismiss(_ id: String) {
+        guard !asksBeforeRemoving(id, suggestion: true, then: { [weak self] in self?.dismiss(id) }) else { return }
+        rowAction([.removeClip(id: id)] + focusNext(after: id), name: "Dismiss suggestion", announcing: "Suggestion dismissed.")
+    }
     /// Return on the focused suggestion keeps it, ⌫ dismisses it, and focus moves to the
     /// next suggestion (design §6.2). False when no suggestion has focus.
     @discardableResult func actOnFocusedSuggestion(keep: Bool) -> Bool {

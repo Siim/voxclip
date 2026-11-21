@@ -126,7 +126,7 @@ import VoxClipCore
                 do {
                     let document = VoxClipDocument(project: try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[index + 1])), demo: true)
                     NSDocumentController.shared.addDocument(document)
-                    if !(await model.shell.replaceProject(with: document)) { document.close() }
+                    if !(await model.shell.replaceProject(with: document)), !model.shell.holdsForPaidWork(document) { document.close() }
                 } catch { model.shell.notice = await model.safeError(error) }
             }
         }
@@ -170,6 +170,12 @@ import VoxClipCore
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminating else { return .terminateLater }
+        // An open Rewrite's unused or running paid work asks first, inline in that Rewrite ("Quit VoxClip and discard 3 paid
+        // takes (≈ $0.12)?", Keep Working the default), never in an alert; its Discard and Quit discards it and quits again.
+        if let session = rewriteHoldingPaidWork {
+            askBeforeQuitting(session)
+            return .terminateCancel
+        }
         terminating = true
         // A clip title still being typed is kept before the documents are reviewed.
         model.shell.endRename()
@@ -179,6 +185,26 @@ import VoxClipCore
             NSDocumentController.shared.reviewUnsavedDocuments(withAlertTitle: "Quit VoxClip?", cancellable: true, delegate: self, didReviewAllSelector: #selector(reviewedDocuments(_:didReviewAll:contextInfo:)), contextInfo: nil)
         }
         return .terminateLater
+    }
+    /// Quits again after Discard and Quit (`NSApp.terminate`); tests replace it.
+    var requestTermination: @MainActor () -> Void = { NSApp.terminate(nil) }
+    /// The first open Rewrite, in the main window or any open project, holding unused or running paid work it can ask about.
+    var rewriteHoldingPaidWork: RewriteSession? {
+        let documents = NSDocumentController.shared.documents.compactMap { ($0 as? VoxClipDocument)?.editorModel }
+        let editors = [model.shell.editor].compactMap { $0 } + documents
+        return editors.lazy.compactMap(\.openRewrite).first(where: \.asksBeforeClosing)
+    }
+    /// Shows the quit question in `session`, in front: its window, then its project rather than Home, its tab and its job
+    /// (`confirmDiscardPaidWork`). Discard and Quit discards that Rewrite at once, so the quit it starts again asks only
+    /// about another project's paid work, if any, and never skips it.
+    private func askBeforeQuitting(_ session: RewriteSession) {
+        let shell = model.shell
+        if shell.editor === session.editor { shell.windowController?.window?.makeKeyAndOrderFront(nil) }
+        session.confirmDiscardPaidWork(.quit) { [weak self, weak session] in
+            guard let self, let session, session.editor.openRewrite === session else { return }
+            session.editor.discardRewrite(returnFocus: false)
+            requestTermination()
+        }
     }
     @objc private func reviewedDocuments(_ controller: NSDocumentController, didReviewAll: Bool, contextInfo: UnsafeMutableRawPointer?) {
         guard didReviewAll else { terminating = false; NSApp.reply(toApplicationShouldTerminate: false); return }

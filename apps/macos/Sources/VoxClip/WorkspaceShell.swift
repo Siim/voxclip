@@ -275,6 +275,8 @@ enum SidebarItem: Hashable {
     }
 
     func retainRecovery(_ recovered: VoxClipDocument) {
+        // It waits open for the open Rewrite's paid-work question, which decides what happens to it (`replaceProject`).
+        guard !holdsForPaidWork(recovered) else { return }
         guard recovered.fileURL == nil, recovered.autosavedContentsFileURL != nil else { recovered.close(); return }
         guard recovered !== pendingRecovery, !additionalRecoveries.contains(where: { $0 === recovered }) else { return }
         if pendingRecovery == nil { pendingRecovery = recovered }
@@ -323,13 +325,21 @@ enum SidebarItem: Hashable {
                 let imported = try await importedDocument(url, app: app)
                 try Task.checkCancellation()
                 NSDocumentController.shared.addDocument(imported)
-                guard await replaceProject(with: imported, fromImport: true) else { imported.close(); return }
-                // An untitled import is an edited document, so leaving it later
-                // shows the system keep/delete prompt.
-                imported.markEdited()
-                await started?.value
-                // Keep the cache under its limit after each import, once the new project holds its lease (architecture §8.2).
-                app.requestCacheEviction()
+                let opened: @MainActor () async -> Void = { [weak self] in
+                    guard let self else { return }
+                    // An untitled import is an edited document, so leaving it later
+                    // shows the system keep/delete prompt.
+                    imported.markEdited()
+                    await started?.value
+                    // Keep the cache under its limit after each import, once the new project holds its lease (architecture §8.2).
+                    app.requestCacheEviction()
+                }
+                // An open Rewrite's paid work asks first, and the import waits open for the answer: Discard and Close opens it.
+                guard await replaceProject(with: imported, fromImport: true, attached: opened, refused: { imported.close() }) else {
+                    if !holdsForPaidWork(imported) { imported.close() }
+                    return
+                }
+                await opened()
             } catch is CancellationError {
             } catch { notice = await app.safeError(error) }
         }
@@ -352,8 +362,11 @@ enum SidebarItem: Hashable {
         do {
             let (opened, alreadyOpen) = try await NSDocumentController.shared.openDocument(withContentsOf: url, display: false)
             guard let next = opened as? VoxClipDocument else { return false }
-            if await replaceProject(with: next) { app.noteRecent(url); return true }
-            if !alreadyOpen { next.close() }
+            let refused: @MainActor () -> Void = { if !alreadyOpen { next.close() } }
+            if await replaceProject(with: next, attached: { [weak self] in self?.app.noteRecent(url) }, refused: refused) {
+                app.noteRecent(url); return true
+            }
+            if !holdsForPaidWork(next) { refused() }
             return false
         } catch {
             notice = await app.safeError(error)
@@ -380,10 +393,23 @@ enum SidebarItem: Hashable {
     /// `next` is attached. Opening the project that is already open selects Full take.
     /// Returns false, with an inline notice, when the open project stays. Only the
     /// running import may replace the project while it imports.
-    @discardableResult func replaceProject(with next: VoxClipDocument, fromImport: Bool = false) async -> Bool {
+    /// An open Rewrite with paid work asks first (`leave`), and `next` waits open for the answer, even an untitled one with
+    /// no file or autosave: its caller doesn't close it while `holdsForPaidWork(next)`. Discard and Close discards the
+    /// Rewrite and attaches this same `next`, then runs `attached`, what the caller does after a replace; a refusal then
+    /// (busy, a cancelled save), Keep Working, or another leave asking instead runs `refused`, what the caller does with a
+    /// refused project (by default `retainRecovery`: an untitled autosave is kept for later, anything else closes).
+    @discardableResult func replaceProject(with next: VoxClipDocument, fromImport: Bool = false,
+                                           attached: (@MainActor () async -> Void)? = nil,
+                                           refused: (@MainActor () -> Void)? = nil) async -> Bool {
         if next === document { selection = .fullTake; return true }
         guard !next.isVersion else { return false }
-        guard await leave(fromImport: fromImport) else { return false }
+        let refuse: @MainActor () -> Void = refused ?? { [weak self] in self?.retainRecovery(next) }
+        let waiting = PaidWorkWaiting(document: next, refused: refuse) { [weak self] in
+            guard let self else { return }
+            if await replaceProject(with: next, attached: attached, refused: refuse) { await attached?() }
+            else if !holdsForPaidWork(next) { refuse() }
+        }
+        guard await leave(fromImport: fromImport, waiting: waiting) else { return false }
         attach(next)
         return true
     }
@@ -391,9 +417,26 @@ enum SidebarItem: Hashable {
     /// Close Project (⌘W): the same boundary, leaving the shell on Home.
     @discardableResult func closeProject() async -> Bool {
         guard document != nil else { return true }
-        guard await leave() else { return false }
+        guard await leave(waiting: PaidWorkWaiting(document: nil, refused: {}) { [weak self] in _ = await self?.closeProject() }) else { return false }
         selection = .home
         return true
+    }
+    /// A leave that waits on the open Rewrite's paid-work question: the project that would replace the open one (none for
+    /// Close Project), what its caller does with it refused, and the leave again once the creator chose Discard and Close.
+    struct PaidWorkWaiting {
+        let document: VoxClipDocument?
+        let refused: @MainActor () -> Void
+        let retry: @MainActor () async -> Void
+    }
+    /// The leave waiting on the paid-work question, which holds its project open (`holdsForPaidWork`).
+    @ObservationIgnored private var paidWorkWaiting: PaidWorkWaiting?
+    /// `next` waits open for the open Rewrite's paid-work question: its caller must not close it as refused.
+    func holdsForPaidWork(_ next: VoxClipDocument) -> Bool { paidWorkWaiting?.document === next }
+    /// Lets go of the leave waiting on the question (Keep Working, or another leave asking): its project is refused.
+    private func releasePaidWorkWaiting() {
+        guard let waiting = paidWorkWaiting else { return }
+        paidWorkWaiting = nil
+        if let next = waiting.document, next !== document { waiting.refused() }
     }
 
     /// A project closed outside the shell, for example by a test. Detaching first keeps
@@ -501,12 +544,33 @@ enum SidebarItem: Hashable {
         return true
     }
 
-    private func leave(fromImport: Bool = false) async -> Bool {
+    /// The leave boundary's first question: an open Rewrite holding unused or running paid work asks inline, in that Rewrite
+    /// ("Close the project and discard 3 paid takes (≈ $0.12)?", Keep Working the default), before anything freezes, saves
+    /// or closes, and the leave returns false, with `waiting`'s project held open. The question comes forward out of Home
+    /// (`confirmDiscardPaidWork`), where an open, an import or a recovered autosave can start a leave. Discard and Close
+    /// discards that Rewrite at once and runs `waiting.retry` (the same close, or the same project attached), which then
+    /// goes ahead without asking. Keep Working changes nothing in the open project and refuses the waiting one.
+    private func leave(fromImport: Bool = false, waiting: PaidWorkWaiting) async -> Bool {
         // Opening, closing or locating another project waits for a running import, which
         // would replace it when it finishes (checklist step 3.1).
         if isImporting, !fromImport { notice = Self.busyCopy; return false }
         guard let document, let editor else { return true }
         if leaving || editor.exporting || editor.finding || editor.progress != nil { notice = Self.busyCopy; return false }
+        if let session = editor.openRewrite, session.asksBeforeClosing {
+            // One leave waits on the question: an earlier one's project is refused, unless it is this same one again.
+            if paidWorkWaiting?.document == nil || paidWorkWaiting?.document !== waiting.document { releasePaidWorkWaiting() }
+            paidWorkWaiting = waiting
+            session.confirmDiscardPaidWork(.closeProject, keep: { [weak self] in self?.releasePaidWorkWaiting() }) { [weak self, weak editor, weak session] in
+                guard let self, let editor, let session, editor.openRewrite === session else { return }
+                // The retry owns the waiting project now: attached, or refused as its caller would.
+                paidWorkWaiting = nil
+                editor.discardRewrite(returnFocus: false)
+                Task { @MainActor in await waiting.retry() }
+            }
+            return false
+        }
+        // A leave that goes ahead ends the wait of an earlier one, whose question the creator never answered.
+        if paidWorkWaiting?.document !== waiting.document { releasePaidWorkWaiting() } else { paidWorkWaiting = nil }
         // A clip title still being typed is kept before edits freeze.
         endRename()
         leaving = true

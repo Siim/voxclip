@@ -862,7 +862,7 @@ extension DebugRewrite {
         let proposed = if case .proposal = third.task.state { true } else { false }
         check("a reply that arrives while the user works in the transcript leaves the keyboard there (first responder \(responder()))",
               proposed && window.firstResponder is TranscriptNSTextView)
-        editor.closeRewrite(returnFocus: false)
+        editor.discardRewrite(returnFocus: false)
 
         // R2 with the keyboard in the panel (design.md §10, V15 review): Return opens the focused change's thread in the
         // transcript, whose input takes the keys, and never runs the footer's primary; ⌘Return runs it. Full take's fixture reply cuts a word: Apply 1 Change.
@@ -899,7 +899,7 @@ extension DebugRewrite {
         returnKey(.command)
         try await until { !fourth.isOpen }
         check("⌘Return in R2's panel runs its primary, Apply", applies && !fourth.isOpen && editor.project != before)
-        editor.closeRewrite(returnFocus: false)
+        editor.discardRewrite(returnFocus: false)
         return results
     }
 

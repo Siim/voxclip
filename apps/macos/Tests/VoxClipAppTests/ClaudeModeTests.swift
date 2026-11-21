@@ -954,8 +954,8 @@ extension ClaudeModeTests {
     }
 
     /// Claude mode's whole clip uses the same fit (ADR-R46): a voice shorter than the clip as edited is laid out with no
-    /// longer wording and revoiced; one too long for it, with no shorter wording to be had, falls back to the patch with what
-    /// its voice cost charged to the run, and the changed phrases are voiced.
+    /// longer wording and revoiced; one too long for it, with no shorter wording to be had, stops with its paid voice kept in
+    /// Rewrite for the creator, its cost charged to the run, and the changed phrases are not voiced on top of it.
     @Test func claudeModesWholeClipFollowsTheSameFit() async throws {
         for tooLong in [false, true] {
             let fixture = try fixture()
@@ -984,11 +984,11 @@ extension ClaudeModeTests {
             let row = try #require(run.rows.first { $0.id == "wholeClip" })
             if tooLong {
                 #expect(stubs.rewords.count == 1 && stubs.voices.count == 1 && stubs.lipsyncs.isEmpty, "one shorter wording asked, no second voice")
-                guard case .patchInstead(let line, let spent)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
+                guard case .needsYou(let line, let spent)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
                 #expect(line.hasPrefix("The new voice runs 0:40 for 0:31.4 of video") && spent == Decimal(string: "0.06"))
-                #expect(fixture.calls.all.contains("voice we finally ship budget 1.94"), "the phrase was patched within what is left: \(fixture.calls.all)")
-                #expect(row.text == "Voiced only the changed phrases: the whole clip couldn't be revoiced here")
-                #expect(editor.claudeMode.budget?.spent == Decimal(string: "0.16"), "the patch and the whole clip's voice were paid")
+                #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "nothing is paid twice: \(fixture.calls.all)")
+                #expect(row.text == "Finish the whole clip in Rewrite: its paid voice is kept")
+                #expect(editor.claudeMode.budget?.spent == Decimal(string: "0.06"), "only the whole clip's voice was paid")
             } else {
                 #expect(stubs.rewords.isEmpty && stubs.voices.count == 1 && stubs.lipsyncs == [.lipsync2], "laid out, never a longer wording")
                 guard case .revoiced? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
@@ -1000,7 +1000,7 @@ extension ClaudeModeTests {
 
     /// Claude mode's automatic whole clip follows the same Fit (ADR-R46, "Your own pace"): the user's 20.2 s voice for
     /// 0:31.3 plays the picture 1.2× and is lip synced at that speed; a picture that can't be matched stops at Fit with no
-    /// lip-sync call, and the changed phrases are voiced instead, the voice's cost charged to the run.
+    /// lip-sync call, its paid voice kept in Rewrite for the creator and its cost charged to the run.
     @Test func claudeModesWholeClipChecksThePictureAtFit() async throws {
         for unmatched in [false, true] {
             let fixture = try fixture()
@@ -1031,9 +1031,10 @@ extension ClaudeModeTests {
             #expect(stubs.pictures == [20.2], "the picture is checked at Fit")
             if unmatched {
                 #expect(stubs.lipsyncs.isEmpty, "no lip-sync call")
-                guard case .patchInstead(let line, let spent)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
+                guard case .needsYou(let line, let spent)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
                 #expect(line.hasPrefix("Part 1's picture can't be matched to its voice") && spent == Decimal(string: "0.06"))
-                #expect(row.text == "Voiced only the changed phrases: the whole clip couldn't be revoiced here")
+                #expect(row.text == "Finish the whole clip in Rewrite: its paid voice is kept")
+                #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "nothing is paid twice: \(fixture.calls.all)")
             } else {
                 #expect(stubs.lipsyncFactors == [1.2])
                 guard case .revoiced(let record, _)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }

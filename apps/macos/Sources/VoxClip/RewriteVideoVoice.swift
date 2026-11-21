@@ -13,16 +13,17 @@ extension RewriteSession {
     }
 
     /// Before a price: with the stored answer "match", this video's voice is made (or the one being made is awaited)
-    /// and chosen, so every take of every clip in the video uses it. A run with paid takes keeps its voice.
+    /// and chosen, so every take of every clip in the video uses it. A run with paid work keeps its voice
+    /// (`holdsPaidVoice`): its paid takes, or a whole clip's paid voice or lip sync, which another voice would make stale.
     func ensureVideoVoice() async {
         let voiceLab = editor.app.voiceLabSession
-        guard voiceLab.videoVoiceMode == .match, voiceLab.offersVideoVoice(project), generation != nil, !hasPaidTakes else { return }
+        guard voiceLab.videoVoiceMode == .match, voiceLab.offersVideoVoice(project), generation != nil, !holdsPaidVoice else { return }
         let state = voiceLab.makeVideoVoice(project: project, media: editor.sourceURL)
         if let making = state.task {
             if isOpen, case .proposal = task.state { showProposal() }
             await making.value
         }
-        guard current, !hasPaidTakes, let generation, case .ready(let id) = state.phase, generation.selectedVoiceID != id else { return }
+        guard current, !holdsPaidVoice, let generation, case .ready(let id) = state.phase, generation.selectedVoiceID != id else { return }
         if !generation.voices.contains(where: { $0.id == id }) { await generation.discover(language: project.transcript?.language ?? "en") }
         generation.chooseVoice(id)
     }
@@ -37,7 +38,7 @@ extension RewriteSession {
         case .anchor:
             return nil
         case .ask:
-            guard !hasPaidTakes else { return nil }
+            guard !hasUnusedPaidWork else { return nil }
             let price = voiceLab.videoVoicePrice
             let match = PanelAction(id: "videoVoiceMatch", title: "Match this video · " + (price ?? "price unknown")) { [weak self] in self?.matchThisVideo() }
             let keep = PanelAction(id: "videoVoiceAnchor", title: "Use \(name)") { [weak self] in self?.useAnchorForVideos() }
@@ -56,7 +57,7 @@ extension RewriteSession {
                 state.notedIn = run
                 return NextSteps(id: "videoVoice", line: state.line)
             case .failed:
-                guard !hasPaidTakes else { return NextSteps(id: "videoVoice", line: state.line) }
+                guard !hasUnusedPaidWork else { return NextSteps(id: "videoVoice", line: state.line) }
                 let retry = PanelAction(id: "videoVoiceRetry", title: "Try Again") { [weak self] in
                     state.phase = .idle; state.line = ""
                     self?.startVideoVoice()

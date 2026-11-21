@@ -1737,6 +1737,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         }
         try #require(saved)
         #expect(editor.project.modifiedAt != before.modifiedAt && editor.project != before)
+        // The file goes with the fixture's folder when the test ends, while the document lives on until its scheduled
+        // autosave: in place there, that autosave failed with an app-modal alert, and every later test of the run ran
+        // inside its modal session (the Command field and shell suites lost their actions). An untitled document is never
+        // autosaved by a test (`VoxClipDocument.autosave`).
+        editor.document.fileURL = nil
     }
     /// Makes the plan's takes and waits for everything they start; each measured take records a rate sample.
     private func makeTakes(_ session: RewriteSession) async throws -> ClipTakePlan {
