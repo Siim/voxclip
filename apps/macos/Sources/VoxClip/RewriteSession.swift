@@ -196,7 +196,7 @@ struct RewriteChange: Equatable, Sendable {
         generation?.fixedModelID = VoiceLabWordingFit.modelID
         // The voice Rewrite starts with, when listed: this video's own (voice-lab §6.13), else the anchor, Settings ›
         // Voices' "Use the new voice for Rewrite" first (§6.12).
-        generation?.preferredVoiceID = { [weak self] in self?.preferredVoiceForVideo }
+        wireInitialVoice()
         generation?.onFailure = { [weak self] error in self?.logFailure(error, stage: "generation") }
         generation?.prepareDurationRender = durationRenderPreparer()
         takeBackend = { [weak self] count, dispatch in

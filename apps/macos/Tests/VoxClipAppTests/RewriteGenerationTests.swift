@@ -721,6 +721,101 @@ private final class GenerationDispatchCount: Sendable {
         #expect(session.select(second.id))
         #expect(session.takeToAutoplay() == nil)
     }
+    private func voiceRecord(_ id: String) throws -> VoiceConsentRecord {
+        let json = try Data(contentsOf: SharedResources.locate().root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))
+        var object = try #require(JSONSerialization.jsonObject(with: json) as? [String: Any]); object["recordId"] = id
+        return try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+    private static let anchorID = "11111111-1111-4111-8111-111111111111"
+    private static let otherVideoID = "22222222-2222-4222-8222-222222222222"
+    /// The per-video book with `otherVideoID` as another video's own voice, made from the anchor.
+    private static var otherVideoBook: VoicePerVideoBook {
+        var book = VoicePerVideoBook()
+        book.videos = [.init(contentKey: "other-video", recordId: otherVideoID, anchorId: anchorID, anchorReferenceSha256: String(repeating: "a", count: 64),
+            title: "DJI_0009", createdAt: "2026-11-19T16:39:19Z", videoSeconds: 40, removesBackgroundNoise: false)]
+        return book
+    }
+
+    /// Forensics 2026-11-21: Rewrite in a video with too little speech of its own started with the voice made from
+    /// another video, the newest listed. The first voice is the preferred one, else the anchor, else the newest listed
+    /// that is no other video's; never another video's own voice.
+    @Test func theFirstVoiceIsNeverAnotherVideosOwn() throws {
+        let anchor = try voiceRecord(Self.anchorID), other = try voiceRecord(Self.otherVideoID)
+        let voices = [other, anchor]
+        #expect(RewriteGenerationSession.initialVoice(voices, preferred: nil, anchor: anchor.id, otherVideos: [other.id]) == anchor.id)
+        #expect(RewriteGenerationSession.initialVoice(voices, preferred: nil, otherVideos: [other.id]) == anchor.id, "no anchor found")
+        #expect(RewriteGenerationSession.initialVoice(voices, preferred: other.id, anchor: anchor.id, otherVideos: [other.id]) == anchor.id,
+            "a stale preference for another video's voice")
+        #expect(RewriteGenerationSession.initialVoice([other], preferred: nil, anchor: anchor.id, otherVideos: [other.id]) == nil,
+            "no usable voice: the panel asks to choose one")
+        #expect(RewriteGenerationSession.initialVoice(voices, preferred: other.id, anchor: anchor.id) == other.id, "this video's own voice")
+    }
+
+    /// A Rewrite session as the editor opens it, with Voice Lab's records and per-video book and a scripted account
+    /// listing `voices`, newest first. No price is prepared and no provider is called.
+    private func voiceSession(_ voices: [VoiceConsentRecord]) throws -> (EditorModel, RewriteSession, RewriteGenerationSession, URL) {
+        _ = NSApplication.shared
+        let shared = try SharedResources.locate()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-first-voice-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        project.id = UUID().uuidString.lowercased()
+        project.voiceLab.segments = []; project.voiceLab.assets = []; project.edits = ProjectEdits()
+        project.media.source.contentKey = "this-video"
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        let session = RewriteSession(editor: editor, scope: .fullTake, envelope: nil, connector: nil)
+        editor.rewrite = session
+        let word = try #require(project.transcript?.words.first)
+        session.receive([RewriteChange(hunk: VoiceLabDiffHunk(kind: .voice, sourceWordIds: [word.id], newTokens: ["Hello"], correctedTexts: [],
+            absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 0, sourceEndIndex: 1, anchorSeconds: nil))])
+        session.finishRun(seconds: 1); session.showProposal()
+        session.configureGeneration(client: ElevenLabsVoiceLab(keys: GenerationTestKeys(), region: .default),
+            store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
+        let generation = try #require(session.generation)
+        generation.prepareQuote = nil
+        let model = VoiceLabModel(id: VoiceLabWordingFit.modelID, name: "Eleven v4", languages: ["en"], canSpeak: true, canConvert: false,
+            maximumTextLength: 5_000, characterCostMultiplier: 1)
+        generation.discoverForTests = { _ in ([model], voices) }
+        return (editor, session, generation, root)
+    }
+
+    /// Voice Lab's records are listed but none is the anchor here (as when its lookup by language finds none): the
+    /// newest listed voice was another video's own. The first choice skips it.
+    @Test func rewriteStartsWithTheAnchorWhenTheNewestVoiceIsAnotherVideos() async throws {
+        let anchor = try voiceRecord(Self.anchorID), other = try voiceRecord(Self.otherVideoID)
+        let (editor, _, generation, root) = try voiceSession([other, anchor])
+        defer { editor.close(); try? FileManager.default.removeItem(at: root) }
+        editor.app.voiceLabSession.perVideoBook = Self.otherVideoBook
+        await generation.discover(language: "en")
+        #expect(generation.selectedVoiceID == anchor.id, "\(generation.problem)")
+    }
+
+    /// Voice Lab assigns its records before the per-video book loads (VoiceLabSession.load): until then another video's
+    /// voice reads as the anchor and is chosen. Once the book loads the first choice is made again, while nothing is
+    /// paid; a voice the user chose stays.
+    @Test func theFirstVoiceIsChosenAgainOnceThePerVideoBookLoads() async throws {
+        let anchor = try voiceRecord(Self.anchorID), other = try voiceRecord(Self.otherVideoID)
+        let (editor, session, generation, root) = try voiceSession([other, anchor])
+        defer { editor.close(); try? FileManager.default.removeItem(at: root) }
+        let voiceLab = editor.app.voiceLabSession
+        voiceLab.records = [other, anchor]
+        #expect(session.initialVoicePreference.preferred == other.id && session.initialVoicePreference.otherVideos.isEmpty)
+        await generation.discover(language: "en")
+        #expect(generation.selectedVoiceID == other.id)
+        voiceLab.perVideoBook = Self.otherVideoBook
+        #expect(session.initialVoicePreference == .init(preferred: anchor.id, anchor: anchor.id, otherVideos: [other.id]))
+        #expect(await TestDeadline.until { generation.selectedVoiceID == anchor.id })
+        // The user's own choice is never replaced: the next change leaves it.
+        generation.chooseVoice(other.id)
+        voiceLab.perVideoBook = VoicePerVideoBook()
+        voiceLab.perVideoBook = Self.otherVideoBook
+        await generation.discover(language: "en")
+        #expect(generation.selectedVoiceID == other.id)
+    }
     @Test func layoutAuditIgnoresEmptyScrollerFramesButNotVisibleOverflow() {
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
         let element = NSView(frame: NSRect(x: -1, y: 10, width: 17, height: 0))

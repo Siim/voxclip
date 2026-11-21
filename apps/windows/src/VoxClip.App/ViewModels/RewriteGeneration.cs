@@ -42,12 +42,33 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal IReadOnlyList<RewriteVoice> Voices { get; private set; } = [];
     internal IReadOnlyList<VoiceLabModel> Models { get; private set; } = [];
     internal string? VoiceId { get; private set; }
-    /// <summary>The voice Rewrite starts with when it is listed (Mac <c>preferredVoiceID</c>): this video's own voice (§6.13), else the
-    /// <c>voiceLab.rewriteVoice</c> setting (§6.12). A preference, not a binding: an unlisted one falls back to the first listed voice.</summary>
+    /// <summary>The voice Rewrite starts with when it is listed (Mac <c>VoicePreference.preferred</c>): this video's own voice (§6.13), else
+    /// the <c>voiceLab.rewriteVoice</c> setting (§6.12). A preference, not a binding: an unlisted one falls back to the anchor.</summary>
     internal Func<string?>? PreferredVoice { get; set; }
-    /// <summary>Mac <c>initialVoice(_:preferred:)</c>: the preferred voice when it is listed, else the first.</summary>
-    internal static string? InitialVoice(IReadOnlyList<RewriteVoice> voices, string? preferred) =>
-        voices.FirstOrDefault(voice => preferred is not null && voice.Id == preferred)?.Id ?? voices.FirstOrDefault()?.Id;
+    /// <summary>The voice per-video voices are made from and fall back to (Mac <c>VoicePreference.anchor</c>).</summary>
+    internal Func<string?>? AnchorVoice { get; set; }
+    /// <summary>Voices made from other videos (Mac <c>VoicePreference.otherVideos</c>): Rewrite never starts with one.</summary>
+    internal Func<IReadOnlySet<string>>? OtherVideoVoices { get; set; }
+    /// <summary>The voice the first choice picked, while it is still the one chosen.</summary>
+    private string? automaticVoice;
+    /// <summary>Mac <c>initialVoice</c>: the preferred voice when it is listed, else the anchor, else the newest listed voice; never a voice
+    /// made from another video. Null, and the panel asks to choose a voice, when every listed voice is another video's.</summary>
+    internal static string? InitialVoice(IReadOnlyList<RewriteVoice> voices, string? preferred, string? anchor = null, IReadOnlySet<string>? otherVideos = null)
+    {
+        var usable = voices.Where(voice => otherVideos?.Contains(voice.Id) != true).ToArray();
+        return new[] { preferred, anchor }.FirstOrDefault(id => id is not null && usable.Any(voice => voice.Id == id)) ?? usable.FirstOrDefault()?.Id;
+    }
+    private string? ChooseInitialVoice() => automaticVoice = InitialVoice(Voices, PreferredVoice?.Invoke(), AnchorVoice?.Invoke(), OtherVideoVoices?.Invoke());
+    /// <summary>Mac <c>voicePreferenceChanged</c>: the first choice made again after Voice Lab changed, while it is still the voice chosen and
+    /// no take is paid or running. Voice Lab assigns its records before the per-video book has loaded, and until then another video's
+    /// voice reads as the anchor.</summary>
+    internal Task RefreshInitialVoiceAsync()
+    {
+        if (closed || !HasDiscovered || discovering || VoiceId != automaticVoice || HasPaidTakes || accepting || !current()) return Task.CompletedTask;
+        var previous = VoiceId;
+        VoiceId = ChooseInitialVoice();
+        return VoiceId == previous ? Task.CompletedTask : InputsChangedAsync();
+    }
     internal string? ModelId { get; private set; }
     /// <summary>The only model new takes may use (Rewrite: Eleven v4). Takes already made keep their receipts' models.</summary>
     internal string? FixedModelId { get; set; }
@@ -155,7 +176,7 @@ internal sealed partial class RewriteGeneration : IDisposable
                     if (closed || !current()) return;
                     if (version != discoveryRevision) continue;
                     Voices = choices.Voices; Models = choices.Models;
-                    if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = InitialVoice(Voices, PreferredVoice?.Invoke());
+                    if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = ChooseInitialVoice();
                     if (!Models.Any(model => model.Id == ModelId) || FixedModelId is { } required && ModelId != required)
                         ModelId = FixedModelId is { } only ? Models.FirstOrDefault(model => model.Id == only)?.Id : VoiceLabModel.PatchDefault(Models)?.Id;
                     HasDiscovered = true;

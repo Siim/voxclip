@@ -1,12 +1,15 @@
 #if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using Xunit;
 
 namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 /// <summary>A failed take is fixed by what failed, never by its length, and the length test counts the matched speed (Mac
-/// <c>RewriteAutoFixReasonTests</c>, voice-lab.md §8.2.2). Stub connectors and runners only.</summary>
+/// <c>RewriteAutoFixReasonTests</c>, voice-lab.md §8.2.2); Rewrite never starts with another video's own voice (Mac
+/// <c>RewriteGenerationTests</c>' first-voice tests, §6.13). Stub connectors, runners and Voice Lab backend only.</summary>
 public sealed class RewriteAutoFixReasonTests
 {
     private static readonly VoiceLabTakeQaResult SpeakerFailed = new(1, 0, -3, .2, [VoiceLabTakeQaFailure.Speaker]);
@@ -60,6 +63,74 @@ public sealed class RewriteAutoFixReasonTests
         Assert.Empty(connector.FitRequests);
         Assert.Equal(2, runner.Sends);
         Assert.Equal(window.Rows[1].Id, window.SelectedTakeId);
+    }
+
+    [Fact]
+    public void TheFirstVoiceIsNeverAnotherVideosOwn()
+    {
+        RewriteVoice other = new("other", "siim · Car"), anchor = new("anchor", "siim");
+        var others = new HashSet<string>(StringComparer.Ordinal) { "other" };
+        Assert.Equal("anchor", RewriteGeneration.InitialVoice([other, anchor], null, "anchor", others));
+        Assert.Equal("anchor", RewriteGeneration.InitialVoice([other, anchor], null, null, others));
+        Assert.Equal("anchor", RewriteGeneration.InitialVoice([other, anchor], "other", "anchor", others));
+        Assert.Null(RewriteGeneration.InitialVoice([other], null, "anchor", others));
+        Assert.Equal("other", RewriteGeneration.InitialVoice([other, anchor], "other", "anchor"));
+    }
+
+    private const string OtherVideoVoice = "22222222-2222-4222-8222-222222222222";
+
+    private static VoicePerVideoBook OtherVideoBook(VoiceConsentRecord anchor) => new()
+    {
+        Videos = [new("car-key", OtherVideoVoice, anchor.RecordId, new string('a', 64), "Car", "2026-11-19T16:39:19Z", 40, false)]
+    };
+
+    /// <summary>A Rewrite of the kitchen video on the harness's Voice Lab whose source media isn't found, so the per-video preference
+    /// doesn't apply: the newest listed voice is the car video's own.</summary>
+    private static async Task<RewriteSession> KitchenAsync(VideoVoiceFlowTests.Harness h)
+    {
+        var editor = new EditorViewModel(VideoVoiceFlowTests.Video("kitchen"), now: () => new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.Zero));
+        var session = RewriteAutoFixTests.Session(new(RewriteAutoFixTests.Reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "x")), editor: editor);
+        session.ConfigureVideoVoice(h.Session, () => null);
+        var runner = new RewriteAutoFixTests.Runner((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed));
+        session.ConfigureGenerationFactory(index => new(runner,
+            _ => Task.FromResult(new RewriteGenerationChoices(h.Backend.Records.Where(record => record.Status == VoiceConsentStatus.Active)
+                .Select(record => new RewriteVoice(record.RecordId, record.VoiceName)).ToArray(), [new("eleven_v4", "Eleven v4", ["en"], true, false, 5000, 1)])),
+            (voice, model, seed, ct) => session.GenerationInputAsync(voice, model, seed, true,
+                (request, _) => Task.FromResult((new VoiceLabSourceExcerpt(request.Frames, []), session.Envelope!)), ct, index),
+            _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => session.GenerationIsCurrent));
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+        await session.DiscoverWindowsAsync();
+        foreach (var window in session.GenerationWindows) await window.PendingUpdate;
+        return session;
+    }
+
+    [Fact]
+    public async Task RewriteStartsWithTheAnchorWhenTheNewestVoiceIsAnotherVideos()
+    {
+        using var h = new VideoVoiceFlowTests.Harness();
+        h.Backend.Records = [h.Anchor with { RecordId = OtherVideoVoice, VoiceName = "siim · Car (VoxClip)" }, h.Anchor];
+        await h.Backend.PerVideoStore!.SaveAsync(OtherVideoBook(h.Anchor), TestContext.Current.CancellationToken);
+        await h.LoadAsync();
+        using var session = await KitchenAsync(h);
+        Assert.Equal(h.Anchor.RecordId, Assert.Single(session.GenerationWindows).VoiceId);
+    }
+
+    /// <summary>Voice Lab assigns its records before the per-video book loads: until then the car video's voice reads as the anchor and
+    /// is chosen. Once the book loads the first choice is made again, while nothing is paid.</summary>
+    [Fact]
+    public async Task TheFirstVoiceIsChosenAgainOnceThePerVideoBookLoads()
+    {
+        using var h = new VideoVoiceFlowTests.Harness();
+        h.Backend.Records = [h.Anchor with { RecordId = OtherVideoVoice, VoiceName = "siim · Car (VoxClip)" }, h.Anchor];
+        await h.LoadAsync();
+        using var session = await KitchenAsync(h);
+        var window = Assert.Single(session.GenerationWindows);
+        Assert.Equal(OtherVideoVoice, window.VoiceId);
+        await h.Backend.PerVideoStore!.SaveAsync(OtherVideoBook(h.Anchor), TestContext.Current.CancellationToken);
+        await h.LoadAsync();
+        await window.PendingUpdate;
+        Assert.Equal(new[] { OtherVideoVoice }, session.OtherVideoVoices.ToArray());
+        Assert.Equal(h.Anchor.RecordId, window.VoiceId);
     }
 }
 #endif
