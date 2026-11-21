@@ -9870,6 +9870,13 @@ member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public op_
 member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public set_Hunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk)
 member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public set_Index(int)
 member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public set_Reason(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity :: field private EmptyObject
+member VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity :: method private .cctor()
+member VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity :: method public IdentityKey(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.RewriteScope,string)
+member VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity :: method public Key(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity :: method public Of(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.RewriteScope,string)
+member VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity :: method public RewriteInputs(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.RewriteScope,string)
+member VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity :: method public RewriteInputsKey(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.RewriteScope,string)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method protected .ctor()
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method protected .ctor(VoxClip.Core.Domain.VoiceLab.RenderTimeline)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method protected PrintMembers(System.Text.StringBuilder)
@@ -18964,6 +18971,7 @@ type VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator+Sources
 type VoxClip.Core.Domain.VoiceLab.PlacedOrRefused
 type VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed
 type VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused
+type VoxClip.Core.Domain.VoiceLab.ProjectVoiceTakeIdentity
 type VoxClip.Core.Domain.VoiceLab.RenderTimeline
 type VoxClip.Core.Domain.VoiceLab.RenderTimeline+Legacy
 type VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab

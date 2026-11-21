@@ -5942,6 +5942,10 @@ member VoxClip.App.ViewModels.RewriteSession :: field private generatedVoiceHunk
 member VoxClip.App.ViewModels.RewriteSession :: field private generationFactory
 member VoxClip.App.ViewModels.RewriteSession :: field private generationWindows
 member VoxClip.App.ViewModels.RewriteSession :: field private guardBlocked
+member VoxClip.App.ViewModels.RewriteSession :: field private identityClipId
+member VoxClip.App.ViewModels.RewriteSession :: field private identityScope
+member VoxClip.App.ViewModels.RewriteSession :: field private keyedIdentity
+member VoxClip.App.ViewModels.RewriteSession :: field private keyedProject
 member VoxClip.App.ViewModels.RewriteSession :: field private lifetime
 member VoxClip.App.ViewModels.RewriteSession :: field private manualStep
 member VoxClip.App.ViewModels.RewriteSession :: field private measuredLease
@@ -5972,10 +5976,12 @@ member VoxClip.App.ViewModels.RewriteSession :: field private sentenceReplacemen
 member VoxClip.App.ViewModels.RewriteSession :: field private service
 member VoxClip.App.ViewModels.RewriteSession :: field private sessionRates
 member VoxClip.App.ViewModels.RewriteSession :: field private synthesisModel
+member VoxClip.App.ViewModels.RewriteSession :: field private takeWindowsMovedLine
 member VoxClip.App.ViewModels.RewriteSession :: field private threads
 member VoxClip.App.ViewModels.RewriteSession :: field private videoMedia
 member VoxClip.App.ViewModels.RewriteSession :: field private videoVoiceLab
 member VoxClip.App.ViewModels.RewriteSession :: field private videoVoiceMeasured
+member VoxClip.App.ViewModels.RewriteSession :: field private voiceIdentity
 member VoxClip.App.ViewModels.RewriteSession :: field private wordings
 member VoxClip.App.ViewModels.RewriteSession :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,int,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,VoxClip.App.ViewModels.RewriteConnector,System.Nullable`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<bool>,System.Func`2<string,bool>,VoxClip.Core.Domain.VoiceLab.RewriteScope)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AcceptSurroundingSentence(VoxClip.App.ViewModels.RewriteSentenceReview)
@@ -6116,6 +6122,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal StopWordingFit()
 member VoxClip.App.ViewModels.RewriteSession :: method internal StuckReason(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal StuckSentence(VoxClip.App.ViewModels.StuckTakeReason,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal SwitchThreadVersion(int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal TakeWindowsMovedCopy()
 member VoxClip.App.ViewModels.RewriteSession :: method internal TellTheAiAsync(string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ThreadFor(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ThreadInputKey(VoxClip.App.ViewModels.RewriteThreadInputKey)
@@ -6232,6 +6239,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_SentenceRevi
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Source()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_StuckOrdinals()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_TakeSendLine()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_TakeWindowsMoved()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_TextFixCount()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Thread()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_ThreadBackend()
@@ -6245,6 +6253,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoiceBudgetF
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoiceCalibration()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoiceChecks()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoiceConsent()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoiceSpendCurrent()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoicedOrdinals()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoicesUnavailable()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WordingFitAwaitingApproval()
@@ -6298,6 +6307,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private EditorPropertyCha
 member VoxClip.App.ViewModels.RewriteSession :: method private EndsSentence(string)
 member VoxClip.App.ViewModels.RewriteSession :: method private ExpressionBlocker()
 member VoxClip.App.ViewModels.RewriteSession :: method private FitCandidates()
+member VoxClip.App.ViewModels.RewriteSession :: method private FollowTakeWindows(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private ForgetThread(int)
 member VoxClip.App.ViewModels.RewriteSession :: method private GenerationChanged(object,System.EventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private GenerationSelectionChanged(object,System.EventArgs)
@@ -6340,6 +6350,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private RunAutoStep(int,s
 member VoxClip.App.ViewModels.RewriteSession :: method private RunReaskAsync(VoxClip.App.ViewModels.RewriteReask)
 member VoxClip.App.ViewModels.RewriteSession :: method private RunThreadAsync(VoxClip.Core.Domain.VoiceLab.RewriteFollowupRequest,string,VoxClip.Core.Domain.VoiceLab.RewriteFollowupKind,VoxClip.App.ViewModels.RewriteThreadKey,bool,System.Threading.CancellationTokenSource)
 member VoxClip.App.ViewModels.RewriteSession :: method private SameVoicePhrase(VoxClip.App.ViewModels.RewriteHunkReview,VoxClip.App.ViewModels.RewriteHunkReview)
+member VoxClip.App.ViewModels.RewriteSession :: method private SameWindows()
 member VoxClip.App.ViewModels.RewriteSession :: method private ScreenWindowsAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteGeneration>)
 member VoxClip.App.ViewModels.RewriteSession :: method private SendReaskAsync(VoxClip.App.ViewModels.RewriteReask,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.RewriteSession :: method private SendRewriteAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
@@ -6378,6 +6389,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private set_NewWords(stri
 member VoxClip.App.ViewModels.RewriteSession :: method private set_PendingPaidReviewChange(VoxClip.App.ViewModels.RewritePaidReviewChange)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_PhraseMicrophone(VoxClip.App.ViewModels.RewritePhraseMicrophone)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_Prepared(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction)
+member VoxClip.App.ViewModels.RewriteSession :: method private set_Project(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_ProposalRevision(int)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_ReaskProblem(string)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_ReaskWork(System.Threading.Tasks.Task)
@@ -6389,6 +6401,8 @@ member VoxClip.App.ViewModels.RewriteSession :: method private set_ScreeningVoic
 member VoxClip.App.ViewModels.RewriteSession :: method private set_SentenceProblem(string)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_SentenceRefusedOrdinal(System.Nullable`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_SentenceReview(VoxClip.App.ViewModels.RewriteSentenceReview)
+member VoxClip.App.ViewModels.RewriteSession :: method private set_TakeWindowsMoved(bool)
+member VoxClip.App.ViewModels.RewriteSession :: method private set_Transcript(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_VideoVoiceMatchWork(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_VideoVoiceWork(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_WordingFitAwaitingApproval(bool)
