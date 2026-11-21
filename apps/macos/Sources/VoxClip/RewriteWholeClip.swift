@@ -42,7 +42,7 @@ extension RewriteSession {
         }
         if let session = wholeClip {
             // The changes on the card changed (one included or left out): its price follows them.
-            if session.phase == .choose, !session.quoting, (try? session.backend?.script()) != session.script {
+            if session.phase == .choose, !session.quoting, let now = try? session.backend?.script(), now != session.script {
                 Task { [weak self, weak session] in
                     await session?.refreshQuote()
                     self?.refreshWholeClipPanel()
