@@ -562,6 +562,21 @@ extension RewriteSession {
         }
     }
 
+    /// The backstop before a restored voice is paid for: the click approved putting it back at its Try Again's price
+    /// (`approved`, `restoredRetryVoiceUSD`); a fresh price above it (a part's journal entry went after the card was priced,
+    /// or another run holds it) sends nothing and waits for its own click at the new price. The card is priced again from
+    /// the fresh plan: its price, and the parts the plan adopts, so a part voiced again also prices a new lip sync and the
+    /// line names the parts that come back.
+    func holdRestoredVoicePrice(_ plan: ClipTakePlan, approved: Decimal?) throws {
+        guard let approved, let fresh = plan.estimate?.usd, fresh <= approved else {
+            let fresh = plan.estimate?.usd
+            let back = plan.adoptedPhraseCount
+            if wholeClipPlan === plan { retireWholeClipVoicePlan() } else { plan.invalidate() }
+            if let fresh { wholeClip?.repriceRestoredVoice(fresh, partsBack: back) }
+            throw WholeClipRevoiceSession.Stop.noVoice("The price to put your paid voice back changed. Nothing new was sent. Review the new price before retrying.")
+        }
+    }
+
     /// The Voice step: a take plan over the script's parts, priced, then made under the click's approval (the session only
     /// asks for a voice it may pay for).
     private func wholeClipVoice(_ script: WholeClipScript, progress: @escaping @MainActor (String) -> Void) async throws -> WholeClipRevoiceSession.Voice {
@@ -687,16 +702,7 @@ extension RewriteSession {
         guard plan.problem.isEmpty, let approval = plan.approvalID else {
             throw Session.Stop.noVoice(plan.problem.isEmpty ? "The voice couldn't be priced. Nothing was sent." : plan.problem)
         }
-        if restored != nil {
-            // The click approved putting the paid voice back at its Try Again's price; a fresh price above it (a part the
-            // journal no longer gives back) waits for its own click at the new price.
-            guard let approved = restoredApproval, let fresh = plan.estimate?.usd, fresh <= approved else {
-                let fresh = plan.estimate?.usd
-                retireWholeClipVoicePlan()
-                if let fresh { wholeClip?.repriceRestoredVoice(fresh) }
-                throw Session.Stop.noVoice("The price to put your paid voice back changed. Nothing new was sent. Review the new price before retrying.")
-            }
-        }
+        if restored != nil { try holdRestoredVoicePrice(plan, approved: restoredApproval) }
         progress("\(plan.phrases.count == 1 ? "one take" : "\(plan.phrases.count) parts, one take")")
         await plan.start(approved: true, quoteID: approval)
         try Task.checkCancellation()
@@ -995,8 +1001,11 @@ extension RewriteSession {
             segmentIds: made.segments.map(\.id), script: voice.key.script, consentRecordId: made.voice?.consentRecordId ?? voice.key.recordId,
             videoRetime: synced.factor, lipsyncModel: synced.model.rawValue, usd: usd, match: match,
             createdAt: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)))
-        try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
-                                 localCommands: localCommands, videoAssets: made.videoAssets, wholeClip: record)
+        // Rewrite's own commit: the card shows it used (no R3), and ⌘Z puts the card back on Review (`commitOwnEdit`).
+        try commitOwnEdit {
+            try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
+                                     localCommands: localCommands, videoAssets: made.videoAssets, wholeClip: record)
+        }
         editor.announce("Whole clip revoiced. Undo takes it back.")
         return record
     }
@@ -1009,8 +1018,10 @@ extension RewriteSession {
         guard wholeClipPlanScript?.text == voice.key.script else { throw wholeClipInputsChanged(plan) }
         for phrase in Array(plan.lipsync.applied.keys) { plan.lipsync.undo(phrase) }
         let made = try await plan.acceptance()
-        try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
-                                 localCommands: localCommands, videoAssets: made.videoAssets)
+        try commitOwnEdit {
+            try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
+                                     localCommands: localCommands, videoAssets: made.videoAssets)
+        }
         editor.announce("Whole-clip voice put in without lip sync. Undo takes it back.")
     }
 }

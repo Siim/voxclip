@@ -366,11 +366,14 @@ import VoxClipMedia
         return "Try Again puts it back\(price), without voicing it again."
     }
 
-    /// The fresh price of putting the restored voice back (its parts' word checks priced again) went up past what the
-    /// button approved: the button carries the new price, which its own click approves.
-    func repriceRestoredVoice(_ usd: Decimal) {
+    /// The fresh price of putting the restored voice back went up past what the button approved (a part's journal entry went
+    /// after the card was priced, or another run holds it): the button carries the new price, which its own click approves.
+    /// `partsBack` is how many parts the fresh plan adopts: with one voiced again the lip sync can't come back either, so
+    /// Try Again prices a new one and the line names the parts ("k of n", or "can't be put back"); nil keeps the count.
+    func repriceRestoredVoice(_ usd: Decimal, partsBack: Int?) {
         guard restoredVoiceKey != nil else { return }
         restoredVoiceUSD = usd
+        if let partsBack { restoredPartsBack = min(max(partsBack, 0), restoredParts) }
     }
 
     /// Prices the card and reads the fal.ai key. Free.
@@ -433,6 +436,8 @@ import VoxClipMedia
         self.automatic = automatic
         self.budget = automatic ? budget : nil
         previousFailure = failure
+        // A run after Use was undone makes new work: a Redo of the old commit no longer marks the card used.
+        undoneUse = nil
         phase = .running; started = Date(); progress = nil; failure = nil; fitStoppedScript = nil; picture = nil
         shorterWording = nil; upgradeNote = nil; stoppedAt = nil; stopError = nil; lipsyncMayPay = true; currentStep = .script
         steps = Dictionary(uniqueKeysWithValues: Step.allCases.map { ($0, StepState.waiting) })
@@ -922,6 +927,7 @@ import VoxClipMedia
         do {
             guard await backend.restoreLipsync(syncedEntries) else { throw Stop.lipsyncMissing }
             record = try await backend.use(voice, synced, match)
+            usedFrom = .review; undoneUse = nil
             phase = .used
             backend.persist()
         } catch {
@@ -974,10 +980,12 @@ import VoxClipMedia
     /// A failure keeps the stop and its actions, and says the clip is unchanged.
     func useVoiceOnly() async {
         guard let backend, canUseVoiceOnly, let voice else { return }
+        let from = phase
         do {
             try await backend.useVoiceOnly(voice)
             record = nil
             usedVoiceOnly = true
+            usedFrom = from; undoneUse = nil
             phase = .used
             backend.persist()
         } catch {
@@ -998,12 +1006,39 @@ import VoxClipMedia
         phase = .choose; voice = nil; synced = nil; match = nil; steps = [:]; upgradeUSD = nil; picture = nil
         failure = nil; stopError = nil; stoppedAt = nil; shorterWording = nil; upgradeNote = nil
         syncedEntries = [:]; lipsyncKept = false; submissionUnconfirmed = false; checkedFal = false; upgradeKept = false
-        baseScript = nil; rewordRound = 0; usedVoiceOnly = false
+        baseScript = nil; rewordRound = 0; usedVoiceOnly = false; usedFrom = nil; undoneUse = nil
         // What was paid before a relaunch goes with it, and stays counted.
         restoredLetGo += restoredVoices.values.reduce(0, +) + restoredLipsyncs.values.reduce(0, +)
         restoredVoices = [:]; restoredLipsyncs = [:]; restoredVoiceUSD = nil; restoringLipsync = nil
         restoredParts = 0; restoredPartsBack = 0; restoredCheckUSD = nil
         backend.persist()
+    }
+
+    /// Where Use was clicked from (Review, or the stop Use the Voice Without Lip Sync was clicked on), while its commit is in
+    /// the project or undone; and what the editor's Undo took out of it, for its Redo.
+    @ObservationIgnored private var usedFrom: Phase?
+    @ObservationIgnored private var undoneUse: (record: WholeClipRevoiceRecord?, voiceOnly: Bool)?
+    /// The editor's Undo took Use's commit out and no Redo or new Use followed.
+    var useWasUndone: Bool { undoneUse != nil && phase == usedFrom }
+
+    /// The editor's Undo (⌘Z) took Use's commit back out of the project (`RewriteSession.followOwnCommit`): the card is back
+    /// where Use was clicked, its paid voice and lip sync unused again, so closing asks first, the saved record is written
+    /// again (a relaunch offers them back) and Use puts them in again for free.
+    func useUndone() {
+        guard phase == .used, let from = usedFrom else { return }
+        undoneUse = (record, usedVoiceOnly)
+        record = nil; usedVoiceOnly = false
+        phase = from
+        backend?.persist()
+    }
+
+    /// The editor's Redo put Use's commit back: the card is used again and the saved record goes again.
+    func useRedone() {
+        guard useWasUndone, let undone = undoneUse else { return }
+        record = undone.record; usedVoiceOnly = undone.voiceOnly
+        undoneUse = nil
+        phase = .used
+        backend?.persist()
     }
 
     /// Undo after Use (the autopilot's step list).

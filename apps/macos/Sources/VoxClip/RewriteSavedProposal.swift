@@ -304,12 +304,13 @@ extension RewriteSession {
     /// at the moment: a plan only priced, or still adopting the takes saved before a relaunch, keeps those takes in it. It
     /// goes on Use (Use Takes, Use Whole Clip, Use the Voice Without Lip Sync), on an explicit discard (the paid-work
     /// question's Discard, Discard Takes, Discard Changes, Undo on a whole clip's Review or the patch over it), on a new
-    /// run of the Rewrite that restored or wrote it (which asks first over unused paid work), and after 60 days unused.
+    /// run of the Rewrite that restored or wrote it (which asks first over unused paid work), and after 60 days unused. The
+    /// editor's Undo of Use Whole Clip, with Rewrite open, makes the work unused again, and it is written again.
     func persistPaidWork() {
         guard isOpen else { return }
         // Use Whole Clip, or Use the Voice Without Lip Sync, put the whole clip's paid work into the project as one undo
-        // step. The edit may have set the proposal aside (R3), so this never waits for it: the record goes, and a relaunch
-        // never offers that work back to put in or pay for again.
+        // step (Rewrite's own commit, `commitOwnEdit`): the record goes, and a relaunch never offers that work back to put
+        // in or pay for again. The editor's Undo of that step writes it again (`WholeClipRevoiceSession.useUndone`).
         if wholeClip?.phase == .used, !hasPaidPatchWork {
             if savedProposalData != nil || restoredProposal != nil { forgetSavedProposal() }
             return

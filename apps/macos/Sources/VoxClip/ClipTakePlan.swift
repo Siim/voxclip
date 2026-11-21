@@ -326,6 +326,13 @@ import VoxClipMedia
     var stillCurrent: Bool { !retired && isCurrent() && contextIsCurrent() }
     var isRetired: Bool { retired }
     var approvalID: UUID? { batch?.id }
+    /// How many phrases of the held run adopt a paid take from the journal, so pay only its word check (voice-lab §3.4):
+    /// those of `batch` and its later parts whose quote names an adopted asset. Nil while nothing is priced.
+    var adoptedPhraseCount: Int? {
+        guard let batch else { return nil }
+        let windows = batch.windows + laterParts.flatMap(\.priced.windows)
+        return windows.filter { window in window.quote.takes.contains { $0.adoptedAsset != nil } }.count
+    }
     static let minimumGeneratedSpeechSeconds = Double(SpeakerAudio.windowSize) / 16_000
     private var videoChoices: [UUID: VoiceLabVideoMode] {
         Dictionary(uniqueKeysWithValues: phrases.compactMap { phrase in

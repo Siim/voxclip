@@ -212,6 +212,17 @@ extension DebugRewriteSmoke.Harness {
         }
     }
 
+    /// What the panel shows after Use: "proposal" (the used card), "R3" when it says "Nothing was applied", else the state.
+    private func usedPanel(_ session: RewriteSession) -> String {
+        let r3 = session.task.cards.contains { card in
+            if case .text(let line) = card { return line.contains("Nothing was applied") }
+            return false
+        }
+        if r3 { return "R3" }
+        if case .proposal = session.task.state { return "proposal" }
+        return "\(session.task.state)"
+    }
+
     /// W1: the card, its callout and chip, and both prices from the tables.
     private func checkChoose(_ session: RewriteSession, _ whole: WholeClipRevoiceSession) throws -> String {
         guard let shared = app.shared, let quote = whole.quote, let script = whole.script, let project = editor?.project else {
@@ -270,11 +281,13 @@ extension DebugRewriteSmoke.Harness {
         let prepared = try? VoiceLabRenderContract.prepare(project, scope: .clip("clip-whole"), labelPosition: .topRight)
         let stage = WholeClipRevoice.isRevoiced(clipId: "clip-whole", in: project)
         let reopenedSame = reopened?.voiceLab.wholeClipRevoices == project.voiceLab.wholeClipRevoices
-        makeItAppend([wholeClipCheck("W3", whole.phase == .used && editor.undoSteps == steps + 1 && record?.lipsyncModel == model.rawValue
+        // Use is Rewrite's own commit: the panel stays on the proposal with the used card, never R3's "Nothing was applied".
+        let panel = usedPanel(session)
+        makeItAppend([wholeClipCheck("W3", whole.phase == .used && panel == "proposal" && editor.undoSteps == steps + 1 && record?.lipsyncModel == model.rawValue
                 && record.map { $0.segmentIds.allSatisfy { id in project.voiceLab.segments.contains { $0.id == id } } } == true
                 && reopened?.voiceLab.wholeClipRevoices == project.voiceLab.wholeClipRevoices && stage
                 && prepared?.disclosure.postText == WholeClipRevoice.disclosureLine,
-            phaseText(whole) + " · undo steps +\(editor.undoSteps - steps) · record \(record.map { "\($0.segmentIds.count) segments, \($0.lipsyncModel), retime \($0.videoRetime)" } ?? "none")"
+            phaseText(whole) + " · panel \(panel) · undo steps +\(editor.undoSteps - steps) · record \(record.map { "\($0.segmentIds.count) segments, \($0.lipsyncModel), retime \($0.videoRetime)" } ?? "none")"
                 + " · reopened \(reopened?.voiceLab.wholeClipRevoices?.count ?? 0) same \(reopenedSame) · stage \(stage) · post text \(prepared?.disclosure.postText ?? "none")")])
         if fullTake { checkFullTake(project, record: record) }
         afterUse?()
