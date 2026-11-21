@@ -201,6 +201,16 @@ public sealed class StartupCheckTests
         // A report claiming ok with fewer than five rendered ordinary opens still fails the step.
         Assert.Contains("$_.status -eq 'ok' -and $_.rootLoaded -and $_.rendered -and $_.transcriptVisible", workflow);
         Assert.Contains("$ordinary.mode -ne 'ordinary-open' -or $passed.Count -lt 5", workflow);
+        // The Debug build runs where apps/windows/global.json pins SDK 10; from the repo root CI 44863774855 built with the
+        // image's newest SDK and failed. The smoke itself runs back at the root (-Root $PWD.Path).
+        var start = workflow.IndexOf("- name: Launch the DEBUG Editor on the hosted desktop", StringComparison.Ordinal);
+        var smoke = workflow[start..workflow.IndexOf("- name:", start + 8, StringComparison.Ordinal)];
+        Assert.DoesNotContain("dotnet build apps/windows", smoke);
+        var push = smoke.IndexOf("Push-Location apps/windows", StringComparison.Ordinal);
+        var build = smoke.IndexOf("dotnet build src/VoxClip.App/VoxClip.App.csproj -c Debug", StringComparison.Ordinal);
+        var pop = smoke.IndexOf("} finally { Pop-Location }", StringComparison.Ordinal);
+        var launch = smoke.IndexOf("launch-smoke.ps1 -Root $PWD.Path", StringComparison.Ordinal);
+        Assert.True(push >= 0 && push < build && build < pop && pop < launch, $"push {push}, build {build}, pop {pop}, launch {launch}");
     }
 
     [Theory]

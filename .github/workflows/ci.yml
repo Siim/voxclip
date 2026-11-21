@@ -611,8 +611,15 @@ jobs:
         timeout-minutes: 5
         shell: pwsh
         run: |
-          dotnet build apps/windows/src/VoxClip.App/VoxClip.App.csproj -c Debug -r win-x64 -p:Platform=x64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
-          if ($LASTEXITCODE -ne 0) { throw 'Debug App smoke build failed.' }
+          # Build from apps/windows so its global.json pins SDK 10; from the repo root the image's newest SDK (11 since
+          # windows-2025-vs2026 20261116) builds and fails with CsWinRT1032. Return to the root before the smoke (-Root $PWD).
+          Push-Location apps/windows
+          try {
+            dotnet --version
+            dotnet build src/VoxClip.App/VoxClip.App.csproj -c Debug -r win-x64 -p:Platform=x64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+            $code = $LASTEXITCODE
+          } finally { Pop-Location }
+          if ($code -ne 0) { throw 'Debug App smoke build failed.' }
           $evidence = Join-Path $env:RUNNER_TEMP 'voxclip-launch-smoke'
           try {
             & apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1 -Root $PWD.Path -EvidenceDir $evidence -RuntimeIdentifier win-x64 -Hosted
