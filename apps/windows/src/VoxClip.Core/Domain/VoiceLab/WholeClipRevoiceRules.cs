@@ -17,6 +17,8 @@ public static partial class WholeClipRevoice
     public const int MaximumRewordRounds = 2;
     /// <summary>A part of the script is whole sentences spanning at most this much source time (a single longer sentence stays one part).</summary>
     public const double MaximumPartSeconds = 12.0;
+    /// <summary>A part under this much source time joins a neighbour, so each part has enough speech for its voice check on the first run.</summary>
+    public const double MinimumPartSeconds = 4.0;
     /// <summary>A script part never exceeds the text-to-speech route's limit.</summary>
     public const int MaximumPartCharacters = 1_000;
     /// <summary>Lip sync takes at most 300 s in one job (voice-lab §9.3).</summary>
@@ -343,32 +345,58 @@ public sealed class WholeClipScript
     }
 
     /// <summary>The script split at sentence boundaries into parts of at most <see cref="WholeClipRevoice.MaximumPartSeconds"/> of source
-    /// time and <see cref="WholeClipRevoice.MaximumPartCharacters"/>; one voice says every part.</summary>
+    /// time and <see cref="WholeClipRevoice.MaximumPartCharacters"/>; one voice says every part. A part under
+    /// <see cref="WholeClipRevoice.MinimumPartSeconds"/> then joins the part before it, else the one after it, when the two stay within
+    /// <see cref="WholeClipRevoice.MaximumPartCharacters"/> (they may run past <see cref="WholeClipRevoice.MaximumPartSeconds"/>); a part
+    /// that joined the one after it is checked again (Mac <c>WholeClipScript.parts</c>).</summary>
     public IReadOnlyList<Part> Parts
     {
         get
         {
-            var parts = new List<Part>();
+            static int Characters(IEnumerable<Sentence> group) => string.Join(' ', group.Select(item => item.Text)).EnumerateRunes().Count();
+            var groups = new List<List<Sentence>>();
             var group = new List<Sentence>();
-            void Flush()
-            {
-                if (group.Count == 0) return;
-                var tokens = group.SelectMany(sentence => sentence.Tokens).ToArray();
-                parts.Add(new(string.Join(' ', tokens), tokens.Length, group.SelectMany(sentence => sentence.SourceWordIds).ToArray(), group[0].Start, group[^1].End));
-                group.Clear();
-            }
             foreach (var sentence in Sentences)
             {
                 if (group.Count > 0)
                 {
                     var seconds = sentence.End - group[0].Start;
-                    var characters = string.Join(' ', group.Select(item => item.Text).Append(sentence.Text)).EnumerateRunes().Count();
-                    if (seconds > WholeClipRevoice.MaximumPartSeconds || characters > WholeClipRevoice.MaximumPartCharacters) Flush();
+                    if (seconds > WholeClipRevoice.MaximumPartSeconds || Characters(group.Append(sentence)) > WholeClipRevoice.MaximumPartCharacters)
+                    {
+                        groups.Add(group);
+                        group = [];
+                    }
                 }
                 group.Add(sentence);
             }
-            Flush();
-            return parts;
+            if (group.Count > 0) groups.Add(group);
+            var index = 0;
+            while (index < groups.Count)
+            {
+                if (groups.Count < 2 || groups[index][^1].End - groups[index][0].Start >= WholeClipRevoice.MinimumPartSeconds)
+                {
+                    index++;
+                }
+                else if (index > 0 && Characters(groups[index - 1].Concat(groups[index])) <= WholeClipRevoice.MaximumPartCharacters)
+                {
+                    groups[index - 1].AddRange(groups[index]);
+                    groups.RemoveAt(index);
+                }
+                else if (index + 1 < groups.Count && Characters(groups[index].Concat(groups[index + 1])) <= WholeClipRevoice.MaximumPartCharacters)
+                {
+                    groups[index].AddRange(groups[index + 1]);
+                    groups.RemoveAt(index + 1);
+                }
+                else
+                {
+                    index++;
+                }
+            }
+            return groups.Select(each =>
+            {
+                var tokens = each.SelectMany(sentence => sentence.Tokens).ToArray();
+                return new Part(string.Join(' ', tokens), tokens.Length, each.SelectMany(sentence => sentence.SourceWordIds).ToArray(), each[0].Start, each[^1].End);
+            }).ToArray();
         }
     }
 

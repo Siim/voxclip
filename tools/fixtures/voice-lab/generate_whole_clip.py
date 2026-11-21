@@ -22,6 +22,8 @@ NO_FIT_PHRASES = 2
 FIT_TOLERANCE = 0.08
 MAXIMUM_REWORD_ROUNDS = 2
 MAXIMUM_PART_SECONDS = 12.0
+# A part under this much source joins a neighbour, so each part has enough speech for its voice check on the first run.
+MINIMUM_PART_SECONDS = 4.0
 MAXIMUM_PART_CHARACTERS = 1000
 MAXIMUM_CLIP_SECONDS = 300.0
 # voice-lab 8.3: the narrowest gap a seam can sit in.
@@ -148,26 +150,40 @@ def text_of(sentence):
     return ' '.join(sentence['tokens'])
 
 
-def parts_of(sentences):
-    parts, group = [], []
+def group_characters(group):
+    return len(' '.join(text_of(item) for item in group))
 
-    def flush():
-        if not group:
-            return
+
+def parts_of(sentences):
+    """Whole sentences up to MAXIMUM_PART_SECONDS of source and MAXIMUM_PART_CHARACTERS; then each group under
+    MINIMUM_PART_SECONDS joins the one before it, else the one after it, when the two stay within MAXIMUM_PART_CHARACTERS
+    (they may run past MAXIMUM_PART_SECONDS). A group that joined the one after it is checked again."""
+    groups, group = [], []
+    for sentence in sentences:
+        if group:
+            seconds = sentence['end'] - group[0]['start']
+            if seconds > MAXIMUM_PART_SECONDS or group_characters(group + [sentence]) > MAXIMUM_PART_CHARACTERS:
+                groups.append(group)
+                group = []
+        group.append(sentence)
+    if group:
+        groups.append(group)
+    index = 0
+    while index < len(groups):
+        if len(groups) < 2 or groups[index][-1]['end'] - groups[index][0]['start'] >= MINIMUM_PART_SECONDS:
+            index += 1
+        elif index > 0 and group_characters(groups[index - 1] + groups[index]) <= MAXIMUM_PART_CHARACTERS:
+            groups[index - 1] = groups[index - 1] + groups.pop(index)
+        elif index + 1 < len(groups) and group_characters(groups[index] + groups[index + 1]) <= MAXIMUM_PART_CHARACTERS:
+            groups[index] = groups[index] + groups.pop(index + 1)
+        else:
+            index += 1
+    parts = []
+    for group in groups:
         tokens = [token for sentence in group for token in sentence['tokens']]
         parts.append({'text': ' '.join(tokens), 'words': len(tokens),
                       'sourceWordIds': [identity for sentence in group for identity in sentence['sourceWordIds']],
                       'start': group[0]['start'], 'end': group[-1]['end']})
-        group.clear()
-
-    for sentence in sentences:
-        if group:
-            seconds = sentence['end'] - group[0]['start']
-            characters = len(' '.join([text_of(item) for item in group] + [text_of(sentence)]))
-            if seconds > MAXIMUM_PART_SECONDS or characters > MAXIMUM_PART_CHARACTERS:
-                flush()
-        group.append(sentence)
-    flush()
     return parts
 
 
@@ -300,6 +316,30 @@ def tiling_cases():
     return cases
 
 
+def spans(prefix, sentences):
+    """Words for a part-length case: each sentence is (start, end, words); its words share the span evenly, the last ends
+    the sentence."""
+    items = []
+    for start, end, count in sentences:
+        step = (end - start) / count
+        for index in range(count):
+            text = f'{prefix}{len(items)}' + ('.' if index == count - 1 else '')
+            items.append({'id': f'{prefix}{len(items)}', 'text': text, 'kind': 'word', 'start': start + index * step,
+                          'end': end if index == count - 1 else start + index * step + step * 0.8})
+    return items
+
+
+def part_length_cases():
+    return [
+        # 6 s and 5.5 s fill one 12 s part; the 1.5 s sentence after them joins it rather than being voiced alone.
+        script_case('parts-merge-a-short-last-part-into-the-one-before', spans('m', [(0.0, 6.0, 3), (6.2, 11.7, 3), (11.9, 13.4, 2)])),
+        # A short first sentence has no part before it: it joins the one after.
+        script_case('parts-merge-a-short-first-part-into-the-next', spans('f', [(0.0, 1.5, 2), (1.7, 12.7, 4), (12.9, 20.9, 3)])),
+        # A short sentence between two long ones joins the one before.
+        script_case('parts-merge-a-short-middle-part-into-the-one-before', spans('s', [(0.0, 11.0, 4), (11.2, 13.2, 2), (13.4, 24.4, 4)])),
+    ]
+
+
 def script_cases():
     mockup = [word(i, text) for i, text in enumerate(['So', 'we', 'drove', 'north.', 'It', 'was', 'um', 'cold.', 'Then', 'we', 'stopped.'])]
     mockup.append(word(11, '[music]', kind='event'))
@@ -330,7 +370,7 @@ def script_cases():
         script_case('characters-count-scalars', accents),
         script_case('parts-count-scalars-not-utf16-units', smiles),
         script_case('everything-cut', mockup, [f'w{i}' for i in range(11)]),
-    ] + tiling_cases()
+    ] + tiling_cases() + part_length_cases()
 
 
 # MARK: - Fit
@@ -475,6 +515,7 @@ def main():
         'format': 'voxclip-whole-clip-revoice/1',
         'constants': {'wordSharePercent': WORD_SHARE_PERCENT, 'noFitPhrases': NO_FIT_PHRASES, 'fitTolerance': FIT_TOLERANCE,
                       'maximumRewordRounds': MAXIMUM_REWORD_ROUNDS, 'maximumPartSeconds': MAXIMUM_PART_SECONDS,
+                      'minimumPartSeconds': MINIMUM_PART_SECONDS,
                       'maximumPartCharacters': MAXIMUM_PART_CHARACTERS, 'maximumClipSeconds': MAXIMUM_CLIP_SECONDS,
                       'standardLipsync': LIPSYNC['lipsync2'][0],
                       'lipsyncModels': [{'rawValue': raw, 'endpoint': endpoint, 'model': model, 'name': name}
