@@ -400,11 +400,24 @@ extension ProviderChoice {
         // Text Rewrite needs no Voice Lab (design.md §6.3): turning it on or off leaves an open session, whose takes
         // follow `voiceLabRewriteEnabled` on their own (`RewriteSession.generationIsCurrent`).
         if key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
-            shell.editor?.closeRewrite(returnFocus: false)
+            rewriteConnectorChanged(in: shell.editor)
         }
         guard settingsLoaded else { if loadingSettings { pendingSettings[key] = value }; return true }
         scheduleSettingsSave()
         return true
+    }
+    /// What the status bar says when the AI changed under a Rewrite that holds paid work, which stays open.
+    static let rewriteConnectorKeptNotice = "The AI changed. Your paid takes are kept; Rewrite Again uses the new AI and asks first."
+    /// A change of AI in Settings closes the open Rewrite, whose proposal came from the old AI. A Rewrite holding paid work
+    /// (takes, a whole-clip voice, a lip sync) stays open instead: the AI only matters for asking again, never for what was
+    /// voiced (`RewriteSession.voiceSpendCurrent`), and the status bar says so.
+    func rewriteConnectorChanged(in editor: EditorModel?) {
+        guard let editor else { return }
+        if editor.openRewrite?.hasPaidWork == true {
+            editor.rewriteNotice = Self.rewriteConnectorKeptNotice
+            return
+        }
+        editor.closeRewrite(returnFocus: false)
     }
     func refreshConnectorReadiness() { connectorReadinessRevision &+= 1 }
     func saveProviderKey(_ value: String, for provider: String) async throws {
