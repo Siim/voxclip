@@ -878,6 +878,30 @@ import Testing
         #expect(session.phase == .review && stubs.voices == [Self.script.text, shorter.text])
     }
 
+    /// wholeclip-voice-stale-after-paid-voice: a Fit stop keeps no voice for the retry (no picture yet), but its voice was
+    /// paid; a word edit then stops Try Again before it voices the new words, and Start Over prices them.
+    @Test func aWordEditAfterAPaidVoiceThatStoppedAtTheFitPaysNothingOnTryAgain() async throws {
+        let live = try live()
+        defer { close(live) }
+        let stubs = Stubs()
+        stubs.voiceSeconds = [36, 31]
+        stubs.reword = nil
+        let session = session(stubs)
+        live.rewrite.wholeClip = session
+        await session.refreshQuote()
+        session.start()
+        await session.waitForRun()
+        #expect(session.failure?.step == .fit && stubs.voices.count == 1)
+        let edited = WholeClipScript.assemble(words: Array(Self.words.prefix(4)), cutWordIds: [], voiceHunks: [])!
+        session.backend?.script = { edited }
+        session.start()
+        await session.waitForRun()
+        guard case .stopped(let line) = session.phase else { Issue.record("\(session.phase)"); return }
+        #expect(line.hasPrefix("You edited Clip 7 after its voice was made"), "\(line)")
+        #expect(stubs.voices.count == 1, "nothing new voiced")
+        #expect(live.rewrite.wholeClipStoppedActions().first?.id == "wholeClipStartOver")
+    }
+
     /// wholeclip-retry-after-reword-voice-stop: the reworded voice stops at the Voice step; Try Again voices the reworded
     /// script's unfinished parts (no lip-sync-only refusal).
     @Test func aRewordedVoiceThatStopsAtTheVoiceRetriesTheRewordedScript() async throws {
