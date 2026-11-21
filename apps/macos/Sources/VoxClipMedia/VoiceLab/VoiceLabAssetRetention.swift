@@ -66,22 +66,26 @@ public enum VoiceLabAssetRetention {
         }
         return files
     }
-    /// Drops the take journal's entries that are done: the project uses the asset (after Use), the asset is gone, or, when
-    /// deletion is allowed, the entry is older than `VoiceLabTakeJournal.unusedLifetime`, after which its asset follows the
-    /// ordinary rules. Returns the asset files of the entries that stay (voice-lab §3 "Paid takes are kept"): paid takes no
-    /// project uses yet, so never deletion candidates.
-    private static func settleTakeJournal(project directory: Int32, projectId: String, references: Set<String>, present: Set<String>,
+    /// Drops the take journal's entries that are done: the project as it closes uses the asset (`inUse`: after Use, and not
+    /// undone), the asset is gone, or, when deletion is allowed, the entry is older than `VoiceLabTakeJournal.unusedLifetime`,
+    /// after which its asset follows the ordinary rules. Returns the asset files of the entries that stay (voice-lab §3 "Paid
+    /// takes are kept"): paid takes no project uses yet, so never deletion candidates. A take Use put in and Undo took out
+    /// again is only in the session's history, so its entry stays and a later Rewrite adopts it for its word check.
+    private static func settleTakeJournal(project directory: Int32, projectId: String, inUse: Set<String>, present: Set<String>,
                                           now: Date, allowDeletion: Bool) -> Set<String> {
         let entries = VoiceLabTakeJournal.entries(inProject: directory, projectID: projectId)
         let done = entries.filter { entry in
-            references.contains(entry.assetFile) || !present.contains(entry.assetFile)
+            inUse.contains(entry.assetFile) || !present.contains(entry.assetFile)
                 || (allowDeletion && now.timeIntervalSince(entry.createdAt) >= VoiceLabTakeJournal.unusedLifetime)
         }
         VoiceLabTakeJournal.remove(done.map(\.assetID), inProject: directory)
         return Set(entries.map(\.assetFile)).subtracting(done.map(\.assetFile))
     }
+    /// `references` are the files the project used at any point of its session (its undo history), which are never deletion
+    /// candidates; `inUse`, the files the project as it closes uses, which alone end a take's journal entry (nil: all of
+    /// `references`).
     @discardableResult
-    public static func closeProject(projectId: String, paidRoot: URL, references: Set<String>,
+    public static func closeProject(projectId: String, paidRoot: URL, references: Set<String>, inUse: Set<String>? = nil,
                                     now: Date = Date(), allowDeletion: Bool = true,
                                     preserveUnlisted: Bool = false, observation: Observation = .now(),
                                     recheckReferences: (() throws -> Set<String>)? = nil) throws -> [String] {
@@ -111,10 +115,11 @@ public enum VoiceLabAssetRetention {
         } else if errno != ENOENT { throw VoiceLabAssetStoreError.unsafePath(ledgerName) }
         ledger.protected.formUnion(references)
         let names = try VoiceLabAssetRecovery.names(directory)
-        // Only what this project uses now ends an entry: `protected` also holds every file kept at a launch.
+        // Only what this project uses now ends an entry: `protected` also holds every file kept at a launch, and
+        // `references` every file of the session's undo history.
         // The paid work no project uses yet, read once: deletion needs the exclusive activity lock, which no open project
         // (so no take run or lip-sync import) holds beside it, and only new files can gain such a reference meanwhile.
-        let paid = settleTakeJournal(project: directory, projectId: projectId, references: references,
+        let paid = settleTakeJournal(project: directory, projectId: projectId, inUse: inUse ?? references,
                                      present: Set(names.map { "\(projectId)/\($0)" }), now: now, allowDeletion: allowDeletion)
             .union(importedLipsyncAssets(project: directory, projectId: projectId))
         let backward = ledger.unreferenced.values.contains { now < $0.discovered || now < $0.lastObservedAt }
