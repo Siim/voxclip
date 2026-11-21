@@ -206,6 +206,88 @@ import Testing
         fixture.session.task.confirm?.confirm.perform()
         #expect(quits == 1)
     }
+
+    // MARK: The video's voice
+
+    private static let anchorID = "11111111-1111-4111-8111-111111111111"
+    private static let ownID = "33333333-3333-4333-8333-333333333333"
+    private static func voiceRecord(_ id: String) throws -> VoiceConsentRecord {
+        let json = try Data(contentsOf: SharedResources.locate().root.appendingPathComponent("fixtures/voice-lab/consent-record-project.json"))
+        var object = try #require(JSONSerialization.jsonObject(with: json) as? [String: Any]); object["recordId"] = id
+        return try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+
+    /// "Match this video" with a paid whole-clip voice keeps the voice it was made with: a switch would make the paid voice
+    /// stale. It used to switch, because the guard read only the patch's takes.
+    @Test func matchingThisVideoKeepsTheVoiceOfAPaidWholeClip() async throws {
+        _ = NSApplication.shared
+        let shared = try SharedResources.locate()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-paid-voice-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        project.id = UUID().uuidString.lowercased()
+        project.voiceLab.segments = []; project.voiceLab.assets = []; project.edits = ProjectEdits()
+        project.media.source.contentKey = "this-video"
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        editor.mediaResolved = true
+        editor.refresh()
+        let session = RewriteSession(editor: editor, scope: .fullTake, envelope: nil, connector: nil)
+        editor.rewrite = session
+        let word = try #require(project.transcript?.words.first)
+        session.receive([RewriteChange(hunk: VoiceLabDiffHunk(kind: .voice, sourceWordIds: [word.id], newTokens: ["Hello"], correctedTexts: [],
+            absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 0, sourceEndIndex: 1, anchorSeconds: nil))])
+        session.finishRun(seconds: 1); session.showProposal()
+        let anchor = try Self.voiceRecord(Self.anchorID), own = try Self.voiceRecord(Self.ownID)
+        let voiceLab = app.voiceLabSession
+        voiceLab.records = [anchor, own]
+        var book = VoicePerVideoBook()
+        book.videos = [.init(contentKey: "this-video", recordId: own.id, anchorId: anchor.id, anchorReferenceSha256: String(repeating: "a", count: 64),
+            title: "DJI_0011", createdAt: "2026-11-19T16:39:19Z", videoSeconds: 40, removesBackgroundNoise: false)]
+        voiceLab.perVideoBook = book
+        session.configureGeneration(client: ElevenLabsVoiceLab(keys: PaidGuardTestKeys(), region: .default),
+            store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
+        let generation = try #require(session.generation)
+        generation.prepareQuote = nil
+        let model = VoiceLabModel(id: VoiceLabWordingFit.modelID, name: "Eleven v4", languages: ["en"], canSpeak: true, canConvert: false,
+            maximumTextLength: 5_000, characterCostMultiplier: 1)
+        generation.discoverForTests = { _ in ([model], [anchor, own]) }
+        await generation.discover(language: "en")
+        try #require(generation.selectedVoiceID == anchor.id && voiceLab.offersVideoVoice(session.project) && session.current,
+                     "the anchor, and the video's own voice is ready")
+        // The whole clip's voice and lip sync are paid in the anchor's voice, then its lip sync failed: Stopped, voice kept.
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.failLipsync = true
+        let whole = WholeClipRevoiceSession()
+        whole.backend = WholeClipRevoiceSessionTests.backend(stubs)
+        whole.start(); await whole.waitForRun()
+        try #require(whole.isStopped && whole.spent > 0 && whole.voice != nil)
+        session.wholeClip = whole
+        #expect(session.holdsPaidVoice && !session.hasPaidTakes)
+        session.matchThisVideo()
+        _ = await session.takesTask?.value
+        #expect(generation.selectedVoiceID == anchor.id, "the paid whole clip keeps its voice")
+    }
+
+    /// A whole clip still running with nothing paid holds no voice: its own run chooses the video's voice before it pays.
+    @Test func aWholeClipWithNothingPaidYetHoldsNoVoice() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.voiceError = WholeClipRevoiceSession.Unsent(error: WholeClipRevoiceSessionTests.refusal)
+        let whole = WholeClipRevoiceSession()
+        whole.backend = WholeClipRevoiceSessionTests.backend(stubs)
+        whole.start(); await whole.waitForRun()
+        fixture.session.wholeClip = whole
+        #expect(whole.isStopped && whole.spent == 0 && !fixture.session.holdsPaidVoice && !fixture.session.hasUnusedPaidWork)
+        // Nothing paid: Close Rewrite closes at once.
+        #expect(fixture.editor.closeRewrite(returnFocus: false) && !fixture.session.isOpen)
+    }
 }
 
 /// Drains ready AppKit and SwiftUI work without ordering a window on screen.

@@ -268,11 +268,12 @@ extension VoiceLabSession {
         }
     }
 
-    /// The voices of open projects whose Rewrite holds paid takes not used or discarded yet.
+    /// The voices of open projects whose Rewrite holds paid work not used or discarded yet: its paid takes, or a whole
+    /// clip's paid voice or lip sync, which is made with the same chosen voice.
     static func openPendingTakeVoices() -> Set<String> {
         var voices: Set<String> = []
         for case let document as VoxClipDocument in NSDocumentController.shared.documents {
-            guard let rewrite = document.editorModel?.openRewrite, rewrite.isOpen, rewrite.hasPaidTakes,
+            guard let rewrite = document.editorModel?.openRewrite, rewrite.isOpen, rewrite.hasUnusedPaidWork,
                   let voice = rewrite.generation?.selectedVoiceID else { continue }
             voices.insert(voice)
         }

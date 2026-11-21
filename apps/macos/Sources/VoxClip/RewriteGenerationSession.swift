@@ -711,7 +711,8 @@ extension RewriteSession {
     /// voice, else the anchor, never a voice made from another video (voice-lab §6.13, §6.12).
     func wireInitialVoice() {
         generation?.voicePreference = { [weak self] in self?.initialVoicePreference ?? .init() }
-        generation?.keepsVoice = { [weak self] in self?.hasPaidTakes ?? true }
+        // Paid takes, or a whole clip's paid voice or lip sync, keep the voice they were made with (`holdsPaidVoice`).
+        generation?.keepsVoice = { [weak self] in self.map { $0.hasPaidTakes || $0.holdsPaidVoice } ?? true }
     }
     /// What the first voice choice knows in this video. The per-video book's voices are other videos' except this
     /// video's own; a voice waiting to be removed is no video's to start with.
