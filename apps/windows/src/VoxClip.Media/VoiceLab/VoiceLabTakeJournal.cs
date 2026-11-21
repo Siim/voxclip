@@ -85,10 +85,13 @@ internal sealed record VoiceLabTakeJournalEntry(string Schema, string AssetFile,
 /// <summary>The journal of one project's paid takes (Mac <c>VoiceLabTakeJournal</c>), under <c>&lt;paid root&gt;/&lt;projectId&gt;/takes/</c>:
 /// <c>&lt;assetId&gt;.json</c>, each written to a temporary file, flushed and moved into place, so a crash leaves the old entry or the
 /// new one and at most a <c>.partial</c> file that nothing reads. A take run adopts an entry over the same words, voice and model
-/// for free unless a check failed it (<see cref="Match"/>). No project-format change.</summary>
+/// for free unless a check failed it (<see cref="Match"/>), and <see cref="Settle"/> drops the entries that are done. No
+/// project-format change.</summary>
 internal static class VoiceLabTakeJournal
 {
     internal const string Folder = "takes";
+    /// <summary>How long an entry the project never used stays adoptable (Mac <c>VoiceLabTakeJournal.unusedLifetime</c>).</summary>
+    internal static readonly TimeSpan UnusedLifetime = TimeSpan.FromDays(60);
     private const int MaximumEntryBytes = 4 * 1024 * 1024;
 
     internal static VoiceLabTakeJournalEntry Create(VoiceLabAsset asset, VoiceLabAudioResult result, VoiceLabTakeJournalKey key, uint seed, decimal? estimateUsd)
@@ -145,6 +148,24 @@ internal static class VoiceLabTakeJournal
         List(projectId, paidRoot).Where(entry => entry.Key == key && entry.Adoptable && entry.SampleRate == 24000 && claimed?.Contains(entry.AssetFile) != true)
             .OrderByDescending(entry => entry.CreatedAt).ThenByDescending(entry => entry.AssetFile, StringComparer.Ordinal)
             .FirstOrDefault(entry => TryPcm(entry, projectId, paidRoot) is not null);
+
+    /// <summary>Drops the entries that are done (Mac <c>VoiceLabAssetRetention</c> at a project's close): the project uses the asset
+    /// (<paramref name="references"/>, after Use), the asset is gone, or the entry is older than <see cref="UnusedLifetime"/>. Their
+    /// assets stay. Returns how many went. A take run settles its project's journal before its first adoption, with no references.</summary>
+    internal static int Settle(string projectId, string paidRoot, IReadOnlySet<string> references, DateTimeOffset now)
+    {
+        var removed = 0;
+        foreach (var entry in List(projectId, paidRoot))
+        {
+            bool present;
+            try { present = File.Exists(Path.Combine(Path.GetFullPath(paidRoot), projectId, entry.AssetId + ".wav")); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { continue; }
+            if (!references.Contains(entry.AssetFile) && present && now - entry.CreatedAt < UnusedLifetime) continue;
+            Remove(entry.AssetId, projectId, paidRoot);
+            removed++;
+        }
+        return removed;
+    }
 
     /// <summary>Drops the entry of <paramref name="assetId"/>; its asset stays.</summary>
     internal static void Remove(string assetId, string projectId, string paidRoot)

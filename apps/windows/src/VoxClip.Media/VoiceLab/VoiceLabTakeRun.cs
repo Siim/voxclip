@@ -38,6 +38,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     /// this run's claim on them and on the one its prepared set reserves (<see cref="VoiceLabTakeJournalClaims"/>).</summary>
     private readonly HashSet<string> journalAssets = new(StringComparer.Ordinal);
     private readonly Guid claimOwner = Guid.NewGuid();
+    /// <summary>Set once this run dropped its project's finished journal entries (<see cref="VoiceLabTakeJournal.Settle"/>).</summary>
+    private bool journalSettled;
     private Pending? pending;
     private Guid? owner;
     private bool preparing;
@@ -176,6 +178,11 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         HashSet<string> excluded;
         lock (sync) excluded = new(journalAssets, StringComparer.Ordinal);
         excluded.UnionWith(VoiceLabTakeJournalClaims.Claimed(storage.PaidRoot, claimOwner));
+        bool settle;
+        lock (sync) { settle = !journalSettled; journalSettled = true; }
+        // Windows has no retention pass: the entries this project is done with (aged out, or their asset gone) go before the first
+        // adoption. Dropping the entries of assets the project uses is the project close's (Settle with its references).
+        if (settle) await Task.Run(() => VoiceLabTakeJournal.Settle(storage.ProjectId, storage.PaidRoot, FrozenSet<string>.Empty, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
         // Another run may claim the same entry meanwhile: the next newest is tried, a few times at most.
         for (var attempt = 0; attempt < 4; attempt++)
         {

@@ -135,4 +135,27 @@ public sealed class VoiceLabTakeJournalTests : IDisposable
             Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Path.Combine(folder, older.AssetId + ".json")));
         }
     }
+
+    /// <summary>Windows has no retention pass, so the journal drops its own finished entries (Mac <c>VoiceLabAssetRetention</c> at a
+    /// project's close): one whose asset the project uses, one whose asset is gone, and, after 60 days, any the project never used.
+    /// Their assets stay. The entries used to stay for good, and every adoption read them all.</summary>
+    [Fact]
+    public void SettleDropsUsedGoneAndAgedEntriesAndKeepsTheirAssets()
+    {
+        var document = Document();
+        var project = Journal(document);
+        var entries = document["entries"]!.AsArray().Select(node => Entry(node!)).ToArray();
+        var older = entries[0];
+        var created = entries.Max(entry => entry.CreatedAt);
+        Assert.Equal(2, VoiceLabTakeJournal.Settle(project, root, new HashSet<string>(StringComparer.Ordinal) { older.AssetFile }, created.AddDays(59)));
+        var kept = VoiceLabTakeJournal.List(project, root).Select(entry => entry.AssetFile).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(entries.Length - 2, kept.Count);
+        Assert.DoesNotContain(older.AssetFile, kept);
+        Assert.DoesNotContain(entries.Single(entry => entry.RequestText == "Missing").AssetFile, kept);
+        Assert.Equal(0, VoiceLabTakeJournal.Settle(project, root, new HashSet<string>(StringComparer.Ordinal), created.AddDays(59)));
+        Assert.Equal(entries.Length - 2, VoiceLabTakeJournal.Settle(project, root, new HashSet<string>(StringComparer.Ordinal), created.AddDays(61)));
+        Assert.Empty(VoiceLabTakeJournal.List(project, root));
+        foreach (var asset in document["assets"]!.AsArray())
+            Assert.True(File.Exists(Path.Combine(root, project, asset!["assetId"]!.GetValue<string>() + ".wav")));
+    }
 }
