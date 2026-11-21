@@ -20,7 +20,7 @@ language, words as sent, words before and after, and pace rounded to 0.01) whose
 asset is intact, leaving out the asset files in `claimed`; `expected` is its
 `assetFile`, or null.
 
-Cases may be edited by hand. An asset's `sha256` is the SHA-256 of its canonical
-WAV (`RIFF`, 36 + data size, a 16-byte PCM `fmt ` chunk, then `data`), and an entry's
-`assetSha256` must match its asset's; `caseCount` is the number of `cases`, which
-both replays assert.
+`tools/fixtures/voice-lab/generate_take_journal.py` writes the file; CI runs it and
+fails on any drift, so change the generator, not the JSON. An asset's `sha256` is the
+SHA-256 of its canonical WAV (`RIFF`, 36 + data size, a 16-byte PCM `fmt ` chunk, then
+`data`); `caseCount` is the number of `cases`, which both replays assert.
