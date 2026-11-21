@@ -1,7 +1,15 @@
 namespace VoxClip.App.Services;
 
-internal enum RestartResult { Dispatched, AlreadyPreparing, Busy, TransitionActive, SaveFailed, Cancelled, SettingsFailed, UpdateFailed }
-internal enum RestartPreparation { Ready, Busy, TransitionActive, SaveFailed }
+internal enum RestartResult { Dispatched, AlreadyPreparing, Busy, TransitionActive, SaveFailed, Cancelled, SettingsFailed, UpdateFailed, HeldByPaidWork }
+/// <summary>A window's answer to a restart. <see cref="HeldByPaidWork"/>: an open Rewrite holds paid takes not used or discarded yet,
+/// so the leave never started (<c>ProjectLeaveHeldException</c>); nothing was saved, frozen or closed, and nothing failed.</summary>
+internal enum RestartPreparation { Ready, Busy, TransitionActive, SaveFailed, HeldByPaidWork }
+
+/// <summary>What the window's notice says for a restart the open Rewrite's paid takes held, beside the editor's own line.</summary>
+internal static class RestartNotice
+{
+    internal const string HeldByPaidWork = "VoxClip didn't restart: Rewrite has paid takes you haven't used. Use or discard them in Rewrite, then restart. Your projects are still open with their edits.";
+}
 
 internal interface IUpdateRestartWindow
 {
@@ -62,6 +70,7 @@ internal sealed class UpdateRestartCoordinator(Func<IReadOnlyList<IUpdateRestart
                 {
                     RestartPreparation.Busy => RestartResult.Busy,
                     RestartPreparation.TransitionActive => RestartResult.TransitionActive,
+                    RestartPreparation.HeldByPaidWork => RestartResult.HeldByPaidWork,
                     _ => RestartResult.SaveFailed
                 };
                 prepared.Add(window);

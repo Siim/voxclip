@@ -169,7 +169,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             if (editor is { } current)
             {
                 if (current.ViewModel.Busy) return RestartPreparation.Busy;
-                if (!await current.TrySaveBeforeLeavingAsync()) return RestartPreparation.SaveFailed;
+                // Paid takes in the open Rewrite hold the leave before it starts: nothing was saved, so nothing failed to save.
+                if (!await current.TrySaveBeforeLeavingAsync()) return current.LeaveHeldByPaidWork ? RestartPreparation.HeldByPaidWork : RestartPreparation.SaveFailed;
             }
             restartPrepared = true;
             return RestartPreparation.Ready;
@@ -1021,6 +1022,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                     RestartResult.Busy => "Finish or cancel transcription, clip search or export before restarting. Your edits are still here.",
                     RestartResult.TransitionActive => "Finish opening or closing the project, then try restarting. Your edits are still here.",
                     RestartResult.SaveFailed => "Could not save every open project. Your projects are still open with their edits. Use Save project as… or check the folder, then try again.",
+                    RestartResult.HeldByPaidWork => RestartNotice.HeldByPaidWork,
                     RestartResult.SettingsFailed => "Could not save settings. Your projects are still open. Check the settings folder, then try again.",
                     RestartResult.UpdateFailed => "Could not restart for the update. Your projects are still open with their edits. Try again when ready.",
                     _ => "An update restart is already in progress."

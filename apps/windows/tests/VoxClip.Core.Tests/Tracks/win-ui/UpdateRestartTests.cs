@@ -74,7 +74,9 @@ public sealed class UpdateRestartTests
         private Task pendingSave = Task.CompletedTask;
         private TaskCompletionSource? releasePending;
         public EditorViewModel Model { get; } = new(Fixture());
-        public DiskWindow(string path) { this.path = path; leave = new(Model); }
+        public DiskWindow(string path) { this.path = path; leave = new(Model) { HoldsPaidWork = () => HeldByPaidTakes }; }
+        /// <summary>The open Rewrite holds paid takes, as <c>EditorPage</c> wires its leave.</summary>
+        public bool HeldByPaidTakes { get; set; }
         public bool Busy { get; set; }
         public bool TransitionActive { get; set; }
         public bool FailSave { get; set; }
@@ -110,6 +112,8 @@ public sealed class UpdateRestartTests
                 });
                 return RestartPreparation.Ready;
             }
+            // As MainWindow reads EditorPage.LeaveHeldByPaidWork after a refused leave.
+            catch (ProjectLeaveHeldException) { return RestartPreparation.HeldByPaidWork; }
             catch (IOException) { return RestartPreparation.SaveFailed; }
         }
         public void ResumeAfterRestart() => leave.Resume();
@@ -201,6 +205,38 @@ public sealed class UpdateRestartTests
             Assert.Equal(1, first.FinalWrites); Assert.False(first.Frozen); Assert.False(second.Frozen);
             Assert.Single((await first.ReadAsync()).Edits.Clips);
             AddClip(first, 6); AddClip(second, 6);
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    /// <summary>A Restart over an open Rewrite's paid takes is held, not a failed save: the leave never started, so nothing froze or
+    /// was written in that window, an earlier window resumes, nothing is dispatched, and the window's notice says why as a warning,
+    /// beside the editor's own line. It used to read as SaveFailed: "Could not save every open project…".</summary>
+    [Fact]
+    public async Task PaidTakesHoldARestartWithoutSayingTheSaveFailed()
+    {
+        var folder = Folder();
+        try
+        {
+            var first = new DiskWindow(Path.Combine(folder, "first.voxclip"));
+            var second = new DiskWindow(Path.Combine(folder, "second.voxclip")) { HeldByPaidTakes = true };
+            AddClip(first, 0); AddClip(second, 3);
+            var dispatches = 0;
+            var result = await new UpdateRestartCoordinator(() => [first, second]).RunAsync(new TestSettings(),
+                _ => { dispatches++; return Task.CompletedTask; }, CancellationToken.None);
+            Assert.Equal(RestartResult.HeldByPaidWork, result);
+            Assert.Equal(0, dispatches);
+            Assert.Equal(0, second.FinalWrites);
+            Assert.False(first.Frozen); Assert.False(second.Frozen);
+            AddClip(second, 6);
+            Assert.DoesNotContain("save", RestartNotice.HeldByPaidWork, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("paid takes", RestartNotice.HeldByPaidWork, StringComparison.Ordinal);
+            var window = File.ReadAllText(Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!,
+                "apps", "windows", "src", "VoxClip.App", "MainWindow.xaml.cs"));
+            Assert.Contains("return current.LeaveHeldByPaidWork ? RestartPreparation.HeldByPaidWork : RestartPreparation.SaveFailed;", window);
+            Assert.Contains("RestartResult.HeldByPaidWork => RestartNotice.HeldByPaidWork,", window);
+            var severity = window[window.IndexOf("WindowNotice.Severity = result is", StringComparison.Ordinal)..];
+            Assert.DoesNotContain("HeldByPaidWork", severity[..severity.IndexOf(';')]);
         }
         finally { Directory.Delete(folder, true); }
     }

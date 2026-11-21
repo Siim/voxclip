@@ -1187,6 +1187,9 @@ if (insertion ||
     {
         AiModified.Visibility = ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId) ? Visibility.Visible : Visibility.Collapsed;
     }
+    /// <summary>The open Rewrite holds paid takes not used or discarded yet, so a leave (a close, another project, a restart) never
+    /// starts: <see cref="TrySaveBeforeLeavingAsync"/> says so in the editor and returns false without saving.</summary>
+    internal bool LeaveHeldByPaidWork => leave.HoldsPaidWork?.Invoke() == true;
     internal async Task<bool> TrySaveBeforeLeavingAsync()
     {
         if (ViewModel.Busy)
