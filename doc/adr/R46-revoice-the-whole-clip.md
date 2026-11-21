@@ -1,6 +1,6 @@
 # ADR-R46: revoice the whole clip in one voice, fitted and lip synced, when patching would sound stitched
 
-Date: 2026-11-07. Status: accepted (package v2-revoice-whole; the user's request and decisions below, approved mockup "revoice whole clip").
+Date: 2026-11-07. Status: accepted (package v2-revoice-whole; the user's request and decisions below, approved mockup "revoice whole clip"); amended 2026-11-21 (package v2-rel-d): Claude mode hands paid work back. The Amended section below supersedes "Claude mode patches on its own" in the 2026-11-08 updates.
 
 ## Context
 
@@ -35,7 +35,7 @@ On the user's 0:29.7 clip (61 items, 14 cut fillers and tightened pauses), two o
 
 - **Parts tile the clip** (voice-lab §8.14 item 3). The first part starts at the clip's first item and the last ends at its last. At each boundary, the items between the last kept source word of one part and the first kept source word of the next go to the side of the widest gap, so both seams sit on kept audio. A cut pause counts as no gap. When no gap of `SEAM_MIN_GAP` exists there, the two parts become one change. Tiling alone was not enough: a tightened pause keeps no breath once both of its neighbours are replaced, and a cut run that touches both sentences leaves no gap at all. Joining is the smallest correct change, because placement already joins touching windows. The patch geometry (§8.4) is unchanged.
 - **A failure says why and is logged.** It names the part and its reason; only lip-sync errors use the lip-sync copy. One `voice-lab` line per failure gives the step, the error case and the part.
-- **Try Again is offered only when it can succeed.** After a stop that would only repeat (placement, or anything before a paid request), the card offers Voice Only the Changed Phrases with no price. Claude mode patches on its own and says so in the review.
+- **Try Again is offered only when it can succeed.** After a stop that would only repeat (placement, or anything before a paid request), the card offers Voice Only the Changed Phrases with no price. Claude mode patches on its own and says so in the review (since 2026-11-21 only when nothing was paid; see the amendment below).
 
 ### Update 2026-11-08: one timeline, never pad
 
@@ -54,7 +54,7 @@ On the user's 0:31.4 clip (MVP44, 49 words, eleven cut words and ten tightened p
 - **Never pad.** `WholeClipRevoice.fit` asks for a wording only when the voice is more than 8% longer than the clip as edited. It then asks for a **shorter** one of about `words ÷ factor` words (`.reword(targetWords:)`, at most 2 rounds). A shorter voice is laid out at any round (`.laidOut`), and the prompt never asks for more words.
 - **Check before paying** (`rewordFits`, `predictedSeconds`). The reworded script is said only when its speaking-rate estimate fits. The estimate is the measured voice scaled by the ratio of the two scripts' estimates (`VoiceLabPhraseTiming.estimate` at the project's rate), so the rate's own error cancels. The prediction must come in at or under the clip as edited plus 8%. Otherwise the step stops inline with no new voice: "The shorter wording would still run about 0:35.3 for 0:31 of video, so no new voice was made."
 - **Try Again doesn't repeat a failure.** After a Fit stop (the voice can't fit, or a reword came back too long), with the clip's script unchanged, the stopped card's primary is **Voice Only the Changed Phrases** and Try Again comes second. Once the script changes, Try Again leads again. The voice already paid is reused either way.
-- **Claude mode** runs the same session, so the same fit applies. A Fit stop patches the changed phrases on its own, as a placement stop does. What its voice cost is charged to the run, and the patch gets what is left.
+- **Claude mode** runs the same session, so the same fit applies. A Fit stop patches the changed phrases on its own, as a placement stop does. What its voice cost is charged to the run, and the patch gets what is left. (Superseded 2026-11-21: a Fit stop after a paid voice stays in Rewrite; see the amendment below.)
 - **Windows** ports the pure rules to C# Core: the fit, check before paying, `LayoutCuts`, `EditedCuts`, `EditedSeconds`, `LayoutPauseBound`, the edited form of `ValidCuts`, and `VoiceLabVideoFraming`'s zoom-1 spans. Both Cores replay `whole-clip-fit-cases.json` (`voxclip-whole-clip-fit/1`), including the user's clip as numbers, and `whole-clip-revoice-cases.json`'s updated `fit`. The layout fit itself (`VoiceLabNaturalPacing.layout`) is Mac only, like the run.
 
 ### Update 2026-11-08: your own pace, and Fit checks the picture (MVP45)
@@ -74,7 +74,7 @@ The user's MVP45 run read "Clip 1 · 0:31.4 · 50 words": Script ✓ 52 words, V
   - **The user's clip** (the MVP44/45 clip's numbers, 31.2 s as edited from its first word to its last, a 20.2 s take of its 10 sentences; `WholeClipPictureSpeedTests`). Before: laid out at 1×, 24.1 s of output (the voice, 3.1 s of sentence-pause growth and 0.8 s at the end), 7.0 s of the clip trimmed past its own cuts, and the lip sync priced on the clip as edited plus the handles, 33.2 s (≈ $1.66). After: picture 1.20×, the same 24.1 s of voice and pauses over 28.9 s of picture, 2.2 s trimmed, and the lip sync priced on 26.1 s (≈ $1.31). The sped cut validates and the picture match passes.
   - **Options owed, not built.** S1: `eleven_v4` with `voice_settings.speed` through the text-to-speech endpoint (Text to Dialogue has no speed field; voice-lab §8.5 refuses a pace other than 1.0 on it), owed to a live probe. "Multilingual v2 when paced": a model switch for a slower provider pace, owed to a user decision. The local pitch-preserving time stretch was considered and replaced by this rule before it was built.
 - **Rewrite's phrase takes are unchanged.** `VoiceLabEditedLayout.maximumPictureSpeed` defaults to 1; only the whole clip passes 1.2. A pause's jump cut still refuses any `retimeFactor`, and phrase pace stays 1.0 on v4.
-- **Claude mode** runs the same session and patches on its own after any stop that would only repeat, the voice's cost charged to the run.
+- **Claude mode** runs the same session and patches on its own after any stop that would only repeat, the voice's cost charged to the run. (Superseded 2026-11-21: only when nothing was paid; see the amendment below.)
 - **Windows** ports the rule, the copy, the record's range, the sped edited cut and its even mapping and framing to C# Core; both Cores replay `whole-clip-speed-cases.json` (`voxclip-whole-clip-speed/1`).
 
 ## Update 2026-11-09: fal.ai's results run short, and a paid result is never lost (MVP46)
@@ -84,6 +84,15 @@ The user's MVP46 run lip synced a 4K clip with sync-3 (a 0:18.5 voice for 0:31.1
 ## Update 2026-11-09: a seam at a cut places (MVP48)
 
 "Voice Only the Changed Phrases" stopped at `placement.geometry.seamFadeCrossesCut` after Claude's 260 s rewrite of the user's heavily cut Clip 1, so the user revoiced the whole clip instead. A changed phrase that starts where a cut ends (the cut word touches it, or the cut's reach takes the whole gap once the phrase is dropped) had a hard seam with no kept source beside it; on that clip 197 of 288 reviews that cut a word and change the words beside it were refused. Prepare already renders such a seam by fading from the output piece before the cut, which plays at the cut's join anyway, so placement now accepts it by prepare's rule, moving the seam onto the cut's edge (voice-lab §8.4 step 5, "A seam at a cut"). It is inaudible and sync-safe: no cut audio is heard, the cut keeps its length, and the window's stored edge must lie on the source grid without cutting into a word, or the hunk is refused before any paid take. A change that still can't be placed keeps its original words with one line of why, and the other changes are priced; the plan no longer stops for one phrase. Whole-clip parts keep their tiling.
+
+## Amended 2026-11-21: Claude mode hands paid work back
+
+Claude mode used to close Rewrite over a paid whole-clip voice after a Fit stop or a stop that would only repeat, then pay for the changed phrases' patch on top, so the same words were paid for twice. Since package v2-rel-d (voice-lab §8.17, design.md §6.7 "Paid work is handed back"):
+
+- **Claude mode patches only when nothing was paid.** A stop that would only repeat, or a Fit stop, still becomes the patch (`WholeClipAutoOutcome.patchInstead`) when the whole clip holds no paid work. A voice adopted for free from the take journal (spent 0) is not paid work.
+- **A paid voice or lip sync stays in Rewrite.** A stop holding unused paid work (`RewriteSession.hasUnusedPaidWork`) is `needsYou`: Rewrite stays open for the creator, its cost is charged to the run, and no phrase is voiced on top. The review row reads "Finish the whole clip in Rewrite: its paid voice is kept" with **[Show in Rewrite]**.
+- **One automatic Try Again** at most (`automaticRetryUSD`): free when the lip-sync result is kept, or the unfinished voice part when it fits what is left of the cap; never after a stale stop, a paid voice that no longer matches or an unconfirmed submission.
+- This supersedes "Claude mode patches on its own" in the parts-tile-the-clip update, "A Fit stop patches the changed phrases on its own … the patch gets what is left" in the one-timeline update, and "patches on its own after any stop that would only repeat, the voice's cost charged to the run" in the MVP45 update. Decision item 2 is unchanged: over the cap Claude still patches before anything is paid and offers the whole clip inline.
 
 ## Consequences
 
