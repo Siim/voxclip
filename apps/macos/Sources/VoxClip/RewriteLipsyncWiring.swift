@@ -39,7 +39,8 @@ extension RewriteSession {
     func lipSyncAllAction() -> PanelAction? {
         guard let plan = takePlan, let offer = plan.lipsync.allOffer, plan.lipsync.keyAvailable,
               !plan.lipsync.usingTakes, !takesBusy else { return nil }
-        return PanelAction(id: "lipSyncAll", title: "Lip Sync All \(offer.phraseIDs.count) · ≈ \(offer.price)", priced: true) { [weak self, weak plan] in
+        // The formatted charge carries its own "≈" ("free" when every window gets back a result already paid for).
+        return PanelAction(id: "lipSyncAll", title: "Lip Sync All \(offer.phraseIDs.count) · \(offer.charge)", priced: !offer.free) { [weak self, weak plan] in
             guard let self, let plan, current, takePlan === plan else { return }
             // A refusal (the takes changed, a lip sync still running) says why under the rows and makes fresh offers.
             plan.lipsync.press(offer)

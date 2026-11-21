@@ -13,8 +13,11 @@ struct RewriteLipsyncSessionTests {
         #expect(price == "≈ $1.90")
         let label = RewriteLipsyncControls.approveLabel(verb: "Lip sync", phrase: 0, price: price)
         #expect(label == "Lip sync, phrase 1, approximately $1.90, upload video and audio to fal.ai sync-3")
-        let source = try? String(contentsOfFile: #filePath.replacingOccurrences(of: "Tests/VoxClipAppTests/RewriteLipsyncSessionTests.swift", with: "Sources/VoxClip/RewriteLipsyncControls.swift"), encoding: .utf8)
-        #expect(source?.contains("≈ \\(") == false, "a literal ≈ before an already formatted price")
+        for file in ["RewriteLipsyncControls.swift", "RewriteLipsyncWiring.swift"] {
+            // Lip Sync All read "≈ ≈ $0.80" (the wiring's title).
+            let source = try? String(contentsOfFile: #filePath.replacingOccurrences(of: "Tests/VoxClipAppTests/RewriteLipsyncSessionTests.swift", with: "Sources/VoxClip/" + file), encoding: .utf8)
+            #expect(source?.contains("≈ \\(") == false, "a literal ≈ before an already formatted price in \(file)")
+        }
     }
 
     @MainActor private final class RunGate {
@@ -282,6 +285,141 @@ struct RewriteLipsyncSessionTests {
         await session.refresh(); session.start(try #require(session.offers[0])); await session.waitForRun()
         #expect(session.freeRetries == (settled ? [] : [0]))
         #expect(session.failedActions(0) == [.tryAgain(free: !settled), .keepOriginal])
+    }
+
+    /// A backend over fresh current offers (phrase 0's, and Lip Sync All's when `all` is given) whose run records `mayPay`
+    /// and returns a result (recovered when the click was free), or, when `gone` and free, what `LipsyncRun` throws when the
+    /// window's imported result is no longer on this Mac.
+    @MainActor private final class ReuseLog {
+        var pays: [Bool] = []
+        var gone = false
+    }
+
+    private func reusing(_ session: RewriteLipsyncSession, _ template: RewriteLipsyncSession.Offer, _ log: ReuseLog,
+                         all: (() -> RewriteLipsyncSession.Offer)? = nil) {
+        session.backend = .init(offers: {
+            let fresh = RewriteLipsyncSession.Offer(id: UUID(), request: template.request, windows: template.windows,
+                estimate: template.estimate, recordID: template.recordID, dependencies: template.dependencies, isCurrent: { true })
+            return ([0: fresh], all?() ?? fresh)
+        }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { .init(limit: Decimal(string: "0.3")!, spent: 0) },
+           run: { _, _, _, _, mayPay, _ in
+            log.pays.append(mayPay)
+            if log.gone, !mayPay { throw LipsyncRecoveryFailed(error: LipsyncError.unknownJob, settled: true) }
+            var result = Self.result(template)
+            result.recovered = !mayPay
+            return result
+        }, changed: {})
+    }
+
+    /// Undo keeps the paid result findable (the window's imported index): the next Lip Sync over the same takes gets it back,
+    /// and its button says so ("free"), never the price it won't charge. When that result is gone from this Mac, the click
+    /// still pays nothing and says why, and the next offer is priced again. Before: "Lip Sync · ≈ $0.40" for a free click.
+    @Test func anUndoneResultIsOfferedBackForFree() async throws {
+        let (session, template, _) = try setup()
+        let log = ReuseLog()
+        reusing(session, template, log)
+        await session.refresh()
+        let first = try #require(session.offers[0])
+        #expect(!first.free && first.charge == "≈ $0.40" && session.capWarning(for: first) != nil)
+        session.press(first); await session.waitForRun()
+        #expect(session.applied[0] != nil)
+        session.undo(0)
+        await session.refresh()
+        let again = try #require(session.offers[0])
+        #expect(again.free && again.charge == "free" && again.price == "≈ $0.40")
+        #expect(RewriteLipsyncControls.price(again, free: false) == "free")
+        #expect(session.capWarning(for: again) == nil)
+        session.press(again); await session.waitForRun()
+        #expect(log.pays == [true, false], "the click said free and paid nothing")
+        #expect(session.applied[0]?.result.recovered == true)
+        // The kept file was removed meanwhile: nothing is paid, the row says why, and the next offer is priced.
+        session.undo(0)
+        await session.refresh()
+        log.gone = true
+        session.press(try #require(session.offers[0])); await session.waitForRun()
+        guard case .failed(let reason, _, let mayBill) = session.states[0] else { Issue.record("not failed"); return }
+        #expect(reason == RewriteLipsyncSession.reuseGone && !mayBill)
+        #expect(log.pays == [true, false, false])
+        let priced = try #require(session.offers[0])
+        #expect(!priced.free && priced.charge == "≈ $0.40")
+        #expect(session.failedActions(0) == [.tryAgain(free: false), .keepOriginal])
+    }
+
+    /// Lip Sync All over a reused window and a new one charges only the new one's share, pays only for it, and its first
+    /// window puts the earlier result back for free. Before: the button said both windows' price.
+    @Test func lipSyncAllChargesOnlyTheWindowsItBuys() async throws {
+        let (session, template, _) = try setup()
+        let piece = VoiceLabOutputPiece(kind: .source, sourceStartSample: 0, sourceEndSample: 480_000,
+            outputStartSample: 0, outputEndSample: 480_000, segmentId: nil, assetId: nil, audio: nil)
+        let plan = VoiceLabOutputPlan(sampleRate: 48_000, totalSourceSamples: 480_000, pieces: [piece], captions: [], scope: .full)
+        let second = try LipsyncRenderWindow(source: LipsyncWindow.make(seamIn: 336_000, seamOut: 384_000, totalSamples: 480_000,
+                                                                        sampleRate: 48_000, phraseID: 1), plan: plan)
+        var both = template.estimate; both.usd = Decimal(string: "0.8")
+        let log = ReuseLog()
+        reusing(session, template, log) {
+            RewriteLipsyncSession.Offer(id: UUID(), request: template.request, windows: template.windows + [second],
+                                        estimate: both, recordID: template.recordID, dependencies: [0, 1], isCurrent: { true })
+        }
+        await session.refresh()
+        #expect(session.allOffer?.charge == "≈ $0.80")
+        session.press(try #require(session.offers[0])); await session.waitForRun()
+        session.undo(0)
+        await session.refresh()
+        let all = try #require(session.allOffer)
+        #expect(all.freeWindows == [0] && !all.free)
+        #expect(all.price == "≈ $0.80" && all.charge == "≈ $0.40")
+        #expect(session.allDisclosure?.hasPrefix("Uploads 1 phrases' prepared video") == true)
+        #expect(session.allDisclosure?.contains("One phrase gets its paid lip sync back, for free.") == true)
+        session.press(all); await session.waitForRun()
+        #expect(log.pays == [true, false, true], "the reused window is free, the new one is paid")
+        #expect(session.applied[0] != nil && session.applied[1] != nil)
+    }
+
+    /// A stop that lands just as fal.ai finished (Rewrite closing, or Cancel on the row): the job is billed and its result can
+    /// be fetched for free, so the row says it was charged and kept, with Try Again · free. Before: "Lip sync cancelled. fal.ai
+    /// may still charge" with a priced Try Again (Rewrite stopping), or "The job could not be completed." (the row's Cancel).
+    @Test(arguments: [true, false]) func aStopAfterFalFinishedKeepsTheFreeRetry(closing: Bool) async throws {
+        let (session, offer, gate) = try setup()
+        let attempt = try keptAttempt(offer)
+        session.backend = .init(offers: { ([0: offer], offer) }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { nil },
+            run: { _, _, _, _, _, _ in
+                await gate.wait()
+                throw LipsyncAttemptFailure(error: CancellationError(), attempt: attempt, freeRetry: true)
+            }, changed: {})
+        await session.refresh(); session.start(offer)
+        await TestDeadline.until { gate.started }
+        if closing { session.stop() } else { session.cancel(0) }
+        gate.release()
+        await session.waitForRun()
+        guard case .failed(let reason, let price, let mayBill) = session.states[0] else {
+            Issue.record("not kept: \(String(describing: session.states[0]))"); return
+        }
+        #expect(reason == "Lip sync finished before the cancel reached fal.ai. It's kept: Try Again puts it in for free.")
+        #expect(mayBill && price == VoiceLabCostPresentation.format(Decimal(string: "0.45")!))
+        #expect(session.freeRetries == [0])
+        #expect(session.failedActions(0) == [.tryAgain(free: true), .keepOriginal])
+        #expect(session.failureLine(0) == "Phrase 1: \(reason) fal.ai charged for the job (estimated cost: ≈ $0.45).")
+    }
+
+    /// A stop on this Mac that the same inputs meet again offers no Try Again: Keep Original Video (a new take or wording
+    /// makes a new offer). A missing key leads to Settings, and an unwritable file can pass once the disk has room.
+    @Test func aDeterministicLocalStopOffersNoTryAgain() async throws {
+        let attempt = try keptAttempt(try setup().1)
+        let cases: [(any Error, [RewriteLipsyncSession.FailedAction])] = [
+            (LipsyncPreparationError.noClearFace, [.keepOriginal]),
+            (LipsyncPreparationError.unsupportedVideo, [.keepOriginal]),
+            (LipsyncError.invalidInput, [.keepOriginal]),
+            (LipsyncAttemptFailure(error: LipsyncError.invalidInput, attempt: attempt, freeRetry: false), [.keepOriginal]),
+            (LipsyncError.missingKey, [.settings, .tryAgain(free: false)]),
+            (LipsyncError.unsafeFile, [.tryAgain(free: false), .keepOriginal]),
+        ]
+        for (error, actions) in cases {
+            let (session, offer, _) = try setup()
+            let log = PayLog()
+            failingOnce(session, offer, log, first: error)
+            await session.refresh(); session.start(try #require(session.offers[0])); await session.waitForRun()
+            #expect(session.failedActions(0) == actions, Comment(rawValue: String(describing: error)))
+        }
     }
 
     /// The whole clip's restore (package B): applied entries go back when nothing runs and they match a current offer over

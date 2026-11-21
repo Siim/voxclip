@@ -16,8 +16,42 @@ import VoxClipMedia
         var model: WholeClipRevoice.Lipsync = .sync3
         /// False for a "Try Again · free": the earlier paid attempt's result is re-imported and nothing new is paid.
         var mayPay = true
+        /// The windows (indices into `windows`) the click gets for free, marked by `refresh` (`RewriteLipsyncSession.freeWindows`):
+        /// a result this session already got back over the same upload, which the window's imported index answers with
+        /// nothing uploaded, or a stop's kept paid result (its phrase's Try Again · free). Their runs never pay, and the
+        /// click charges only the other windows.
+        var freeWindows: Set<Int> = []
         var phraseIDs: [Int] { windows.flatMap { $0.source.phraseIDs } }
+        /// The whole estimate: what fal.ai bills for every window (a stop's line, a cancelled job).
         var price: String { estimate.usd.map(VoiceLabCostPresentation.format) ?? "Price unavailable" }
+        /// Every window is free: the click buys nothing.
+        var free: Bool { !windows.isEmpty && windows.indices.allSatisfy(freeWindows.contains) }
+        /// What the click charges: the estimate less the free windows' share (each window is priced by its upload seconds,
+        /// as the offers are made), zero when every window is free.
+        var chargeUSD: Decimal? {
+            guard !freeWindows.isEmpty else { return estimate.usd }
+            if free { return 0 }
+            guard let usd = estimate.usd else { return nil }
+            let rate = request.timeline.sampleRate
+            let seconds = windows.map { $0.uploadSeconds(sampleRate: rate) }
+            let total = seconds.reduce(0, +)
+            guard total > 0 else { return usd }
+            let paid = seconds.indices.filter { !freeWindows.contains($0) }.reduce(0.0) { $0 + seconds[$1] }
+            return usd * Decimal(paid / total)
+        }
+        /// The button's price: "free" when nothing new is bought, else what the click charges.
+        var charge: String {
+            if free { return "free" }
+            return chargeUSD.map(VoiceLabCostPresentation.format) ?? "Price unavailable"
+        }
+    }
+    /// A paid result this session got back, with what its upload was made from. An offer over the same window, model and
+    /// upload (`LipsyncWindowPreparation.uploadRequest`) prepares the same inputs, which the window's imported index answers
+    /// with that result: it stays reusable through Undo, Keep Original Video, a set-aside and a discarded result.
+    private struct Reusable {
+        let window: LipsyncRenderWindow
+        let model: WholeClipRevoice.Lipsync
+        let upload: RenderRequest
     }
     enum State: Equatable {
         case running(started: Date, progress: Double?)
@@ -101,6 +135,8 @@ import VoxClipMedia
     @ObservationIgnored private var invalidated: Set<UUID> = []
     @ObservationIgnored private var refreshAgain = false
     @ObservationIgnored private var refreshAfterUse = false
+    /// The paid results this session got back (`Reusable`), newest last.
+    @ObservationIgnored private var reusable: [Reusable] = []
 
     var running: Bool { operation != nil }
     /// Waits for the queued jobs to finish (a whole-clip revoice's lip sync, RewriteWholeClip.swift).
@@ -142,6 +178,16 @@ import VoxClipMedia
             default: break
             }
         }
+        // A stop on this Mac that the same inputs meet again (no clear face, a source that can't be prepared, a part outside
+        // the limits) has no Try Again: only the user's change of take or wording can pass it. A missing key passes once it
+        // is added; an unwritable file once the disk has room.
+        if let error, Self.isLocal(error) {
+            switch error as? LipsyncError {
+            case .missingKey: return [.settings, .tryAgain(free: false)]
+            case .unsafeFile: break
+            default: return [.keepOriginal]
+            }
+        }
         return [.tryAgain(free: false), .keepOriginal]
     }
 
@@ -156,10 +202,59 @@ import VoxClipMedia
 
     var allDisclosure: String? {
         guard let offer = allOffer else { return nil }
-        var lines = ["Uploads \(offer.phraseIDs.count) phrases' prepared video and new audio to fal.ai (sync-3) with your key. Exports say “Lip movement generated with AI.”"]
+        if offer.free { return Self.freeLine(phrases: offer.phraseIDs.count) }
+        let sent = offer.windows.indices.filter { !offer.freeWindows.contains($0) }.reduce(0) { $0 + offer.windows[$1].source.phraseIDs.count }
+        var lines = ["Uploads \(sent) phrases' prepared video and new audio to fal.ai (sync-3) with your key. Exports say “Lip movement generated with AI.”"]
+        let back = offer.phraseIDs.count - sent
+        if back > 0 { lines.append((back == 1 ? "One phrase gets" : "\(back) phrases get") + " its paid lip sync back, for free.") }
         if !consentAccepted { lines.append(Self.firstUse) }
         if let warning = capWarning(for: offer) { lines.append(warning) }
         return lines.joined(separator: "\n")
+    }
+
+    /// An offer whose every window is free: what its click does.
+    static func freeLine(phrases: Int) -> String {
+        "Gets back the lip sync already paid for \(phrases == 1 ? "this phrase's" : "these phrases'") takes. Nothing new is uploaded or charged."
+    }
+
+    /// The windows of `offer` (indices) whose paid result this session already got over the same window, model and upload:
+    /// the window's imported index answers them, for free.
+    func reusedWindows(_ offer: Offer) -> Set<Int> {
+        guard !reusable.isEmpty else { return [] }
+        let upload = LipsyncWindowPreparation.uploadRequest(offer.request)
+        return Set(offer.windows.indices.filter { index in
+            reusable.contains { $0.window == offer.windows[index] && $0.model == offer.model && $0.upload == upload }
+        })
+    }
+
+    /// The windows of `offer` its click gets for free: the reused ones, and those with a phrase whose stop kept its paid
+    /// result (Try Again · free).
+    func freeWindows(_ offer: Offer) -> Set<Int> {
+        reusedWindows(offer).union(offer.windows.indices.filter { offer.windows[$0].source.phraseIDs.contains(where: freeRetries.contains) })
+    }
+
+    private func marked(_ offer: Offer) -> Offer {
+        var offer = offer
+        offer.freeWindows = freeWindows(offer)
+        return offer
+    }
+
+    /// The offers on screen priced again after a stop's free retry changed (Keep Original Video).
+    private func remark() {
+        offers = offers.mapValues { marked($0) }; allOffer = allOffer.map { marked($0) }
+    }
+
+    /// A paid result came back for `window` of `offer`: the same inputs get it again for free.
+    private func remember(_ window: LipsyncRenderWindow, of offer: Offer) {
+        let upload = LipsyncWindowPreparation.uploadRequest(offer.request)
+        reusable.removeAll { $0.window == window && $0.model == offer.model && $0.upload == upload }
+        reusable.append(Reusable(window: window, model: offer.model, upload: upload))
+    }
+
+    /// The result `window` was reused for is gone from this Mac (its file was removed or changed): the next offer is priced.
+    private func forget(_ window: LipsyncRenderWindow, of offer: Offer) {
+        let upload = LipsyncWindowPreparation.uploadRequest(offer.request)
+        reusable.removeAll { $0.window == window && $0.model == offer.model && $0.upload == upload }
     }
 
     func refresh() async {
@@ -182,8 +277,9 @@ import VoxClipMedia
             guard revision == turn else { return }
             // Offers made over takes that changed meanwhile are never shown: the refresh after that change makes fresh ones.
             guard offers.values.allSatisfy({ $0.isCurrent() }) else { self.offers = [:]; allOffer = nil; return }
-            self.offers = offers
-            self.allOffer = all.flatMap { $0.phraseIDs.contains(where: submissionUnconfirmed) ? nil : $0 }
+            // Windows this session already got a paid result for are priced "free": the run puts that result back.
+            self.offers = offers.mapValues { marked($0) }
+            self.allOffer = all.flatMap { $0.phraseIDs.contains(where: submissionUnconfirmed) ? nil : marked($0) }
             problem = ""; offersFailed = false
         } catch ClipTakePlan.Failure.stale, ClipTakePlan.Failure.lipsyncBusy {
             // The takes changed while the offers were made (a reworded phrase is priced, a take is made): they end
@@ -212,7 +308,7 @@ import VoxClipMedia
     }
 
     func capWarning(for offer: Offer) -> String? {
-        guard let cap = monthlyCap, let cost = offer.estimate.usd, cap.spent + cost > cap.limit else { return nil }
+        guard let cap = monthlyCap, let cost = offer.chargeUSD, cost > 0, cap.spent + cost > cap.limit else { return nil }
         return VoiceLabCostPresentation.capWarning(cap: cap.limit, providerName: "fal.ai")
     }
 
@@ -257,6 +353,7 @@ import VoxClipMedia
         guard case .failed = states[phrase] else { return }
         states.removeValue(forKey: phrase); errors[phrase] = nil
         freeRetries.remove(phrase); repeatingChecks.remove(phrase)
+        remark()
     }
 
     /// Puts back lip syncs applied earlier (a whole clip's `Applied` entries), when nothing runs, none of their phrases is
@@ -286,9 +383,12 @@ import VoxClipMedia
         guard !receipts.contains(where: { $0.id == offer.id }), offer.phraseIDs.allSatisfy({ applied[$0] == nil }) else {
             throw ClipTakePlan.Failure.lipsyncAlreadyStarted
         }
+        // The button said which windows are free: one it counted on that no longer is makes fresh offers first.
+        guard offer.freeWindows.isSubset(of: freeWindows(offer)) else { throw ClipTakePlan.Failure.stale }
         var offer = offer
-        // A free Try Again re-imports the paid attempt's kept result and never pays (design.md, Stopped).
-        offer.mayPay = offer.mayPay && !offer.phraseIDs.contains { freeRetries.contains($0) }
+        // A free Try Again re-imports the paid attempt's kept result and never pays (design.md, Stopped); so does a window
+        // this session already got back paid. Each window's run decides its own (`drain`): Lip Sync All pays for the rest.
+        offer.mayPay = offer.mayPay && !offer.free
         backend.acceptConsent(); consentAccepted = true
         receipts.append(Receipt(id: offer.id, phraseIDs: offer.phraseIDs, estimate: offer.estimate))
         problem = ""
@@ -308,12 +408,17 @@ import VoxClipMedia
             let started = ContinuousClock.now
             var ran: Set<Int> = []
             do {
-                for window in offer.windows {
+                for (index, window) in offer.windows.enumerated() {
                     try Task.checkCancellation()
                     guard offer.isCurrent(), !invalidated.contains(offer.id) else { throw CancellationError() }
                     let phrases = window.source.phraseIDs
                     ran.formUnion(phrases)
-                    let run = Task { try await backend.run(offer.request, window, offer.recordID, offer.model, offer.mayPay) { [weak self] progress in
+                    // A free window never pays: a stop's free Try Again re-imports its kept paid result, and a reused one puts
+                    // back the result this session already got for the same upload.
+                    let retried = phrases.contains(where: freeRetries.contains)
+                    let reused = offer.freeWindows.contains(index) && !retried
+                    let mayPay = offer.mayPay && !retried && !reused
+                    let run = Task { try await backend.run(offer.request, window, offer.recordID, offer.model, mayPay) { [weak self] progress in
                         await self?.progress(progress, phrases: phrases)
                     } }
                     currentRun = run
@@ -321,12 +426,14 @@ import VoxClipMedia
                     do { result = try await withTaskCancellationHandler { try await run.value } onCancel: { run.cancel() } }
                     catch {
                         currentRun = nil
+                        if reused, error is LipsyncRecoveryFailed { forget(window, of: offer) }
                         // Only this window's phrases ran: the failure, its charge and its free retry are theirs alone.
-                        fail(phrases, offer: offer, error: error)
+                        fail(phrases, offer: offer, mayPay: mayPay, reused: reused, error: error)
                         throw Stopped()
                     }
                     currentRun = nil
-                    if let index = receipts.firstIndex(where: { $0.id == offer.id }) { receipts[index].requestIDs.append(result.provenance.requestID) }
+                    remember(window, of: offer)
+                    if let receipt = receipts.firstIndex(where: { $0.id == offer.id }) { receipts[receipt].requestIDs.append(result.provenance.requestID) }
                     // A result that came back was paid for: it goes in, or it is kept for a free Try Again. Never a cancel.
                     guard !run.isCancelled, !Task.isCancelled, offer.isCurrent(), !invalidated.contains(offer.id) else {
                         setAside(result, phrases: phrases, offer: offer, cancelled: run.isCancelled || Task.isCancelled)
@@ -353,18 +460,33 @@ import VoxClipMedia
         }
     }
 
-    /// A window's run failed: its phrases' stop, what fal.ai may have charged and whether Try Again is free.
-    private func fail(_ phrases: [Int], offer: Offer, error: any Error) {
+    /// A window's run failed: its phrases' stop, what fal.ai may have charged and whether Try Again is free. `mayPay` is
+    /// the window's own (false for a free Try Again or a reused window); `reused` when it was to put an earlier result back.
+    private func fail(_ phrases: [Int], offer: Offer, mayPay: Bool, reused: Bool, error: any Error) {
+        let failure = error as? LipsyncAttemptFailure
         for phrase in phrases where applied[phrase] == nil {
-            if (Task.isCancelled || error is CancellationError) && error as? LipsyncError != .submissionUncertain {
-                states[phrase] = .cancelled(price: offer.price)
+            // A job fal.ai accepted is never shown as a plain cancel, even when Rewrite stopped: it may have billed.
+            if failure == nil, (Task.isCancelled || error is CancellationError) && error as? LipsyncError != .submissionUncertain {
+                // A cancelled reuse sent nothing: the phrase goes back to its free offer.
+                if reused { states.removeValue(forKey: phrase); errors[phrase] = nil }
+                else { states[phrase] = .cancelled(price: offer.price) }
                 continue
             }
-            let failure = error as? LipsyncAttemptFailure
+            if let failure, failure.freeRetry, failure.error is CancellationError {
+                // The cancel or stop landed after fal.ai finished the job: billed, its result waits at fal.ai and its record
+                // is on disk, so Try Again fetches it for free. Never "fal.ai may still charge" with a priced Try Again.
+                let aside = SetAside(cancelled: true)
+                states[phrase] = .failed(reason: Self.reason(aside), price: VoiceLabCostPresentation.format(failure.attempt.estimate.usd ?? 0),
+                                         mayBill: mayPay)
+                freeRetries.insert(phrase); repeatingChecks.remove(phrase)
+                errors[phrase] = LipsyncAttemptFailure(error: aside, attempt: failure.attempt, freeRetry: true)
+                continue
+            }
             // A failed free Try Again charged nothing new; its earlier attempt's charge was already shown.
             // fal.ai can have charged only for a job it was sent: not before the submit, nor for a free Try Again.
-            states[phrase] = .failed(reason: Self.reason(error), price: failure.map { VoiceLabCostPresentation.format($0.attempt.estimate.usd ?? 0) } ?? offer.price,
-                                     mayBill: offer.mayPay && (failure != nil || error as? LipsyncError == .submissionUncertain))
+            let reason = reused && error is LipsyncRecoveryFailed ? Self.reuseGone : Self.reason(error)
+            states[phrase] = .failed(reason: reason, price: failure.map { VoiceLabCostPresentation.format($0.attempt.estimate.usd ?? 0) } ?? offer.price,
+                                     mayBill: mayPay && (failure != nil || error as? LipsyncError == .submissionUncertain))
             // A kept result that failed a check fails it again in this run: no free Try Again for it.
             let check = failure?.error is LipsyncResultCheck
             let free = (failure?.freeRetry == true && !check) || (error as? LipsyncRecoveryFailed)?.settled == false
@@ -413,6 +535,8 @@ import VoxClipMedia
             (active.map { !invalidated.contains($0.id) && $0.dependencies.contains(phrase) } ?? false) || pending.contains { $0.dependencies.contains(phrase) }
     }
 
+    /// Undo: the phrase keeps its own video. The paid result stays in the window's imported index and in `reusable`, so the
+    /// next Lip Sync over the same takes reads "free" and puts it back; a fresh render needs a change of take or wording.
     func undo(_ phrase: Int) {
         guard let result = applied[phrase] else { return }
         let affected = applied.filter { $0.value.result.asset.id == result.result.asset.id }.map(\.key)
@@ -466,6 +590,9 @@ import VoxClipMedia
     static func refusal(_ error: any Error) -> String {
         error is ClipTakePlan.Failure || error is CancellationError ? ClipTakePlan.copy(error) : reason(error)
     }
+
+    /// A reused window whose earlier result is no longer on this Mac (its file was removed or changed).
+    static let reuseGone = "The lip sync fal.ai made earlier for these takes is no longer on this Mac."
 
     static func reason(_ error: any Error) -> String {
         if let failure = error as? LipsyncAttemptFailure { return reason(failure.error) }
