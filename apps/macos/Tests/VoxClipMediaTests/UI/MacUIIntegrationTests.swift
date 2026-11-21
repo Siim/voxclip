@@ -110,7 +110,7 @@ extension HeavyMediaTests {
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         #expect(report.count >= 315)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
-        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let variant: String; let jobs: [String]; let lipsyncButtons: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
+        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let markers: [String: CGRect]; let variant: String; let jobs: [String]; let lipsyncButtons: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
         #expect(measurements.count == 240)
         let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
@@ -123,8 +123,20 @@ extension HeavyMediaTests {
             #expect(abs(measurement.box.width - measurement.width) <= 0.5 && abs(measurement.box.height - (measurement.width * 9 / 16).rounded()) <= 0.5)
             #expect(abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - 30) <= 0.5)
             #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
-            let expectedJobs = measurement.variant.hasPrefix("rewrite-takes-") ? ["captions", "voice", "demo"] : measurement.variant.hasPrefix("rewrite") ? ["captions", "rewrite", "demo"] : ["captions", "demo"]
+            // Music and Picture (the fixture has video) are labelled jobs in every state (design.md §6.9). Past four jobs, a
+            // switcher too wide for the header keeps Music, Picture and the open job, and moves the rest into More panels.
+            let task: String? = measurement.variant.hasPrefix("rewrite-takes-") ? "voice" : measurement.variant.hasPrefix("rewrite") ? "rewrite" : nil
+            var fullJobs: [String] = ["captions", "music", "picture"]
+            if let task { fullJobs.append(task) }
+            fullJobs.append("demo")
+            let pinned: Set<String> = ["music", "picture", task ?? "captions"]
+            let more = measurement.markers["panel.more"]
+            let expectedJobs: [String] = more == nil ? fullJobs : fullJobs.filter { pinned.contains($0) }
             #expect(measurement.jobs == expectedJobs, Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
+            if let more {
+                #expect(fullJobs.count > 4 && measurement.header.insetBy(dx: -0.5, dy: -0.5).contains(more),
+                    Comment(rawValue: "More panels \(more) in the header \(measurement.header): \(measurement.variant) at \(measurement.width)"))
+            }
             if measurement.variant.contains("lipsync-") {
                 let expected: String
                 if measurement.variant.hasSuffix("missing-key") { expected = "Open Settings, Voice Lab, add fal.ai key" }
