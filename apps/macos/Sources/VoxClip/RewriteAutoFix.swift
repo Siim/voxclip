@@ -5,10 +5,10 @@ import VoxClipCore
 // Rewrite fixes its own stuck phrases (design.md R2 "Automatic fixes", voice-lab.md §8.2.2). Once the user approves
 // Get Price and takes run, every phrase whose takes are stuck is handled phrase by phrase with no click, through the
 // paths the chips use: one more take for a failed check, then a scoped reword with easier words; a measured shorter
-// reword for a take too long that passed its checks (a failed take is fixed by what failed, never by its length). Each phrase gets at most three automatic rounds; after the last its original
-// words are kept. Automatic spend is capped at max($0.10, the approved price); the next step past it waits for
-// [Keep fixing · ≈ $y]. New takes are added beside the old ones, never in place of a paid one. Stop keeps everything
-// made so far and shows the chips.
+// reword for a take too long with no failed check (a failed take is fixed by what failed, never by its length).
+// Each phrase gets at most three automatic rounds; after the last its original words are kept. Automatic spend is
+// capped at max($0.10, the approved price); the next step past it waits for [Keep fixing · ≈ $y]. New takes are added
+// beside the old ones, never in place of a paid one. Stop keeps everything made so far and shows the chips.
 
 /// Why a phrase's takes are stuck: what the resolver fixes and what the phrase's one plain sentence says.
 enum StuckTakeReason: Equatable {
