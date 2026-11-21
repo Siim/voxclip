@@ -506,8 +506,17 @@ extension DebugRewriteSmoke.Harness {
         }
         let speech = speechRequests
         let logged = RewriteSmokeHTTP.script.withLock { $0.requests }.count
-        makeItAppend([wholeClipCheck("WX1", whole.isStopped && phaseText(whole).contains("Cancelled. Your clip is unchanged.") && editor?.project == project,
-            phaseText(whole) + " · clip unchanged \(editor?.project == project)")])
+        // The clip is what Cancel keeps: its words, cuts, pauses, corrections, source and Voice Lab segments and records
+        // (`voiceTakeIdentity`). VoxClip's own speaking-rate samples, which the paid parts calibrate, are no edit of it.
+        let clipBefore = project?.voiceTakeIdentity(scope: .clip("clip-whole"), enclosingClipID: "clip-whole")
+        let clipAfter = editor?.project.voiceTakeIdentity(scope: .clip("clip-whole"), enclosingClipID: "clip-whole")
+        let unchanged = clipBefore != nil && clipBefore == clipAfter
+        // Try Again over the paid voice pays only the lip sync: the price of the matched picture's lip sync, no voice.
+        let lipsyncPrice = (try? whole.backend?.lipsyncPrice(.lipsync2)) ?? nil
+        let retryUSD = whole.retryUSD
+        let lipsyncOnly = retryUSD != nil && retryUSD == lipsyncPrice
+        makeItAppend([wholeClipCheck("WX1", whole.isStopped && phaseText(whole).contains("Cancelled. Your clip is unchanged.") && unchanged && lipsyncOnly,
+            phaseText(whole) + " · clip unchanged \(unchanged) · Try Again \(retryUSD.map { "\($0)" } ?? "none") for the lip sync's \(lipsyncPrice.map { "\($0)" } ?? "none")")])
         lipsync.hold = false
         let retry = session.wholeClipPrimary(retry: true)
         try await act("click [\(retry?.title ?? "Try Again")]", clicked: "wholeClipRetry") {
