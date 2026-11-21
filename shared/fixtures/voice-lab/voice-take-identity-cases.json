@@ -1,0 +1,658 @@
+{
+  "schema": "voxclip-voice-take-identity/1",
+  "caseCount": 32,
+  "project": "fixtures/music/music-project.voxclip",
+  "base": [
+    {
+      "path": "/edits/clips/0/startWordId",
+      "value": "w3"
+    },
+    {
+      "path": "/edits/clips/0/endWordId",
+      "value": "w7"
+    }
+  ],
+  "cases": [
+    {
+      "id": "save-modified-at",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/modifiedAt",
+          "value": "2030-01-02T03:04:05Z"
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A save writes the save time into the open project."
+    },
+    {
+      "id": "save-writer",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/savedBy",
+          "value": {
+            "app": "VoxClip",
+            "version": "9.9.9",
+            "platform": "windows"
+          }
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A save writes the writer."
+    },
+    {
+      "id": "save-relative-path",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/media/source/relativePath",
+          "value": "moved/interview-take-3.mov"
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A save writes the media's relative path."
+    },
+    {
+      "id": "save-title",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/title",
+          "value": "Renamed by Save As"
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Save As retitles a default title."
+    },
+    {
+      "id": "tab",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/activeClipId",
+          "value": null
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Another tab is not an edit."
+    },
+    {
+      "id": "music-gain",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/music/0/gainDb",
+          "value": -12
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Takes and lip sync never read music."
+    },
+    {
+      "id": "music-removed",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/music",
+          "value": [
+            {
+              "id": "music-main",
+              "clipId": "clip-main",
+              "asset": {
+                "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm-intro.mp3",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "durationSeconds": 222
+              },
+              "source": "library",
+              "title": "Synthetic calm intro",
+              "creator": "Synthetic artist",
+              "license": "by",
+              "attribution": "\"Synthetic calm intro\" by Synthetic artist is licensed under CC BY 3.0.",
+              "sourceUrl": "https://example.com/track/1",
+              "prompt": null,
+              "gainDb": -20,
+              "ducking": true,
+              "fadeInSeconds": 0.5,
+              "fadeOutSeconds": 1.5,
+              "startOffsetSeconds": 0
+            }
+          ]
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A music track goes; takes and lip sync never read music."
+    },
+    {
+      "id": "captions-moved",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/captions/position",
+          "value": {
+            "x": 0.5,
+            "y": 0.2
+          }
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Move captions."
+    },
+    {
+      "id": "captions-style",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/captions/styleId",
+          "value": "clean-subtitle"
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A caption style."
+    },
+    {
+      "id": "clip-controls",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/clipControls",
+          "value": [
+            {
+              "clipId": "clip-main",
+              "speed": 1.25,
+              "shape": "9:16",
+              "look": "muted",
+              "gainDb": -3.5,
+              "fadeInSeconds": 0.5,
+              "fadeOutSeconds": 1,
+              "muteSource": false,
+              "flipHorizontal": true,
+              "rotationDegrees": 90
+            }
+          ]
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Speed, look, volume and the rest of the clip controls."
+    },
+    {
+      "id": "motion-cue",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/motionCues",
+          "value": [
+            {
+              "id": "motion-a",
+              "clipID": "clip-main",
+              "sourceStart": 1.2,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A motion cue."
+    },
+    {
+      "id": "rate-samples",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/voiceLab/speakingRateSamples",
+          "value": {
+            "eleven_v4": [
+              {
+                "id": "take-1",
+                "ratio": 1.08
+              }
+            ]
+          }
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "VoxClip's own calibration write after a measured take."
+    },
+    {
+      "id": "voice-lab-assets",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/voiceLab/assets",
+          "value": [
+            {
+              "id": "clean-take",
+              "kind": "audio",
+              "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/clean-take.wav",
+              "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "durationSeconds": 7,
+              "sampleRate": 48000,
+              "createdAt": "2026-10-25T09:20:00Z"
+            }
+          ]
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A paid file in the asset catalog is not what a take is made from."
+    },
+    {
+      "id": "export",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/export/aspect",
+          "value": "1:1"
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Export settings."
+    },
+    {
+      "id": "share",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/share/captions/full",
+          "value": "Shipped today."
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Share text."
+    },
+    {
+      "id": "cut-outside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w1"
+          ]
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Another part of the take."
+    },
+    {
+      "id": "correction-outside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/corrections",
+          "value": {
+            "w5": "shipped",
+            "w9": "Thank you"
+          }
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Another part of the take."
+    },
+    {
+      "id": "pause-cut-outside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/cutPauseIds",
+          "value": [
+            "pause-after-w8"
+          ]
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A pause after the clip."
+    },
+    {
+      "id": "clean-audio",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/voiceLab/assets",
+          "value": [
+            {
+              "id": "clean-take",
+              "kind": "audio",
+              "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/clean-take.wav",
+              "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "durationSeconds": 7,
+              "sampleRate": 48000,
+              "createdAt": "2026-10-25T09:20:00Z"
+            }
+          ]
+        },
+        {
+          "path": "/voiceLab/cleanAudio",
+          "value": {
+            "mode": "on",
+            "assetId": "clean-take",
+            "mix": 1
+          }
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": true,
+      "why": "Clean audio changes the source a take is fitted to; a text proposal does not read it."
+    },
+    {
+      "id": "cut-inside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w4"
+          ]
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "The clip's cuts."
+    },
+    {
+      "id": "correction-inside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/corrections",
+          "value": {
+            "w5": "shipped",
+            "w4": "they"
+          }
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "The clip's corrections."
+    },
+    {
+      "id": "pause-cut-inside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/cutPauseIds",
+          "value": [
+            "pause-after-w3"
+          ]
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "The clip's pauses."
+    },
+    {
+      "id": "transcript-word",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/transcript/words/3/text",
+          "value": "they"
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "The transcript."
+    },
+    {
+      "id": "pause-threshold",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/pauseThresholdSeconds",
+          "value": 0.5
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "Which pauses there are."
+    },
+    {
+      "id": "clip-bounds",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/clips/0/endWordId",
+          "value": "w8"
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "The clip's words."
+    },
+    {
+      "id": "source-media",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/media/source/contentKey",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "Another video."
+    },
+    {
+      "id": "full-take-save",
+      "scope": {
+        "kind": "fullTake"
+      },
+      "set": [
+        {
+          "path": "/modifiedAt",
+          "value": "2030-01-02T03:04:05Z"
+        },
+        {
+          "path": "/savedBy",
+          "value": {
+            "app": "VoxClip",
+            "version": "9.9.9",
+            "platform": "macos"
+          }
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A save, for Full take."
+    },
+    {
+      "id": "full-take-music",
+      "scope": {
+        "kind": "fullTake"
+      },
+      "set": [
+        {
+          "path": "/music/1/fadeOutSeconds",
+          "value": 1
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Music, for Full take."
+    },
+    {
+      "id": "full-take-cut",
+      "scope": {
+        "kind": "fullTake"
+      },
+      "set": [
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w1"
+          ]
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "Every cut is inside Full take."
+    },
+    {
+      "id": "selection-cut-outside-clip",
+      "scope": {
+        "kind": "selection",
+        "first": 3,
+        "last": 4,
+        "enclosingClipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w1"
+          ]
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Outside the selection's clip."
+    },
+    {
+      "id": "selection-cut-in-clip",
+      "scope": {
+        "kind": "selection",
+        "first": 3,
+        "last": 4,
+        "enclosingClipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w7"
+          ]
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "A selection reads its clip's placement context."
+    },
+    {
+      "id": "selection-tab",
+      "scope": {
+        "kind": "selection",
+        "first": 3,
+        "last": 4,
+        "enclosingClipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/edits/activeClipId",
+          "value": null
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "The selection keeps the clip it opened in."
+    }
+  ]
+}

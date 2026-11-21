@@ -88,6 +88,7 @@ extension RewriteSession {
         guard isOpen else { return }
         leaveOutUnavailableVoices()
         followIncludedVoice()
+        followCurrentTakes()
         // A selected passing take always has its duration chosen before the footer is drawn, so the footer never asks
         // for the duration the phrase card already reads as "Video: keep source video duration" (design.md R2).
         if let plan = takePlan, !takesBusy { autoChooseVideo(plan) }
@@ -131,17 +132,30 @@ extension RewriteSession {
     }
 
     /// A changed inclusion set needs a fresh complete-set placement and quote, never the old set's paid authorization.
+    /// Paid takes stay: their plan is stale while the set differs from the one they were made for, the footer says so with
+    /// Discard Takes beside Keep Working, and including the change again makes them current (voice-lab.md "What counts as
+    /// an edit"). A stale plan with paid work is never retired here.
     private func followIncludedVoice() {
         let included = includedVoice
-        guard included != includedVoicesSeen || takePlan.map({ !$0.isRetired && !$0.stillCurrent }) == true else { return }
-        includedVoicesSeen = included
-        takePlanFailure = nil
-        if hasPaidTakes {
-            takePlan?.invalidate()
+        let inclusionChanged = included != includedVoicesSeen
+        guard inclusionChanged || takePlan.map({ !$0.isRetired && !$0.stillCurrent }) == true else { return }
+        // Only the patch's own paid takes are asked about: a whole clip's paid voice is not discarded by Discard Takes, so
+        // with it alone the patch plan is priced again as before and the whole clip is left as it is.
+        if hasPaidPatchWork {
+            guard inclusionChanged else { return }
+            includedVoicesSeen = included
+            takePlanFailure = nil
+            if takePlan?.stillCurrent == true {
+                if task.confirm?.confirm.id == "discardTakes" { task.dismissConfirm() }
+                return
+            }
             generation?.inputsChanged(prepareNewQuote: false)
-            generation?.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
+            let kept = paidTakesKept
+            askToDiscardTakes(ClipTakePlan.StaleStop(cause: .inclusion, kept: kept.kept, pronoun: kept.pronoun).copy)
             return
         }
+        includedVoicesSeen = included
+        takePlanFailure = nil
         takePlan?.invalidate(); takePlan = nil
         generation?.inputsChanged()
     }
@@ -590,7 +604,7 @@ extension RewriteSession {
     /// change, asking first when the cost confirms (voice-lab.md §3.1). A footer drawn before the list's inclusions
     /// changed makes no takes of a phrase other than the one the quote is for.
     func makeTakes() {
-        guard current, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
+        guard voiceSpendCurrent, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
         guard !takesBusy, !isReasking else { return }
         takeRowsShown = true
         guard generation != nil else {

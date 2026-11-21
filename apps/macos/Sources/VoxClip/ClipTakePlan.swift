@@ -44,6 +44,10 @@ import VoxClipMedia
         var blocked: String?
         /// Takes made before the phrase's expression changed, listed as "Before expression" and never chosen automatically.
         var beforeExpression: Set<UUID> = []
+        /// Paid takes that arrived while the plan was not current (an edit, another voice): kept and listed as "made
+        /// before your edit", never chosen automatically, and chosen only by a click once an undo made the plan current
+        /// again, when they match the project as it was made for.
+        var madeBeforeEdit: Set<UUID> = []
         var videoChoice: VoiceLabVideoMode?
         var estimatedVoicedSeconds: Double?
         /// The card's segment (PhraseOwnWords.swift): Suggested, My words or Say it myself. Switching keeps every take.
@@ -71,6 +75,54 @@ import VoxClipMedia
         /// These phrases' takes can't go into the video (their render recipe or the project refuses them); Use keeps
         /// them as recorded and goes on with the rest (`RewriteSession.acceptTakes`).
         case unusable(phrases: [Int])
+    }
+    /// A Rewrite's stale takes, named for what changed since they were made (`RewriteSession.staleStop`), with the paid
+    /// takes that stay and the one way back. `Failure.stale` stays for the plan's own checks and for plans no session
+    /// names (a whole clip's): its copy claims no paid takes and no edit (voice-lab.md "What counts as an edit").
+    struct StaleStop: Error, Equatable {
+        enum Cause: Equatable {
+            /// The scope's words, cuts, pauses or corrections, or the reviewed changes: "The words or cuts in clip 1".
+            case words(String)
+            /// An edit beside the scope moved the windows the takes were made for: "The words beside these words".
+            case beside(String)
+            /// A change the takes voice was left out.
+            case inclusion
+            case voice, model
+            /// Voice Lab's Rewrite, its ElevenLabs consent or its region.
+            case settings
+            /// The AI is still working on the wording (a fit or a re-ask).
+            case busy
+            /// The project can't be edited now.
+            case locked
+        }
+        let cause: Cause
+        /// What stays and its pronoun, as `RewriteSession.paidTakesKept` says them ("Your 2 paid takes (≈ $0.12) are
+        /// kept", "them"); nil when nothing was paid.
+        var kept: String?
+        var pronoun: String?
+
+        var copy: String {
+            let subject: String, back: String
+            switch cause {
+            case .words(let words): subject = words + " changed"; back = "undo the edit"
+            case .beside(let words): subject = words + " changed"; back = "undo the edit"
+            case .inclusion: subject = "A change these takes voice was left out"; back = "include the change again"
+            case .voice: subject = "Another voice was chosen"; back = "choose the voice they were made with again"
+            case .model: subject = "Another voice model was chosen"; back = "choose the model they were made with again"
+            case .settings: subject = "Voice Lab's Rewrite settings (ElevenLabs consent or region) changed"; back = "change them back"
+            case .busy:
+                return "Rewrite is still working on the wording, so these takes can't go in yet. "
+                    + (kept.map { $0 + "; use them once it finishes." } ?? "Nothing more was sent.")
+            case .locked:
+                return "This project can't be edited right now, so these takes can't go in. "
+                    + (kept.map { $0 + "." } ?? "Nothing more was sent.")
+            }
+            guard let kept, let pronoun else {
+                return subject + " after this price was made, so nothing was paid. Get a fresh price for the changes as they are."
+            }
+            return subject + " after these takes were made, so they can't go in as they are. \(kept): \(back) to use \(pronoun), "
+                + "or discard \(pronoun) for a fresh price."
+        }
     }
     /// The most phrases one run prices and voices. A run of more than `VoiceLabTakeBatch.maximumWindows` phrases is priced
     /// and approved once, then voiced part by part (`PricedPart`).
@@ -198,9 +250,15 @@ import VoxClipMedia
     private(set) var problem = "" { didSet { if problem.isEmpty { failure = nil } } }
     private(set) var failure: (any Error)?
     private func report(_ error: any Error) {
-        problem = Self.copy(error); failure = error
+        // A stale stop says what changed when the Rewrite can name it (`describeStale`), else the plain stale copy.
+        var named: (any Error)?
+        if case Failure.stale? = error as? Failure, let stop = describeStale?() { named = stop }
+        problem = Self.copy(named ?? error); failure = error
         if !problem.isEmpty { onFailure?(error) }
     }
+    /// What changed for a stale stop, as the Rewrite that made the plan names it (`RewriteSession.staleStop`); nil while it
+    /// can't name a change, so the plain stale copy shows.
+    @ObservationIgnored var describeStale: (@MainActor () -> StaleStop?)?
     /// Each failure the plan reports, for the Rewrite's release log line (`RewriteSession.logFailure`).
     @ObservationIgnored var onFailure: (@MainActor (any Error) -> Void)?
     /// Phrases kept as recorded because their takes can't go into the video (`Failure.unusable`), for the session's line.
@@ -788,15 +846,16 @@ import VoxClipMedia
         }.map(\.take)
     }
     /// The take chosen automatically (ADR-R37, ADR-R39): only measured passing takes, never one made before the expression
-    /// changed. Among usable takes the best score wins, as before; when no duration can carry any of them, the one closest
-    /// to the slot, so the automatic fixes reword from the nearest take. A take whose only issue is a join advisory is
-    /// chosen when it ranks best, after any clean take at the same rank (ADR-R39: Claude makes the best decision, the user
-    /// only listens).
+    /// changed or before an edit (`madeBeforeEdit`). Among usable takes the best score wins, as before; when no duration
+    /// can carry any of them, the one closest to the slot, so the automatic fixes reword from the nearest take. A take
+    /// whose only issue is a join advisory is chosen when it ranks best, after any clean take at the same rank (ADR-R39:
+    /// Claude makes the best decision, the user only listens).
     func automaticTake(phrase index: Int) -> Take? {
         guard phrases.indices.contains(index) else { return nil }
         let phrase = phrases[index]
         let measured = phrase.takes.filter {
             $0.row.selectable && $0.row.qa?.values.speakerScore?.isFinite == true && !phrase.beforeExpression.contains($0.id)
+                && !phrase.madeBeforeEdit.contains($0.id)
                 && (!$0.row.requiresJoinAdvisoryAcceptance || (try? $0.row.acceptingJoinAdvisory(at: Date())) != nil)
         }
         let order = ranked(measured, phrase: index)
@@ -822,7 +881,7 @@ import VoxClipMedia
         guard phrases.indices.contains(index), !phrases[index].leftOut, phrases[index].selected == nil else { return nil }
         let phrase = phrases[index]
         let passing = phrase.takes.filter { $0.row.selectable && durationAvailable(take: $0) }
-        let current = passing.filter { !phrase.beforeExpression.contains($0.id) }
+        let current = passing.filter { !phrase.beforeExpression.contains($0.id) && !phrase.madeBeforeEdit.contains($0.id) }
         return ranked(current.isEmpty ? passing : current, phrase: index).first
     }
     /// The duration choices the selected take allows, in the panel's order.
@@ -1238,10 +1297,13 @@ import VoxClipMedia
                 spent = VoiceLabTakeRunQuote.total(of: charges, takes: madeRequests.count)
                 await acceptedChargesChanged()
             }
-            guard (revision == version || stopping), !retired, isCurrent() else {
+            // A paid row is retired only for a plan that was retired or moved on; one that arrives while an edit makes the
+            // plan stale is kept, listed and not chosen (`madeBeforeEdit`), so an undo can still use it.
+            guard (revision == version || stopping), !retired else {
                 await backend?.retire(phrase, row.id)
                 continue
             }
+            let stale = !isCurrent()
             if let existing = phrases[phrase].takes.firstIndex(where: { $0.id == row.id }) {
                 let number = phrases[phrase].takes[existing].number
                 let previous = phrases[phrase].takes[existing].row
@@ -1255,19 +1317,22 @@ import VoxClipMedia
             }
             guard receivedInBatch.insert(row.id).inserted else { continue }
             guard !phrases[phrase].takes.contains(where: { $0.id == row.id }) else { continue }
-            if phrases[phrase].takes.count >= 3, !keepsEveryTake {
-                let number = phrases[phrase].nextTakeNumber
-                if let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
-                    let evicted = phrases[phrase].takes[replaced].id
-                    await backend?.retire(phrase, evicted)
-                    guard (revision == version || stopping), !retired, isCurrent() else {
-                        await backend?.retire(phrase, row.id)
-                        continue
-                    }
-                    phrases[phrase].takes[replaced] = Take(number: number, row: row)
+            if stale { phrases[phrase].madeBeforeEdit.insert(row.id) }
+            // A stale plan replaces no take: every paid one stays until the user discards them.
+            let number = phrases[phrase].nextTakeNumber
+            if phrases[phrase].takes.count >= 3, !keepsEveryTake, !stale,
+               let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
+                let evicted = phrases[phrase].takes[replaced].id
+                await backend?.retire(phrase, evicted)
+                guard (revision == version || stopping), !retired else {
+                    await backend?.retire(phrase, row.id)
+                    continue
                 }
+                if !isCurrent() { phrases[phrase].madeBeforeEdit.insert(row.id) }
+                phrases[phrase].takes[replaced] = Take(number: number, row: row)
             } else {
-                phrases[phrase].takes.append(Take(number: phrases[phrase].takes.count + 1, row: row))
+                let number = (phrases[phrase].takes.map(\.number).max() ?? 0) + 1
+                phrases[phrase].takes.append(Take(number: number, row: row))
             }
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
@@ -1310,7 +1375,8 @@ import VoxClipMedia
         stopAudition()
         defer { lipsync.finishUseTakes() }
         try await lipsync.waitForUseTakes()
-        guard stillCurrent else { invalidate(); throw Failure.stale }
+        // A stale Use keeps the plan and its paid takes: the caller says what changed, and an undo makes it current again.
+        guard stillCurrent else { throw Failure.stale }
         guard canAccept else { throw Failure.noSelection }
         let output = try applyingLipsync(to: await publishSelection(at: date, for: .use))
         if selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) || !output.videoAssets.isEmpty {
@@ -1332,7 +1398,7 @@ import VoxClipMedia
         let version = revision
         try checkCurrent(version)
         try validateContextInputs(inputs)
-        guard !generating, !preparing, !publishing, let backend else { throw Failure.stale }
+        guard !generating, !preparing, !publishing, let backend else { throw Failure.lipsyncBusy }
         publishing = true; publishPurpose = purpose
         defer {
             publishing = false; publishPurpose = nil
@@ -1474,7 +1540,11 @@ import VoxClipMedia
         switch error {
         case Failure.spendingCap: "Your ElevenLabs spending limit was reached. Finished takes are kept."
         case Failure.unknownSpend: "VoxClip can't check your ElevenLabs spending limit. Nothing more was sent."
-        case Failure.stale: "The rewrite changed. Make a fresh takes plan before sending anything."
+        // Raised by the plan's own checks and by plans no session names (a whole clip's, where it may be Unsent): it
+        // claims no paid takes and no edit. A Rewrite's stale takes say what changed instead (`StaleStop`).
+        case Failure.stale:
+            "The words, cuts, voice or model changed after these takes were planned, so nothing more was sent for them."
+        case let stop as StaleStop: stop.copy
         case Failure.noSelection: "Choose a valid video duration for every selected passage before using takes."
         case Failure.noLipsyncOffer: "No complete set of matched takes is ready for lip sync. Nothing was sent."
         case Failure.lipsyncBusy: "Takes or lip sync are still being processed. Wait for that to finish before trying again."

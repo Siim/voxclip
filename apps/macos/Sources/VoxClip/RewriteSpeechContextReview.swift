@@ -198,10 +198,17 @@ extension RewriteSession {
 
     func cancelSpeechContextReview() { speechContextReview = nil; surroundingSentenceOrdinal = nil }
 
+    /// The accepted sentence's request as the session is now, which its review validates. It is paid voice work's
+    /// currency (voice-lab.md "What counts as an edit"): the AI connector is not read, and while the voice identity of the
+    /// project as reviewed is unchanged the request keeps the project it was reviewed with, so a save, the tab, music,
+    /// captions, colour, motion and VoxClip's own rate samples leave it current. The scope, changes, inclusions, voice,
+    /// model and region are compared as before.
     func currentSpeechContextRequest(_ review: RewriteSpeechContextReview) throws -> VoiceLabSpeechContextPlan.Request {
-        guard current, let envelope, let generation,
+        guard voiceSpendCurrent, let envelope, let generation,
               generationIsCurrent(region: takeRegion ?? .default) else { throw RewriteSpeechContextReview.Failure.stale }
         let captured = review.plan.request
+        let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+        let project = voiceIdentity(final) == voiceIdentity(captured.project) ? captured.project : final
         let expanding = captured.expandingHunkIndices.map { $0 + 1 }.filter { reviewedVoiceOrdinals.contains($0) }
         let included = Set(includedVoice + expanding)
         let selected = changes.indices.filter { index in
@@ -209,7 +216,7 @@ extension RewriteSession {
         }
         guard let model = generation.models.first(where: { $0.id == generation.selectedModelID }),
               let limit = model.maximumTextLength else { throw RewriteSpeechContextReview.Failure.stale }
-        let request = VoiceLabSpeechContextPlan.Request(project: try editor.voiceLabReviewProject(localCommands: localCommands),
+        let request = VoiceLabSpeechContextPlan.Request(project: project,
             scope: scope, approvedSourceWordIDs: source.map(\.id), reviewHunks: changes.map(\.hunk),
             selectedHunkIndices: selected, expandingHunkIndices: captured.expandingHunkIndices, reservations: captured.reservations,
             revision: "\(revision):\(generation.selectedVoiceID ?? ""): \(model.id):\(takeRegion?.rawValue ?? "")",

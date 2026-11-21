@@ -4,6 +4,7 @@ import Foundation
 import Synchronization
 import SwiftUI
 import Testing
+import UniformTypeIdentifiers
 @_spi(Testing) @testable import VoxClipCore
 @_spi(Testing) @testable import VoxClipMedia
 @testable import VoxClip
@@ -211,6 +212,45 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     func wait() async { if !arrived { await withTestDeadline { arrival = $0 } } }
     func resume() { release?.resume(); release = nil }
     func finished() { arrived = true; arrival?.resume(); arrival = nil; resume() }
+}
+
+/// A phrase lip sync on a take plan with no fal.ai: one offer for phrase 1, current while the plan is, whose run waits at
+/// `gate` until released and then imports a synthetic result. `cancelled` counts runs that were cancelled.
+@MainActor private final class FakeLipsync {
+    @MainActor final class Gate {
+        private(set) var started = false
+        private var pending: TestContinuation<Void>?
+        private var arrival: TestContinuation<Void>?
+        func pause() async { await withTestDeadline { pending = $0; started = true; arrival?.resume(); arrival = nil } }
+        func wait() async { if !started { await withTestDeadline { arrival = $0 } } }
+        func release() { pending?.resume(); pending = nil }
+    }
+    let gate = Gate()
+    private(set) var cancelled = 0
+    init(plan: ClipTakePlan) throws {
+        let piece = VoiceLabOutputPiece(kind: .source, sourceStartSample: 0, sourceEndSample: 480_000,
+            outputStartSample: 0, outputEndSample: 480_000, segmentId: nil, assetId: nil, audio: nil)
+        let output = VoiceLabOutputPlan(sampleRate: 48_000, totalSourceSamples: 480_000, pieces: [piece], captions: [], scope: .full)
+        let source = try LipsyncWindow.make(seamIn: 96_000, seamOut: 144_000, totalSamples: 480_000, sampleRate: 48_000, phraseID: 0)
+        let window = try LipsyncRenderWindow(source: source, plan: output)
+        let request = RenderRequest(sourceURL: URL(fileURLWithPath: "/synthetic/source.mp4"),
+            plan: EditPlan(sampleRate: 48_000, totalSamples: 480_000), output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
+        let estimate = CostEstimate(provider: "fal", operation: "lipsync", units: 3, unit: "second", usd: Decimal(string: "0.4"), basis: "fixture")
+        let offer = RewriteLipsyncSession.Offer(id: UUID(), request: request, windows: [window], estimate: estimate,
+            recordID: "fixture-consent", dependencies: [0], isCurrent: { [weak plan] in plan?.stillCurrent == true })
+        let asset = VoiceLabVideoAsset(id: UUID().uuidString.lowercased(), file: "fixture.mp4", sha256: String(repeating: "a", count: 64),
+            durationSeconds: 3, frameRate: 30, width: 320, height: 180)
+        let provenance = LipsyncResultProvenance(provider: "fal", model: "fal-ai/sync-lipsync/v3", requestID: UUID().uuidString.lowercased(),
+            quoteID: offer.id, videoInputSHA256: asset.sha256, audioInputSHA256: asset.sha256, outputSHA256: asset.sha256,
+            syncMode: .cutOff, seed: nil, submittedAt: Date(), importedAt: Date(), estimate: estimate)
+        let gate = gate
+        plan.lipsync.backend = .init(offers: { ([0: offer], nil) }, hasKey: { true }, hasConsent: { true }, acceptConsent: {},
+            cap: { nil }, run: { [weak self] _, _, _, _, _, _ in
+                await withTaskCancellationHandler { await gate.pause() } onCancel: { Task { @MainActor in self?.cancelled += 1; gate.release() } }
+                try Task.checkCancellation()
+                return ImportedLipsyncResult(asset: asset, url: URL(fileURLWithPath: "/synthetic/result.mp4"), provenance: provenance)
+            }, changed: {})
+    }
 }
 
 @Suite("Clip take plan", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
@@ -1462,6 +1502,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     private func productionSession(_ fixture: Fixture, touchingVoices: Bool = false, exactSourceEnvelope: Bool = false,
                                    rewriteConnector: (any LLMConnector)? = nil, v4Available: Bool = true,
                                    voices: [Int]? = nil, extraHunks: [VoiceLabDiffHunk] = [], prepare: Bool = true,
+                                   connectorSignature: Bool = false, scope: RewriteScope = .fullTake,
                                    edit: (inout Project) -> Void = { _ in }) async throws -> (EditorModel, RewriteSession) {
         ClipTakeHTTP.state.withLock { $0.listsDialogue = v4Available }
         var source = fixture.source
@@ -1491,7 +1532,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             envelope = decoded.envelope
         } else { envelope = fixture.envelope }
         let connector = rewriteConnector.map { RewriteConnector(connector: $0, model: "fixture", name: "Fixture", group: "local", plan: "") }
-        let session = RewriteSession(editor: editor, scope: .fullTake, envelope: envelope, connector: connector)
+        // The editor's own connector check (`EditorModel.openRewriteSession`): Settings › AI as the session opened.
+        if connectorSignature {
+            app.settings.values["llm.connector"] = .string("claude-code")
+            app.settings.values["llm.model.claude-code"] = .string("opus")
+        }
+        let signature = editor.rewriteConnectorSignature
+        let session = RewriteSession(editor: editor, scope: scope, envelope: envelope, connector: connector,
+            connectorIsCurrent: { [weak editor] in editor?.rewriteConnectorSignature == signature })
         editor.rewrite = session
         let fix = VoiceLabDiffHunk(kind: .textOnly, sourceWordIds: ["w9"], newTokens: ["Corrected"], correctedTexts: ["Corrected"],
             absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 9, sourceEndIndex: 10, anchorSeconds: nil)
@@ -1672,6 +1720,371 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(generation.selectedModelID == nil && generation.problem.contains("Eleven v4 is not available"))
         await session.prepareTakes()
         #expect(session.takePlan == nil && ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+    }
+
+    // MARK: Plan currency (voice-lab.md "What counts as an edit")
+
+    /// What an in-place autosave does to the open project: the document writes it, then puts the save time, the writer
+    /// and the relative path into the project in memory (`VoxClipDocument.save`'s completion), with no edit and no follow.
+    private func autosave(_ editor: EditorModel, root: URL) async throws {
+        let url = root.appendingPathComponent("autosaved-\(UUID().uuidString).voxclip")
+        editor.document.fileURL = url
+        let before = editor.project
+        let saved = await withTestDeadline(returning: false) { continuation in
+            editor.document.save(to: url, ofType: UTType.voxclipProject.identifier, for: .autosaveInPlaceOperation) { error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+        try #require(saved)
+        #expect(editor.project.modifiedAt != before.modifiedAt && editor.project != before)
+    }
+    /// Makes the plan's takes and waits for everything they start; each measured take records a rate sample.
+    private func makeTakes(_ session: RewriteSession) async throws -> ClipTakePlan {
+        let plan = try #require(session.takePlan)
+        await plan.start(approved: true)
+        await settle(session)
+        #expect(plan.spent.units > 0 && plan.phrases.allSatisfy { !$0.takes.isEmpty }, "\(plan.diagnostics)")
+        return plan
+    }
+    private func useFirstTakes(_ session: RewriteSession, _ plan: ClipTakePlan) async -> Bool {
+        for phrase in plan.phrases {
+            guard let take = phrase.takes.first else { return false }
+            _ = plan.select(take: take.id, phrase: phrase.id)
+            _ = plan.chooseVideo(.source, phrase: phrase.id)
+        }
+        return await session.acceptTakes()
+    }
+    private func cards(_ session: RewriteSession) -> [String] {
+        session.task.cards.compactMap { if case .text(let text) = $0 { text } else { nil } }
+    }
+
+    /// The autosave after takes land (recordSpeakingRate dirtied the document) left the plan stale for good: Use retired
+    /// it and a fresh plan was refused while its paid takes counted. Now the save changes nothing a take is made from.
+    @Test func anAutosaveAfterTakesLandKeepsThemCurrentAndUsable() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try await makeTakes(session)
+        #expect(editor.project.voiceLab.speakingRateSamples?.values.contains { !$0.isEmpty } == true, "no rate sample was recorded")
+        try await autosave(editor, root: fixture.root)
+        #expect(plan.stillCurrent && !plan.isRetired)
+        session.showProposal()
+        #expect(session.takePlan === plan && !plan.isRetired && plan.stillCurrent)
+        #expect(await useFirstTakes(session, plan), "\(plan.problem); \(session.problem)")
+        #expect(editor.project.voiceLab.segments.count == 1 && !session.hasPaidWork)
+    }
+
+    /// Music, a caption move, a colour and a motion cue are edits outside what takes are made from: the paid plan stays,
+    /// a running lip sync goes on and finishes, and its result stays applied. They used to retire the plan and cancel
+    /// the lip sync at fal.ai.
+    @Test func editsOutsideTheVoiceKeepThePaidPlanAndItsLipSync() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture) { source in
+            source.edits.clips = [ClipRange(id: "c-outside", startWordId: "w20", endWordId: "w23")]
+        }
+        defer { editor.close() }
+        let plan = try await makeTakes(session)
+        let lipsync = try FakeLipsync(plan: plan)
+        await plan.lipsync.refresh()
+        #expect(plan.lipsync.start(try #require(plan.lipsync.offers[0])))
+        await lipsync.gate.wait()
+        #expect(plan.lipsync.isRunning(0))
+        var music = editor.project
+        music.music = [ProjectMusic(id: "music-a", clipId: nil, asset: MusicAsset(file: music.id + "/music-own.wav",
+            sha256: String(repeating: "c", count: 64), durationSeconds: 30), source: .file, title: "own", license: .own)]
+        music.schemaVersion = 4
+        editor.replace(music, name: "Add music")
+        await session.reviewing?.value
+        var moved = editor.project
+        moved.captions.position = CaptionPosition(x: 0.5, y: 0.2)
+        editor.replace(moved, name: "Move captions")
+        await session.reviewing?.value
+        #expect(editor.setColorPreset(.warm, clipID: "c-outside"))
+        await session.reviewing?.value
+        var cue = editor.project
+        cue.motionCues = [MotionCue(id: "cue", clipID: "c-outside", sourceStart: 101, sourceEnd: 102)]
+        editor.replace(cue, name: "Add motion")
+        await session.reviewing?.value
+        #expect(session.takePlan === plan && !plan.isRetired && plan.stillCurrent && !session.takeWindowsMoved)
+        #expect(plan.lipsync.isRunning(0) && lipsync.cancelled == 0)
+        lipsync.gate.release()
+        await plan.lipsync.waitForRun()
+        #expect(plan.lipsync.applied[0] != nil, "\(plan.lipsync.states)")
+        var style = editor.project
+        style.captions.styleId = "clean-subtitle"
+        editor.replace(style, name: "Change caption style")
+        await session.reviewing?.value
+        #expect(session.takePlan === plan && !plan.isRetired && plan.lipsync.applied[0] != nil && session.task.confirm == nil)
+    }
+
+    /// Another tab while takes are made: the active clip is not an edit, so the row that lands while away is kept and
+    /// chosen as usual. It used to be retired (its paid files deleted) and the run stopped stale.
+    @Test func aTabSwitchWhileTakesRunKeepsEveryPaidRow() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, voices: [10, 17]) { source in
+            source.edits.clips = [ClipRange(id: "c1", startWordId: "w0", endWordId: "w23")]
+            source.edits.activeClipId = "c1"
+        }
+        defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        try #require(plan.phrases.count == 2)
+        let barrier = ClipTakeBarrier()
+        fixture.beforeProgress = { [barrier] in if !barrier.arrived { await barrier.pause() } }
+        let running = Task { await plan.start(approved: true) }
+        await barrier.wait()
+        #expect(editor.setScope(nil))
+        barrier.resume()
+        await running.value
+        await settle(session)
+        #expect(!plan.isRetired && plan.stillCurrent, "\(plan.diagnostics)")
+        #expect(plan.phrases.allSatisfy { !$0.takes.isEmpty && $0.madeBeforeEdit.isEmpty }, "\(plan.phrases.map(\.status))")
+        #expect(editor.setScope("c1") && plan.stillCurrent)
+    }
+
+    /// Changing the AI model in Settings matters for asking the AI again, never for voice spend: paid takes stay current
+    /// and Use puts them in. They used to go stale with the connector.
+    @Test func aConnectorChangeKeepsPaidTakesCurrent() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, connectorSignature: true); defer { editor.close() }
+        let plan = try await makeTakes(session)
+        editor.app.settings.values["llm.model.claude-code"] = .string("sonnet")
+        #expect(!session.current && session.voiceSpendCurrent)
+        #expect(plan.stillCurrent)
+        #expect(await useFirstTakes(session, plan), "\(plan.problem); \(session.problem)")
+    }
+
+    /// A real edit of the scope's words makes Use stale, says so, and keeps the paid takes listed; R3 names them as kept,
+    /// never "no takes were paid for"; undoing the edit makes Use work. Use used to retire the plan and its takes.
+    @Test func anEditInTheScopeKeepsPaidTakesUntilUndoAndUseWorksAfter() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        let plan = try await makeTakes(session)
+        session.showProposal()
+        undo.beginUndoGrouping(); editor.apply(.cutSelection(ids: ["w3"]), name: "Cut selection"); undo.endUndoGrouping()
+        #expect(session.task.state == .changed && !plan.stillCurrent)
+        let body = cards(session).first ?? ""
+        #expect(!body.contains("no takes were paid for") && body.contains("paid take") && body.contains("Undo brings"), "\(body)")
+        await #expect(throws: ClipTakePlan.Failure.stale) { try await plan.acceptance() }
+        #expect(!plan.isRetired && session.takePlan === plan && plan.phrases[0].takes.isEmpty == false)
+        #expect(await session.acceptTakes() == false)
+        // The stop names the edit and the paid take it keeps; in R3 its card already offers the way on, so no question.
+        #expect(session.problem.hasPrefix("The words or cuts in the full take changed after these takes were made")
+            && session.problem.contains("Your paid take") && session.problem.contains("undo the edit")
+            && !session.problem.contains("before sending anything"), "\(session.problem)")
+        let expected = ClipTakePlan.StaleStop(cause: .words("The words or cuts in the full take"), kept: session.paidTakesKept.kept, pronoun: "it")
+        let stop = session.takePlanFailure as? ClipTakePlan.StaleStop
+        #expect(stop == expected)
+        #expect(session.task.confirm == nil)
+        undo.undo()
+        await session.reviewing?.value
+        #expect(session.takePlan === plan && plan.stillCurrent, "\(session.task.state)")
+        // Current again: the stop is gone, so the footer no longer says "Fix the problem above to go on".
+        session.showProposal()
+        #expect(session.takePlanFailure == nil && session.problem.isEmpty && session.takePlanBlocker == nil, "\(session.task.footer)")
+        undo.beginUndoGrouping(); let used = await useFirstTakes(session, plan); undo.endUndoGrouping()
+        #expect(used, "\(plan.problem); \(session.problem)")
+    }
+
+    /// A stale Use that isn't an edit names what changed (here the ElevenLabs region in Settings), keeps the paid take, and
+    /// asks Keep Working or Discard Takes in the footer, so Undo is not the only way on. Putting the setting back makes Use
+    /// work. Every stale stop used to say the words or cuts changed and offer only Undo.
+    @Test func aStaleUseNamesTheChangeAndAsksToDiscard() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try await makeTakes(session)
+        session.showProposal()
+        editor.app.settings.values["transcription.elevenlabs.region"] = .string("us")
+        #expect(!plan.stillCurrent && session.voiceSpendCurrent)
+        #expect(await useFirstTakes(session, plan) == false)
+        let stop = try #require(session.takePlanFailure as? ClipTakePlan.StaleStop)
+        #expect(stop.cause == .settings && stop.kept != nil && session.problem == stop.copy)
+        #expect(session.problem.hasPrefix("Voice Lab's Rewrite settings") && session.problem.contains("change them back")
+            && !session.problem.contains("words or cuts"), "\(session.problem)")
+        let asked = try #require(session.task.confirm)
+        #expect(asked.question == stop.copy && asked.confirm.title == "Discard Takes" && asked.cancel.title == "Keep Working")
+        asked.cancel.perform()
+        #expect(session.task.confirm == nil && session.takePlan === plan && !plan.isRetired)
+        editor.app.settings.values["transcription.elevenlabs.region"] = .string("default")
+        session.showProposal()
+        #expect(plan.stillCurrent && session.takePlanFailure == nil && session.problem.isEmpty)
+        #expect(await useFirstTakes(session, plan), "\(plan.problem); \(session.problem)")
+    }
+
+    /// The plain stale copy, which the plan's own checks and a whole clip's Unsent stop show, claims no paid takes and no
+    /// edit; a stop with nothing paid says nothing was paid.
+    @Test func staleCopyClaimsOnlyWhatIsTrue() {
+        let plain = ClipTakePlan.copy(ClipTakePlan.Failure.stale)
+        #expect(plain.contains("nothing more was sent") && !plain.contains("paid") && !plain.contains("undo"))
+        let unpaid = ClipTakePlan.copy(ClipTakePlan.StaleStop(cause: .voice))
+        #expect(unpaid.hasPrefix("Another voice was chosen") && unpaid.contains("nothing was paid") && !unpaid.contains("kept"))
+        let paid = ClipTakePlan.copy(ClipTakePlan.StaleStop(cause: .model, kept: "Your 2 paid takes are kept", pronoun: "them"))
+        #expect(paid == "Another voice model was chosen after these takes were made, so they can't go in as they are. "
+            + "Your 2 paid takes are kept: choose the model they were made with again to use them, or discard them for a fresh price.")
+    }
+
+    /// A paid whole-clip voice alone is not the patch's paid takes: leaving out a change prices the patch again as before,
+    /// with no question about takes that don't exist, and leaves the whole clip as it is. It used to ask "Your paid takes
+    /// are for the changes as they were" with nothing Discard Takes could drop.
+    @Test func aWholeClipVoiceAloneAsksNothingWhenAChangeIsLeftOut() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, voices: [10, 17]); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let whole = WholeClipRevoiceSession()
+        whole.backend = WholeClipRevoiceSessionTests.backend(WholeClipRevoiceSessionTests.Stubs())
+        whole.start(); await whole.waitForRun()
+        try #require(whole.phase == .review && whole.spent > 0)
+        session.wholeClip = whole
+        session.showProposal()
+        #expect(session.hasPaidWork && !session.hasPaidPatchWork && plan.spent.units == 0)
+        let second = try #require(session.includedVoice.last)
+        var proposal = try #require(editor.proposal)
+        let index = try #require(proposal.changes.firstIndex { $0.ordinal == second })
+        proposal.changes[index].state = .excluded
+        editor.proposal = proposal
+        session.showProposal()
+        #expect(session.task.confirm == nil && plan.isRetired && session.takePlan !== plan)
+        #expect(session.wholeClip === whole && whole.phase == .review)
+    }
+
+    /// A paid row that lands while an edit makes the plan stale is kept and listed, never chosen for the user; an undo
+    /// lets the user choose it. It used to be retired the moment it arrived, after it was charged.
+    @Test func aPaidRowThatLandsWhileStaleIsKept() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        let plan = try #require(session.takePlan)
+        session.showProposal()
+        let barrier = ClipTakeBarrier()
+        fixture.beforeProgress = { [barrier] in if !barrier.arrived { await barrier.pause() } }
+        let running = Task { await plan.start(approved: true) }
+        await barrier.wait()
+        undo.beginUndoGrouping(); editor.apply(.cutSelection(ids: ["w3"]), name: "Cut selection"); undo.endUndoGrouping()
+        barrier.resume()
+        await running.value
+        await settle(session)
+        let take = try #require(plan.phrases[0].takes.first, "\(plan.diagnostics)")
+        #expect(plan.spent.units > 0 && !plan.isRetired && plan.phrases[0].madeBeforeEdit == [take.id])
+        #expect(plan.phrases[0].selectedID == nil && !plan.select(take: take.id, phrase: 0))
+        undo.undo()
+        await session.reviewing?.value
+        #expect(plan.stillCurrent && plan.automaticTake(phrase: 0) == nil)
+        #expect(plan.select(take: take.id, phrase: 0))
+    }
+
+    /// Leaving out a change the paid takes voice keeps them: their plan is stale while the change is out, the footer asks
+    /// Keep Working or Discard Takes, and including it again makes them current. It used to invalidate them and then say
+    /// "Your paid takes are kept".
+    @Test func leavingOutAVoicedChangeKeepsPaidTakesAndOffersDiscard() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, voices: [10, 17]); defer { editor.close() }
+        let plan = try await makeTakes(session)
+        session.showProposal()
+        let included = session.includedVoice
+        try #require(included.count == 2)
+        func setState(_ state: TranscriptChange.State) throws {
+            var proposal = try #require(editor.proposal)
+            let index = try #require(proposal.changes.firstIndex { $0.ordinal == included[1] })
+            proposal.changes[index].state = state
+            editor.proposal = proposal
+            session.showProposal()
+        }
+        let pending = try #require(editor.proposal?.changes.first { $0.ordinal == included[1] }?.state)
+        try setState(.excluded)
+        #expect(session.takePlan === plan && !plan.isRetired && !plan.stillCurrent)
+        let asked = try #require(session.task.confirm)
+        #expect(asked.question.hasPrefix("A change these takes voice was left out") && asked.question.contains("include the change again")
+            && asked.confirm.title == "Discard Takes" && asked.cancel.title == "Keep Working", "\(asked.question)")
+        try setState(pending)
+        #expect(plan.stillCurrent && session.task.confirm == nil)
+        try setState(.excluded)
+        try #require(session.task.confirm).confirm.perform()
+        await session.takesTask?.value
+        #expect(plan.isRetired && session.takePlan !== plan)
+    }
+
+    /// A Rewrite of selected words voices a bridge word beside them (w8, which touches w9). Cutting it is an edit beside
+    /// the scope, not in it: the paid take stays listed but no longer fits, the footer asks Keep Working or Discard Takes,
+    /// and an undo makes it current and usable again.
+    @Test func cuttingABridgeWordBesideTheScopeAsksAndUndoRestoresThePaidTake() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, scope: .selection(9...10)) { source in
+            if let start = source.transcript?.words[9].start { source.transcript?.words[8].end = start }
+        }
+        defer { editor.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        let plan = try await makeTakes(session)
+        #expect(plan.phrases[0].window.leftBridgeWordIds.contains("w8"), "\(plan.phrases[0].window)")
+        session.showProposal()
+        undo.beginUndoGrouping(); editor.apply(.cutSelection(ids: ["w8"]), name: "Cut selection"); undo.endUndoGrouping()
+        await session.reviewing?.value
+        #expect(session.task.state != .changed, "a cut beside the selection is not an edit in it")
+        #expect(session.takeWindowsMoved && !plan.stillCurrent && !plan.isRetired && session.takePlan === plan)
+        #expect(plan.phrases[0].takes.isEmpty == false && session.voiceSpendCurrent)
+        let asked = try #require(session.task.confirm)
+        #expect(asked.question.hasPrefix("The words beside these words changed after these takes were made")
+            && asked.question.contains("undo the edit") && asked.confirm.title == "Discard Takes", "\(asked.question)")
+        #expect(await useFirstTakes(session, plan) == false)
+        #expect((session.takePlanFailure as? ClipTakePlan.StaleStop)?.cause == .beside("The words beside these words"))
+        undo.undo()
+        await session.reviewing?.value
+        session.showProposal()
+        #expect(!session.takeWindowsMoved && plan.stillCurrent && session.task.confirm == nil && session.takePlanFailure == nil)
+        undo.beginUndoGrouping(); let used = await useFirstTakes(session, plan); undo.endUndoGrouping()
+        #expect(used, "\(plan.problem); \(session.problem)")
+    }
+
+    /// A clip's takes never reach past the clip, so a cut just outside it keeps the paid take current and usable, with no
+    /// question.
+    @Test func aCutJustOutsideTheClipKeepsItsPaidTakeCurrent() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, scope: .clip("c1")) { source in
+            source.edits.clips = [ClipRange(id: "c1", startWordId: "w5", endWordId: "w15")]
+        }
+        defer { editor.close() }
+        let plan = try await makeTakes(session)
+        session.showProposal()
+        editor.apply(.cutSelection(ids: ["w4"]), name: "Cut selection")
+        await session.reviewing?.value
+        #expect(session.task.state != .changed && !session.takeWindowsMoved && plan.stillCurrent && session.task.confirm == nil)
+        #expect(await useFirstTakes(session, plan), "\(plan.problem); \(session.problem)")
+    }
+
+    /// A surrounding sentence accepted for a paid phrase, then its takes: the rate samples they record, an autosave and a
+    /// music track leave the sentence's review current, so Use puts the takes in. Its request compared the whole raw
+    /// project, so the plan went stale with any of them.
+    @Test func anAcceptedSurroundingSentenceStaysCurrentThroughAutosaveAndMusic() async throws {
+        let fixture = try await fixture(indices: [10], dialogue: true, contextWords: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, exactSourceEnvelope: true)
+        defer { editor.close() }
+        session.receive(hunks([17]).map { RewriteChange(hunk: $0) })
+        session.finishRun(seconds: 0.1)
+        session.showProposal()
+        session.phraseTimingAction(.priceAnyway, ordinal: 1)
+        await session.prepareTakes()
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.duration = 1; $0.speechMargin = 0.15 }
+        await plan.start(approved: true)
+        session.reviewSpeechContext(phrase: 0)
+        try #require(session.speechContextReview != nil, "\(session.speechContextProblem)")
+        await session.acceptSpeechContextReview()
+        try #require(session.acceptedSpeechContext != nil && session.takePlan === plan && plan.stillCurrent, "\(session.speechContextProblem); \(plan.problem)")
+        ClipTakeHTTP.state.withLock { $0.duration = fittingSyntheticDuration(plan.phrases[0].window); $0.speechMargin = 0.05 }
+        await plan.start(approved: true)
+        await settle(session)
+        let take = try #require(plan.phrases[0].takes.last { $0.row.selectable }, "\(plan.diagnostics)")
+        #expect(editor.project.voiceLab.speakingRateSamples?.values.contains { !$0.isEmpty } == true, "no rate sample was recorded")
+        try await autosave(editor, root: fixture.root)
+        var music = editor.project
+        music.music = [ProjectMusic(id: "music-a", clipId: nil, asset: MusicAsset(file: music.id + "/music-own.wav",
+            sha256: String(repeating: "c", count: 64), durationSeconds: 30), source: .file, title: "own", license: .own)]
+        music.schemaVersion = 4
+        editor.replace(music, name: "Add music")
+        await session.reviewing?.value
+        #expect(session.acceptedSpeechContext != nil && session.takePlan === plan && plan.stillCurrent, "\(plan.problem)")
+        _ = plan.select(take: take.id, phrase: 0)
+        _ = plan.chooseVideo(.source, phrase: 0)
+        #expect(await session.acceptTakes(), "\(plan.problem); \(session.problem)")
     }
 
     @Test func legacyV2TakesRemainSelectableAndPlayable() async throws {
@@ -2938,7 +3351,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
         session.takePlan = fixture.plan
         generation.chooseVoice(nil); await generation.finishQuotePreparationForTests()
-        #expect(session.takePlan === fixture.plan && session.hasPaidTakes && !fixture.plan.stillCurrent)
+        // The paid plan stays (stale while its voice is not chosen, `Project.voiceTakeIdentity`); nothing new is priced.
+        #expect(session.takePlan === fixture.plan && session.hasPaidTakes && !fixture.plan.isRetired)
         #expect(generation.problem.contains("Your paid takes are kept") && ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 

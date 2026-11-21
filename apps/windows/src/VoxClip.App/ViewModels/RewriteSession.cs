@@ -53,8 +53,11 @@ internal sealed partial class RewriteSession : IDisposable
     private string proposalProblem = "";
     private string reviewProblem = "";
     internal EditorViewModel Editor { get; }
-    internal Project Project { get; }
-    internal IReadOnlyList<TimedWord> Transcript { get; }
+    /// <summary>The project the session reads. An edit outside what the Rewrite reads (captions, export, the clip style, music,
+    /// another clip) moves it on to the edited project and keeps the session (<see cref="EditorChanged"/>), as the Mac's
+    /// <c>RewriteSession.move</c> does.</summary>
+    internal Project Project { get; private set; }
+    internal IReadOnlyList<TimedWord> Transcript { get; private set; }
     internal IReadOnlyList<TimedWord> Source { get; }
     internal VoiceLabOutputScope Scope { get; }
     internal AudioEnvelope? Envelope { get; }
@@ -98,8 +101,37 @@ internal sealed partial class RewriteSession : IDisposable
     /// could be listed in it (<see cref="VoiceLabSession.VoicesUnavailable"/>). With no voice listed, the voice row explains instead
     /// of offering Create Your Voice… or voice discovery.</summary>
     internal bool VoicesUnavailable { get; }
-    internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing && !WordingIsLocked && Reasking is null &&
-        !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent() && contextIsCurrent();
+    /// <summary>Takes may be made, checked and used: the session is open and idle and what its paid voice work is made from is as it
+    /// was (<see cref="VoiceSpendCurrent"/>). The AI connector matters only for a proposal (<see cref="CanPropose"/>), never for takes.</summary>
+    internal bool GenerationIsCurrent => IsOpen && VoiceSpendCurrent && !TakeWindowsMoved && !IsProposing && !WordingIsLocked && Reasking is null &&
+        !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && contextIsCurrent();
+    /// <summary>An edit beside the scope moved the windows paid takes were made for (<see cref="EditorChanged"/>): the takes stay,
+    /// but none is made or used until an undo moves the windows back (Mac <c>takeWindowsMoved</c>).</summary>
+    internal bool TakeWindowsMoved { get; private set; }
+    /// <summary>The scope the voice identity reads (<see cref="ProjectVoiceTakeIdentity"/>): the clip or Full take asked for, else
+    /// the selection, with the clip it opened in.</summary>
+    private readonly RewriteScope identityScope;
+    private readonly string? identityClipId;
+    /// <summary>What the paid voice work is made from as the session opened (<see cref="ProjectVoiceTakeIdentity.IdentityKey"/>).</summary>
+    private readonly string voiceIdentity;
+    private Project? keyedProject;
+    private string keyedIdentity = "";
+    /// <summary>A save, the tab, captions, export, the clip style, music and the rest outside what takes are made from leave this
+    /// true; the scope's words, cuts, pauses and corrections, the source and clean audio make it false until they are back.</summary>
+    internal bool VoiceSpendCurrent
+    {
+        get
+        {
+            if (!IsOpen) return false;
+            var current = Editor.Project;
+            if (!ReferenceEquals(current, keyedProject))
+            {
+                keyedIdentity = ProjectVoiceTakeIdentity.IdentityKey(current, identityScope, identityClipId);
+                keyedProject = current;
+            }
+            return keyedIdentity == voiceIdentity;
+        }
+    }
     internal void ConfigureGeneration(RewriteGeneration generation)
     {
         generationFactory = null;
@@ -185,6 +217,9 @@ internal sealed partial class RewriteSession : IDisposable
         this.consent = consent;
         this.connectorIsCurrent = connectorIsCurrent ?? (() => true);
         requestedScope = scope;
+        identityScope = scope ?? RewriteScope.Selection(first, last);
+        identityClipId = scope is null ? Scope.ClipId : null;
+        voiceIdentity = ProjectVoiceTakeIdentity.IdentityKey(Project, identityScope, identityClipId);
         if (scope is not null)
         {
             scopePlan = ScopeRewritePlan.Make(Project, scope, "Fix mistakes", Project.Transcript?.Language ?? "en", envelope);
@@ -420,6 +455,8 @@ internal sealed partial class RewriteSession : IDisposable
 
     private void RefreshReview(bool preserveGenerations = false)
     {
+        // The review is built for the project as it is now, and the generation windows follow it.
+        TakeWindowsMoved = false; takeWindowsMovedLine = "";
         if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; ClearMeasuredWording(); pendingExpressions.Clear(); expressionNotes.Clear(); }
         reviewProblem = "";
         try
@@ -459,7 +496,8 @@ internal sealed partial class RewriteSession : IDisposable
     private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
     {
-        if (!connectorIsCurrent() || !contextIsCurrent()) Dispose();
+        // Another AI connector ends what was proposed, but paid takes stay: they never read the connector.
+        if (!contextIsCurrent() || !connectorIsCurrent() && !HasPaidTakes) Dispose();
         else if (!voiceLabEnabled && Generation is not null)
         {
             generationFactory = null;
@@ -468,7 +506,74 @@ internal sealed partial class RewriteSession : IDisposable
         }
         else foreach (var generation in generationWindows.Where(window => !window.IsRequestingConsent).ToArray()) _ = generation.InputsChangedAsync();
     }
-    private void EditorChanged(object? sender, EventArgs args) => Dispose();
+    /// <summary>An edit inside what the Rewrite reads closes it, as before. One outside it (captions, export, the clip style, music,
+    /// another clip, a save's write-back) moves the session on to the edited project and keeps its takes, paid ones included; their
+    /// currency is <see cref="VoiceSpendCurrent"/>. An edit of the words or cuts beside the scope can move a phrase's window: with
+    /// no paid takes the review is built again, keeping every window whose phrase did not move; with paid takes they stay and are
+    /// not current while their windows differ (<see cref="TakeWindowsMoved"/>).</summary>
+    private void EditorChanged(object? sender, EventArgs args)
+    {
+        if (!IsOpen) return;
+        var next = Editor.Project;
+        if (ReferenceEquals(next, Project)) return;
+        if (ProjectVoiceTakeIdentity.RewriteInputsKey(next, identityScope, identityClipId) !=
+            ProjectVoiceTakeIdentity.RewriteInputsKey(Project, identityScope, identityClipId)) { Dispose(); return; }
+        var placement = !ReferenceEquals(next.Edits, Project.Edits) || !ReferenceEquals(next.Transcript, Project.Transcript) ||
+            !ReferenceEquals(next.Media, Project.Media);
+        Project = next;
+        Transcript = Editor.Words.Select(word => word.Kind == WordKind.Word ? word with { Text = Editor.DisplayText(word) } : word).ToArray();
+        if (placement && Review is not null)
+        {
+            if (!HasPaidTakes) { TakeWindowsMoved = false; RefreshReview(preserveGenerations: true); }
+            else FollowTakeWindows(!SameWindows());
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+    /// <summary>The line the review shows while <see cref="TakeWindowsMoved"/> (Mac <c>followTakeWindows</c>' question): why Use waits,
+    /// what stays and the way back. An undo that moves the windows back clears it.</summary>
+    private string takeWindowsMovedLine = "";
+    private void FollowTakeWindows(bool moved)
+    {
+        if (moved == TakeWindowsMoved) return;
+        TakeWindowsMoved = moved;
+        if (moved)
+        {
+            takeWindowsMovedLine = TakeWindowsMovedCopy();
+            reviewProblem = takeWindowsMovedLine;
+        }
+        else
+        {
+            if (reviewProblem == takeWindowsMovedLine) reviewProblem = "";
+            takeWindowsMovedLine = "";
+        }
+    }
+    /// <summary>"The words beside these words changed after these takes were made, so they can't go in as they are. Your 2 paid takes
+    /// are kept: undo the edit to use them."</summary>
+    internal string TakeWindowsMovedCopy()
+    {
+        var beside = requestedScope is null ? "these words"
+            : requestedScope.ClipId is { } id ? Editor.Clips.FirstOrDefault(clip => clip.Id == id) is { } row ? $"clip {row.Number}" : "this clip"
+            : "the full take";
+        var count = PaidTakeCount;
+        var (kept, pronoun) = count switch
+        {
+            1 => ("Your paid take is kept", "it"),
+            0 => ("Your paid takes are kept", "them"),
+            _ => ($"Your {count} paid takes are kept", "them"),
+        };
+        return $"The words beside {beside} changed after these takes were made, so they can't go in as they are. {kept}: undo the edit to use {pronoun}.";
+    }
+    /// <summary>The review built for the project now places every phrase the generation windows were made for where it was.</summary>
+    private bool SameWindows()
+    {
+        try
+        {
+            var made = generatedVoiceHunks.Length > 0 ? generatedVoiceHunks : PricedVoiceHunks.ToArray();
+            var fresh = RewriteReview.Build(this, prices, synthesisModel).VoiceHunks.Where(CanPriceHunk).ToArray();
+            return fresh.Length == made.Length && fresh.Zip(made).All(pair => SameVoicePhrase(pair.First, pair.Second));
+        }
+        catch (VoiceLabWordDiffException) { return false; }
+    }
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         if (Editor.IsLeaving || Editor.IsReadOnly) Dispose();

@@ -5,7 +5,7 @@ extension Project {
     /// Inputs shared by opening, consent, edit following and successful-reply acceptance. The source transcript, media,
     /// pause settings and Voice Lab replacement segments remain; cuts, corrections and clip bounds are scoped. A selection
     /// includes its enclosing clip's placement context and both edge pauses. Save metadata, tab/title, schema/extensions,
-    /// captions/export/share, Motion, Demo and the Voice Lab asset/voice catalogs do not change a text proposal.
+    /// captions/clip style/export/share, Motion, Demo and the Voice Lab asset/voice catalogs do not change a text proposal.
     func rewriteInputs(scope: RewriteScope, enclosingClipID: String?) -> Project {
         let transcriptWords = transcript?.words ?? []
         let positions = Dictionary(uniqueKeysWithValues: transcriptWords.enumerated().map { ($0.element.id, $0.offset) })
@@ -55,6 +55,9 @@ extension Project {
         }
         project.edits.corrections = edits.corrections.filter { positions[$0.key].map(words.contains) ?? true }
         project.captions = CaptionSettings()
+        // The clip style (its caption picks, preset, music, shapes and tone) is read by a new run's instruction and by
+        // Claude mode, never by an open proposal or its takes: Claude's caption picks are an edit outside the scope.
+        project.clipStyle = nil
         project.export = ProjectExport()
         project.share = ProjectShare()
         project.ai = ProjectAI()
@@ -63,6 +66,24 @@ extension Project {
         project.voiceLab.videoAssets = nil
         project.voiceLab.voices = nil
         project.voiceLab.speakingRateSamples = nil
+        return project
+    }
+
+    /// What a Rewrite's paid voice work is made from (voice-lab.md, "What counts as an edit"): the voice takes, a whole
+    /// clip's voice and a lip sync stay current while this is unchanged. It is `rewriteInputs` with the clean-audio choice
+    /// kept, because clean audio changes the source a take is fitted to: the transcript, the media apart from its relative
+    /// path, the scoped clip, cuts, pauses and corrections, the pause threshold and the Voice Lab segments. Save metadata
+    /// (modifiedAt, savedBy, relativePath, title), the active tab, music, captions and the clip style, motion cues, clip
+    /// controls and effects, export, share, the AI connector's results, the Voice Lab asset and voice catalogs and
+    /// VoxClip's own speaking-rate samples are not part of it. Lip sync and takes never read clip controls, effects or
+    /// music (LipsyncWindowPreparation.swift strips them from the lip-sync input). The chosen voice and model are checked
+    /// beside it, by the plan. Windows has the same rule (`ProjectVoiceTakeIdentity`), replayed from
+    /// shared/fixtures/voice-lab/voice-take-identity-cases.json.
+    func voiceTakeIdentity(scope: RewriteScope, enclosingClipID: String?) -> Project {
+        var project = rewriteInputs(scope: scope, enclosingClipID: enclosingClipID)
+        // A project from before schema v3 has no clean-audio choice, which is clean audio off: the upgrade an edit such as
+        // a colour makes (`ContextDemoProject.upgradeToV4`) writes it so.
+        project.voiceLab.cleanAudio = voiceLab.cleanAudio ?? VoiceLabCleanAudio(mode: .off)
         return project
     }
 }

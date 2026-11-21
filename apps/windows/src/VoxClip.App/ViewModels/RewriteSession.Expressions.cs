@@ -11,7 +11,7 @@ internal sealed partial class RewriteSession
     private readonly Dictionary<int, IReadOnlyList<VoiceLabAudioTag>> pendingExpressions = [];
     private readonly Dictionary<int, string> expressionNotes = [];
     /// <summary>Expressions can be edited now, or (with takes) shown at once and applied when the work in progress settles.</summary>
-    internal bool ExpressionsEditable => IsOpen && (ReviewIsCurrent || HasPaidTakes && ReferenceEquals(Project, Editor.Project) && !Editor.IsReadOnly);
+    internal bool ExpressionsEditable => IsOpen && (ReviewIsCurrent || HasPaidTakes && VoiceSpendCurrent && !Editor.IsReadOnly);
     /// <summary>The tags a change shows: a pending expression at once, else its own.</summary>
     internal IReadOnlyList<VoiceLabAudioTag> ShownAudioTags(int ordinal) => pendingExpressions.GetValueOrDefault(ordinal) ??
         Review?.Diff.Hunks.ElementAtOrDefault(ordinal - 1)?.AudioTags ?? [];
