@@ -175,7 +175,11 @@ internal sealed partial class RewriteGeneration
     /// <summary>Mac <c>lengthFits</c>: keep source or a cut carries the take, selected or not.</summary>
     internal bool LengthFits(VoiceLabTakeRow row) => Options(row) is var options && (options.Allows(VoiceLabVideoMode.Source) || options.Allows(VoiceLabVideoMode.Cut));
     /// <summary>Mac <c>durationAvailable</c>: some video duration (keep source, cut or match) carries this passing take.</summary>
-    internal bool DurationAvailable(VoiceLabTakeRow row) => row.Selectable && Options(row) is var options &&
+    internal bool DurationAvailable(VoiceLabTakeRow row) => row.Selectable && DurationCarries(row);
+    /// <summary>Mac <c>RewriteSession.durationCarries</c>: some video duration (keep source, cut or match) carries this take, measured
+    /// from its own fit whether it passed its checks or not (voice-lab §8.2.2). <see cref="LengthFits"/> leaves out the matched speed,
+    /// which carries a take within 0.80×–1.25×.</summary>
+    internal bool DurationCarries(VoiceLabTakeRow row) => Options(row) is var options &&
         (options.Allows(VoiceLabVideoMode.Source) || options.Allows(VoiceLabVideoMode.Cut) || options.Allows(VoiceLabVideoMode.Retimed));
     /// <summary>The order passing takes are offered in (design.md R2, Mac <c>ranked</c>): one a video duration can carry first,
     /// the best score among those, else the one closest to the slot.</summary>

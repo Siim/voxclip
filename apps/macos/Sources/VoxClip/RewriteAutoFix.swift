@@ -4,15 +4,16 @@ import VoxClipCore
 
 // Rewrite fixes its own stuck phrases (design.md R2 "Automatic fixes", voice-lab.md §8.2.2). Once the user approves
 // Get Price and takes run, every phrase whose takes are stuck is handled phrase by phrase with no click, through the
-// paths the chips use: a measured reword for a take that is too long or too short, one more take for a failed check,
-// then a scoped reword with easier words. Each phrase gets at most three automatic rounds; after the last its original
+// paths the chips use: one more take for a failed check, then a scoped reword with easier words; a measured shorter
+// reword for a take too long that passed its checks (a failed take is fixed by what failed, never by its length). Each phrase gets at most three automatic rounds; after the last its original
 // words are kept. Automatic spend is capped at max($0.10, the approved price); the next step past it waits for
 // [Keep fixing · ≈ $y]. New takes are added beside the old ones, never in place of a paid one. Stop keeps everything
 // made so far and shows the chips.
 
 /// Why a phrase's takes are stuck: what the resolver fixes and what the phrase's one plain sentence says.
 enum StuckTakeReason: Equatable {
-    /// The closest take is too long (or too short) for its slot even with every duration choice.
+    /// The closest take is too long for its slot even with every duration choice; a take too short is never reworded
+    /// longer (ADR-R42). Only a phrase the estimate holds back (`estimateBlockedReason`) may read too short.
     case length(tooLong: Bool, measured: Double, slot: Double, take: UUID, number: Int, selected: Bool)
     /// Every take failed the word check (not a homophone of the asked words: those pass, voice-lab §8.11).
     case words
@@ -191,12 +192,6 @@ extension RewriteSession {
         }
         // A passing take not chosen yet (one whose voice could not be measured) is the user's pick, not a stuck phrase.
         if current.contains(where: { $0.row.selectable }) { return nil }
-        if let closest = current.filter({ $0.length != nil }).min(by: { abs($0.length! - slot) < abs($1.length! - slot) }),
-           let length = closest.length {
-            if !plan.lengthFits(take: closest) {
-                return .length(tooLong: length > slot, measured: length, slot: slot, take: closest.id, number: closest.number, selected: false)
-            }
-        }
         let providerFailures = current.compactMap { take -> VoiceLabError? in
             if case .provider(let error) = take.row.failure, Self.isAccountFailure(error) { return error }
             return nil
@@ -205,16 +200,37 @@ extension RewriteSession {
         if current.allSatisfy({ take in
             take.length == nil && (take.row.failure == .invalidAlignment || take.row.failure == .provider(.invalidAlignment))
         }) { return .timing }
-        let failures = current.flatMap { take -> [VoiceLabTakeQAFailure] in
-            if case .qa(let failed) = take.row.failure { return failed }
-            return take.row.qa?.hardFailures ?? []
-        }
+        // A failed take is fixed by what failed, before its length: a take that skipped words runs short, and a longer
+        // wording would only pad it and pay for another take (ADR-R42).
+        let failures = current.flatMap(Self.hardFailures)
         if failures.contains(.insufficientGeneratedSpeech) || current.contains(where: { $0.row.voiceCheck.evidence?.mode == .unmeasured }) {
             return .shortSpeech
         }
         if failures.contains(.transcript) { return .words }
         if failures.contains(.speaker) { return .voice }
+        // Length only for a closest take with no failed check of its own that runs longer than its slot and that no video
+        // duration (keep source, cut or match) carries. A take too short is never reworded longer.
+        if let closest = current.filter({ $0.length != nil }).min(by: { abs($0.length! - slot) < abs($1.length! - slot) }),
+           let length = closest.length, length > slot, Self.hardFailures(closest).isEmpty, !durationCarries(closest, plan: plan) {
+            return .length(tooLong: true, measured: length, slot: slot, take: closest.id, number: closest.number, selected: false)
+        }
         return .other(current.last.flatMap { TakeFailurePresentation.reason(for: $0.row) } ?? "Its takes did not pass the checks.")
+    }
+
+    /// A take's failed checks: those of its failure, else of its word and voice check (loudness is advice, not a failure).
+    static func hardFailures(_ take: ClipTakePlan.Take) -> [VoiceLabTakeQAFailure] {
+        if case .qa(let failed) = take.row.failure { return failed }
+        return take.row.qa?.hardFailures ?? []
+    }
+
+    /// Whether some video duration (keep source, cut or match) carries this take, measured from its own fit whether it
+    /// passed its checks or not (voice-lab §8.2.2). `ClipTakePlan.durationAvailable` asks it of a passing take only, and
+    /// `lengthFits` leaves out the matched speed, which carries a take within 0.80×–1.25×.
+    func durationCarries(_ take: ClipTakePlan.Take, plan: ClipTakePlan) -> Bool {
+        let options = VoiceLabVideoDurationOptions(fit: take.row.audio?.fit, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+            assetSampleRate: take.row.audio?.sampleRate ?? 0)
+        let rendererReady = plan.prepareDurationRender != nil && VoiceLabRenderInput.supportsVideoMode(.zoomCover)
+        return options.allows(.source) || (rendererReady && (options.allows(.cut) || options.allows(.retimed)))
     }
 
     /// A takes-plan phrase the estimate holds back ("Change N needs a shorter wording before takes") with no take that
@@ -490,8 +506,7 @@ extension RewriteSession {
         }
         for take in phrase.takes {
             guard let text = plan.measuredInput(take: take.id)?.text else { continue }
-            let failed: [VoiceLabTakeQAFailure] = if case .qa(let list) = take.row.failure { list } else { take.row.qa?.hardFailures ?? [] }
-            if failed.contains(.transcript) { add(VoiceLabFitTried(text: text, result: "words")); continue }
+            if Self.hardFailures(take).contains(.transcript) { add(VoiceLabFitTried(text: text, result: "words")); continue }
             guard let length = take.length else { add(VoiceLabFitTried(text: text, result: "unchecked")); continue }
             let difference = length - phrase.originalLength
             if plan.lengthFits(take: take) { add(VoiceLabFitTried(text: text, result: "fit")) }
