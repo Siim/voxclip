@@ -277,6 +277,34 @@ extension ClipTakePlan.Phrase {
         let selected: VoiceConsentRecord? = generation.voices.first { $0.id == generation.selectedVoiceID }
         return selected?.voiceName ?? generation.voices.first?.voiceName ?? ""
     }
+    /// What the lip-sync offers depend on: each phrase's chosen take, video choice and words, and whether an offer on
+    /// screen went stale. Typed and outside `body` so hosted Xcode 26 can type-check the view in time.
+    private var lipsyncRefreshKey: [String] {
+        guard let plan = session.takePlan else { return ["current"] }
+        var key: [String] = plan.phrases.map { (phrase: ClipTakePlan.Phrase) -> String in
+            let take: String = phrase.selectedID?.uuidString ?? ""
+            let video: String = phrase.videoChoice?.rawValue ?? ""
+            return take + "-" + video + "-" + phrase.text
+        }
+        key.append(plan.lipsync.hasStaleOffer ? "stale" : "current")
+        return key
+    }
+    /// The plan's rows and notes. Split out of `body` so hosted Xcode 26 can type-check it in time.
+    @ViewBuilder private func planSection(_ plan: ClipTakePlan) -> some View {
+        ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }
+        if let disclosure = plan.lipsync.allDisclosure { lipSyncAllDisclosure(disclosure) }
+        Text(AudioTagPhrase.explanation).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+        if plan.preparing { ProgressView(plan.preparationStep ?? "Preparing price…").controlSize(.small) }
+        if !plan.problem.isEmpty { Text(plan.problem).foregroundStyle(DesignValues.color("status.warning")) }
+        Text(session.takeSpendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+    }
+    private func lipSyncAllDisclosure(_ disclosure: String) -> some View {
+        let text: String = "Lip Sync All\n" + disclosure
+        let label: String = "Lip Sync All approval. " + disclosure
+        return Text(text).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(label)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
             Text(Self.rewriteModelLabel)
@@ -297,18 +325,7 @@ extension ClipTakePlan.Phrase {
                     ForEach(generation.voices) { Text($0.voiceName).tag($0.id) }
                 }
             }
-            if let plan = session.takePlan {
-                ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }
-                if let disclosure = plan.lipsync.allDisclosure {
-                    Text("Lip Sync All\n" + disclosure).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
-                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Lip Sync All approval. " + disclosure)
-                }
-                Text(AudioTagPhrase.explanation).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
-                if plan.preparing { ProgressView(plan.preparationStep ?? "Preparing price…").controlSize(.small) }
-                if !plan.problem.isEmpty { Text(plan.problem).foregroundStyle(DesignValues.color("status.warning")) }
-                Text(session.takeSpendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
-            }
+            if let plan = session.takePlan { planSection(plan) }
             if !generation.problem.isEmpty { Text(generation.problem).foregroundStyle(DesignValues.color("status.warning")) }
             RewriteSpeechContextReviewView(session: session)
             Button("Review Changes") { session.takeRowsShown = false; session.showProposal() }.buttonStyle(.plain)
@@ -322,8 +339,7 @@ extension ClipTakePlan.Phrase {
         .onChange(of: session.editor.app.string("voiceLab.monthlyCapUsd.fal")) { _, _ in Task { await session.takePlan?.lipsync.refresh() } }
         // Fresh lip-sync offers when a take, its duration or its words change, and when an offer on screen went stale
         // (the plan changed under it): a stale offer is never left clickable.
-        .task(id: (session.takePlan?.phrases.map { "\($0.selectedID?.uuidString ?? "")-\($0.videoChoice?.rawValue ?? "")-\($0.text)" } ?? [])
-                  + [session.takePlan?.lipsync.hasStaleOffer == true ? "stale" : "current"]) {
+        .task(id: lipsyncRefreshKey) {
             await session.takePlan?.lipsync.refresh()
         }
         .onDisappear { session.takePlan?.stopAudition() }
