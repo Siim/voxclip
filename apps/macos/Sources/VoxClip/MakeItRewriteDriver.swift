@@ -4,8 +4,9 @@ import VoxClipCore
 /// Voices one planned rewrite with Rewrite's own session and take plan (doc/design.md §6.7): the planner's words are the
 /// session's proposal, and the driver takes the steps a creator would, in the panel's own controls, within the run's
 /// budget. Each priced step is checked against the budget before it runs; the click on ✦ Make it postable is its
-/// approval, so the existing quote, approval and spend ledger paths authorize it. It never discards a paid take, never
-/// sends the words to the AI again on its own, and stops (leaving Rewrite open) where the creator is needed.
+/// approval, so the existing quote, approval and spend ledger paths authorize it. It never discards paid work the video
+/// could still use, never sends the words to the AI again on its own, and stops (leaving Rewrite open) where the creator
+/// is needed: it never answers a question it may not (Discard Takes, the close's Discard and Close).
 @MainActor final class MakeItRewriteDriver {
     let editor: EditorModel
     let request: MakeItRewriteRequest
@@ -21,12 +22,13 @@ import VoxClipCore
     init(editor: EditorModel, request: MakeItRewriteRequest) { self.editor = editor; self.request = request }
 
     /// The footer, link and chip controls the driver may press, in the order a creator reaches for them. Discard, Done,
-    /// Keep original words, Ask again and Try again are never pressed: each gives up a take or sends again. Keep My Words
-    /// (changes too long for the video, nothing paid) and Keep My Original Audio (offered only when Use found no take it
-    /// can put in the video) give up nothing usable, so a run never waits on the creator for them (ai.md §12.9).
+    /// Keep original words, Keep My Original Audio, Ask again and Try again are never pressed: each gives up a take or sends
+    /// again. Keep My Words (changes too long for the video, nothing paid) gives up nothing, so a run never waits on the
+    /// creator for it (ai.md §12.9). Keep My Original Audio shows only over paid takes Use couldn't put in, so the run stops
+    /// there with the takes kept in Rewrite (`useStopped`).
     static let order = ["approveTakeQuote", "useTakes", "chooseTake", "takeQuote-", "prepareTakes", "makeTakes", "keepFixing",
                         "withinSentence", "revoiceAll", "mergePhrases", "freshPrice", "reviewTakes", "showTakes", "keepMyWords",
-                        "chooseDuration", "keepOriginalAudio", "keepAll", "useTake"]
+                        "chooseDuration", "keepAll", "useTake"]
     /// Controls whose click costs money; they run only within the budget.
     static func pricedID(_ id: String) -> Bool { id.hasPrefix("takeQuote-") || id.hasPrefix("approveTakeQuote") || id.hasPrefix("keepFixing") }
 
@@ -35,9 +37,11 @@ import VoxClipCore
         guard voiceLabOn else {
             return MakeItRewriteOutcome(result: .unavailable("Turn on Voice Lab and make your voice to voice rewrites. Nothing was sent."))
         }
+        // An open Rewrite with paid work (takes, or a whole clip's voice or lip sync) is the creator's to finish.
         if let open = editor.openRewrite, open.isOpen {
-            guard !open.hasPaidTakes else { return MakeItRewriteOutcome(result: .needsYou("Finish the open Rewrite first; its paid takes are kept.")) }
-            editor.closeRewrite(returnFocus: false)
+            guard !open.hasUnusedPaidWork, editor.closeRewrite(returnFocus: false) else {
+                return MakeItRewriteOutcome(result: .needsYou("Finish the open Rewrite first. " + open.paidWorkKept.kept + "."))
+            }
         }
         guard let session = open() else {
             return MakeItRewriteOutcome(result: .needsYou("Rewrite couldn't place these words. Change to try it yourself."))
@@ -111,12 +115,33 @@ import VoxClipCore
         if acceptJoinOnlyTakes(session) { return nil }
         if keepBlockedPhrases(session) { return nil }
         if let finished = await finishAsRecorded(session, spent: spent) { return finished }
+        switch Self.next(in: session) {
+        case .press(let action): return await press(action, session: session, spent: spent)
+        case .stop(let result): return result
+        }
+    }
+
+    /// What the driver does next in `session`'s footer and chips: the first control of `order` it shows, else it stops.
+    /// Use that couldn't put paid takes in (the footer offers Keep My Original Audio, which leaves every take out) stops
+    /// with the takes kept in Rewrite, and names why.
+    enum Next { case press(PanelAction), stop(MakeItRewriteOutcome.Result) }
+    static func next(in session: RewriteSession) -> Next {
+        let task = session.task
         var actions = [task.footer.primary, task.footer.link].compactMap { $0 }
         for card in task.cards { if case .nextSteps(let steps) = card { actions += steps.chips.map(\.action) } }
-        for id in Self.order {
-            if let action = actions.first(where: { $0.id.hasPrefix(id) }) { return await press(action, session: session, spent: spent) }
+        if task.footer.primary?.id == "keepOriginalAudio", session.hasUnusedPaidWork { return .stop(useStopped(session)) }
+        for id in order {
+            if let action = actions.first(where: { $0.id.hasPrefix(id) }) { return .press(action) }
         }
-        return .needsYou((task.footer.note ?? "").split(separator: "\n").first.map(String.init) ?? "Rewrite is waiting for you.")
+        return .stop(.needsYou((task.footer.note ?? "").split(separator: "\n").first.map(String.init) ?? "Rewrite is waiting for you."))
+    }
+
+    /// "Use couldn't put the takes in: {why}. Your paid takes are kept in Rewrite."
+    static func useStopped(_ session: RewriteSession) -> MakeItRewriteOutcome.Result {
+        let why = session.takePlanFailure.map(session.takePlanCopy) ?? session.problem
+        let line = why.trimmingCharacters(in: .whitespacesAndNewlines)
+        let reason = line.isEmpty ? "" : " " + (line.hasSuffix(".") ? line : line + ".")
+        return .needsYou("Use couldn't put the takes in:" + reason + " Your paid takes are kept in Rewrite.")
     }
 
     /// Presses `action`; a priced one only while its price fits what is left of the budget.
@@ -179,7 +204,7 @@ import VoxClipCore
 
     /// Nothing is left to voice (every phrase kept as recorded, or a source that can't be read): the Rewrite's text fixes
     /// are applied as free edits when it has any, and the Rewrite ends. Nil while there is something to voice.
-    private func finishAsRecorded(_ session: RewriteSession, spent: Decimal) async -> MakeItRewriteOutcome.Result? {
+    func finishAsRecorded(_ session: RewriteSession, spent: Decimal) async -> MakeItRewriteOutcome.Result? {
         guard !session.takesBusy, !session.wordingIsLocked,
               let primary = session.task.footer.primary, primary.id == "apply" || primary.id == "closeRewrite" else { return nil }
         // Settled: the guard blocked every phrase, the source can't be read, every phrase keeps its audio (its take could
@@ -192,8 +217,14 @@ import VoxClipCore
         let reason = !keptBlocked.isEmpty ? "It doesn't sound like your voice here, so nothing was sent."
             : !problem.isEmpty ? problem : session.autoFix.notes.last ?? "Your words stay as recorded."
         pressed = "Make it postable presses [\(primary.title)]"
-        primary.perform()
-        if session.isOpen, !session.hasPaidTakes { editor.closeRewrite(returnFocus: false) }
+        if primary.id == "closeRewrite", session.asksBeforeClosing {
+            // Every phrase keeps its recorded audio by Rewrite's own rules, so none of its paid takes can go in: the Rewrite
+            // is complete and closes, as Done did before it asked about such takes (S-duration-claude, DC1).
+            editor.discardRewrite(returnFocus: false)
+        } else {
+            primary.perform()
+            if session.isOpen, !session.hasUnusedPaidWork { editor.closeRewrite(returnFocus: false) }
+        }
         return .keptAsRecorded(primary.id == "apply" ? reason + " Its text fixes are applied." : reason)
     }
 

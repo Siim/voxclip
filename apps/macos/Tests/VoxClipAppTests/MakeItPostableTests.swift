@@ -702,9 +702,94 @@ private final class Calls: Sendable {
             #expect(!MakeItRewriteDriver.order.contains { id.hasPrefix($0) }, "\(id) is never pressed")
         }
         // ai.md §12.9, MVP32 Clip 7: the steps that settle what can't fit the video never wait on the creator.
-        for id in ["keepMyWords", "keepOriginalAudio", "useTakes", "freshPrice"] {
+        for id in ["keepMyWords", "useTakes", "freshPrice"] {
             #expect(MakeItRewriteDriver.order.contains(id), "\(id) is pressed with no click")
         }
+        // Keep My Original Audio leaves out every paid take Use couldn't put in: the run stops there instead.
+        #expect(!MakeItRewriteDriver.order.contains("keepOriginalAudio"))
+    }
+
+    // MARK: Paid work stays in Rewrite (Claude mode never discards it)
+
+    /// The take fixture's Rewrite (five questions, words 12…25) with paid takes.
+    private func paidTakesSession() throws -> (EditorModel, RewriteSession) {
+        _ = NSApplication.shared
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        let shared = try SharedResources.locate()
+        let project = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        editor.mediaResolved = true
+        editor.refresh()
+        let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
+        let session = RewriteSession(editor: editor, scope: .selection(12...25),
+            envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)), connector: connector)
+        editor.rewrite = session
+        try session.receivePassage("A clearer way to explain what happened in this passage.")
+        session.finishRun(seconds: 1)
+        try DebugRewriteGeneration.install("ready", in: session)
+        session.showProposal()
+        return (editor, session)
+    }
+
+    /// Use couldn't put the paid takes in (a stale plan after Keep Working, or here a failure of its own): the footer's
+    /// Keep My Original Audio would leave every take out. The run stops with "needs you" and the takes kept, and names why.
+    @Test(arguments: [ClipTakePlan.Failure.stale, .lipsyncBusy]) func useThatCantPutPaidTakesInStopsWithTheTakesKept(failure: ClipTakePlan.Failure) throws {
+        let (editor, session) = try paidTakesSession()
+        defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        session.takePlanFailure = failure
+        session.showProposal()
+        try #require(session.task.footer.primary?.id == "keepOriginalAudio" && session.task.confirm == nil, "\(session.task.footer)")
+        guard case .stop(.needsYou(let line)) = MakeItRewriteDriver.next(in: session) else {
+            Issue.record("the driver goes on past paid takes Use couldn't put in"); return
+        }
+        #expect(line.hasPrefix("Use couldn't put the takes in: " + ClipTakePlan.copy(failure).prefix(20)) && line.hasSuffix(" Your paid takes are kept in Rewrite."), "\(line)")
+        #expect(plan.phrases.allSatisfy { !$0.leftOut } && session.isOpen && session.hasUnusedPaidWork)
+    }
+
+    /// S-duration-claude (DC1): every phrase keeps its recorded audio by Rewrite's own rules, so none of its paid takes can
+    /// go in. The run keeps the words as recorded and the Rewrite closes, with no question left up, although Done over
+    /// those takes now asks the creator first.
+    @Test func paidTakesNoPhraseCanUseCloseTheSettledRewriteUnasked() async throws {
+        let (editor, session) = try paidTakesSession()
+        defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        for index in plan.phrases.indices { plan.leaveOut(phrase: index) }
+        session.showProposal()
+        try #require(session.task.footer.primary?.id == "closeRewrite" && session.asksBeforeClosing, "\(session.task.footer)")
+        let driver = MakeItRewriteDriver(editor: editor, request: MakeItRewriteRequest(range: 12...25, text: "A clearer way.", clipID: "", budget: 1))
+        let result = await driver.finishAsRecorded(session, spent: 0)
+        guard case .keptAsRecorded = result else { Issue.record("\(String(describing: result))"); return }
+        #expect(!session.isOpen && editor.openRewrite == nil && session.task.confirm == nil)
+        #expect(!editor.announcements.contains { $0.hasPrefix("Close Rewrite and discard") })
+    }
+
+    /// Make it postable's Rewrite never closes an open Rewrite holding a paid whole clip: it stops with "needs you", and the
+    /// whole clip stays in Review. It used to close it (the guard read only the patch's takes).
+    @Test func theDriverNeverClosesARewriteHoldingAPaidWholeClip() async throws {
+        let fixture = try fixture()
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
+        editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        let open = RewriteSession(editor: editor, scope: .selection(3...4), envelope: nil, connector: nil)
+        editor.rewrite = open
+        try open.receivePassage("we finally ship")
+        open.finishRun(seconds: 1)
+        let whole = WholeClipRevoiceSession()
+        whole.backend = WholeClipRevoiceSessionTests.backend(WholeClipRevoiceSessionTests.Stubs())
+        whole.start(); await whole.waitForRun()
+        try #require(whole.phase == .review && whole.spent > 0)
+        open.wholeClip = whole
+        try #require(!open.hasPaidTakes && open.hasUnusedPaidWork)
+        let outcome = await MakeItRewriteDriver(editor: editor, request: MakeItRewriteRequest(range: 6...7, text: "the shipper.", clipID: "clip-main",
+                                                                                          budget: 1)).run()
+        guard case .needsYou(let line) = outcome.result else { Issue.record("\(outcome)"); return }
+        #expect(line == "Finish the open Rewrite first. Your paid whole-clip voice is kept.")
+        #expect(open.isOpen && editor.openRewrite === open && whole.phase == .review && open.task.confirm == nil)
     }
 
     // MARK: Tones (design.md §6.6 Tone row, §6.7 review row)
