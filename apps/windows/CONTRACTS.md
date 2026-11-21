@@ -1,5 +1,22 @@
 # Windows fixed contracts
 
+### 2026-11-21 — Opening another Rewrite asks over paid takes, and a Restart held by them says so (track/v2-rel-h, package H)
+
+Twin, in part, of the Mac entry of the same date (voice-lab §8.16 item 10; design.md R2 "Closing Rewrite"). `OpenRewriteAsync` retired the open Rewrite and its paid takes unasked, and Restart now over paid takes read the held leave as a failed save.
+
+- **The rule:**
+  - `EditorPage.AskBeforeReplacingRewrite(replay)` runs first in `OpenRewriteAsync` (the toolbar, the menu, a shell job) and `RewriteAsAsync` (a tone), before anything is retired or the selection changes. Over `rewrite is { IsOpen: true, HasPaidTakes: true }` it brings the open Rewrite's panel forward (`RightColumn.RevealRewrite`, which closes a job only when the job allows and never closes the Rewrite) and calls `RewritePanel.AskBeforeReplacing(replay)`: the footer asks `RewriteSession.CloseQuestion(n, newRewrite: true)` ("Start a new Rewrite and discard {n} paid takes?", "1 paid take", "the takes being made") with Keep Working (accent, focused, Esc) and Discard and Rewrite, which disposes the session and runs the press again (`RunAsync(replay, "Rewrite")`). When the panel can't come forward nothing opens, and the editor's Warning notice is `RewriteSession.ReplaceHeldNotice`.
+  - `MainWindow.PrepareForRestartAsync` reads `EditorPage.LeaveHeldByPaidWork` after a refused leave and returns `RestartPreparation.HeldByPaidWork`; `UpdateRestartCoordinator` maps it to `RestartResult.HeldByPaidWork`, and the window notice is a Warning, `RestartNotice.HeldByPaidWork`: "VoxClip didn't restart: Rewrite has paid takes you haven't used. Use or discard them in Rewrite, then restart. Your projects are still open with their edits." Nothing was saved, so nothing says a save failed.
+- **Built:** App `RewritePanel.AskBeforeReplacing`, `ShowCloseQuestion` (the shared question for a close and a replace); `RightColumn.RevealRewrite`; `EditorPage.AskBeforeReplacingRewrite`, `LeaveHeldByPaidWork`; `RewriteSession.ReplaceHeldNotice`, `CloseQuestion(int, bool)`; `RestartPreparation.HeldByPaidWork`, `RestartResult.HeldByPaidWork`, `RestartNotice.HeldByPaidWork`.
+- **Deleted:** `RewriteSession.CloseQuestion(int)` (now `CloseQuestion(int, bool newRewrite = false)`).
+- **Changed:** App `EditorPage.xaml.cs`, `EditorPage.RewriteTones.cs`, `RewritePanel.cs`, `RightColumn.cs`, `RewriteSession.Review.cs`, `MainWindow.xaml.cs`, `UpdateRestartCoordinator.cs`.
+- **Release boundary:** `VoxClip.txt` regenerated from the Release typecheck surrogate: the members above and the `RestartNotice` type, all product code; the old `CloseQuestion(int)` line went.
+- **Tests:** win-ui `RewritePanelTests.OpeningAnotherRewriteOverPaidTakesAsksFirst` (the question's copy, and the open, tone, panel and column wiring in source order), `UpdateRestartTests.PaidTakesHoldARestartWithoutSayingTheSaveFailed` (the held result, nothing written or frozen, the warning copy and `MainWindow`'s mapping). Red without the change: both failed with the old behaviour put back (keeping the new API). UI 1540 (0 failed, 5 skipped, with `ReleaseSurrogateMatchesTheShippingAllowlistsExactly`) and Core 3514 (0 failed, 29 skipped) passed, and the App code type-checks (`VoxClip.App.TypeCheck`, Release). Media was not run: no Media code or test changed.
+- **Resolved owes:** G's `OpenRewriteAsync` owe and the held restart result.
+- **Owes:**
+  - A native run (the VM) of the open question, the held restart notice, G's launch sweep, the close question and the leave notice.
+  - The VoiceLabScratch sweep (owner model first), a saved and restored Rewrite proposal and the whole-clip card, and a Discard Takes button.
+
 ### 2026-11-21 — Closing Rewrite asks, a leave waits, and the take journal settles at open, close and launch (track/v2-rel-g, package G)
 
 Twin, in part, of the Mac entry of the same date (voice-lab §3.4 item 11, §8.16 item 10; design.md R2 "Closing Rewrite"). D's leave seam did nothing in production, Esc and the panel's X disposed paid takes, a batch over several windows priced an adopted take's synthesis, and the journal was settled only by a take run. Windows saves no Rewrite proposal (voice-lab §3.5).
