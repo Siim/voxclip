@@ -25,6 +25,10 @@ public actor FalLipsyncProvider: LipsyncProvider {
         var cancelling = false
         var cleaning = false
         var lease: LipsyncProviderQueue.Lease?
+        /// fal.ai's own failure of the job (`error_type`), once its status or result said so.
+        var providerFailure: LipsyncError?
+        /// The last non-2xx status or result answer's `Retry-After`.
+        var retryAfter: Double?
     }
     private let owner = UUID()
     private let keys: any KeyProvider
@@ -41,7 +45,11 @@ public actor FalLipsyncProvider: LipsyncProvider {
     private var active: String?
     private var submitting = false
     private var uncertain: UUID?
+    /// The account's lip-sync slot, taken before the uploads (`prepareApprovedUpload`) and handed to the submit.
+    private var reserved: LipsyncProviderQueue.Lease?
     private var diagnostic: (any LipsyncDiagnosticSink)?
+    /// A status or result fetch that fails transiently is tried again this many times in a row before the wait gives up.
+    static let pollRetries = 6
 
     public func setDiagnostic(_ sink: (any LipsyncDiagnosticSink)?) { diagnostic = sink }
 
@@ -59,13 +67,14 @@ public actor FalLipsyncProvider: LipsyncProvider {
         self.queue = .shared
     }
 
+    /// `queue` is the account's one-job slot: a test's own, shared by the providers it makes; the app's is `.shared`.
     package init(keys: any KeyProvider, prices: VoiceLabPriceCatalog, http: any LipsyncHTTPClient,
                  logger: any Redacting, spend: VoiceLabSpendLedger? = nil,
                  now: @escaping @Sendable () -> Date, monotonic: @escaping @Sendable () -> Duration,
-                 sleep: @escaping @Sendable (Duration) async throws -> Void) {
+                 sleep: @escaping @Sendable (Duration) async throws -> Void, queue: LipsyncProviderQueue? = nil) {
         self.keys = keys; self.prices = prices; self.http = http; self.logger = logger; self.spend = spend
         self.now = now; self.monotonic = monotonic; self.sleep = sleep
-        self.queue = LipsyncProviderQueue()
+        self.queue = queue ?? LipsyncProviderQueue(clock: monotonic)
     }
 
     public func estimate(_ model: LipsyncModel, seconds: Double, fps: Double) async throws -> CostEstimate {
@@ -131,16 +140,39 @@ public actor FalLipsyncProvider: LipsyncProvider {
                .sorted(by: { $0.job.submittedAt == $1.job.submittedAt ? $0.job.remoteID < $1.job.remoteID : $0.job.submittedAt < $1.job.submittedAt }).first {
             entries.removeValue(forKey: oldest.job.remoteID)
         }
-        guard active == nil, !submitting, uncertain == nil, entries.count < 64 else { throw LipsyncError.busy }
-        try fresh(quote)
-        submitting = true
-        defer { submitting = false }
-        let lease = try await queue.acquire(account: id)
-        do { return try await dispatch(quote, approval: approval, lease: lease) }
-        catch {
-            if uncertain != quote.id { await queue.release(lease) }
+        let lease: LipsyncProviderQueue.Lease
+        do {
+            guard active == nil, !submitting, uncertain == nil, entries.count < 64 else { throw LipsyncError.busy }
+            try fresh(quote)
+            lease = try await reserveSlot()
+            reserved = nil
+        } catch {
+            await releaseReservation()
             throw error
         }
+        submitting = true
+        defer { submitting = false }
+        do { return try await dispatch(quote, approval: approval, lease: lease) }
+        catch {
+            // A refused, failed or uncertain submit gives the slot back: an uncertain one stays blocked by this provider's
+            // own flag and the session's (it never resubmits by itself), and holding the account's slot protects nothing.
+            await queue.release(lease)
+            throw error
+        }
+    }
+
+    /// Takes the account's one lip-sync slot (voice-lab §9.6), or throws `busy` at once while another run holds it.
+    private func reserveSlot() async throws -> LipsyncProviderQueue.Lease {
+        if let reserved { return reserved }
+        let lease = try await queue.reserve(account: id, for: LipsyncLimits.deadlineSeconds)
+        reserved = lease
+        return lease
+    }
+
+    private func releaseReservation() async {
+        guard let lease = reserved else { return }
+        reserved = nil
+        await queue.release(lease)
     }
 
     private func dispatch(_ quote: LipsyncQuote, approval: LipsyncApproval, lease: LipsyncProviderQueue.Lease) async throws -> LipsyncJob {
@@ -167,17 +199,24 @@ public actor FalLipsyncProvider: LipsyncProvider {
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("{\"expiration_duration_seconds\":3600}", forHTTPHeaderField: "X-Fal-Object-Lifecycle-Preference")
-        let (job, status) = try await submitToQueue(request, quote: quote, permit: permit)
+        let (job, status, rebuilt) = try await submitToQueue(request, quote: quote, permit: permit)
         entries[job.remoteID] = Entry(job: job, quote: quote, started: monotonic(), lease: lease)
         active = job.remoteID; uncertain = nil
+        // The slot is the job's until its deadline and the result's download; a lease no one gives back ends then.
+        await queue.renew(lease, for: LipsyncLimits.deadlineSeconds + 300)
         if let spend { entries[job.remoteID]?.spendWarning = await spend.record(quote.estimate, at: job.submittedAt) }
         await log("accepted")
+        if rebuilt > 0 { await log("receipt-urls-rebuilt count=\(rebuilt)") }
         await diagnostic?.record(.init(stage: .submit, requestID: job.remoteID, status: status))
         if Task.isCancelled { await self.cancel(job) }
         return job
     }
 
-    private func submitToQueue(_ request: URLRequest, quote: LipsyncQuote, permit: VoiceDispatchPermit) async throws -> (LipsyncJob, Int) {
+    /// The paid POST (voice-lab §9.4 step 6). fal.ai answers 429 (rate limit) and 503 (no capacity) before it queues
+    /// anything: those are tried again at most twice, after 1 s and 2 s or the answer's `Retry-After` (up to 30 s), then
+    /// stop as not submitted. Any other 4xx (408 and 499 aside) is final and free. A lost answer, a 500, 502, 504 or any
+    /// other reply after the body was sent can't prove fal.ai didn't queue a billed job: the charge is unknown.
+    private func submitToQueue(_ request: URLRequest, quote: LipsyncQuote, permit: VoiceDispatchPermit) async throws -> (LipsyncJob, Int, Int) {
         try fresh(quote)
         try Task.checkCancellation()
         await diagnostic?.record(.init(stage: .submit))
@@ -198,18 +237,20 @@ public actor FalLipsyncProvider: LipsyncProvider {
                 throw failure
             }
             let status = response.status
-            if (400...499).contains(status), status != 408, status != 499 {
+            if status == 429 || status == 503 || ((400...499).contains(status) && status != 408 && status != 499) {
                 uncertain = nil
                 await diagnostic?.record(.init(stage: .submit, status: status, error: .http(status)))
-                if status == 429, retries < 2 {
+                if status == 429 || status == 503, retries < 2 {
                     retries += 1
-                    try await sleep(.seconds(retries))
+                    try await sleep(.seconds(max(Double(retries), min(response.retryAfter ?? 0, 30))))
                     continue
                 }
                 throw LipsyncError.http(status)
             }
-            do { return (try queueReceipt(response, model: quote.model), status) }
-            catch { throw await uncertainSubmission(status: status) }
+            do {
+                let (job, rebuilt) = try queueReceipt(response, model: quote.model)
+                return (job, status, rebuilt)
+            } catch { throw await uncertainSubmission(status: status) }
         }
     }
 
@@ -219,27 +260,30 @@ public actor FalLipsyncProvider: LipsyncProvider {
         return .submissionUncertain
     }
 
-    private func queueReceipt(_ response: LipsyncHTTPResponse, model: LipsyncModel) throws -> LipsyncJob {
+    /// The accepted job from a 2xx receipt, and how many follow-up URLs were built from the queue path. The request ID is
+    /// what fal.ai bills under: once a valid one is read, a follow-up URL that is missing, null or fails the exact
+    /// `queue.fal.run/<owner>/<app>/requests/<id>` check is built from that path instead (its host and path are fixed and
+    /// safe, and the key only ever goes there), so a known paid job is never dropped as "charge unknown".
+    private func queueReceipt(_ response: LipsyncHTTPResponse, model: LipsyncModel) throws -> (LipsyncJob, Int) {
         let document = try json(response)
         guard let remoteID = document["request_id"] as? String, UUID(uuidString: remoteID) != nil,
               entries[remoteID] == nil else { throw LipsyncError.invalidResponse }
-        func followUpURL(_ field: String, suffix: String) throws -> URL {
-            let url: URL
-            if let value = document[field], !(value is NSNull) {
-                guard let text = value as? String, let supplied = URL(string: text) else { throw LipsyncError.invalidResponse }
-                url = supplied
-            } else {
-                guard let state = document["status"] as? String, ["IN_QUEUE", "IN_PROGRESS", "COMPLETED"].contains(state)
-                else { throw LipsyncError.invalidResponse }
-                let path = LipsyncURLPolicy.queuePath(model: model, requestID: remoteID, suffix: suffix)
-                url = URL(string: "https://queue.fal.run\(path)")!
+        var rebuilt = 0
+        func followUpURL(_ field: String, suffix: String) -> URL {
+            let path = LipsyncURLPolicy.queuePath(model: model, requestID: remoteID, suffix: suffix)
+            let built = URL(string: "https://queue.fal.run\(path)")!
+            guard let value = document[field], !(value is NSNull) else { return built }
+            guard let text = value as? String, let supplied = URL(string: text),
+                  (try? LipsyncURLPolicy.queue(supplied, model: model, requestID: remoteID, suffix: suffix)) != nil else {
+                rebuilt += 1
+                return built
             }
-            try LipsyncURLPolicy.queue(url, model: model, requestID: remoteID, suffix: suffix)
-            return url
+            return supplied
         }
-        return try LipsyncJob(model: model, remoteID: remoteID, statusURL: followUpURL("status_url", suffix: "/status"),
+        let job = LipsyncJob(model: model, remoteID: remoteID, statusURL: followUpURL("status_url", suffix: "/status"),
             responseURL: followUpURL("response_url", suffix: ""), cancelURL: followUpURL("cancel_url", suffix: "/cancel"),
             submittedAt: now())
+        return (job, rebuilt)
     }
 
     public func status(quoteID: UUID) -> LipsyncJobStatus? {
@@ -265,15 +309,12 @@ public actor FalLipsyncProvider: LipsyncProvider {
         }
         current.polls += 1; entries[job.remoteID] = current
         guard let url = job.statusURL else { throw LipsyncError.invalidResponse }
-        let response = try await fetch(job, url: url)
-        let body = try json(response)
+        let (body, status) = try await fetchJSON(job, url: url, stage: "status")
         let stage: LipsyncDiagnosticEvent.Stage = body["status"] as? String == "IN_QUEUE" ? .queued :
             body["status"] as? String == "COMPLETED" ? .completed : .running
-        await diagnostic?.record(.init(stage: stage, requestID: job.remoteID, status: response.status, seconds: elapsed(current)))
+        await diagnostic?.record(.init(stage: stage, requestID: job.remoteID, status: status, seconds: elapsed(current)))
         try stillActive(job)
-        if providerError(body) {
-            return try await terminal(job, state: .failed(code: "provider_error", message: "Lip sync failed. Your original media and edits are safe."))
-        }
+        if providerError(body) { return try await providerFailed(job, body) }
         switch body["status"] as? String {
         case "IN_QUEUE":
             let position = body["queue_position"] as? Int
@@ -282,18 +323,10 @@ public actor FalLipsyncProvider: LipsyncProvider {
         case "IN_PROGRESS": return .running(progress: nil)
         case "COMPLETED":
             guard let url = job.responseURL else { throw LipsyncError.invalidResponse }
-            let result = try json(try await fetch(job, url: url))
+            let (result, _) = try await fetchJSON(job, url: url, stage: "result")
             try stillActive(job)
-            guard !providerError(result) else {
-                return try await terminal(job, state: .failed(code: "provider_error", message: "Lip sync failed. Your original media and edits are safe."))
-            }
-            guard let video = result["video"] as? [String: Any], let text = video["url"] as? String,
-                  let output = URL(string: text), video["content_type"] == nil || video["content_type"] as? String == "video/mp4"
-            else { throw LipsyncError.invalidResponse }
-            if let bytes = video["file_size"] {
-                guard let count = bytes as? Int, (1...LipsyncLimits.maximumVideoBytes).contains(count) else { throw LipsyncError.responseTooLarge }
-            }
-            try LipsyncURLPolicy.result(output)
+            guard !providerError(result) else { return try await providerFailed(job, result) }
+            let output = try resultVideo(result)
             entries[job.remoteID]?.result = output
             await logger.register(secret: output.absoluteString)
             try stillActive(job)
@@ -312,21 +345,31 @@ public actor FalLipsyncProvider: LipsyncProvider {
         defer { entries[job.remoteID]?.waiting = false }
         do {
             return try await withTaskCancellationHandler {
+                // A status or result fetch that fails for a passing reason (the network, a timeout, a body VoxClip couldn't
+                // read, 408, 429, 5xx) is tried again after a backoff, within the deadline and the poll budget; a job is
+                // never given up for one blip while fal.ai keeps working on it (and billing it).
+                var failures = 0
                 for _ in 0..<LipsyncLimits.maximumPolls {
                     try Task.checkCancellation()
                     let current = try entry(job)
                     guard !current.cancelled else { throw CancellationError() }
-                    let seconds = elapsed(current) < 120 ? 5.0 : 15.0
+                    let seconds = failures == 0 ? (elapsed(current) < 120 ? 5.0 : 15.0) : Self.backoff(failures, retryAfter: current.retryAfter)
                     guard elapsed(current) + seconds <= LipsyncLimits.deadlineSeconds else { throw LipsyncError.deadlineExceeded }
                     try await sleep(.seconds(seconds))
-                    let state = try await poll(job)
+                    let state: LipsyncState
+                    do { state = try await poll(job) }
+                    catch let error as LipsyncError where error.isTransient && failures < Self.pollRetries {
+                        failures += 1
+                        continue
+                    }
+                    failures = 0
                     try stillActive(job)
                     try Task.checkCancellation()
                     await onState(state)
                     try stillActive(job)
                     switch state {
                     case .done(let result): return result
-                    case .failed: throw LipsyncError.invalidMedia
+                    case .failed: throw entries[job.remoteID]?.providerFailure ?? LipsyncError.providerFailed("provider_error")
                     default: continue
                     }
                 }
@@ -334,17 +377,49 @@ public actor FalLipsyncProvider: LipsyncProvider {
             } onCancel: { Task { await self.cancel(job) } }
         } catch {
             if Task.isCancelled || error is CancellationError || error as? LipsyncError == .deadlineExceeded { await cancel(job) }
+            // The run stops tracking a job it gave up polling: the slot goes back (the attempt's record keeps the request
+            // for a free check later), and a later run's recovery asks fal.ai where the job is.
+            else { await untrack(job) }
             throw error
         }
     }
 
+    /// The wait before the `failures`-th try of a failed status or result fetch: 5, 10, 20, 40, then 60 s, or the answer's
+    /// `Retry-After` when that is longer.
+    static func backoff(_ failures: Int, retryAfter: Double?) -> Double {
+        let doubling = 5 * pow(2, Double(max(0, failures - 1)))
+        return max(min(doubling, 60), retryAfter ?? 0)
+    }
+
+    /// The job is finished at fal.ai (terminal `.done`): it is billed, and its result must be kept, not cancelled or deleted.
+    public func isDone(_ job: LipsyncJob) -> Bool {
+        if case .done = (try? entry(job))?.terminal { return true }
+        return false
+    }
+
+    /// The run stops tracking `job` (it gave up polling it, or it ended): the account's slot goes back. The job's entry
+    /// stays, so its status, cleanup and billing still answer.
+    public func untrack(_ job: LipsyncJob) async {
+        if active == job.remoteID { active = nil }
+        await release(job)
+    }
+
     public func cancel(_ job: LipsyncJob) async {
         guard var current = try? entry(job), !current.cancelling, !current.cancelled else { return }
+        // A finished job is billed and its result is the paid output: a cancel that lands after fal.ai finished only stops
+        // the caller, never the import that keeps the result.
+        if case .done = current.terminal { return }
         current.cancelled = true; current.cancelling = true; current.result = nil
         current.pollTask?.cancel(); current.downloadTask?.cancel()
         current.billing = .cancellationRequested
         entries[job.remoteID] = current
-        defer { entries[job.remoteID]?.cancelling = false }
+        await requestCancel(job, current: current)
+        entries[job.remoteID]?.cancelling = false
+        // Whatever fal.ai answered (a 202 may still finish and bill), the run stops tracking the job.
+        await untrack(job)
+    }
+
+    private func requestCancel(_ job: LipsyncJob, current: Entry) async {
         guard let url = job.cancelURL else { return }
         do {
             let key = try await credential(for: current.quote)
@@ -396,18 +471,19 @@ public actor FalLipsyncProvider: LipsyncProvider {
             entries[job.remoteID]?.cleanup = .failed
             await diagnostic?.record(.init(stage: .failure, requestID: job.remoteID, error: .network))
             await log("cleanup-unconfirmed reason=key")
+            await untrack(job)
             return
         }
         if let status = await deletePayloads(requestID: job.remoteID, key: key) {
             entries[job.remoteID]?.cleanup = .completed
             await diagnostic?.record(.init(stage: .cleanup, requestID: job.remoteID, status: status, seconds: elapsed(current)))
             entries[job.remoteID]?.result = nil
-            if active == job.remoteID { active = nil }
-            await release(job)
         } else {
             entries[job.remoteID]?.cleanup = .failed
             await diagnostic?.record(.init(stage: .failure, requestID: job.remoteID, error: .network))
         }
+        // The job ended (terminal or cancelled): whether or not fal.ai confirmed the delete, the slot goes back.
+        await untrack(job)
     }
 
     /// `DELETE https://api.fal.ai/v1/models/requests/{id}/payloads` (fal.ai's Platform API): 200 with
@@ -419,7 +495,9 @@ public actor FalLipsyncProvider: LipsyncProvider {
         guard UUID(uuidString: requestID) != nil else { return nil }
         let url = URL(string: "https://api.fal.ai/v1/models/requests/\(requestID)/payloads")!
         let response: LipsyncHTTPResponse
-        do { response = try await http.send(request(url, method: "DELETE", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil) }
+        // Its own task, as `cancel` does: a cleanup after a cancel runs in the cancelled task, which would refuse the send.
+        let http = http, delete = request(url, method: "DELETE", key: key)
+        do { response = try await Task { try await http.send(delete, limit: LipsyncLimits.maximumJSONBytes, permit: nil) }.value }
         catch {
             // The error's case only (network, invalidResponse, unsafeURL, responseTooLarge…), never a URL or a key.
             await log("cleanup-unconfirmed reason=\((error as? LipsyncError).map { "\($0)" } ?? "network")")
@@ -447,24 +525,77 @@ public actor FalLipsyncProvider: LipsyncProvider {
         return await deletePayloads(requestID: requestID, key: key) != nil
     }
 
-    /// Fetches a finished request's result again by its request ID, for free (`GET https://queue.fal.run/{owner}/{app}/requests/{id}`,
-    /// fal.ai's queue API: kept for the output's lifecycle, an hour here), and downloads its video to `file`. The paid
-    /// attempt's sidecar keeps only the request ID and the model; the signed result URL is read here and never stored.
-    public func refetch(requestID: String, model: LipsyncModel, to file: URL) async throws {
+    /// Fetches an earlier paid request's result again by its request ID, for free, and downloads its video to `file`. It asks
+    /// the request's status first (`GET https://queue.fal.run/{owner}/{app}/requests/{id}/status`): while fal.ai still queues
+    /// or runs it, it keeps polling until `deadline` (the job's own, 30 minutes from its submit), then throws `stillRunning`
+    /// (checking again later is free). A finished request's result (`GET …/requests/{id}`) is kept for the output's
+    /// lifecycle, an hour here. A job fal.ai failed throws `providerFailed`; one it no longer knows answers HTTP 404. The
+    /// paid attempt's sidecar keeps only the request ID and the model; the signed result URL is read here and never stored.
+    public func refetch(requestID: String, model: LipsyncModel, to file: URL, until deadline: Date,
+                        onState: @escaping @Sendable (LipsyncState) async -> Void = { _ in }) async throws {
         guard models.contains(model), UUID(uuidString: requestID) != nil else { throw LipsyncError.invalidInput }
         let key = try await credential()
-        let path = LipsyncURLPolicy.queuePath(model: model, requestID: requestID, suffix: "")
-        let url = URL(string: "https://queue.fal.run\(path)")!
-        try LipsyncURLPolicy.queue(url, model: model, requestID: requestID, suffix: "")
-        let body = try json(try await http.send(request(url, method: "GET", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil))
-        guard !providerError(body), let video = body["video"] as? [String: Any], let text = video["url"] as? String,
-              let output = URL(string: text), video["content_type"] == nil || video["content_type"] as? String == "video/mp4"
-        else { throw LipsyncError.invalidResponse }
-        if let bytes = video["file_size"] {
-            guard let count = bytes as? Int, (1...LipsyncLimits.maximumVideoBytes).contains(count) else { throw LipsyncError.responseTooLarge }
+        func queueURL(_ suffix: String) throws -> URL {
+            let url = URL(string: "https://queue.fal.run" + LipsyncURLPolicy.queuePath(model: model, requestID: requestID, suffix: suffix))!
+            try LipsyncURLPolicy.queue(url, model: model, requestID: requestID, suffix: suffix)
+            return url
         }
-        try LipsyncURLPolicy.result(output)
+        let statusURL = try queueURL("/status"), resultURL = try queueURL("")
+        let started = now()
+        var failures = 0, finished = false, retryAfter: Double?
+        for poll in 0..<LipsyncLimits.maximumPolls {
+            try Task.checkCancellation()
+            if poll > 0 {
+                let seconds = failures == 0 ? (now().timeIntervalSince(started) < 120 ? 5.0 : 15.0) : Self.backoff(failures, retryAfter: retryAfter)
+                guard now().addingTimeInterval(seconds) < deadline else { throw LipsyncError.stillRunning }
+                try await sleep(.seconds(seconds))
+            }
+            let response: LipsyncHTTPResponse, body: [String: Any]
+            do {
+                response = try await http.send(request(statusURL, method: "GET", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil)
+            } catch let error as LipsyncError where error.isTransient && failures < Self.pollRetries {
+                await pollFailed(stage: "status", status: nil, error: error)
+                failures += 1
+                continue
+            } catch {
+                await pollFailed(stage: "status", status: nil, error: error)
+                throw error
+            }
+            retryAfter = response.retryAfter
+            do { body = try json(response) }
+            catch let error as LipsyncError where error.isTransient && failures < Self.pollRetries {
+                await pollFailed(stage: "status", status: response.status, error: error)
+                failures += 1
+                continue
+            } catch {
+                await pollFailed(stage: "status", status: response.status, error: error)
+                throw error
+            }
+            failures = 0
+            if providerError(body) { throw LipsyncError.providerFailure(body["error_type"]) }
+            switch body["status"] as? String {
+            case "IN_QUEUE": await onState(.queued(position: present(body["queue_position"]) as? Int))
+            case "IN_PROGRESS": await onState(.running(progress: nil))
+            case "COMPLETED": finished = true
+            default: throw LipsyncError.invalidResponse
+            }
+            if finished { break }
+        }
+        guard finished else { throw LipsyncError.stillRunning }
+        let body: [String: Any]
+        var status: Int?
+        do {
+            let response = try await http.send(request(resultURL, method: "GET", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil)
+            status = response.status
+            body = try json(response)
+        } catch {
+            await pollFailed(stage: "result", status: status, error: error)
+            throw error
+        }
+        if providerError(body) { throw LipsyncError.providerFailure(body["error_type"]) }
+        let output = try resultVideo(body)
         await logger.register(secret: output.absoluteString)
+        await onState(.done(output))
         var download = URLRequest(url: output)
         download.setValue("video/mp4", forHTTPHeaderField: "Accept")
         try await http.download(download, to: file, limit: LipsyncLimits.maximumVideoBytes)
@@ -519,6 +650,50 @@ public actor FalLipsyncProvider: LipsyncProvider {
     }
     private func providerError(_ body: [String: Any]) -> Bool {
         ["error", "error_type"].contains { key in body[key].map { !($0 is NSNull) } ?? false }
+    }
+    /// A JSON value, with an explicit null read as absent.
+    private func present(_ value: Any?) -> Any? { value is NSNull ? nil : value }
+    /// A finished result's video URL (fal.ai's File: `url`, and the optional `content_type`, `file_name`, `file_size`,
+    /// each of which may be null). The download's own Content-Type and `ftyp` checks still apply.
+    private func resultVideo(_ result: [String: Any]) throws -> URL {
+        guard let video = result["video"] as? [String: Any], let text = video["url"] as? String, let output = URL(string: text)
+        else { throw LipsyncError.invalidResponse }
+        if let type = present(video["content_type"]) { guard type as? String == "video/mp4" else { throw LipsyncError.invalidResponse } }
+        if let bytes = present(video["file_size"]) {
+            guard let count = bytes as? Int, (1...LipsyncLimits.maximumVideoBytes).contains(count) else { throw LipsyncError.responseTooLarge }
+        }
+        try LipsyncURLPolicy.result(output)
+        return output
+    }
+    /// fal.ai failed the job: its sanitized `error_type` is kept for `wait`, and the job is terminal.
+    private func providerFailed(_ job: LipsyncJob, _ body: [String: Any]) async throws -> LipsyncState {
+        entries[job.remoteID]?.providerFailure = LipsyncError.providerFailure(body["error_type"])
+        return try await terminal(job, state: .failed(code: "provider_error", message: "Lip sync failed. Your original media and edits are safe."))
+    }
+    /// A status or result fetch for `job`, with its HTTP status; a failure is logged with its stage, status and case.
+    private func fetchJSON(_ job: LipsyncJob, url: URL, stage: String) async throws -> ([String: Any], Int) {
+        var status: Int?
+        do {
+            let response = try await fetch(job, url: url)
+            status = response.status
+            entries[job.remoteID]?.retryAfter = response.retryAfter
+            return (try json(response), response.status)
+        } catch {
+            await pollFailed(stage: stage, status: status, error: error)
+            throw error
+        }
+    }
+    /// `lipsync provider=fal event=poll-failed stage=status|result status=<n> reason=<case>` (no URLs, bodies or keys).
+    private func pollFailed(stage: String, status: Int?, error: any Error) async {
+        guard !(error is CancellationError), !Task.isCancelled else { return }
+        let reason: String
+        switch error as? LipsyncError {
+        case .http?: reason = "http"
+        case .providerFailed?: reason = "providerFailed"
+        case let known?: reason = "\(known)"
+        case nil: reason = "network"
+        }
+        await log("poll-failed stage=\(stage) status=\(status.map(String.init) ?? "unknown") reason=\(reason)")
     }
     private func entry(_ job: LipsyncJob) throws -> Entry {
         guard let result = entries[job.remoteID], result.job == job else { throw LipsyncError.unknownJob }
@@ -592,16 +767,24 @@ extension FalLipsyncProvider {
         let record = try await consentStore.load(recordID)
         try await consentStore.validateUse(record)
         let fingerprint = try await keyFingerprint()
-        let permit = try await consentStore.dispatchPermit(record, requestID: UUID())
-        defer { permit.finish() }
-        let key = try await credential()
-        let uploadedVideo = try await upload(video, key: key, permit: permit)
-        let uploadedAudio = try await upload(audio, key: key, permit: permit)
-        guard try await keyFingerprint() == fingerprint else { throw LipsyncError.missingKey }
-        let quote = try await quote(model: model, video: uploadedVideo, audio: uploadedAudio, options: options, fps: fps)
-        let approval = try await approve(quote, consentStore: consentStore, recordID: recordID,
-                                         acceptsPaidJob: acceptsPaidJob, acceptsMediaTransfer: acceptsMediaTransfer)
-        return (quote, approval)
+        // The account's one lip-sync slot is taken before anything is uploaded: a slot another run holds refuses here, at
+        // once, with nothing sent. `submit` uses it; any failure before that gives it back.
+        _ = try await reserveSlot()
+        do {
+            let permit = try await consentStore.dispatchPermit(record, requestID: UUID())
+            defer { permit.finish() }
+            let key = try await credential()
+            let uploadedVideo = try await upload(video, key: key, permit: permit)
+            let uploadedAudio = try await upload(audio, key: key, permit: permit)
+            guard try await keyFingerprint() == fingerprint else { throw LipsyncError.missingKey }
+            let quote = try await quote(model: model, video: uploadedVideo, audio: uploadedAudio, options: options, fps: fps)
+            let approval = try await approve(quote, consentStore: consentStore, recordID: recordID,
+                                             acceptsPaidJob: acceptsPaidJob, acceptsMediaTransfer: acceptsMediaTransfer)
+            return (quote, approval)
+        } catch {
+            await releaseReservation()
+            throw error
+        }
     }
 
     private func upload(_ file: LipsyncUploadFile, key: String, permit: VoiceDispatchPermit) async throws -> LipsyncSignedInput {
@@ -632,7 +815,7 @@ extension FalLipsyncProvider {
             stage = .upload; status = nil
             try Task.checkCancellation()
             var upload = URLRequest(url: target)
-            upload.httpMethod = "PUT"; upload.httpBody = file.data; upload.timeoutInterval = 120
+            upload.httpMethod = "PUT"; upload.httpBody = file.data
             upload.setValue(file.contentType, forHTTPHeaderField: "Content-Type")
             let response = try await http.send(upload, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
             status = response.status

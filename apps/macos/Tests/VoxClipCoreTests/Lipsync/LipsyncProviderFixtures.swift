@@ -36,6 +36,8 @@ actor LipsyncFixtureHTTP: LipsyncHTTPClient {
         case json(Int, String)
         case held(String, LipsyncFixtureBarrier)
         case network
+        /// An answer with a `Retry-After` of the given seconds.
+        case retry(Int, String, Double)
     }
     private var replies: [Reply]
     private(set) var requests: [URLRequest] = []
@@ -50,6 +52,7 @@ actor LipsyncFixtureHTTP: LipsyncHTTPClient {
         case .json(let status, let body): return .init(status: status, body: Data(body.utf8))
         case .held(let body, let barrier): await barrier.block(); return .init(status: 200, body: Data(body.utf8))
         case .network: throw LipsyncError.network
+        case .retry(let status, let body, let seconds): return .init(status: status, body: Data(body.utf8), retryAfter: seconds)
         }
     }
     func download(_ request: URLRequest, to file: URL, limit: Int) async throws {
@@ -119,11 +122,16 @@ enum LipsyncProviderFixtures {
 
     static func provider(_ http: any LipsyncHTTPClient, clock: LipsyncFixtureClock = LipsyncFixtureClock(),
                          keys: LipsyncFixtureKeys = LipsyncFixtureKeys(), spend: VoiceLabSpendLedger? = nil,
-                         logger: (any Redacting)? = nil) throws -> FalLipsyncProvider {
+                         logger: (any Redacting)? = nil, queue: LipsyncProviderQueue? = nil) throws -> FalLipsyncProvider {
         let prices = try VoiceLabPriceCatalog.load(shared: SharedResources(root: FixtureLoader.sharedRoot()))
         return FalLipsyncProvider(keys: keys, prices: prices, http: http, logger: logger ?? RedactingLogger(homeDirectory: "/synthetic-home"),
-                                 spend: spend, now: { clock.now() }, monotonic: { clock.uptime() }, sleep: { clock.sleep($0) })
+                                 spend: spend, now: { clock.now() }, monotonic: { clock.uptime() }, sleep: { clock.sleep($0) }, queue: queue)
     }
+
+    /// One account slot shared by every provider a test makes over `clock` (the app's `.shared`, in a test).
+    static func queue(_ clock: LipsyncFixtureClock) -> LipsyncProviderQueue { LipsyncProviderQueue(clock: { clock.uptime() }) }
+
+    static let inProgress = #"{"status":"IN_PROGRESS"}"#
 
     static func quote(_ provider: FalLipsyncProvider, modelIndex: Int = 0, mode: SyncMode = .cutOff, seed: UInt32? = nil) async throws -> LipsyncQuote {
         try await provider.quote(model: provider.models[modelIndex], video: input(), audio: input(video: false),

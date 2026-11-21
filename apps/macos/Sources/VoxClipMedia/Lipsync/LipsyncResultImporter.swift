@@ -45,59 +45,92 @@ public struct LipsyncAttemptFailure: Error, Sendable {
     public let error: any Error
     public let attempt: LipsyncAttempt
     public let freeRetry: Bool
+    public init(error: any Error, attempt: LipsyncAttempt, freeRetry: Bool) {
+        self.error = error; self.attempt = attempt; self.freeRetry = freeRetry
+    }
 }
 
 /// A free Try Again found nothing it could import (the kept file is gone, or fal.ai no longer has the result). Nothing was paid.
+/// `settled` when that is definite (fal.ai failed the job or no longer knows it, or nothing is kept): checking again can't
+/// help. Otherwise (the network, a timeout, fal.ai's 5xx) the same free check may pass later.
 public struct LipsyncRecoveryFailed: Error, Sendable {
     public let error: any Error
+    public var settled = true
+    public init(error: any Error, settled: Bool = true) { self.error = error; self.settled = settled }
+
+    /// A recovery failure that checking again can't change.
+    static func settles(_ error: any Error) -> Bool {
+        if error is CancellationError { return false }
+        if let failed = error as? LipsyncRecoveryFailed { return failed.settled }
+        guard let known = error as? LipsyncError else { return true }
+        switch known {
+        case .stillRunning, .missingKey, .unsafeFile, .busy: return false
+        default: return !known.isTransient
+        }
+    }
 }
 
 public struct LipsyncResultImporter: Sendable {
     public init() {}
 
-    /// Downloads a finished job's result and stores it as the window's picture (`neededSeconds` long, the voice's; the
-    /// quote's inputs ran `LipsyncLimits.tailMarginSeconds` longer). A failure after the download keeps the file beside
-    /// the attempt's record; a failed download leaves the result at fal.ai to be fetched again by its request ID. Either
-    /// way it throws `LipsyncAttemptFailure`.
+    /// Waits for the job, then downloads its result and stores it as the window's picture (`neededSeconds` long, the
+    /// voice's; the quote's inputs ran `LipsyncLimits.tailMarginSeconds` longer). Once fal.ai says the job is done it is
+    /// billed, so the download and store run to the end in their own task: a cancel, a closed panel or a stale offer only
+    /// stops the caller waiting, never the import that keeps the result. A stored result marks the attempt's record imported
+    /// (the window's imported index) before fal.ai's copy is deleted. A failure after the download keeps the file beside the
+    /// record; a failure before it (the scratch folder, the download) leaves the result at fal.ai to be fetched again by its
+    /// request ID. Every failure after the submit throws `LipsyncAttemptFailure`.
     public func importResult(provider: FalLipsyncProvider, job: LipsyncJob, quote: LipsyncQuote, neededSeconds: Double? = nil,
                              picture: Data? = nil, projectID: String, paidRoot: URL, sourceWidth: Int, sourceHeight: Int,
                              referenceVideo: LipsyncUploadFile? = nil) async throws -> ImportedLipsyncResult {
         let needed = neededSeconds ?? quote.outputDurationSeconds
-        guard UUID(uuidString: projectID)?.uuidString.lowercased() == projectID,
-              try await provider.quote(for: job) == quote, quote.model == job.model,
-              needed.isFinite, needed > 0, needed <= quote.outputDurationSeconds + 1e-6,
-              Self.validSize(sourceWidth, sourceHeight) else { throw LipsyncError.invalidInput }
-        try Task.checkCancellation()
-        let result = try await provider.wait(job)
-        try Task.checkCancellation()
         var attempt = LipsyncAttempt(job: job, quote: quote, neededSeconds: needed)
         attempt.picture = picture
-        let scratch = try LipsyncImportScratch(projectID: projectID, paidRoot: paidRoot)
-        defer { scratch.remove() }
-        func stillCurrent() async throws {
-            try Task.checkCancellation()
-            guard let status = await provider.status(quoteID: quote.id), !status.cancelled else { throw CancellationError() }
+        do {
+            guard UUID(uuidString: projectID)?.uuidString.lowercased() == projectID,
+                  try await provider.quote(for: job) == quote, quote.model == job.model,
+                  needed.isFinite, needed > 0, needed <= quote.outputDurationSeconds + 1e-6,
+                  Self.validSize(sourceWidth, sourceHeight) else { throw LipsyncError.invalidInput }
+        } catch {
+            // The job was accepted and keeps running at fal.ai: its result can still be fetched by request ID for free.
+            throw LipsyncAttemptFailure(error: error, attempt: attempt, freeRetry: attempt.refetchable(at: await provider.date()))
         }
+        try Task.checkCancellation()
+        let result = try await provider.wait(job)
+        let finishing = Task { [attempt] in
+            try await finish(result, job: job, attempt: attempt, provider: provider, projectID: projectID, paidRoot: paidRoot,
+                             width: sourceWidth, height: sourceHeight, reference: referenceVideo)
+        }
+        return try await finishing.value
+    }
+
+    /// A done job's download and store (`importResult`), run unshielded from the caller's cancellation.
+    private func finish(_ result: URL, job: LipsyncJob, attempt: LipsyncAttempt, provider: FalLipsyncProvider, projectID: String,
+                        paidRoot: URL, width: Int, height: Int, reference: LipsyncUploadFile?) async throws -> ImportedLipsyncResult {
+        let scratch: LipsyncImportScratch
+        do { scratch = try LipsyncImportScratch(projectID: projectID, paidRoot: paidRoot) }
+        catch {
+            // Nothing downloaded (a full disk, a permissions fault): fal.ai's copy stays for a free re-fetch.
+            await provider.note("lipsync result import=unstarted reason=scratch")
+            throw LipsyncAttemptFailure(error: error, attempt: attempt, freeRetry: attempt.refetchable(at: await provider.date()))
+        }
+        defer { scratch.remove() }
         do { try await provider.download(result, to: scratch.result) }
         catch {
-            if Task.isCancelled || error is CancellationError { await provider.cleanup(job); throw error }
             // Not downloaded: fal.ai keeps the output for its lifecycle, so its payloads stay for a free re-fetch.
             throw LipsyncAttemptFailure(error: error, attempt: attempt, freeRetry: attempt.refetchable(at: await provider.date()))
         }
         do {
-            try await stillCurrent()
             let (imported, length) = try await store(scratch.result, attempt: attempt, scratch: scratch, projectID: projectID,
-                paidRoot: paidRoot, width: sourceWidth, height: sourceHeight, reference: referenceVideo, stillCurrent: stillCurrent)
+                paidRoot: paidRoot, width: width, height: height, reference: reference)
             await provider.note(length.logLine)
-            await provider.cleanup(job)
-            do { try await stillCurrent() } catch {
-                scratch.unlinkAsset(imported.asset.id)
-                throw error
-            }
-            LipsyncAttemptStore.discard(attempt, projectID: projectID, paidRoot: paidRoot)
+            // Safe on this Mac and findable again (the imported index) before fal.ai's copy goes. Unrecorded (a full disk),
+            // fal.ai's copy stays for a free re-fetch by the attempt's own record.
+            if (try? LipsyncAttemptStore.markImported(attempt, result: imported, projectID: projectID, paidRoot: paidRoot)) != nil {
+                await provider.cleanup(job)
+            } else { await provider.note("lipsync result index=unwritten") }
             return imported
         } catch {
-            if Task.isCancelled || error is CancellationError { await provider.cleanup(job); throw error }
             if let check = error as? LipsyncResultCheck { await provider.note(check.logLine) }
             // The paid result is kept beside its attempt before fal.ai deletes its copy.
             let kept = (try? LipsyncAttemptStore.keep(scratch.result, for: attempt, projectID: projectID, paidRoot: paidRoot)) != nil
@@ -107,36 +140,45 @@ public struct LipsyncResultImporter: Sendable {
         }
     }
 
-    /// Try Again after a paid failure, for free: imports the attempt's kept file, else fetches its result again from fal.ai by
-    /// request ID. Throws `LipsyncRecoveryFailed` when neither is there; a result that still fails its checks stays kept.
+    /// Try Again after a paid failure, for free: imports the attempt's kept file, else fetches its result again from fal.ai
+    /// by request ID, first waiting out a job fal.ai still runs, within its deadline (`stillRunning` after it). Throws
+    /// `LipsyncRecoveryFailed` when neither can be had (`settled` when checking again can't help); a result that still
+    /// fails its checks stays kept and throws `LipsyncAttemptFailure`. A good import marks the record imported.
     public func importRecovered(_ attempt: LipsyncAttempt, provider: FalLipsyncProvider, projectID: String, paidRoot: URL,
-                                sourceWidth: Int, sourceHeight: Int, referenceVideo: LipsyncUploadFile? = nil) async throws -> ImportedLipsyncResult {
+                                sourceWidth: Int, sourceHeight: Int, referenceVideo: LipsyncUploadFile? = nil,
+                                onState: @escaping @Sendable (LipsyncState) async -> Void = { _ in }) async throws -> ImportedLipsyncResult {
         guard UUID(uuidString: projectID)?.uuidString.lowercased() == projectID, Self.validSize(sourceWidth, sourceHeight),
               let model = provider.models.first(where: { $0.id == attempt.model }) else { throw LipsyncError.invalidInput }
-        let scratch = try LipsyncImportScratch(projectID: projectID, paidRoot: paidRoot)
+        let scratch: LipsyncImportScratch
+        do { scratch = try LipsyncImportScratch(projectID: projectID, paidRoot: paidRoot) }
+        catch { throw LipsyncRecoveryFailed(error: error, settled: false) }
         defer { scratch.remove() }
         let refetched: Bool
         if let kept = LipsyncAttemptStore.keptResult(attempt, projectID: projectID, paidRoot: paidRoot) {
-            do { try FileManager.default.copyItem(at: kept, to: scratch.result) } catch { throw LipsyncRecoveryFailed(error: error) }
+            do { try FileManager.default.copyItem(at: kept, to: scratch.result) } catch { throw LipsyncRecoveryFailed(error: error, settled: false) }
             refetched = false
         } else if attempt.refetchable(at: await provider.date()) {
-            do { try await provider.refetch(requestID: attempt.requestID, model: model, to: scratch.result) }
-            catch {
-                if Task.isCancelled || error is CancellationError { throw error }
-                throw LipsyncRecoveryFailed(error: error)
+            do {
+                try await provider.refetch(requestID: attempt.requestID, model: model, to: scratch.result,
+                                           until: attempt.submittedAt.addingTimeInterval(LipsyncLimits.deadlineSeconds), onState: onState)
+            } catch {
+                if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                if error as? LipsyncError == .stillRunning { throw error }
+                throw LipsyncRecoveryFailed(error: error, settled: LipsyncRecoveryFailed.settles(error))
             }
             refetched = true
         } else { throw LipsyncRecoveryFailed(error: LipsyncError.unknownJob) }
         do {
             var (imported, length) = try await store(scratch.result, attempt: attempt, scratch: scratch, projectID: projectID,
-                paidRoot: paidRoot, width: sourceWidth, height: sourceHeight, reference: referenceVideo, stillCurrent: { try Task.checkCancellation() })
+                paidRoot: paidRoot, width: sourceWidth, height: sourceHeight, reference: referenceVideo)
             await provider.note(length.logLine + " recovered=\(refetched ? "refetch" : "kept")")
-            if refetched { await provider.cleanup(requestID: attempt.requestID) }
-            LipsyncAttemptStore.discard(attempt, projectID: projectID, paidRoot: paidRoot)
             imported.recovered = true
+            if (try? LipsyncAttemptStore.markImported(attempt, result: imported, projectID: projectID, paidRoot: paidRoot)) != nil {
+                if refetched { await provider.cleanup(requestID: attempt.requestID) }
+            } else { await provider.note("lipsync result index=unwritten") }
             return imported
         } catch {
-            if Task.isCancelled || error is CancellationError { throw error }
+            if Task.isCancelled || error is CancellationError { throw CancellationError() }
             if let check = error as? LipsyncResultCheck { await provider.note(check.logLine + " recovered=\(refetched ? "refetch" : "kept")") }
             if refetched, (try? LipsyncAttemptStore.keep(scratch.result, for: attempt, projectID: projectID, paidRoot: paidRoot)) != nil {
                 await provider.cleanup(requestID: attempt.requestID)
@@ -151,8 +193,7 @@ public struct LipsyncResultImporter: Sendable {
 
     /// Conforms `downloaded` (in `scratch`) to the attempt's window and stores it as a new paid video asset.
     private func store(_ downloaded: URL, attempt: LipsyncAttempt, scratch: LipsyncImportScratch, projectID: String, paidRoot: URL,
-                       width: Int, height: Int, reference: LipsyncUploadFile?,
-                       stillCurrent: () async throws -> Void) async throws -> (ImportedLipsyncResult, LipsyncResultLength) {
+                       width: Int, height: Int, reference: LipsyncUploadFile?) async throws -> (ImportedLipsyncResult, LipsyncResultLength) {
         let conformed = try await LipsyncResultConformer.conform(downloaded, needed: attempt.neededSeconds,
             uploaded: attempt.uploadedSeconds, fps: attempt.fps, width: width, height: height, reference: reference)
         let assetID = UUID().uuidString.lowercased()
@@ -166,7 +207,6 @@ public struct LipsyncResultImporter: Sendable {
         let hash = try copy(conformed.url, to: staged.descriptor, byteCount: Int(info.st_size))
         let metadata = try await LipsyncResultValidation.validate(file: staged.temporaryURL, durationSeconds: attempt.neededSeconds,
                                                                   fps: attempt.fps, width: width, height: height)
-        try await stillCurrent()
         try staged.commit()
         let provenance = LipsyncResultProvenance(provider: attempt.provider, model: attempt.model, requestID: attempt.requestID,
                                                 quoteID: attempt.quoteID, videoInputSHA256: attempt.videoSHA256,
@@ -241,8 +281,6 @@ final class LipsyncImportScratch {
         defer { Darwin.close(project) }
         body(project)
     }
-
-    func unlinkAsset(_ assetID: String) { withProject { unlinkat($0, "\(assetID).mp4", 0) } }
 
     func remove() {
         if let scratch = try? LipsyncLocalPath.openDirectory(folder) {
