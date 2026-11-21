@@ -45,13 +45,8 @@ public enum VoiceLabAssetRetention {
     public static func references(in project: Project) -> Set<String> {
         Set((project.voiceLab.assets ?? []).map(\.file) + (project.voiceLab.videoAssets ?? []).map(\.file))
     }
-    /// The paid work no project uses yet that must stay findable, so it is never a deletion candidate: the assets of the
-    /// take journal (`VoiceLabTakeJournal`, voice-lab §3 "Paid takes are kept") and the imported lip-sync results the
-    /// attempt index points at (`LipsyncAttempt.importedAsset`, §9.4), which would otherwise be paid for again.
-    static func paidReferences(project directory: Int32, projectId: String) -> Set<String> {
-        Set(VoiceLabTakeJournal.entries(inProject: directory, projectID: projectId).map(\.assetFile))
-            .union(importedLipsyncAssets(project: directory, projectId: projectId))
-    }
+    /// The imported lip-sync results the attempt index points at (`LipsyncAttempt.importedAsset`, voice-lab §9.4), which
+    /// would otherwise be paid for again: paid work no project uses yet, so never a deletion candidate.
     private static func importedLipsyncAssets(project directory: Int32, projectId: String) -> Set<String> {
         let attempts = openat(directory, "lipsync-attempts", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard attempts >= 0 else { return [] }
@@ -73,14 +68,17 @@ public enum VoiceLabAssetRetention {
     }
     /// Drops the take journal's entries that are done: the project uses the asset (after Use), the asset is gone, or, when
     /// deletion is allowed, the entry is older than `VoiceLabTakeJournal.unusedLifetime`, after which its asset follows the
-    /// ordinary rules. The rest stay, and so do their assets.
+    /// ordinary rules. Returns the asset files of the entries that stay (voice-lab §3 "Paid takes are kept"): paid takes no
+    /// project uses yet, so never deletion candidates.
     private static func settleTakeJournal(project directory: Int32, projectId: String, references: Set<String>, present: Set<String>,
-                                          now: Date, allowDeletion: Bool) {
-        let done = VoiceLabTakeJournal.entries(inProject: directory, projectID: projectId).filter { entry in
+                                          now: Date, allowDeletion: Bool) -> Set<String> {
+        let entries = VoiceLabTakeJournal.entries(inProject: directory, projectID: projectId)
+        let done = entries.filter { entry in
             references.contains(entry.assetFile) || !present.contains(entry.assetFile)
                 || (allowDeletion && now.timeIntervalSince(entry.createdAt) >= VoiceLabTakeJournal.unusedLifetime)
         }
         VoiceLabTakeJournal.remove(done.map(\.assetID), inProject: directory)
+        return Set(entries.map(\.assetFile)).subtracting(done.map(\.assetFile))
     }
     @discardableResult
     public static func closeProject(projectId: String, paidRoot: URL, references: Set<String>,
@@ -114,9 +112,11 @@ public enum VoiceLabAssetRetention {
         ledger.protected.formUnion(references)
         let names = try VoiceLabAssetRecovery.names(directory)
         // Only what this project uses now ends an entry: `protected` also holds every file kept at a launch.
-        settleTakeJournal(project: directory, projectId: projectId, references: references,
-                          present: Set(names.map { "\(projectId)/\($0)" }), now: now, allowDeletion: allowDeletion)
-        let paid = paidReferences(project: directory, projectId: projectId)
+        // The paid work no project uses yet, read once: deletion needs the exclusive activity lock, which no open project
+        // (so no take run or lip-sync import) holds beside it, and only new files can gain such a reference meanwhile.
+        let paid = settleTakeJournal(project: directory, projectId: projectId, references: references,
+                                     present: Set(names.map { "\(projectId)/\($0)" }), now: now, allowDeletion: allowDeletion)
+            .union(importedLipsyncAssets(project: directory, projectId: projectId))
         let backward = ledger.unreferenced.values.contains { now < $0.discovered || now < $0.lastObservedAt }
         var eligible: [String] = []
         for name in names {
@@ -153,7 +153,7 @@ public enum VoiceLabAssetRetention {
             ledger.protected.formUnion(try recheckReferences?() ?? references)
             var info = stat()
             guard let entry = ledger.unreferenced[name], !ledger.protected.contains("\(projectId)/\(name)"),
-                  !paidReferences(project: directory, projectId: projectId).contains("\(projectId)/\(name)"),
+                  !paid.contains("\(projectId)/\(name)"),
                   fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
                   info.st_mode & S_IFMT == S_IFREG, entry.matches(info),
                   VoiceLabAssetRecovery.ownsComplete(directory, name: name, info: info) else { continue }

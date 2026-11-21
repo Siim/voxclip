@@ -157,9 +157,20 @@ import VoxClipCore
         #expect(entries().isEmpty)
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(take.file).path))
     }
+    /// Makes `file` in the project directory a deletion candidate as the paid writers do: an ownership record beside it
+    /// naming its identity, so retention may delete it once it has been unreferenced long enough.
+    private func own(_ file: URL) throws {
+        var info = stat()
+        guard lstat(file.path, &info) == 0 else { throw VoiceLabError.invalidInput }
+        let name = file.lastPathComponent
+        let record = VoiceLabAssetRecovery.Partial(name: ".\(name).partial", owner: .init(pid: 1, seconds: 0, microseconds: 0),
+                                                   identity: .init(info))
+        try JSONEncoder().encode(record).write(to: file.deletingLastPathComponent().appendingPathComponent(".\(name).ownership.json"))
+    }
     /// An imported lip-sync result the attempt index points at (voice-lab §9.4) is kept, so the same inputs get it again
-    /// for free. The importer writes no ownership journal, so the file was never a candidate; the index now also names it
-    /// a reference, should a later writer add one.
+    /// for free, even when it is a real deletion candidate: an owned file left unreferenced for eight days in one run. The
+    /// same bytes under a name the index doesn't hold go, as before. The result used to be deleted, and its window paid
+    /// for again.
     @Test func importedLipsyncResultsTheIndexPointsAtAreKept() async throws {
         let root = try LipsyncImportFixture.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let project = LipsyncImportFixture.projectID
@@ -167,12 +178,22 @@ import VoxClipCore
         let (quote, job) = try await LipsyncImportFixture.submit(root: root, provider: provider, model: provider.models[0], seconds: 4, fps: 30)
         let result = try await LipsyncResultImporter().importResult(provider: provider, job: job, quote: quote, projectID: project,
                                                                    paidRoot: root, sourceWidth: 1_920, sourceHeight: 1_080)
+        let attempts = root.appendingPathComponent(project).appendingPathComponent("lipsync-attempts")
+        let indexed = try FileManager.default.contentsOfDirectory(atPath: attempts.path).filter { $0.hasSuffix(".json") }.compactMap { name in
+            let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+            return try? decoder.decode(LipsyncAttempt.self, from: Data(contentsOf: attempts.appendingPathComponent(name))).importedAsset
+        }
+        #expect(indexed == [result.asset])
+        let control = result.url.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString.lowercased()).mp4")
+        try FileManager.default.copyItem(at: result.url, to: control)
+        try own(result.url); try own(control)
         let date = Date(timeIntervalSince1970: 1_800_000_000)
         #expect(try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [], now: date,
             observation: .init(session: "test", monotonicSeconds: 0)).isEmpty)
-        #expect(try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [], now: date.addingTimeInterval(8 * 86400),
-            observation: .init(session: "test", monotonicSeconds: 8 * 86400)).isEmpty)
-        #expect(FileManager.default.fileExists(atPath: result.url.path))
+        let removed = try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [], now: date.addingTimeInterval(8 * 86400),
+            observation: .init(session: "test", monotonicSeconds: 8 * 86400))
+        #expect(removed == ["\(project)/\(control.lastPathComponent)"])
+        #expect(FileManager.default.fileExists(atPath: result.url.path) && !FileManager.default.fileExists(atPath: control.path))
     }
     @Test func corruptLedgerAndSymlinkNeverAuthorizeDeletion() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
