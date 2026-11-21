@@ -5,6 +5,12 @@ import Testing
 @_spi(Testing) @testable import VoxClipMedia
 @testable import VoxClip
 
+/// A fal.ai key and nothing else, by presence only; saving one is a test bug.
+private struct FalKeyOnly: ProviderKeyStore {
+    func hasKey(for provider: String) async -> Bool { provider == "fal" }
+    func save(_ value: String, for provider: String) async throws { Issue.record("whole-clip tests never save keys") }
+}
+
 /// The whole-clip revoice's run (ADR-R46) on stubs: Script, Voice, Fit and Lip sync in order, the fit on the clip as
 /// edited, the shorter-only reword round and its check before paying, Cancel and failure keeping the clip, Try Again and the
 /// sync-3 upgrade never paying a step twice, Review's Use and Undo.
@@ -1001,6 +1007,24 @@ import Testing
         #expect(session.phase == .review && stubs.lipsyncs.count == 2 && stubs.voices.count == 1 && stubs.pictures.count == 1,
                 "only the lip sync ran again")
         #expect(!session.submissionUnconfirmed)
+    }
+
+    /// whole-clip-not-current-says-make-voice: the live Voice step says what stopped it. With the fal.ai key there and
+    /// nothing paid, a Rewrite with no voice chosen says so, and nothing is sent.
+    @Test func theLiveVoiceStepSaysWhatIsMissing() async throws {
+        let live = try live()
+        defer { close(live) }
+        live.editor.app.providerKeyStoreOverride = FalKeyOnly()
+        let session = WholeClipRevoiceSession()
+        live.rewrite.configureWholeClip(session)
+        let backend = try #require(session.backend)
+        do {
+            _ = try await backend.voice(Self.script) { _ in }
+            Issue.record("no voice is chosen")
+        } catch let unsent as WholeClipRevoiceSession.Unsent {
+            guard case WholeClipRevoiceSession.Stop.voiceMissing = unsent.error else { Issue.record("\(unsent.error)"); return }
+            #expect(WholeClipRevoiceSession.copy(unsent) == "Make your voice in Rewrite first. Nothing was sent.")
+        }
     }
 
     /// no-voice-only-and-late-checks (lead decision): a paid voice whose lip sync can't run goes in without it, free, as
