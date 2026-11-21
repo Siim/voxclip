@@ -55,7 +55,15 @@ extension RewriteSession {
         }
         guard voiceSpendCurrent, let generation, review != nil, !isReasking, !includedVoice.isEmpty, let takeBackend else { return }
         guard !hasPaidTakes else {
-            generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
+            // Stale paid takes say what changed and ask Keep Working or Discard Takes, the one way to a fresh price that
+            // keeps nothing paid from going unasked.
+            if let plan = takePlan, !plan.isRetired, !plan.stillCurrent, case .proposal = task.state {
+                let copy = ClipTakePlan.copy(staleStop(plan))
+                generation.fail(copy)
+                askToDiscardTakes(copy)
+            } else {
+                generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
+            }
             return
         }
         // This video's own voice first, when matching is on (voice-lab §6.13): the price is for the voice takes use.
@@ -65,12 +73,14 @@ extension RewriteSession {
         takeQuotePhrase = nil; takeRowsShown = true; takePlanFailure = nil
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,
               project.media.source.audio != nil else { return }
-        let revision = self.revision, ordinals = includedVoice
+        let ordinals = includedVoice, commands = localCommands
+        let reviewAtPlan = review
+        weak var created: ClipTakePlan?
         // What the takes are made from (`Project.voiceTakeIdentity`): a save, the tab, music, captions, colour, motion and
         // VoxClip's own rate samples leave it as it is, so they never make paid takes stale.
-        let identity = voiceIdentity(editor.project), region = takeRegion
-        let reviewAtPlan = review
-        let commands = localCommands, reviewedChanges = changes, proposalChanges = ownProposal?.changes
+        let basis = TakePlanBasis(identity: voiceIdentity(editor.project), revision: revision, ordinals: ordinals,
+            commands: commands, changes: changes, proposalChanges: ownProposal?.changes, recordID: recordID,
+            modelID: { created?.modelID ?? modelID }, region: takeRegion)
         do {
             let final = try editor.voiceLabReviewProject(localCommands: commands)
             let selected = changes.enumerated().filter { offset, change in
@@ -84,7 +94,6 @@ extension RewriteSession {
             if let contextReview, let contextRequest {
                 hunks = try contextReview.replacingHunks(current: contextRequest, envelope: envelope)
             } else { hunks = selected.map { $0.element.hunk } }
-            weak var created: ClipTakePlan?
             let makeInput = try takeInputMaker(final: final, recordID: recordID, modelID: modelID, envelope: envelope,
                                                model: { created?.modelID ?? modelID })
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
@@ -93,16 +102,16 @@ extension RewriteSession {
                     return try await self.currentGenerationCap()
                 }, isCurrent: { [weak self, weak generation] in
                     guard let self, let generation else { return false }
-                    return voiceSpendCurrent && voiceIdentity(editor.project) == identity && !takeWindowsMoved &&
-                        self.revision == revision && includedVoice == ordinals &&
-                        localCommands == commands && changes == reviewedChanges && ownProposal?.changes == proposalChanges &&
-                        generation.selectedVoiceID == recordID && generation.selectedModelID == (created?.modelID ?? modelID) &&
-                        region.map { generationIsCurrent(region: $0) } == true
+                    return staleCause(basis, generation: generation) == nil
                 }, acceptedChargesChanged: { [weak app = editor.app] in
                     await app?.refreshMonthlySpend()
                 })
             created = plan
             plan.onFailure = { [weak self] error in self?.logFailure(error, stage: "takes") }
+            plan.describeStale = { [weak self, weak plan] in
+                guard let self, let plan, takePlan === plan, takePlanBasis?.plan === plan else { return nil }
+                return staleStop(plan)
+            }
             #if DEBUG
             plan.publishOverride = publishOverride
             #endif
@@ -123,6 +132,7 @@ extension RewriteSession {
             phraseMicrophone.cancel(); ownWordsEditing = nil
             configureLipsync(plan)
             takePlanReview = reviewAtPlan
+            basis.plan = plan; takePlanBasis = basis
             if let contextReview, let contextRequest {
                 try contextReview.validatePreparedPhrases(plan.phrases, current: contextRequest, envelope: envelope)
                 bindSpeechContext(contextReview, to: plan)
@@ -192,6 +202,45 @@ extension RewriteSession {
         }
     }
 
+    /// Why `basis`'s takes plan is stale, or nil while it is current: the plan's currency (`prepareTakes`'s isCurrent) and
+    /// what a stale stop names (`staleStop`). An edit of the scope's words or of the reviewed changes, an edit beside the
+    /// scope that moved the takes' windows, a change left out, another voice or model, Voice Lab's settings, a wording
+    /// still being fitted or asked again, or a project that can't be edited. A save, the tab, music, captions, colour,
+    /// motion, the AI connector and VoxClip's own rate samples are none of these (voice-lab.md "What counts as an edit").
+    func staleCause(_ basis: TakePlanBasis, generation: RewriteGenerationSession?) -> ClipTakePlan.StaleStop.Cause? {
+        guard isOpen, editor.capabilities.edit else { return .locked }
+        guard let generation else { return .settings }
+        if !voiceSpendCurrent || voiceIdentity(editor.project) != basis.identity || revision != basis.revision
+            || localCommands != basis.commands || changes != basis.changes { return .words(staleWords) }
+        if takeWindowsMoved { return .beside(staleBeside) }
+        if includedVoice != basis.ordinals { return .inclusion }
+        if ownProposal?.changes != basis.proposalChanges { return .words(staleWords) }
+        if generation.selectedVoiceID != basis.recordID { return .voice }
+        if generation.selectedModelID != basis.modelID() { return .model }
+        if isProposing || wordingIsLocked || isReasking { return .busy }
+        guard let region = basis.region, generationIsCurrent(region: region) else { return .settings }
+        return nil
+    }
+    /// The takes plan's stale stop: what changed since it was made, with its paid takes and the way back when they were
+    /// paid for (`ClipTakePlan.StaleStop`).
+    func staleStop(_ plan: ClipTakePlan) -> ClipTakePlan.StaleStop {
+        let cause = takePlanBasis.flatMap { $0.plan === plan ? staleCause($0, generation: generation) : nil } ?? .words(staleWords)
+        guard plan === takePlan, hasPaidPatchWork else { return .init(cause: cause) }
+        let kept = paidTakesKept
+        return .init(cause: cause, kept: kept.kept, pronoun: kept.pronoun)
+    }
+    /// What a stale stop names as edited: "The words or cuts in clip 1", "The words or cuts in the full take", "These
+    /// words or their cuts".
+    private var staleWords: String {
+        if case .selection = rewriteScope { return task.words.wordCount == 1 ? "This word or its cut" : "These words or their cuts" }
+        return "The words or cuts in " + task.words.name
+    }
+    /// What a stale stop names beside the scope: "The words beside clip 1", "The words beside these words".
+    var staleBeside: String {
+        if case .selection = rewriteScope { return task.words.wordCount == 1 ? "The words beside this word" : "The words beside these words" }
+        return "The words beside " + task.words.name
+    }
+
     func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {
         let total = await VoiceLabSpendLedger(locations: editor.app.locations).total(provider: "elevenlabs", at: Date())
         guard let limit = Decimal(string: editor.app.string("voiceLab.monthlyCapUsd.elevenlabs"), locale: Locale(identifier: "en_US_POSIX")) else { return nil }
@@ -200,6 +249,30 @@ extension RewriteSession {
     }
     private func generationProblem(_ error: any Error) {
         if let generation { generation.fail(reported(error, stage: "voices")) } else { reportGenerationProblem(error) }
+    }
+}
+
+/// What a Rewrite's takes plan was made from (`RewriteSession.prepareTakes`): its voice identity, the session's revision,
+/// inclusions, pending free changes and reviewed changes, the voice, the model and the region. The plan is current while
+/// they are as they were (`RewriteSession.staleCause`).
+@MainActor final class TakePlanBasis {
+    let identity: Project
+    let revision: Int
+    let ordinals: [Int]
+    let commands: [EditCommand]
+    let changes: [RewriteChange]
+    let proposalChanges: [TranscriptChange]?
+    let recordID: String
+    /// The plan's model: the one its inputs were made with, or the one the user changed it to with paid takes kept.
+    let modelID: @MainActor () -> String
+    let region: ElevenLabsRegion?
+    /// The plan made from it.
+    weak var plan: ClipTakePlan?
+    init(identity: Project, revision: Int, ordinals: [Int], commands: [EditCommand], changes: [RewriteChange],
+         proposalChanges: [TranscriptChange]?, recordID: String, modelID: @escaping @MainActor () -> String, region: ElevenLabsRegion?) {
+        self.identity = identity; self.revision = revision; self.ordinals = ordinals; self.commands = commands
+        self.changes = changes; self.proposalChanges = proposalChanges; self.recordID = recordID; self.modelID = modelID
+        self.region = region
     }
 }
 

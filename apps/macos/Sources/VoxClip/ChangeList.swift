@@ -88,6 +88,7 @@ extension RewriteSession {
         guard isOpen else { return }
         leaveOutUnavailableVoices()
         followIncludedVoice()
+        followCurrentTakes()
         // A selected passing take always has its duration chosen before the footer is drawn, so the footer never asks
         // for the duration the phrase card already reads as "Video: keep source video duration" (design.md R2).
         if let plan = takePlan, !takesBusy { autoChooseVideo(plan) }
@@ -138,7 +139,9 @@ extension RewriteSession {
         let included = includedVoice
         let inclusionChanged = included != includedVoicesSeen
         guard inclusionChanged || takePlan.map({ !$0.isRetired && !$0.stillCurrent }) == true else { return }
-        if hasPaidWork {
+        // Only the patch's own paid takes are asked about: a whole clip's paid voice is not discarded by Discard Takes, so
+        // with it alone the patch plan is priced again as before and the whole clip is left as it is.
+        if hasPaidPatchWork {
             guard inclusionChanged else { return }
             includedVoicesSeen = included
             takePlanFailure = nil
@@ -147,9 +150,8 @@ extension RewriteSession {
                 return
             }
             generation?.inputsChanged(prepareNewQuote: false)
-            let count = paidTakeCount
-            let takes = count == 1 ? "Your paid take is" : count == 0 ? "Your paid takes are" : "Your \(count) paid takes are"
-            askToDiscardTakes("\(takes) for the changes as they were. Include the change again to use \(count == 1 ? "it" : "them"), or discard \(count == 1 ? "it" : "them") for a fresh price.")
+            let kept = paidTakesKept
+            askToDiscardTakes(ClipTakePlan.StaleStop(cause: .inclusion, kept: kept.kept, pronoun: kept.pronoun).copy)
             return
         }
         includedVoicesSeen = included

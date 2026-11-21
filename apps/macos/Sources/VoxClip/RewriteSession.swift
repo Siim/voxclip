@@ -129,6 +129,8 @@ struct RewriteChange: Equatable, Sendable {
     var takeWindowsMoved = false
     /// The review the take plan was made from, which `move` compares a rebuilt review with.
     @ObservationIgnored var takePlanReview: RewriteReview?
+    /// What the take plan was made from, which its currency compares and a stale stop names (`staleCause`).
+    @ObservationIgnored var takePlanBasis: TakePlanBasis?
     /// "How should it sound?" (ADR-R46): the whole-clip revoice's card and run, and its take plan over the script's parts.
     var wholeClip: WholeClipRevoiceSession?
     @ObservationIgnored var wholeClipPlan: ClipTakePlan?
@@ -231,7 +233,7 @@ struct RewriteChange: Equatable, Sendable {
         // A plan holding paid work stays when the inputs change: it is stale while they differ, and its takes go only on
         // the user's Discard Takes (voice-lab.md "What counts as an edit").
         generation?.onInputsChanged = { [weak self] in
-            guard let self, !hasPaidWork else { return }
+            guard let self, !hasPaidPatchWork else { return }
             takePlan?.invalidate()
         }
         generation?.readMonthlyCap = { [weak self] in
@@ -995,21 +997,31 @@ struct RewriteChange: Equatable, Sendable {
     /// `hasPaidTakes` stays for the patch-only gates (`offersWholeClip`, a fresh takes plan).
     var hasPaidWork: Bool {
         guard !paidWorkUsed else { return false }
-        let patch = takePlan.map { !$0.isRetired && ($0.generating || $0.spent.units > 0) } ?? false
-        return patch || generation?.rows.isEmpty == false || takePlan?.lipsync.hasPaidWork == true
-            || wholeClipPlan?.lipsync.hasPaidWork == true
+        return hasPaidPatchWork || wholeClipPlan?.lipsync.hasPaidWork == true
             || wholeClip.map { $0.running || ($0.spent > 0 && $0.phase != .used && $0.phase != .choose) } == true
     }
-    /// What a stop or R3 says stays, and the pronoun for it: ("Your 3 paid takes (≈ $0.12) are kept", "them"), ("Your
-    /// paid take is kept", "it"), ("Your paid whole-clip voice is kept", "it"). Takes first; the whole clip when it is the
-    /// only paid work.
+    /// The patch's own paid work, which its stale plan keeps and its questions name: the plan's running or paid takes
+    /// while it is not retired, the generation's takes and the plan's lip sync. A whole clip's paid voice is not part of
+    /// it, so an inclusion or an edit beside the scope never asks about takes that don't exist (`hasPaidWork` adds it).
+    var hasPaidPatchWork: Bool {
+        guard !paidWorkUsed else { return false }
+        let patch = takePlan.map { !$0.isRetired && ($0.generating || $0.spent.units > 0) } ?? false
+        return patch || generation?.rows.isEmpty == false || takePlan?.lipsync.hasPaidWork == true
+    }
+    /// What R3 says stays, and the pronoun for it: the paid takes (`paidTakesKept`), or ("Your paid whole-clip voice is
+    /// kept", "it") when the whole clip is the only paid work.
     var paidWorkKept: (kept: String, pronoun: String) {
+        if !hasPaidPatchWork, wholeClip.map({ $0.running || $0.spent > 0 }) == true { return ("Your paid whole-clip voice is kept", "it") }
+        return paidTakesKept
+    }
+    /// The patch's paid takes as a stop names them: ("Your 3 paid takes (≈ $0.12) are kept", "them"), ("Your paid take
+    /// is kept", "it"), or ("Your paid takes are kept", "them") while the first are still being made.
+    var paidTakesKept: (kept: String, pronoun: String) {
         let takes = paidTakeCount
         let usd = takePlan.flatMap { $0.isRetired ? nil : $0.spent.usd }
         let cost = usd.map { $0 > 0 ? " (" + VoiceLabCostPresentation.format($0) + ")" : "" } ?? ""
         if takes == 1 { return ("Your paid take\(cost) is kept", "it") }
         if takes > 1 { return ("Your \(takes) paid takes\(cost) are kept", "them") }
-        if wholeClip.map({ $0.running || $0.spent > 0 }) == true { return ("Your paid whole-clip voice is kept", "it") }
         return ("Your paid takes\(cost) are kept", "them")
     }
     /// Discard Takes, the one way paid takes go apart from closing (an edit outside the scope moved their windows, or a
@@ -1140,6 +1152,14 @@ struct RewriteChange: Equatable, Sendable {
                     showProposal()
                     return false
                 }
+                if case ClipTakePlan.Failure.stale? = error as? ClipTakePlan.Failure, self.takePlan === takePlan {
+                    // What changed, the paid takes kept and the way back; with paid takes the footer also asks Keep
+                    // Working or Discard Takes, so Undo is not the only way on.
+                    let stop = staleStop(takePlan)
+                    problem = ClipTakePlan.copy(stop); takePlanFailure = stop
+                    if stop.kept != nil, case .proposal = task.state { askToDiscardTakes(problem) }
+                    return false
+                }
                 problem = ClipTakePlan.copy(error); takePlanFailure = error; return false
             }
         }
@@ -1249,7 +1269,7 @@ struct RewriteChange: Equatable, Sendable {
     /// undo that moves them back makes them current again. A plan with nothing paid is priced again, as before.
     private func move(to next: Project) {
         guard next != project else { return }
-        let keptPlan = takePlan.flatMap { inside(next) == inside(project) && hasPaidWork ? $0 : nil }
+        let keptPlan = takePlan.flatMap { inside(next) == inside(project) && hasPaidPatchWork ? $0 : nil }
         let requote = takePlan != nil && keptPlan == nil
         if keptPlan == nil {
             takePlanFailure = nil
@@ -1286,14 +1306,22 @@ struct RewriteChange: Equatable, Sendable {
         takeWindowsMoved = moved
         if moved {
             generation?.inputsChanged(prepareNewQuote: false)
-            let count = paidTakeCount
-            let beside = switch rewriteScope { case .clip: "this clip"; case .selection: "these words"; case .fullTake: "this take" }
-            let takes = count == 0 ? "the paid takes no longer fit" : count == 1 ? "your paid take no longer fits" : "your \(count) paid takes no longer fit"
-            askToDiscardTakes("The words beside \(beside) changed, so \(takes). Undo the edit to use them, or discard them.")
+            let kept = paidTakesKept
+            askToDiscardTakes(ClipTakePlan.StaleStop(cause: .beside(staleBeside), kept: kept.kept, pronoun: kept.pronoun).copy)
         } else if task.confirm?.confirm.id == "discardTakes" {
             task.dismissConfirm()
         }
         if isOpen, case .proposal = task.state { showProposal() }
+    }
+    /// Kept takes that are current again (an undo, the voice or a setting back) drop their stale stop and its Discard
+    /// Takes question, so the footer offers Use again (`showProposal`).
+    func followCurrentTakes() {
+        guard let plan = takePlan, !plan.isRetired, plan.stillCurrent else { return }
+        if let stop = takePlanFailure as? ClipTakePlan.StaleStop {
+            if problem == ClipTakePlan.copy(stop) { problem = "" }
+            takePlanFailure = nil
+        }
+        if task.confirm?.confirm.id == "discardTakes" { task.dismissConfirm() }
     }
     /// The footer's inline question over paid takes that no longer fit: Keep Working keeps them (stale, listed, kept until
     /// Rewrite closes); Discard Takes drops them for a fresh price (`discardPaidTakes`).
