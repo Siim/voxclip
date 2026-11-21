@@ -198,21 +198,23 @@ internal sealed partial class RewriteSession
         if (providers.Length == current.Length) return new StuckTakeReason.Provider(providers[^1]);
         if (current.All(row => RewriteGeneration.Length(row) is null && row.Failure is VoiceLabException { Kind: VoiceLabErrorKind.InvalidAlignment }))
             return new StuckTakeReason.Timing();
-        // A failed take is fixed by what failed, before its length: a take that skipped words runs short, and a longer wording would
+        // A failed take is fixed by what failed, not by its length: a take that skipped words runs short, and a longer wording would
         // only pad it and pay for another take (ADR-R42).
         var failures = current.SelectMany(HardFailures).ToArray();
         if (failures.Contains(VoiceLabTakeQaFailure.InsufficientGeneratedSpeech) || current.Any(row => row.Failure is VoiceInsufficientGeneratedSpeechException ||
                 row.VoiceCheck.Evidence?.Mode == VoiceLabShortSpeechMode.Unmeasured))
             return new StuckTakeReason.ShortSpeech();
-        if (failures.Contains(VoiceLabTakeQaFailure.Transcript)) return new StuckTakeReason.Words();
-        if (failures.Contains(VoiceLabTakeQaFailure.Speaker)) return new StuckTakeReason.Voice();
-        // Length only for a closest take with no failed check of its own that runs longer than its slot and that no video duration
-        // (keep source, cut or match) carries. A take too short is never reworded longer.
+        // The closest take runs longer than its slot and no video duration (keep source, cut or match) carries it: the wording is too
+        // long, and one more take of the same words would run too long again. Its word check failing too doesn't change that (a shorter
+        // wording also leaves fewer words to miss), so it is reworded shorter at once. Any other failed check of its own is fixed first.
+        // A take too short is never reworded longer.
         var closest = current.Where(row => RewriteGeneration.Length(row) is not null && window.Slot(row) is not null)
             .OrderBy(row => Math.Abs(RewriteGeneration.Length(row)!.Value - window.Slot(row)!.Value)).ThenBy(row => row.Index).FirstOrDefault();
         if (closest is not null && RewriteGeneration.Length(closest) is { } measured && window.Slot(closest) is { } room && measured > room &&
-            !HardFailures(closest).Any() && !window.DurationCarries(closest))
+            HardFailures(closest).All(failure => failure == VoiceLabTakeQaFailure.Transcript) && !window.DurationCarries(closest))
             return new StuckTakeReason.Length(true, measured, room, closest.Id, closest.Index + 1, false);
+        if (failures.Contains(VoiceLabTakeQaFailure.Transcript)) return new StuckTakeReason.Words();
+        if (failures.Contains(VoiceLabTakeQaFailure.Speaker)) return new StuckTakeReason.Voice();
         return new StuckTakeReason.Other(current.Select(row => TakeRowPresentation.From(row, null, index + 1).FailureText).LastOrDefault(text => text is not null)
             ?? "Its takes did not pass the checks.");
     }

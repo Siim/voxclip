@@ -5,7 +5,7 @@ import VoxClipCore
 // Rewrite fixes its own stuck phrases (design.md R2 "Automatic fixes", voice-lab.md §8.2.2). Once the user approves
 // Get Price and takes run, every phrase whose takes are stuck is handled phrase by phrase with no click, through the
 // paths the chips use: one more take for a failed check, then a scoped reword with easier words; a measured shorter
-// reword for a take too long with no failed check (a failed take is fixed by what failed, never by its length).
+// reword for a take too long for every video duration (a failed take is fixed by what failed, never reworded longer).
 // Each phrase gets at most three automatic rounds; after the last its original words are kept. Automatic spend is
 // capped at max($0.10, the approved price); the next step past it waits for [Keep fixing · ≈ $y]. New takes are added
 // beside the old ones, never in place of a paid one. Stop keeps everything made so far and shows the chips.
@@ -200,20 +200,23 @@ extension RewriteSession {
         if current.allSatisfy({ take in
             take.length == nil && (take.row.failure == .invalidAlignment || take.row.failure == .provider(.invalidAlignment))
         }) { return .timing }
-        // A failed take is fixed by what failed, before its length: a take that skipped words runs short, and a longer
+        // A failed take is fixed by what failed, not by its length: a take that skipped words runs short, and a longer
         // wording would only pad it and pay for another take (ADR-R42).
         let failures = current.flatMap(Self.hardFailures)
         if failures.contains(.insufficientGeneratedSpeech) || current.contains(where: { $0.row.voiceCheck.evidence?.mode == .unmeasured }) {
             return .shortSpeech
         }
-        if failures.contains(.transcript) { return .words }
-        if failures.contains(.speaker) { return .voice }
-        // Length only for a closest take with no failed check of its own that runs longer than its slot and that no video
-        // duration (keep source, cut or match) carries. A take too short is never reworded longer.
+        // The closest take runs longer than its slot and no video duration (keep source, cut or match) carries it: the
+        // wording is too long, and one more take of the same words would run too long again. Its word check failing too
+        // doesn't change that (a shorter wording also leaves fewer words to miss), so it is reworded shorter at once. Any
+        // other failed check of its own is fixed first. A take too short is never reworded longer.
         if let closest = current.filter({ $0.length != nil }).min(by: { abs($0.length! - slot) < abs($1.length! - slot) }),
-           let length = closest.length, length > slot, Self.hardFailures(closest).isEmpty, !durationCarries(closest, plan: plan) {
+           let length = closest.length, length > slot, Self.hardFailures(closest).allSatisfy({ $0 == .transcript }),
+           !durationCarries(closest, plan: plan) {
             return .length(tooLong: true, measured: length, slot: slot, take: closest.id, number: closest.number, selected: false)
         }
+        if failures.contains(.transcript) { return .words }
+        if failures.contains(.speaker) { return .voice }
         return .other(current.last.flatMap { TakeFailurePresentation.reason(for: $0.row) } ?? "Its takes did not pass the checks.")
     }
 

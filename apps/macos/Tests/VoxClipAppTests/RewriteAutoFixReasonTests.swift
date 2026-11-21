@@ -184,8 +184,27 @@ private struct ReasonKeys: KeyProvider {
         #expect(session.stuckReason(plan.phrases[0], plan: plan) == .words)
         // A failed speaker check, or too little speech to check the voice, is named the same way at any length.
         #expect(session.stuckReason(try phrase(fixture, plan, [Script(ratio: 0.7, failures: [.speaker])]), plan: plan) == .voice)
-        #expect(session.stuckReason(try phrase(fixture, plan, [Script(ratio: 1.6, failures: [.transcript])]), plan: plan) == .words)
+        #expect(session.stuckReason(try phrase(fixture, plan, [Script(ratio: 1.6, failures: [.speaker])]), plan: plan) == .voice)
         #expect(session.stuckReason(try phrase(fixture, plan, [Script(ratio: 0.6, failures: [.insufficientGeneratedSpeech])]), plan: plan) == .shortSpeech)
+        // A failed word check that the matched speed carries is retaken too.
+        #expect(session.stuckReason(try phrase(fixture, plan, [Script(ratio: 1.1, failures: [.transcript])]), plan: plan) == .words)
+    }
+
+    /// A take that failed its word check and runs longer than every video duration carries (MVP13's dead end, cause a):
+    /// its wording is too long, and a take of the same words would run too long again, so it is reworded shorter at once
+    /// rather than paying for one more take first. A take that also failed another check (its voice, clipping) is retaken
+    /// first, as at any length.
+    @Test func aFailedWordCheckTooLongForEveryDurationIsRewordedShorter() async throws {
+        let fixture = try await fixture(); defer { fixture.close() }
+        let session = fixture.session
+        let plan = try await takes(fixture, Script(ratio: 1.6, failures: [.transcript]))
+        let take = try #require(plan.phrases[0].takes.first)
+        #expect(!take.row.selectable && !session.durationCarries(take, plan: plan))
+        let reason = try #require(session.stuckReason(plan.phrases[0], plan: plan))
+        guard case .length(let tooLong, let measured, let slot, let id, let number, let selected) = reason else { Issue.record("\(reason)"); return }
+        #expect(tooLong && measured > slot && id == take.id && number == 1 && !selected)
+        #expect(session.stuckReason(try phrase(fixture, plan, [Script(ratio: 1.6, failures: [.transcript, .speaker])]), plan: plan) == .words)
+        #expect(session.stuckReason(try phrase(fixture, plan, [Script(ratio: 1.6, failures: [.transcript, .clipping])]), plan: plan) == .words)
     }
 
     /// The length test counts the matched speed: a take 1.1× its slot whose picture can be slowed to 0.91× is carried

@@ -65,6 +65,30 @@ public sealed class RewriteAutoFixReasonTests
         Assert.Equal(window.Rows[1].Id, window.SelectedTakeId);
     }
 
+    /// <summary>A take that failed its word check and runs longer than every video duration carries (Mac MVP13's cause a): its wording
+    /// is too long, and a take of the same words would run too long again, so it is reworded shorter at once: one wording round and one
+    /// more take, never a Try another first.</summary>
+    [Fact]
+    public async Task AFailedWordCheckTooLongForEveryDurationIsRewordedShorter()
+    {
+        var connector = new RewriteAutoFixTests.Connector(RewriteAutoFixTests.Reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "said briefly"));
+        var runner = new RewriteAutoFixTests.Runner((run, _) => run == 1 ? (5.8, RewriteAutoFixTests.WordsFailed) : (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed));
+        using var session = await RewriteAutoFixTests.PricedAsync(connector, runner);
+        await RewriteAutoFixTests.SettleAsync(session);
+        var window = session.Generation!;
+        var first = window.Rows[0];
+        Assert.False(first.Selectable);
+        Assert.True(RewriteGeneration.Length(first) > window.Slot(first));
+        Assert.False(window.DurationCarries(first));
+        Assert.Single(connector.FitRequests);
+        Assert.Equal(2, runner.Sends);
+        Assert.DoesNotContain(0, session.AutoFix.TriedAnother);
+        Assert.Equal(1, session.AutoFix.Rounds[0]);
+        Assert.Equal("said briefly", window.InputFor(window.Rows[1].Id)!.Text);
+        Assert.Equal(window.Rows[1].Id, window.SelectedTakeId);
+        Assert.Null(session.StuckReason(0));
+    }
+
     [Fact]
     public void TheFirstVoiceIsNeverAnotherVideosOwn()
     {
