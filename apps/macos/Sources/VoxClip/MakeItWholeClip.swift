@@ -65,9 +65,10 @@ extension WholeClipRevoiceSession {
     /// take it within `budget`, what the run could spend when it started. A lip sync whose paid result is kept is re-imported
     /// for free; a voice that stopped in a way a retry can pass (a part that failed its checks, a provider error) is voiced
     /// again when the retry's whole price fits what is left. Never after a charge fal.ai can't confirm (only the creator's
-    /// "I checked fal.ai" goes on from there), a stale stop, or a stop the paid voice no longer matches.
+    /// "I checked fal.ai" goes on from there), a stale stop, a stop the paid voice no longer matches, or one that waits for
+    /// something outside the card (a voice chosen, Voice Lab ready, an Undo: `waitsForReadiness`).
     func automaticRetryUSD(budget: Decimal) -> Decimal? {
-        guard isStopped, !submissionUnconfirmed, let failure, Self.retriesOnItsOwn(failure), let usd = retryUSD else { return nil }
+        guard isStopped, !submissionUnconfirmed, !waitsForReadiness, let failure, Self.retriesOnItsOwn(failure), let usd = retryUSD else { return nil }
         if lipsyncKept, usd == 0 { return 0 }
         guard failure.step == .voice, !failure.repeats, usd <= budget - spent else { return nil }
         return usd
@@ -76,19 +77,21 @@ extension WholeClipRevoiceSession {
     /// A stop a retry over the same inputs could pass: not stale, and not one the paid voice no longer matches, read from the
     /// failure's own type and case (`RewriteSession.failureKind`).
     static func retriesOnItsOwn(_ failure: Failure) -> Bool {
-        !["case=stale", "StaleStop", "case=voiceInputsChanged", "case=retainedVoiceChanged"].contains { failure.kind.contains($0) }
+        !["case=stale", "StaleStop", "case=voiceInputsChanged"].contains { failure.kind.contains($0) }
     }
 
-    /// Claude mode's run of this whole clip: `start` with what may be spent, then at most one automatic Try Again
-    /// (`automaticRetryUSD`) with what is left, and what it came to, `holdsPaidWork` read once it ended (the live run's
-    /// Rewrite predicate; by default the whole clip's own). `report` gets the retry's log line.
+    /// Claude mode's run of this whole clip: `start` with what the run may spend, then at most one automatic Try Again
+    /// (`automaticRetryUSD`), and what it came to, `holdsPaidWork` read once it ended (the live run's Rewrite predicate; by
+    /// default the whole clip's own). Both starts get the same `budget`: the session takes what it already spent off it
+    /// (`start(automatic:budget:)`), so a reworded voice is voiced only within what is left. `report` gets the retry's log
+    /// line.
     func runAutomatically(budget: Decimal, holdsPaidWork: (@MainActor () -> Bool)? = nil, start: @MainActor (Decimal) -> Void,
                           report: @MainActor (String) -> Void = { _ in }) async -> WholeClipAutoOutcome {
         start(budget)
         await waitForRun()
         if let usd = automaticRetryUSD(budget: budget) {
             report("make-it whole clip try again step=\(failure?.step ?? .voice) usd=\(usd)")
-            start(budget - spent)
+            start(budget)
             await waitForRun()
         }
         return WholeClipAutoOutcome(self, holdsPaidWork: holdsPaidWork?())
@@ -289,21 +292,14 @@ extension MakeItServices {
             return .failed("Revoicing the whole clip passes this video's cap. Nothing was sent.", spent: 0)
         }
         let log = editor.app.log
-        let outcome = await whole.runAutomatically(budget: budget, holdsPaidWork: { [weak session] in session?.hasUnusedPaidWork ?? false }, start: { [weak session] left in
-            session?.startAutomaticWholeClip(budget: left)
+        // B's automatic start: a reworded voice is voiced only within the budget, else it waits for the creator's priced
+        // click (`Stop.shorterWordingReady`), which Claude mode never gives.
+        let outcome = await whole.runAutomatically(budget: budget, holdsPaidWork: { [weak session] in session?.hasUnusedPaidWork ?? false }, start: { [weak session] budget in
+            session?.startWholeClip(automatic: true, budget: budget)
         }, report: { line in Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: line)) } })
         keepsOpen = outcome.holdsPaidWork
         // The patch goes on: this clip's pick is the patch, so its phrases' Rewrites don't offer the whole clip again.
         if outcome.patches { editor.wholeClipPicks[request.clipID] = false }
         return outcome
-    }
-}
-
-extension RewriteSession {
-    /// The automatic run's start within `budget` (what Claude mode may still spend on it). The seam for package B's
-    /// `startWholeClip(automatic:budget:)`, which lets an automatic run voice a shorter wording only within that budget;
-    /// until it lands the budget is checked before the run and before its one Try Again (`automaticRetryUSD`).
-    fileprivate func startAutomaticWholeClip(budget: Decimal) {
-        startWholeClip(automatic: true)
     }
 }

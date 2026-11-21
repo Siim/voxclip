@@ -115,6 +115,8 @@ import xlocale
         review(.init(rows: state == "none-passed" ? [failed] : [passing, failed], end: .completed))
         switch state {
         case "no-voice": rows = []; selectedID = nil; phase = .idle
+        // A voice chosen and nothing made with it yet (Claude mode's whole clip in tests).
+        case "voice": rows = []; selectedID = nil; bestID = nil; phase = .idle
         case "generating": rows = [passing]; phase = .generating
         case "provider-error": fail("ElevenLabs rejected the key (401). Your edits are saved.")
         case "cost-confirmation":
