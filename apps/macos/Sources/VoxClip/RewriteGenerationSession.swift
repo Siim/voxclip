@@ -115,6 +115,8 @@ import xlocale
         review(.init(rows: state == "none-passed" ? [failed] : [passing, failed], end: .completed))
         switch state {
         case "no-voice": rows = []; selectedID = nil; phase = .idle
+        // A voice chosen and nothing made with it yet (Claude mode's whole clip in tests).
+        case "voice": rows = []; selectedID = nil; bestID = nil; phase = .idle
         case "generating": rows = [passing]; phase = .generating
         case "provider-error": fail("ElevenLabs rejected the key (401). Your edits are saved.")
         case "cost-confirmation":
@@ -377,9 +379,10 @@ import xlocale
     /// The account's voices and models in place of the provider's (`VoiceLabTakeRun.discover`).
     @ObservationIgnored var discoverForTests: ((String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]))?
     #endif
+    /// Refused while paid work made with the chosen voice is kept (`keepsVoice`): another voice would make it stale.
     func chooseVoice(_ id: String?) {
         guard id == nil || voices.contains(where: { $0.id == id }) else { return }
-        guard id != selectedVoiceID else { return }
+        guard id != selectedVoiceID, keepsVoice?() != true else { return }
         selectedVoiceID = id; inputsChanged()
     }
     /// Moves a plan with paid takes to another model and keeps its takes: true when it moved, false when it could not
@@ -711,8 +714,8 @@ extension RewriteSession {
     /// voice, else the anchor, never a voice made from another video (voice-lab §6.13, §6.12).
     func wireInitialVoice() {
         generation?.voicePreference = { [weak self] in self?.initialVoicePreference ?? .init() }
-        // Paid takes, or a whole clip's paid voice or lip sync, keep the voice they were made with (`holdsPaidVoice`).
-        generation?.keepsVoice = { [weak self] in self.map { $0.hasPaidTakes || $0.holdsPaidVoice } ?? true }
+        // Paid takes, or a whole clip's paid voice or lip sync, keep the voice they were made with (`keepsChosenVoice`).
+        generation?.keepsVoice = { [weak self] in self?.keepsChosenVoice ?? true }
     }
     /// What the first voice choice knows in this video. The per-video book's voices are other videos' except this
     /// video's own; a voice waiting to be removed is no video's to start with.
@@ -721,7 +724,9 @@ extension RewriteSession {
         let book = voiceLab.perVideoBook
         let own = book.video(project.media.source.contentKey)?.recordId
         let made = Set(book.videos.map(\.recordId) + book.removals.map(\.recordId))
-        return .init(preferred: preferredVoiceForVideo, anchor: voiceLab.anchorVoice(language: project.transcript?.language)?.id,
+        // A proposal restored with its paid work keeps the voice it was made with: its whole clip's, else its takes'.
+        let restored = restoredWholeClipVoice?.recordId ?? restoredProposal?.voiceRecordID
+        return .init(preferred: restored ?? preferredVoiceForVideo, anchor: voiceLab.anchorVoice(language: project.transcript?.language)?.id,
                      otherVideos: made.subtracting([own].compactMap { $0 }))
     }
 }

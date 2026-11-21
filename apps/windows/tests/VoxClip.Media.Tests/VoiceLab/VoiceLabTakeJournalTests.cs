@@ -158,4 +158,42 @@ public sealed class VoiceLabTakeJournalTests : IDisposable
         foreach (var asset in document["assets"]!.AsArray())
             Assert.True(File.Exists(Path.Combine(root, project, asset!["assetId"]!.GetValue<string>() + ".wav")));
     }
+
+    /// <summary>The App's settle at a project's close (<c>EditorPage.SettleTakeJournal</c>): an entry whose asset the project used goes,
+    /// unused current ones stay adoptable.</summary>
+    [Fact]
+    public void TheProjectCloseLetsGoOfTheTakesItUsed()
+    {
+        var document = Document();
+        var project = Journal(document);
+        var entries = document["entries"]!.AsArray().Select(node => Entry(node!)).ToArray();
+        var before = VoiceLabTakeJournal.List(project, root).Count;
+        var used = VoiceLabTakeJournal.List(project, root).First();
+        Assert.True(VoiceLabTakeJournalSettlement.Settle(project, root, [used.AssetFile]) >= 1);
+        var kept = VoiceLabTakeJournal.List(project, root).Select(entry => entry.AssetFile).ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain(used.AssetFile, kept);
+        Assert.True(kept.Count >= 1 && kept.Count < before, $"{kept.Count} of {before} of {entries.Length}");
+    }
+
+    /// <summary>The launch sweep (<c>AppServices.InitializeAsync</c>) keeps the 60-day rule for a project that is never opened again or
+    /// crashed before its close: every journal drops its gone and aged entries, used ones are left for the project's own open, folders
+    /// with no journal are passed over, and the assets stay. Pruning used to run only at a clean close of the project.</summary>
+    [Fact]
+    public void TheLaunchSweepDropsGoneAndAgedEntriesOfProjectsNeverOpened()
+    {
+        var document = Document();
+        var project = Journal(document);
+        var entries = document["entries"]!.AsArray().Select(node => Entry(node!)).ToArray();
+        var created = entries.Max(entry => entry.CreatedAt);
+        Directory.CreateDirectory(Path.Combine(root, "no-journal-here"));
+        Assert.Equal(1, VoiceLabTakeJournalSettlement.SweepStale(root, created.AddDays(59)));
+        var kept = VoiceLabTakeJournal.List(project, root).Select(entry => entry.AssetFile).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(entries.Length - 1, kept.Count);
+        Assert.DoesNotContain(entries.Single(entry => entry.RequestText == "Missing").AssetFile, kept);
+        Assert.Equal(entries.Length - 1, VoiceLabTakeJournalSettlement.SweepStale(root, created.AddDays(61)));
+        Assert.Empty(VoiceLabTakeJournal.List(project, root));
+        Assert.Equal(0, VoiceLabTakeJournalSettlement.SweepStale(Path.Combine(root, "absent"), created.AddDays(61)));
+        foreach (var asset in document["assets"]!.AsArray())
+            Assert.True(File.Exists(Path.Combine(root, project, asset!["assetId"]!.GetValue<string>() + ".wav")));
+    }
 }

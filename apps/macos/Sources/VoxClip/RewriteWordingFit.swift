@@ -222,8 +222,10 @@ extension RewriteSession {
         return "price unavailable · billed to your key"
     }
 
+    /// The plan's takes settled: the video choice, pending expressions and the speaking-rate calibration follow them (the
+    /// voice's own currency), then the automatic fixes or a measured wording round, which asks the AI it was opened with.
     func observeMeasuredTakes(_ plan: ClipTakePlan) {
-        guard current, takePlan === plan, !plan.generating, !plan.preparing, !plan.publishing else { return }
+        guard voiceSpendCurrent, takePlan === plan, !plan.generating, !plan.preparing, !plan.publishing else { return }
         autoChooseVideo(plan)
         applyPendingExpressions(plan)
         if let suggestion = wordingFit.measured,
@@ -235,19 +237,11 @@ extension RewriteSession {
         }
         do {
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(reviewInputs))
-            for phrase in plan.phrases {
-                for take in phrase.takes {
-                    guard take.source == .clonedVoice, let audio = take.row.audio, let input = plan.measuredInput(take: take.id) else { continue }
-                    let estimate = try VoiceLabPhraseTiming.estimate(text: input.text, rate: rate)
-                        + VoiceLabAudioTags.allowance(input.audioTags, text: input.text, modelID: input.modelID)
-                    recordSpeakingRate(model: input.modelID, recordID: input.recordID, take: take.id,
-                        measured: Double(audio.trimmed.count) / Double(audio.sampleRate) * (input.pace ?? 1), baseline: estimate)
-                }
-            }
+            try recordMeasuredTakes(plan, rate: rate)
             measureVideoVoiceMatch(plan)
             // Once an approved price armed the automatic fixes, they make this round (RewriteAutoFix.swift).
             guard autoFix.plan !== plan else { advanceAutoFix(); return }
-            guard connector != nil, wordingFit.measuredWork == nil, wordingFit.measured == nil,
+            guard current, connector != nil, wordingFit.measuredWork == nil, wordingFit.measured == nil,
                   let phrase = plan.phrases.first(where: { phrase in
                       guard phrase.wording == .suggested, let take = phrase.selected, !wordingFit.measuredTakes.contains(take.id),
                             plan.measuredInput(take: take.id)?.modelID == VoiceLabWordingFit.modelID else { return false }

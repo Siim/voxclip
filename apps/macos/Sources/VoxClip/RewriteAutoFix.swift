@@ -284,7 +284,8 @@ extension RewriteSession {
     func advanceAutoFix() {
         guard let plan = takePlan, plan === autoFix.plan else { return }
         applyPendingExpressions(plan)
-        guard autoFix.running, current, plan.stillCurrent, !takesBusy, !wordingIsLocked, !isReasking,
+        // The voice steps read the voice's own currency; a step that asks the AI also needs the AI it was opened with.
+        guard autoFix.running, voiceSpendCurrent, plan.stillCurrent, !takesBusy, !wordingIsLocked, !isReasking,
               autoFix.work == nil, wordingFit.measuredWork == nil, task.confirm == nil else { return }
         switch plan.failure {
         case ClipTakePlan.Failure.spendingCap?, ClipTakePlan.Failure.unknownSpend?:
@@ -304,6 +305,13 @@ extension RewriteSession {
             let used = autoFix.rounds[phrase.id, default: 0]
             guard used < RewriteAutoFixState.maximumRounds else { giveUp(phrase.id, plan: plan); continue }
             if case .timing = reason, autoFix.triedAnother.contains(phrase.id) { giveUp(phrase.id, plan: plan); continue }
+            let asksAI: Bool = switch reason {
+            case .length: true
+            case .words: autoFix.triedAnother.contains(phrase.id)
+            default: false
+            }
+            // The AI changed since this Rewrite opened: a new wording waits for Rewrite Again, and the choices show.
+            if asksAI, !current { autoFix.lines[phrase.id] = nil; autoFix.showChoices = true; continue }
             autoFix.rounds[phrase.id] = used + 1
             let number = phrase.id + 1
             switch reason {
@@ -353,7 +361,7 @@ extension RewriteSession {
 
     /// Makes the take of the quote a step prepared, within the cap.
     func startAutomaticTakes(_ plan: ClipTakePlan, phrase: Int) async {
-        guard current, takePlan === plan, plan.stillCurrent, !takesBusy, let quoteID = plan.approvalID, takeQuotePhrase == phrase else { return }
+        guard voiceSpendCurrent, takePlan === plan, plan.stillCurrent, !takesBusy, let quoteID = plan.approvalID, takeQuotePhrase == phrase else { return }
         let usd: Decimal? = if case .confirm? = plan.cost { nil } else { plan.estimate?.usd }
         guard autoFixCharge(usd, phrase: phrase) else { autoFix.capped?.take = true; return }
         autoFix.lines[phrase] = "Fixing phrase \(phrase + 1): making a take…"

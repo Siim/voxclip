@@ -18,8 +18,9 @@ struct EditorRenderSnapshot {
     var findClipsAnchor = FindClipsAnchor.clipBar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
-    /// Each clip's answer to "How should it sound?" this session: true for the whole clip, false for the changed phrases.
-    var wholeClipPicks: [String: Bool] = [:]
+    /// Each clip's answer to "How should it sound?" this session, with the Rewrite proposal it was given for: a new proposal
+    /// for the clip, in the same Rewrite or a later one, starts from the default again (the whole clip).
+    var wholeClipPicks: [String: WholeClipPick] = [:]
     #if DEBUG
     /// The Rewrite smoke's stand-in for fal.ai in a whole-clip revoice (DebugRewriteSmokeWholeClip.swift).
     @ObservationIgnored var wholeClipSmoke: (@MainActor (RewriteSession, WholeClipRevoiceSession) -> Void)?
@@ -425,11 +426,19 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var closesUnasked = false
     /// The AI choice changed (Settings, the AI picker: `AppModel`'s `llm.*` settings). An open Rewrite closes, as it did,
     /// unless it holds unused or running paid work: then it stays as it is, its takes and whole clip still usable, because
-    /// the AI never makes paid work stale (design.md R3). A reply still on its way from the old AI is set aside when it
+    /// the AI never makes paid work stale (design.md R3), and the status bar says so (`rewriteConnectorKeptNotice`). It is
+    /// never asked about: a Settings change is no close. A reply still on its way from the old AI is set aside when it
     /// lands (R3 "AI changed"), and Rewrite Again asks before it starts over with the new AI (`sendRewriteAgain`).
     func rewriteConnectorChanged() {
-        if let session = openRewrite, session.asksBeforeClosing { return }
+        if let session = openRewrite, session.asksBeforeClosing {
+            rewriteNotice = Self.rewriteConnectorKeptNotice(session.paidWorkKept.kept)
+            return
+        }
         closeRewrite(returnFocus: false)
+    }
+    /// "The AI changed. Your 3 paid takes (≈ $0.12) are kept; Rewrite Again uses the new AI and asks first."
+    static func rewriteConnectorKeptNotice(_ kept: String) -> String {
+        "The AI changed. " + kept + "; Rewrite Again uses the new AI and asks first."
     }
     /// Closes the open Rewrite with whatever it holds, asking nothing: a close the user already confirmed (the question's
     /// Discard, a leave they confirmed), the editor closing, and the DEBUG scenes that discard on purpose.
@@ -848,7 +857,8 @@ struct EditorRenderSnapshot {
         cancelMediaRelink()
         sendConfirmation.cancel()
         transcription.close()
-        // The document was read again (a revert, a change on disk): the session's project is gone with it.
+        // The document was read again (a revert, a change on disk): the session's project is gone with it. A Rewrite with
+        // unused paid work asked first (`VoxClipDocument.revert`), so this discards only what the creator let go.
         discardRewrite(returnFocus: false)
         app.openProjectKeys[previousProjectID] = nil
         // The project stays open while its video is checked again, even if it is missing (architecture §8.2).
@@ -1867,4 +1877,11 @@ extension EditorModel {
             }
         }
     }
+}
+
+/// A clip's answer to "How should it sound?": `whole` for the whole clip, false for the changed phrases, and the Rewrite
+/// proposal (`RewriteSession.proposalID`) it answered.
+struct WholeClipPick: Equatable {
+    var whole: Bool
+    var proposal: UUID?
 }

@@ -2,15 +2,18 @@ import Foundation
 import VoxClipCore
 import VoxClipMedia
 
+/// The lip sync's controls read the voice's own currency (`voiceSpendCurrent`), never the AI connector: changing the AI
+/// leaves a paid lip sync playable, discardable and offered.
 extension RewriteSession {
     func mutateLipsync(phrase: Int, perform: @escaping @MainActor () -> Void) {
         guard let plan = takePlan, plan.stillCurrent else { return }
         guard plan.lipsync.blocksMutation(phrase) else { perform(); return }
         let identity = "discardLipsync-\(phrase)"
         let question = "Changing this phrase discards its lip sync and any shared window. fal.ai charges are not refunded."
-        let cancel = PanelAction(id: "keepLipsync", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() }
-        let discard = PanelAction(id: identity, title: "Discard Lip Sync") { [weak self, weak plan] in
-            guard let self, let plan, current, takePlan === plan, task.confirm?.confirm.id == identity else { return }
+        let cancel: PanelAction = PanelAction(id: "keepLipsync", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() }
+        let discard: PanelAction = PanelAction(id: identity, title: "Discard Lip Sync") { [weak self, weak plan] in
+            guard let self, let plan else { return }
+            guard voiceSpendCurrent, takePlan === plan, task.confirm?.confirm.id == identity else { return }
             task.dismissConfirm()
             plan.lipsync.invalidate(phrase)
             perform()
@@ -25,10 +28,10 @@ extension RewriteSession {
         guard let plan = takePlan, let applied = plan.lipsync.applied[phrase], plan.stillCurrent else { return }
         plan.stopAudition()
         Task { [weak self, weak plan] in
-            guard let self, let plan, current, takePlan === plan else { return }
+            guard let self, let plan, voiceSpendCurrent, takePlan === plan else { return }
             do {
                 let request = try await plan.lipsyncPreview()
-                guard current, takePlan === plan, plan.lipsync.applied[phrase]?.result.asset.id == applied.result.asset.id else { return }
+                guard voiceSpendCurrent, takePlan === plan, plan.lipsync.applied[phrase]?.result.asset.id == applied.result.asset.id else { return }
                 try await editor.preview.load(request)
                 try await editor.preview.seek(to: Double(applied.window.outputStartSample) / request.timeline.sampleRate, exact: true)
                 editor.preview.play()
@@ -41,7 +44,7 @@ extension RewriteSession {
               !plan.lipsync.usingTakes, !takesBusy else { return nil }
         // The formatted charge carries its own "≈" ("free" when every window gets back a result already paid for).
         return PanelAction(id: "lipSyncAll", title: "Lip Sync All \(offer.phraseIDs.count) · \(offer.charge)", priced: !offer.free) { [weak self, weak plan] in
-            guard let self, let plan, current, takePlan === plan else { return }
+            guard let self, let plan, voiceSpendCurrent, takePlan === plan else { return }
             // A refusal (the takes changed, a lip sync still running) says why under the rows and makes fresh offers.
             plan.lipsync.press(offer)
             showProposal()

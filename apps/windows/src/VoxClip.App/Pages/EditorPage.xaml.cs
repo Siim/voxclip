@@ -105,11 +105,14 @@ public sealed partial class EditorPage : Page
         // Eviction never strips or removes the entry of a project open in any window, and opening it marks it used.
         if (!demo) { cacheLease = new(App.Services.Cache); cacheLease.Hold(project.Media.Source.ContentKey); }
         projectWrites = new(project, ViewModel.MarkSaved);
+        // The journal settles at the open too, so the takes a project used go even when it never closed cleanly (a crash).
+        SettleTakeJournal();
         ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
         ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
         App.Services.ExportLedger.Changed += LedgerChanged;
         LocateMedia.Visibility = ViewModel.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
-        leave = new(ViewModel);
+        // A leave never starts over the open Rewrite's paid takes (Mac WorkspaceShell.leave): the notice says how to go on.
+        leave = new(ViewModel) { HoldsPaidWork = () => rewrite is { IsOpen: true, HasPaidTakes: true } };
         FindClips = new(ViewModel, lifetime.Token);
         FindClips.Announcement += (_, text) => Transcript.Announce(text);
         previewStage = new((level, category, message) => App.Services.Log.Write(level, category, message), text => Transcript.Announce(text));
@@ -1179,6 +1182,14 @@ if (insertion ||
             });
             return true;
         }
+        catch (ProjectLeaveHeldException held)
+        {
+            // Nothing froze, saved or closed: the Rewrite and its paid takes stay, and the notice says what to do.
+            EditorNotice.Severity = InfoBarSeverity.Warning;
+            ViewModel.Notice = held.Message;
+            if (rewritePanel is { IsSessionOpen: true } panel) panel.FocusTarget.Focus(FocusState.Programmatic);
+            return false;
+        }
         catch (Exception)
         {
             EditorSettingsChanged(this, EventArgs.Empty);
@@ -1193,6 +1204,20 @@ if (insertion ||
         leave.Resume();
         EditorSettingsChanged(this, EventArgs.Empty);
         ViewModel.Notice = "This project is still open. You can keep editing.";
+    }
+    /// <summary>At the project's open and close, the take journal lets go of the paid takes this project used (after Use) and of entries
+    /// 60 days unused or whose asset is gone (Mac <c>VoiceLabAssetRetention</c>; the launch sweep, <c>AppServices.InitializeAsync</c>,
+    /// covers projects never reopened). Their assets stay; a failure leaves the journal as it was.</summary>
+    private void SettleTakeJournal()
+    {
+        if (demo || ViewModel?.Project is not { } project) return;
+        var used = (project.VoiceLab.Assets ?? []).Select(asset => asset.File).ToArray();
+        var paidRoot = Path.Combine(App.Services.Data.Root, "VoiceLab");
+        retiredRewriteWork.Add(Task.Run(() =>
+        {
+            try { VoiceLabTakeJournalSettlement.Settle(project.Id, paidRoot, used); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }));
     }
     internal async Task CloseAsync()
     {
@@ -1216,6 +1241,7 @@ if (insertion ||
         frameText?.Dispose();
         CaptionDrag.Cancel();
         RetireRewrite();
+        SettleTakeJournal();
         TranscriptionSpendState.Shared.Changed -= WorkflowStatusChanged;
         WorkflowSpendCache.Changed -= WorkflowStatusChanged;
         if (rightContent is not null) rightContent.SourcePlaybackRequested -= SourcePlaybackRequested;

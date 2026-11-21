@@ -94,7 +94,7 @@ import VoxClipCore
 extension RewriteSession {
     private func speechContextRequest(targetPhraseID: Int, includingOrdinal: Int? = nil) throws -> VoiceLabSpeechContextPlan.Request {
         let included = Array(Set(includedVoice + [includingOrdinal].compactMap { $0 })).sorted()
-        guard current, !takesBusy, acceptedSpeechContext == nil, let envelope, let generation,
+        guard voiceSpendCurrent, !takesBusy, acceptedSpeechContext == nil, let envelope, let generation,
               let model = generation.models.first(where: { $0.id == generation.selectedModelID }),
               let limit = model.maximumTextLength, limit > 0, !included.isEmpty else {
             throw RewriteSpeechContextReview.Failure.unsupported
@@ -140,7 +140,7 @@ extension RewriteSession {
     }
 
     func timingSpeechContextReview(ordinal: Int) throws -> RewriteSpeechContextReview {
-        guard current, !takesBusy, let envelope, reviewedVoiceOrdinals.contains(ordinal) else {
+        guard voiceSpendCurrent, !takesBusy, let envelope, reviewedVoiceOrdinals.contains(ordinal) else {
             throw RewriteSpeechContextReview.Failure.unsupported
         }
         let included = Array(Set(includedVoice + [ordinal])).sorted()

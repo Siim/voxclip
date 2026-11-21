@@ -152,6 +152,29 @@ public sealed class VoiceTakeIdentitySessionTests
         Assert.False(unpaid.IsOpen);
     }
 
+    /// <summary>The panel's X and Esc (<c>RewritePanel.RequestClose</c>) never dispose paid takes unasked (Mac
+    /// <c>RewritePaidWorkGuardTests</c>): the session asks and stays open with its takes, Keep Working takes the question back, and only
+    /// Discard and Close disposes them. With nothing paid it closes at once.</summary>
+    [Fact]
+    public async Task ClosingOverPaidTakesAsksFirst()
+    {
+        var connector = new Connector(Reply, (_, ordinals) => Rows(ordinals, "x"));
+        using var session = await PricedAsync(connector, new Runner((_, _) => (Fit, Passed)), value => Session(value));
+        await SettleAsync(session);
+        Assert.True(session.HasPaidTakes);
+        Assert.False(session.RequestClose());
+        Assert.True(session.CloseAsked && session.IsOpen && session.HasPaidTakes);
+        Assert.Equal(session.PaidTakeCount == 1 ? "Close Rewrite and discard 1 paid take?" : $"Close Rewrite and discard {session.PaidTakeCount} paid takes?",
+            RewriteSession.CloseQuestion(session.PaidTakeCount));
+        session.KeepWorking();
+        Assert.False(session.CloseAsked);
+        Assert.True(session.IsOpen && session.HasPaidTakes);
+
+        using var unpaid = new RewriteSession(Editor(), 10, 12, Envelope(), null, connectorIsCurrent: () => true);
+        Assert.True(unpaid.RequestClose());
+        Assert.False(unpaid.CloseAsked);
+    }
+
     /// <summary>The selection's change voices w9 as a bridge (it touches w10). Cutting w9 is an edit beside the selection: the paid takes
     /// stay, Use waits, and the review says why and how to get them back; an undo makes them current and clears the line. A cut that
     /// moves no window keeps them current with no line.</summary>

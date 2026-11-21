@@ -99,9 +99,9 @@ extension WholeClipRevoice {
 // MARK: - Script and parts
 
 /// The clip's words with every edit and rewrite applied, in transcript order (the Script step; free).
-public struct WholeClipScript: Equatable, Sendable {
+public struct WholeClipScript: Codable, Equatable, Sendable {
     /// One sentence of the script, with the source words it is said over.
-    public struct Sentence: Equatable, Sendable {
+    public struct Sentence: Codable, Equatable, Sendable {
         public let tokens: [String]
         /// The clip's spoken source words this sentence replaces, in transcript order.
         public let sourceWordIds: [String]

@@ -4,6 +4,7 @@ import Foundation
 import Synchronization
 import SwiftUI
 import Testing
+import UniformTypeIdentifiers
 @testable import VoxClipCore
 @testable import VoxClipMedia
 @testable import VoxClip
@@ -831,7 +832,7 @@ private final class Calls: Sendable {
         session.backend = backend
         // As the live service does: the card's free price first (`openWholeClip`), which Try Again is priced from.
         await session.refreshQuote()
-        return await session.runAutomatically(budget: request.budget ?? 0) { _ in session.start(automatic: true) }
+        return await session.runAutomatically(budget: request.budget ?? 0) { session.start(automatic: true, budget: $0) }
     }
 
     /// A lip sync that failed with its paid result kept is tried again on its own, for free, and the whole clip is revoiced:
@@ -893,6 +894,131 @@ private final class Calls: Sendable {
         #expect(row.text == "Finish the whole clip in Rewrite: its paid voice is kept" && shows && row.actionTitle == "Show in Rewrite", "\(row)")
         #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
         #expect(run.spent == Decimal(string: "0.06"), "only the voice was paid")
+    }
+
+    /// What an in-place autosave does to the open project: the document writes it, then puts the save time, the writer
+    /// and the path into the project in memory, with no edit and no follow. The document goes back to untitled after, so
+    /// no scheduled autosave outlives the test's folder.
+    private func autosave(_ editor: EditorModel, root: URL) async throws {
+        let url = root.appendingPathComponent("autosaved-\(UUID().uuidString).voxclip")
+        editor.document.fileURL = url
+        let before = editor.project
+        let saved = await withTestDeadline(returning: false) { continuation in
+            editor.document.save(to: url, ofType: UTType.voxclipProject.identifier, for: .autosaveInPlaceOperation) { error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+        try #require(saved)
+        #expect(editor.project.modifiedAt != before.modifiedAt && editor.project != before)
+        editor.document.fileURL = nil
+    }
+
+    /// Claude mode's live whole clip (`MakeItServices.liveWholeClipQuote` and `liveRevoiceWholeClip` over Rewrite's own
+    /// session, its budget and the real currency of what the voice is made from), with only the paid providers stubbed
+    /// (`stubs`). `beforeVoice` runs as each voice starts, after the voice plan's currency is captured; the picture, the lip
+    /// sync and Use read that currency after it. This fixture's take has no audio to place a phrase on, so the whole clip is
+    /// attached to the session the live quote opens rather than offered by its card.
+    private func installLiveWholeClip(_ fixture: Fixture, stubs: WholeClipRevoiceSessionTests.Stubs,
+                                      beforeVoice: @escaping @MainActor () async throws -> Void = {}) {
+        let editor = fixture.editor
+        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
+        editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        editor.makeIt.services?.wholeClipQuote = { request, editor in
+            if editor.openRewrite?.wholeClip == nil,
+               let session = MakeItRewriteDriver.openSession(editor: editor, range: request.range, text: MakeItServices.wholeClipPassage(request, editor: editor)) {
+                try? DebugRewriteGeneration.install("voice", in: session)
+                let whole = WholeClipRevoiceSession()
+                session.configureWholeClip(whole)
+                guard let live = whole.backend else { Issue.record("the whole clip has no live backend"); return nil }
+                let stubbed = WholeClipRevoiceSessionTests.backend(stubs)
+                var backend = stubbed
+                backend.script = live.script
+                backend.voiceReadiness = live.voiceReadiness
+                backend.voice = { script, progress in
+                    stubs.isCurrent = session.wholeClipInputsCurrency()
+                    try await beforeVoice()
+                    return try await stubbed.voice(script, progress)
+                }
+                whole.backend = backend
+                whole.proposalID = session.proposalID
+                session.wholeClip = whole
+            }
+            return await MakeItServices.liveWholeClipQuote(request, editor: editor)
+        }
+        editor.makeIt.services?.revoiceWholeClip = { request, editor in await MakeItServices.liveRevoiceWholeClip(request, editor: editor) }
+    }
+
+    /// makeit-false-stale-double-pay: the run's own "Make it postable" edit dirties the document, and an autosave lands
+    /// while the voice is made. A save changes nothing the voice and lip sync are made from (`wholeClipInputsCurrency`), so
+    /// the run ends revoiced and no phrase is voiced on top. It used to go stale at the Fit, drop the paid voice and pay for
+    /// the patch.
+    @Test func anAutosaveDuringTheVoiceStillRevoicesAndNeverPatches() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.video = 30.6
+        stubs.canReword = false
+        let autosaves = StopCount()
+        installLiveWholeClip(fixture, stubs: stubs) {
+            try await self.autosave(editor, root: fixture.root)
+            autosaves.count += 1
+        }
+        let run = try await claudeModeRunLive(fixture)
+        #expect(autosaves.count == 1, "the autosave landed during the voice")
+        #expect(stubs.voices.count == 1 && stubs.lipsyncs.count == 1 && stubs.used == 1, "voiced once, lip synced once, used: \(stubs.order)")
+        #expect(run.rows.first { $0.id == "wholeClip" }?.text == "Revoiced the whole clip in your voice, lip synced",
+                "\(run.rows.map { "\($0.id): \($0.text) \($0.detail ?? "")" })")
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
+        #expect(editor.openRewrite == nil, "a used whole clip leaves nothing paid in Rewrite")
+    }
+
+    /// Claude mode passes its budget to the whole clip's automatic start (`startWholeClip(automatic:budget:)`): a voice
+    /// longer than the clip is reworded and the shorter wording voiced within what is left of the cap, with no click and no
+    /// patch. Without the budget the shorter wording waited for the creator's priced click over the paid first voice.
+    @Test func aRewordedVoiceWithinTheCapIsVoicedWithNoClick() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.video = 30.6
+        stubs.voiceSeconds = [40, 30.4]
+        stubs.reword = WholeClipScript.assemble(words: Array(WholeClipRevoiceSessionTests.script.sentences.flatMap(\.sourceWordIds).prefix(4)).enumerated().map {
+            TimedWord(id: $0.element, text: "Short", start: Double($0.offset), end: Double($0.offset) + 0.8)
+        }, cutWordIds: [], voiceHunks: [])
+        installLiveWholeClip(fixture, stubs: stubs)
+        let run = try await claudeModeRunLive(fixture)
+        #expect(stubs.rewords.count == 1 && stubs.voices.count == 2 && stubs.used == 1, "reworded once, voiced again, used: \(stubs.order)")
+        #expect(run.rows.first { $0.id == "wholeClip" }?.text == "Revoiced the whole clip in your voice, lip synced",
+                "\(run.rows.map { "\($0.id): \($0.text) \($0.detail ?? "")" })")
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
+    }
+
+    /// A whole clip Claude mode can't do here with nothing paid (a stop before anything was sent) patches, and leaves no
+    /// pick behind: a pick is for its own proposal, so the patch's Rewrite and any later one start from the default (the
+    /// whole clip) again. It used to write a patch pick that the next card cleared anyway, with a comment that said the
+    /// clip's Rewrites wouldn't offer the whole clip again.
+    @Test func aClaudeModePatchLeavesNoPickForTheClip() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.video = 30.6
+        stubs.voiceError = WholeClipRevoiceSession.Unsent(error: ClipTakePlan.Failure.nothingToVoice)
+        installLiveWholeClip(fixture, stubs: stubs)
+        let run = try await claudeModeRunLive(fixture)
+        #expect(stubs.voices.isEmpty && stubs.lipsyncs.isEmpty, "nothing was paid for the whole clip: \(stubs.order)")
+        #expect(fixture.calls.all.contains { $0.hasPrefix("voice ") }, "the changed phrases were voiced instead: \(fixture.calls.all)")
+        #expect(fixture.editor.wholeClipPicks["clip-main"]?.whole != false, "Claude mode's patch writes no patch pick: \(String(describing: fixture.editor.wholeClipPicks["clip-main"]))")
+        #expect(run.rows.contains { $0.id == "wholeClip" }, "\(run.rows.map { "\($0.id): \($0.text)" })")
+    }
+
+    /// Claude mode over the fixture's suggestion with the live whole-clip services the test installed.
+    private func claudeModeRunLive(_ fixture: Fixture) async throws -> MakeItRun {
+        let editor = fixture.editor
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.makeTopPostable(1, budget: MakeItBudget(cap: 2))
+        await editor.makeIt.waitForQueue()
+        return try #require(editor.makeIt.run(for: "clip-main"))
     }
 
     // MARK: Tones (design.md §6.6 Tone row, §6.7 review row)

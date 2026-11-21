@@ -105,6 +105,8 @@ extension RewriteSession {
         task.audioTagsChanged = { [weak self] ordinal, tags in self?.updateAudioTags(tags, ordinal: ordinal) }
         task.wordingLocked = wordingIsLocked || isReasking
         task.show(.proposal(content.set), headline: content.headline, cards: content.cards, footer: content.footer, contextAction: content.askAgain)
+        // What is paid and unused is saved beside the project's Voice Lab data, so a relaunch or a crash offers it back.
+        persistPaidWork()
     }
 
     /// Leaves out the voice changes that can't be made now, with no review in the transcript either (`reviewable`), and

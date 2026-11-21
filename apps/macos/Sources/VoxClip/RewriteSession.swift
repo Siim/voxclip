@@ -124,6 +124,16 @@ struct RewriteChange: Equatable, Sendable {
     /// Use put this Rewrite's paid work into the project (`acceptTakes`), so nothing paid is left to protect. A new plan
     /// starts again.
     var paidWorkUsed = false
+    /// The proposal saved with its paid work before VoxClip quit or crashed, shown again with no AI call
+    /// (`restoreSavedProposal`): its whole clip waits here until the card takes it (`restoreWholeClip`), and its paid
+    /// patch takes are named until Make Takes adopts them from the journal.
+    @ObservationIgnored var restoredProposal: RewriteSavedProposal?
+    /// What `persistPaidWork` last wrote, so an unchanged proposal is not written again.
+    @ObservationIgnored var savedProposalData: Data?
+    /// How many of the restored proposal's paid patch takes the journal could give back when it was restored.
+    @ObservationIgnored var restoredTakesKept = 0
+    /// The last `savedProposalInputs` and the project it was made from.
+    @ObservationIgnored var savedInputsDigest: (project: Project, digest: String)?
     /// An edit outside the scope moved the windows the plan's paid takes were made for (`move`): the plan and its takes
     /// stay, but it is not current until an undo moves the windows back or the takes are discarded (`discardPaidTakes`).
     var takeWindowsMoved = false
@@ -446,6 +456,8 @@ struct RewriteChange: Equatable, Sendable {
     func start() {
         guard isOpen else { return }
         actionTask?.cancel()
+        // Paid work saved before VoxClip quit or crashed comes back first, with its proposal and no AI call.
+        if restoreSavedProposal() { return }
         if connector == nil {
             actionTask = Task { [weak self] in await self?.showChooser() }
         } else if let work = begin() {
@@ -478,6 +490,10 @@ struct RewriteChange: Equatable, Sendable {
             return nil
         }
         let runs = editor.llmRuns
+        // A new run replaces this Rewrite's own saved proposal (closing over paid work asked first); the journal keeps its
+        // takes. A record this Rewrite neither restored nor wrote (its scope read differently when it opened) stays for an
+        // Undo that makes it match again, or until its 60 days are up.
+        if restoredProposal != nil || savedProposalData != nil { forgetSavedProposal() }
         replaced = hasRun ? Replaced(shown: task.shown, changes: changes, review: review, setAside: setAside, proposal: ownProposal,
                                      proposalID: proposalID, replyParts: replyParts, leftOutUnavailable: leftOutUnavailable) : nil
         hasRun = true
@@ -673,6 +689,53 @@ struct RewriteChange: Equatable, Sendable {
         let inputs = reviewInputs
         receive((found, Result { try RewriteReview.build(found.map(\.hunk), inputs) }))
     }
+    /// The proposal saved with this scope's unused paid work (`RewriteSavedProposal`) when its scope reads as it did then:
+    /// its changes, inclusions and kept wordings as they were, with no AI call and nothing paid. Its whole clip comes back
+    /// on the card (`restoreWholeClip`), and its patch takes when Make Takes adopts them from the journal. False when
+    /// nothing was saved for these inputs.
+    @discardableResult func restoreSavedProposal() -> Bool {
+        guard isOpen, !hasRun, let inputs = savedProposalInputs, let saved = RewriteSavedProposalStore.load(savedProposalURL),
+              saved.projectId == project.id, saved.scope == savedProposalScope, saved.inputs == inputs, !saved.changes.isEmpty else { return false }
+        let found = saved.changes.map(\.change)
+        receive(found)
+        guard review != nil else { changes = []; problem = ""; return false }
+        hasRun = true
+        // What the creator asked this time waits for Rewrite Again when it is neither the default nor what the saved
+        // proposal asked: the proposal and its paid work come back first, and a line says the instruction waits.
+        let waiting = Self.waitingInstruction(instruction, saved: saved.instruction, defaultInstruction: editor.defaultRewriteItem?.instruction)
+        if waiting == nil { instruction = saved.instruction }
+        restoredProposal = saved
+        restoredTakesKept = Set(saved.patchRequests).intersection(adoptableJournalRequests()).count
+        wordingFit.completed = true
+        wordingFit.kept = Set(saved.kept)
+        pricedAnyway = Set(saved.pricedAnyway)
+        refreshContext()
+        if let note = restoredPaidWorkNote { autoFix.notes.append(note) }
+        if let waiting { autoFix.notes.append(Self.instructionWaitsNote(waiting)) }
+        showReplyInTranscript()
+        if var proposal = ownProposal {
+            for (offset, change) in saved.changes.enumerated() {
+                guard let index = proposal.changes.firstIndex(where: { $0.ordinal == offset + 1 }) else { continue }
+                proposal.changes[index].state = change.transcriptState
+            }
+            editor.proposal = proposal
+        }
+        showProposal()
+        let back = restoredPaidWorkNote ?? "Your Rewrite from before VoxClip closed is back."
+        editor.announce(waiting.map { back + " " + Self.instructionWaitsNote($0) } ?? back)
+        return true
+    }
+    /// The instruction a restored proposal leaves waiting: `asked`, when it is neither empty, the default tone's
+    /// (`EditorModel.defaultRewriteItem`, what an empty Ask field asks) nor the one the saved proposal answered.
+    static func waitingInstruction(_ asked: String, saved: String, defaultInstruction: String?) -> String? {
+        let trimmed = asked.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, asked != saved, asked != defaultInstruction else { return nil }
+        return trimmed
+    }
+    /// "“Make it funnier” waits: Rewrite Again asks it, and asks first before your paid work goes."
+    static func instructionWaitsNote(_ instruction: String) -> String {
+        "“" + instruction + "” waits: Rewrite Again asks it, and asks first before your paid work goes."
+    }
     /// A selection's reply as the AI wrote it: its diff against the selected words.
     func receivePassage(_ text: String) throws {
         receive(try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) })
@@ -782,7 +845,7 @@ struct RewriteChange: Equatable, Sendable {
         reviewing?.cancel(); reviewing = nil
     }
     /// A run has started on this session: a later run replaces what it showed.
-    @ObservationIgnored private var hasRun = false
+    @ObservationIgnored private(set) var hasRun = false
     /// The transcript's proposal when it is this session's.
     var ownProposal: TranscriptProposal? { editor.proposal.flatMap { $0.id == proposalID ? $0 : nil } }
     #if DEBUG
@@ -1134,6 +1197,7 @@ struct RewriteChange: Equatable, Sendable {
                     scope: rewriteScope, localCommands: localCommands, videoAssets: made.videoAssets) }
                 // The paid work is in the project now: closing Rewrite drops nothing paid.
                 paidWorkUsed = true
+                forgetSavedProposal()
                 editor.finishVoiceRewrite(phrases: used, segments: made.segments, voice: made.voice,
                     spent: takePlan.spent, scope: task.words, cuts: cuts, fixes: fixes)
                 editor.closeRewrite()
@@ -1356,7 +1420,7 @@ struct RewriteChange: Equatable, Sendable {
         return true
     }
     /// Uses the same scoped inputs as opening, keeping the session's original enclosing clip across tab changes.
-    private func inside(_ project: Project) -> Project {
+    func inside(_ project: Project) -> Project {
         let clipID: String? = if case .clip(let id) = scope { id } else { nil }
         return project.rewriteInputs(scope: rewriteScope, enclosingClipID: clipID)
     }

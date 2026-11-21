@@ -2,7 +2,7 @@ import Foundation
 import VoxClipCore
 
 /// Closing with paid work (design.md R2, "Closing Rewrite"): Close Rewrite, Esc, the panel's X, a tab's close, removing the
-/// Rewrite's clip, Rewrite on another scope or with another AI, closing or replacing the project and Quit never drop unused
+/// Rewrite's clip, Rewrite on another scope or with another AI, closing, reverting or replacing the project and Quit never drop unused
 /// or running paid takes, a whole-clip voice or a lip sync unasked. They ask inline, in place of the Rewrite job's footer
 /// and never in an alert: "Close Rewrite and discard 3 paid takes (≈ $0.12)?" with Keep Working, the primary that Return
 /// and Esc choose, and Discard and Close (Discard and Remove, Discard and Rewrite, Discard and Quit). Claude mode never
@@ -18,6 +18,8 @@ extension RewriteSession {
         case newRewrite
         /// Close Project, opening or importing another project in its place.
         case closeProject
+        /// File › Revert, a version from Browse All Versions, or the file changed on disk: the project is read again.
+        case revert
         /// Quit VoxClip.
         case quit
     }
@@ -55,6 +57,29 @@ extension RewriteSession {
         guard hasUnusedPaidWork else { return false }
         if hasPaidPatchWork || wholeClipPlan?.generating == true || wholeClipPlan?.lipsync.hasPaidWork == true { return true }
         return (wholeClip?.spent ?? 0) > 0
+    }
+
+    /// Paid work made with the voice chosen now keeps that voice (`RewriteGenerationSession.keepsVoice`, the take rows'
+    /// picker): the patch's takes, or a whole clip's paid voice or lip sync (`holdsPaidVoice`). A whole clip restored after
+    /// a relaunch whose voice isn't the one chosen (none yet, or another) keeps nothing: no paid work was made with the voice
+    /// chosen, and choosing its own voice is what puts it back (`restoredVoiceAwaitingChoice`).
+    var keepsChosenVoice: Bool {
+        guard hasPaidTakes || holdsPaidVoice else { return false }
+        return !restoredVoiceAwaitingChoice
+    }
+
+    /// The whole clip's voice saved before VoxClip quit or crashed, while it is still to come back: on its card
+    /// (`WholeClipRevoiceSession.restoredVoiceKey`), or in the restored proposal until a card takes it.
+    var restoredWholeClipVoice: WholeClipRevoiceLedger.VoiceKey? {
+        if let whole = wholeClip, whole.phase != .choose { return whole.restoredVoiceKey }
+        return restoredProposal?.wholeClip?.voices.map(\.key).min { $0.recordId < $1.recordId }
+    }
+
+    /// A restored whole clip waits for the voice it was made with, which isn't the one chosen now, and nothing else paid is
+    /// held: the voice can change, and choosing that one puts the paid voice back.
+    var restoredVoiceAwaitingChoice: Bool {
+        guard !hasPaidPatchWork, wholeClip?.voice == nil, let key = restoredWholeClipVoice else { return false }
+        return generation?.selectedVoiceID != key.recordId
     }
 
     /// The question can be shown: the session's own tab can come forward (Full Take, or a clip still in the project). A
@@ -113,6 +138,7 @@ extension RewriteSession {
         case .removeClip(let suggestion): return (suggestion ? "Dismiss this suggestion" : "Remove this clip") + " and discard \(summary)?"
         case .newRewrite: return "Start a new Rewrite and discard \(summary)?"
         case .closeProject: return "Close the project and discard \(summary)?"
+        case .revert: return "Revert the project and discard \(summary)?"
         case .quit: return "Quit VoxClip and discard \(summary)?"
         }
     }
@@ -122,10 +148,16 @@ extension RewriteSession {
     /// Rewrite, Quit), which runs `perform`. The job comes forward to ask, out of Home and on its own tab when another one
     /// shows, and VoiceOver hears the question. A close (`.close`, which the app also starts: a tab sync, a video that went
     /// missing) never replaces another question already up, such as a price to approve or a provider to allow: that one
-    /// stays and comes forward instead, and the close waits on the creator.
-    func confirmDiscardPaidWork(_ reason: CloseReason, keep: (@MainActor () -> Void)? = nil, perform: @escaping @MainActor () -> Void) {
-        if reason == .close, let shown = task.confirm, shown.confirm.id != "discardPaidWork" {
+    /// stays and comes forward instead, and the close waits on the creator. `waiting` runs once that question is answered
+    /// (a revert the file's change on disk started, which no one would start again): it asks again then.
+    func confirmDiscardPaidWork(_ reason: CloseReason, keep: (@MainActor () -> Void)? = nil, waiting: (@MainActor () -> Void)? = nil,
+                                perform: @escaping @MainActor () -> Void) {
+        if reason == .close || reason == .revert, let shown = task.confirm, shown.confirm.id != "discardPaidWork" {
             bringQuestionForward(shown.confirm.id)
+            if let waiting {
+                whenQuestionAnswered(waiting)
+                editor.announce(Self.revertWaitsNotice)
+            }
             return
         }
         let question = discardPaidWorkQuestion(reason)
@@ -133,6 +165,7 @@ extension RewriteSession {
         case .close, .closeProject: "Discard and Close"
         case .removeClip(let suggestion): suggestion ? "Discard and Dismiss" : "Discard and Remove"
         case .newRewrite: "Discard and Rewrite"
+        case .revert: "Discard and Revert"
         case .quit: "Discard and Quit"
         }
         task.ask(PanelConfirm(question: question,
@@ -143,10 +176,30 @@ extension RewriteSession {
             confirm: PanelAction(id: "discardPaidWork", title: title) { [weak self] in
                 guard let self, isOpen, task.confirm?.confirm.id == "discardPaidWork" else { return }
                 task.dismissConfirm()
+                // The user let the paid work go: it is not offered back after a relaunch either.
+                forgetSavedProposal()
                 perform()
             }))
         bringQuestionForward("discardPaidWork")
         editor.announce(question)
+    }
+
+    /// What the status bar says while a revert waits for the question shown first.
+    static let revertWaitsNotice = "The project changed on disk. Answer the question in Rewrite first; the project is read again after it."
+
+    /// Runs `body` once the question shown now is answered or Rewrite closes, whichever comes first; at once when none is
+    /// shown. A question that replaces it is waited for too.
+    func whenQuestionAnswered(_ body: @escaping @MainActor () -> Void) {
+        guard isOpen, task.confirm != nil else { body(); return }
+        withObservationTracking {
+            _ = task.confirm
+            _ = isOpen
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { body(); return }
+                whenQuestionAnswered(body)
+            }
+        }
     }
 
     /// The question (its confirm's `id`) shows where the user can answer it: the viewer, the project rather than Home or

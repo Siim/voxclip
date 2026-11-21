@@ -243,6 +243,8 @@ internal sealed class AppServices : IAsyncDisposable
         ClipFinder = new ClipFinder(new LlmCatalog(), Keys, new Redactor(), id => Connector(id));
         await Task.Run(() => VoiceLabBackend.ReconcileLocalStatements(Data), ct);
         await VoiceLab.ReconcileStartupAsync();
+        // Every project's take journal keeps its unused takes 60 days, opened or not (Mac VoiceLabAssetRetention at launch).
+        await Task.Run(() => VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement.SweepStale(Path.Combine(Data.Root, "VoiceLab"), DateTimeOffset.UtcNow), ct);
     }
 
     internal LlmConnector Connector(ConnectorId id)

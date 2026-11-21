@@ -230,6 +230,10 @@ import VoxClipCore
         header
         if !session.steps.isEmpty { stepList }
         Text(line).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true)
+        if let restored = session.restoredVoiceNote {
+            Text(restored).fixedSize(horizontal: false, vertical: true)
+                .columnLayoutEvidence("director.wholeClip.restored", text: restored)
+        }
         if session.voice != nil, !session.stoppedForInputs {
             Text("Your whole-clip voice take is kept in this session. Switching to changed phrases gives up this take and starts a separate voice workflow.")
                 .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))

@@ -82,6 +82,45 @@ internal sealed record VoiceLabTakeJournalEntry(string Schema, string AssetFile,
     internal bool Adoptable => Checks is null || Checks.HardFailures.Count == 0;
 }
 
+/// <summary>The App's settle of the take journals (Mac <c>VoiceLabAssetRetention</c>). At a project's open and close the entries of the
+/// assets it now uses (after Use; <c>projectId/assetId.wav</c>) go, as do entries whose asset is gone or that are 60 days old and
+/// unused; at launch every project's journal lets go of the last two, so the 60-day rule holds for a project never reopened and after
+/// a crash before its close. Their assets stay.</summary>
+public static class VoiceLabTakeJournalSettlement
+{
+    /// <summary>Returns how many entries went.</summary>
+    public static int Settle(string projectId, string paidRoot, IEnumerable<string> referencedFiles) =>
+        VoiceLabTakeJournal.Settle(projectId, paidRoot, referencedFiles.ToHashSet(StringComparer.Ordinal), DateTimeOffset.UtcNow);
+
+    /// <summary>The launch sweep: every project folder under <paramref name="paidRoot"/> with a journal drops its entries whose asset is
+    /// gone or that are 60 days old and unused (Mac <c>VoiceLabAssetRetention</c> at launch). A folder that is a link, or that can't be
+    /// read, is left as it is. Returns how many entries went.</summary>
+    public static int SweepStale(string paidRoot, DateTimeOffset now)
+    {
+        string[] folders;
+        try
+        {
+            if (!Directory.Exists(paidRoot)) return 0;
+            folders = Directory.GetDirectories(paidRoot);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return 0; }
+        var removed = 0;
+        var none = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var folder in folders.Order(StringComparer.Ordinal))
+        {
+            try
+            {
+                if (new DirectoryInfo(folder).Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+                if (!Directory.Exists(Path.Combine(folder, VoiceLabTakeJournal.Folder))) continue;
+                removed += VoiceLabTakeJournal.Settle(Path.GetFileName(folder), paidRoot, none, now);
+            }
+            // Launch goes on whatever one folder holds.
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or VoiceLabException) { }
+        }
+        return removed;
+    }
+}
+
 /// <summary>The journal of one project's paid takes (Mac <c>VoiceLabTakeJournal</c>), under <c>&lt;paid root&gt;/&lt;projectId&gt;/takes/</c>:
 /// <c>&lt;assetId&gt;.json</c>, each written to a temporary file, flushed and moved into place, so a crash leaves the old entry or the
 /// new one and at most a <c>.partial</c> file that nothing reads. A take run adopts an entry over the same words, voice and model

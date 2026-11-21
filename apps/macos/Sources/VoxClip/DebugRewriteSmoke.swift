@@ -1163,8 +1163,22 @@ import VoxClipCore
         /// I10: whenever Rewrite waits on nothing, its footer has a primary that moves forward (design.md R2; MVP32 Clip 7
         /// showed "Changes 3, 5 and 6 need a shorter wording before takes. Fix the problem above to go on." with only Keep
         /// All beside it, which I1 passed because chips above still acted).
+        /// Once the whole clip runs, its card owns the actions and the footer is empty (design.md R2 "How should it sound?":
+        /// Running's Cancel, Review's primary Use Whole Clip, Stopped's chips), so the step forward is the card's.
         private func forwardCheck(_ snapshot: Snapshot) -> Check {
             guard let session, session.isOpen, case .proposal = session.task.state else { return Check(invariant: "I10", passed: true, detail: "not a proposal") }
+            if let whole = session.wholeClip {
+                switch whole.phase {
+                case .running: return Check(invariant: "I10", passed: true, detail: "waiting on the whole clip")
+                case .review:
+                    let use = snapshot.controls.first { $0.id == "wholeClipUse" && $0.enabled && $0.acts }
+                    return Check(invariant: "I10", passed: use != nil, detail: use.map { "card [\($0.title)]" } ?? "no Use Whole Clip on Review")
+                case .stopped:
+                    let first = session.wholeClipStoppedActions().first
+                    return Check(invariant: "I10", passed: first != nil, detail: first.map { "card [\($0.title)]" } ?? "no step forward on the stopped card")
+                case .choose, .used: break
+                }
+            }
             let plan = session.takePlan
             let waiting = plan?.phrases.contains { $0.takes.contains { $0.row.voiceCheck == .waiting } } == true
             let flags: [(String, Bool)] = [("takes", session.takesBusy), ("wording fit", session.wordingIsLocked), ("re-ask", session.isReasking),
