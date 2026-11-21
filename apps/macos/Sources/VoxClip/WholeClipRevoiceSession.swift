@@ -274,8 +274,25 @@ import VoxClipMedia
     /// re-imports for free. Each moves into the ledger as it comes back; one that can't is let go and still counted.
     private(set) var restoredVoices: [WholeClipRevoiceLedger.VoiceKey: Decimal] = [:]
     private(set) var restoredLipsyncs: [WholeClipRevoiceLedger.LipsyncKey: Decimal] = [:]
-    /// What putting the restored voice back costs (the parts' word checks), nil when the journal can't give every part back.
+    /// What putting the restored voice back costs, part by part (`RewriteSession.restoredVoiceUSD`): the word checks of the
+    /// parts the journal gives back and a new voice for the others. Nil when that can't be made exact.
     private(set) var restoredVoiceUSD: Decimal?
+    /// The restored voice's parts, how many of them the journal gives back, and one part's word check.
+    private(set) var restoredParts = 0
+    private(set) var restoredPartsBack = 0
+    @ObservationIgnored private var restoredCheckUSD: Decimal?
+    /// Every part of the restored voice comes back from the journal: the voice is the one its lip sync was made over, so
+    /// C's index re-imports that lip sync for free. With a part voiced again the clip's audio differs, and the lip sync is
+    /// paid for again (priced on Try Again, never expected back).
+    var restoredVoiceWhole: Bool { restoredParts > 0 && restoredPartsBack == restoredParts }
+    /// What Try Again pays to put the restored voice back: `restoredVoiceUSD`, or, when that couldn't be made exact, the
+    /// voice as new with a word check per part, which the fresh plan never exceeds. Nil before the card is priced.
+    var restoredRetryVoiceUSD: Decimal? {
+        if let restoredVoiceUSD { return restoredVoiceUSD }
+        guard let voice = quote?.voiceUSD else { return nil }
+        let checks: Decimal = (restoredCheckUSD ?? 0) * Decimal(max(restoredParts, 1))
+        return voice + checks
+    }
     /// What was paid before and let go since (a lip sync C's index couldn't give back, Start Over over a restored voice).
     private(set) var restoredLetGo: Decimal = 0
     /// The restored lip sync the current run's Lip sync step is putting back, which is let go if that fails.
@@ -304,12 +321,13 @@ import VoxClipMedia
         // A voice paid before a relaunch comes back for its parts' word checks, and its lip sync for free, only under its own
         // key: the voice and model chosen now are the ones it was made with.
         let restored = kept == nil ? restoredVoiceChosen : false
-        let remainingVoice = kept != nil ? 0 : restored ? (restoredVoiceUSD ?? voicePrice) : (backend?.unfinishedVoicePrice() ?? voicePrice)
+        let remainingVoice = kept != nil ? 0 : restored ? (restoredRetryVoiceUSD ?? voicePrice) : (backend?.unfinishedVoicePrice() ?? voicePrice)
         let lipsyncPaid = synced.map { synced in
             kept.map { ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: $0.key, retime: synced.factor, model: synced.model)) } ?? false
         } ?? false
         let restoredKey = restoredVoiceKey
-        let lipsyncRestored = restored && restoredLipsyncs.keys.contains { $0.voice == restoredKey && $0.model == .standard }
+        // The paid lip sync comes back only over the very voice it was made with: every part back from the journal.
+        let lipsyncRestored = restored && restoredVoiceWhole && restoredLipsyncs.keys.contains { $0.voice == restoredKey && $0.model == .standard }
         let matched: Decimal? = picture != nil ? ((try? backend?.lipsyncPrice(synced?.model ?? .standard)) ?? nil) : nil
         let lipsyncPrice = matched ?? quoted
         return remainingVoice + (lipsyncKept || lipsyncPaid || lipsyncRestored ? 0 : lipsyncPrice)
@@ -330,11 +348,19 @@ import VoxClipMedia
     }
 
     /// The stopped card's line under a restored voice, as things are now: what Try Again puts back and for how much, or,
-    /// while its voice isn't chosen, that it can't come back. Nil with nothing restored.
+    /// while its voice isn't chosen, that it can't come back. Nil with nothing restored. The price is the one on Try Again.
     var restoredVoiceNote: String? {
         guard isStopped, restoredVoiceKey != nil else { return nil }
         guard restoredVoiceChosen else {
             return "The voice it was made with isn't chosen now, so it can't be put back. Nothing was sent. Start Over pays for a new voice."
+        }
+        guard restoredVoiceWhole else {
+            // What the click pays in all: the parts voiced again, every word check and the lip sync.
+            let price = retryUSD.map { " (" + VoiceLabCostPresentation.format($0) + ")" } ?? ""
+            let missing = max(1, restoredParts - restoredPartsBack)
+            if restoredPartsBack == 0 { return "Its paid parts can't be put back, so Try Again voices it again and lip syncs it again\(price)." }
+            let them = missing == 1 ? "the other part" : "the other \(missing) parts"
+            return "Try Again puts back \(restoredPartsBack) of its \(restoredParts) paid parts for their word checks, voices \(them) again and lip syncs the clip again\(price)."
         }
         let price = restoredVoiceUSD.map { $0 > 0 ? " for its word checks (\(VoiceLabCostPresentation.format($0)))" : " for free" } ?? ""
         return "Try Again puts it back\(price), without voicing it again."
@@ -595,8 +621,10 @@ import VoxClipMedia
             if let previous = self.synced, previous.model == model, ledger.paid(key), await backend.restoreLipsync(syncedEntries) {
                 self.synced = previous
             } else {
-                // A lip sync paid before a relaunch over this voice is only re-imported (C's index), never paid again here.
-                restoringLipsync = restoredLipsyncs.keys.first { $0.voice == key.voice && $0.model == model }
+                // A lip sync paid before a relaunch over this voice is only re-imported (C's index), never paid again here,
+                // when every part of the voice came back. A part voiced again changed the audio it was made over, so it
+                // can't come back: Try Again priced a new one, and this step pays for it.
+                restoringLipsync = restoredVoiceWhole ? restoredLipsyncs.keys.first { $0.voice == key.voice && $0.model == model } : nil
                 lipsyncMayPay = !ledger.paid(key) && restoringLipsync == nil
                 _ = try await lipsyncStep(voice: voice, factor: factor, model: model, backend: backend)
             }
@@ -974,6 +1002,7 @@ import VoxClipMedia
         // What was paid before a relaunch goes with it, and stays counted.
         restoredLetGo += restoredVoices.values.reduce(0, +) + restoredLipsyncs.values.reduce(0, +)
         restoredVoices = [:]; restoredLipsyncs = [:]; restoredVoiceUSD = nil; restoringLipsync = nil
+        restoredParts = 0; restoredPartsBack = 0; restoredCheckUSD = nil
         backend.persist()
     }
 
@@ -988,10 +1017,11 @@ import VoxClipMedia
     var isStopped: Bool { if case .stopped = phase { true } else { false } }
 
     /// What this Rewrite's whole clip had paid for when VoxClip quit or crashed (`RewriteSession.restoreWholeClip`): its
-    /// script, the paid voice and lip sync by key, fal.ai's charges for failed attempts, and what putting the voice back
-    /// costs now (`voiceUSD`, the parts' word checks; nil when the journal can't give every part back). It shows as a stop
-    /// whose Try Again puts the voice and lip sync back: the journal adopts the paid takes, C's index re-imports the lip
-    /// sync, and nothing else is paid.
+    /// script, the paid voice and lip sync by key, fal.ai's charges for failed attempts, what putting the voice back costs
+    /// now (`voiceUSD`, part by part; nil when that can't be made exact), its parts and how many of them the journal gives
+    /// back, and one part's word check. It shows as a stop whose Try Again puts back what can come back: the journal adopts
+    /// the paid takes and, when every part is back, C's index re-imports the lip sync; parts that can't come back are
+    /// voiced again and the clip lip synced again, at the price the button shows.
     struct Restored: Equatable {
         var script: WholeClipScript
         var baseScript: WholeClipScript
@@ -999,6 +1029,9 @@ import VoxClipMedia
         var lipsyncs: [WholeClipRevoiceLedger.LipsyncKey: Decimal]
         var billed: [String: Decimal]
         var voiceUSD: Decimal?
+        var parts = 0
+        var partsBack = 0
+        var checkUSD: Decimal?
     }
 
     /// The clip's own script the last run started from, as `RewriteSession.persistPaidWork` saves it.
@@ -1011,14 +1044,27 @@ import VoxClipMedia
         script = restored.script; baseScript = restored.baseScript
         restoredVoices = restored.voices; restoredLipsyncs = restored.lipsyncs; billedLipsyncs = restored.billed
         restoredVoiceUSD = restored.voiceUSD
+        restoredParts = restored.parts; restoredPartsBack = restored.partsBack; restoredCheckUSD = restored.checkUSD
         steps = Dictionary(uniqueKeysWithValues: Step.allCases.map { ($0, StepState.waiting) })
         steps[.script] = .done(restored.script == restored.baseScript ? "Script · \(restored.script.words) words, your edits applied"
                                                                     : "Script · \(restored.script.words) words, reworded to fit")
         failure = Failure(step: .voice, part: nil, repeats: false, kind: "restored")
         stoppedAt = .voice; currentStep = .voice
         // What Try Again does with it depends on the voice chosen, which can change: `restoredVoiceNote` says it.
-        let kept = restored.lipsyncs.isEmpty ? "voice from before VoxClip closed is kept." : "voice and lip sync from before VoxClip closed are kept."
-        phase = .stopped("Your paid whole-clip " + kept + paidNote)
+        phase = .stopped(Self.restoredLine(restored) + paidNote)
+    }
+
+    /// The restored stop's line: what of the paid whole clip is kept. A voice the journal gives back only in part keeps
+    /// only those parts, and its lip sync can't come back over the parts voiced again.
+    static func restoredLine(_ restored: Restored) -> String {
+        let whole = restored.parts > 0 && restored.partsBack == restored.parts
+        if whole {
+            return restored.lipsyncs.isEmpty ? "Your paid whole-clip voice from before VoxClip closed is kept."
+                : "Your paid whole-clip voice and lip sync from before VoxClip closed are kept."
+        }
+        if restored.partsBack == 0 { return "Your paid whole-clip voice from before VoxClip closed can't be put back." }
+        let verb = restored.partsBack == 1 ? "is" : "are"
+        return "\(restored.partsBack) of the \(restored.parts) parts of your paid whole-clip voice from before VoxClip closed \(verb) kept."
     }
 
     /// The last run stopped at the Fit step and the clip's script is still the one it stopped for: Try Again would meet

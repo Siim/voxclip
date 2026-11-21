@@ -1080,7 +1080,7 @@ struct RewriteChange: Equatable, Sendable {
     /// The patch's paid takes as a stop names them: ("Your 3 paid takes (≈ $0.12) are kept", "them"), ("Your paid take
     /// is kept", "it"), or ("Your paid takes are kept", "them") while the first are still being made.
     var paidTakesKept: (kept: String, pronoun: String) {
-        let takes = paidTakeCount
+        let takes = paidTakeCount > 0 ? paidTakeCount : restoredPendingTakes
         let usd = takePlan.flatMap { $0.isRetired ? nil : $0.spent.usd }
         let cost = usd.map { $0 > 0 ? " (" + VoiceLabCostPresentation.format($0) + ")" : "" } ?? ""
         if takes == 1 { return ("Your paid take\(cost) is kept", "it") }
@@ -1129,8 +1129,9 @@ struct RewriteChange: Equatable, Sendable {
         if editor.app.shell.editor === editor, !editor.app.shell.viewerShown { editor.app.shell.toggleViewer() }
         editor.announce(question)
     }
-    /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then).
-    var changeNeedsDiscard: Bool { hasPaidTakes && !applyingTextFixesOnly }
+    /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then): this
+    /// Rewrite's own, or those saved before VoxClip closed that Make Takes would adopt for these words.
+    var changeNeedsDiscard: Bool { (hasPaidTakes || restoredTakesPending) && !applyingTextFixesOnly }
     func confirmPaidProposalChange(waiting: RewriteThreadState.Waiting? = nil, perform: @escaping @MainActor () -> Void) -> Bool {
         guard changeNeedsDiscard else { return false }
         confirmDiscardChanges(waiting: waiting) { [weak self] in
@@ -1148,6 +1149,8 @@ struct RewriteChange: Equatable, Sendable {
     private func discardPaidPlan(perform: @MainActor () -> Void) {
         takePlan?.invalidate(); takePlan = nil
         generation?.invalidate()
+        // The user let the takes go: those saved before a relaunch go too, and the saved record with them.
+        letGoOfRestoredTakes()
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil
         surroundingSentenceOrdinal = nil; takeQuotePhrase = nil
         perform()

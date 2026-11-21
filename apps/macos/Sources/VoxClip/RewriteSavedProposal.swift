@@ -44,14 +44,14 @@ struct RewriteSavedProposal: Codable, Equatable {
         var usd: Decimal
     }
     /// The whole clip's paid work: its script, what each voice and lip sync cost, fal.ai's charges for failed attempts,
-    /// and the journal requests of the voice's parts, which say whether every part can come back with its word check only.
+    /// and the journal requests of the voice's parts, which say which parts can come back with their word check only.
     struct WholeClip: Codable, Equatable {
         var script: WholeClipScript
         var baseScript: WholeClipScript
         var voices: [VoiceEntry]
         var lipsyncs: [LipsyncEntry]
         var billed: [String: Decimal]
-        /// The voice's parts, and the journal requests of those whose paid take was made.
+        /// The voice's parts, and the journal request of each part's paid take, in part order ("" for a part with none).
         var parts: Int
         var partRequests: [String]
     }
@@ -269,7 +269,8 @@ extension RewriteSession {
             .filter { $0.adoptable && now.timeIntervalSince($0.createdAt) < VoiceLabTakeJournal.unusedLifetime }.map(\.requestID))
     }
 
-    /// The journal requests of the patch's paid takes (its plan's cloned-voice takes and the generation's).
+    /// The journal requests of the patch's paid takes (its plan's cloned-voice takes and the generation's). An adopted
+    /// take's receipt is the journal entry's own, so a second relaunch finds it under the same request.
     private var patchTakeRequests: [String] {
         let planned = takePlan?.phrases.flatMap { phrase in
             phrase.takes.filter { $0.source == .clonedVoice }.compactMap { $0.row.receipt?.requestID.uuidString.lowercased() }
@@ -277,18 +278,53 @@ extension RewriteSession {
         return planned + (generation?.rows.compactMap { $0.receipt?.requestID.uuidString.lowercased() } ?? [])
     }
 
-    /// Saves the proposal with its unused paid work, or removes the record when nothing paid is left unused. Free; an
-    /// unchanged record is not written again, and a proposal with nothing paid reads nothing.
+    /// Paid patch takes saved before VoxClip closed that the journal can still give back, while no plan holds paid patch
+    /// work again (before Make Takes adopts them, or while its price waits for the click): unused paid work, which
+    /// closing, a new run and a change of the proposal ask about first (`hasUnusedPaidWork`, `changeNeedsDiscard`).
+    var restoredTakesPending: Bool { restoredPendingTakes > 0 }
+
+    /// How many of `restoredTakesPending`'s takes the journal can give back; 0 when none pends.
+    var restoredPendingTakes: Int {
+        guard let saved = restoredProposal, saved.patchTakes > 0, restoredTakesKept > 0, !hasPaidPatchWork else { return 0 }
+        return min(restoredTakesKept, saved.patchTakes)
+    }
+
+    /// The user let the patch's paid takes go (Discard Takes, Discard Changes): the takes saved before a relaunch go with
+    /// them, so the next write finds nothing of them to keep and is not offered them back.
+    func letGoOfRestoredTakes() {
+        guard restoredProposal != nil else { return }
+        restoredProposal?.patchTakes = 0
+        restoredProposal?.patchUSD = 0
+        restoredProposal?.patchRequests = []
+        restoredTakesKept = 0
+    }
+
+    /// Saves the proposal with its unused paid work. Free; an unchanged record is not written again, and a proposal with
+    /// nothing paid reads nothing. The record stays while the proposal or its take plan is open, whatever the plan holds
+    /// at the moment: a plan only priced, or still adopting the takes saved before a relaunch, keeps those takes in it. It
+    /// goes on Use (Use Takes, Use Whole Clip, Use the Voice Without Lip Sync), on an explicit discard (the paid-work
+    /// question's Discard, Discard Takes, Discard Changes, Undo on a whole clip's Review or the patch over it), on a new
+    /// run of the Rewrite that restored or wrote it (which asks first over unused paid work), and after 60 days unused.
     func persistPaidWork() {
-        guard isOpen, !paidWorkUsed, ownProposal != nil else { return }
+        guard isOpen else { return }
+        // Use Whole Clip, or Use the Voice Without Lip Sync, put the whole clip's paid work into the project as one undo
+        // step. The edit may have set the proposal aside (R3), so this never waits for it: the record goes, and a relaunch
+        // never offers that work back to put in or pay for again.
+        if wholeClip?.phase == .used, !hasPaidPatchWork {
+            if savedProposalData != nil || restoredProposal != nil { forgetSavedProposal() }
+            return
+        }
+        guard !paidWorkUsed, ownProposal != nil else { return }
         let whole = savedWholeClip
         let planTakes = hasPaidPatchWork ? paidTakeCount : 0
         let planUSD = hasPaidPatchWork ? (takePlan.flatMap { $0.isRetired ? nil : $0.spent.usd } ?? 0) : 0
-        // Takes saved before a relaunch are still the proposal's until a plan holds takes again.
-        let restored = takePlan == nil ? restoredProposal : nil
+        // Takes saved before a relaunch are still the proposal's until a plan holds paid takes again: Make Takes' price
+        // before its click, or a plan still adopting them, holds none yet.
+        let restored = planTakes > 0 ? nil : restoredProposal
         let patchTakes = planTakes > 0 ? planTakes : (restored?.patchTakes ?? 0)
         let patchUSD = planTakes > 0 ? planUSD : (restored?.patchUSD ?? 0)
         let patchRequests = planTakes > 0 ? patchTakeRequests : (restored?.patchRequests ?? [])
+        // Nothing paid is left in this Rewrite: only the explicit discards above get here with a record to remove.
         guard whole != nil || patchTakes > 0 else {
             if savedProposalData != nil || restoredProposal != nil { forgetSavedProposal() }
             return
@@ -334,7 +370,8 @@ extension RewriteSession {
         var requests = restoredProposal?.wholeClip?.partRequests ?? []
         if let plan = wholeClipPlan, wholeClipPlanScript == script, !plan.isRetired {
             parts = plan.phrases.count
-            requests = plan.phrases.compactMap { plan.automaticTake(phrase: $0.id)?.row.receipt?.requestID.uuidString.lowercased() }
+            // In part order, so each part's word check or new voice can be priced on its own (`restoredVoiceUSD`).
+            requests = plan.phrases.map { plan.automaticTake(phrase: $0.id)?.row.receipt?.requestID.uuidString.lowercased() ?? "" }
             // Parts paid of a voice not finished yet come back through the journal too.
             if voices.isEmpty, let usd = plan.spent.usd, plan.spent.units > 0, let record = generation?.selectedVoiceID {
                 voices[.init(script: script.text, recordId: record, model: plan.modelID ?? VoiceLabWordingFit.modelID)] = usd
@@ -351,25 +388,45 @@ extension RewriteSession {
     }
 
     /// Puts the restored whole clip on a fresh card: a stop whose Try Again puts the paid voice back for its parts' word
-    /// checks (every part still in the journal, adoptable) and the paid lip sync for free.
+    /// checks, and the paid lip sync for free, when every part is still in the journal (adoptable); otherwise it voices
+    /// the parts that can't come back and lip syncs the clip again, priced so before the click.
     func restoreWholeClip(into session: WholeClipRevoiceSession) {
         guard let saved = restoredProposal?.wholeClip else { return }
         restoredProposal?.wholeClip = nil
+        let catalog = prices ?? editor.app.shared.flatMap { try? VoiceLabPriceCatalog.load(shared: $0) }
+        let adoptable = adoptableJournalRequests()
+        let back = saved.partRequests.filter { !$0.isEmpty && adoptable.contains($0) }.count
         session.restore(.init(script: saved.script, baseScript: saved.baseScript,
                               voices: Dictionary(saved.voices.map { ($0.key, $0.usd) }, uniquingKeysWith: +),
                               lipsyncs: Dictionary(saved.lipsyncs.map { ($0.key, $0.usd) }, uniquingKeysWith: +),
-                              billed: saved.billed, voiceUSD: restoredVoiceUSD(saved)))
+                              billed: saved.billed, voiceUSD: Self.restoredVoiceUSD(saved, adoptable: adoptable, catalog: catalog),
+                              parts: saved.parts, partsBack: min(back, saved.parts), checkUSD: catalog.flatMap(Self.wordCheckUSD)))
     }
 
-    /// What putting the restored voice back costs: each part's word check, when every part's paid take is in the journal
-    /// and adoptable; nil otherwise (the voice is priced as new).
-    private func restoredVoiceUSD(_ saved: RewriteSavedProposal.WholeClip) -> Decimal? {
-        guard saved.parts > 0, saved.partRequests.count == saved.parts,
-              let catalog = prices ?? editor.app.shared.flatMap({ try? VoiceLabPriceCatalog.load(shared: $0) }) else { return nil }
-        let adoptable = adoptableJournalRequests()
-        guard saved.partRequests.allSatisfy(adoptable.contains),
-              let check = try? VoiceLabPricing.estimate(operation: .elevenLabsSpeechToText, model: ElevenLabsScribe.modelID,
-                                                        units: VoiceLabTakeProcessing.maximumQASeconds, catalog: catalog).usd else { return nil }
-        return check * Decimal(saved.partRequests.count)
+    /// One take's word check, as a take's quote prices it.
+    static func wordCheckUSD(_ catalog: VoiceLabPriceCatalog) -> Decimal? {
+        try? VoiceLabPricing.estimate(operation: .elevenLabsSpeechToText, model: ElevenLabsScribe.modelID,
+                                      units: VoiceLabTakeProcessing.maximumQASeconds, catalog: catalog).usd
+    }
+
+    /// What putting the restored voice back costs, part by part as the fresh plan prices it: a part whose paid take the
+    /// journal gives back (adoptable, under 60 days) only its word check; any other part a new voice of its words and its
+    /// word check. Nil when that can't be made exact (no prices, or parts the record doesn't line up with): the card then
+    /// prices the voice as new (`WholeClipRevoiceSession.restoredRetryVoiceUSD`).
+    static func restoredVoiceUSD(_ saved: RewriteSavedProposal.WholeClip, adoptable: Set<String>,
+                                 catalog: VoiceLabPriceCatalog?) -> Decimal? {
+        let parts = saved.script.parts
+        guard saved.parts > 0, saved.partRequests.count == saved.parts, parts.count == saved.parts, let catalog,
+              let check = wordCheckUSD(catalog) else { return nil }
+        var usd = Decimal(0)
+        for (part, request) in zip(parts, saved.partRequests) {
+            usd += check
+            if !request.isEmpty, adoptable.contains(request) { continue }
+            let characters: Double = Double(part.text.unicodeScalars.count)
+            guard let voice = try? VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
+                                                            units: characters, catalog: catalog).usd else { return nil }
+            usd += voice
+        }
+        return usd
     }
 }

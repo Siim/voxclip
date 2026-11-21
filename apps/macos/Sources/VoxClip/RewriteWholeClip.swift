@@ -622,7 +622,8 @@ extension RewriteSession {
         if let restored, restored.recordId != recordID || restored.model != model {
             throw Session.Stop.voiceInputsChanged(clip: wholeClipClipNumber, usd: wholeClip?.restoredVoices[restored] ?? 0, voiceSwitched: true)
         }
-        let restoredApproval = restored == nil ? nil : (wholeClip?.restoredVoiceUSD ?? wholeClip?.quote?.voiceUSD)
+        // The price Try Again showed for the voice (`retryUSD`'s voice part): the backstop below holds the fresh plan to it.
+        let restoredApproval = restored == nil ? nil : wholeClip?.restoredRetryVoiceUSD
         let plan: ClipTakePlan
         do {
             let final = try editor.voiceLabReviewProject(localCommands: localCommands)
