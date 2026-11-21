@@ -178,7 +178,9 @@ internal sealed partial class RewriteGeneration
     internal bool DurationAvailable(VoiceLabTakeRow row) => row.Selectable && DurationCarries(row);
     /// <summary>Mac <c>RewriteSession.durationCarries</c>: some video duration (keep source, cut or match) carries this take, measured
     /// from its own fit whether it passed its checks or not (voice-lab §8.2.2). <see cref="LengthFits"/> leaves out the matched speed,
-    /// which carries a take within 0.80×–1.25×.</summary>
+    /// which carries a take within 0.80×–1.25×. Mac also asks that its duration renderer is wired (<c>prepareDurationRender</c>, nil
+    /// only where no Rewrite session wires it); Windows renders Cut and Match natively with nothing to wire, as <see cref="CanCut"/>,
+    /// <see cref="CanRetime"/> and the accepted recipe already assume.</summary>
     internal bool DurationCarries(VoiceLabTakeRow row) => Options(row) is var options &&
         (options.Allows(VoiceLabVideoMode.Source) || options.Allows(VoiceLabVideoMode.Cut) || options.Allows(VoiceLabVideoMode.Retimed));
     /// <summary>The order passing takes are offered in (design.md R2, Mac <c>ranked</c>): one a video duration can carry first,
