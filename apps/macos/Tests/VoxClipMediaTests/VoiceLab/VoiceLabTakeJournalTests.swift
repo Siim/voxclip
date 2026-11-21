@@ -47,7 +47,7 @@ import Testing
         #expect(document["schema"] as? String == Self.schema)
         #expect(document["entrySchema"] as? String == VoiceLabTakeJournalEntry.currentSchema)
         let cases = try #require(document["cases"] as? [[String: Any]])
-        #expect(document["caseCount"] as? Int == cases.count && cases.count == 26)
+        #expect(document["caseCount"] as? Int == cases.count && cases.count == 35)
         let paidRoot = try root()
         defer { try? FileManager.default.removeItem(at: paidRoot) }
         let project = try journal(document, at: paidRoot)
@@ -91,7 +91,7 @@ import Testing
         try Data("not json".utf8).write(to: folder.appendingPathComponent("0f6a1c2e-9999-4a00-8000-000000000009.json"))
         try VoiceLabTakeJournal.encode(newest).write(to: folder.appendingPathComponent("renamed.json"))
         let entries = VoiceLabTakeJournal.list(projectID: project, paidRoot: paidRoot)
-        #expect(entries.count == 6 && entries.contains(newest))
+        #expect(entries.count == (document["entries"] as? [Any])?.count && entries.contains(newest))
         #expect(VoiceLabTakeJournal.match(newest.key, projectID: project, paidRoot: paidRoot)?.assetFile == newest.assetFile)
         // The take's recovered timing replaces the entry in place, over the leftover partial.
         let timing = [VoiceLabCharacterTiming(character: "H", start: 0.1, end: 0.4)]
@@ -99,6 +99,21 @@ import Testing
         let updated = try #require(VoiceLabTakeJournal.list(projectID: project, paidRoot: paidRoot).first { $0.assetFile == newest.assetFile })
         #expect(updated.alignment == .init(recovered: true, characters: [.init(character: "H", start: 0.1, end: 0.4)]))
         #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent(".\(newest.assetID).json.partial").path))
+        // A word check that failed is written in place too, keeping the timing; the take is then never adopted, and the
+        // older take over the same request is, until a later run's passing verdict replaces the failed one.
+        let failed = VoiceLabTakeJournalEntry.Checks(speaker: .passed, words: .failed, hardFailures: ["transcript"])
+        try VoiceLabTakeJournal.updateChecks(assetFile: newest.assetFile, checks: failed, projectID: project, paidRoot: paidRoot)
+        let checked = try #require(VoiceLabTakeJournal.list(projectID: project, paidRoot: paidRoot).first { $0.assetFile == newest.assetFile })
+        #expect(checked.checks == failed && !checked.adoptable && checked.alignment == updated.alignment)
+        let older = try entry(try #require((document["entries"] as? [Any])?[0]))
+        #expect(VoiceLabTakeJournal.match(newest.key, projectID: project, paidRoot: paidRoot)?.assetFile == older.assetFile)
+        try VoiceLabTakeJournal.updateChecks(assetFile: newest.assetFile, checks: .init(speaker: .passed, words: .passed, hardFailures: []),
+                                             projectID: project, paidRoot: paidRoot)
+        #expect(VoiceLabTakeJournal.match(newest.key, projectID: project, paidRoot: paidRoot)?.assetFile == newest.assetFile)
+        #expect(throws: (any Error).self) {
+            try VoiceLabTakeJournal.updateChecks(assetFile: newest.assetFile, checks: .init(speaker: nil, words: .failed, hardFailures: [""]),
+                                                 projectID: project, paidRoot: paidRoot)
+        }
         // An asset whose bytes changed is never adopted.
         let asset = paidRoot.appendingPathComponent(newest.assetFile)
         var bytes = try Data(contentsOf: asset); bytes[bytes.count - 1] ^= 0xff

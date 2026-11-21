@@ -392,7 +392,14 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     var recovered = await WordCheckAsync(samples, 24000).ConfigureAwait(false);
                     qaReceipt = recovered.Receipt;
                     heard = recovered.Words;
-                    var timing = await RecoverTimingAsync(recovered.Words, samples, value.Input, ct).ConfigureAwait(false);
+                    IReadOnlyList<VoiceLabCharacterTiming> timing;
+                    try { timing = await RecoverTimingAsync(recovered.Words, samples, value.Input, ct).ConfigureAwait(false); }
+                    catch (VoiceLabException) when (!ct.IsCancellationRequested)
+                    {
+                        // What the take says can't be lined up with the text: its audio fails this way every time.
+                        await JournalChecksAsync(VoiceLabTakeJournalChecks.TimingUnrecovered, paid).ConfigureAwait(false);
+                        throw;
+                    }
                     generated = generated with { Alignment = timing };
                     // The journal keeps the recovered timing, so adopting this take later needs no recovery.
                     await JournalTimingAsync(timing, paid).ConfigureAwait(false);
@@ -433,6 +440,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     var failed = new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
                         VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
                     pool.Measured(take.Synthesis.Review.RequestId, [], value.Record, PhraseId, passed: false);
+                    await JournalChecksAsync(VoiceLabTakeJournalChecks.SpeakerFailed, paid).ConfigureAwait(false);
                     rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed)
                         { AdoptedAsset = take.AdoptedAsset, Accepted = adoptedRequest });
                     await progress(rows.AsReadOnly()).ConfigureAwait(false);
@@ -458,6 +466,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold,
                     audio.Seams.Select(seam => seam == audio.PatchStart).ToArray(), audio.SeamExcesses, value.Input.HasRequestTags,
                     VoiceLabTakeQuality.ReplacementWords(value.Input.Text, value.Input.Items, value.Input.Window));
+                // A take that dropped or changed words, clipped or failed its own speaker check does so again: the next run never adopts it.
+                await JournalChecksAsync(VoiceLabTakeJournalChecks.Of(qa, value.Record.Speaker.Threshold), paid).ConfigureAwait(false);
                 var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
                     qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
                 var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank)
@@ -590,6 +600,17 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or VoiceLabException or VoiceLabAssetStoreException) { return false; }
         }, CancellationToken.None).ConfigureAwait(false);
         if (!updated) client.Note("voicelab take journal timing unwritten");
+    }
+    /// <summary>How the take did in its checks, in its journal entry (<see cref="VoiceLabTakeJournalChecks"/>), so a take whose audio
+    /// fails them is never adopted by a later run. A pooled voice check's verdict is the group's and is not written.</summary>
+    private async Task JournalChecksAsync(VoiceLabTakeJournalChecks checks, VoiceLabAsset paid)
+    {
+        var updated = await Task.Run(() =>
+        {
+            try { VoiceLabTakeJournal.UpdateChecks(paid.File, checks, storage.ProjectId, storage.PaidRoot); return true; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or VoiceLabException or VoiceLabAssetStoreException) { return false; }
+        }, CancellationToken.None).ConfigureAwait(false);
+        if (!updated) client.Note("voicelab take journal checks unwritten");
     }
     private async Task ValidateAsync(Pending value, CancellationToken ct)
     {

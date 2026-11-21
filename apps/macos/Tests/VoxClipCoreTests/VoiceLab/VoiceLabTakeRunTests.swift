@@ -393,6 +393,7 @@ struct VoiceLabTakeRunTests {
         #expect(entries.map(\.assetFile) == [paid.file] && entries.first?.requestID == receipt.requestID.uuidString.lowercased())
         #expect(entries.first?.key == VoiceLabTakeJournalKey(input: fixture.input, voiceID: "fixtureOwnVoice"))
         #expect(entries.first?.alignment?.recovered == false && entries.first?.assetSha256 == paid.sha256)
+        #expect(entries.first?.checks == .init(speaker: .passed, words: .passed, hardFailures: []))
         #expect(sent(fixture) == (1, 1))
         let spent = try #require(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd)
         await fixture.run.invalidate()
@@ -465,6 +466,37 @@ struct VoiceLabTakeRunTests {
             #expect(result?.rows.contains(where: \.selectable) != true)
         }
         #expect(sent(fixture) == (1, 1))
+    }
+
+    /// A take whose audio failed its checks (dropped or changed words, its own speaker check, or words its timing can't be
+    /// recovered from) is journaled with that verdict and is never adopted: the next run prepares the full set of new
+    /// takes instead of one known-bad take whose word check it would buy again only to fail the same way.
+    @Test(arguments: ["words", "speaker", "timing"]) func aTakeThatFailedItsChecksIsNeverAdopted(_ check: String) async throws {
+        let fixture = try await fixture({ state in
+            if check == "words" { state.mismatchCount = 1 }
+            if check == "timing" { state.missingAlignment = true; state.recognized = [""] }
+        }, drift: check == "speaker")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(result.rows.count == 1 && !row.selectable)
+        let expected: VoiceLabTakeJournalEntry.Checks = switch check {
+        case "words": .init(speaker: .passed, words: .failed, hardFailures: ["transcript"])
+        case "speaker": .init(speaker: .failed, words: nil, hardFailures: ["speaker"])
+        default: .init(speaker: nil, words: .failed, hardFailures: ["timing"])
+        }
+        let entry = try #require(journal(fixture).first)
+        #expect(entry.checks == expected && !entry.adoptable)
+        #expect(sent(fixture) == (1, check == "speaker" ? 0 : 1))
+        await fixture.run.invalidate()
+
+        let next = try await fixture.later.prepare(fixture.input)
+        #expect(next.takes.count == 3 && next.takes.allSatisfy { $0.adoptedAsset == nil })
+        #expect(next.estimate.usd == VoiceLabTakeRunQuote.total(of: next.takes.flatMap { [$0.synthesis.estimate, $0.qa.estimate] },
+                                                                   takes: 3).usd)
+        await fixture.later.invalidate()
+        #expect(sent(fixture) == (1, check == "speaker" ? 0 : 1))
     }
 
     /// A take whose timing was recovered from its word check is journaled with that timing, and is adopted with it.

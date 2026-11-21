@@ -68,6 +68,47 @@ public sealed partial class VoiceLabTakeRunTests
         finally { await next.InvalidateAsync(); }
     }
 
+    /// <summary>Takes whose audio failed their checks (dropped or changed words, their own speaker check, or words their timing can't be
+    /// recovered from) are journaled with that verdict and never adopted (Mac <c>aTakeThatFailedItsChecksIsNeverAdopted</c>): the next
+    /// run prepares the full set of new takes instead of a known-bad take whose word check it would buy again only to fail the same
+    /// way. They used to be adopted one by one, each costing a word check.</summary>
+    [Theory]
+    [InlineData("words")]
+    [InlineData("speaker")]
+    [InlineData("timing")]
+    public async Task TakesThatFailedTheirChecksAreNeverAdopted(string check)
+    {
+        await using var fixture = new Fixture();
+        if (check == "words") fixture.Remote.Mismatches = 100;
+        if (check == "speaker") fixture.SpeakerFailure = true;
+        if (check == "timing") { fixture.Remote.MissingAlignment = true; fixture.Remote.Heard = ""; }
+        var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
+        Assert.Equal(3, result.Rows.Count);
+        Assert.All(result.Rows, row => Assert.False(row.Selectable));
+        var projectId = fixture.Run.PaidAsset(result.Rows[0].Id)!.File.Split('/')[0];
+        var entries = VoiceLabTakeJournal.List(projectId, Path.Combine(fixture.Root, "Paid"));
+        Assert.Equal(3, entries.Count);
+        Assert.All(entries, entry =>
+        {
+            Assert.False(entry.Adoptable);
+            Assert.Equal(check switch { "words" => "transcript", "speaker" => "speaker", _ => "timing" }, Assert.Single(entry.Checks!.HardFailures));
+            Assert.Equal(check == "speaker" ? VoiceLabTakeJournalOutcome.Passed : VoiceLabTakeJournalOutcome.Failed, entry.Checks.Words);
+        });
+        await fixture.Run.InvalidateAsync();
+        var next = NextRun(fixture, projectId, "next");
+        try
+        {
+            var quote = await next.PrepareAsync(fixture.Input, Token);
+            Assert.Equal(3, quote.Takes.Count);
+            Assert.All(quote.Takes, take => Assert.Null(take.AdoptedAsset));
+            Assert.Equal(quote.Actions.Count, quote.PricedActions.Count);
+            await next.DiscardPendingAsync();
+            Assert.Equal(3, fixture.Remote.Seeds.Count);
+            Assert.Equal(3, fixture.Remote.Qa);
+        }
+        finally { await next.InvalidateAsync(); }
+    }
+
     /// <summary>A live run's take is never adopted by another run, one take is reserved for one prepared set at a time, and a
     /// withdrawn consent record stops an adoption before its audio is used.</summary>
     [Fact]

@@ -47,8 +47,8 @@ public sealed class VoiceLabTakeJournalTests : IDisposable
         Assert.Equal("voxclip-take-journal-cases/1", document["schema"]!.GetValue<string>());
         Assert.Equal(VoiceLabTakeJournalEntry.CurrentSchema, document["entrySchema"]!.GetValue<string>());
         var cases = document["cases"]!.AsArray();
-        Assert.Equal(26, document["caseCount"]!.GetValue<int>());
-        Assert.Equal(26, cases.Count);
+        Assert.Equal(35, document["caseCount"]!.GetValue<int>());
+        Assert.Equal(35, cases.Count);
         var project = Journal(document);
         Assert.Equal(document["entries"]!.AsArray().Count, VoiceLabTakeJournal.List(project, root).Count);
         foreach (var item in cases)
@@ -96,7 +96,7 @@ public sealed class VoiceLabTakeJournalTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "." + newest.AssetId + ".json.partial"), "{\"schema\":");
         File.WriteAllText(Path.Combine(folder, "0f6a1c2e-9999-4a00-8000-000000000009.json"), "not json");
         File.WriteAllBytes(Path.Combine(folder, "renamed.json"), VoiceLabTakeJournal.Encode(newest));
-        Assert.Equal(6, VoiceLabTakeJournal.List(project, root).Count);
+        Assert.Equal(document["entries"]!.AsArray().Count, VoiceLabTakeJournal.List(project, root).Count);
         Assert.Equal(newest.AssetFile, VoiceLabTakeJournal.Match(newest.Key, project, root)?.AssetFile);
         VoiceLabTakeJournal.UpdateTiming(newest.AssetFile, [new("H", 0.1, 0.4)], true, project, root);
         var updated = VoiceLabTakeJournal.List(project, root).Single(entry => entry.AssetFile == newest.AssetFile);
@@ -104,6 +104,18 @@ public sealed class VoiceLabTakeJournalTests : IDisposable
         Assert.Equal(new VoiceLabTakeJournalTiming("H", 0.1, 0.4), Assert.Single(updated.Alignment.Characters));
         Assert.False(File.Exists(Path.Combine(folder, "." + newest.AssetId + ".json.partial")));
         var older = Entry(document["entries"]![0]!);
+        // A word check that failed is written in place too, keeping the timing; the take is then never adopted, and the older take over
+        // the same request is, until a later run's passing verdict replaces the failed one.
+        VoiceLabTakeJournal.UpdateChecks(newest.AssetFile, new(VoiceLabTakeJournalOutcome.Passed, VoiceLabTakeJournalOutcome.Failed, ["transcript"]), project, root);
+        var checkedEntry = VoiceLabTakeJournal.List(project, root).Single(entry => entry.AssetFile == newest.AssetFile);
+        Assert.False(checkedEntry.Adoptable);
+        Assert.Equal(VoiceLabTakeJournalOutcome.Failed, checkedEntry.Checks!.Words);
+        Assert.Equal(["transcript"], checkedEntry.Checks.HardFailures);
+        Assert.True(checkedEntry.Alignment!.Recovered);
+        Assert.Equal(older.AssetFile, VoiceLabTakeJournal.Match(newest.Key, project, root)?.AssetFile);
+        VoiceLabTakeJournal.UpdateChecks(newest.AssetFile, new(VoiceLabTakeJournalOutcome.Passed, VoiceLabTakeJournalOutcome.Passed, []), project, root);
+        Assert.Equal(newest.AssetFile, VoiceLabTakeJournal.Match(newest.Key, project, root)?.AssetFile);
+        Assert.Throws<VoiceLabException>(() => VoiceLabTakeJournal.UpdateChecks(newest.AssetFile, new(null, VoiceLabTakeJournalOutcome.Failed, [""]), project, root));
         var (result, asset) = VoiceLabTakeJournal.Adopt(older, project, root);
         Assert.Equal(older.Frames * 2, result.Pcm.Length);
         Assert.Equal("Hello", string.Concat(result.Alignment!.Select(item => item.Character)));

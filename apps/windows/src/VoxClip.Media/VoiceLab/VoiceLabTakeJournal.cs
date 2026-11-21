@@ -40,24 +40,52 @@ internal sealed record VoiceLabTakeJournalTiming(string Character, double Start,
 /// <summary>The take's character timing: the provider's, or recovered from its word check or on device (voice-lab §8.5).</summary>
 internal sealed record VoiceLabTakeJournalAlignment(bool Recovered, IReadOnlyList<VoiceLabTakeJournalTiming> Characters);
 internal sealed record VoiceLabTakeJournalReceipt(string Provider, string Region, string Endpoint);
+internal enum VoiceLabTakeJournalOutcome { Passed, Failed }
+/// <summary>How the take did in its own checks, written when each settles (Mac <c>VoiceLabTakeJournalEntry.Checks</c>). The same audio
+/// fails them the same way, so an entry with a hard failure is never adopted: adopting it would buy its word check again only to fail
+/// again. <paramref name="Speaker"/> is null when the take was not measured alone (a short take's check is pooled, a verdict on the
+/// group); <paramref name="Words"/> is null when its word check never ran. <paramref name="HardFailures"/> holds the
+/// <see cref="VoiceLabTakeQaFailure"/> names other than <c>loudness</c>, and <c>timing</c> when its timing could not be recovered
+/// from what its word check heard.</summary>
+internal sealed record VoiceLabTakeJournalChecks(VoiceLabTakeJournalOutcome? Speaker, VoiceLabTakeJournalOutcome? Words, IReadOnlyList<string> HardFailures)
+{
+    /// <summary>The take's own speaker check failed before its word check was sent.</summary>
+    internal static VoiceLabTakeJournalChecks SpeakerFailed { get; } = new(VoiceLabTakeJournalOutcome.Failed, null, ["speaker"]);
+    /// <summary>Its word check heard words that could not be lined up with the text, here or on device.</summary>
+    internal static VoiceLabTakeJournalChecks TimingUnrecovered { get; } = new(null, VoiceLabTakeJournalOutcome.Failed, ["timing"]);
+    /// <summary>The verdict of the take's word check and acoustics (<see cref="VoiceLabTakeQuality.Evaluate"/>).</summary>
+    internal static VoiceLabTakeJournalChecks Of(VoiceLabTakeQaResult qa, double threshold) => new(
+        qa.SpeakerScore is { } score ? score >= threshold ? VoiceLabTakeJournalOutcome.Passed : VoiceLabTakeJournalOutcome.Failed : null,
+        qa.Failures.Contains(VoiceLabTakeQaFailure.Transcript) ? VoiceLabTakeJournalOutcome.Failed : VoiceLabTakeJournalOutcome.Passed,
+        Array.AsReadOnly(qa.Failures.Where(failure => failure != VoiceLabTakeQaFailure.Loudness).Distinct().Select(Name).ToArray()));
+    private static string Name(VoiceLabTakeQaFailure failure) => failure switch
+    {
+        VoiceLabTakeQaFailure.Transcript => "transcript", VoiceLabTakeQaFailure.Clipping => "clipping", VoiceLabTakeQaFailure.Loudness => "loudness",
+        VoiceLabTakeQaFailure.Speaker => "speaker", _ => "insufficientGeneratedSpeech"
+    };
+}
 
 /// <summary>One paid ElevenLabs take as it arrived, written beside its PCM the moment it is stored (voice-lab §3 "Paid takes are
-/// kept"; Mac <c>VoiceLabTakeJournalEntry</c>). <c>shared/fixtures/voice-lab/take-journal-cases.json</c> pins the shape on both
-/// platforms.</summary>
+/// kept"; Mac <c>VoiceLabTakeJournalEntry</c>), with its timing once known and its checks once they settle.
+/// <c>shared/fixtures/voice-lab/take-journal-cases.json</c> pins the shape on both platforms.</summary>
 internal sealed record VoiceLabTakeJournalEntry(string Schema, string AssetFile, string AssetSha256, string RequestId, string? ProviderRequestId,
     string RecordId, string VoiceId, string ModelId, string Language, string RequestText, string PreviousText, string NextText, double Pace,
     uint Seed, int SampleRate, long Frames, VoiceLabTakeJournalAlignment? Alignment, VoiceLabTakeJournalReceipt Receipt, string? EstimateUsd,
     DateTimeOffset CreatedAt)
 {
     internal const string CurrentSchema = "voxclip-take-journal/1";
+    /// <summary>Null until the take's checks settle, and for a take whose run stopped before they did: such a take is adopted.</summary>
+    internal VoiceLabTakeJournalChecks? Checks { get; init; }
     internal VoiceLabTakeJournalKey Key => new(RecordId, VoiceId, ModelId, Language, RequestText, PreviousText, NextText, Pace);
     internal string AssetId => Path.GetFileNameWithoutExtension(AssetFile.Split('/')[^1]);
+    /// <summary>False once a check failed in a way the same audio repeats (<see cref="VoiceLabTakeJournalChecks.HardFailures"/>).</summary>
+    internal bool Adoptable => Checks is null || Checks.HardFailures.Count == 0;
 }
 
 /// <summary>The journal of one project's paid takes (Mac <c>VoiceLabTakeJournal</c>), under <c>&lt;paid root&gt;/&lt;projectId&gt;/takes/</c>:
 /// <c>&lt;assetId&gt;.json</c>, each written to a temporary file, flushed and moved into place, so a crash leaves the old entry or the
 /// new one and at most a <c>.partial</c> file that nothing reads. A take run adopts an entry over the same words, voice and model
-/// for free (<see cref="Match"/>). No project-format change.</summary>
+/// for free unless a check failed it (<see cref="Match"/>). No project-format change.</summary>
 internal static class VoiceLabTakeJournal
 {
     internal const string Folder = "takes";
@@ -81,12 +109,23 @@ internal static class VoiceLabTakeJournal
     }
 
     /// <summary>The entry of <paramref name="assetFile"/> with its character timing, after the take's timing was recovered.</summary>
-    internal static void UpdateTiming(string assetFile, IReadOnlyList<VoiceLabCharacterTiming> timing, bool recovered, string projectId, string paidRoot)
+    internal static void UpdateTiming(string assetFile, IReadOnlyList<VoiceLabCharacterTiming> timing, bool recovered, string projectId, string paidRoot) =>
+        Update(assetFile, projectId, paidRoot, entry => entry with
+            { Alignment = new(recovered, Array.AsReadOnly(timing.Select(item => new VoiceLabTakeJournalTiming(item.Character, item.Start, item.End)).ToArray())) });
+
+    /// <summary>The entry of <paramref name="assetFile"/> with how the take did in its checks, once they settle; a later run's verdict
+    /// replaces it.</summary>
+    internal static void UpdateChecks(string assetFile, VoiceLabTakeJournalChecks checks, string projectId, string paidRoot) =>
+        Update(assetFile, projectId, paidRoot, entry => entry with { Checks = checks });
+
+    private static void Update(string assetFile, string projectId, string paidRoot, Func<VoiceLabTakeJournalEntry, VoiceLabTakeJournalEntry> change)
     {
         var folder = TakesFolder(paidRoot, projectId, create: false);
         var id = Path.GetFileNameWithoutExtension(assetFile.Split('/')[^1]);
         if (Read(Path.Combine(folder, id + ".json"), projectId) is not { } entry || entry.AssetFile != assetFile) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        Store(entry with { Alignment = new(recovered, Array.AsReadOnly(timing.Select(item => new VoiceLabTakeJournalTiming(item.Character, item.Start, item.End)).ToArray())) }, folder);
+        var changed = change(entry);
+        Validate(changed, projectId);
+        Store(changed, folder);
     }
 
     /// <summary>Every valid entry, in no particular order. Partial files, foreign names and malformed entries are left out.</summary>
@@ -100,10 +139,10 @@ internal static class VoiceLabTakeJournal
             .Select(path => Read(path, projectId)).OfType<VoiceLabTakeJournalEntry>().ToArray();
     }
 
-    /// <summary>The newest entry over <paramref name="key"/> whose asset is still there with its frame count and SHA-256, leaving out
-    /// the asset files in <paramref name="claimed"/> (already taken by a live run); null when none.</summary>
+    /// <summary>The newest adoptable entry over <paramref name="key"/> (no check failed it) whose asset is still there with its frame
+    /// count and SHA-256, leaving out the asset files in <paramref name="claimed"/> (already taken by a live run); null when none.</summary>
     internal static VoiceLabTakeJournalEntry? Match(VoiceLabTakeJournalKey key, string projectId, string paidRoot, IReadOnlySet<string>? claimed = null) =>
-        List(projectId, paidRoot).Where(entry => entry.Key == key && entry.SampleRate == 24000 && claimed?.Contains(entry.AssetFile) != true)
+        List(projectId, paidRoot).Where(entry => entry.Key == key && entry.Adoptable && entry.SampleRate == 24000 && claimed?.Contains(entry.AssetFile) != true)
             .OrderByDescending(entry => entry.CreatedAt).ThenByDescending(entry => entry.AssetFile, StringComparer.Ordinal)
             .FirstOrDefault(entry => TryPcm(entry, projectId, paidRoot) is not null);
 
@@ -139,7 +178,8 @@ internal static class VoiceLabTakeJournal
             entry.RecordId.Length == 0 || entry.VoiceId.Length == 0 || entry.ModelId.Length == 0 || entry.Language.Length == 0 || entry.RequestText.Length == 0 ||
             !double.IsFinite(entry.Pace) || entry.Pace <= 0 || entry.SampleRate is < 8000 or > 192000 || entry.Frames < 1 || entry.Frames > VoiceLabAssetStore.MaxFrames ||
             entry.EstimateUsd is { } usd && !decimal.TryParse(usd, NumberStyles.Number, CultureInfo.InvariantCulture, out _) ||
-            entry.Alignment?.Characters.Any(item => !double.IsFinite(item.Start) || !double.IsFinite(item.End) || item.Start < 0 || item.End < item.Start) == true)
+            entry.Alignment?.Characters.Any(item => !double.IsFinite(item.Start) || !double.IsFinite(item.End) || item.Start < 0 || item.End < item.Start) == true ||
+            entry.Checks?.HardFailures.Any(name => name.Length is < 1 or > 64) == true)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
     }
 
@@ -165,6 +205,16 @@ internal static class VoiceLabTakeJournal
             }
             writer.WriteString("assetFile", entry.AssetFile);
             writer.WriteString("assetSha256", entry.AssetSha256);
+            if (entry.Checks is { } checks)
+            {
+                writer.WriteStartObject("checks");
+                writer.WriteStartArray("hardFailures");
+                foreach (var name in checks.HardFailures) writer.WriteStringValue(name);
+                writer.WriteEndArray();
+                if (checks.Speaker is { } speaker) writer.WriteString("speaker", OutcomeName(speaker));
+                if (checks.Words is { } words) writer.WriteString("words", OutcomeName(words));
+                writer.WriteEndObject();
+            }
             writer.WriteString("createdAt", Seconds(entry.CreatedAt).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
             if (entry.EstimateUsd is { } usd) writer.WriteString("estimateUSD", usd);
             writer.WriteNumber("frames", entry.Frames);
@@ -205,6 +255,16 @@ internal static class VoiceLabTakeJournal
             if (root.TryGetProperty("alignment", out var timing) && timing.ValueKind != JsonValueKind.Null)
                 alignment = new(timing.GetProperty("recovered").GetBoolean(), Array.AsReadOnly(timing.GetProperty("characters").EnumerateArray()
                     .Select(item => new VoiceLabTakeJournalTiming(Text(item, "character"), item.GetProperty("start").GetDouble(), item.GetProperty("end").GetDouble())).ToArray()));
+            VoiceLabTakeJournalChecks? checks = null;
+            if (root.TryGetProperty("checks", out var verdict) && verdict.ValueKind != JsonValueKind.Null)
+            {
+                static VoiceLabTakeJournalOutcome? Outcome(JsonElement element, string name) => Optional(element, name) switch
+                {
+                    null => null, "passed" => VoiceLabTakeJournalOutcome.Passed, "failed" => VoiceLabTakeJournalOutcome.Failed, _ => throw new FormatException()
+                };
+                checks = new(Outcome(verdict, "speaker"), Outcome(verdict, "words"),
+                    Array.AsReadOnly(verdict.GetProperty("hardFailures").EnumerateArray().Select(item => item.GetString() ?? throw new FormatException()).ToArray()));
+            }
             var receipt = root.GetProperty("receipt");
             var created = Text(root, "createdAt");
             if (!DateTimeOffset.TryParseExact(created, "yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var createdAt)) return null;
@@ -212,7 +272,7 @@ internal static class VoiceLabTakeJournal
                 Text(root, "recordID"), Text(root, "voiceID"), Text(root, "modelID"), Text(root, "language"), Text(root, "requestText"),
                 Text(root, "previousText"), Text(root, "nextText"), root.GetProperty("pace").GetDouble(), root.GetProperty("seed").GetUInt32(),
                 root.GetProperty("sampleRate").GetInt32(), root.GetProperty("frames").GetInt64(), alignment,
-                new(Text(receipt, "provider"), Text(receipt, "region"), Text(receipt, "endpoint")), Optional(root, "estimateUSD"), createdAt);
+                new(Text(receipt, "provider"), Text(receipt, "region"), Text(receipt, "endpoint")), Optional(root, "estimateUSD"), createdAt) { Checks = checks };
         }
         catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return null; }
     }
@@ -273,6 +333,7 @@ internal static class VoiceLabTakeJournal
         return folder;
     }
 
+    private static string OutcomeName(VoiceLabTakeJournalOutcome outcome) => outcome == VoiceLabTakeJournalOutcome.Passed ? "passed" : "failed";
     private static DateTimeOffset Seconds(DateTimeOffset value) => new(value.UtcTicks - value.UtcTicks % TimeSpan.TicksPerSecond, TimeSpan.Zero);
     private static string RegionName(ElevenLabsRegion region) => region switch
     {

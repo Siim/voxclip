@@ -10,15 +10,19 @@ replies.
 value `fill`. Each platform writes them with its own paid-asset writer, whose
 canonical 44-byte WAV must hash to `sha256`. `entries` is then written through the
 journal; the "missing" entry has no asset, and the "wrong frames" entry claims
-more frames than its file holds.
+more frames than its file holds. Three entries carry `checks`, how the take did in
+its own checks: `speaker` and `words` are `passed` or `failed`, each left out when
+that check did not run on the take alone, and `hardFailures` lists the failures the
+same audio repeats (`transcript`, `clipping`, `speaker`, and `timing` for timing that
+could not be recovered).
 
 Each `parse` case decodes and validates one entry against `projectId`. A valid
 entry must encode back to the same keys and values (numbers compared by value;
-`providerRequestID`, `alignment` and `estimateUSD` are left out when absent).
-Each `match` case looks up the newest entry over `key` (record, clone, model,
-language, words as sent, words before and after, and pace rounded to 0.01) whose
-asset is intact, leaving out the asset files in `claimed`; `expected` is its
-`assetFile`, or null.
+`providerRequestID`, `alignment`, `checks` and `estimateUSD` are left out when
+absent). Each `match` case looks up the newest entry over `key` (record, clone,
+model, language, words as sent, words before and after, and pace rounded to 0.01)
+whose asset is intact and whose `checks`, if any, list no hard failure, leaving out
+the asset files in `claimed`; `expected` is its `assetFile`, or null.
 
 `tools/fixtures/voice-lab/generate_take_journal.py` writes the file; CI runs it and
 fails on any drift, so change the generator, not the JSON. An asset's `sha256` is the

@@ -2,7 +2,7 @@
   "schema": "voxclip-take-journal-cases/1",
   "entrySchema": "voxclip-take-journal/1",
   "projectId": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11",
-  "caseCount": 26,
+  "caseCount": 35,
   "assets": [
     {
       "assetId": "0f6a1c2e-1111-4a00-8000-000000000001",
@@ -38,6 +38,27 @@
       "sampleRate": 24000,
       "fill": 7,
       "sha256": "a4bc7ce8bae3bf39cff372131e5e47caadec0644622ba45ca4304a161776f7e4"
+    },
+    {
+      "assetId": "0f6a1c2e-7777-4a00-8000-000000000007",
+      "frames": 240,
+      "sampleRate": 24000,
+      "fill": 11,
+      "sha256": "8401dacc05bbeba1f2638201b1786a12c51c6d53da44c2fc5bae71e91141d19a"
+    },
+    {
+      "assetId": "0f6a1c2e-8888-4a00-8000-000000000008",
+      "frames": 240,
+      "sampleRate": 24000,
+      "fill": 13,
+      "sha256": "ec4e3c0b1bc7f99c7882490daf3e325d16c6eb2160d074638f8c2ecca5463908"
+    },
+    {
+      "assetId": "0f6a1c2e-aaaa-4a00-8000-00000000000a",
+      "frames": 240,
+      "sampleRate": 24000,
+      "fill": 17,
+      "sha256": "f79735c7057d11f3128ba42d2c6d7bfc838234c85f40899dc21fc2ca5c7f7a0f"
     }
   ],
   "entries": [
@@ -221,6 +242,92 @@
         ]
       },
       "estimateUSD": "0"
+    },
+    {
+      "schema": "voxclip-take-journal/1",
+      "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-7777-4a00-8000-000000000007.wav",
+      "assetSha256": "8401dacc05bbeba1f2638201b1786a12c51c6d53da44c2fc5bae71e91141d19a",
+      "requestID": "7a1b2c3d-1e2f-4a3b-9c4d-5e6f70819207",
+      "recordID": "fixture-record",
+      "voiceID": "fixtureOwnVoice",
+      "modelID": "eleven_v3",
+      "language": "en",
+      "requestText": "Checked",
+      "previousText": "before",
+      "nextText": "after",
+      "pace": 1.0,
+      "seed": 4294967295,
+      "sampleRate": 24000,
+      "frames": 240,
+      "receipt": {
+        "provider": "elevenlabs",
+        "region": "default",
+        "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+      },
+      "createdAt": "2026-11-21T00:30:00Z",
+      "checks": {
+        "hardFailures": [],
+        "speaker": "passed",
+        "words": "passed"
+      }
+    },
+    {
+      "schema": "voxclip-take-journal/1",
+      "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-8888-4a00-8000-000000000008.wav",
+      "assetSha256": "ec4e3c0b1bc7f99c7882490daf3e325d16c6eb2160d074638f8c2ecca5463908",
+      "requestID": "8a1b2c3d-1e2f-4a3b-9c4d-5e6f70819208",
+      "recordID": "fixture-record",
+      "voiceID": "fixtureOwnVoice",
+      "modelID": "eleven_v3",
+      "language": "en",
+      "requestText": "Checked",
+      "previousText": "before",
+      "nextText": "after",
+      "pace": 1.0,
+      "seed": 4294967295,
+      "sampleRate": 24000,
+      "frames": 240,
+      "receipt": {
+        "provider": "elevenlabs",
+        "region": "default",
+        "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+      },
+      "createdAt": "2026-11-21T00:31:00Z",
+      "checks": {
+        "hardFailures": [
+          "transcript"
+        ],
+        "words": "failed"
+      }
+    },
+    {
+      "schema": "voxclip-take-journal/1",
+      "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-aaaa-4a00-8000-00000000000a.wav",
+      "assetSha256": "f79735c7057d11f3128ba42d2c6d7bfc838234c85f40899dc21fc2ca5c7f7a0f",
+      "requestID": "9a1b2c3d-1e2f-4a3b-9c4d-5e6f70819209",
+      "recordID": "fixture-record",
+      "voiceID": "fixtureOwnVoice",
+      "modelID": "eleven_v3",
+      "language": "en",
+      "requestText": "Unlike",
+      "previousText": "before",
+      "nextText": "after",
+      "pace": 1.0,
+      "seed": 4294967295,
+      "sampleRate": 24000,
+      "frames": 240,
+      "receipt": {
+        "provider": "elevenlabs",
+        "region": "default",
+        "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+      },
+      "createdAt": "2026-11-21T00:32:00Z",
+      "checks": {
+        "hardFailures": [
+          "speaker"
+        ],
+        "speaker": "failed"
+      }
     }
   ],
   "cases": [
@@ -452,6 +559,56 @@
       },
       "claimed": [],
       "expected": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-6666-4a00-8000-000000000006.wav"
+    },
+    {
+      "id": "newer-take-that-failed-its-words-is-skipped",
+      "kind": "match",
+      "key": {
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Checked",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0
+      },
+      "claimed": [],
+      "expected": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-7777-4a00-8000-000000000007.wav"
+    },
+    {
+      "id": "a-failed-take-is-never-the-fallback",
+      "kind": "match",
+      "key": {
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Checked",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0
+      },
+      "claimed": [
+        "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-7777-4a00-8000-000000000007.wav"
+      ],
+      "expected": null
+    },
+    {
+      "id": "only-take-failed-its-speaker-check",
+      "kind": "match",
+      "key": {
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Unlike",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0
+      },
+      "claimed": [],
+      "expected": null
     },
     {
       "id": "provider-timing-round-trips",
@@ -1097,6 +1254,333 @@
           ]
         },
         "estimateUSD": "about a cent"
+      },
+      "valid": false
+    },
+    {
+      "id": "passed-checks-round-trip",
+      "kind": "parse",
+      "entry": {
+        "schema": "voxclip-take-journal/1",
+        "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-7777-4a00-8000-000000000007.wav",
+        "assetSha256": "8401dacc05bbeba1f2638201b1786a12c51c6d53da44c2fc5bae71e91141d19a",
+        "requestID": "7a1b2c3d-1e2f-4a3b-9c4d-5e6f70819207",
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Checked",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0,
+        "seed": 4294967295,
+        "sampleRate": 24000,
+        "frames": 240,
+        "receipt": {
+          "provider": "elevenlabs",
+          "region": "default",
+          "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+        },
+        "createdAt": "2026-11-21T00:30:00Z",
+        "checks": {
+          "hardFailures": [],
+          "speaker": "passed",
+          "words": "passed"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "failed-checks-round-trip",
+      "kind": "parse",
+      "entry": {
+        "schema": "voxclip-take-journal/1",
+        "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-8888-4a00-8000-000000000008.wav",
+        "assetSha256": "ec4e3c0b1bc7f99c7882490daf3e325d16c6eb2160d074638f8c2ecca5463908",
+        "requestID": "8a1b2c3d-1e2f-4a3b-9c4d-5e6f70819208",
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Checked",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0,
+        "seed": 4294967295,
+        "sampleRate": 24000,
+        "frames": 240,
+        "receipt": {
+          "provider": "elevenlabs",
+          "region": "default",
+          "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+        },
+        "createdAt": "2026-11-21T00:31:00Z",
+        "checks": {
+          "hardFailures": [
+            "transcript"
+          ],
+          "words": "failed"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "unrecovered-timing-round-trips",
+      "kind": "parse",
+      "entry": {
+        "schema": "voxclip-take-journal/1",
+        "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-1111-4a00-8000-000000000001.wav",
+        "assetSha256": "6335bcd2ec339b8d1e9223e247b613fabde7ec6ffe9321583caf85e69821330f",
+        "requestID": "22ec0b66-1e2f-4a3b-9c4d-5e6f70819201",
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Hello",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0,
+        "seed": 4294967295,
+        "sampleRate": 24000,
+        "frames": 240,
+        "receipt": {
+          "provider": "elevenlabs",
+          "region": "default",
+          "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+        },
+        "createdAt": "2026-11-21T00:24:07Z",
+        "providerRequestID": "req_fixture_older",
+        "alignment": {
+          "recovered": false,
+          "characters": [
+            {
+              "character": "H",
+              "start": 0.1,
+              "end": 0.2
+            },
+            {
+              "character": "e",
+              "start": 0.2,
+              "end": 0.3
+            },
+            {
+              "character": "l",
+              "start": 0.3,
+              "end": 0.4
+            },
+            {
+              "character": "l",
+              "start": 0.4,
+              "end": 0.5
+            },
+            {
+              "character": "o",
+              "start": 0.5,
+              "end": 0.6
+            }
+          ]
+        },
+        "estimateUSD": "0.0125",
+        "checks": {
+          "hardFailures": [
+            "timing"
+          ],
+          "words": "failed"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "unknown-check-outcome",
+      "kind": "parse",
+      "entry": {
+        "schema": "voxclip-take-journal/1",
+        "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-1111-4a00-8000-000000000001.wav",
+        "assetSha256": "6335bcd2ec339b8d1e9223e247b613fabde7ec6ffe9321583caf85e69821330f",
+        "requestID": "22ec0b66-1e2f-4a3b-9c4d-5e6f70819201",
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Hello",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0,
+        "seed": 4294967295,
+        "sampleRate": 24000,
+        "frames": 240,
+        "receipt": {
+          "provider": "elevenlabs",
+          "region": "default",
+          "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+        },
+        "createdAt": "2026-11-21T00:24:07Z",
+        "providerRequestID": "req_fixture_older",
+        "alignment": {
+          "recovered": false,
+          "characters": [
+            {
+              "character": "H",
+              "start": 0.1,
+              "end": 0.2
+            },
+            {
+              "character": "e",
+              "start": 0.2,
+              "end": 0.3
+            },
+            {
+              "character": "l",
+              "start": 0.3,
+              "end": 0.4
+            },
+            {
+              "character": "l",
+              "start": 0.4,
+              "end": 0.5
+            },
+            {
+              "character": "o",
+              "start": 0.5,
+              "end": 0.6
+            }
+          ]
+        },
+        "estimateUSD": "0.0125",
+        "checks": {
+          "hardFailures": [],
+          "speaker": "maybe"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "empty-failure-name",
+      "kind": "parse",
+      "entry": {
+        "schema": "voxclip-take-journal/1",
+        "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-1111-4a00-8000-000000000001.wav",
+        "assetSha256": "6335bcd2ec339b8d1e9223e247b613fabde7ec6ffe9321583caf85e69821330f",
+        "requestID": "22ec0b66-1e2f-4a3b-9c4d-5e6f70819201",
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Hello",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0,
+        "seed": 4294967295,
+        "sampleRate": 24000,
+        "frames": 240,
+        "receipt": {
+          "provider": "elevenlabs",
+          "region": "default",
+          "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+        },
+        "createdAt": "2026-11-21T00:24:07Z",
+        "providerRequestID": "req_fixture_older",
+        "alignment": {
+          "recovered": false,
+          "characters": [
+            {
+              "character": "H",
+              "start": 0.1,
+              "end": 0.2
+            },
+            {
+              "character": "e",
+              "start": 0.2,
+              "end": 0.3
+            },
+            {
+              "character": "l",
+              "start": 0.3,
+              "end": 0.4
+            },
+            {
+              "character": "l",
+              "start": 0.4,
+              "end": 0.5
+            },
+            {
+              "character": "o",
+              "start": 0.5,
+              "end": 0.6
+            }
+          ]
+        },
+        "estimateUSD": "0.0125",
+        "checks": {
+          "hardFailures": [
+            ""
+          ],
+          "words": "failed"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "checks-without-failures",
+      "kind": "parse",
+      "entry": {
+        "schema": "voxclip-take-journal/1",
+        "assetFile": "8be1e34a-6c1d-4e0a-9b52-3f0d2a7c9e11/0f6a1c2e-1111-4a00-8000-000000000001.wav",
+        "assetSha256": "6335bcd2ec339b8d1e9223e247b613fabde7ec6ffe9321583caf85e69821330f",
+        "requestID": "22ec0b66-1e2f-4a3b-9c4d-5e6f70819201",
+        "recordID": "fixture-record",
+        "voiceID": "fixtureOwnVoice",
+        "modelID": "eleven_v3",
+        "language": "en",
+        "requestText": "Hello",
+        "previousText": "before",
+        "nextText": "after",
+        "pace": 1.0,
+        "seed": 4294967295,
+        "sampleRate": 24000,
+        "frames": 240,
+        "receipt": {
+          "provider": "elevenlabs",
+          "region": "default",
+          "endpoint": "v1/text-to-speech/fixtureOwnVoice/with-timestamps"
+        },
+        "createdAt": "2026-11-21T00:24:07Z",
+        "providerRequestID": "req_fixture_older",
+        "alignment": {
+          "recovered": false,
+          "characters": [
+            {
+              "character": "H",
+              "start": 0.1,
+              "end": 0.2
+            },
+            {
+              "character": "e",
+              "start": 0.2,
+              "end": 0.3
+            },
+            {
+              "character": "l",
+              "start": 0.3,
+              "end": 0.4
+            },
+            {
+              "character": "l",
+              "start": 0.4,
+              "end": 0.5
+            },
+            {
+              "character": "o",
+              "start": 0.5,
+              "end": 0.6
+            }
+          ]
+        },
+        "estimateUSD": "0.0125",
+        "checks": {
+          "speaker": "passed",
+          "words": "passed"
+        }
       },
       "valid": false
     }

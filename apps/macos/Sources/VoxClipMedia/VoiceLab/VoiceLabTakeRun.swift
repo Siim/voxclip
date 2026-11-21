@@ -416,7 +416,13 @@ public actor VoiceLabTakeRun {
                                                          acceptance: qaAccepted)
                     qaReceipt = recognized.receipt
                     heard = recognized.words
-                    let timing = try await recoverTiming(recognized.words, samples: samples, input: value.input)
+                    let timing: [VoiceLabCharacterTiming]
+                    do { timing = try await recoverTiming(recognized.words, samples: samples, input: value.input) }
+                    catch {
+                        // What the take says can't be lined up with the text: its audio fails this way every time.
+                        if !Task.isCancelled { await journalChecks(.timingUnrecovered, of: paid) }
+                        throw error
+                    }
                     result = VoiceLabAudioResult(pcm: result.pcm, sampleRate: result.sampleRate, alignment: timing, receipt: result.receipt)
                     generated = result
                     // The journal keeps the recovered timing, so adopting this take later needs no recovery.
@@ -442,6 +448,7 @@ public actor VoiceLabTakeRun {
                     }
                 } catch VoiceConsentError.speakerMismatch {
                     await pool.measured(id: take.synthesis.requestID, voiced: [], record: value.record, phrase: phraseID, passed: false)
+                    await journalChecks(.speakerFailed, of: paid)
                     // This take has already failed locally. Do not spend its approved Scribe request.
                     let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.speaker])
                     rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
@@ -455,6 +462,7 @@ public actor VoiceLabTakeRun {
                     await pool.measured(id: take.synthesis.requestID, voiced: voiced, record: value.record,
                                         phrase: phraseID, passed: score >= value.record.speaker.threshold)
                     if score < value.record.speaker.threshold, qaReceipt == nil {
+                        await journalChecks(.speakerFailed, of: paid)
                         let qa = VoiceLabTakeQAResult(values: VoiceLabQA(speakerScore: score), failures: [.speaker])
                         rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
                             receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]), generated: generated, quote: take,
@@ -485,6 +493,8 @@ public actor VoiceLabTakeRun {
                     speakerScore: score, threshold: value.record.speaker.threshold,
                     audioTags: VoiceLabAudioTags.supports(value.input.modelID) ? value.input.audioTags : [],
                     replacementWords: VoiceLabTakeQuality.replacementWords(text: value.input.text, items: value.input.items, window: value.input.window))
+                // A take that dropped or changed words, or clipped, does so again: the next run never adopts it.
+                await journalChecks(.init(qa, speakerScore: score, threshold: value.record.speaker.threshold), of: paid)
                 let flatness = try VoiceLabLoudness.flatness(processed.trimmed, sampleRate: processed.sampleRate)
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,
                     matchRatio: qa.values.transcriptMatch ?? 0, flatness: flatness)
@@ -619,6 +629,16 @@ public actor VoiceLabTakeRun {
                                                    projectID: storage.projectId, paidRoot: storage.paidRoot)) != nil
         }.value
         if !updated { await client.note("voicelab take journal timing unwritten") }
+    }
+    /// How the take did in its checks, in its journal entry (`VoiceLabTakeJournalEntry.Checks`), so a take whose audio
+    /// fails them is never adopted by a later run. A pooled voice check's verdict is the group's and is not written.
+    private func journalChecks(_ checks: VoiceLabTakeJournalEntry.Checks, of paid: VoiceLabAsset) async {
+        let storage = storage
+        let updated = await Task.detached(priority: .utility) {
+            (try? VoiceLabTakeJournal.updateChecks(assetFile: paid.file, checks: checks, projectID: storage.projectId,
+                                                   paidRoot: storage.paidRoot)) != nil
+        }.value
+        if !updated { await client.note("voicelab take journal checks unwritten") }
     }
     private func policy(_ record: VoiceConsentRecord) -> OwnVoicePolicy {
         OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true,

@@ -34,8 +34,9 @@ public struct VoiceLabTakeJournalKey: Sendable, Hashable {
 }
 
 /// One paid ElevenLabs take as it arrived, written beside its PCM the moment it is stored (voice-lab §3 "Paid takes are
-/// kept"): the asset, the request and its receipt, every input the request was made from, and its character timing once
-/// known. `shared/fixtures/voice-lab/take-journal-cases.json` pins the shape on both platforms.
+/// kept"): the asset, the request and its receipt, every input the request was made from, its character timing once
+/// known, and how it did in its checks once they settle. `shared/fixtures/voice-lab/take-journal-cases.json` pins the
+/// shape on both platforms.
 public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
     public static let currentSchema = "voxclip-take-journal/1"
 
@@ -57,6 +58,32 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
         public let endpoint: String
         public init(provider: String, region: String, endpoint: String) { self.provider = provider; self.region = region; self.endpoint = endpoint }
     }
+    /// How the take did in its own checks, written when each settles. The same audio fails them the same way, so an entry
+    /// with a hard failure is never adopted: adopting it would buy its word check again only to fail again.
+    public struct Checks: Codable, Sendable, Equatable {
+        public enum Outcome: String, Codable, Sendable { case passed, failed }
+        /// The take's own speaker check; nil when it was not measured alone (a short take's check is pooled with other
+        /// takes', a verdict on the group rather than on this take).
+        public var speaker: Outcome?
+        /// The paid word check; nil when it never ran (a take that failed its speaker check first).
+        public var words: Outcome?
+        /// The failures the same audio repeats: `VoiceLabTakeQAFailure` raw values other than `loudness`, and `timing` when
+        /// the take's timing could not be recovered from what its word check heard (voice-lab §8.5).
+        public var hardFailures: [String]
+        public init(speaker: Outcome?, words: Outcome?, hardFailures: [String]) {
+            self.speaker = speaker; self.words = words; self.hardFailures = hardFailures
+        }
+        /// The verdict of the take's word check and acoustics (`VoiceLabTakeQuality.evaluate`).
+        init(_ qa: VoiceLabTakeQAResult, speakerScore: Double?, threshold: Double) {
+            self.init(speaker: speakerScore.map { $0 >= threshold ? .passed : .failed },
+                      words: qa.failures.contains(.transcript) ? .failed : .passed,
+                      hardFailures: qa.hardFailures.map(\.rawValue))
+        }
+        /// The take's own speaker check failed before its word check was sent.
+        static let speakerFailed = Checks(speaker: .failed, words: nil, hardFailures: [VoiceLabTakeQAFailure.speaker.rawValue])
+        /// Its word check heard words that could not be lined up with the text, here or on device.
+        static let timingUnrecovered = Checks(speaker: nil, words: .failed, hardFailures: ["timing"])
+    }
 
     public let schema: String
     /// `<projectId>/<assetId>.wav` under the paid root: mono PCM16 as the provider returned it.
@@ -77,20 +104,23 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
     public let sampleRate: Int
     public let frames: Int
     public var alignment: Alignment?
+    /// Nil until the take's checks settle, and for a take whose run stopped before they did: such a take is adopted.
+    public var checks: Checks?
     public let receipt: Receipt
     /// The synthesis request's quoted price in US dollars, as a decimal string; nil when it was unknown.
     public let estimateUSD: String?
     public let createdAt: Date
 
     public init(assetFile: String, assetSha256: String, requestID: UUID, providerRequestID: String?, key: VoiceLabTakeJournalKey,
-                seed: UInt32, sampleRate: Int, frames: Int, alignment: Alignment?, receipt: Receipt, estimateUSD: Decimal?, createdAt: Date) {
+                seed: UInt32, sampleRate: Int, frames: Int, alignment: Alignment?, checks: Checks? = nil, receipt: Receipt,
+                estimateUSD: Decimal?, createdAt: Date) {
         schema = Self.currentSchema
         self.assetFile = assetFile; self.assetSha256 = assetSha256
         self.requestID = requestID.uuidString.lowercased(); self.providerRequestID = providerRequestID
         recordID = key.recordID; voiceID = key.voiceID; modelID = key.modelID; language = key.language
         requestText = key.requestText; previousText = key.previousText; nextText = key.nextText; pace = key.pace
         self.seed = seed; self.sampleRate = sampleRate; self.frames = frames; self.alignment = alignment
-        self.receipt = receipt
+        self.checks = checks; self.receipt = receipt
         self.estimateUSD = estimateUSD.map { NSDecimalNumber(decimal: $0).stringValue }
         self.createdAt = createdAt
     }
@@ -101,6 +131,8 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
     }
     /// The asset's ID, the journal file's name.
     public var assetID: String { String((assetFile.split(separator: "/").last ?? "").dropLast(".wav".count)) }
+    /// False once a check failed in a way the same audio repeats (`Checks.hardFailures`).
+    public var adoptable: Bool { checks?.hardFailures.isEmpty ?? true }
     var timing: [VoiceLabCharacterTiming]? {
         alignment.map { $0.characters.map { VoiceLabCharacterTiming(character: $0.character, start: $0.start, end: $0.end) } }
     }
@@ -118,9 +150,10 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
 /// The journal of one project's paid takes, under `VoiceLab/<projectId>/takes/` (0700): `<assetId>.json` (0600), each
 /// written to a temporary file, flushed and renamed into place, so a crash leaves either the old entry or the new one and at
 /// most a `.partial` file that nothing reads. An entry is written when its PCM is stored and before any check that can
-/// fail; its timing is updated once recovered. A take run adopts an entry over the same words, voice and model for free
-/// (`match`), retention keeps its asset (`VoiceLabAssetRetention`), and the entry goes once the project uses the asset,
-/// or after `unusedLifetime`. No project-format change.
+/// fail; its timing is updated once recovered, and its checks once they settle. A take run adopts an entry over the same
+/// words, voice and model for free unless a check failed it (`match`), retention keeps its asset
+/// (`VoiceLabAssetRetention`), and the entry goes once the project uses the asset, or after `unusedLifetime`. No
+/// project-format change.
 public enum VoiceLabTakeJournal {
     static let folder = "takes"
     /// How long an entry the project never used stays adoptable (the lead's decision, 2026-11-21).
@@ -135,10 +168,23 @@ public enum VoiceLabTakeJournal {
     /// The entry of `assetFile` with its character timing, after the take's timing was recovered (voice-lab §8.5).
     public static func updateTiming(assetFile: String, timing: [VoiceLabCharacterTiming], recovered: Bool,
                                     projectID: String, paidRoot: URL) throws {
+        try update(assetFile: assetFile, projectID: projectID, paidRoot: paidRoot) { entry in
+            entry.alignment = .init(recovered: recovered, characters: timing.map { .init(character: $0.character, start: $0.start, end: $0.end) })
+        }
+    }
+
+    /// The entry of `assetFile` with how the take did in its checks, once they settle; a later run's verdict replaces it.
+    public static func updateChecks(assetFile: String, checks: VoiceLabTakeJournalEntry.Checks, projectID: String, paidRoot: URL) throws {
+        try update(assetFile: assetFile, projectID: projectID, paidRoot: paidRoot) { $0.checks = checks }
+    }
+
+    private static func update(assetFile: String, projectID: String, paidRoot: URL,
+                               _ change: (inout VoiceLabTakeJournalEntry) -> Void) throws {
         try withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { takes in
             let id = String((assetFile.split(separator: "/").last ?? "").dropLast(".wav".count))
             guard var entry = read(takes, "\(id).json", projectID: projectID), entry.assetFile == assetFile else { throw VoiceLabError.invalidInput }
-            entry.alignment = .init(recovered: recovered, characters: timing.map { .init(character: $0.character, start: $0.start, end: $0.end) })
+            change(&entry)
+            try validate(entry, projectID: projectID)
             try store(entry, in: takes)
         }
     }
@@ -148,12 +194,12 @@ public enum VoiceLabTakeJournal {
         (try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { takes in entries(takes, projectID: projectID) }) ?? []
     }
 
-    /// The newest entry over `key` whose asset is still there with its frame count and SHA-256, leaving out the asset files
-    /// in `claimed` (already taken by a live run); nil when none.
+    /// The newest adoptable entry over `key` (no check failed it) whose asset is still there with its frame count and
+    /// SHA-256, leaving out the asset files in `claimed` (already taken by a live run); nil when none.
     public static func match(_ key: VoiceLabTakeJournalKey, projectID: String, paidRoot: URL,
                              excluding claimed: Set<String> = []) -> VoiceLabTakeJournalEntry? {
         let candidates = list(projectID: projectID, paidRoot: paidRoot)
-            .filter { $0.key == key && !claimed.contains($0.assetFile) && $0.sampleRate == 24_000 }
+            .filter { $0.key == key && $0.adoptable && !claimed.contains($0.assetFile) && $0.sampleRate == 24_000 }
             .sorted { $0.createdAt == $1.createdAt ? $0.assetFile > $1.assetFile : $0.createdAt > $1.createdAt }
         return candidates.first { (try? pcm(of: $0, projectID: projectID, paidRoot: paidRoot)) != nil }
     }
@@ -216,7 +262,8 @@ public enum VoiceLabTakeJournal {
               entry.pace.isFinite, entry.pace > 0, (8_000...192_000).contains(entry.sampleRate),
               (1...VoiceLabAssetStore.maxFrames).contains(entry.frames),
               entry.estimateUSD.map({ Decimal(string: $0, locale: Locale(identifier: "en_US_POSIX")) != nil }) ?? true,
-              entry.alignment?.characters.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start }) ?? true
+              entry.alignment?.characters.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start }) ?? true,
+              entry.checks?.hardFailures.allSatisfy({ (1...64).contains($0.count) }) ?? true
         else { throw VoiceLabError.invalidInput }
     }
 
