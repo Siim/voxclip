@@ -1,4 +1,5 @@
 #if DEBUG
+import AVFoundation
 import Foundation
 import VoxClipCore
 import VoxClipMedia
@@ -90,6 +91,10 @@ extension DebugRewriteSmoke {
         Definition(id: "S-revoice-whole", title: "a heavily rewritten clip: How should it sound? → Revoice Whole Clip → Review → Use, one undo step, saved",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
             try await harness.revoiceWholeClip()
+        },
+        Definition(id: "S-revoice-whole-selected-voice", title: "one click reaches lip sync without checking the generated speaker or retrying",
+                   requiresCompletion: false, fixture: wholeClipFixture()) { harness in
+            try await harness.revoiceWholeClip(driftFirstTake: true)
         },
         Definition(id: "S-revoice-whole-cuts", title: "a rewritten clip with a cut filler before each sentence: the parts tile the clip and reach Review",
                    requiresCompletion: false, fixture: wholeClipCutsFixture()) { harness in
@@ -235,14 +240,18 @@ extension DebugRewriteSmoke.Harness {
         let expected = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
                                                   videoSeconds: LipsyncLimits.uploadSeconds(seconds),
                                                   lipsync: .lipsync2, catalog: catalog)
+        let expectedMaximum: Decimal? = if let voice = expected.voice.usd, let lipsync = expected.lipsync.usd,
+                                           let check = RewriteSession.wordCheckUSD(catalog) {
+            voice + check * Decimal(script.parts.count) + lipsync
+        } else { nil }
         let chip = session.wholeClipChipAction()?.title ?? ""
         let primary = session.wholeClipPrimary()?.title ?? ""
         let price = quote.wholeUSD.map(VoiceLabCostPresentation.format) ?? "none"
         makeItAppend([
             wholeClipCheck("W1", session.task.cards.contains(.wholeClip) && whole.phase == .choose && quote.reason != nil
-                    && quote.wholeUSD == expected.usd && quote.patchUSD != nil && chip == "Revoice the Whole Clip · " + price
+                    && quote.wholeUSD == expectedMaximum && quote.patchUSD != nil && chip == "Revoice the Whole Clip · " + price
                     && primary == "Revoice Whole Clip · " + price,
-                "card \(session.task.cards.contains(.wholeClip)) · reason \(quote.reason.map(WholeClipRevoice.callout) ?? "none") · whole \(price) (tables \(expected.usd.map(VoiceLabCostPresentation.format) ?? "none")) · patch \(quote.patchUSD.map(VoiceLabCostPresentation.format) ?? "none") · [\(chip)] [\(primary)]"),
+                "card \(session.task.cards.contains(.wholeClip)) · reason \(quote.reason.map(WholeClipRevoice.callout) ?? "none") · whole \(price) (tables \(expectedMaximum.map(VoiceLabCostPresentation.format) ?? "none")) · patch \(quote.patchUSD.map(VoiceLabCostPresentation.format) ?? "none") · [\(chip)] [\(primary)]"),
         ])
         return primary
     }
@@ -339,6 +348,40 @@ extension DebugRewriteSmoke.Harness {
             self.recordFitting(plan, edited: try? VoiceLabOutputPlanner.build(project, scope: .clip("clip-whole")))
         }
         editor?.wholeClipSmoke = { _, whole in whole.backend?.match = { _ in .init(take: 0.81, anchorBaseline: 0.54, realSpeech: nil) } }
+        if recoveryPhase == "reopen" {
+            guard let session else { throw DebugRewriteSmoke.Failure.setup("no reopened Rewrite") }
+            session.start()
+            await settle()
+            session.showProposal()
+            guard let whole = session.wholeClip, whole.isStopped, whole.restoredParts > 0,
+                  whole.restoredPartsBack == whole.restoredParts, await connector?.records.isEmpty == true else {
+                throw DebugRewriteSmoke.Failure.setup("the reopened clip did not restore all voice parts and its proposal")
+            }
+            await whole.refreshQuote()
+            session.showProposal()
+            try await observe("reopen the clip before spending anything")
+            let playButton = steps.last?.snapshot.controls.contains { $0.source == "evidence" && $0.id == "wholeClipPlaySavedVoice" && $0.enabled } == true
+            var decodedParts = 0
+            try await session.previewSavedVoice { wav in
+                let player = try AVAudioPlayer(data: wav)
+                player.volume = 0
+                guard player.duration > 0, player.play() else { throw DebugRewriteSmoke.Failure.setup("unplayable saved voice") }
+                player.stop()
+                decodedParts += 1
+            }
+            let playable = playButton && decodedParts == whole.restoredParts && speechRequests == 0 && RewriteSmokeHTTP.script.withLock { $0.checks } == 0
+            guard let retry = session.wholeClipPrimary(retry: true) else { throw DebugRewriteSmoke.Failure.setup("no recovery action") }
+            let checksOnly = whole.restoredVoiceChosen && whole.retryUSD != nil && whole.retryUSD == whole.restoredRetryVoiceUSD
+            try await act("reopen and click [\(retry.title)]", clicked: retry.id) {
+                retry.perform(); await whole.waitForRun()
+            }
+            let submissions = await fal.http.submits, line = await fal.line()
+            makeItAppend([wholeClipCheck("WF-reopen", playable && checksOnly && whole.phase == .review && speechRequests == 0 && submissions == 0
+                && fal.paymentPermissions == [false] && fal.imports.count == 1 && fal.imports[0].recovered,
+                "\(phaseText(whole)) · \(decodedParts) playable saved parts before retry · \(speechRequests) new speech requests · \(line) · recovery button: \(retry.title)")])
+            try await useAndCheck(session, whole, model: .lipsync2)
+            return
+        }
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
         let before = editor?.project.voiceLab.segments.count ?? 0
@@ -349,13 +392,31 @@ extension DebugRewriteSmoke.Harness {
         try await useAndCheck(session, whole, model: .lipsync2)
     }
 
-    func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false, tightened: Bool = false, short: Bool = false) async throws {
+    func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false, tightened: Bool = false, short: Bool = false,
+                         driftFirstTake: Bool = false) async throws {
         let lipsync = installWholeClipStandIn()
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
         let before = editor?.project.voiceLab.segments.count ?? 0
+        if driftFirstTake {
+            RewriteSmokeHTTP.script.withLock { $0.rejectedSpeakerRequests = [$0.syntheses + 1] }
+            whole.backend?.match = { _ in nil }
+        }
+        let requestsBefore = speechRequests
+        let checksBefore = RewriteSmokeHTTP.script.withLock { $0.checks }
         try await runWholeClip(session, whole, title: primary)
         checkReview(whole, segmentsBefore: before)
+        if driftFirstTake {
+            let parts = session.wholeClipPlan?.phrases ?? []
+            let checked = RewriteSmokeHTTP.script.withLock { $0.checks } - checksBefore
+            let tookSelectedVoice = !parts.isEmpty && parts.allSatisfy { phrase in
+                phrase.takes.count == 1 && phrase.selected?.row.voiceCheck == .selectedVoice
+                    && phrase.selected?.row.qa?.values.speakerScore == nil
+            }
+            makeItAppend([wholeClipCheck("WV1", whole.phase == .review && tookSelectedVoice && whole.match == nil
+                && speechRequests - requestsBefore == parts.count && checked == parts.count,
+                "\(phaseText(whole)) · \(parts.count) parts · \(speechRequests - requestsBefore) speech requests · \(checked) word checks")])
+        }
         if cuts { checkCutsAbsorbed(session, whole) }
         if midTake { checkMidTakeEdge(session, whole) }
         if tightened { checkEditedTimeline(session, whole) }

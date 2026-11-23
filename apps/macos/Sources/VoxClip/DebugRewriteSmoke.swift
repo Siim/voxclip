@@ -589,6 +589,12 @@ import VoxClipCore
 
         init(app: AppModel, directory: URL, scenario: String) { self.app = app; self.directory = directory; self.scenario = scenario }
 
+        var recoveryPhase: String? {
+            guard scenario == "S-revoice-whole-fal-short", let index = CommandLine.arguments.firstIndex(of: "-rewriteSmokeRecovery"),
+                  CommandLine.arguments.indices.contains(index + 1) else { return nil }
+            return CommandLine.arguments[index + 1]
+        }
+
         func open(_ fixture: Fixture) async throws {
             guard let shared = app.shared else { throw Failure.setup("shared resources missing") }
             RewriteSmokeHTTP.script.withLock { $0 = fixture.voice }
@@ -597,7 +603,13 @@ import VoxClipCore
             app.forgetRateCalibrationsForSmoke()
             let root = app.locations.root
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let (project, envelope) = try await DebugRewriteSmoke.project(fixture, root: root, shared: shared)
+            if let phase = recoveryPhase {
+                RewriteSmokeHTTP.script.withLock { $0.wordCheckCache = root; $0.replayChecks = phase == "reopen" }
+            }
+            let (generated, envelope) = try await DebugRewriteSmoke.project(fixture, root: root, shared: shared)
+            let saved = root.appendingPathComponent("before-rewrite.voxclip")
+            let project = recoveryPhase == "reopen" ? try JSONProjectStore.decode(Data(contentsOf: saved)) : generated
+            if recoveryPhase == "interrupt" { try JSONProjectStore.encode(project).write(to: saved, options: .atomic) }
             original = project
             let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
             editor.mediaResolved = true; editor.refresh()

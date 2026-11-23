@@ -97,7 +97,7 @@ extension RewriteSession {
         let remaining = retry ? session.retryUSD ?? usd : usd
         let price = remaining > 0 ? " · " + VoiceLabCostPresentation.format(remaining) : retry ? " · free" : ""
         return PanelAction(id: retry ? "wholeClipRetry" : "wholeClipRevoice", title: (retry ? "Try Again" : "Revoice Whole Clip") + price, priced: remaining > 0) { [weak self] in
-            self?.startWholeClip()
+            self?.startWholeClip(approved: remaining)
         }
     }
 
@@ -106,7 +106,7 @@ extension RewriteSession {
         guard let session = wholeClip, session.phase == .choose, session.keyAvailable, let usd = session.quote?.wholeUSD else { return nil }
         return PanelAction(id: "wholeClipChip", title: "Revoice the Whole Clip · " + VoiceLabCostPresentation.format(usd), priced: true) { [weak self] in
             self?.wholeClip?.wholeSelected = true
-            self?.startWholeClip()
+            self?.startWholeClip(approved: usd)
         }
     }
 
@@ -117,7 +117,7 @@ extension RewriteSession {
         guard let usd = session.quote?.wholeUSD else { return nil }
         return PanelAction(id: "wholeClipInstead", title: "Revoice the Whole Clip Instead · " + VoiceLabCostPresentation.format(usd), priced: true) { [weak self] in
             self?.wholeClip?.wholeSelected = true
-            self?.startWholeClip()
+            self?.startWholeClip(approved: usd)
         }
     }
 
@@ -222,8 +222,12 @@ extension RewriteSession {
         return first ? [patch, retry] : [retry, patch]
     }
 
-    func startWholeClip(automatic: Bool = false, budget: Decimal? = nil) {
+    func startWholeClip(automatic: Bool = false, budget: Decimal? = nil, approved: Decimal? = nil) {
         guard let session = wholeClip, let clip = wholeClipID, !session.running, !session.submissionUnconfirmed else { return }
+        if let approved {
+            let price = session.isStopped ? session.retryUSD : session.quote?.wholeUSD
+            guard let price, price <= approved else { return }
+        }
         editor.wholeClipPicks[clip] = WholeClipPick(whole: true, proposal: proposalID)
         session.start(automatic: automatic, budget: budget)
         editor.announce("Revoicing the whole clip.")
@@ -374,9 +378,7 @@ extension RewriteSession {
         }, lipsyncPrice: { [weak self] model in
             guard let self, let catalog = wholeClipCatalog, let seconds = wholeClipLipsyncSeconds else { return nil }
             return try WholeClipRevoice.lipsyncPrice(videoSeconds: LipsyncLimits.uploadSeconds(seconds), lipsync: model, catalog: catalog).usd
-        }, match: { [weak self] voice in
-            await self?.wholeClipMatch(voice)
-        }, play: { [weak self] original in
+        }, match: { _ in nil }, play: { [weak self] original in
             self?.playWholeClip(original: original)
         }, use: { [weak self] voice, synced, match in
             guard let self else { throw CancellationError() }
@@ -475,6 +477,8 @@ extension RewriteSession {
         let seconds = (edited.map { $0.mapTime(last.end) - $0.mapTime(first.start) } ?? (last.end - first.start)) + 2
         let price = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
                                                videoSeconds: LipsyncLimits.uploadSeconds(seconds), lipsync: model, catalog: catalog)
+        guard let wordCheckUSD = Self.wordCheckUSD(catalog) else { throw VoxClipError.sharedResourcesMissing }
+        let wordChecksUSD = wordCheckUSD * Decimal(script.parts.count)
         let patchCharacters = wholeClipVoiceHunks.reduce(0) { $0 + $1.newTokens.joined(separator: " ").unicodeScalars.count }
         let patch = takePlan?.estimate?.usd ?? (try? VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
                                                                              units: Double(max(1, patchCharacters)), catalog: catalog))?.usd
@@ -487,7 +491,7 @@ extension RewriteSession {
                      reason: WholeClipRevoice.reason(inputs), patchUSD: patch, phrases: includedVoice.count,
                      voiceUSD: price.voice.usd, lipsyncUSD: price.lipsync.usd,
                      voiceName: selected.map { VoiceLabSession.rebuildName($0.voiceName) } ?? "your voice",
-                     voiceNote: matched ? "matched to this video" : "")
+                     voiceNote: matched ? "matched to this video" : "", wordChecksUSD: wordChecksUSD)
     }
 
     private func retireWholeClipVoicePlan() {
@@ -610,7 +614,7 @@ extension RewriteSession {
                 throw Session.Unsent(error: Session.Stop.noVoice((blocked.blocked ?? "The voice is blocked.") + " Nothing new was sent."))
             }
             if !kept.unfinishedVoiceParts.isEmpty {
-                let approvedPrice = kept.unfinishedVoicePrice ?? wholeClip?.quote?.voiceUSD
+                let approvedPrice = kept.unfinishedVoicePrice ?? wholeClip?.quote?.voicePassUSD
                 await kept.prepareUnfinishedVoiceParts()
                 try Task.checkCancellation()
                 guard let approval = kept.approvalID, let approvedPrice, let freshPrice = kept.estimate?.usd else {
@@ -705,7 +709,6 @@ extension RewriteSession {
         if restored != nil { try holdRestoredVoicePrice(plan, approved: restoredApproval) }
         progress("\(plan.phrases.count == 1 ? "one take" : "\(plan.phrases.count) parts, one take")")
         await plan.start(approved: true, quoteID: approval)
-        try Task.checkCancellation()
         return try finishWholeClipVoice(plan, script: script, recordID: recordID)
     }
 
@@ -722,7 +725,6 @@ extension RewriteSession {
             guard let take = plan.automaticTake(phrase: phrase.id), let audio = take.row.audio, plan.select(take: take.id, phrase: phrase.id) else {
                 let row = phrase.takes.last?.row
                 let reason = phrase.blocked ?? row.flatMap(TakeFailurePresentation.reason(for:))
-                    ?? (row?.voiceCheck.evidence?.mode == .unmeasured ? "There wasn't enough speech to verify the voice for automatic use." : nil)
                     ?? (plan.problem.isEmpty ? "No verified take was available." : plan.problem)
                 let kept = plan.phrases.count - plan.unfinishedVoiceParts.count
                 let saved = kept > 0 ? " \(kept) verified \(kept == 1 ? "part is" : "parts are") kept for retry." : ""
@@ -951,21 +953,6 @@ extension RewriteSession {
     /// The anchor the baseline belongs to, named as Settings › Voices names it ("siim"), never the video's own voice.
     var wholeClipAnchorName: String {
         editor.app.voiceLabSession.anchorVoice(language: nil).map { VoiceLabSession.rebuildName($0.voiceName) } ?? "your voice"
-    }
-
-    private func wholeClipMatch(_ voice: WholeClipRevoiceSession.Voice) async -> WholeClipRevoiceRecord.Match? {
-        guard let plan = wholeClipPlan else { return nil }
-        let language = project.transcript?.language ?? "en"
-        guard let check = try? await editor.app.speakerModelLibrary.check(language: language) else { return nil }
-        var scores: [Double] = []
-        for phrase in plan.phrases {
-            guard let take = phrase.selected, let audio = take.row.audio, let input = plan.measuredInput(take: take.id),
-                  let score = await VoicePerVideoMatch.score(take: audio, input: input, check: check) else { continue }
-            scores.append(score)
-        }
-        guard !scores.isEmpty else { return nil }
-        let baseline = editor.app.voiceLabSession.perVideoBook.anchorBaseline?.score
-        return .init(take: scores.reduce(0, +) / Double(scores.count), anchorBaseline: baseline, realSpeech: nil)
     }
 
     /// ▶ Play the result, or A/B: the recording as it is, from the clip's first revoiced word.

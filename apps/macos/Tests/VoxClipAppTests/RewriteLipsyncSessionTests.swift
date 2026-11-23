@@ -64,6 +64,27 @@ struct RewriteLipsyncSessionTests {
         var lines: [String] = []
     }
 
+    @Test func aPendingQuoteNeedsItsOwnRecoverableProviderReceipt() throws {
+        let (_, offer, _) = try setup()
+        var attempt = try keptAttempt(offer)
+        attempt.keptResult = false
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = UUID().uuidString.lowercased(), now = attempt.submittedAt
+        func price(_ id: UUID, at date: Date, model: WholeClipRevoice.Lipsync = .sync3) -> Decimal? {
+            let key = WholeClipRevoiceLedger.LipsyncKey(voice: .init(script: "fixture", recordId: "fixture", model: "eleven_v4"), retime: 1, model: model)
+            return RewriteSavedProposal.PendingLipsync(key: key, quoteID: id, videoSHA256: attempt.videoSHA256, audioSHA256: attempt.audioSHA256)
+                .acceptedUSD(projectID: project, root: root, now: date)
+        }
+        #expect(price(offer.id, at: now) == nil)
+        try LipsyncAttemptStore.record(attempt, projectID: project, paidRoot: root)
+        #expect(price(offer.id, at: now) == attempt.estimate.usd)
+        #expect(price(UUID(), at: now) == nil)
+        #expect(price(offer.id, at: now, model: .lipsync2) == nil)
+        #expect(price(offer.id, at: now.addingTimeInterval(3600)) == nil)
+    }
+
     private func keptAttempt(_ offer: RewriteLipsyncSession.Offer) throws -> LipsyncAttempt {
         let json = """
             {"requestID":"11111111-2222-4333-8444-555555555555","provider":"fal","model":"fal-ai/sync-lipsync/v3",

@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import VoxClipCore
 
@@ -10,6 +11,31 @@ import VoxClipCore
         if let rewrite = model?.openRewrite, let session = rewrite.wholeClip {
             WholeClipRevoiceContent(rewrite: rewrite, session: session)
         }
+    }
+}
+
+@MainActor private struct SavedVoicePreview: View {
+    let rewrite: RewriteSession
+    @State private var playing = false
+    @State private var failed = false
+
+    var body: some View {
+        PanelButton(action: PanelAction(id: "wholeClipPlaySavedVoice", title: playing ? "Stop Preview" : "Play Saved Voice") {
+            failed = false; playing.toggle()
+        }, kind: .bordered)
+        .task(id: playing) {
+            guard playing else { return }
+            do {
+                try await rewrite.previewSavedVoice { wav in
+                    let player = try AVAudioPlayer(data: wav)
+                    guard player.play() else { throw VoiceLabError.invalidAudio }
+                    defer { player.stop() }
+                    while player.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+                }
+            } catch { if !Task.isCancelled { failed = true } }
+            if !Task.isCancelled { playing = false }
+        }
+        if failed { Text("Couldn’t play the saved voice. Nothing was sent.").foregroundStyle(DesignValues.color("status.warning")) }
     }
 }
 
@@ -98,7 +124,7 @@ import VoxClipCore
         guard let quote else { return [] }
         let voice = quote.voiceName + (quote.voiceNote.isEmpty ? "" : " (\(quote.voiceNote))")
         let seconds = WholeClipRevoiceSession.clock(quote.clipSeconds)
-        let sends = "Sends the clip's new words to ElevenLabs (\(quote.voiceUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), and its \(seconds) of video with the new audio to fal.ai \(WholeClipRevoice.Lipsync.standard.name) (\(quote.lipsyncUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), with your keys. Exports say “\(WholeClipRevoice.disclosureLine)”"
+        let sends = "Sends the clip's new words to ElevenLabs (\(quote.voicePassUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), and its \(seconds) of video with the new audio to fal.ai \(WholeClipRevoice.Lipsync.standard.name) (\(quote.lipsyncUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), with your keys. Exports say “\(WholeClipRevoice.disclosureLine)”"
         return ["All \(seconds) said again in \(voice), fitted to the clip's length, then lip synced. No seams.", sends]
     }
 
@@ -234,6 +260,7 @@ import VoxClipCore
             Text(restored).fixedSize(horizontal: false, vertical: true)
                 .columnLayoutEvidence("director.wholeClip.restored", text: restored)
         }
+        if rewrite.canPlaySavedWholeClipVoice { SavedVoicePreview(rewrite: rewrite) }
         if session.voice != nil, !session.stoppedForInputs {
             Text("Your whole-clip voice take is kept in this session. Switching to changed phrases gives up this take and starts a separate voice workflow.")
                 .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))

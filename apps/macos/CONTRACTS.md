@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### Whole-clip Rewrite interrupted after lip-sync acceptance
+
+`apps/macos/scripts/rewrite-smoke.sh --crash-recovery` starts an isolated debug process, kills it on the first status poll after the fake fal.ai submission, and reopens its project in a second process. Before Try Again, the journal’s saved voice plays locally with no word check or synthesis. The retry is priced for word checks alone and the lip-sync run has no permission to pay. Recover the original request through `IN_PROGRESS` to Review; Use must save the revoiced clip. `aPendingQuoteNeedsItsOwnRecoverableProviderReceipt` checks that a quote alone, a different quote/model, or an expired remote receipt does not prove that this job is recoverable.
+
 ### 2026-11-21 — The saved Rewrite stays until Use or a discard, and a restored whole clip is priced before the click (track/v2-rel-h, package H)
 
 Package G's saved record was deleted as soon as Make Takes priced its plan, so a crash before the click asked the AI again; Use Whole Clip left it on disk behind its own edit, which also showed R3 over a commit that went in, and Undo after it lost the paid parts at the project's close; a restored whole clip whose parts the journal couldn't give back promised a free Try Again; a revert waiting behind another question was only spoken; and the record was chmodded after its write and swept only when read. See voice-lab §3.4 items 6 and 9–10, §3.5 items 1, 3 and 5–9, §8.16 items 1 and 8, and design.md R2 "After a relaunch", "How should it sound?" (Stopped, "After a relaunch", "Undo after Use") and "Closing Rewrite".

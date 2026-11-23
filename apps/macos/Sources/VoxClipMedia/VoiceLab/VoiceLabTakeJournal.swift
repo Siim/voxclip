@@ -133,6 +133,9 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
     public var assetID: String { String((assetFile.split(separator: "/").last ?? "").dropLast(".wav".count)) }
     /// False once a check failed in a way the same audio repeats (`Checks.hardFailures`).
     public var adoptable: Bool { checks?.hardFailures.isEmpty ?? true }
+    public var adoptableForSelectedVoice: Bool {
+        adoptable || (checks?.hardFailures == [VoiceLabTakeQAFailure.speaker.rawValue] && checks?.words != .failed)
+    }
     var timing: [VoiceLabCharacterTiming]? {
         alignment.map { $0.characters.map { VoiceLabCharacterTiming(character: $0.character, start: $0.start, end: $0.end) } }
     }
@@ -194,12 +197,13 @@ public enum VoiceLabTakeJournal {
         (try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { takes in entries(takes, projectID: projectID) }) ?? []
     }
 
-    /// The newest adoptable entry over `key` (no check failed it) whose asset is still there with its frame count and
+    /// The newest entry over `key` that meets the flow's adoption rules and still has its frame count and
     /// SHA-256, leaving out the asset files in `claimed` (already taken by a live run); nil when none.
     public static func match(_ key: VoiceLabTakeJournalKey, projectID: String, paidRoot: URL,
-                             excluding claimed: Set<String> = []) -> VoiceLabTakeJournalEntry? {
+                             excluding claimed: Set<String> = [], forSelectedVoice: Bool = false) -> VoiceLabTakeJournalEntry? {
         let candidates = list(projectID: projectID, paidRoot: paidRoot)
-            .filter { $0.key == key && $0.adoptable && !claimed.contains($0.assetFile) && $0.sampleRate == 24_000 }
+            .filter { $0.key == key && (forSelectedVoice ? $0.adoptableForSelectedVoice : $0.adoptable)
+                && !claimed.contains($0.assetFile) && $0.sampleRate == 24_000 }
             .sorted { $0.createdAt == $1.createdAt ? $0.assetFile > $1.assetFile : $0.createdAt > $1.createdAt }
         return candidates.first { (try? pcm(of: $0, projectID: projectID, paidRoot: paidRoot)) != nil }
     }
@@ -270,6 +274,12 @@ public enum VoiceLabTakeJournal {
     /// The asset's PCM, when the file is a regular file of this user holding exactly the canonical mono PCM16 header for the
     /// entry's frames and rate, then the frames, and its SHA-256 is the entry's.
     private static func pcm(of entry: VoiceLabTakeJournalEntry, projectID: String, paidRoot: URL) throws -> Data {
+        let wave = try verifiedWave(of: entry, projectID: projectID, paidRoot: paidRoot)
+        return wave.subdata(in: 44..<wave.count)
+    }
+
+    package static func verifiedWave(of entry: VoiceLabTakeJournalEntry, projectID: String, paidRoot: URL) throws -> Data {
+        try validate(entry, projectID: projectID)
         let root = try VoiceLabPaidRoot.open(paidRoot)
         defer { Darwin.close(root) }
         let project = openat(root, projectID, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -287,7 +297,7 @@ public enum VoiceLabTakeJournal {
               bytes.prefix(44) == VoiceLabAssetStore.wavHeader(frames: entry.frames, sampleRate: entry.sampleRate) else {
             throw VoiceLabAssetError.altered(entry.assetFile)
         }
-        return bytes.subdata(in: 44..<bytes.count)
+        return bytes
     }
 
     private static func entries(_ takes: Int32, projectID: String) -> [VoiceLabTakeJournalEntry] {

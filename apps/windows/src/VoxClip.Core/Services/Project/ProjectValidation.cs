@@ -222,7 +222,8 @@ internal static class ProjectValidation
         Choice(video.GetProperty("mode"), "source", "cut", "retimed", "zoomCover", "lipsync");
         Choice(recipe.GetProperty("voiceSource"), "own", "stock");
         var qa = recipe.GetProperty("qa");
-        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory");
+        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory outputSpeakerCheckSkipped");
+        if (qa.TryGetProperty("outputSpeakerCheckSkipped", out var skipped)) Require(skipped.ValueKind == JsonValueKind.True);
         if (qa.TryGetProperty("joinAdvisory", out var advisory))
         {
             Object(advisory, "seams acceptedAt");

@@ -28,6 +28,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var wholeClipPrepared: (@MainActor (ClipTakePlan) -> Void)?
     /// The Rewrite smoke's lip sync: the real run over a stood-in fal.ai (`LipsyncSmokeFalHTTP`), for every take plan.
     @ObservationIgnored var lipsyncSmoke: (@MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, Bool,
+                                                       @escaping @MainActor @Sendable (LipsyncQuote) -> Void,
                                                        @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult)?
     #endif
     var selectedWordIDs: Set<String> = [] {

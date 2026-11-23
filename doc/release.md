@@ -269,6 +269,8 @@ The installed CLI smoke test sets `VOXCLIP_DATA_DIR` to a fresh directory under 
 
 ### 4.0 Rewrite smoke: run before every handed-over test build
 
+For the paid-recovery gate, also run `apps/macos/scripts/rewrite-smoke.sh --crash-recovery`. It kills only its isolated DEBUG process at the fake provider’s first status poll, then opens the same `.voxclip` in a second process. The saved voice must play before any new checks; retry may pay for word checks only, recover the same lip sync without a second submission and reach Use. Both provider transports are offline.
+
 Run it before any build goes to the user, test builds included:
 
 ```sh

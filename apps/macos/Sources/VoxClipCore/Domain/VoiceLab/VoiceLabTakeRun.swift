@@ -26,6 +26,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public var pauseProfile: VoiceLabPauseProfile? = nil
     /// Set for a whole-clip revoice's parts: the take is laid out on the clip as edited.
     public var editedLayout: VoiceLabEditedLayout? = nil
+    package var checksGeneratedSpeaker: Bool { editedLayout == nil }
     public let contentKey: String
     /// The source frames the run reads, at `sourceSampleRate`.
     public let source: VoiceLabSourceExcerpt
@@ -358,7 +359,7 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     /// Passing voice copy depends on the whole row, including its independent words check.
     public var shortPhraseCopy: String? {
         switch voiceCheck {
-        case .perTake: return nil
+        case .perTake, .selectedVoice: return nil
         case .waiting: return "waiting for the voice check"
         case .shortSpeech(let evidence):
             guard evidence.valid else { return nil }

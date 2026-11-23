@@ -8,6 +8,7 @@ public struct LipsyncRun: Sendable {
     public let scratchRoot: URL
     /// The window's face check; nil uses Vision. Tests and the DEBUG smoke stand in for a face their synthetic media lack.
     package var detector: LipsyncWindowPreparation.FaceDetector?
+    package var beforeSubmit: (@Sendable (LipsyncQuote) async -> Void)?
 
     public init(provider: FalLipsyncProvider, consentStore: VoiceConsentStore, paidRoot: URL, scratchRoot: URL) {
         self.provider = provider; self.consentStore = consentStore; self.paidRoot = paidRoot; self.scratchRoot = scratchRoot
@@ -73,6 +74,7 @@ public struct LipsyncRun: Sendable {
                 recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true, model: chosen)
         } catch { throw LipsyncNotSubmitted.wrap(error) }
         let job: LipsyncJob
+        await beforeSubmit?(quote)
         do { job = try await provider.submit(quote, approval: approval) }
         catch {
             // Once the POST may have crossed the boundary, its failed response cannot prove that it was free.

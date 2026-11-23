@@ -262,6 +262,23 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(session.isStopped && session.failure?.step == .fit)
     }
 
+    @Test func theWholeClipPriceIncludesWordChecksButNoSpeakerRetryReserve() async throws {
+        let stubs = Stubs()
+        let session = session(stubs)
+        let originalQuote = try #require(session.backend?.quote)
+        session.backend?.quote = { script, model in
+            var quote = try await originalQuote(script, model)
+            quote.wordChecksUSD = Decimal(string: "0.02")
+            return quote
+        }
+        await session.refreshQuote()
+        #expect(session.quote?.wholeUSD == Decimal(string: "1.63"))
+        session.start()
+        await session.waitForRun()
+        #expect(session.phase == .review)
+        #expect(session.spent == Decimal(string: "1.61"))
+    }
+
     @Test func partialVoiceSpendAndRetryPriceAreSeparateAndTheFailedCheckIsNamed() async {
         let stubs = Stubs()
         let session = session(stubs)

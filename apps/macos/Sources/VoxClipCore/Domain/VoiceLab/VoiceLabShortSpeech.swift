@@ -28,6 +28,7 @@ public struct VoiceLabShortSpeechEvidence: Codable, Sendable, Equatable {
 
 public enum VoiceLabTakeVoiceCheck: Sendable, Equatable {
     case perTake
+    case selectedVoice
     case waiting
     case shortSpeech(VoiceLabShortSpeechEvidence)
 
@@ -37,7 +38,7 @@ public enum VoiceLabTakeVoiceCheck: Sendable, Equatable {
     }
     public var complete: Bool {
         switch self {
-        case .perTake: true
+        case .perTake, .selectedVoice: true
         case .waiting: false
         case .shortSpeech(let evidence): evidence.valid
         }

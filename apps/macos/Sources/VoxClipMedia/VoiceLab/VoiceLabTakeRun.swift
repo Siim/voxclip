@@ -186,7 +186,8 @@ public actor VoiceLabTakeRun {
         for _ in 0..<4 {
             let skip = excluded
             let found = await Task.detached(priority: .utility) {
-                VoiceLabTakeJournal.match(key, projectID: storage.projectId, paidRoot: storage.paidRoot, excluding: skip)
+                VoiceLabTakeJournal.match(key, projectID: storage.projectId, paidRoot: storage.paidRoot,
+                                          excluding: skip, forSelectedVoice: !input.checksGeneratedSpeaker)
             }.value
             guard let entry = found else { return nil }
             if claims.claim(VoiceLabTakeJournalClaims.key(entry.assetFile, paidRoot: storage.paidRoot), owner: claimOwner) { return entry }
@@ -439,25 +440,26 @@ public actor VoiceLabTakeRun {
                 audio = processed
                 var voiced: [Float] = []
                 var score: Double?
-                do {
-                    voiced = try await speaker.generatedVoicedSamples(processed.trimmed, sampleRate: processed.sampleRate)
-                    if voiced.count >= SpeakerAudio.windowSize {
-                        guard let owner = VoiceConsentRecord.decodeEmbedding(value.record.speaker.embedding) else { throw VoiceConsentError.invalidRecord }
-                        let vector = try await speaker.generatedVoicedEmbedding(voiced)
-                        score = try VoiceSpeakerCheck.cosine(owner, vector)
+                if value.input.checksGeneratedSpeaker {
+                    do {
+                        voiced = try await speaker.generatedVoicedSamples(processed.trimmed, sampleRate: processed.sampleRate)
+                        if voiced.count >= SpeakerAudio.windowSize {
+                            guard let owner = VoiceConsentRecord.decodeEmbedding(value.record.speaker.embedding) else { throw VoiceConsentError.invalidRecord }
+                            let vector = try await speaker.generatedVoicedEmbedding(voiced)
+                            score = try VoiceSpeakerCheck.cosine(owner, vector)
+                        }
+                    } catch VoiceConsentError.speakerMismatch {
+                        await pool.measured(id: take.synthesis.requestID, voiced: [], record: value.record, phrase: phraseID, passed: false)
+                        await journalChecks(.speakerFailed, of: paid)
+                        let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.speaker])
+                        rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
+                            receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]),
+                            generated: generated, quote: take, accepted: adoptedRequest, adoptedAsset: take.adoptedAsset))
+                        await progress(rows)
+                        continue
                     }
-                } catch VoiceConsentError.speakerMismatch {
-                    await pool.measured(id: take.synthesis.requestID, voiced: [], record: value.record, phrase: phraseID, passed: false)
-                    await journalChecks(.speakerFailed, of: paid)
-                    // This take has already failed locally. Do not spend its approved Scribe request.
-                    let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.speaker])
-                    rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
-                        receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]),
-                        generated: generated, quote: take, accepted: adoptedRequest, adoptedAsset: take.adoptedAsset))
-                    await progress(rows)
-                    continue
                 }
-                let short = voiced.count < SpeakerAudio.windowSize
+                let short = value.input.checksGeneratedSpeaker && voiced.count < SpeakerAudio.windowSize
                 if let score {
                     await pool.measured(id: take.synthesis.requestID, voiced: voiced, record: value.record,
                                         phrase: phraseID, passed: score >= value.record.speaker.threshold)
@@ -501,7 +503,8 @@ public actor VoiceLabTakeRun {
                 let row = VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
                     audio: processed, qa: qa, score: rank, failure: qa.hardFailures.isEmpty ? nil : .qa(qa.hardFailures),
                     qaReceipt: qaReceipt, generated: generated, quote: take, accepted: adoptedRequest,
-                    voiceCheck: short ? .waiting : .perTake, adoptedAsset: take.adoptedAsset)
+                    voiceCheck: value.input.checksGeneratedSpeaker ? (short ? .waiting : .perTake) : .selectedVoice,
+                    adoptedAsset: take.adoptedAsset)
                 if short {
                     try await pool.append(row, voiced: voiced, record: value.record, speaker: speaker,
                                           store: store, phrase: phraseID, current: inputsAreCurrent)
@@ -630,8 +633,7 @@ public actor VoiceLabTakeRun {
         }.value
         if !updated { await client.note("voicelab take journal timing unwritten") }
     }
-    /// How the take did in its checks, in its journal entry (`VoiceLabTakeJournalEntry.Checks`), so a take whose audio
-    /// fails them is never adopted by a later run. A pooled voice check's verdict is the group's and is not written.
+    /// The take's journal verdict for later adoption. A pooled voice check's verdict is the group's and is not written.
     private func journalChecks(_ checks: VoiceLabTakeJournalEntry.Checks, of paid: VoiceLabAsset) async {
         let storage = storage
         let updated = await Task.detached(priority: .utility) {

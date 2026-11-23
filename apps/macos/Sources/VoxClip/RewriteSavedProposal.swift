@@ -43,6 +43,19 @@ struct RewriteSavedProposal: Codable, Equatable {
         var key: WholeClipRevoiceLedger.LipsyncKey
         var usd: Decimal
     }
+    struct PendingLipsync: Codable, Equatable {
+        let key: WholeClipRevoiceLedger.LipsyncKey
+        let quoteID: UUID
+        let videoSHA256: String
+        let audioSHA256: String
+
+        func acceptedUSD(projectID: String, root: URL, now: Date = Date()) -> Decimal? {
+            guard let attempt = LipsyncAttemptStore.load(videoSHA256: videoSHA256, audioSHA256: audioSHA256, projectID: projectID, paidRoot: root),
+                  attempt.quoteID == quoteID, attempt.model == key.model.rawValue,
+                  attempt.keptResult || attempt.importedAsset != nil || attempt.refetchable(at: now) else { return nil }
+            return attempt.estimate.usd
+        }
+    }
     /// The whole clip's paid work: its script, what each voice and lip sync cost, fal.ai's charges for failed attempts,
     /// and the journal requests of the voice's parts, which say which parts can come back with their word check only.
     struct WholeClip: Codable, Equatable {
@@ -54,6 +67,7 @@ struct RewriteSavedProposal: Codable, Equatable {
         /// The voice's parts, and the journal request of each part's paid take, in part order ("" for a part with none).
         var parts: Int
         var partRequests: [String]
+        var pending: PendingLipsync?
     }
 
     var schema = Self.schema
@@ -366,9 +380,9 @@ extension RewriteSession {
         var voices = whole.ledger.voices.filter { $0.key.script == script.text }
         for (key, usd) in whole.restoredVoices where key.script == script.text { voices[key, default: 0] += usd }
         var lipsyncs = whole.ledger.lipsyncs.filter { $0.key.voice.script == script.text }
-        for (key, usd) in whole.restoredLipsyncs where key.voice.script == script.text { lipsyncs[key, default: 0] += usd }
-        var parts = restoredProposal?.wholeClip?.parts ?? 0
-        var requests = restoredProposal?.wholeClip?.partRequests ?? []
+        for (key, usd) in whole.restoredLipsyncs where key.voice.script == script.text && key != whole.pendingLipsync?.key { lipsyncs[key, default: 0] += usd }
+        var parts = restoredProposal?.wholeClip?.parts ?? whole.restoredParts
+        var requests = restoredProposal?.wholeClip?.partRequests ?? whole.restoredPartRequests
         if let plan = wholeClipPlan, wholeClipPlanScript == script, !plan.isRetired {
             parts = plan.phrases.count
             // In part order, so each part's word check or new voice can be priced on its own (`restoredVoiceUSD`).
@@ -385,7 +399,8 @@ extension RewriteSession {
             .sorted { $0.key.retime < $1.key.retime }
         let base: WholeClipScript = whole.savedBaseScript ?? script
         return RewriteSavedProposal.WholeClip(script: script, baseScript: base, voices: savedVoices, lipsyncs: savedLipsyncs,
-                                              billed: whole.billedLipsyncs, parts: parts, partRequests: requests)
+                                              billed: whole.billedLipsyncs, parts: parts, partRequests: requests,
+                                              pending: whole.pendingLipsync.flatMap { voices[$0.key.voice] == nil ? nil : $0 })
     }
 
     /// Puts the restored whole clip on a fresh card: a stop whose Try Again puts the paid voice back for its parts' word
@@ -397,11 +412,40 @@ extension RewriteSession {
         let catalog = prices ?? editor.app.shared.flatMap { try? VoiceLabPriceCatalog.load(shared: $0) }
         let adoptable = adoptableJournalRequests()
         let back = saved.partRequests.filter { !$0.isEmpty && adoptable.contains($0) }.count
+        var lipPrices = Dictionary(saved.lipsyncs.map { ($0.key, $0.usd) }, uniquingKeysWith: +)
+        if let pending = saved.pending, lipPrices[pending.key] == nil,
+           let usd = pending.acceptedUSD(projectID: project.id, root: editor.app.locations.root.appendingPathComponent("VoiceLab")) {
+            session.pendingLipsync = pending
+            lipPrices[pending.key] = usd
+        }
         session.restore(.init(script: saved.script, baseScript: saved.baseScript,
                               voices: Dictionary(saved.voices.map { ($0.key, $0.usd) }, uniquingKeysWith: +),
-                              lipsyncs: Dictionary(saved.lipsyncs.map { ($0.key, $0.usd) }, uniquingKeysWith: +),
+                              lipsyncs: lipPrices,
                               billed: saved.billed, voiceUSD: Self.restoredVoiceUSD(saved, adoptable: adoptable, catalog: catalog),
-                              parts: saved.parts, partsBack: min(back, saved.parts), checkUSD: catalog.flatMap(Self.wordCheckUSD)))
+                              parts: saved.parts, partsBack: min(back, saved.parts), checkUSD: catalog.flatMap(Self.wordCheckUSD),
+                              partRequests: saved.partRequests, awaitingLipsync: session.pendingLipsync != nil))
+    }
+
+    var canPlaySavedWholeClipVoice: Bool {
+        guard let whole = wholeClip, voiceSpendCurrent, whole.isStopped, whole.restoredVoiceChosen, whole.restoredVoiceWhole else { return false }
+        return whole.restoredPartRequests.count == whole.restoredParts && !whole.restoredPartRequests.contains("")
+    }
+
+    func previewSavedVoice(playPart: @MainActor (Data) async throws -> Void) async throws {
+        guard canPlaySavedWholeClipVoice, let whole = wholeClip, let key = whole.restoredVoiceKey else { throw VoiceLabError.invalidAudio }
+        let projectID = project.id, locations = editor.app.locations, root = locations.root.appendingPathComponent("VoiceLab")
+        let store = VoiceConsentStore(locations: locations)
+        let entries = await Task.detached { VoiceLabTakeJournal.list(projectID: projectID, paidRoot: root) }.value
+        for request in whole.restoredPartRequests {
+            try Task.checkCancellation()
+            guard let entry = entries.first(where: { $0.requestID == request && $0.recordID == key.recordId && $0.modelID == key.model }),
+                  entry.adoptable, Date().timeIntervalSince(entry.createdAt) < VoiceLabTakeJournal.unusedLifetime,
+                  try await store.activeVoices().contains(where: { $0.id == entry.recordID }) else { throw VoiceLabError.invalidAudio }
+            let wav = try await Task.detached { try VoiceLabTakeJournal.verifiedWave(of: entry, projectID: projectID, paidRoot: root) }.value
+            try Task.checkCancellation()
+            guard wholeClip === whole, canPlaySavedWholeClipVoice else { throw CancellationError() }
+            try await playPart(wav)
+        }
     }
 
     /// One take's word check, as a take's quote prices it.

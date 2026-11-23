@@ -860,7 +860,7 @@ import VoxClipMedia
             return left.distance != right.distance ? left.distance < right.distance : left.score > right.score
         }.map(\.take)
     }
-    /// The take chosen automatically (ADR-R37, ADR-R39): only measured passing takes, never one made before the expression
+    /// The take chosen automatically (ADR-R37, ADR-R39, ADR-R51): a measured pass or a passing whole-clip take in the selected voice, never one made before the expression
     /// changed or before an edit (`madeBeforeEdit`). Among usable takes the best score wins, as before; when no duration
     /// can carry any of them, the one closest to the slot, so the automatic fixes reword from the nearest take. A take
     /// whose only issue is a join advisory is chosen when it ranks best, after any clean take at the same rank (ADR-R39:
@@ -868,12 +868,13 @@ import VoxClipMedia
     func automaticTake(phrase index: Int) -> Take? {
         guard phrases.indices.contains(index) else { return nil }
         let phrase = phrases[index]
-        let measured = phrase.takes.filter {
-            $0.row.selectable && $0.row.qa?.values.speakerScore?.isFinite == true && !phrase.beforeExpression.contains($0.id)
+        let candidates = phrase.takes.filter {
+            $0.row.selectable && ($0.row.voiceCheck == .selectedVoice || $0.row.qa?.values.speakerScore?.isFinite == true)
+                && !phrase.beforeExpression.contains($0.id)
                 && !phrase.madeBeforeEdit.contains($0.id)
                 && (!$0.row.requiresJoinAdvisoryAcceptance || (try? $0.row.acceptingJoinAdvisory(at: Date())) != nil)
         }
-        let order = ranked(measured, phrase: index)
+        let order = ranked(candidates, phrase: index)
         let usable = order.filter { durationAvailable(take: $0) }
         let pool = usable.isEmpty ? order : usable
         return pool.first { !$0.row.hasJoinAdvisory } ?? pool.first

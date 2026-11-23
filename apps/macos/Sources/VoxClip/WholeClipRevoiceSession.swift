@@ -47,9 +47,11 @@ import VoxClipMedia
         var voiceName: String
         /// "matched to this video" for a per-video voice (voice-lab §6.13), else empty.
         var voiceNote: String
+        var wordChecksUSD: Decimal? = nil
+        var voicePassUSD: Decimal? { voiceUSD.map { $0 + (wordChecksUSD ?? 0) } }
         var wholeUSD: Decimal? {
-            guard let voiceUSD, let lipsyncUSD else { return nil }
-            return voiceUSD + lipsyncUSD
+            guard let voicePassUSD, let lipsyncUSD else { return nil }
+            return voicePassUSD + lipsyncUSD
         }
     }
     /// The paid voice: one take for the whole script, in parts.
@@ -280,6 +282,8 @@ import VoxClipMedia
     /// The restored voice's parts, how many of them the journal gives back, and one part's word check.
     private(set) var restoredParts = 0
     private(set) var restoredPartsBack = 0
+    private(set) var restoredPartRequests: [String] = []
+    @ObservationIgnored var pendingLipsync: RewriteSavedProposal.PendingLipsync?
     @ObservationIgnored private var restoredCheckUSD: Decimal?
     /// Every part of the restored voice comes back from the journal: the voice is the one its lip sync was made over, so
     /// C's index re-imports that lip sync for free. With a part voiced again the clip's audio differs, and the lip sync is
@@ -316,7 +320,7 @@ import VoxClipMedia
     /// paid over this voice and picture (the ledger) or a kept result. Once the Fit step matched the picture, the lip sync
     /// is priced on that picture, as its step pays it.
     var retryUSD: Decimal? {
-        guard let quote, let voicePrice = quote.voiceUSD, let quoted = quote.lipsyncUSD else { return nil }
+        guard let quote, let voicePrice = quote.voicePassUSD, let quoted = quote.lipsyncUSD else { return nil }
         let kept = voice.flatMap { $0.key.script == script?.text && ledger.paid($0.key) ? $0 : nil }
         // A voice paid before a relaunch comes back for its parts' word checks, and its lip sync for free, only under its own
         // key: the voice and model chosen now are the ones it was made with.
@@ -805,8 +809,8 @@ import VoxClipMedia
     /// shorter wording before it costs no more), never an extra one; an automatic run may pay one only within what is left
     /// of its budget, with the lip sync still to pay. Otherwise the wording is kept and waits for its own priced click.
     private func approveVoice(_ next: WholeClipScript, extra: Bool, backend: Backend) async throws {
-        let price = (try? await backend.quote(next, .standard))?.voiceUSD
-        let allowed: Decimal? = automatic ? budget.map { $0 - spent - lipsyncDue } : extra ? nil : quote?.voiceUSD
+        let price = (try? await backend.quote(next, .standard))?.voicePassUSD
+        let allowed: Decimal? = automatic ? budget.map { $0 - spent - lipsyncDue } : extra ? nil : quote?.voicePassUSD
         if let price, let allowed, price <= allowed { return }
         throw await holdForClick(next, price: price)
     }
@@ -816,7 +820,7 @@ import VoxClipMedia
 
     /// Keeps `next` for its own priced click (Voice the Shorter Wording · ≈ $Y): the stop the run ends with.
     private func holdForClick(_ next: WholeClipScript, backend: Backend) async -> Stop {
-        await holdForClick(next, price: (try? await backend.quote(next, .standard))?.voiceUSD)
+        await holdForClick(next, price: (try? await backend.quote(next, .standard))?.voicePassUSD)
     }
 
     private func holdForClick(_ next: WholeClipScript, price: Decimal?) async -> Stop {
@@ -1011,6 +1015,8 @@ import VoxClipMedia
         restoredLetGo += restoredVoices.values.reduce(0, +) + restoredLipsyncs.values.reduce(0, +)
         restoredVoices = [:]; restoredLipsyncs = [:]; restoredVoiceUSD = nil; restoringLipsync = nil
         restoredParts = 0; restoredPartsBack = 0; restoredCheckUSD = nil
+        restoredPartRequests = []
+        pendingLipsync = nil
         backend.persist()
     }
 
@@ -1067,6 +1073,8 @@ import VoxClipMedia
         var parts = 0
         var partsBack = 0
         var checkUSD: Decimal?
+        var partRequests: [String] = []
+        var awaitingLipsync = false
     }
 
     /// The clip's own script the last run started from, as `RewriteSession.persistPaidWork` saves it.
@@ -1080,6 +1088,7 @@ import VoxClipMedia
         restoredVoices = restored.voices; restoredLipsyncs = restored.lipsyncs; billedLipsyncs = restored.billed
         restoredVoiceUSD = restored.voiceUSD
         restoredParts = restored.parts; restoredPartsBack = restored.partsBack; restoredCheckUSD = restored.checkUSD
+        restoredPartRequests = restored.partRequests
         steps = Dictionary(uniqueKeysWithValues: Step.allCases.map { ($0, StepState.waiting) })
         steps[.script] = .done(restored.script == restored.baseScript ? "Script · \(restored.script.words) words, your edits applied"
                                                                     : "Script · \(restored.script.words) words, reworded to fit")
@@ -1094,6 +1103,7 @@ import VoxClipMedia
     static func restoredLine(_ restored: Restored) -> String {
         let whole = restored.parts > 0 && restored.partsBack == restored.parts
         if whole {
+            if restored.awaitingLipsync { return "Your paid voice is kept. Lip sync was submitted before VoxClip closed. Try Again checks that job without paying for lip sync again." }
             return restored.lipsyncs.isEmpty ? "Your paid whole-clip voice from before VoxClip closed is kept."
                 : "Your paid whole-clip voice and lip sync from before VoxClip closed are kept."
         }

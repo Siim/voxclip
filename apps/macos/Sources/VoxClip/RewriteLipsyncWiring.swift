@@ -73,18 +73,26 @@ extension RewriteSession {
             guard let spent = await VoiceLabSpendLedger(locations: app.locations).total(provider: "fal", at: Date()),
                   spent.unknownCount == 0 else { throw ClipTakePlan.Failure.unknownSpend }
             return VoiceLabMonthlyCap(limit: limit, spent: spent.usd)
-        }, run: { request, window, recordID, model, mayPay, progress in
+        }, run: { [weak self, weak plan] request, window, recordID, model, mayPay, progress in
+            let checkpoint: @MainActor @Sendable (LipsyncQuote) -> Void = { [weak self, weak plan] quote in
+                guard let self, let plan, self.wholeClipPlan === plan, let whole = self.wholeClip,
+                      let voice = whole.voice, let picture = whole.picture else { return }
+                whole.pendingLipsync = .init(key: .init(voice: voice.key, retime: picture.speed, model: model),
+                    quoteID: quote.id, videoSHA256: quote.video.sha256, audioSHA256: quote.audio.sha256)
+                self.persistPaidWork()
+            }
+            defer { if let plan, self?.wholeClipPlan === plan { self?.wholeClip?.pendingLipsync = nil } }
             #if DEBUG
-            if let smoke { return try await smoke(request, window, recordID, model, mayPay, progress) }
+            if let smoke { return try await smoke(request, window, recordID, model, mayPay, checkpoint, progress) }
             #endif
             try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
             #if DEBUG
             await provider.setDiagnostic(LipsyncDiagnostic())
             #endif
-            return try await LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations),
-                paidRoot: paid, scratchRoot: scratch).execute(request: request, window: window, recordID: recordID,
-                    model: model.lipsyncModel, mayPay: mayPay, onProgress: progress)
+            var run = LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations), paidRoot: paid, scratchRoot: scratch)
+            run.beforeSubmit = checkpoint
+            return try await run.execute(request: request, window: window, recordID: recordID, model: model.lipsyncModel, mayPay: mayPay, onProgress: progress)
         }, changed: { [weak self] in
             await app.refreshMonthlySpend()
             self?.showProposal()

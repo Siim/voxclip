@@ -184,7 +184,8 @@ enum ProjectValidation {
         if let cuts = video["cuts"] {
             for cut in try array(cuts) { _ = try object(cut, required: "startSample endSample") }
         }
-        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory")
+        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory outputSpeakerCheckSkipped")
+        if let skipped = qa["outputSpeakerCheckSkipped"], skipped != .bool(true) { try fail("Invalid output speaker check status") }
         if let value = qa["joinAdvisory"] {
             let advisory = try object(value, required: "seams acceptedAt")
             for seam in try array(advisory["seams"]) { _ = try object(seam, required: "side excessLu") }
