@@ -106,6 +106,20 @@ Advisory notices (never blocking), shown under the share row:
 
 ---
 
+### 2.4 Editable hand-off (Mac)
+
+In Export, **Save editable timeline (.fcpxml)** writes one FCPXML 1.10 document per target to the chosen folder. It is not a rendered video and does not add a finished video to export history. The CLI uses the same prepared plan: `voxclip-cli export --format fcpxml --open project.voxclip --clip <id> --export clip.fcpxml`.
+
+The spine links to the original media with frame-aligned cuts. Titles and lower thirds use editable Basic Title text, and caption pages become text titles on their own lane. A title crossing a cut is split at the cut. Source voice and the referenced, trimmed or looped music occupy separate Dialogue and Music roles. Bring the original and music media along if you move the timeline, and relink them in the receiving editor when needed. Do not treat the timeline as a redacted copy of the media.
+
+This is an editing hand-off, not a recreation of the MP4 look. Animated styling, other visual treatments, context overlays, SFX, fades and ducking are not carried over. Timing-changing edits and censorship effects require MP4 export rather than silently sending an uncensored or mistimed timeline. Windows hand-off and CapCut draft output are not implemented.
+
+### 2.5 Posting help (Mac)
+
+After successfully exporting up to 12 clips, **Posting help** offers one priced Claude send. Choose Claude Code or Anthropic in AI settings. The button names the billing path: your Claude plan or your key (with the same unknown-price wording as other AI steps). No automatic retries or fallback sends. The request contains clip names, lengths, excerpts of edited words and the local time zone, not media files, file paths, cut words or spoken words masked by a bleep or mute.
+
+The review shows Claude's suggested order and local posting windows, and separate copyable drafts with hashtags for X, LinkedIn, and VoxConvo. Suggestions are not audience analytics or scheduled posts. Copy includes the track's music credit when required. The raw reply is kept privately as soon as it arrives, including an unusable reply. A valid saved plan returns without another send when you re-export the same clip batch on this Mac. No draft is posted from this section.
+
 ## 3. VoxConvo direct publish (M2)
 
 ### 3.1 Today's VoxConvo (facts the plan depends on)
@@ -159,6 +173,8 @@ Before launching A7, run a read-only account-handle check for its retained route
 | W10 | `test/ssr.test.mjs` | `/device` renders the sign-in prompt for logged-out users; no download-page/redirect tests. Launch-page tests live in `site/` | M2 |
 
 ### 3.5 Desktop flow
+
+Mac implements the device flow and publishing client below. Tests use `shared/fixtures/device-flow/voxconvo-stand-in.py` on loopback, with no real account, media, or credentials. Production access is disabled by default: leave the Mac bundle key `VoxConvoDevicePublishingEnabled` unset until the scoped-session enforcement (A10), the approved upload and GraphQL routes, and the browser approval page (W1/W6) are deployed and verified together. Windows Accounts, DPAPI storage, and Export integration are not implemented here.
 
 #### 3.5.1 Connect (Settings → Accounts → VoxConvo → Connect)
 
@@ -227,9 +243,9 @@ Shown in the Export sheet as "Also post to VoxConvo @handle" when connected. The
 Rules:
 
 - The upload timeout is `max(180 s, bytes / 500)`. Progress shows "Uploading 63%" → "Processing" → "Posted · Open".
-- The button disables on press. Steps 1–2 may be retried automatically (no post exists yet). **Step 3 is never retried automatically.** On failure: "Saved to {folder}. Posting to VoxConvo failed: {reason}." [Try again]. "Try again" reuses the rendered file, and reuses the completed job's `s3Url` if it is less than 24 hours old, so only step 3 repeats.
+- The button disables on press. The client does not automatically retry an upload or the final post. On failure: "Saved to {folder}. Posting to VoxConvo failed: {reason}." **Try posting again** checks the file and the account, then reuses the completed job's `s3Url` if it is less than 24 hours old and belongs to the current session. If the server did not confirm a post, check the profile before retrying to avoid a duplicate.
 - Any edit after the render invalidates the cached render for posting.
-- `wordTimestamps` are the caption words on the final clip's timeline after cuts (the same words the SRT uses).
+- `wordTimestamps` are the caption words on the final clip's timeline after cuts and playback speed (the same word track the SRT uses, before cue grouping). When captions are off, use the edited, censored transcript. The burned-in AI disclosure is unchanged; adding its line to the post is optional and off by default. Include any music credit.
 - Against a server without A4/A5, steps 1–3 still work (`style: none`, `words: []`), but a pass-through MP4 is stored as `video/webm`. Ship A4 before the desktop M2 release.
 
 ### 3.6 Hardening (v1.1): `createClipPost`

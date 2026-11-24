@@ -25,6 +25,7 @@ actor SecretStore: KeyProvider {
     }()
 
     static func account(for provider: String) -> String {
+        if provider == VoxConvoPublishing.accountKey { return provider }
         if provider == "fal" { return "fal-api-key" }
         if provider == "syncso" { return "syncso-api-key" }
         if provider == "elevenlabs" { return "elevenlabs-api-key" }
@@ -35,6 +36,7 @@ actor SecretStore: KeyProvider {
     func hasKey(for provider: String) -> Bool {
         #if DEBUG
         if Self.keychainDisabled {
+            if provider == VoxConvoPublishing.accountKey { return false }
             let name = provider.replacingOccurrences(of: "llm-api-key-", with: "").replacingOccurrences(of: "-api-key", with: "")
             return !(ProcessInfo.processInfo.environment["VOXCLIP_\(name.uppercased())_API_KEY"] ?? "").isEmpty
         }
@@ -51,6 +53,7 @@ actor SecretStore: KeyProvider {
     func key(for provider: String) async throws -> String? {
         #if DEBUG
         if Self.keychainDisabled {
+            if provider == VoxConvoPublishing.accountKey { return nil }
             let provider = provider.replacingOccurrences(of: "llm-api-key-", with: "").replacingOccurrences(of: "-api-key", with: "")
             let key = ProcessInfo.processInfo.environment["VOXCLIP_\(provider.uppercased())_API_KEY"]
             if let key { await log.register(secret: key) }

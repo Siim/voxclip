@@ -15,6 +15,7 @@ attribute VoxClip.Media.Pipeline.AudioCacheJson @ System.Text.Json.Serialization
 attribute VoxClip.Media.Pipeline.EncoderCacheJson @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Media.Pipeline.EncoderCacheDocument")
 attribute VoxClip.Media.Pipeline.EncoderCacheJson @ System.Text.Json.Serialization.JsonSourceGenerationOptionsAttribute(PropertyNamingPolicy=1)
 attribute VoxClip.Media.Pipeline.WindowsAdapterIdentity+AdapterDescription :: field internal Description @ System.Runtime.CompilerServices.FixedBufferAttribute("System.Char, System.Runtime",128)
+attribute VoxClip.Media.VoiceLab.LipsyncMedia :: method public PlayVoiceAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Threading.CancellationToken) @ System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")
 attribute VoxClip.Media.VoiceLab.VoiceLabPartialJson @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Media.VoiceLab.VoiceLabPartialEntry")
 attribute VoxClip.Media.VoiceLab.VoiceLabPartialJson @ System.Text.Json.Serialization.JsonSourceGenerationOptionsAttribute(PropertyNamingPolicy=1,UnmappedMemberHandling=1)
 attribute assembly @ System.Runtime.CompilerServices.InternalsVisibleToAttribute("VoxClip.Media.Tests")
@@ -247,7 +248,7 @@ member VoxClip.Media.Audio.RenderedAudioReader :: field private stretcher
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal .ctor(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.Audio.StereoRead,System.IDisposable,long,bool,VoxClip.Media.Audio.MusicBed)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal EditedVoiceSnapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal Open(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken,VoxClip.Media.Audio.MusicBed)
-member VoxClip.Media.Audio.RenderedAudioReader :: method internal OpenEditedVoice(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RenderedAudioReader :: method internal OpenEditedVoice(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken,double)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal OpenVoiceForMusic(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal Read(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal get_TotalFrames()
@@ -1584,6 +1585,7 @@ member VoxClip.Media.Pipeline.Exporter :: method internal Simulate(VoxClip.Media
 member VoxClip.Media.Pipeline.Exporter :: method internal Subtitles(VoxClip.Core.Domain.Captions.CaptionTrack,double,System.Func`3<string,VoxClip.Core.Domain.Captions.CaptionText,string>)
 member VoxClip.Media.Pipeline.Exporter :: method internal Validate(VoxClip.Core.Domain.Shared.ExportJob)
 member VoxClip.Media.Pipeline.Exporter :: method internal VoiceLabOutputAllocations(VoxClip.Core.Domain.Shared.ExportJob,bool)
+member VoxClip.Media.Pipeline.Exporter :: method internal WriteLipsyncVideoAsync(string,string,VoxClip.Core.Domain.Shared.OutputSpec,long,System.Action`4<VoxClip.Media.Ffmpeg.VideoDecoder,long,VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken>,System.Threading.CancellationToken,System.Action)
 member VoxClip.Media.Pipeline.Exporter :: method private CreateAudioFrame(VoxClip.Media.Ffmpeg.EncoderSession)
 member VoxClip.Media.Pipeline.Exporter :: method private CreateMux(string,VoxClip.Media.Ffmpeg.EncoderSession,VoxClip.Media.Ffmpeg.EncoderSession,int&,int&)
 member VoxClip.Media.Pipeline.Exporter :: method private DeletePartial(string)
@@ -1592,6 +1594,7 @@ member VoxClip.Media.Pipeline.Exporter :: method private Export(VoxClip.Core.Dom
 member VoxClip.Media.Pipeline.Exporter :: method private ExportAsync(VoxClip.Core.Domain.Shared.ExportJob,System.IProgress`1<VoxClip.Core.Domain.Shared.ExportProgress>,System.Threading.CancellationToken,bool)
 member VoxClip.Media.Pipeline.Exporter :: method private Mux(FFmpeg.AutoGen.AVFormatContext*,VoxClip.Media.Ffmpeg.EncoderSession,int,FFmpeg.AutoGen.AVPacket*)
 member VoxClip.Media.Pipeline.Exporter :: method private SrtTime(double)
+member VoxClip.Media.Pipeline.Exporter :: method private WriteLipsyncVideo(string,string,VoxClip.Core.Domain.Shared.OutputSpec,long,System.Action`4<VoxClip.Media.Ffmpeg.VideoDecoder,long,VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken>,string,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.Exporter :: method public .ctor()
 member VoxClip.Media.Pipeline.Exporter :: method public ExportAsync(VoxClip.Core.Domain.Shared.ExportJob,System.IProgress`1<VoxClip.Core.Domain.Shared.ExportProgress>,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FfmpegAudioExtractor :: method private Extract(VoxClip.Core.Domain.Shared.AudioExtractionRequest,System.IProgress`1<VoxClip.Core.Domain.Shared.MediaProgress>,System.Threading.CancellationToken)
@@ -1621,7 +1624,7 @@ member VoxClip.Media.Pipeline.FrameComposer :: field private rasterizer
 member VoxClip.Media.Pipeline.FrameComposer :: field private sharedRoot
 member VoxClip.Media.Pipeline.FrameComposer :: field private state
 member VoxClip.Media.Pipeline.FrameComposer :: method internal .ctor(VoxClip.Core.Domain.Captions.ICaptionRasterizer,string,System.Func`2<VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers,VoxClip.Media.Pipeline.IContextDemoFrames>)
-member VoxClip.Media.Pipeline.FrameComposer :: method internal Compose(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal Compose(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken,bool,bool)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal DrawContextDemo(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal DrawOverlays(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal FinishClipFrame(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,int,int,VoxClip.Core.Domain.Shared.RectD,System.Threading.CancellationToken,bool,VoxClip.Media.Pipeline.PreviewFrameFailures)
@@ -1904,6 +1907,113 @@ member VoxClip.Media.Thumbnails.PosterFrames :: method public IsBlack(VoxClip.Co
 member VoxClip.Media.Thumbnails.PosterFrames :: method public ReadJpegAsync(string,System.Collections.Generic.IReadOnlyList`1<double>,int,int,int,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.IMicrophoneTakeTranscriber :: method public WordsAsync(float[],string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.IVoiceLabSource :: method public Read(long,System.Span`1<float>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: field private hash
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: field private lease
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: field private marker
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal .ctor(string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal Accept(string,string,System.Decimal)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal Begin()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal Fail()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal KeepDownloaded(System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal Refused()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal SavedPicture(System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal get_Account()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal get_PicturePath()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal get_Price()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal get_RequestId()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method internal get_State()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private AcceptedFields()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private CheckFile(string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private Digest(string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private InvalidReceipt()
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private Load(string,string,string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private PictureHash(System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private Save(string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private ValidId(string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private set_Account(string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private set_Price(System.Nullable`1<System.Decimal>)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private set_RequestId(string)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method private set_State(VoxClip.Media.VoiceLab.LipsyncAttemptState)
+member VoxClip.Media.VoiceLab.LipsyncAttempt :: method public Dispose()
+member VoxClip.Media.VoiceLab.LipsyncAttemptState :: field public Accepted
+member VoxClip.Media.VoiceLab.LipsyncAttemptState :: field public Downloaded
+member VoxClip.Media.VoiceLab.LipsyncAttemptState :: field public Failed
+member VoxClip.Media.VoiceLab.LipsyncAttemptState :: field public NotSent
+member VoxClip.Media.VoiceLab.LipsyncAttemptState :: field public Unconfirmed
+member VoxClip.Media.VoiceLab.LipsyncAttemptState :: field public value__
+member VoxClip.Media.VoiceLab.LipsyncAttemptStore :: method internal Open(VoxClip.Media.VoiceLab.LipsyncRunWindow)
+member VoxClip.Media.VoiceLab.LipsyncAttemptStore :: method public .ctor(string,string)
+member VoxClip.Media.VoiceLab.LipsyncMedia :: method private InvalidMedia()
+member VoxClip.Media.VoiceLab.LipsyncMedia :: method private Size(VoxClip.Core.Domain.Shared.PixelSize)
+member VoxClip.Media.VoiceLab.LipsyncMedia :: method public HasFaceAsync(VoxClip.Core.Domain.Shared.MediaInfo,double,double,VoxClip.Core.Domain.Frames.IFrameFaces,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncMedia :: method public ImportAsync(VoxClip.Media.VoiceLab.SavedLipsyncPicture,string,string,VoxClip.Core.Domain.Shared.MediaInfo,double,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncMedia :: method public PlayVoiceAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncMedia :: method public PrepareAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow,string,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncMedia :: method public Supports(VoxClip.Core.Domain.Shared.MediaInfo)
+member VoxClip.Media.VoiceLab.LipsyncRun :: field private journal
+member VoxClip.Media.VoiceLab.LipsyncRun :: method private Transient(System.Exception)
+member VoxClip.Media.VoiceLab.LipsyncRun :: method public .ctor(VoxClip.Core.Services.VoiceLab.FalLipsyncProvider,VoxClip.Core.Services.VoiceLab.VoiceConsentStore,string,string,VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger)
+member VoxClip.Media.VoiceLab.LipsyncRun :: method public AcceptedPrice(VoxClip.Media.VoiceLab.LipsyncRunWindow)
+member VoxClip.Media.VoiceLab.LipsyncRun :: method public ExecuteAsync(VoxClip.Media.VoiceLab.LipsyncRunWindow,VoxClip.Core.Services.VoiceLab.FalLipsyncQuote,string,string,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.IProgress`1<VoxClip.Core.Services.LLM.LipsyncState>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncRun :: method public QuoteAsync(VoxClip.Media.VoiceLab.LipsyncRunWindow,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncRun :: method public State(VoxClip.Media.VoiceLab.LipsyncRunWindow)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method internal get_Key()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method private .ctor(VoxClip.Media.VoiceLab.LipsyncRunWindow)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public .ctor(string,double,double,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Core.Services.LLM.SyncMode)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public Deconstruct(string&,double&,double&,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync&,VoxClip.Core.Services.LLM.SyncMode&)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public Equals(VoxClip.Media.VoiceLab.LipsyncRunWindow)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public Equals(object)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public ToString()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public get_FrameRate()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public get_InputsFingerprint()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public get_Mode()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public get_Model()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public get_Seconds()
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public op_Equality(VoxClip.Media.VoiceLab.LipsyncRunWindow,VoxClip.Media.VoiceLab.LipsyncRunWindow)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public op_Inequality(VoxClip.Media.VoiceLab.LipsyncRunWindow,VoxClip.Media.VoiceLab.LipsyncRunWindow)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public set_FrameRate(double)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public set_InputsFingerprint(string)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public set_Mode(VoxClip.Core.Services.LLM.SyncMode)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public set_Model(VoxClip.Core.Domain.VoiceLab.WholeClipLipsync)
+member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method public set_Seconds(double)
+member VoxClip.Media.VoiceLab.LipsyncUpload :: method internal .ctor(string)
+member VoxClip.Media.VoiceLab.LipsyncUpload :: method private get_Folder()
+member VoxClip.Media.VoiceLab.LipsyncUpload :: method public Dispose()
+member VoxClip.Media.VoiceLab.LipsyncUpload :: method public get_Audio()
+member VoxClip.Media.VoiceLab.LipsyncUpload :: method public get_Video()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: field private current
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: field private decoder
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: field private files
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: field private folder
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: field private rate
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: field private regions
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: method internal PrepareAsync(VoxClip.Core.Domain.Shared.VoiceLabRenderInput,VoxClip.Core.Domain.Shared.Project,string,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: method internal Read(double,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: method private .ctor(string,double,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span>,System.Collections.Generic.IReadOnlyDictionary`2<string,string>)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: method private Invalid()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer :: method public Dispose()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method private .ctor(VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public .ctor(string,long,long,long)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public Deconstruct(string&,long&,long&,long&)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public Equals(VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public Equals(object)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public ToString()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public get_End()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public get_Id()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public get_Origin()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public get_Start()
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public op_Equality(VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span,VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public op_Inequality(VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span,VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public set_End(long)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public set_Id(string)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public set_Origin(long)
+member VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span :: method public set_Start(long)
 member VoxClip.Media.VoiceLab.MicrophoneTakeError :: field public NoSpeech
 member VoxClip.Media.VoiceLab.MicrophoneTakeError :: field public TranscriptionUnavailable
 member VoxClip.Media.VoiceLab.MicrophoneTakeError :: field public value__
@@ -1937,6 +2047,43 @@ member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_Stretch
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TiltDbPerOctave()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TrimEndFrame()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TrimStartFrame()
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method private .ctor(VoxClip.Media.VoiceLab.SavedLipsyncPicture)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public .ctor(string,string,string)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public Deconstruct(string&,string&,string&)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public Equals(VoxClip.Media.VoiceLab.SavedLipsyncPicture)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public Equals(object)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public ToString()
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public get_Path()
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public get_RequestId()
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public get_Sha256()
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public op_Equality(VoxClip.Media.VoiceLab.SavedLipsyncPicture,VoxClip.Media.VoiceLab.SavedLipsyncPicture)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public op_Inequality(VoxClip.Media.VoiceLab.SavedLipsyncPicture,VoxClip.Media.VoiceLab.SavedLipsyncPicture)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public set_Path(string)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public set_RequestId(string)
+member VoxClip.Media.VoiceLab.SavedLipsyncPicture :: method public set_Sha256(string)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method private .ctor(VoxClip.Media.VoiceLab.SavedWholeClipVoice)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public .ctor(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<string>,System.Decimal)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public Deconstruct(VoxClip.Core.Domain.Shared.Project&,System.Collections.Generic.IReadOnlyList`1<string>&,System.Decimal&)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public Equals(VoxClip.Media.VoiceLab.SavedWholeClipVoice)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public Equals(object)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public ToString()
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public Voice(string)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public get_Draft()
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public get_Recovery()
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public get_SegmentIds()
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public get_Spent()
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public op_Equality(VoxClip.Media.VoiceLab.SavedWholeClipVoice,VoxClip.Media.VoiceLab.SavedWholeClipVoice)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public op_Inequality(VoxClip.Media.VoiceLab.SavedWholeClipVoice,VoxClip.Media.VoiceLab.SavedWholeClipVoice)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public set_Draft(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public set_Recovery(VoxClip.Media.VoiceLab.WholeClipVoiceRecovery)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public set_SegmentIds(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Media.VoiceLab.SavedWholeClipVoice :: method public set_Spent(System.Decimal)
 member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method internal MeasureAsync(System.Collections.Generic.IReadOnlyList`1<string>,string,string,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened>>,System.Func`6<string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,int,string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method internal ScoreAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabSegment,VoxClip.Core.Domain.VoiceLab.VoiceLabAsset,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened,string,string,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`6<string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method internal TakeSpeechAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabSegment,VoxClip.Core.Domain.VoiceLab.VoiceLabAsset,string,string,string,System.Threading.CancellationToken)
@@ -2453,8 +2600,9 @@ member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: field private tracks
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method internal CreateMixer(VoxClip.Media.VoiceLab.IVoiceLabSource,long,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method internal PrepareAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Threading.CancellationToken,VoxClip.Media.VoiceLab.VoiceLabCapacity+Allocation[])
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method internal PrepareAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Threading.CancellationToken,string,VoxClip.Media.VoiceLab.VoiceLabCapacity+Allocation[])
+member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method internal get_Lipsync()
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method internal get_Prepared()
-member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Media.VoiceLab.PreparedVoiceLabAsset>,System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Media.VoiceLab.VoiceLabTempoTrack>)
+member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Media.VoiceLab.PreparedVoiceLabAsset>,System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Media.VoiceLab.VoiceLabTempoTrack>,VoxClip.Media.VoiceLab.LipsyncVideoLayer)
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: method public Dispose()
 member VoxClip.Media.VoiceLab.VoiceLabShortTakePool :: field private finishing
 member VoxClip.Media.VoiceLab.VoiceLabShortTakePool :: field private members
@@ -3201,6 +3349,59 @@ member VoxClip.Media.VoiceLab.VoiceTrainingTimeline :: method internal get_Next(
 member VoxClip.Media.VoiceLab.VoiceTrainingTimeline :: method private .cctor()
 member VoxClip.Media.VoiceLab.VoiceTrainingTimeline :: method private set_Next(long)
 member VoxClip.Media.VoiceLab.VoiceTrainingTimeline :: method public .ctor(VoxClip.Media.VoiceLab.VoiceLabSourceAudio+SampleBlock,long)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method private .ctor(VoxClip.Media.VoiceLab.WholeClipPictureApproval)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public .ctor(System.Decimal,string)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public Deconstruct(System.Decimal&,string&)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public Equals(VoxClip.Media.VoiceLab.WholeClipPictureApproval)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public Equals(object)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public ToString()
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public get_Account()
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public get_Price()
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public op_Equality(VoxClip.Media.VoiceLab.WholeClipPictureApproval,VoxClip.Media.VoiceLab.WholeClipPictureApproval)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public op_Inequality(VoxClip.Media.VoiceLab.WholeClipPictureApproval,VoxClip.Media.VoiceLab.WholeClipPictureApproval)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public set_Account(string)
+member VoxClip.Media.VoiceLab.WholeClipPictureApproval :: method public set_Price(System.Decimal)
+member VoxClip.Media.VoiceLab.WholeClipPictureRun :: field private run
+member VoxClip.Media.VoiceLab.WholeClipPictureRun :: method private Jobs(string,VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,VoxClip.Media.VoiceLab.SavedWholeClipVoice,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,double)
+member VoxClip.Media.VoiceLab.WholeClipPictureRun :: method public .ctor(VoxClip.Core.Services.VoiceLab.FalLipsyncProvider,VoxClip.Core.Services.VoiceLab.VoiceConsentStore,string,string,string,VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger)
+member VoxClip.Media.VoiceLab.WholeClipPictureRun :: method public ExecuteAsync(string,VoxClip.Media.VoiceLab.SavedWholeClipVoice,VoxClip.Core.Domain.Shared.ComposeSnapshot,string,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Media.VoiceLab.WholeClipPictureApproval,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,VoxClip.Core.Domain.Frames.IFrameFaces,System.IProgress`1<string>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.WholeClipPictureRun :: method public HasAttempt(string,VoxClip.Media.VoiceLab.SavedWholeClipVoice,VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,double)
+member VoxClip.Media.VoiceLab.WholeClipPictureRun :: method public PriceAsync(VoxClip.Core.Domain.VoiceLab.WholeClipRevoicePlan,string,VoxClip.Media.VoiceLab.SavedWholeClipVoice,VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,double,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.WholeClipPictureRun :: method public Recipes(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,VoxClip.Media.VoiceLab.SavedWholeClipVoice)
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: field private Limit
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: method private Folder(string,string,string,bool)
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: method private Invalid()
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: method private Key(string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: method private Write(string,byte[])
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: method public Keep(string,VoxClip.Media.VoiceLab.SavedWholeClipVoice)
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: method public Read(string,string,string,string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint :: method public ReadLatest(string,string,string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method private .ctor(VoxClip.Media.VoiceLab.WholeClipVoiceRecovery)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public .ctor(string,string,string,string,string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public Deconstruct(string&,string&,string&,string&,string&)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public Equals(VoxClip.Media.VoiceLab.WholeClipVoiceRecovery)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public Equals(object)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public ToString()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public get_BaseKey()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public get_ClipId()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public get_Identity()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public get_RecordId()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public get_Script()
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public op_Equality(VoxClip.Media.VoiceLab.WholeClipVoiceRecovery,VoxClip.Media.VoiceLab.WholeClipVoiceRecovery)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public op_Inequality(VoxClip.Media.VoiceLab.WholeClipVoiceRecovery,VoxClip.Media.VoiceLab.WholeClipVoiceRecovery)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public set_BaseKey(string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public set_ClipId(string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public set_Identity(string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public set_RecordId(string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRecovery :: method public set_Script(string)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRun :: method public ExecuteAsync(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.WholeClipRevoicePlan,string,string,string,string,System.Decimal,System.Func`1<VoxClip.Media.VoiceLab.VoiceLabTakeRun>,System.Func`3<System.Guid,System.Threading.CancellationToken,System.Threading.Tasks.Task>,System.Action`1<System.Action>,VoxClip.Media.VoiceLab.WholeClipVoiceRecovery,System.IProgress`1<string>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.WholeClipVoiceRun :: method public PartText(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed)
 type VoxClip.Media.Audio.AudioRing
 type VoxClip.Media.Audio.EditedAudioReader
 type VoxClip.Media.Audio.EditedWaveWriter
@@ -3337,12 +3538,23 @@ type VoxClip.Media.Thumbnails.CurrentFrames
 type VoxClip.Media.Thumbnails.PosterFrames
 type VoxClip.Media.VoiceLab.IMicrophoneTakeTranscriber
 type VoxClip.Media.VoiceLab.IVoiceLabSource
+type VoxClip.Media.VoiceLab.LipsyncAttempt
+type VoxClip.Media.VoiceLab.LipsyncAttemptState
+type VoxClip.Media.VoiceLab.LipsyncAttemptStore
+type VoxClip.Media.VoiceLab.LipsyncMedia
+type VoxClip.Media.VoiceLab.LipsyncRun
+type VoxClip.Media.VoiceLab.LipsyncRunWindow
+type VoxClip.Media.VoiceLab.LipsyncUpload
+type VoxClip.Media.VoiceLab.LipsyncVideoLayer
+type VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span
 type VoxClip.Media.VoiceLab.MicrophoneTakeError
 type VoxClip.Media.VoiceLab.MicrophoneTakeException
 type VoxClip.Media.VoiceLab.MicrophoneTakeMaker
 type VoxClip.Media.VoiceLab.NativeVoiceLabSource
 type VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber
 type VoxClip.Media.VoiceLab.PreparedVoiceLabAsset
+type VoxClip.Media.VoiceLab.SavedLipsyncPicture
+type VoxClip.Media.VoiceLab.SavedWholeClipVoice
 type VoxClip.Media.VoiceLab.VoiceAnchorBaseline
 type VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened
 type VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick
@@ -3434,3 +3646,8 @@ type VoxClip.Media.VoiceLab.VoiceTrainingLevels
 type VoxClip.Media.VoiceLab.VoiceTrainingSample
 type VoxClip.Media.VoiceLab.VoiceTrainingTake
 type VoxClip.Media.VoiceLab.VoiceTrainingTimeline
+type VoxClip.Media.VoiceLab.WholeClipPictureApproval
+type VoxClip.Media.VoiceLab.WholeClipPictureRun
+type VoxClip.Media.VoiceLab.WholeClipVoiceCheckpoint
+type VoxClip.Media.VoiceLab.WholeClipVoiceRecovery
+type VoxClip.Media.VoiceLab.WholeClipVoiceRun

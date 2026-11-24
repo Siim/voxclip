@@ -537,7 +537,7 @@ internal sealed partial class RewriteSession
 
     internal async Task MakeMeasuredTakeAsync(Func<string, CancellationToken, Task<bool>> confirm)
     {
-        if (MeasuredGeneration is not { Quote: { } quote } window || !window.CanExecute) return;
+        if (WholeClipBusy || MeasuredGeneration is not { Quote: { } quote } window || !window.CanExecute) return;
         MeasuredWording = null;
         Changed?.Invoke(this, EventArgs.Empty);
         await window.GenerateAsync(confirm, quote, autoplay: false);

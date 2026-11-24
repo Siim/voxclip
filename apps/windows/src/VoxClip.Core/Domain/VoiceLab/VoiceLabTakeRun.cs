@@ -8,6 +8,8 @@ using VoxClip.Core.Services.LLM;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
+public sealed record VoiceLabEditedLayout(IReadOnlyList<VoiceLabVideoCut> Cuts, double PauseThreshold);
+
 /// <summary>What a take run needs. <paramref name="Source"/> holds the source frames the run reads at
 /// <paramref name="SourceSampleRate"/>, and <paramref name="SourceEnvelope"/> is the whole source's 10 ms RMS envelope
 /// (<see cref="VoiceLabTakeProcessing.Envelope"/>), which the room-tone search reads.</summary>
@@ -17,6 +19,7 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
 {
     public VoiceLabPauseProfile? PauseProfile { get; init; }
     public bool ChecksGeneratedSpeaker { get; init; } = true;
+    public VoiceLabEditedLayout? EditedLayout { get; init; }
     public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
     public string RequestText => VoiceLabAudioTags.RequestText(Text, AudioTags, ModelId);
     public bool HasRequestTags => AudioTags.Count > 0 && VoiceLabAudioTags.Supports(ModelId) && VoiceLabAudioTags.Validated(AudioTags, Text).Count > 0;
@@ -38,6 +41,7 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     /// <summary>A copy that later changes to the caller's lists cannot reach. The excerpt never changes, so it is shared.</summary>
     public VoiceLabTakeInput Snapshot() => this with { SourceEnvelope = SourceEnvelope with { Rms = Array.AsReadOnly(SourceEnvelope.Rms.ToArray()) },
         AudioTags = Array.AsReadOnly(AudioTags.ToArray()),
+        EditedLayout = EditedLayout is { } layout ? layout with { Cuts = Array.AsReadOnly(layout.Cuts.ToArray()) } : null,
         Items = Array.AsReadOnly(Items.ToArray()),
         CutWordIds = System.Collections.Frozen.FrozenSet.ToFrozenSet(CutWordIds, StringComparer.Ordinal),
         Window = Window with { LeftBridgeWordIds = Array.AsReadOnly(Window.LeftBridgeWordIds.ToArray()), RightBridgeWordIds = Array.AsReadOnly(Window.RightBridgeWordIds.ToArray()) } };

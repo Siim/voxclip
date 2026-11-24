@@ -1,0 +1,69 @@
+# Connect your agent to a VoxClip project
+
+On macOS, the VoxClip command-line tool can give Claude Code or Codex a transcript, clip list, saved decisions and source thumbnails for **one saved `.voxclip` file**. The agent can propose a timeline. It can't change the project, send a provider request, spend money or record voice consent. The agent host can see whatever the server returns, including transcript text and thumbnails. Only connect projects you're comfortable sharing with that host.
+
+## Set up the connection
+
+Save your project in VoxClip first. Use absolute paths to the `.voxclip` file and the CLI. If you build from this checkout with `swift build --package-path apps/macos --product voxclip-cli`, the debug executable is `apps/macos/.build/debug/voxclip-cli`.
+
+### Claude Code
+
+From the folder where you'll run Claude Code, register a local entry, used only by you in this folder:
+
+```sh
+claude mcp add --transport stdio --scope local voxclip -- \
+  "/absolute/path/to/voxclip-cli" mcp --project "/absolute/path/to/Talk.voxclip"
+```
+
+Start Claude Code from that folder and check `/mcp`. Use `--scope project` only if you want to save the entry in a shared `.mcp.json`. Don't commit personal project paths.
+
+### Codex
+
+In a trusted workspace, put this in `.codex/config.toml`. Use `~/.codex/config.toml` instead if you want the entry in every workspace. Restart Codex and check `codex mcp list` or `/mcp`.
+
+```toml
+[mcp_servers.voxclip]
+command = "/absolute/path/to/voxclip-cli"
+args = ["mcp", "--project", "/absolute/path/to/Talk.voxclip"]
+```
+
+The executable finds `shared/` in its checkout or app bundle. If you relocate it on its own, set `VOXCLIP_SHARED_DIR` to the absolute path to the matching `shared/` folder in the host's MCP environment. You don't need to configure provider keys for this server. To connect a different VoxClip project, change `--project` and restart the connection.
+
+## Read and propose
+
+| MCP tool | Matching CLI | What it does |
+|---|---|---|
+| `read_transcript` | `transcript --project Talk.voxclip --offset 0 --limit 200` | Returns transcript items with their zero-based indices, corrected words, cut flags and source seconds. Follow `nextOffset` until it's null. |
+| `read_clips` | `clips --project Talk.voxclip` | Lists kept and suggested clips with ids, inclusive word indices and source spans. |
+| `read_decisions` | `decisions --project Talk.voxclip --clip CLIP_ID` | Reads the clip's saved choices: Find Clips reason where available, opening lead-in, framing and cover controls, captions, effects, zooms and saved music ids. |
+| `read_frames` | `frames --project Talk.voxclip --time 2.1 --time 3` | Returns one to four unedited source thumbnails from a local MP4, M4V or MOV. CLI output includes JPEGs as base64. Relink missing media in VoxClip. |
+| `propose_timeline` | `propose-timeline --project Talk.voxclip < timeline.json` | Stages a proposal for one existing clip. It writes no project edits and returns separate estimates for requested paid actions. |
+
+You might ask: “Read the clips and the transcript. For the clip about editing faster, propose a punch-in on the strongest sentence and a short on-screen title. Don't generate anything.”
+
+The [timeline schema](../shared/schemas/harness-timeline.schema.json) is also the proposal tool's input schema. For example:
+
+```json
+{
+  "clipId": "clip-2f1c",
+  "reason": "Get to the main point faster.",
+  "cuts": [{"startWord": 11, "endWord": 11, "kind": "other", "reason": "Remove the aside."}],
+  "captionStyle": "vox-bold",
+  "title": "A faster edit",
+  "effects": [
+    {"kind": "motionTitle", "startWord": 9, "endWord": 9, "text": "A faster edit", "reason": "Name the topic."},
+    {"kind": "punchIn", "startWord": 14, "endWord": 15, "scale": 1.1, "reason": "Emphasize the takeaway."}
+  ]
+}
+```
+
+Use inclusive transcript indices from the current project. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and a span of 0.1–5 seconds. This version supports `zoom`, `punchIn`, `motionTitle`, `lowerThird` and `emojiPop` (bundled stickers). `musicTrackId` reuses a saved track; `generateMusic` instead describes a new track and returns a local estimate. New templates such as standalone title cards, kinetic captions, logo stings and counters are follow-ups.
+
+## Review in VoxClip
+
+- Save edits before asking the agent to propose. The server reads the saved file, not unsaved edits in the editor.
+- The open project shows **Timeline proposal** above its transcript. Expand **Proposed changes** to see what the agent wants to do. **Keep** applies the free changes as one edit; **Undo** dismisses the proposal without changing the project. After Keep, ⌘Z undoes the edit as usual.
+- Keeping the timeline doesn't send anything. If it includes music generation, open the proposed clip and use the separate **Generate music · $…** button after VoxClip confirms the price. That click sends the brief to Eleven Music. The estimate returned to the agent isn't approval. Voice consent stays in the app's existing flows and can't be requested or recorded through these tools.
+- There's one pending proposal per saved project. Finish reviewing it before staging another. If the app says the project changed, dismiss the old proposal, save, and have the agent read the current project again. If an externally edited proposal can't be read, remove only the neighboring `Talk.voxclip.proposal.json` file; leave `Talk.voxclip` in place.
+
+The Windows CLI does not yet serve this connector. See the [tool-surface decision](adr/R52-project-harness-mcp.md) for the local replay and spending boundary.

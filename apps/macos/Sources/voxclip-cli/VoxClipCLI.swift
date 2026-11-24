@@ -92,7 +92,8 @@ final class CLIInterruptTiming: Sendable {
         commandName: "voxclip-cli", abstract: "Edit video by words. Native, headless VoxClip tools.",
         discussion: "Primary export: voxclip-cli --open <project-or-media> --export <out.mp4> [options]. Use 'voxclip-cli export --help' for export options.",
         version: AppVersion.current,
-        subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, Autopilot.self, Check.self, AnalyzeFrames.self, LLMTest.self, Encoders.self, Version.self] + speakerDiagnostics,
+        subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, Autopilot.self, Check.self, AnalyzeFrames.self, LLMTest.self, Encoders.self, Version.self,
+                      HarnessMCP.self, HarnessTranscript.self, HarnessClips.self, HarnessDecisions.self, HarnessFrames.self, HarnessPropose.self] + speakerDiagnostics,
         defaultSubcommand: Export.self
     )
 }
@@ -101,7 +102,8 @@ final class CLIInterruptTiming: Sendable {
 struct Export: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Export a project or source media (the default command).")
     @Option(name: .customLong("open"), help: "Project or source media file.") var input: String?
-    @Option(name: .customLong("export"), help: "Destination MP4.") var output: String?
+    @Option(name: .customLong("export"), help: "Destination MP4 or FCPXML file.") var output: String?
+    @Option(help: "mp4 (default) or fcpxml (editable timeline).") var format = "mp4"
     @Option(help: "Caption style ID, or off.") var style: String?
     @Option(help: "source, 16:9, 9:16 or 1:1.") var aspect: String?
     @Option(help: "Saved clip ID, mutually exclusive with --range.") var clip: String?
@@ -123,6 +125,15 @@ struct Export: AsyncParsableCommand {
 
     mutating func validate() throws {
         if (input == nil) != (output == nil) { throw ValidationError("Primary export requires both --open and --export") }
+        guard ["mp4", "fcpxml"].contains(format) else { throw ValidationError("--format must be mp4 or fcpxml") }
+        if format == "fcpxml", let output {
+            guard URL(fileURLWithPath: output).pathExtension.lowercased() == "fcpxml" else {
+                throw ValidationError("--format fcpxml needs a .fcpxml destination")
+            }
+            guard srt == nil, audioOut == nil, loudness == nil, cover == nil else {
+                throw ValidationError("--srt, --audio-out, --loudness and --cover are only available for MP4 export")
+            }
+        }
         if let cover, cover != "on", cover != "off" { throw ValidationError("--cover must be on or off") }
         if let aspect, AspectRatio(rawValue: aspect) == nil { throw ValidationError("--aspect must be source, 16:9, 9:16 or 1:1") }
         if let quality, ExportQuality(rawValue: quality) == nil { throw ValidationError("--quality must be standard or high") }

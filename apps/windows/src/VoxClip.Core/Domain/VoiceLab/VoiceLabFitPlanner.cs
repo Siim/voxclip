@@ -39,6 +39,8 @@ public sealed record VoiceLabFitPlan(IReadOnlyList<VoiceLabFitEdit> Edits, Voice
 {
     public bool HardJoinSmoothing { get; init; }
     public IReadOnlyList<VoiceLabVideoCut> VideoCuts { get; init; } = [];
+    public bool EditedTimeline { get; init; }
+    public double? PictureSpeed { get; init; }
 }
 
 /// <summary>Exact fills the window. ChangedDuration keeps every edit at its limit and lasts duration(W) + ResidualSeconds, with
@@ -71,8 +73,11 @@ public static class VoiceLabFitPlanner
     /// word.</summary>
     public static VoiceLabFitResult Plan(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
         VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing,
-        VoiceLabPauseProfile? pauseProfile = null, IReadOnlyList<VoiceLabAudioTag>? audioTags = null, bool allowPauseGrowth = true)
+        VoiceLabPauseProfile? pauseProfile = null, IReadOnlyList<VoiceLabAudioTag>? audioTags = null, bool allowPauseGrowth = true,
+        long? targetSamples = null, double tailPadSeconds = 0)
     {
+        if (targetSamples is { } target && (target <= 0 || target > window.EndSample - window.StartSample) ||
+            !double.IsFinite(tailPadSeconds) || tailPadSeconds is < 0 or > 300) throw TouchesVoice();
         // Each hard side reserves min(140 ms, 20%) of the source window the recipe covers, which render validation
         // recomputes from the recipe's video samples. A window that borrows gap silence is wider than the replacement,
         // so the plan repeats with the widened duration until its reserve stops growing (a fifth of the extra each time).
@@ -81,7 +86,7 @@ public static class VoiceLabFitPlanner
         for (var attempt = 0; attempt < 32; attempt++)
         {
             var result = Plan(window, incomingSilence, outgoingSilence, take, tokens, sourceSampleRate, hardJoinSmoothing,
-                pauseProfile, audioTags, allowPauseGrowth, reserveWindow);
+                pauseProfile, audioTags, allowPauseGrowth, reserveWindow, targetSamples, tailPadSeconds);
             if (!hardJoinSmoothing || window.LeftSeam.Kind != VoiceLabSeamKind.Hard && window.RightSeam.Kind != VoiceLabSeamKind.Hard) return result;
             var widened = result.Plan.WindowEnd - result.Plan.WindowStart;
             if (Reserve(widened) <= Reserve(reserveWindow)) return result;
@@ -92,7 +97,8 @@ public static class VoiceLabFitPlanner
 
     static VoiceLabFitResult Plan(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
         VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing,
-        VoiceLabPauseProfile? pauseProfile, IReadOnlyList<VoiceLabAudioTag>? audioTags, bool allowPauseGrowth, double reserveWindow)
+        VoiceLabPauseProfile? pauseProfile, IReadOnlyList<VoiceLabAudioTag>? audioTags, bool allowPauseGrowth, double reserveWindow,
+        long? targetSamples, double tailPadSeconds)
     {
         var rate = sourceSampleRate;
         VoiceLabSeamKind[] kinds = [window.LeftSeam.Kind, window.RightSeam.Kind];
@@ -118,7 +124,7 @@ public static class VoiceLabFitPlanner
         var reserve = VoiceLabGeometry.Samples(VoiceLabHardJoin.PauseForWindow(reserveWindow), assetRate);
         if (hardJoinSmoothing && kinds[0] == VoiceLabSeamKind.Hard) edgeIn = Math.Max(0, reserve - leadIn);
         if (hardJoinSmoothing && kinds[1] == VoiceLabSeamKind.Hard) edgeOut = Math.Max(0, reserve - tailOut);
-        var n = window.EndSample - window.StartSample;
+        var n = targetSamples ?? window.EndSample - window.StartSample;
         var target = FramesOf(n, assetRate, rate);
         var natural = edgeIn + edgeOut + t1 - t0;
         var rho = natural - target;
@@ -179,6 +185,7 @@ public static class VoiceLabFitPlanner
             var gapPad = VoiceLabGeometry.Samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate);
             var hardPad = hardJoinSmoothing ? 0 : VoiceLabGeometry.Samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate);
             long[] caps = pauseProfile is not null || !allowPauseGrowth ? [0, 0] : [kinds[0] == VoiceLabSeamKind.Hard ? hardPad : gapPad, kinds[1] == VoiceLabSeamKind.Hard ? hardPad : gapPad];
+            if (allowPauseGrowth) caps[1] += VoiceLabGeometry.Samples(tailPadSeconds, assetRate);
             var extra = Split(remaining, caps);
             pad = [pad[0] + extra[0], pad[1] + extra[1]];
             exact = extra[0] + extra[1] == remaining;
@@ -230,7 +237,8 @@ public static class VoiceLabFitPlanner
         var windowEnd = endSample / rate;
         var residualSeconds = (output - windowFrames) / assetRate;
         // Each word ends inside the output the recipe states (§10.5): the window, plus residualSeconds after a partial fit.
-        var duration = exact ? windowEnd - windowStart : windowEnd - windowStart + residualSeconds;
+        var filled = targetSamples is null ? windowEnd - windowStart : (n + borrow[0] + borrow[1]) / rate;
+        var duration = exact ? filled : filled + residualSeconds;
         var lead = pad[0] - t0;
         var words = take.Words.Select((word, index) =>
         {

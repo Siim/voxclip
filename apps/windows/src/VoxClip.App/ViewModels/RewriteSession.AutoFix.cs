@@ -307,7 +307,7 @@ internal sealed partial class RewriteSession
     {
         ApplyPendingExpressions();
         SettleTakesThatFitNoDuration();
-        if (!AutoFix.Running || AutoFix.Work is not null || !IsOpen || !GenerationIsCurrent || IsGeneratingBatch || applyingBatch ||
+        if (!AutoFix.Running || AutoFix.Work is not null || !IsOpen || !GenerationIsCurrent || WholeClipBusy || IsGeneratingBatch || applyingBatch ||
             MeasuredWording is { Preparing: true } || PendingPaidReviewChange is not null ||
             generationWindows.Any(window => window.IsRunning || window.IsPreparing)) return;
         // A spending limit ends the fixes the same way Stop does. An account failure on a phrase's takes shows its cause and its

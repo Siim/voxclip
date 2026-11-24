@@ -17,6 +17,7 @@ public sealed class VoiceLabRenderInput
 
     internal static bool SupportsVideoRecipe(VoiceLabVideoRecipe video)
     {
+        if (video.Mode == VoiceLabVideoMode.Lipsync) return SupportsVideoRecipe(VoiceLabLipsync.Base(video));
         if (!SupportsVideoMode(video.Mode)) return false;
         if (video.Mode == VoiceLabVideoMode.Cut) return video.Cuts is { Count: > 0 };
         if (video.Mode == VoiceLabVideoMode.Source) return true;
@@ -50,6 +51,7 @@ public sealed class VoiceLabRenderInput
         ArgumentException.ThrowIfNullOrWhiteSpace(paidRoot);
         prepared.Verify(project, prepared.OutputPlan.Scope, prepared.Disclosure.Position);
         if (prepared.SelectedSegmentRecipes.Any(item => !SupportsVideoRecipe(item.Recipe.Video) ||
+            item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync && WholeClipRevoice.RecordHolding(item.SegmentId, project) is null ||
             item.Recipe.Video.Mode is VoiceLabVideoMode.ZoomCover or VoiceLabVideoMode.Cut && item.Recipe.Audio.Stretch != 1))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.VideoModeUnsupported);
         var json = ProjectSerialization.Serialize(project);
