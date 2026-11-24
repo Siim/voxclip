@@ -14,6 +14,20 @@ public struct LipsyncRun: Sendable {
         self.provider = provider; self.consentStore = consentStore; self.paidRoot = paidRoot; self.scratchRoot = scratchRoot
     }
 
+    package static func hasIndexedResult(request: RenderRequest, window: LipsyncRenderWindow, model: LipsyncModel,
+                                         paidRoot: URL, scratchRoot: URL, now: Date = Date(),
+                                         detector: LipsyncWindowPreparation.FaceDetector? = nil) async -> Bool {
+        guard let projectID = request.voiceLab?.project.id,
+              !LipsyncAttemptStore.importedAssets(inProject: projectID, paidRoot: paidRoot).isEmpty else { return false }
+        do {
+            try FileManager.default.createDirectory(at: scratchRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let prepared = try await LipsyncWindowPreparation.prepare(request: request, window: window, scratchRoot: scratchRoot, detector: detector)
+            guard let attempt = LipsyncAttemptStore.find(prepared, model: model.id, projectID: projectID, paidRoot: paidRoot),
+                  let importedAt = attempt.importedAt, now.timeIntervalSince(importedAt) <= LipsyncAttemptStore.importedLifetime else { return false }
+            return LipsyncAttemptStore.importedResult(attempt, projectID: projectID, paidRoot: paidRoot) != nil
+        } catch { return false }
+    }
+
     /// Prepares the window (the needed length and its tail margin), then never pays twice for one result:
     /// 1. The window's imported index (a result already imported over these exact inputs, even before a restart): its file,
     ///    after a SHA-256 check, for free and with nothing fetched.

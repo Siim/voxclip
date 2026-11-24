@@ -48,6 +48,7 @@ import VoxClipMedia
         /// "matched to this video" for a per-video voice (voice-lab §6.13), else empty.
         var voiceNote: String
         var wordChecksUSD: Decimal? = nil
+        var pricesJournaledVoice = false
         var voicePassUSD: Decimal? { voiceUSD.map { $0 + (wordChecksUSD ?? 0) } }
         var wholeUSD: Decimal? {
             guard let voicePassUSD, let lipsyncUSD else { return nil }
@@ -250,6 +251,7 @@ import VoxClipMedia
     @ObservationIgnored private(set) var stopError: (any Error)?
     /// What an automatic run may still spend (✦ Claude does it all's cap), read before a reworded voice; nil: no extra voice.
     @ObservationIgnored private(set) var budget: Decimal?
+    @ObservationIgnored private(set) var journalVoiceApproval: Decimal?
     /// The plan's `Applied` lip syncs for `synced`: put back when a step took them off (`Backend.restoreLipsync`).
     @ObservationIgnored private(set) var syncedEntries: [Int: RewriteLipsyncSession.Applied] = [:]
     /// False while the lip sync may only put back one already paid for (the window's imported index answers it for free).
@@ -388,6 +390,7 @@ import VoxClipMedia
         keyAvailable = await backend.hasKey()
         let script = try? backend.script()
         quotedScript = script
+        quotedVoiceKey = script.flatMap(backend.voiceKey)
         guard let script else { quote = nil; return }
         // A stopped or reviewed run keeps its own script (a reworded one is what its paid voice says).
         if phase == .choose { self.script = script }
@@ -397,12 +400,14 @@ import VoxClipMedia
     /// The script the card's prices were made for: Start Over and the Choose card price the clip as it is, so a change of
     /// its words or included changes prices it again (`needsRequote`).
     @ObservationIgnored private(set) var quotedScript: WholeClipScript?
+    @ObservationIgnored private var quotedVoiceKey: WholeClipRevoiceLedger.VoiceKey?
 
     /// The clip's script is no longer the one the shown price was made for, on a card whose button prices the clip as it
     /// is now (Choose, or a stop whose way on is Start Over): `refreshQuote` prices it again. Free.
     var needsRequote: Bool {
         guard !running, !quoting, phase == .choose || stoppedForInputs, let backend else { return false }
-        return (try? backend.script()) != quotedScript
+        let script = try? backend.script()
+        return script != quotedScript || script.flatMap(backend.voiceKey) != quotedVoiceKey
     }
 
     /// The fal.ai key again (Settings changed): the card then offers the price, or Settings, as it is now. Free.
@@ -439,6 +444,7 @@ import VoxClipMedia
     private func begin(automatic: Bool, budget: Decimal?) {
         self.automatic = automatic
         self.budget = automatic ? budget : nil
+        journalVoiceApproval = quote?.pricesJournaledVoice == true ? quote?.voicePassUSD : nil
         previousFailure = failure
         // A run after Use was undone makes new work: a Redo of the old commit no longer marks the card used.
         undoneUse = nil
@@ -473,11 +479,14 @@ import VoxClipMedia
     func startOver(approved: Decimal) async -> Bool {
         guard let backend, !running, isStopped, repeatedWordCheckPart == nil || stoppedForInputs else { return false }
         let script = try? backend.script()
+        let voiceKey = script.flatMap(backend.voiceKey)
         let fresh: Quote? = if let script { try? await backend.quote(script, .standard) } else { nil }
         quotedScript = script
+        quotedVoiceKey = voiceKey
         quote = fresh
         keyAvailable = await backend.hasKey()
-        guard let usd = fresh?.wholeUSD, usd <= approved, keyAvailable, !running, isStopped else { return false }
+        guard let usd = fresh?.wholeUSD, usd <= approved, keyAvailable, !running, isStopped,
+              (try? backend.script()) == script, script.flatMap(backend.voiceKey) == voiceKey else { return false }
         await discard()
         self.script = script
         return true
@@ -560,7 +569,8 @@ import VoxClipMedia
                 // Every first voice of a script gets this check, after Start Over or a paid lip sync too; only parts
                 // already paid for this script keep it as it is (a shorter wording would let them go).
                 // A voice paid before a relaunch is put back as it was said, never reworded first.
-                if script == base, !backend.partlyVoiced(script), !restoredVoices.keys.contains(where: { $0.script == script.text }) {
+                let pricedAdoption = quotedScript == script && journalVoiceApproval != nil
+                if script == base, !pricedAdoption, !backend.partlyVoiced(script), !restoredVoices.keys.contains(where: { $0.script == script.text }) {
                     script = try await rewordBeforePaying(script, backend: backend)
                 }
             }
@@ -897,6 +907,7 @@ import VoxClipMedia
     private func requote(_ backend: Backend) async {
         guard let script = try? backend.script() else { return }
         quotedScript = script
+        quotedVoiceKey = backend.voiceKey(script)
         if let fresh = try? await backend.quote(script, .standard) { quote = fresh }
         keyAvailable = await backend.hasKey()
     }

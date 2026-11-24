@@ -317,7 +317,7 @@ struct RewriteLipsyncSessionTests {
     }
 
     private func reusing(_ session: RewriteLipsyncSession, _ template: RewriteLipsyncSession.Offer, _ log: ReuseLog,
-                         all: (() -> RewriteLipsyncSession.Offer)? = nil) {
+                         all: (() -> RewriteLipsyncSession.Offer)? = nil, indexed: Bool = false) {
         session.backend = .init(offers: {
             let fresh = RewriteLipsyncSession.Offer(id: UUID(), request: template.request, windows: template.windows,
                 estimate: template.estimate, recordID: template.recordID, dependencies: template.dependencies, isCurrent: { true })
@@ -329,7 +329,31 @@ struct RewriteLipsyncSessionTests {
             var result = Self.result(template)
             result.recovered = !mayPay
             return result
-        }, changed: {})
+        }, changed: {}, indexedWindows: { offer in indexed && !log.gone ? Set(offer.windows.indices) : [] })
+    }
+
+    @Test func aFreshSessionOffersAnIndexedResultForFreeBeforeAnyClick() async throws {
+        let (_, template, _) = try setup()
+        let relaunched = RewriteLipsyncSession(), log = ReuseLog()
+        reusing(relaunched, template, log, indexed: true)
+        await relaunched.refresh()
+        let offer = try #require(relaunched.offers[0])
+        #expect(offer.charge == "free" && relaunched.allOffer?.free == true)
+        #expect(log.pays.isEmpty)
+
+        relaunched.press(offer)
+        await relaunched.waitForRun()
+        #expect(log.pays == [false] && relaunched.applied[0]?.result.recovered == true)
+
+        let nextLaunch = RewriteLipsyncSession()
+        reusing(nextLaunch, template, log, indexed: true)
+        await nextLaunch.refresh()
+        let freeClick = try #require(nextLaunch.offers[0])
+        log.gone = true
+        nextLaunch.press(freeClick)
+        await nextLaunch.waitForRun()
+        #expect(log.pays == [false, false])
+        #expect(nextLaunch.offers[0]?.charge == "≈ $0.40")
     }
 
     /// Undo keeps the paid result findable (the window's imported index): the next Lip Sync over the same takes gets it back,

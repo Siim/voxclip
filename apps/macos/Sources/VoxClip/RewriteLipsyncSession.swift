@@ -21,6 +21,7 @@ import VoxClipMedia
         /// nothing uploaded, or a stop's kept paid result (its phrase's Try Again · free). Their runs never pay, and the
         /// click charges only the other windows.
         var freeWindows: Set<Int> = []
+        var indexedWindows: Set<Int> = []
         var phraseIDs: [Int] { windows.flatMap { $0.source.phraseIDs } }
         /// The whole estimate: what fal.ai bills for every window (a stop's line, a cancelled job).
         var price: String { estimate.usd.map(VoiceLabCostPresentation.format) ?? "Price unavailable" }
@@ -100,6 +101,7 @@ import VoxClipMedia
         /// Again) and its progress.
         let run: @MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, Bool, @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult
         let changed: @MainActor () async -> Void
+        var indexedWindows: @MainActor (Offer) async -> Set<Int> = { _ in [] }
         /// One log line (an offer failure's kind, a result set aside): the app's log.
         var report: @MainActor (String) -> Void = { _ in }
     }
@@ -230,13 +232,20 @@ import VoxClipMedia
     /// The windows of `offer` its click gets for free: the reused ones, and those with a phrase whose stop kept its paid
     /// result (Try Again · free).
     func freeWindows(_ offer: Offer) -> Set<Int> {
-        reusedWindows(offer).union(offer.windows.indices.filter { offer.windows[$0].source.phraseIDs.contains(where: freeRetries.contains) })
+        offer.indexedWindows.union(reusedWindows(offer))
+            .union(offer.windows.indices.filter { offer.windows[$0].source.phraseIDs.contains(where: freeRetries.contains) })
     }
 
     private func marked(_ offer: Offer) -> Offer {
         var offer = offer
         offer.freeWindows = freeWindows(offer)
         return offer
+    }
+
+    func priceIndexed(_ offer: Offer) async -> Offer {
+        var priced = offer
+        priced.indexedWindows = await backend?.indexedWindows(offer) ?? []
+        return marked(priced)
     }
 
     /// The offers on screen priced again after a stop's free retry changed (Keep Original Video).
@@ -275,11 +284,28 @@ import VoxClipMedia
             guard !usingTakes else { refreshAfterUse = true; return }
             let (offers, all) = try await backend.offers()
             guard revision == turn else { return }
+            let pricedAll = if let all, !all.phraseIDs.contains(where: submissionUnconfirmed) { await priceIndexed(all) } else { nil as Offer? }
+            var pricedOffers: [Int: Offer] = [:]
+            for (phrase, offer) in offers {
+                if let pricedAll, pricedAll.model == offer.model, pricedAll.request == offer.request,
+                   offer.windows.allSatisfy(pricedAll.windows.contains) {
+                    var individual = offer
+                    individual.indexedWindows = Set(offer.windows.indices.filter { index in
+                        pricedAll.windows.firstIndex(of: offer.windows[index]).map(pricedAll.indexedWindows.contains) == true
+                    })
+                    pricedOffers[phrase] = marked(individual)
+                } else {
+                    pricedOffers[phrase] = await priceIndexed(offer)
+                }
+            }
+            guard revision == turn else { return }
+            guard !usingTakes else { refreshAfterUse = true; return }
             // Offers made over takes that changed meanwhile are never shown: the refresh after that change makes fresh ones.
-            guard offers.values.allSatisfy({ $0.isCurrent() }) else { self.offers = [:]; allOffer = nil; return }
-            // Windows this session already got a paid result for are priced "free": the run puts that result back.
-            self.offers = offers.mapValues { marked($0) }
-            self.allOffer = all.flatMap { $0.phraseIDs.contains(where: submissionUnconfirmed) ? nil : marked($0) }
+            guard pricedAll?.isCurrent() != false, pricedOffers.values.allSatisfy({ $0.isCurrent() }) else {
+                self.offers = [:]; allOffer = nil; return
+            }
+            self.offers = pricedOffers
+            self.allOffer = pricedAll
             problem = ""; offersFailed = false
         } catch ClipTakePlan.Failure.stale, ClipTakePlan.Failure.lipsyncBusy {
             // The takes changed while the offers were made (a reworded phrase is priced, a take is made): they end
