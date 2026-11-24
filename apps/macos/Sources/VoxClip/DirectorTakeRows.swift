@@ -109,8 +109,15 @@ extension RewriteSession {
     }
     func playTake(_ take: UUID, phrase: Int) async {
         guard isOpen, let takePlan, !takePlan.isRetired else { return }
+        focusedTakePhrase = phrase
         editor.transport("k")
         await takePlan.play(take: take, phrase: phrase)
+    }
+    func pickTake(_ take: UUID, phrase: Int) {
+        guard let plan = takePlan, plan.phrases.indices.contains(phrase), !takesBusy else { return }
+        focusedTakePhrase = phrase
+        guard plan.phrases[phrase].selectedID != take else { return }
+        mutateLipsync(phrase: phrase) { _ = plan.select(take: take, phrase: phrase) }
     }
     var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing || $0.preparingVideo } ?? false }
     /// The take rows' voice can't change now (its name shows, not a picker): takes are being made, paid work made with it
@@ -229,9 +236,7 @@ extension RewriteSession {
     func selectTake(number: Int) {
         guard let plan = takePlan, plan.phrases.indices.contains(focusedTakePhrase),
               let take = plan.phrases[focusedTakePhrase].takes.first(where: { $0.number == number }) else { return }
-        let phrase = focusedTakePhrase
-        if plan.phrases[phrase].selectedID == take.id { return }
-        mutateLipsync(phrase: phrase) { _ = plan.select(take: take.id, phrase: phrase) }
+        pickTake(take.id, phrase: focusedTakePhrase)
     }
     func moveTakePhrase(backward: Bool) {
         guard let plan = takePlan, !plan.phrases.isEmpty else { return }
@@ -410,26 +415,9 @@ extension ClipTakePlan.Phrase {
             } else {
                 PhraseWordingSection(session: session, plan: plan, phrase: phrase)
             }
-            HStack(spacing: VCTokens.spacingLabelGap) {
-                ForEach(phrase.takes) { take in
-                    if take.row.selectable, !session.takesBusy {
-                        Button(String(take.number)) {
-                            session.focusedTakePhrase = phrase.id
-                            if phrase.selectedID != take.id {
-                                session.mutateLipsync(phrase: phrase.id) { _ = plan.select(take: take.id, phrase: phrase.id) }
-                            }
-                        }
-                        .buttonStyle(.plain).frame(width: 24, height: 24)
-                        .background(phrase.selectedID == take.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
-                        .accessibilityLabel(Self.takeLabel(take, phrase: phrase))
-                        .help(Self.takeHelp(take, phrase: phrase))
-                        .accessibilityAddTraits(phrase.selectedID == take.id ? [.isButton, .isSelected] : .isButton)
-                    }
-                }
-                Text(session.phraseStatus(phrase, plan: plan)).font(VCType.small.font())
-                    .foregroundStyle(DesignValues.color(session.autoFix.lines[phrase.id] == nil ? "text.secondary" : "text.primary"))
-                    .columnLayoutEvidence("voice.phrase.\(phrase.id).status", text: session.phraseStatus(phrase, plan: plan))
-            }
+            Text(session.phraseStatus(phrase, plan: plan)).font(VCType.small.font())
+                .foregroundStyle(DesignValues.color(session.autoFix.lines[phrase.id] == nil ? "text.secondary" : "text.primary"))
+                .columnLayoutEvidence("voice.phrase.\(phrase.id).status", text: session.phraseStatus(phrase, plan: plan))
             if let edited = Self.madeBeforeEditLine(phrase) {
                 Text(edited).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                     .columnLayoutEvidence("voice.phrase.\(phrase.id).madeBeforeEdit", text: edited)
@@ -453,52 +441,11 @@ extension ClipTakePlan.Phrase {
             ForEach(TakeFailurePresentation.shortSpeechSummary(phrase.takes.map(\.row), selected: phrase.selectedID), id: \.self) { copy in
                 Text(copy).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
             }
-            // The user's own takes read as their own rows, in this one take list whatever the segment (MicrophoneTake.swift).
-            ForEach(phrase.takes.filter { $0.source == .microphone }) { take in
-                OwnTakeRow(session: session, microphone: session.phraseMicrophone, plan: plan, phrase: phrase, take: take)
-            }
-            // A join advisory is a note on the take's row, "join may sound slightly louder · ▶" (ADR-R39): the best take is
-            // chosen with it, and any other is one click on its number.
-            ForEach(phrase.takes.filter { $0.row.selectable && $0.row.hasJoinAdvisory && $0.source == .clonedVoice }) { take in
-                if let copy = TakeFailurePresentation.joinAdvisory(take.row, number: take.number) {
-                    HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingLabelGap) {
-                        Text(copy + " ·").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
-                            .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), join may sound slightly louder")
-                            .columnLayoutEvidence("voice.phrase.\(phrase.id).join.\(take.number)", text: copy)
-                        if !session.takesBusy {
-                            let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
-                            Button {
-                                session.focusedTakePhrase = phrase.id
-                                Task { await session.playTake(take.id, phrase: phrase.id) }
-                            } label: {
-                                Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: 20, height: 20)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number), join advisory")
-                            .help("Listen to the join of take \(take.number).")
-                            .modifier(PanelButtonEvidence(id: "joinPlay.\(phrase.id).\(take.number)", title: playing ? "Pause" : "Play"))
-                        }
-                    }
-                }
-            }
-            ForEach(phrase.takes.filter { !$0.row.selectable && $0.source == .clonedVoice }) { take in
-                if let copy = TakeFailurePresentation.leftOut(take.row, number: take.number) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        if take.playable, !session.takesBusy {
-                            let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
-                            Button {
-                                session.focusedTakePhrase = phrase.id
-                                Task { await session.playTake(take.id, phrase: phrase.id) }
-                            } label: {
-                                Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: 20, height: 20)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number)\(take.notChecked ? ", not checked" : "")")
-                            .help(take.notChecked ? "Listen to this take as ElevenLabs returned it. It was not checked and stays left out."
-                                                  : "Listen to this take. It stays left out.")
-                        }
-                        Text(copy).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning"))
-                    }
+            ForEach(phrase.takes.reversed()) { take in
+                if take.source == .microphone {
+                    OwnTakeRow(session: session, microphone: session.phraseMicrophone, plan: plan, phrase: phrase, take: take)
+                } else {
+                    generatedTakeRow(take, phrase: phrase, plan: plan)
                 }
             }
             // Duration and lip sync appear once a passing take is selected; before that they could not act.
@@ -535,7 +482,7 @@ extension ClipTakePlan.Phrase {
                 }
             }
             if phrase.wording == .suggested, phrase.blocked == nil, !plan.stoppedForRepeatedWords(phrase: phrase.id),
-               !session.takesBusy, session.autoFix.choicesShown,
+               !session.takesBusy, session.autoFix.choicesShown || (phrase.selected != nil && session.autoFix.work == nil),
                plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
                 if let action = session.pricedTakeAction(phrase: phrase.id) {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
@@ -553,5 +500,49 @@ extension ClipTakePlan.Phrase {
         .accessibilityElement(children: .contain).accessibilityLabel("Phrase \(phrase.id + 1) of \(plan.phrases.count)")
         .columnLayoutEvidence("voice.phrase.\(phrase.id)", text: phrase.takeDetail)
         .onTapGesture { session.focusedTakePhrase = phrase.id }
+    }
+
+    private func generatedTakeRow(_ take: ClipTakePlan.Take, phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> some View {
+        let title = "Take \(take.number)"
+        let id = "\(phrase.id).\(take.number)"
+        let selected = phrase.selectedID == take.id
+        let join = TakeFailurePresentation.joinAdvisory(take.row, number: take.number)
+        return HStack(spacing: VCTokens.spacingLabelGap) {
+            if take.playable, !session.takesBusy {
+                let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
+                let verb = playing ? "Pause" : "Play"
+                Button {
+                    Task { await session.playTake(take.id, phrase: phrase.id) }
+                } label: {
+                    Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(verb) phrase \(phrase.id + 1), take \(take.number)\(take.notChecked ? ", not checked" : "")")
+                .help(take.notChecked ? "Listen to this take as ElevenLabs returned it. It was not checked and stays left out."
+                                      : "Listen to take \(take.number).")
+                .modifier(PanelButtonEvidence(id: "playTake.\(id)", title: verb + " " + title))
+            }
+            if take.row.selectable {
+                if session.takesBusy {
+                    Text(title).font(VCType.small.font())
+                } else {
+                    Button(title) { session.pickTake(take.id, phrase: phrase.id) }
+                        .buttonStyle(.plain).padding(.horizontal, VCTokens.spacingLabelGap).frame(minHeight: 24)
+                        .background(selected ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
+                        .accessibilityLabel(Self.takeLabel(take, phrase: phrase))
+                        .help(Self.takeHelp(take, phrase: phrase))
+                        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                        .modifier(PanelButtonEvidence(id: "pickTake.\(id)", title: title))
+                }
+                if let join {
+                    Text("Join may sound slightly louder").font(VCType.small.font())
+                        .foregroundStyle(DesignValues.color("text.secondary"))
+                        .columnLayoutEvidence("voice.phrase.\(phrase.id).join.\(take.number)", text: join)
+                }
+            } else {
+                Text(TakeFailurePresentation.leftOut(take.row, number: take.number) ?? title).font(VCType.small.font())
+                    .foregroundStyle(DesignValues.color("status.warning"))
+            }
+        }
     }
 }

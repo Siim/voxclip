@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac, you can Rewrite a clip after using a whole-clip revoice. The earlier revoice stays until you use the new one. A selection that can't replace it offers a free Undo.
+- Rewrite keeps your earlier takes on Mac and Windows, newest first, so you can play or switch back to a take you already paid for without being charged again.
 - In ✦ Claude does it all, Mac can start finding clips with Apple Speech while Whisper or an approved Scribe run checks the words. The clip style card shows the transcription choice on Mac and Windows, and later clips arrive without interrupting your review.
 - On Mac, AI settings warn when your fal.ai key can't delete finished lip syncs. Your result is kept on this Mac, and fal.ai's copy stays until it expires.
 - On Mac, Rewrite stops retrying after the same words fail verification twice with the same voice. It keeps verified takes and offers free ways to move on instead of a third paid attempt.
