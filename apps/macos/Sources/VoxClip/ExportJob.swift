@@ -14,6 +14,7 @@ import VoxClipCore
     var draft = ShareCaptionDraft()
     var drafts: [String: ShareCaptionDraft] = [:]
     var copied = false
+    var posting = PostingReviewState()
     var timelineFiles: [URL] = []
     var timelineRunning = false
     @ObservationIgnored private(set) var captionCopyTimer: Timer?
@@ -61,8 +62,8 @@ import VoxClipCore
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if model.exporting { running }
-                    else if !model.exports.isEmpty { result }
                     else if !job.timelineFiles.isEmpty { timelineResult }
+                    else if !model.exports.isEmpty { result }
                     else { setup }
                 }.padding(.horizontal, CaptionsPanelMetrics.inset).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -88,7 +89,6 @@ import VoxClipCore
             Button("Cancel") { model.exportTask?.cancel() }.accessibilityIdentifier("voxclip.export.cancel")
         }
     }
-    private var result: some View {
     private var timelineResult: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Editable timelines saved", systemImage: "checkmark.circle.fill").foregroundStyle(DesignValues.color("status.success"))
@@ -97,12 +97,14 @@ import VoxClipCore
             if let error = model.exportError { InlineNotice(text: error) }
         }
     }
+    private var result: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Exported", systemImage: "checkmark.circle.fill").foregroundStyle(DesignValues.color("status.success"))
             ForEach(model.exports, id: \.outputURL) { result in
                 HStack { Image(systemName: "film"); Text(result.outputURL.lastPathComponent).lineLimit(1).truncationMode(.middle); Spacer(); Text(timecode(result.durationSeconds)).font(DesignValues.mono()) }.draggable(result.outputURL)
             }
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL)) }
+            PostingHelpReview(model: model)
             DisclosureGroup("Share to X or LinkedIn…", isExpanded: model.app.boolBinding("ui.export.shareExpanded")) { shareControls.padding(.top, 8) }
             if let error = model.exportError { InlineNotice(text: error) }
         }
@@ -184,14 +186,14 @@ import VoxClipCore
                     .buttonStyle(.borderedProminent)
                     .accessibilityLabel(model.exportAccessibleName(model.exportPrimaryTitle(targets), targets: targets))
                     .accessibilityIdentifier("voxclip.export.primary").disabled(!model.canExport || targets.isEmpty)
-                Button("Cancel") { model.finishExportJob() }
-            } else if !model.exporting {
                 let reason = model.timelineExportUnavailable(targets)
                 Button("Save editable timeline (.fcpxml)") { model.beginTimelineExport(targets: targets, folder: folder) }
                     .disabled(reason != nil).help(reason ?? "Open in Final Cut Pro or DaVinci Resolve")
                     .accessibilityIdentifier("voxclip.export.fcpxml")
                 Text(reason ?? "The timeline links to your original media. It isn’t a video to share.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
+                Button("Cancel") { model.finishExportJob() }
+            } else if !model.exporting {
                 if model.exportError != nil, job.timelineFiles.isEmpty { Button("Try again") { model.beginExport(targets: targets, folder: folder) } }
                 Button("Done") { model.finishExportJob() }.accessibilityIdentifier("voxclip.export.done")
             }
@@ -328,6 +330,8 @@ extension EditorModel {
         // lazily load fresh drafts (and the off-default opt-in) from its result.
         exportJob.draft.commit(model: self)
         exportJob.draft = ShareCaptionDraft(); exportJob.drafts = [:]
+        let posting = PostingReviewState()
+        exportJob.posting = posting
         exportJob.shareTarget = targets.compactMap { if case .clip(let id) = $0 { return id }; return nil }.first ?? "full"
         exportJob.copied = false; exportJob.showsXTip = false
         let renderSnapshot = renderSnapshot()
@@ -400,6 +404,7 @@ extension EditorModel {
                             if after > before, after < 4 { self.announce("Rendering \(self.exportIndex) of \(total) · \(after * 25)%") }
                         } }
                         exports.append(result)
+                        posting.record(target, name: targetName, result: result, render: render, snapshot: shapedRender)
                         if let loudness = result.loudness {
                             await app.log.write(LogEntry(level: .info, category: "export", message: loudness.logLine))
                         }

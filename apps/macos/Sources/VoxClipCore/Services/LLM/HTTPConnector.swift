@@ -121,7 +121,8 @@ public actor HTTPConnector: LLMConnector {
         defer { active = false }
         if id == .ollama || id == .lmstudio { _ = await contextTokens(model: model) }
         let retry = catalog.document[ai: "policy"][ai: "retry"]
-        let attempts = request.feature == .voiceRewrite ? 1 : max(1, retry[ai: "attempts"].aiInt ?? 3)
+        let singleSend = request.feature == .voiceRewrite || request.feature == .postingHelp
+        let attempts = singleSend ? 1 : max(1, retry[ai: "attempts"].aiInt ?? 3)
         let backoffs = retry[ai: "backoffSeconds"].aiArray.compactMap(\.aiDouble)
         let statuses = retry[ai: "retryStatuses"].aiArray.compactMap(\.aiInt)
         let retryStatuses = retry[ai: "retryStatuses"] == .null ? [429, 500, 502, 503, 504, 529] : statuses

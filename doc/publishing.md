@@ -106,13 +106,19 @@ Advisory notices (never blocking), shown under the share row:
 
 ---
 
-## 2.4 Editable hand-off (Mac)
+### 2.4 Editable hand-off (Mac)
 
 In Export, **Save editable timeline (.fcpxml)** writes one FCPXML 1.10 document per target to the chosen folder. It is not a rendered video and does not add a finished video to export history. The CLI uses the same prepared plan: `voxclip-cli export --format fcpxml --open project.voxclip --clip <id> --export clip.fcpxml`.
 
 The spine links to the original media with frame-aligned cuts. Titles and lower thirds use editable Basic Title text, and caption pages become text titles on their own lane. A title crossing a cut is split at the cut. Source voice and the referenced, trimmed or looped music occupy separate Dialogue and Music roles. Bring the original and music media along if you move the timeline, and relink them in the receiving editor when needed. Do not treat the timeline as a redacted copy of the media.
 
 This is an editing hand-off, not a recreation of the MP4 look. Animated styling, other visual treatments, context overlays, SFX, fades and ducking are not carried over. Timing-changing edits and censorship effects require MP4 export rather than silently sending an uncensored or mistimed timeline. Windows hand-off and CapCut draft output are not implemented.
+
+### 2.5 Posting help (Mac)
+
+After successfully exporting up to 12 clips, **Posting help** offers one priced Claude send. Choose Claude Code or Anthropic in AI settings. The button names the billing path: your Claude plan or your key (with the same unknown-price wording as other AI steps). No automatic retries or fallback sends. The request contains clip names, lengths, excerpts of edited words and the local time zone, not media files, file paths, cut words or spoken words masked by a bleep or mute.
+
+The review shows Claude's suggested order and local posting windows, and separate copyable drafts with hashtags for X, LinkedIn, and VoxConvo. Suggestions are not audience analytics or scheduled posts. Copy includes the track's music credit when required. The raw reply is kept privately as soon as it arrives, including an unusable reply. A valid saved plan returns without another send when you re-export the same clip batch on this Mac. No draft is posted from this section.
 
 ## 3. VoxConvo direct publish (M2)
 
