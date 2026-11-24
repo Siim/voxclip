@@ -130,7 +130,9 @@ import VoxClipCore
             Text("Engine").foregroundStyle(DesignValues.color("text.tertiary")).frame(width: 88, height: 26, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 Picker("Engine", selection: $transcription.engine) {
-                    engineLabel("Apple Speech", fact: "On this Mac · free").tag("apple")
+                    if !transcription.confirmsClaudeTranscript {
+                        engineLabel("Apple Speech", fact: "On this Mac · free").tag("apple")
+                    }
                     engineLabel("On this Mac", fact: localFact).tag("local")
                     engineLabel("ElevenLabs Scribe", fact: "\(transcription.hasKey ? "Your key · " : "Needs your key · ")\(transcription.price)").tag("elevenlabs")
                 }.pickerStyle(.radioGroup).labelsHidden().controlSize(.small).accessibilityLabel("Engine").help(transcription.paid ? transcription.sendLine : "Transcribes on this Mac. Nothing leaves this Mac.")

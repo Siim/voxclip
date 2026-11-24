@@ -314,6 +314,8 @@ enum SidebarItem: Hashable {
     /// Imports a movie as a new untitled project and opens it in place of the open one.
     func importVideo(_ url: URL) async {
         guard importTask == nil else { notice = Self.busyCopy; return }
+        let clock = ClaudeModeClock()
+        clock.begin(.ingest)
         // A file opened from Finder or the Dock shows its progress in the main window,
         // even if that window was closed or minimised.
         windowController?.window?.makeKeyAndOrderFront(nil)
@@ -322,7 +324,7 @@ enum SidebarItem: Hashable {
             importProgress = "Importing video…"
             defer { importProgress = nil; importTask = nil }
             do {
-                let imported = try await importedDocument(url, app: app)
+                let imported = try await importedDocument(url, app: app, clock: clock)
                 try Task.checkCancellation()
                 NSDocumentController.shared.addDocument(imported)
                 let opened: @MainActor () async -> Void = { [weak self] in

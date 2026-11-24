@@ -18,6 +18,8 @@ import VoxClipMedia
     var savingKey = false
     var error: String?
     var readiness: Readiness?
+    var appleDraftAvailability: ClaudeTranscriptionChoice.Apple?
+    var claudeConfirmationEngine: TranscriptEngine?
     var selectedModel: ModelDescriptor?
     var again = false
     var againConfirmed = false
@@ -55,6 +57,7 @@ import VoxClipMedia
     #if DEBUG
     @ObservationIgnored var readinessOverride: ((TranscriptionPlan) async -> Readiness)?
     @ObservationIgnored var runOverride: ((TranscriptionPlan) async throws -> Transcript)?
+    @ObservationIgnored var runOverrideUsesAudio = false
     @ObservationIgnored var requestRunOverride: ((ApprovedRun) async throws -> TranscriptionResult)?
     @ObservationIgnored var leaseOverride: ((String) async -> CacheKeyLease)?
     @ObservationIgnored var runErrorOverride: ((any Error) async -> String)?
@@ -62,6 +65,19 @@ import VoxClipMedia
 
     init(model: EditorModel) { self.model = model }
     var paid: Bool { engine == "elevenlabs" }
+    var confirmsClaudeTranscript: Bool { model.claudeModeWaitsForTranscript && !again && model.project.transcript == nil }
+
+    var claudeTranscriptionChoice: ClaudeTranscriptionChoice {
+        let preferred = model.app.string("transcription.engineMode", fallback: "local")
+        let takingChoice = confirmsClaudeTranscript && phase != .hidden
+        let spoken = takingChoice ? language : model.app.string("transcription.language", fallback: "auto")
+        let availability = appleDraftAvailability ?? (spoken == "auto" ? .unavailable : .unknown)
+        let mode: String
+        if takingChoice, preferred != "ask" { mode = engine }
+        else if let claudeConfirmationEngine { mode = claudeConfirmationEngine == .elevenlabs ? "elevenlabs" : "local" }
+        else { mode = preferred }
+        return ClaudeTranscriptionChoice(mode: mode, apple: availability)
+    }
     var isVisible: Bool { phase != .hidden || cancelledNote != nil }
     var isRunning: Bool { phase == .running }
     var retryingAlignment: Bool { isRunning && pendingAlignment != nil }
@@ -199,6 +215,11 @@ import VoxClipMedia
         let preferred = model.app.string("transcription.engineMode", fallback: "local")
         // Settings' “On this Mac” routes English to Apple's installed engine; a Whisper choice in this block stays explicit.
         engine = preferred == "elevenlabs" ? "elevenlabs" : preferred == "apple" || (preferred == "local" && language == "en") ? "apple" : "local"
+        if confirmsClaudeTranscript {
+            engine = ClaudeTranscriptionChoice(mode: preferred, apple: .unknown).confirmation == .elevenlabs ? "elevenlabs" : "local"
+        }
+        appleDraftAvailability = nil
+        claudeConfirmationEngine = nil
         modelID = ""
         phase = .choosing
         await loadPriceAndKey(request: request)
@@ -232,6 +253,7 @@ import VoxClipMedia
     func choicesChanged() {
         guard !isRunning, pendingAlignment == nil else { return }
         revision += 1
+        appleDraftAvailability = nil
         error = nil; cancelledNote = nil; readiness = nil; savingKey = false; key = ""; keyGuard.reset()
         choiceTask?.cancel()
         choiceTask = Task { [weak self, model] in await self?.refreshChoice(); _ = model }
@@ -247,12 +269,7 @@ import VoxClipMedia
             selectedModel = selected
             let adapter = await adapter()
             let plan = makePlan()
-            let status: Readiness
-            #if DEBUG
-            if let readinessOverride { status = await readinessOverride(plan) } else { status = await adapter.readiness(for: plan) }
-            #else
-            status = await adapter.readiness(for: plan)
-            #endif
+            let status = await status(for: plan, using: adapter)
             guard request == revision, !Task.isCancelled, selection == [engine, language, modelID], phase == .choosing else { return }
             readiness = status
             if case .needsKey = status { hasKey = false }
@@ -267,6 +284,13 @@ import VoxClipMedia
             self.error = message
         }
     }
+
+    func status(for plan: TranscriptionPlan, using engine: any Transcriber) async -> Readiness {
+        #if DEBUG
+        if let readinessOverride { return await readinessOverride(plan) }
+        #endif
+        return await engine.readiness(for: plan)
+    }
     func makePlan() -> TranscriptionPlan {
         TranscriptionPlan(engine: paid ? .elevenlabs : engine == "apple" ? .appleSpeech : .whispercpp,
             model: paid ? ElevenLabsScribe.modelID : engine == "local" ? selectedModel?.id : nil, language: language == "auto" ? .auto : .forced(language),
@@ -280,7 +304,11 @@ import VoxClipMedia
                 return await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, session: scribeSession, catalog: BundledModelCatalog(shared: shared), logger: model.app.log)
             }
             return await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, logger: model.app.log)
-        default: return WhisperCppTranscriber(logger: model.app.log)
+        default:
+            if let shared = model.app.shared {
+                return WhisperCppTranscriber(catalog: BundledModelCatalog(shared: shared), locations: model.app.locations, logger: model.app.log)
+            }
+            return WhisperCppTranscriber(logger: model.app.log)
         }
     }
     func saveKey() async {
@@ -417,8 +445,9 @@ import VoxClipMedia
     func startApprovedRun(paidApproval: Bool = false) {
         let retry = pendingAlignment?.retry
         guard mediaReady, phase == .choosing, !isRunning, !paid || paidApproval || retry != nil,
-              retry == nil || canStart else { return }
+              retry == nil || canStart, !confirmsClaudeTranscript || engine != "apple" else { return }
         let plan = makePlan(), cost = paid && retry == nil ? estimate : nil
+        if confirmsClaudeTranscript { claudeConfirmationEngine = plan.engine }
         let baseline = pendingAlignment?.project ?? downloadBaseline ?? model.project
         downloadBaseline = nil
         if remember && retry == nil { model.app.set("transcription.language", .string(language)) }
