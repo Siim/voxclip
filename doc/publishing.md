@@ -106,6 +106,14 @@ Advisory notices (never blocking), shown under the share row:
 
 ---
 
+## 2.4 Editable hand-off (Mac)
+
+In Export, **Save editable timeline (.fcpxml)** writes one FCPXML 1.10 document per target to the chosen folder. It is not a rendered video and does not add a finished video to export history. The CLI uses the same prepared plan: `voxclip-cli export --format fcpxml --open project.voxclip --clip <id> --export clip.fcpxml`.
+
+The spine links to the original media with frame-aligned cuts. Titles and lower thirds use editable Basic Title text, and caption pages become text titles on their own lane. A title crossing a cut is split at the cut. Source voice and the referenced, trimmed or looped music occupy separate Dialogue and Music roles. Bring the original and music media along if you move the timeline, and relink them in the receiving editor when needed. Do not treat the timeline as a redacted copy of the media.
+
+This is an editing hand-off, not a recreation of the MP4 look. Animated styling, other visual treatments, context overlays, SFX, fades and ducking are not carried over. Timing-changing edits and censorship effects require MP4 export rather than silently sending an uncensored or mistimed timeline. Windows hand-off and CapCut draft output are not implemented.
+
 ## 3. VoxConvo direct publish (M2)
 
 ### 3.1 Today's VoxConvo (facts the plan depends on)

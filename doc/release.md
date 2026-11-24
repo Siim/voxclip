@@ -331,6 +331,10 @@ It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel
 
 ---
 
+### 4.0.1 Editable timeline import check
+
+Once per release, export a clip with two retained ranges, a hook title, captions and background music. Validate the `.fcpxml` against a locally obtained Apple FCPXML 1.10 DTD (`xmllint --noout --dtdvalid <DTD> <timeline.fcpxml>`). Import it in Final Cut Pro and DaVinci Resolve, relink the source if prompted, and confirm the cuts, aspect, editable text and separate voice and music. Record both editor versions and the result in the release verification record. A DTD pass alone does not count as an import pass.
+
 ### 4.1 Launch page go-live — user's approval required
 
 The page address is **clip.voxconvo.com**, served by GitHub Pages from this public repository (ADR-R32, user decision 2026-10-27). Pages is disabled until the user approves going live. The implementation task does not change DNS, repo settings, upload assets or publish releases.
