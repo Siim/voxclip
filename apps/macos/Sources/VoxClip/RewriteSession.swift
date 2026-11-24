@@ -316,20 +316,21 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored private(set) var reviewing: Task<Void, Never>?
 
     init(editor: EditorModel, scope rewriteScope: RewriteScope, instruction: String = "", envelope: AudioEnvelope?, connector: RewriteConnector?,
-         prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil,
+         prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil, forClipID: String? = nil,
          consent: @escaping @MainActor () async -> Bool = { false }, connectorIsCurrent: @escaping @MainActor () -> Bool = { true }) {
-        self.editor = editor; self.rewriteScope = rewriteScope; project = editor.project
+        let project = forClipID.map { editor.project.scoped(to: $0) } ?? editor.project
+        self.editor = editor; self.rewriteScope = rewriteScope; self.project = project
         self.instruction = instruction
-        let corrected = Self.corrected(editor.project)
-        let items = Self.items(of: rewriteScope, in: corrected, project: editor.project)
+        let corrected = Self.corrected(project)
+        let items = Self.items(of: rewriteScope, in: corrected, project: project)
         transcript = corrected
         source = items
-        scope = Self.outputScope(of: rewriteScope, in: editor.project)
+        scope = Self.outputScope(of: rewriteScope, in: project)
         self.envelope = envelope; self.connector = connector; self.prices = prices; self.synthesisModel = VoiceLabWordingFit.modelID
         self.consent = consent; self.connectorIsCurrent = connectorIsCurrent
         passageService = editor.app.shared.map(VoiceRewriteService.init)
         scopeService = editor.app.shared.map(PatchRewriteService.init)
-        let words = Self.scopeWords(rewriteScope, source: items, project: editor.project, editor: editor)
+        let words = Self.scopeWords(rewriteScope, source: items, project: project, editor: editor)
         task = DirectorTask(scope: rewriteScope, words: words, state: connector == nil ? .choosingAI : .running,
                             close: PanelAction(id: "close", title: "Close Rewrite") { [weak editor] in editor?.closeRewrite() })
         if connector == nil { task.show(.choosingAI, headline: PanelHeadline(text: "Who should rewrite \(words.name)?"), cards: [.text("Checking which AIs are set up…")]) }

@@ -83,6 +83,34 @@ Release `voxclip-cli autopilot --count 3 --timings` at `0f952b0b` (eyes part 1, 
 - **Loudness did not reach −14 on real speech.** The three exports measured −20.1, −19.8 and −20.0 LUFS (FFmpeg `ebur128`). Clip 1's report: measured −20.9 LUFS, gain +0.74 dB, `capped: true`. Plosives and clicks reach the −1 dBTP ceiling first, so static gain alone barely moves talking-head audio. track/v2-loudness-limiter adds a transparent true-peak limiter.
   - Follow-up 2026-11-08 (ADR-R47 amended, a true-peak limiter): the same three clips export at −14.04, −14.06 and −14.05 LUFS (FFmpeg −14.1), true peak −1.00 dBTP on the PCM, not capped, with at most 6.9–8.3 dB of limiting.
 
+## Claude mode drop fixture (2026-11-24)
+
+Issue #14, Mac editor import through the first ready clip. `ClaudeModeDropTests` imports
+`shared/fixtures/media/fillers-chirp.mp4` with the real media probe and audio extraction.
+Transcription, Find Clips and planning replies are scripted; no provider is called. The
+fixture checks that Find Clips overlaps confirmation, draft names never appear in the
+published suggestions, and later clips arrive without replacing the one under review.
+
+| Stage (seconds) | Before | After |
+|---|---:|---:|
+| Import setup / ingest | 0.002 (setup only) | 0.049 |
+| Media probe | Not measured separately | 0.028 |
+| Audio extraction | 0.510 | 0.510 |
+| Apple Speech draft (scripted) | — | 0.054 |
+| Confirming transcription (scripted) | Not measured separately | 0.513 |
+| Transcription total (includes audio) | 1.041 | 1.089 |
+| Find Clips | 0.681 | 0.668 |
+| Plans, clips 1 / 2 / 3 | 0.128 / 0.189 / 0.189 | 0.128 / 0.191 / 0.191 |
+| Apply, clips 1 / 2 / 3 | 0.039 / 0.038 / 0.037 | 0.042 / 0.040 / 0.039 |
+| **Drop to first ready clip** | **1.937** | **1.471** |
+
+These are elapsed stage durations, not additive. In the merged-branch run, Find Clips starts at
+0.620 s after drop, overlapping the 0.513 s confirmation. The baseline used the
+existing per-stage clock plus a drop timestamp; its short setup measurement did not time
+the media probe. This fixture checks the workflow, not production speed or recognition
+accuracy on a long video. Windows shares the transcription-choice fixture but has no
+Apple Speech draft; native Windows drop-to-ready was not measured.
+
 ## Side by side
 
 | | Agent (Codex/Opus, no app) | VoxClip today |

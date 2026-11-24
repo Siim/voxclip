@@ -308,6 +308,7 @@ extension ProviderChoice {
     var testingProviders: Set<String> = []
     @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }
+    let falLipsyncCleanupNotice = FalLipsyncCleanupNotice()
     @ObservationIgnored lazy var captions = CaptionHandoff(shared: shared)
     @ObservationIgnored lazy var exportLedger = ExportLedger(file: locations.root.appendingPathComponent("exports.json"))
     @ObservationIgnored lazy var appleSpeechAssets = AppleSpeechAssetLibrary(app: self)

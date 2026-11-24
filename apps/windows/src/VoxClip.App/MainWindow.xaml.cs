@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using Windows.Storage.Pickers;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
 namespace VoxClip.App;
@@ -279,6 +280,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (App.Restart.IsPreparing) return;
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
+        var importClock = newImport && !demo ? new ClaudeModeClock() : null;
+        importClock?.Begin(ClaudeModeStage.Ingest);
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
         if (ShellNavigation.Route(via, existing is not null, editor is not null, fullPath) == ShellRoute.ShowHoldingWindow) { existing!.Activate(); existing.ShowOpenProject(); return; }
         await navigation.WaitAsync();
@@ -322,7 +325,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             }
             else
             {
+                importClock?.Begin(ClaudeModeStage.Probe);
                 var media = await App.Services.Probe.ProbeAsync(fullPath, lifetime.Token);
+                importClock?.End(ClaudeModeStage.Probe);
                 var contentKey = await App.Services.Projects.ComputeContentKeyAsync(fullPath, null, lifetime.Token);
                 project = ProjectFactory.Create(fullPath, media, contentKey);
                 mediaPath = fullPath;
@@ -366,7 +371,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                     // Keep the cache under its limit after each import, once the new project's editor holds its lease (architecture §8.2).
                     App.Services.CacheUpkeep.Imported();
                     // A newly imported video: Claude mode runs on it once it is transcribed (design §6.7).
-                    incoming.ViewModel.ArmClaudeMode();
+                    importClock?.End(ClaudeModeStage.Ingest);
+                    incoming.ViewModel.ArmClaudeMode(importClock);
                     await incoming.PromptTranscriptionAsync();
                 }
             }

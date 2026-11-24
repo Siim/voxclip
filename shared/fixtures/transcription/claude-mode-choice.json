@@ -1,0 +1,10 @@
+[
+  {"mode":"local","apple":"ready","confirmation":"whispercpp","firstPass":true,"label":"Apple Speech → Whisper"},
+  {"mode":"apple","apple":"ready","confirmation":"whispercpp","firstPass":true,"label":"Apple Speech → Whisper"},
+  {"mode":"local","apple":"unavailable","confirmation":"whispercpp","firstPass":false,"label":"Whisper on this device"},
+  {"mode":"local","apple":"unknown","confirmation":"whispercpp","firstPass":false,"label":"Apple Speech if available → Whisper"},
+  {"mode":"elevenlabs","apple":"ready","confirmation":"elevenlabs","firstPass":true,"label":"Apple Speech → Scribe (approval required)"},
+  {"mode":"elevenlabs","apple":"unavailable","confirmation":"elevenlabs","firstPass":false,"label":"Scribe (approval required)"},
+  {"mode":"elevenlabs","apple":"unknown","confirmation":"elevenlabs","firstPass":false,"label":"Apple Speech if available → Scribe (approval required)"},
+  {"mode":"ask","apple":"unavailable","confirmation":"whispercpp","firstPass":false,"label":"Ask before transcribing"}
+]

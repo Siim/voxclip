@@ -2,6 +2,7 @@ import AVFoundation
 import CoreImage
 import CryptoKit
 import Foundation
+import QuartzCore
 import Testing
 import VoxClipCore
 @testable import VoxClipMedia
@@ -175,6 +176,73 @@ struct VoiceLabCompositionTests {
         let output = root.appendingPathComponent("source.mov")
         try await session.export(to: output, as: .mov)
         return output
+    }
+
+    @MainActor @Test(.timeLimit(.minutes(2)), arguments: [false, true])
+    func anImportedLipSyncSwapsIntoThePlayingPreview(delayedPicture: Bool) async throws {
+        let root = try LipsyncImportFixture.directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try await source(in: root)
+        let nextSource = delayedPicture ? try await PreviewFramesTests.delayedVideo(source, by: CMTime(value: 3, timescale: 1), in: root) : source
+        var (project, input) = try fixture(source: nextSource, root: root)
+        let plan = try legacyPlan(project)
+        let output = OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000)
+        var request = RenderRequest(sourceURL: source, plan: plan, output: output)
+        let controller = PreviewPlayerController()
+        let layer = AVPlayerLayer(player: controller.player)
+        let failures = PreviewFramesTests.Failures(controller)
+        defer { controller.close(); failures.stop() }
+
+        let sourceWindow = try LipsyncWindow.make(seamIn: 120_000, seamOut: 153_600, totalSamples: plan.totalSamples,
+                                                 sampleRate: Int(plan.sampleRate), phraseID: 0)
+        let window = try LipsyncRenderWindow(source: sourceWindow, plan: input.prepared.outputPlan)
+        let remote = root.appendingPathComponent("returned.mp4")
+        let frames = Int((window.uploadSeconds(sampleRate: plan.sampleRate) * 30).rounded(.up))
+        try await FalShapedResult.write(to: remote, frames: frames, fps: 30, audioSeconds: nil)
+        let http = LipsyncImportHTTP(bytes: try Data(contentsOf: remote))
+        let provider = try LipsyncImportFixture.provider(http: http)
+        let (quote, job) = try await LipsyncImportFixture.submit(root: root, provider: provider, model: provider.models[0],
+            seconds: Double(frames) / 30, fps: 30, syncMode: window.syncMode)
+        let imported = try await LipsyncResultImporter().importResult(provider: provider, job: job, quote: quote,
+            neededSeconds: window.seconds(sampleRate: plan.sampleRate), projectID: project.id, paidRoot: root,
+            sourceWidth: 640, sourceHeight: 360)
+        let selected = project.voiceLab.segments[0].selectedCandidateIndex
+        let recipe = try #require(project.voiceLab.segments[0].candidates[selected].recipe)
+        project.voiceLab.segments[0].candidates[selected].recipe?.video = recipe.video.addingLipsync(assetID: imported.asset.id,
+            requestID: imported.provenance.requestID, sourceWindow: window.source, syncMode: window.syncMode, model: imported.provenance.model)
+        project.voiceLab.videoAssets = [imported.asset]
+        let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+        input = try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight, paidRoot: root, prepared: prepared)
+
+        try await controller.load(request)
+        try #require(try await PreviewFramesTests.meanLuma(controller, at: 2.1) > 20)
+        let previous = try #require(controller.player.currentItem)
+        let pausedTime = previous.currentTime().seconds
+        controller.play()
+        for _ in 0..<80 where previous.currentTime().seconds < pausedTime + 0.05 {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let swapTime = previous.currentTime().seconds
+        try #require(swapTime >= pausedTime + 0.05)
+        request.sourceURL = nextSource
+        request.voiceLab = input
+        try await controller.update(request)
+        let item = try #require(controller.player.currentItem)
+        #expect(item !== previous)
+        let framesOut = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        item.add(framesOut)
+        defer { item.remove(framesOut) }
+        var hasFrame = false
+        for _ in 0..<80 {
+            try await Task.sleep(for: .milliseconds(50))
+            let time = framesOut.itemTime(forHostTime: CACurrentMediaTime())
+            if framesOut.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) != nil { hasFrame = true }
+            if hasFrame && layer.isReadyForDisplay && item.currentTime().seconds > swapTime + 0.05 { break }
+        }
+        #expect(item.status == .readyToPlay)
+        #expect(hasFrame && layer.isReadyForDisplay, "preview: display stalled, layer reattached")
+        #expect(item.currentTime().seconds > swapTime + 0.05)
+        #expect(failures.events.isEmpty, "preview: compositor reason=\(failures.events.map { $0.1?.rawValue })")
     }
 
     private func offsetSource(in root: URL) async throws -> URL {

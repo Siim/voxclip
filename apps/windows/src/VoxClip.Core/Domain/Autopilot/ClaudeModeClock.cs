@@ -28,7 +28,13 @@ public enum ClaudeModeStage
     /// <summary>One clip's opening scan, beside its plan request.</summary>
     Opening,
     /// <summary>One clip's export self-check (ADR-R49), after its export and beside the other clips' work.</summary>
-    Check
+    Check,
+    /// <summary>Import and initial editor setup.</summary>
+    Ingest,
+    /// <summary>Provisional Apple Speech pass, on Mac.</summary>
+    Draft,
+    /// <summary>Confirming the transcript before clips can be shown.</summary>
+    Confirm
 }
 
 /// <summary>One stage's wall time: when it started and ended, in seconds from the run's start, and for a clip stage which clip (1 is

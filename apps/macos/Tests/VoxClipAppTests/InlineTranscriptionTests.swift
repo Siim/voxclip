@@ -134,6 +134,52 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         #expect(model.transcription.phase == .choosing && model.transcription.language == "auto")
         #expect(model.transcription.error == "Which language is spoken?" && !model.transcription.canStart)
     }
+    @Test func claudeModeUsesWhisperWithoutWaitingForAppleAssets() async throws {
+        let model = try editor(); defer { model.close() }
+        #expect(model.app.set(ClipsMode.key, .string("claude")))
+        let flow = model.transcription
+        flow.readinessOverride = { $0.engine == .appleSpeech ? .needsSystemAssets(locale: "en-US") : .ready }
+        var engines: [TranscriptEngine] = []
+        let result = try transcript()
+        flow.runOverride = { plan in engines.append(plan.engine); return result }
+        await flow.openOnImport()
+        await model.workTask?.value
+        #expect(engines == [.whispercpp] && model.project.transcript == result)
+        #expect(flow.claudeTranscriptionChoice.label == "Whisper on this device")
+    }
+
+    @Test func claudeModeDoesNotPublishTheAppleDraftIfConfirmationFails() async throws {
+        let model = try editor(); defer { model.close() }
+        #expect(model.app.set(ClipsMode.key, .string("claude")))
+        let flow = model.transcription
+        let draft = try transcript()
+        flow.runOverride = { plan in
+            if plan.engine == .appleSpeech { return draft }
+            throw VoxClipError.transcriptionFailed("Confirmation failed")
+        }
+        await flow.openOnImport()
+        await model.workTask?.value
+        #expect(model.project.transcript == nil && model.project.ai.results.isEmpty && flow.phase == .choosing)
+        #expect(model.claudeMode.clock?.firstReady == nil)
+    }
+
+    @Test func claudeModeRunsScribeOnlyAfterApproval() async throws {
+        let model = try editor(); defer { model.close() }
+        #expect(model.app.set(ClipsMode.key, .string("claude")))
+        #expect(model.app.set("transcription.engineMode", .string("elevenlabs")))
+        let keys = InlineTranscriptionKeys()
+        await keys.save("test", for: "elevenlabs")
+        model.app.providerKeyStoreOverride = keys
+        let flow = model.transcription
+        let result = try transcript()
+        var engines: [TranscriptEngine] = []
+        flow.runOverride = { plan in engines.append(plan.engine); return result }
+        await flow.openOnImport()
+        #expect(engines.isEmpty && model.project.transcript == nil && flow.phase == .choosing)
+        flow.activate()
+        await model.workTask?.value
+        #expect(engines == [.appleSpeech, .elevenlabs] && model.project.transcript == result)
+    }
     /// Apple Speech that doesn't answer in time is not ready, never unsupported (design.md §7.1 "Engine"): the block says so and
     /// Retry asks again, starting nothing; the other engines stay choosable.
     @Test func appleSpeechThatDoesNotAnswerSaysSoAndRetryAsksAgain() async throws {

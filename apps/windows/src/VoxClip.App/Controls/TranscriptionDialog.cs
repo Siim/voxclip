@@ -2,10 +2,13 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Services.Media;
 using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Project;
+using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
 using System.ComponentModel;
@@ -55,7 +58,9 @@ internal sealed class TranscriptionDialog : InlineEditorJob
         baseline = new(model);
         this.model = model; projectPath = owner.ProjectPath; Title = model.HasTranscript ? "Transcribe again" : "Transcribe video";
         PrimaryButtonText = "Transcribe"; CloseButtonText = "Not now";
-        engine.SelectedIndex = App.Services.Get("transcription.engineMode", "local") == "elevenlabs" ? 1 : 0;
+        var engineMode = App.Services.Get("transcription.engineMode", "local");
+        var confirmation = model.ClaudeModeOn ? ClaudeTranscriptionChoice.ForWindows(engineMode).Confirmation : engineMode;
+        engine.SelectedIndex = confirmation == "elevenlabs" ? 1 : 0;
         var savedLanguage = App.Services.Get("transcription.language", "auto");
         language.Text = savedLanguage == "auto" ? "" : savedLanguage;
         var body = Ui.Stack(16);
@@ -459,7 +464,11 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 RequireCurrent();
                 Report(MediaTranscriptionStage.ExtractingAudio, null);
                 Ui.Show(notice, TranscriptionProgressCopy.ExtractingAudio);
-                var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, token);
+                var clock = model.ClaudeMode.Armed && model.ClaudeModeOn ? model.ClaudeMode.Clock : null;
+                clock?.Begin(ClaudeModeStage.Audio);
+                AudioExtractionResult audio;
+                try { audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, token); }
+                finally { clock?.End(ClaudeModeStage.Audio); }
                 RequireCurrent();
                 if (route is { Detector: not null })
                 {
@@ -487,7 +496,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                         TranscriptionSpendState.Shared.Observe(jobId, approvedDay, capturedEstimate, evidence);
                     } : null
                 };
-                var transcript = await service.TranscribeAsync(request, new WorkflowProgress<TranscriptionProgress>(value =>
+                var confirmationProgress = new WorkflowProgress<TranscriptionProgress>(value =>
                 {
                     if (cloud && value.Stage == TranscriptionStage.Uploading) Interlocked.Exchange(ref uploadMayHaveStarted, 1);
                 }, value =>
@@ -499,7 +508,9 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                         ? "ElevenLabs may still bill audio already received. Your video is still here."
                         : "Nothing has been sent yet. Cancel now and nothing is billed.";
                     Report(value.Stage == TranscriptionStage.Aligning ? MediaTranscriptionStage.Aligning : MediaTranscriptionStage.Transcribing, value.Fraction);
-                }, action => DispatcherQueue.TryEnqueue(() => action())), token);
+                }, action => DispatcherQueue.TryEnqueue(() => action()));
+                var transcript = clock is null ? await service.TranscribeAsync(request, confirmationProgress, token)
+                    : await clock.TimedAsync(ClaudeModeStage.Confirm, null, () => service.TranscribeAsync(request, confirmationProgress, token));
                 if (cloud && approvedPrice is { } paid)
                     TranscriptionSpendState.Shared.Completed(jobId, approvedDay, paid, transcript.FromCache);
                 RequireCurrent();

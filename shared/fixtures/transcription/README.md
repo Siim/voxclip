@@ -1,5 +1,7 @@
 # Transcription fixtures
 
+`claude-mode-choice.json` is the hand-authored routing and clip style copy contract for #14. Mac checks every row; Windows checks the `unavailable` Apple rows because Apple Speech is not present there. The expected values document the UI and consent policy, not engine output.
+
 These fixtures are hand-written from `doc/spec/transcription.md` sections 16.1
 and 16.2. They are small synthetic cases, not captures of customer audio or
 live provider calls. No generator, API key or model download is required.
