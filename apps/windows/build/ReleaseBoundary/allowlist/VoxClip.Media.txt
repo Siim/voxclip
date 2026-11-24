@@ -209,7 +209,6 @@ member VoxClip.Media.Audio.MicrophoneTake :: method public op_Equality(VoxClip.M
 member VoxClip.Media.Audio.MicrophoneTake :: method public op_Inequality(VoxClip.Media.Audio.MicrophoneTake,VoxClip.Media.Audio.MicrophoneTake)
 member VoxClip.Media.Audio.MicrophoneTake :: method public set_Mono(float[])
 member VoxClip.Media.Audio.MicrophoneTake :: method public set_Rate(int)
-member VoxClip.Media.Audio.MusicBed :: field internal NoAudioMessage
 member VoxClip.Media.Audio.MusicBed :: field private bedGain
 member VoxClip.Media.Audio.MusicBed :: field private ducking
 member VoxClip.Media.Audio.MusicBed :: field private entry
@@ -253,6 +252,7 @@ member VoxClip.Media.Audio.RenderedAudioReader :: method internal OpenVoiceForMu
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal Read(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal get_TotalFrames()
 member VoxClip.Media.Audio.RenderedAudioReader :: method private Open(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,bool,System.Threading.CancellationToken,VoxClip.Media.Audio.MusicBed)
+member VoxClip.Media.Audio.RenderedAudioReader :: method private ReadSilence(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method private Silenced(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method public Dispose()
 member VoxClip.Media.Audio.SharedWasapiOutput :: field private player
@@ -1592,6 +1592,7 @@ member VoxClip.Media.Pipeline.Exporter :: method private DeletePartial(string)
 member VoxClip.Media.Pipeline.Exporter :: method private EncodeAudio(VoxClip.Media.Ffmpeg.EncoderSession,VoxClip.Media.Audio.StereoRead,FFmpeg.AutoGen.AVFrame*,float[],long,long&,VoxClip.Media.Ffmpeg.PacketSink,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.Exporter :: method private Export(VoxClip.Core.Domain.Shared.ExportJob,string,System.IProgress`1<VoxClip.Core.Domain.Shared.ExportProgress>,System.Threading.CancellationToken,bool,VoxClip.Media.VoiceLab.VoiceLabRenderSession)
 member VoxClip.Media.Pipeline.Exporter :: method private ExportAsync(VoxClip.Core.Domain.Shared.ExportJob,System.IProgress`1<VoxClip.Core.Domain.Shared.ExportProgress>,System.Threading.CancellationToken,bool)
+member VoxClip.Media.Pipeline.Exporter :: method private HasOutputAudio(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.Exporter :: method private Mux(FFmpeg.AutoGen.AVFormatContext*,VoxClip.Media.Ffmpeg.EncoderSession,int,FFmpeg.AutoGen.AVPacket*)
 member VoxClip.Media.Pipeline.Exporter :: method private SrtTime(double)
 member VoxClip.Media.Pipeline.Exporter :: method private WriteLipsyncVideo(string,string,VoxClip.Core.Domain.Shared.OutputSpec,long,System.Action`4<VoxClip.Media.Ffmpeg.VideoDecoder,long,VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken>,string,System.Threading.CancellationToken)
@@ -2883,6 +2884,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeJournalReceipt :: method public op_Ine
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalReceipt :: method public set_Endpoint(string)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalReceipt :: method public set_Provider(string)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalReceipt :: method public set_Region(string)
+member VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement :: method public RecoverableRequests(string,string,System.DateTimeOffset)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement :: method public Settle(string,string,System.Collections.Generic.IEnumerable`1<string>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement :: method public SweepStale(string,System.DateTimeOffset)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalTiming :: method private .ctor(VoxClip.Media.VoiceLab.VoiceLabTakeJournalTiming)
@@ -2972,11 +2974,13 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public Scratch(System.Gu
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public ScreenGuardAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_KeepsEarlierTakes()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_LocalTiming()
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_PaidAudioSaved()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_PhraseId()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_ShortTakePool()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_VoiceChecks()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_KeepsEarlierTakes(bool)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_LocalTiming(VoxClip.Media.VoiceLab.VoiceLabLocalTiming)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_PaidAudioSaved(System.Func`4<System.Guid,string,System.Nullable`1<System.Decimal>,System.Threading.Tasks.Task>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_PhraseId(System.Nullable`1<int>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_ShortTakePool(VoxClip.Media.VoiceLab.VoiceLabShortTakePool)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_VoiceChecks(VoxClip.Media.VoiceLab.VoiceLabVoiceCheckSession)

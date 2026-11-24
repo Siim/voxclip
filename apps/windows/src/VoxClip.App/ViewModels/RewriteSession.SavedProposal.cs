@@ -38,7 +38,7 @@ internal sealed partial class RewriteSession
         Instruction != restored.Instruction && Instruction != "Fix mistakes"
             ? $"“{Instruction}” waits: Rewrite Again asks it, and asks first before your paid work goes." : null;
 
-    internal bool ConfigureSavedProposal(string paidRoot, Func<string, IReadOnlySet<Guid>>? recoverable = null, bool restore = true)
+    internal bool ConfigureSavedProposal(string paidRoot, bool restore = true)
     {
         if (proposalStore is not null) return false;
         proposalStore = new(paidRoot, Project.Id, identityScope, identityClipId);
@@ -83,7 +83,7 @@ internal sealed partial class RewriteSession
         proposalInputs = saved.Inputs;
         restoredProposal = saved;
         ownsSavedProposal = true;
-        var requests = recoverable?.Invoke(Project.Id) ?? VoiceLabTakeJournalSettlement.RecoverableRequests(Project.Id, paidRoot, DateTimeOffset.UtcNow);
+        var requests = VoiceLabTakeJournalSettlement.RecoverableRequests(Project.Id, paidRoot, DateTimeOffset.UtcNow);
         recoverableTakes = Math.Min(saved.PatchTakes, saved.PatchRequests.Distinct().Count(requests.Contains));
         ProposalRevision++;
         return true;
