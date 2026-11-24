@@ -1319,6 +1319,7 @@ struct RewriteChange: Equatable, Sendable {
     func close() {
         guard isOpen else { return }
         isOpen = false; phraseMicrophone.cancel(); invalidate(); actionTask?.cancel(); takesTask?.cancel()
+        wholeClip?.cancel(); wholeClipPlan?.invalidate()
         clearProposal()
     }
 

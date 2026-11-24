@@ -269,9 +269,13 @@ extension EditorModel {
         return findTask != previous
     }
     func replaceTranscript(_ transcript: Transcript, preserveFind: Bool = false) {
+        let source = project.media.source, previous = project.transcript
+        guard closeRewrite(returnFocus: false, onDiscard: { [weak self] in
+            guard let self, project.media.source == source, project.transcript == previous else { return }
+            replaceTranscript(transcript, preserveFind: preserveFind)
+        }) else { return }
         claudeMode.cancelFindContinuation()
         if !preserveFind { findTask?.cancel(); sendConfirmation.cancel() }
-        closeRewrite(returnFocus: false)
         fallbackNote = nil; focusedSuggestion = nil; proposal = nil
         selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil; correctionText = ""
         var next = project

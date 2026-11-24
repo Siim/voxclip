@@ -199,7 +199,8 @@ struct EditorRenderSnapshot {
     /// another scope replaces it. Text Rewrite needs no Voice Lab.
     func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil, verb: String = "Rewrite") {
         let replacingPendingSend = sendConfirmation.isPresented
-        guard let scope = requested ?? rewriteScopeNow, RewriteEntryPolicy.canRun(editable: capabilities.edit && (capabilities.ai || replacingPendingSend), scope: scope) else { return }
+        guard !transcription.isRunning, let scope = requested ?? rewriteScopeNow,
+              RewriteEntryPolicy.canRun(editable: capabilities.edit && (capabilities.ai || replacingPendingSend), scope: scope) else { return }
         // A Rewrite of another scope replaces the open one: its unused or running paid work asks first, inline in that
         // Rewrite ("Start a new Rewrite and discard 3 paid takes (≈ $0.12)?"); the same scope sends again and asks there.
         if let open = openRewrite, open.asksBeforeClosing, replacingPendingSend || open.rewriteScope != scope {
@@ -317,9 +318,11 @@ struct EditorRenderSnapshot {
             if paid { session.discardWholeClipWork() }
             sendAgain(session, instruction: instruction, feedback: feedback)
         }
-        // With no change in the proposal (R3, a whole clip), the question names the paid work ("Start a new Rewrite and
-        // discard …?"); else the changes, as before.
-        if count == 0 { session.confirmDiscardPaidWork(.newRewrite, perform: send) } else { session.confirmDiscardChanges(perform: send) }
+        if count > 0 && (session.hasEditedChanges || session.hasPaidPatchWork || session.restoredTakesPending) {
+            session.confirmDiscardChanges(perform: send)
+        } else {
+            session.confirmDiscardPaidWork(.newRewrite, perform: send)
+        }
     }
     /// A next step's re-ask (an AI chip, Change fewer words or the free-text field) in `session`: only its phrases can
     /// change, so nothing else is discarded; paid takes still ask first, inline (RewriteNextSteps.swift).
@@ -396,13 +399,14 @@ struct EditorRenderSnapshot {
     /// closes it then. Another question already up in it (a price, a provider to allow) stays, and the close waits for the
     /// creator. A session whose clip went away without Remove or Dismiss (an Undo, a run's own edit) shows on no tab to ask
     /// on, so it closes, and the status bar says what went with it. True when it closed (or nothing was open).
-    @discardableResult func closeRewrite(returnFocus: Bool = true) -> Bool {
+    @discardableResult func closeRewrite(returnFocus: Bool = true, onDiscard: (@MainActor () -> Void)? = nil) -> Bool {
         if let session = openRewrite, session.asksBeforeClosing, !closesUnasked {
             // A Rewrite still getting ready is replaced by this close, as before.
             cancelRewriteOpen()
             session.confirmDiscardPaidWork(.close) { [weak self, weak session] in
                 guard let self, let session, openRewrite === session else { return }
                 discardRewrite(returnFocus: returnFocus)
+                onDiscard?()
             }
             return false
         }
@@ -535,7 +539,7 @@ struct EditorRenderSnapshot {
     var exportTotal: Int?
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
-    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { suspendWorkWithoutVideo() }; followWaveformKey() } }
     /// The video's check (as the project opens or reverts, or after its video changes) has answered, found or not. A
     /// video not resolved before then is only not checked yet, so Locate… and the read-only note wait for the answer
     /// rather than flash while a slow or external volume reads.
@@ -552,7 +556,20 @@ struct EditorRenderSnapshot {
     @ObservationIgnored let exportsFingerprintCache = ExportsFingerprintCache()
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
-    var mediaUnreadable = false { didSet { if mediaUnreadable { transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    var mediaUnreadable = false { didSet { if mediaUnreadable { suspendWorkWithoutVideo() }; followWaveformKey() } }
+
+    private func suspendWorkWithoutVideo() {
+        transcription.close()
+        sendConfirmation.cancel()
+        if let session = openRewrite {
+            let paid = session.hasUnusedPaidWork
+            if paid { session.persistPaidWork() }
+            let notice = "Rewrite closed because the video is unavailable." + (paid ? " \(session.paidWorkKept.kept)." : "")
+            rewriteNotice = notice
+            announce(notice)
+        }
+        discardRewrite(returnFocus: false)
+    }
     var canMoveCaptions: Bool {
         !document.demo && capabilities.captionPosition && !mediaUnreadable && (previewError == nil || !mediaResolved)
     }
@@ -1123,9 +1140,7 @@ struct EditorRenderSnapshot {
     /// open Rewrite closes as it does when the video goes missing.
     var mediaRelinkCandidate: MediaRelinkCandidate? {
         didSet {
-            if mediaRelinkCandidate != nil {
-                transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false)
-            }
+            if mediaRelinkCandidate != nil { suspendWorkWithoutVideo() }
         }
     }
     private var mediaRelinkRevision = 0
@@ -1149,6 +1164,10 @@ struct EditorRenderSnapshot {
         previewError = nil
         let revision = mediaRelinkRevision, base = project
         guard !isLeaving, !cacheLeaseEnded else { return }
+        let resume: @MainActor () -> Void = { [weak self] in
+            guard let self, revision == mediaRelinkRevision, project == base else { return }
+            Task { await self.prepareMediaRelink(url: url, probe: probe) }
+        }
         do {
             let next: Project
             do { next = try await app.projectStore.relink(base, to: url, probe: probe) }
@@ -1158,11 +1177,13 @@ struct EditorRenderSnapshot {
                     return
                 }
                 guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+                guard closeRewrite(returnFocus: false, onDiscard: resume) else { return }
                 mediaRelinkCandidate = MediaRelinkCandidate(url: url, probe: probe)
                 announce("This file looks different. Use it anyway? \(url.lastPathComponent)")
                 return
             }
             guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+            guard closeRewrite(returnFocus: false, onDiscard: resume) else { return }
             await applyMediaRelink(next)
         } catch { previewError = await app.safeError(error, context: .relink) }
     }

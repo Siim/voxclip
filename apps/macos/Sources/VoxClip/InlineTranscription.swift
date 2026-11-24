@@ -446,17 +446,17 @@ import VoxClipMedia
         let retry = pendingAlignment?.retry
         guard mediaReady, phase == .choosing, !isRunning, !paid || paidApproval || retry != nil,
               retry == nil || canStart, !confirmsClaudeTranscript || engine != "apple" else { return }
+        let turn = revision, currentProject = model.project
+        guard model.closeRewrite(returnFocus: false, onDiscard: { [weak self] in
+            guard let self, revision == turn, model.project == currentProject else { return }
+            startApprovedRun(paidApproval: paidApproval)
+        }) else { return }
         let plan = makePlan(), cost = paid && retry == nil ? estimate : nil
         if confirmsClaudeTranscript { claudeConfirmationEngine = plan.engine }
         let baseline = pendingAlignment?.project ?? downloadBaseline ?? model.project
         downloadBaseline = nil
         if remember && retry == nil { model.app.set("transcription.language", .string(language)) }
         model.findTask?.cancel(); model.sendConfirmation.cancel()
-        model.rewriteOpenTask?.cancel()
-        // Stop new AI work while retaining the review until replacement actually succeeds.
-        model.openRewrite?.sending?.cancel()
-        model.openRewrite?.actionTask?.cancel()
-        model.openRewrite?.takesTask?.cancel()
         phase = .running; error = nil; cancelledNote = nil; progress = nil; uploadStarted = false; runStage = 0; pendingCost = cost
         revision += 1
         let request = ApprovedRun(revision: revision, project: baseline, plan: plan, cost: cost, alignmentRetry: retry)
