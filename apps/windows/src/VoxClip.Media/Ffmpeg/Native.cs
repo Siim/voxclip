@@ -18,7 +18,7 @@ internal static unsafe class Native
     internal static double Seconds(long pts, AVRational timeBase) => pts == ffmpeg.AV_NOPTS_VALUE ? 0 : pts * ffmpeg.av_q2d(timeBase);
     internal static long Round(double value) => checked((long)Math.Floor(value + 0.5));
 
-    internal static AVFormatContext* Open(string path)
+    internal static AVFormatContext* Open(string path, bool localQuickTime = false)
     {
         if (!File.Exists(path)) throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(path)}. Edits are saved.");
         AVFormatContext* format = null;
@@ -26,7 +26,14 @@ internal static unsafe class Native
         try
         {
             Check(ffmpeg.av_dict_set(&options, "protocol_whitelist", "file", 0), "Restrict media protocols");
-            Check(ffmpeg.avformat_open_input(&format, path, null, &options), "Open media");
+            AVInputFormat* input = null;
+            if (localQuickTime)
+            {
+                input = ffmpeg.av_find_input_format("mov");
+                if (input == null) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The local video decoder is unavailable.");
+                Check(ffmpeg.av_dict_set(&options, "enable_drefs", "0", 0), "Disable external media references");
+            }
+            Check(ffmpeg.avformat_open_input(&format, path, input, &options), "Open media");
             Check(ffmpeg.avformat_find_stream_info(format, null), "Read media streams");
             return format;
         }
