@@ -247,6 +247,37 @@ import VoxClipCore
         #expect(abs(Self.regionVariance((blurred, 320, 180), right, channel: 0) - Self.regionVariance((unblurred, 320, 180), right, channel: 0)) < 1)
     }
 
+    @Test(.timeLimit(.minutes(2))) func companionRecordingCutawaysStillAndStackRenderWithPrimaryAudio() async throws {
+        let camera = try await NativeMediaFixtures.shared.file("counter.mov")
+        let companion = try await NativeMediaFixtures.shared.file("bars-tone.mov")
+        var request = Self.request(camera, effects: [])
+        request.output.size = PixelSize(width: 180, height: 320)
+        let plain = try await CompositionBuilder().build(request)
+        for (offset, kind) in ["bRoll", "screenshot", "videoStack"].enumerated() {
+            let start = 0.25 + Double(offset) * 0.5
+            let placement = """
+            {"id":"footage-\(offset)","clipID":"clip","kind":"\(kind)","start":\(start),"end":\(start + 0.3),"footage":{"sourceKey":"demo","start":0.2}}
+            """
+            request.footage.append(.init(entry: try JSONDecoder().decode(ClipFootage.self, from: Data(placement.utf8)), url: companion))
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let graph = try await CompositionBuilder().build(request)
+        for time in [0.35, 0.9, 1.35] {
+            let original = try await Self.frame(plain, at: time)
+            let edited = try await Self.frame(graph, at: time)
+            #expect(edited != original, "footage at \(time)")
+        }
+        #expect(try await Self.frame(graph, at: 0.85) == (try await Self.frame(graph, at: 0.95)), "the screenshot holds")
+        #expect(try await Self.frame(graph, at: 1.8) == (try await Self.frame(plain, at: 1.8)), "the camera resumes outside placements")
+        let stacked = try await Self.frame(graph, at: 1.35)
+        let row = 180 * 4
+        #expect(stacked[(row * 80)..<(row * 81)] != stacked[(row * 240)..<(row * 241)], "the panes show two different recordings")
+        #expect(graph.composition.duration == plain.composition.duration)
+        #expect(graph.audioTrack?.segments.count == plain.audioTrack?.segments.count)
+        print("Multi-source fixture: native graph and six sampled frames in \(start.duration(to: clock.now))")
+    }
+
     // MARK: Audio
 
     /// The mixed PCM a preview or export reads: every audio track through the graph's audio mix, 48 kHz, the left channel.
