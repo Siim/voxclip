@@ -112,7 +112,7 @@ public sealed partial class EditorPage : Page
         App.Services.ExportLedger.Changed += LedgerChanged;
         LocateMedia.Visibility = ViewModel.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
         // A leave never starts over the open Rewrite's paid takes (Mac WorkspaceShell.leave): the notice says how to go on.
-        leave = new(ViewModel) { HoldsPaidWork = () => rewrite is { IsOpen: true, HasPaidTakes: true } };
+        leave = new(ViewModel) { HoldsPaidWork = () => rewrite is { IsOpen: true, HoldsPaidWork: true } };
         FindClips = new(ViewModel, lifetime.Token);
         FindClips.Announcement += (_, text) => Transcript.Announce(text);
         previewStage = new((level, category, message) => App.Services.Log.Write(level, category, message), text => Transcript.Announce(text));
@@ -649,7 +649,7 @@ if (insertion ||
     /// go on. True when it asked or refused, so nothing opens now.</summary>
     private bool AskBeforeReplacingRewrite(Func<Task> replay)
     {
-        if (rewrite is not { IsOpen: true, HasPaidTakes: true } open) return false;
+        if (rewrite is not { IsOpen: true, HoldsPaidWork: true } open) return false;
         if (rightContent is not null && rewritePanel is { } panel && ReferenceEquals(panel.Session, open))
         {
             SetViewerVisible(true);
@@ -703,6 +703,7 @@ if (insertion ||
         }
         session.ConfigureGenerationFactory(index => CreateRewriteGeneration(session, index));
         ConfigureRewriteMicrophone(session);
+        ConfigureWholeClip(session);
     }
     /// <summary>Say it myself (design.md §6.3.8): the WASAPI microphone, a lead-in through headphones or a count-in, and on-device
     /// recognition from the installed Whisper models. Its takes are written to the project's Voice Lab folders; nothing is sent.</summary>

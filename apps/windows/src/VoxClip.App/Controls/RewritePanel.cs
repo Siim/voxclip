@@ -163,6 +163,7 @@ internal sealed partial class RewritePanel : Grid
         body.Children.Add(nextSteps);
         BuildGeneration();
         body.Children.Add(generationBody);
+        body.Children.Add(wholeClipBody);
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         AutomationProperties.SetAutomationId(scroll, "Rewrite.Scroll");
         Children.Add(scroll);
@@ -360,6 +361,7 @@ internal sealed partial class RewritePanel : Grid
         RenderDiscardAvailability();
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
         RenderGeneration();
+        RenderWholeClip();
         RenderNextSteps();
         RenderFooter();
         if (IsLoaded)
@@ -423,6 +425,7 @@ internal sealed partial class RewritePanel : Grid
         generationBody.Children.Add(generate); generationBody.Children.Add(autoFixAllowance); generationBody.Children.Add(takeSend);
         generationBody.Children.Add(generationBusy); generationBody.Children.Add(generationProgress);
         generationBody.Children.Add(cancelGeneration); generationBody.Children.Add(generationError); generationBody.Children.Add(nonePassed);
+        BuildWholeClip();
     }
     private void RenderGeneration()
     {
@@ -443,8 +446,8 @@ internal sealed partial class RewritePanel : Grid
             for (var index = 0; index < session.GenerationWindows.Count; index++) windowPicker.Items.Add($"Passage {index + 1}");
         }
         windowPicker.SelectedIndex = session.ActiveWindow;
-        windowPicker.IsEnabled = !session.IsGeneratingBatch;
-        voice.IsEnabled = !session.IsGeneratingBatch;
+        windowPicker.IsEnabled = !session.IsGeneratingBatch && !session.WholeClipBusy;
+        voice.IsEnabled = !session.IsGeneratingBatch && !session.WholeClipBusy;
         if (!ReferenceEquals(voice.ItemsSource, generation.Voices)) voice.ItemsSource = generation.Voices;
         voice.SelectedValue = generation.VoiceId;
         updating = false;
@@ -454,7 +457,7 @@ internal sealed partial class RewritePanel : Grid
         voiceText.Visibility = generation.Voices.Count == 1 ? Visibility.Visible : Visibility.Collapsed;
         speechModel.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         discover.Content = session.GetPriceTitle;
-        discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !generation.IsPreparing &&
+        discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !session.WholeClipBusy && !generation.IsPreparing &&
             !session.WordingIsLocked;
         var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;
         discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 || session.EveryPhraseSettled ? Visibility.Collapsed : Visibility.Visible;
@@ -554,11 +557,16 @@ internal sealed partial class RewritePanel : Grid
     {
         if (!session.CloseAsked) return;
         closeQuestion.Children.Clear();
-        var question = RewriteSession.CloseQuestion(session.PaidTakeCount, newRewrite: replay is not null);
+        var closeKeepsWholeClip = session.HoldsWholeClipWork && !session.HasPaidTakes;
+        var question = closeKeepsWholeClip
+            ? replay is null ? "Close Rewrite?" : "Start a new Rewrite?"
+            : RewriteSession.CloseQuestion(session.PaidTakeCount, newRewrite: replay is not null);
+        if (session.HoldsWholeClipWork) question += " Whole-clip work stops here. Any paid voice and lip sync stay saved.";
         var text = Ui.Text(question);
         AutomationProperties.SetAutomationId(text, "Rewrite.CloseQuestion");
         var keep = Ui.Button("Keep Working", KeepWorking, accent: true);
-        var title = replay is null ? "Discard and Close" : "Discard and Rewrite";
+        var title = closeKeepsWholeClip ? replay is null ? "Close Rewrite" : "Start New Rewrite"
+            : replay is null ? "Discard and Close" : "Discard and Rewrite";
         var discard = Ui.Button(title, () =>
         {
             if (!session.CanDiscardPaidProposal) return;
@@ -569,7 +577,7 @@ internal sealed partial class RewritePanel : Grid
             }
             else
             {
-                session.ForgetSavedProposal();
+                if (!closeKeepsWholeClip) session.ForgetSavedProposal();
                 Close();
             }
             if (replay is not null) _ = replay();

@@ -75,7 +75,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? ProposalTitle :
         Connector?.Group == "local" ? ProposalTitle + " · No charge" : VoiceLabCostPresentation.ButtonTitle(ProposalTitle, null, Estimate);
     internal string EstimateCopy => Estimate?.Text is { Length: > 0 } text ? text : Prepared is null ? "" : "No charge.";
-    internal bool CanPropose => IsOpen && !IsProposing && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly &&
+    internal bool CanPropose => IsOpen && !IsProposing && !WholeClipBusy && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly &&
         ReferenceEquals(Project, Editor.Project) && connectorIsCurrent() && contextIsCurrent() && BillingCurrent && estimateShown && Prepared is not null;
     internal void ConfigureInlineConsent(Func<CancellationToken, Task<bool>> authorize, Func<bool>? contextCurrent = null, bool localConsent = false)
     { consent = authorize; contextIsCurrent = contextCurrent ?? (() => true); requireLocalConsent = localConsent; }
@@ -154,6 +154,7 @@ internal sealed partial class RewriteSession : IDisposable
         ObserveMeasuredTakes();
         AdvanceAutoFix();
         ApplyPendingExpressions();
+        CheckWholeClipCurrent();
         Changed?.Invoke(this, EventArgs.Empty);
     }
     private void GenerationSelectionChanged(object? sender, EventArgs args)
@@ -505,11 +506,12 @@ internal sealed partial class RewriteSession : IDisposable
         return applied;
     }
 
-    private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
+    private void InvalidateProposal() { revision++; InvalidateWholeClip(); sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
     {
+        if (!voiceLabEnabled) InvalidateWholeClip();
         // Another AI connector ends what was proposed, but paid takes stay: they never read the connector.
-        if (!contextIsCurrent() || !connectorIsCurrent() && !HasPaidTakes) Dispose();
+        if (!contextIsCurrent() || !connectorIsCurrent() && !HoldsPaidWork) Dispose();
         else if (!voiceLabEnabled && Generation is not null)
         {
             generationFactory = null;
@@ -539,6 +541,7 @@ internal sealed partial class RewriteSession : IDisposable
             if (!HasPaidTakes) { TakeWindowsMoved = false; RefreshReview(preserveGenerations: true); }
             else FollowTakeWindows(!SameWindows());
         }
+        CheckWholeClipCurrent();
         Changed?.Invoke(this, EventArgs.Empty);
     }
     /// <summary>The line the review shows while <see cref="TakeWindowsMoved"/> (Mac <c>followTakeWindows</c>' question): why Use waits,
