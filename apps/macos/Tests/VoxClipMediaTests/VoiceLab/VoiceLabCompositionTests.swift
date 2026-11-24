@@ -216,8 +216,14 @@ struct VoiceLabCompositionTests {
 
         try await controller.load(request)
         try #require(try await PreviewFramesTests.meanLuma(controller, at: 2.1) > 20)
-        controller.play()
         let previous = try #require(controller.player.currentItem)
+        let pausedTime = previous.currentTime().seconds
+        controller.play()
+        for _ in 0..<80 where previous.currentTime().seconds < pausedTime + 0.05 {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let swapTime = previous.currentTime().seconds
+        try #require(swapTime >= pausedTime + 0.05)
         request.sourceURL = nextSource
         request.voiceLab = input
         try await controller.update(request)
@@ -231,11 +237,11 @@ struct VoiceLabCompositionTests {
             try await Task.sleep(for: .milliseconds(50))
             let time = framesOut.itemTime(forHostTime: CACurrentMediaTime())
             if framesOut.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) != nil { hasFrame = true }
-            if hasFrame && layer.isReadyForDisplay { break }
+            if hasFrame && layer.isReadyForDisplay && item.currentTime().seconds > swapTime + 0.05 { break }
         }
         #expect(item.status == .readyToPlay)
         #expect(hasFrame && layer.isReadyForDisplay, "preview: display stalled, layer reattached")
-        #expect(item.currentTime().seconds > 2.1 && controller.isPlaying)
+        #expect(item.currentTime().seconds > swapTime + 0.05)
         #expect(failures.events.isEmpty, "preview: compositor reason=\(failures.events.map { $0.1?.rawValue })")
     }
 
