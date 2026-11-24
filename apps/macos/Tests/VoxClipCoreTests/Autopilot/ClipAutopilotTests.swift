@@ -73,7 +73,7 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothStagesInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 10)
+        #expect(prompt.promptVersion == 11)
         for system in [prompt.system, prompt.momentsSystem] {
             #expect(!system.contains("{") && !system.contains("}"))
             #expect(system.contains("Length: 20 to 45 seconds after cuts. Up to 60 s only when the idea cannot land in less"))
@@ -86,7 +86,8 @@ import Testing
         #expect(prompt.momentsSystem.contains("Your task: pick the moments") && !prompt.system.contains("Your task: pick the moments"))
         #expect(prompt.looks == [.original, .muted, .warm, .bw])
         #expect(CanonicalResponseParser.validateSchemaSubset(prompt.schema))
-        #expect(prompt.schema[ai: "required"].aiArray.count == prompt.schema[ai: "properties"].aiObject?.count)
+        let required = Set(prompt.schema[ai: "required"].aiArray.compactMap(\.aiString))
+        #expect(Set(prompt.schema[ai: "properties"].aiObject?.keys.map { $0 } ?? []).subtracting(required) == ["effects"])
         let moment = prompt.momentsSchema[ai: "properties"][ai: "clips"][ai: "items"]
         #expect(moment[ai: "required"].aiArray.count == moment[ai: "properties"].aiObject?.count)
         #expect(prompt.limits.maxTargetSeconds == 45 && prompt.limits.maxReasonedSeconds == 60 && prompt.limits.minTargetSeconds == 20)
@@ -116,6 +117,19 @@ import Testing
         sections["role"] = .string("Use {unknownLimit} rewrites.")
         root["sections"] = .object(sections)
         #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(root), sha256: "") }
+    }
+
+    @Test func plannerKeepsOnlySupportedEffectsOnKeptWords() throws {
+        var reply = try #require(Self.sendable(Self.reply("valid-clip")).aiObject)
+        reply["effects"] = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            [{"kind":"motionTitle","startWord":3,"endWord":4,"text":"Coffee first","scale":0,"reason":"Name the subject."},
+             {"kind":"punchIn","startWord":0,"endWord":2,"text":"","scale":1.2,"reason":"Crosses a cut."},
+             {"kind":"illustration","startWord":3,"endWord":4,"prompt":"Cup of coffee","reason":"Show the subject."}]
+            """.utf8))
+        let plan = try #require(ClipAutopilotValidator.plan(.object(reply), context: Self.context(scope: 0...29)))
+        #expect(plan.effects?.map(\.kind) == [.motionTitle])
+        #expect(plan.effects?.first?.reason == "Name the subject.")
+        #expect(plan.repairs.filter { $0.field.hasPrefix("effects[") }.map(\.field) == ["effects[1]", "effects[2]"])
     }
 
     // MARK: Request
@@ -282,7 +296,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 10 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 11 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })

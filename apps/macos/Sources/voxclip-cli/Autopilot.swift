@@ -192,7 +192,8 @@ extension CLIWorkflow {
                 await sent.opening(index)?.value
                 let clipID = UUID().uuidString.lowercased()
                 let applyStart = clock.elapsed
-                let operations = try ClipAutopilotMapping.operations(for: plan, clipID: clipID, project: project, fonts: fonts)
+                let stickers = try AskClaudePrompt.load(shared: shared).stickers
+                let operations = try ClipAutopilotMapping.operations(for: plan, clipID: clipID, project: project, fonts: fonts, stickers: stickers)
                 let applied = try ClipAutopilotMapping.apply(operations, to: project)
                 project = applied.project
                 // What the picture showed (ADR-R48): the same four decisions as Make it postable's rows.

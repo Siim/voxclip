@@ -321,6 +321,7 @@ public sealed partial class AskClaudeValidator(AskClaudePrompt prompt, AskClaude
         var repairs = new List<string>();
         var summary = ClipText.Limit(ClipText.Trim(AiJson.String(AiJson.Get(reply, "summary")) ?? ""), 200);
         var effectIds = project.ClipEffects.Select(effect => effect.GetProperty("id").GetString()!).ToHashSet(StringComparer.Ordinal);
+        var planEffectIds = effectIds.Concat(project.MotionCues.Select(cue => cue.Id)).ToHashSet(StringComparer.Ordinal);
         var cutSoFar = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
         var corrected = new HashSet<string>(StringComparer.Ordinal);
         var raw = AiJson.Array(AiJson.Get(reply, "ops"));
@@ -339,6 +340,25 @@ public sealed partial class AskClaudeValidator(AskClaudePrompt prompt, AskClaude
                 if (note is not null) choices[id] = note;
             }
             void Drop(string why) => repairs.Add("Left out " + (kind.Length == 0 ? "a change" : kind) + ": " + why + ".");
+            var wordAnchored = AiJson.String(AiJson.Get(item, "target")) == "planEffect";
+            if (kind is "punchIn" or "motionTitle" or "emojiPop" || wordAnchored && kind is ("zoom" or "lowerThird"))
+            {
+                var serial = 1;
+                while (planEffectIds.Contains("ask-fx-" + AskClaudePrompt.Int(serial))) serial++;
+                var effectId = "ask-fx-" + AskClaudePrompt.Int(serial);
+                var words = project.Transcript?.Words ?? [];
+                if (ClipPlanEffect.ProviderEntry(item) is not { } entry || scope.Words is not { } selected ||
+                    (scope.ClipId ?? ClipContaining()) is not { } clip ||
+                    entry.Operation(effectId, clip, new(selected.Start, Math.Min(selected.End, selected.Start + prompt.MaxSelectionWords - 1)),
+                        words, cutSoFar, new HashSet<int>(), prompt.Stickers) is not { } operation)
+                {
+                    Drop("needs a kept phrase in a clip and a supported effect");
+                    continue;
+                }
+                planEffectIds.Add(effectId);
+                Add(operation.Decision, operation.Action);
+                continue;
+            }
             JsonElement? Effect(string effectKind, Action<JsonObject> build)
             {
                 if (TimeRange(item, effectKind) is not { } range) return null;

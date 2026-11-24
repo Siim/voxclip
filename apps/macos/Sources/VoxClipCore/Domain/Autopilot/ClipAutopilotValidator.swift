@@ -29,9 +29,12 @@ public enum ClipAutopilotValidator {
         let title = text(value[ai: "title"], limit: min(limits.maxTitleScalars, EditingLimits.maxClipTitleScalars), field: "title", log: &log)
         let score = score(value[ai: "score"], context: context, log: &log)
         let verdict = verdict(value[ai: "verdict"], score: score, field: "verdict", log: &log)
+        let cutIDs = context.cutWordIDs.union(cuts.flatMap { ($0.startWord...$0.endWord).map { context.words[$0].id } })
+        let tightened = Set(pauseCuts.map(\.afterWord))
+        let tightenedAfter = tightened.union(context.pauses.filter { context.cutPauseIDs.contains($0.id) }.map(\.afterIndex))
+        let effects = effects(value[ai: "effects"], span: span, context: context, cut: cutIDs, tightenedAfter: tightenedAfter, log: &log)
         let seconds = ClipAutopilotMapping.editedSeconds(span: span, words: context.words,
-            cut: context.cutWordIDs.union(cuts.flatMap { ($0.startWord...$0.endWord).map { context.words[$0].id } }),
-            pauses: context.pauses, tightened: Set(pauseCuts.map(\.afterWord)), cutPauseIDs: context.cutPauseIDs,
+            cut: cutIDs, pauses: context.pauses, tightened: tightened, cutPauseIDs: context.cutPauseIDs,
             keepSeconds: context.pauseKeepSeconds) / (speed?.rate ?? 1)
         let lengthReason = text(value[ai: "lengthReason"], limit: limits.maxReasonScalars, field: "lengthReason", log: &log)
         let tone = tone(value, context: context, log: &log)
@@ -46,7 +49,25 @@ public enum ClipAutopilotValidator {
             scoreReason: text(value[ai: "scoreReason"], limit: limits.maxReasonScalars, field: "scoreReason", log: &log),
             lengthReason: lengthReason, seconds: seconds,
             questions: questions(value[ai: "questions"], context: context, log: &log), repairs: log.repairs,
-            flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits), tone: tone, frames: frames)
+            flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits), tone: tone, frames: frames, effects: effects)
+    }
+
+    static func effects(_ value: JSONValue, span: ClosedRange<Int>, context: ClipAutopilotContext, cut: Set<String>,
+                        tightenedAfter: Set<Int>, log: inout Log) -> [ClipPlanEffect]? {
+        guard value != .null else { return nil }
+        let entries = value.aiArray
+        if entries.count > ClipPlanEffect.maximumEntries { log.drop("effects", "too many effects") }
+        var accepted: [ClipPlanEffect] = []
+        for (index, raw) in entries.prefix(ClipPlanEffect.maximumEntries).enumerated() {
+            guard let entry = ClipPlanEffect.providerEntry(raw),
+                  entry.operation(id: "validate", clipID: "clip", scope: span, words: context.words, cut: cut,
+                                  tightenedAfter: tightenedAfter, stickers: context.prompt.stickers) != nil else {
+                log.drop("effects[\(index)]", "invalid effect or not on a kept phrase")
+                continue
+            }
+            accepted.append(entry)
+        }
+        return accepted
     }
 
     /// The frame choices (prompt version 8, ai.md §19.6), checked against the candidates the request listed. Nil when the
@@ -72,7 +93,7 @@ public enum ClipAutopilotValidator {
         let named = (reply[ai: "cover"][ai: "id"].aiString ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if listed.coverCandidate(named) != nil {
             return .init(blur: blur, cover: .init(id: named, reason: text(reply[ai: "cover"][ai: "reason"], limit: limit,
-                                                                           field: "frames.cover.reason", log: &log)))
+                field: "frames.cover.reason", log: &log), title: reply[ai: "cover"][ai: "title"].aiString.flatMap(ClipHookTitle.text)))
         }
         if reply != .null { log.repair("frames.cover", named.isEmpty ? "no cover named; \(best.id), the best measured" : "“\(named)” is not a candidate; \(best.id)") }
         return .init(blur: blur, cover: .init(id: best.id, reason: "", fallback: true))

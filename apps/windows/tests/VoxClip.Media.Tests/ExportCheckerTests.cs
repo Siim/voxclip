@@ -275,7 +275,7 @@ public sealed class ExportCheckerTests : IDisposable
         Assert.True(caption.Status == ExportCheckStatus.Ok, string.Join("; ", caption.Items));
         foreach (var hook in Hooks)
         {
-            var title = new ClipEffect("fx-hook-1", "clip", "title", 0, 2) { Text = hook, Position = "top" };
+            var title = new ClipEffect("clip-plan-fx-1", "clip", "title", 0, 2) { Text = hook, Position = "top", Animation = "rise" };
             var boxes = ExportChecker.TitleBoxes(Snapshot(portrait, effects: new([title], new Dictionary<string, string>())), FixtureLoader.SharedRoot);
             var box = Assert.Single(boxes);
             Assert.Equal(ExportCheckBoxKind.Title, box.Kind);

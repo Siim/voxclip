@@ -198,7 +198,7 @@ public sealed record ClipAutopilotPlan
         public sealed record Blur(string Id, bool Blurred, string Reason);
         /// <summary>A cover candidate's id (<c>C1</c>…<c>C3</c>); <c>Fallback</c> when the reply named no listed candidate and the
         /// local best (<c>C1</c>) was taken.</summary>
-        public sealed record Cover(string Id, string Reason, bool Fallback = false);
+        public sealed record Cover(string Id, string Reason, bool Fallback = false, string? Title = null);
         /// <summary>Equal when the decisions are.</summary>
         public bool Equals(FrameChoices? other) => other is not null && BlurChoices.SequenceEqual(other.BlurChoices) && Equals(CoverChoice, other.CoverChoice);
         /// <inheritdoc />
@@ -235,6 +235,8 @@ public sealed record ClipAutopilotPlan
     public int? MusicPick { get; init; }
     /// <summary>Punch-ins.</summary>
     public IReadOnlyList<Zoom> Zooms { get; init; } = [];
+    /// <summary>Declarative effect entries; absent in saved plans predating the vocabulary.</summary>
+    public IReadOnlyList<ClipPlanEffect>? Effects { get; init; }
     /// <summary>Short X/LinkedIn post text.</summary>
     public required string PostText { get; init; }
     /// <summary>1...10.</summary>
@@ -294,11 +296,17 @@ public sealed record ClipAutopilotPlan
         };
         if (SpeedChoice is { } speed) json["speed"] = new JsonObject { ["rate"] = speed.Rate, ["reason"] = speed.Reason };
         if (MusicPick is { } pick) json["musicPick"] = pick;
+        if (Effects is { } effects) json["effects"] = Array(effects, effect => effect.ToJson());
         if (ToneChoice is { } tone) json["tone"] = new JsonObject { ["id"] = tone.Id, ["title"] = tone.Title, ["summary"] = tone.Summary };
         if (Frames is { } frames)
         {
             var choices = new JsonObject { ["blur"] = Array(frames.BlurChoices, item => new JsonObject { ["id"] = item.Id, ["blur"] = item.Blurred, ["reason"] = item.Reason }) };
-            if (frames.CoverChoice is { } cover) choices["cover"] = new JsonObject { ["id"] = cover.Id, ["reason"] = cover.Reason, ["fallback"] = cover.Fallback };
+            if (frames.CoverChoice is { } cover)
+            {
+                var pickCover = new JsonObject { ["id"] = cover.Id, ["reason"] = cover.Reason, ["fallback"] = cover.Fallback };
+                if (cover.Title is { } title) pickCover["title"] = title;
+                choices["cover"] = pickCover;
+            }
             json["frames"] = choices;
         }
         return json;
@@ -333,6 +341,7 @@ public sealed record ClipAutopilotPlan
                 MusicPick = json["musicPick"] is { } pick ? pick.GetValue<int>() : null,
                 Zooms = Items(json["zooms"]).Select(item => new Zoom(I(item["word"]), I(item["untilWord"]), item["scale"]!.GetValue<double>(), S(item["reason"]),
                     item["direction"] is { } direction ? ClipAutopilotWire.ZoomDirection(S(direction)) ?? throw new JsonException() : null)).ToArray(),
+                Effects = json["effects"] is { } effects ? Items(effects).Select(effect => ClipPlanEffect.Read(effect) ?? throw new JsonException()).ToArray() : null,
                 PostText = S(json["postText"]), Score = I(json["score"]), Verdict = ClipAutopilotWire.Verdict(S(json["verdict"])) ?? throw new JsonException(),
                 ScoreReason = S(json["scoreReason"]), LengthReason = json["lengthReason"] is null ? "" : S(json["lengthReason"]),
                 Seconds = json["seconds"]?.GetValue<double>() ?? 0,
@@ -341,7 +350,8 @@ public sealed record ClipAutopilotPlan
                 Flags = json["flags"] is null ? [] : Items(json["flags"]).Select(item => new Flag(S(item["kind"]), S(item["detail"]))).ToArray(),
                 ToneChoice = json["tone"] is { } tone ? new(S(tone["id"]), S(tone["title"]), S(tone["summary"])) : null,
                 Frames = json["frames"] is { } frames ? new(Items(frames["blur"]).Select(item => new FrameChoices.Blur(S(item["id"]), item["blur"]!.GetValue<bool>(), S(item["reason"]))).ToArray(),
-                    frames["cover"] is { } cover ? new FrameChoices.Cover(S(cover["id"]), S(cover["reason"]), cover["fallback"]?.GetValue<bool>() ?? false) : null) : null
+                    frames["cover"] is { } cover ? new FrameChoices.Cover(S(cover["id"]), S(cover["reason"]), cover["fallback"]?.GetValue<bool>() ?? false,
+                        cover["title"]?.GetValue<string>()) : null) : null
             };
         }
         catch (Exception exception) when (exception is InvalidOperationException or NullReferenceException or FormatException or JsonException)

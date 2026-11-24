@@ -284,10 +284,11 @@ extension EditorModel {
     /// "Cover frame chosen": Claude's pick among the three best measured frames, or the best when it named none.
     private func makeItCoverRow(_ record: MakeItFrameRecord, plan: ClipAutopilotPlan, run: MakeItRun) -> MakeItRow? {
         guard let (next, cover) = ClipPicture.cover(project, clipID: run.clipID, frames: record.sent, plan: plan) else { return nil }
-        run.inverses[Self.makeItCoverID] = .cover(clipID: run.clipID, previous: cover.previous)
+        run.inverses[Self.makeItCoverID] = .cover(clipID: run.clipID, previous: cover.previous, previousTitle: cover.previousTitle)
         replace(next, name: "Make it postable")
         let detail = cover.reason ?? "Eyes open, the clearest look measured on this Mac"
-        return MakeItRow(id: Self.makeItCoverID, text: "Cover frame chosen", detail: detail + " · saved next to the export as a cover image",
+        let title = cover.title.map { " · Title: \($0)" } ?? ""
+        return MakeItRow(id: Self.makeItCoverID, text: "Cover frame chosen", detail: detail + title + " · saved next to the export as a cover image",
                          play: cover.candidate.time, undoable: true, change: .cover, frames: makeItCoverFrames(record, picked: cover.candidate.time))
     }
 

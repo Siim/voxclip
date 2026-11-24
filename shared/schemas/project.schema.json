@@ -3719,6 +3719,13 @@
           "minimum": -30,
           "maximum": 6,
           "description": "Relative to the voice."
+        },
+        "animation": {
+          "enum": [
+            "rise",
+            "pop"
+          ],
+          "description": "Optional entrance on title, lowerThird or sticker."
         }
       },
       "allOf": [
@@ -3872,8 +3879,14 @@
                 "start",
                 "end",
                 "text",
-                "position"
+                "position",
+                "animation"
               ]
+            },
+            "properties": {
+              "animation": {
+                "const": "rise"
+              }
             }
           }
         },
@@ -3903,8 +3916,14 @@
                 "start",
                 "end",
                 "text",
-                "position"
+                "position",
+                "animation"
               ]
+            },
+            "properties": {
+              "animation": {
+                "const": "rise"
+              }
             }
           }
         },
@@ -3936,8 +3955,14 @@
                 "end",
                 "text",
                 "position",
-                "scale"
+                "scale",
+                "animation"
               ]
+            },
+            "properties": {
+              "animation": {
+                "const": "pop"
+              }
             }
           }
         },
@@ -4089,7 +4114,7 @@
       ]
     },
     "clipControls": {
-      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds and colorAdjustments are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
+      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds, coverTitle and colorAdjustments are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -4207,6 +4232,12 @@
           "minimum": 0,
           "description": "\"Cover frame chosen\": the source second of the clip's cover, written beside each export as <name>-cover.jpg and embedded as its cover art. Omitted when there is none."
         },
+        "coverTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Optional text on the exported cover image, never on the clip video."
+        },
         "colorAdjustments": {
           "type": "object",
           "additionalProperties": false,
@@ -4256,6 +4287,11 @@
             }
           }
         }
+      },
+      "dependentRequired": {
+        "coverTitle": [
+          "coverSeconds"
+        ]
       }
     },
     "captionTranslation": {

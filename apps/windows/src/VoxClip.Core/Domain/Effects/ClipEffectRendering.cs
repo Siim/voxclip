@@ -53,6 +53,8 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
     public ClipEffectSound? Sound { get; init; }
     /// <summary>sound: level in dB.</summary>
     public double? GainDb { get; init; }
+    /// <summary>Optional entrance for titles, lower thirds or stickers.</summary>
+    public string? Animation { get; init; }
 
     /// <summary>bleep, mute, blur and pixelate render wherever their range plays.</summary>
     public bool IsCensor => ClipEffects.IsCensor(Kind);
@@ -74,7 +76,8 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
         var effect = new ClipEffect(entry.GetProperty("id").GetString()!, clip.ValueKind == JsonValueKind.String ? clip.GetString() : null,
             entry.GetProperty("kind").GetString()!, entry.GetProperty("start").GetDouble(), entry.GetProperty("end").GetDouble())
         {
-            Text = Text("text"), Position = Text("position"), Tracking = Text("tracking"), Scale = Number("scale"), GainDb = Number("gainDb")
+            Text = Text("text"), Position = Text("position"), Tracking = Text("tracking"), Scale = Number("scale"), GainDb = Number("gainDb"),
+            Animation = Text("animation")
         };
         if (entry.TryGetProperty("wordIds", out var words)) effect = effect with { WordIds = words.EnumerateArray().Select(word => word.GetString()!).ToArray() };
         if (entry.TryGetProperty("rect", out var rect)) effect = effect with { Rect = Rect(rect) };
@@ -116,6 +119,18 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
         var fade = Math.Min(OverlayFadeSeconds, (End - Start) / 2);
         if (fade <= 0) return 1;
         return Math.Min(1, Math.Min((time - Start) / fade, (End - time) / fade));
+    }
+    /// <summary>Overlay centre scale and downward offset as a fraction of frame height, at a source second.</summary>
+    public (double Scale, double Down) OverlayPoseAt(double time)
+    {
+        if (Animation is null || End <= Start) return (1, 0);
+        var progress = Math.Clamp((time - Start) / Math.Min(0.24, (End - Start) / 2), 0, 1);
+        return Animation switch
+        {
+            "rise" => (1, 0.035 * (1 - progress) * (1 - progress)),
+            "pop" => (progress <= 0.6 ? 0.72 + 0.4 * progress / 0.6 : 1.12 - 0.12 * (progress - 0.6) / 0.4, 0),
+            _ => (1, 0)
+        };
     }
 }
 

@@ -161,6 +161,7 @@ internal static class CliAutopilot
         { Moments = ranked.Select(item => item.Moment).ToArray() };
         var service = new ClipAutopilotService(runner, catalog, root);
         var fonts = ClipAutopilotFonts.Load(root);
+        var stickers = AskClaudePrompt.Load(root).Stickers;
         var ready = Channel.CreateUnbounded<(int Clip, ClipAutopilotPlan Plan)>();
         void Progress(ClipAutopilotProgress progress)
         {
@@ -189,7 +190,7 @@ internal static class CliAutopilot
                 if (sent.Of(index) is { } scanning) await scanning.Opening.ConfigureAwait(false);
                 var clipId = Guid.NewGuid().ToString("D");
                 var applyStart = clock.Elapsed;
-                var (applied, pending) = ClipAutopilotMapping.Apply(ClipAutopilotMapping.Operations(plan, clipId, project, fonts), project);
+                var (applied, pending) = ClipAutopilotMapping.Apply(ClipAutopilotMapping.Operations(plan, clipId, project, fonts, stickers), project);
                 project = applied;
                 // What the picture showed (ADR-R48): the same four decisions as Make it postable's rows.
                 Core.Domain.Frames.ClipPicture.Decisions? picture = null;

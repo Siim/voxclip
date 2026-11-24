@@ -105,9 +105,14 @@ internal sealed class EffectFrames : IDisposable
             else if (OverlayFor(effect, frame.Width, frame.Height) is { } overlay)
             {
                 using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255)) };
+                var (scale, down) = effect.OverlayPoseAt(time);
+                canvas.Save();
+                canvas.Translate(0, (float)(frame.Height * down));
+                canvas.Scale((float)scale, (float)scale, overlay.Box.MidX, overlay.Box.MidY);
                 canvas.DrawImage(overlay.Image, overlay.Box.Left, overlay.Box.Top, paint);
+                canvas.Restore();
             }
-            else if (effect.Kind is "title" or "lowerThird") overlayFailed?.Invoke();
+            else if (effect.Kind is "title" or "lowerThird" || effect.Animation == "pop") overlayFailed?.Invoke();
         }
         canvas.Flush();
     }

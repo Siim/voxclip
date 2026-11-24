@@ -60,7 +60,14 @@ public static class ClipEffects
             Require(entry.TryGetProperty("kind", out var kindValue) && kindValue.ValueKind == JsonValueKind.String);
             var keys = KindKeys(kindValue.GetString()!);
             Require(keys is not null);
-            Object(entry, Common.Concat(keys!));
+            var kind = kindValue.GetString()!;
+            var fields = Common.Concat(keys!);
+            if (entry.TryGetProperty("animation", out var animation) && kind is "title" or "lowerThird" or "sticker")
+            {
+                Require(animation.ValueKind == JsonValueKind.String && animation.GetString() == (kind == "sticker" ? "pop" : "rise"));
+                fields = fields.Append("animation");
+            }
+            Object(entry, fields);
             Require(entry.GetProperty("id").ValueKind == JsonValueKind.String);
             Require(entry.GetProperty("clipId").ValueKind is JsonValueKind.String or JsonValueKind.Null);
             Number(entry.GetProperty("start")); Number(entry.GetProperty("end"));

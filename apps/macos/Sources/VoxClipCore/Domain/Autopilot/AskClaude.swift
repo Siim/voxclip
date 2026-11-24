@@ -241,6 +241,7 @@ public struct AskClaudeValidator: Sendable {
     public func answer(_ object: JSONValue) -> AskClaudeAnswer {
         var answer = AskClaudeAnswer(summary: AIText.prefix(AIText.trim(object[ai: "summary"].aiString ?? ""), utf16: 200), operations: [], choices: [:], repairs: [])
         var effectIDs = Set(project.clipEffects.map(\.id))
+        var planEffectIDs = effectIDs.union(project.motionCues.map(\.id))
         var cutSoFar = Set(project.edits.cutWordIds)
         var corrected = Set<String>()
         let raw = object[ai: "ops"].aiArray
@@ -256,6 +257,23 @@ public struct AskClaudeValidator: Sendable {
                 if let note { answer.choices[id] = note }
             }
             func drop(_ why: String) { answer.repairs.append("Left out \(kind.isEmpty ? "a change" : kind): \(why).") }
+            let wordAnchored = item[ai: "target"].aiString == "planEffect"
+            if ["punchIn", "motionTitle", "emojiPop"].contains(kind) || (wordAnchored && ["zoom", "lowerThird"].contains(kind)) {
+                let words = project.transcript?.words ?? []
+                let listed = scope.words.map { $0.lowerBound...min($0.upperBound, $0.lowerBound + prompt.maxSelectionWords - 1) }
+                let clip = scope.clipID ?? clipContaining(scope)
+                var serial = 1
+                while planEffectIDs.contains("ask-fx-\(serial)") { serial += 1 }
+                let effectID = "ask-fx-\(serial)"
+                guard let entry = ClipPlanEffect.providerEntry(item), let listed, let clip,
+                      let operation = entry.operation(id: effectID, clipID: clip, scope: listed, words: words, cut: cutSoFar,
+                                                      tightenedAfter: [], stickers: prompt.stickers) else {
+                    drop("needs a kept phrase in a clip and a supported effect"); continue
+                }
+                planEffectIDs.insert(effectID)
+                add(operation.decision, operation.action)
+                continue
+            }
             func effect(_ kind: ClipEffect.Kind, _ build: (inout ClipEffect) -> Void) -> ClipEffect? {
                 guard let range = timeRange(item, kind: kind) else { return nil }
                 var value = ClipEffect(id: ClipEffects.nextID(kind, existing: effectIDs), clipId: scope.clipID, kind: kind, start: range.lowerBound, end: range.upperBound)

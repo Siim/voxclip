@@ -12,3 +12,8 @@ generator `tools/schemas/generate_clip_effects_schema.py`). Do not hand-edit. Sw
 inside the frame, increasing track times, no samples while untracked, a freeze of at most 5 s, a sound spanning its own
 length, a sticker of at most 16 scalars, a progress bar at the top or bottom, and the project's own sound folder. The
 rules are in doc/spec/ai.md section 18.2.
+
+`clip-plan-effect-cases.json` is a hand-authored set of synthetic word anchors and proposed entries for the
+shared `clip-plan-effect.schema.json`. Both Core suites replay the same vectors and check source spans,
+framing keyframes, overlay templates, and refusal of invalid or reserved operations. Update expectations
+by hand only when the documented placement contract changes; the values describe intended behaviour.

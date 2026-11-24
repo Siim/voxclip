@@ -31,7 +31,7 @@ import Testing
         let sha = SHA256.hash(data: try FixtureLoader.data("prompts/ask-claude.json")).map { String(format: "%02x", $0) }.joined()
         #expect(try Self.fixture()[ai: "promptSha256"].aiString == sha)
         #expect(try Self.fixture()[ai: "format"].aiString == "voxclip-ask-claude/1")
-        #expect(try Self.prompt().kinds.count == 20)
+        #expect(try Self.prompt().kinds.count == 23)
         // Stickers are exactly the bundled emoji images, so every sticker renders from the app's own files.
         let folder = try Self.shared().root.appendingPathComponent("fonts/noto-emoji/png128")
         let bundled = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix("emoji_u") }.map { name in
