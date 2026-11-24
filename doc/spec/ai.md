@@ -257,11 +257,12 @@ public sealed class LlmException(LlmError error) : Exception(error.UserMessage) 
 
 When the final error for the chosen model is `rateLimited` (not quota) or `overloaded` (503, 529, or Anthropic `overloaded_error`), the runner tries once more with the **fallback model**: the first entry of the connector's `fallbackOrder` that differs from the chosen model. The fallback gets its own 3 attempts. If there is no such entry, the original error stands.
 
-- Never fall back for `unauthorized`, `quotaExceeded`, `modelNotFound`, `badRequest`, `contextTooLong`, `refused`, `truncated` or `timeout`.
+- Never fall back for `unauthorized`, `quotaExceeded`, `badRequest`, `contextTooLong`, `refused`, `truncated` or `timeout`. Only macOS Codex falls back on `modelNotFound`, as described below.
 - `LLMResult.usedFallback = true`. The UI says "Answered by {fallback} because {model} was busy."
 - Anthropic Opus 5.5, Sonnet 5.5 and Opus 5 also use server-side refusal fallbacks (§6.1). That is separate from this rule.
 - Claude Code: the CLI implements the fallback through `--fallback-model` (§6.8). The runner does not re-run.
 - Codex: the runner re-runs once with the fallback model (§6.9).
+- On macOS, if Codex rejects a saved model as not found, the connector moves to the first model in `fallbackOrder` it hasn't already seen rejected. It tries once, remembers the switch for the session, and never sends to the missing model again in that session. The status bar names the missing model and the replacement. This doesn't change the saved setting. A Rewrite priced for the missing model stops instead of resending; a new Rewrite can quote the replacement. Test Connection never uses this fallback.
 - Ollama, LM Studio and Apple have no fallback.
 - A `voiceRewrite` send (Voice Lab's Re-voice and Fix with AI) never falls back: no runner fallback, no `--fallback-model`, no Anthropic `fallbacks` and no beta resend (§12.8).
 
@@ -964,18 +965,20 @@ Then emit a closing `"`. The argument is `developer_instructions=` followed by t
   2. `{"method":"initialized"}`
   3. `{"id":2,"method":"model/list","params":{"limit":100}}`
 - Read `result.data[]`: `id`, `displayName`, `isDefault`, `hidden` (skip hidden models), and `supportedReasoningEfforts[].reasoningEffort`. Then terminate the process.
-- The list is a catalog, not an entitlement check. If anything fails, use the curated list measured on 2026-10-25.
+- The list is a catalog, not an entitlement check. On Mac it controls which curated models are selectable; absent ones stay visible as unavailable. A failed refresh keeps the last successful list for this binary, or the curated list if none. The shared curated catalog includes GPT-6.2 Sol and GPT-6.2 Astra.
 - "CLI default" omits `--model`. With `--ignore-user-config`, that is Codex's built-in default (`gpt-6.1-sol` on 2026-10-25).
 - Effort is the highest level at or below the request that the chosen model lists (§4.4.1). "CLI default" uses the `isDefault` model's list, else the catalog's `effort.values`.
 
 ### 6.10 Rules shared by both CLI connectors
 
-**Locating the binary.** The first existing executable wins:
+**Locating the binary.** Except for Codex on macOS, the first existing executable wins:
 1. The user's path override (`llm.cliPath.<id>`). This is the only way to point VoxClip at a binary outside the standard install locations.
-2. Catalog `searchPaths`, with `~` and `%VAR%` expanded. Paths are only checked for existence and executed. Nothing else under `~/.claude` or `~/.codex` is ever opened.
+2. Catalog `searchPaths`, with `~` and `%VAR%` expanded.
 3. The first line printed by catalog `shellLookup`.
 
 macOS GUI apps get a minimal `PATH`, so PATH alone is never enough.
+
+On macOS, Codex uses a user-set path as a pin. Without one, it checks both the app and login-shell `PATH`, catalog paths (including the ChatGPT bundle), and `current/bin/codex` and `releases/*/bin/codex` in the standalone and app-server daemon packages under `~/.codex` and `$CODEX_HOME`, if set. It orders the installed versions newest first and picks the first to pass the version, help and features checks; sign-in is separate. Only executable paths, metadata and package directory names are inspected. If a newer compatible binary is found while an older one is pinned, **Use {version}** in Settings pins the newer path in one click.
 
 **Windows `.cmd` shims** (npm installs) are never run through `cmd.exe`, because quoting JSON and multi-line arguments through it is unsafe. Resolve `npmShimScript` and run `node.exe <script> <args…>`. `node.exe` is looked up next to the shim, then with `where.exe node`, then at `%ProgramFiles%\nodejs\node.exe`. A native `.exe` is preferred when present. The Windows install locations are to be verified on the VM (§14).
 
@@ -1115,7 +1118,7 @@ On macOS, non-loopback Ollama and LM Studio servers require the same first-use r
 
 3. **Merge.** After a successful refresh, show the curated models that are present in the refreshed list (curated order), then the other discovered models (provider order).
    - Curated models missing from the refresh are hidden. The exception is the currently selected model: it stays, marked "(not listed for this key)".
-   - Ollama, LM Studio and Codex show the refreshed list as is.
+   - Ollama, LM Studio and Windows Codex show the refreshed list as is. On macOS, Codex shows absent curated models as unavailable and adds other visible models from the live list.
 4. **Cache.** Refreshed lists go to `<data>/Cache/llm-models.json` (architecture §2) as `{connectorId: {fetchedAt, models[]}}`. That file holds no keys. A failed refresh keeps the previous cache, or the curated list, and shows "Couldn't refresh: {message}".
 
 Ollama `suggestedModels` appear only as hints when `noModels` applies: "Try `ollama pull gemma4:12b` (16 GB RAM or more)." Tags must be checked against ollama.com before each release (§14).
@@ -1149,6 +1152,7 @@ Status lines update on pane open and after **Test**. The catalog `label` is plai
 3. If the reply validates but doesn't match: orange "The model answered, but not as expected. It may not follow instructions well."
 4. On an error: orange "Failed: {user message from §5}".
 5. Test never stores the result and never runs automatically.
+6. On macOS, choosing or typing a Codex model stages it. **Test Connection** saves the choice only if that exact model passes, not if a transient fallback answers instead. Model-not-found returns to the previous selection. The AI menu opens the same Settings pane to test a new Codex choice.
 
 ### 10.3 Clip, tighten and Rewrite UI hooks (owned by the editor spec)
 
