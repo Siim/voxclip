@@ -1,4 +1,6 @@
 using System.Text.Json;
+using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 
@@ -50,13 +52,26 @@ public sealed partial class EditorViewModel
     }
 
     internal HarnessMusicAction? KeepHarnessProposal(HarnessProposal proposal, string projectPath, string sharedRoot)
+        => KeepHarnessProposal(proposal, projectPath, sharedRoot, out _);
+
+    internal HarnessMusicAction? KeepHarnessProposal(HarnessProposal proposal, string projectPath, string sharedRoot,
+        out IReadOnlyList<ClipAutopilotAction.Asset> assets)
     {
         if (HarnessKeepBlocked is { } blocked) throw new HarnessException(blocked);
-        var next = proposal.Applying(project, sharedRoot);
+        var (next, actions) = proposal.Evaluate(project, sharedRoot);
         DismissHarnessProposal(proposal, projectPath);
-        ReplaceProject(next, "Keep timeline proposal");
+        if (!ReferenceEquals(next, project)) ReplaceProject(next, "Keep timeline proposal");
+        assets = actions;
         return proposal.Timeline.TryGetProperty("generateMusic", out var prompt)
             ? new(proposal.Timeline.GetProperty("clipId").GetString()!, next.Media.Source.ContentKey, prompt.GetString()!) : null;
+    }
+
+    internal async Task<bool> ApplyHarnessAssetAsync(ClipAutopilotAction.Asset asset, Project snapshot, decimal? price, CancellationToken ct)
+    {
+        bool Current() => !ct.IsCancellationRequested && ReferenceEquals(snapshot, project) && HarnessKeepBlocked is null;
+        if (!Current() || AskClaudeServices?.Assets is not { } service) return false;
+        var effect = await service.CollectAsync(asset, snapshot.Id, quoted => quoted == price && Current(), ct);
+        return effect is { } value && Current() && ReplaceProject(ClipEffects.Adding([value], project), "Place timeline asset");
     }
 
     internal void DismissHarnessProposal(HarnessProposal proposal, string projectPath)
@@ -83,7 +98,9 @@ public sealed partial class EditorViewModel
         var label = effect.GetProperty("kind").GetString() switch
         {
             "zoom" => "Zoom", "punchIn" => "Punch in", "motionTitle" => "Animated title",
-            "lowerThird" => "Lower third", "emojiPop" => "Emoji pop", _ => "Motion template"
+            "lowerThird" => "Lower third", "emojiPop" => "Emoji pop", "soundEffect" => "Sound effect",
+            "illustration" => "Illustration", "colourLook" => "Colour look", "speedForPart" => "Speed change",
+            "bRoll" => "B-roll", "screenshot" => "Screenshot", "videoStack" => "Video stack", _ => "Motion template"
         };
         if (effect.TryGetProperty("template", out var template))
         {

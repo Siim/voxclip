@@ -2,13 +2,14 @@ import SwiftUI
 import VoxClipCore
 
 extension EditorModel {
-    func keepHarnessProposal(_ proposal: HarnessProposal, at url: URL) throws {
+    @discardableResult func keepHarnessProposal(_ proposal: HarnessProposal, at url: URL) throws -> [ClipPlanAsset] {
         guard document.fileURL == url, !document.demo, capabilities.edit, !capabilities.aiBusy, !musicPanel.isBusy, let shared = app.shared else {
             throw HarnessError.invalid("Finish the current edit and try again. Your project is unchanged.")
         }
-        let next = try proposal.applying(to: project, shared: shared)
+        let (next, assets) = try proposal.evaluate(project, shared: shared)
         try HarnessInbox.dismiss(proposal, for: url)
-        replace(next, name: "Keep timeline proposal")
+        if next != project { replace(next, name: "Keep timeline proposal") }
+        return assets
     }
 }
 
@@ -24,6 +25,10 @@ extension EditorModel {
     @State private var checkedEdit: Date?
     @State private var paid: PaidMusic?
     @State private var submitted = false
+    @State private var assets: [ClipPlanAsset] = []
+    @State private var assetProject: Project?
+    @State private var workingAsset: String?
+    @State private var illustrationKeyAvailable: Bool?
 
     private struct PaidMusic {
         let clipId: String
@@ -43,6 +48,7 @@ extension EditorModel {
             if let pending { review(pending) }
             else if let issue { InlineNotice(text: issue) }
             if let paid { music(paid) }
+            ForEach(assets, id: \.id) { asset in assetAction(asset) }
             if let actionError { InlineNotice(text: actionError) }
         }
         .task {
@@ -57,7 +63,7 @@ extension EditorModel {
     private var unavailable: String? {
         if !model.capabilities.edit { return "Open a writable project with its source video to keep this timeline." }
         if model.capabilities.aiBusy || model.musicPanel.isBusy { return "Finish the current action before keeping this timeline." }
-        if paid != nil { return "Finish or dismiss the music action first." }
+        if paid != nil || !assets.isEmpty { return "Finish or dismiss the previous asset actions first." }
         return nil
     }
 
@@ -88,6 +94,9 @@ extension EditorModel {
                 Text("Music: \(prompt)").lineLimit(2)
                 Text(estimate.map { "About \($0) to generate music. Keeping the timeline doesn't send anything." }
                      ?? "Keeping the timeline doesn't generate music.").foregroundStyle(.secondary)
+            }
+            if timeline.effects?.contains(where: { $0.kind == .illustration || $0.kind == .soundEffect }) == true {
+                Text("Keeping the timeline doesn't request illustrations or sounds.").foregroundStyle(.secondary)
             }
             if let blocked { Text(blocked).foregroundStyle(.secondary) }
             HStack {
@@ -126,9 +135,68 @@ extension EditorModel {
         case .motionTemplate: effect.template?.label ?? "Motion template"
         case .lowerThird: "Lower third"
         case .emojiPop: "Emoji pop"
-        default: "Effect"
+        case .soundEffect: "Sound effect"
+        case .illustration: "Illustration"
+        case .colourLook: "Colour look"
+        case .speedForPart: "Speed change"
+        case .bRoll: "B-roll"
+        case .screenshot: "Screenshot"
+        case .videoStack: "Video stack"
         }
         return effect.text.map { "\(name) “\($0)”" } ?? name
+    }
+
+    private func assetAction(_ asset: ClipPlanAsset) -> some View {
+        let illustration = asset.kind == .illustration
+        let saved = illustration && model.savedPlanIllustration(asset, client: EditorModel.clipPlanAssets) != nil
+        let quote = illustration ? model.clipIllustrationQuote?.usdPerImage : nil
+        let blocked: String? = if model.project != assetProject { "The edit changed. Ask for a new timeline proposal." }
+            else if workingAsset != nil { "Wait for the current asset." }
+            else if !model.capabilities.edit || model.capabilities.aiBusy { "Finish the current edit first." }
+            else if illustration && !saved && quote == nil { "Illustration pricing isn't available." }
+            else if illustration && !saved && illustrationKeyAvailable != true {
+                illustrationKeyAvailable == nil ? "Checking for a fal.ai key…" : "Add a fal.ai key in Settings to generate an illustration."
+            } else { nil }
+        let title = !illustration ? "Find sound · free" : saved ? "Place saved illustration" :
+            quote.map { "Generate illustration · up to \(EditorModel.makeItDollars($0))" } ?? "Generate illustration"
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(illustration ? "Proposed illustration" : "Proposed sound effect").font(.headline)
+            Text(verbatim: asset.text).lineLimit(3)
+            if let blocked { Text(blocked).foregroundStyle(.secondary) }
+            HStack {
+                Button(title) { if blocked == nil { place(asset, approved: quote) } }.disabled(blocked != nil)
+                    .accessibilityIdentifier(illustration ? "voxclip.harness.generateIllustration" : "voxclip.harness.findSound")
+                Button("Dismiss") { assets.removeAll { $0.id == asset.id } }.disabled(workingAsset != nil)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignValues.color("bg.muted"))
+    }
+
+    private func place(_ asset: ClipPlanAsset, approved: Decimal?) {
+        guard workingAsset == nil, model.project == assetProject else { return }
+        let snapshot = model.project
+        workingAsset = asset.id
+        actionError = nil
+        Task {
+            defer { workingAsset = nil }
+            do {
+                let result = try await model.collectPlanAsset(asset, client: EditorModel.clipPlanAssets) { price in
+                    approved.map { price <= $0 } == true && !model.isLeaving && model.project == snapshot
+                }
+                guard let result else { actionError = "No asset was placed. Check your settings and try again."; return }
+                guard !model.isLeaving, model.project == snapshot else {
+                    actionError = "The asset was saved but not placed because the edit changed."
+                    return
+                }
+                model.replace(try ClipEffects.adding([result], to: snapshot), name: "Place timeline asset")
+                assetProject = model.project
+                assets.removeAll { $0.id == asset.id }
+                model.announce("Placed the \(asset.kind == .sound ? "sound effect" : "illustration")")
+            } catch {
+                actionError = await model.app.safeError(error, context: .llm)
+            }
+        }
     }
 
     private func music(_ action: PaidMusic) -> some View {
@@ -207,7 +275,12 @@ extension EditorModel {
     private func keep(_ proposal: HarnessProposal) {
         guard let url = document.fileURL, url == checkedURL, unavailable == nil else { return }
         do {
-            try model.keepHarnessProposal(proposal, at: url)
+            assets = try model.keepHarnessProposal(proposal, at: url)
+            assetProject = model.project
+            if assets.contains(where: { $0.kind == .illustration }) {
+                illustrationKeyAvailable = nil
+                Task { illustrationKeyAvailable = (try? await model.app.secrets.key(for: "fal"))?.isEmpty == false }
+            }
             if let prompt = proposal.timeline.generateMusic {
                 submitted = false
                 paid = PaidMusic(clipId: proposal.timeline.clipId, sourceKey: model.project.media.source.contentKey,

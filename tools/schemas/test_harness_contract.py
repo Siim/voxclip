@@ -156,14 +156,45 @@ class HarnessContract(unittest.TestCase):
         responses = self.replay(self.call("generate_music", prompt="music"), self.call("capture_consent"),
                                 self.call("export"), self.call("read_transcript", project="../other.voxclip"),
                                 self.call("propose_timeline", **self.timeline, approved=True),
-                                self.call("propose_timeline", **dict(self.timeline, clipId="other-project")),
-                                self.call("propose_timeline", **dict(self.timeline, effects=[{
-                                    "kind": "illustration", "startWord": 9, "endWord": 9, "prompt": "Create an image", "reason": "Illustrate",
-                                }])))
+                                self.call("propose_timeline", **dict(self.timeline, clipId="other-project")))
         for response in responses:
             self.assertTrue(response.get("isError") or response.get("code"))
         self.assertFalse(self.pending.exists())
         self.assertEqual(self.project.read_bytes(), self.original)
+
+    def test_overlay_proposal_prices_illustration_without_sending_and_lists_footage(self):
+        project = json.loads(self.original)
+        companion = dict(project["media"]["source"], contentKey="e" * 64, absolutePath="/Media/other.mov")
+        project["schemaVersion"] = 4
+        project["voiceLab"].update(assets=[], cleanAudio={"mode": "off", "assetId": None, "mix": None}, voices=[], videoAssets=[])
+        project["media"]["additionalSources"] = [companion]
+        self.project.write_text(json.dumps(project))
+        original = self.project.read_bytes()
+        entries = [
+            {"kind": "bRoll", "footage": {"sourceKey": companion["contentKey"], "start": 1}},
+            {"kind": "illustration", "prompt": "A cutaway of a lighthouse"},
+            {"kind": "soundEffect", "query": "wind"},
+            {"kind": "colourLook", "look": "warm"},
+            {"kind": "speedForPart", "rate": 1.5},
+        ]
+        timeline = {"clipId": "clip-2f1c", "reason": "Show the scene.", "effects": [
+            dict(entry, startWord=9, endWord=9, reason="Show the scene.") for entry in entries]}
+        listing, clips, reply = self.replay({"method": "tools/list"}, self.call("read_clips"), self.call("propose_timeline", **timeline))
+        schema = next(tool["inputSchema"] for tool in listing["tools"] if tool["name"] == "propose_timeline")
+        jsonschema.validate(timeline, schema)
+        self.assertEqual(clips["structuredContent"]["footageSources"][0]["sourceKey"], companion["contentKey"])
+        for result in [reply["structuredContent"], None]:
+            if result is None:
+                self.pending.unlink()
+                cli = self.run_cli("propose-timeline", json.dumps(timeline))
+                self.assertEqual(cli.returncode, 0, cli.stderr)
+                result = json.loads(cli.stdout)
+            proposal_validator().validate(result["proposal"])
+            self.assertEqual(result["proposal"]["timeline"], timeline)
+            self.assertEqual([action["kind"] for action in result["pricedActions"]], ["generateIllustration"])
+            self.assertTrue(result["pricedActions"][0]["price"].startswith("$"))
+            self.assertEqual(result["freeActions"][0]["kind"], "findSound")
+            self.assertEqual(self.project.read_bytes(), original)
 
     def test_rejects_invalid_edit_anchors_without_staging(self):
         cuts = dict(self.timeline["cuts"][0], startWord=0, endWord=0)

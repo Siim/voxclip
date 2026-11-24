@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using VoxClip.App.Controls;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Music;
@@ -25,6 +26,11 @@ public sealed partial class EditorPage
     private bool harnessPricing;
     private bool harnessSubmitted;
     private string? harnessPriceIssue;
+    private readonly List<ClipAutopilotAction.Asset> harnessAssets = [];
+    private Project? harnessAssetProject;
+    private bool harnessAssetWorking;
+    private bool? harnessIllustrationReady;
+    private (int Count, bool Working, bool? Ready, string? Blocked)? harnessAssetDisplay;
 
     private void StartHarnessReview()
     {
@@ -87,7 +93,7 @@ public sealed partial class EditorPage
     }
 
     private string? HarnessBlock => harnessDetails?.Blocked ?? ViewModel.HarnessKeepBlocked ??
-        (harnessMusic is null ? null : "Finish or dismiss the music action first.");
+        (harnessMusic is not null || harnessAssets.Count > 0 ? "Finish or dismiss the previous asset actions first." : null);
 
     private void UpdateHarnessButtons()
     {
@@ -97,6 +103,7 @@ public sealed partial class EditorPage
         HarnessKeepReason.Text = blocked ?? "";
         HarnessKeepReason.Visibility = blocked is null ? Visibility.Collapsed : Visibility.Visible;
         ShowHarnessMusic();
+        ShowHarnessAssets();
     }
 
     private bool IsHarnessPath(string path) => string.Equals(owner.ProjectPath, path, StringComparison.OrdinalIgnoreCase);
@@ -114,7 +121,11 @@ public sealed partial class EditorPage
             if (keep)
             {
                 if (HarnessBlock is not null || App.Services.SharedRoot is not { } root) return;
-                harnessMusic = ViewModel.KeepHarnessProposal(pending, path, root);
+                harnessMusic = ViewModel.KeepHarnessProposal(pending, path, root, out var assets);
+                harnessAssets.AddRange(assets);
+                harnessAssetProject = ViewModel.Project;
+                harnessIllustrationReady = null;
+                if (harnessAssets.Any(asset => asset.Kind == "illustration")) _ = CheckHarnessIllustrationKeyAsync();
             }
             else ViewModel.DismissHarnessProposal(pending, path);
             harnessPending = null;
@@ -127,6 +138,70 @@ public sealed partial class EditorPage
         catch (Exception exception) when (HarnessFileError(exception))
         { Ui.Show(HarnessNotice, "VoxClip couldn't finish this review. Your project is unchanged.", InfoBarSeverity.Warning); }
         _ = RefreshHarnessAsync();
+    }
+
+    private async Task CheckHarnessIllustrationKeyAsync()
+    {
+        try
+        {
+            harnessIllustrationReady = ViewModel.AskClaudeServices?.Assets is { } service &&
+                await service.Key(lifetime.Token) is { Length: > 0 };
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
+        catch (Exception) { harnessIllustrationReady = false; }
+        if (!disposed) ShowHarnessAssets();
+    }
+
+    private void ShowHarnessAssets()
+    {
+        var blocked = !ReferenceEquals(harnessAssetProject, ViewModel.Project)
+            ? "The edit changed. Ask for a new timeline proposal." : ViewModel.HarnessKeepBlocked;
+        var display = (harnessAssets.Count, harnessAssetWorking, harnessIllustrationReady, blocked);
+        if (harnessAssetDisplay == display) return;
+        harnessAssetDisplay = display;
+        HarnessAssetRows.Children.Clear();
+        var services = ViewModel.AskClaudeServices?.Assets;
+        foreach (var asset in harnessAssets)
+        {
+            var illustration = asset.Kind == "illustration";
+            var saved = illustration && services?.Saved(asset, ViewModel.Project.Id) is not null;
+            var price = illustration && !saved ? services?.Price : null;
+            var reason = blocked ?? (harnessAssetWorking ? "Wait for the current asset." :
+                services is null ? "This asset source isn't available." : !illustration || saved ? null :
+                price is null ? "Illustration pricing isn't available." : harnessIllustrationReady == true ? null :
+                harnessIllustrationReady == false ? "Add a fal.ai key in Settings to generate an illustration." : "Checking for a fal.ai key…");
+            var title = !illustration ? "Find sound · free" : saved ? "Place saved illustration" : price is { } amount
+                ? "Generate illustration · up to " + MakeItController.Dollars(decimal.Ceiling(amount * 100) / 100) : "Generate illustration";
+            var action = new Button { Content = title, IsEnabled = reason is null };
+            action.Click += async (_, _) => await ApplyHarnessAssetAsync(asset, price);
+            var dismiss = new Button { Content = "Dismiss", IsEnabled = !harnessAssetWorking };
+            dismiss.Click += (_, _) => { harnessAssets.Remove(asset); UpdateHarnessButtons(); };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            buttons.Children.Add(action);
+            buttons.Children.Add(dismiss);
+            HarnessAssetRows.Children.Add(new TextBlock { Text = asset.Text, TextWrapping = TextWrapping.Wrap });
+            HarnessAssetRows.Children.Add(buttons);
+            if (reason is not null) HarnessAssetRows.Children.Add(new TextBlock { Text = reason, TextWrapping = TextWrapping.Wrap });
+        }
+    }
+
+    private async Task ApplyHarnessAssetAsync(ClipAutopilotAction.Asset asset, decimal? price)
+    {
+        if (disposed || harnessAssetWorking || !harnessAssets.Contains(asset) || harnessAssetProject is not { } snapshot) return;
+        harnessAssetWorking = true;
+        UpdateHarnessButtons();
+        try
+        {
+            if (await ViewModel.ApplyHarnessAssetAsync(asset, snapshot, price, lifetime.Token))
+            {
+                harnessAssets.Remove(asset);
+                harnessAssetProject = ViewModel.Project;
+            }
+            else if (!disposed) Ui.Show(HarnessNotice, "No asset was placed. If the edit changed, ask for a new timeline proposal.", InfoBarSeverity.Warning);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception) { if (!disposed) Ui.Show(HarnessNotice, "Couldn't prepare the asset. Nothing was placed.", InfoBarSeverity.Warning); }
+        finally { harnessAssetWorking = false; if (!disposed) UpdateHarnessButtons(); }
     }
 
     private bool HarnessMusicClipExists(HarnessMusicAction action) => ViewModel.Project.Media.Source.ContentKey == action.SourceKey &&

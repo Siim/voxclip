@@ -21,7 +21,6 @@ public sealed class HarnessException(string message) : Exception(message);
 /// <summary>Validated local edit intent in the shared harness timeline format.</summary>
 public sealed class HarnessTimeline
 {
-    private static readonly HashSet<string> SupportedEffects = ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop", "motionTemplate"];
     private static readonly string[] Keys = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"];
     private static readonly string[] CutKeys = ["startWord", "endWord", "kind", "reason"];
 
@@ -47,6 +46,7 @@ public sealed class HarnessTimeline
     public string? GenerateMusic { get; }
     internal IReadOnlyList<WordSpan> Cuts { get; }
     internal IReadOnlyList<ClipPlanEffect> Effects { get; }
+    internal bool UsesFootage => Effects.Any(effect => effect.Kind is "bRoll" or "screenshot" or "videoStack");
 
     /// <summary>Reject unknown fields and unsupported entries before resolving any anchors.</summary>
     public static HarnessTimeline Read(JsonElement wire)
@@ -87,7 +87,7 @@ public sealed class HarnessTimeline
     {
         if (item.ValueKind != JsonValueKind.Object || item.EnumerateObject().Count() != 5 ||
             item.EnumerateObject().Select(field => field.Name).Distinct(StringComparer.Ordinal).Count() != 5 ||
-            ClipPlanEffect.Read(JsonNode.Parse(item.GetRawText())) is not { } effect || !SupportedEffects.Contains(effect.Kind))
+            ClipPlanEffect.Read(JsonNode.Parse(item.GetRawText())) is not { } effect)
             throw InvalidTimeline();
         return effect;
     }
@@ -129,7 +129,7 @@ public sealed class HarnessProposal
 
     /// <summary>Pin validated proposed changes to the saved base snapshot.</summary>
     public HarnessProposal(HarnessTimeline timeline, Domain.Shared.Project project)
-        : this(Guid.NewGuid(), project.Id, Revision(project, timeline.MusicTrackId is not null), timeline) { }
+        : this(Guid.NewGuid(), project.Id, Revision(project, timeline), timeline) { }
 
     private HarnessProposal(Guid id, string projectId, string baseRevision, HarnessTimeline timeline)
     {
@@ -166,10 +166,12 @@ public sealed class HarnessProposal
     };
 
     /// <summary>Validate the edit against the matching revision and return an in-memory candidate, without saving it.</summary>
-    public Domain.Shared.Project Applying(Domain.Shared.Project snapshot, string sharedRoot)
+    public Domain.Shared.Project Applying(Domain.Shared.Project snapshot, string sharedRoot) => Evaluate(snapshot, sharedRoot).Project;
+
+    /// <summary>Return a validated local edit and asset actions that still require a click in VoxClip.</summary>
+    public (Domain.Shared.Project Project, IReadOnlyList<ClipAutopilotAction.Asset> Assets) Evaluate(Domain.Shared.Project snapshot, string sharedRoot)
     {
-        var reuseMusic = timeline.MusicTrackId is not null;
-        if (snapshot.Id != ProjectId || BaseRevision != Revision(snapshot, reuseMusic))
+        if (snapshot.Id != ProjectId || BaseRevision != Revision(snapshot, timeline))
             throw new HarnessException("The project changed. Ask for a new timeline proposal.");
         if (EditingEngine.FromProject(snapshot) is not { } state ||
             snapshot.Edits.Clips.FirstOrDefault(clip => clip.Id == timeline.ClipId) is not { } clip)
@@ -216,14 +218,31 @@ public sealed class HarnessProposal
             for (var suffix = 2; taken.Contains(id); suffix++) id = string.Create(CultureInfo.InvariantCulture, $"{track.Id}-{suffix}");
             next = MusicProject.Setting(track with { Id = id, ClipId = clip.Id }, clip.Id, next);
         }
+        var assets = new List<ClipAutopilotAction.Asset>();
         if (timeline.Effects.Count != 0)
         {
             var stickers = AskClaudePrompt.Load(sharedRoot).Stickers;
             var tightened = state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => pause.AfterIndex).ToHashSet();
+            var sources = (next.Media.AdditionalSources ?? []).Where(source => source.Video is not null)
+                .ToDictionary(source => source.FootageKey, source => source.DurationSeconds, StringComparer.Ordinal);
             for (var index = 0; index < timeline.Effects.Count; index++)
             {
+                var entry = timeline.Effects[index];
                 var effectId = string.Create(CultureInfo.InvariantCulture, $"harness-{Id:D}-{index}");
-                var effect = timeline.Effects[index].Operation(effectId, clip.Id, scope, words, state.CutWordIds, tightened, stickers);
+                if (entry.Kind is "bRoll" or "screenshot" or "videoStack")
+                {
+                    var footage = entry.FootagePlacement(effectId, clip.Id, scope,
+                        wordIndex => words[wordIndex] is { Kind: WordKind.Word } word ? (word.Start, word.End) : null,
+                        wordIndex => state.CutWordIds.Contains(words[wordIndex].Id), sources);
+                    var placements = next.Media.Footage ?? [];
+                    if (footage is null || tightened.Any(pause => entry.StartWord <= pause && pause < entry.EndWord) ||
+                        placements.Any(existing => existing.ClipId == clip.Id && existing.Start < footage.End && footage.Start < existing.End))
+                        throw new HarnessException($"Effect {index + 1} overlaps or exceeds available footage.");
+                    next = next with { SchemaVersion = Math.Max(4, next.SchemaVersion), Media = next.Media with { Footage = [.. placements, footage] } };
+                    continue;
+                }
+                var effect = entry.Operation(effectId, clip.Id, scope, words, state.CutWordIds, tightened, stickers);
+                if (effect?.Action is ClipAutopilotAction.Asset asset) { assets.Add(asset); continue; }
                 next = effect?.Action switch
                 {
                     ClipAutopilotAction.Motion motion => ClipAutopilotMapping.AddingMotionCue(motion.Cue, next) ??
@@ -233,13 +252,13 @@ public sealed class HarnessProposal
                 };
             }
         }
-        if (BaseRevision == Revision(next, reuseMusic))
+        if (BaseRevision == Revision(next, timeline))
         {
-            if (timeline.GenerateMusic is null) throw new HarnessException("The timeline doesn't change the project.");
+            if (timeline.GenerateMusic is null && assets.Count == 0) throw new HarnessException("The timeline doesn't change the project.");
             next = snapshot;
         }
         _ = ProjectSerialization.Serialize(next);
-        return next;
+        return (next, assets);
     }
 
     /// <summary>Look up an estimate for the candidate clip without contacting a provider.</summary>
@@ -254,7 +273,7 @@ public sealed class HarnessProposal
         return MusicPricing.Label(MusicPricing.Estimate(MusicPricing.LengthSeconds(edit.Duration / speed), VoiceLabPrices.Load(sharedRoot)));
     }
 
-    private static string Revision(Domain.Shared.Project snapshot, bool reuseMusic)
+    private static string Revision(Domain.Shared.Project snapshot, HarnessTimeline timeline)
     {
         var edits = snapshot.Edits with
         {
@@ -269,8 +288,13 @@ public sealed class HarnessProposal
             ["transcript"] = Take("transcript"), ["edits"] = Take("edits"), ["captions"] = Take("captions"),
             ["clipStyle"] = Take("clipStyle"), ["controls"] = Take("clipControls") ?? new JsonArray(),
             ["motion"] = Take("motionCues") ?? new JsonArray(), ["effects"] = Take("clipEffects") ?? new JsonArray(),
-            ["reuseMusic"] = reuseMusic ? Take("music") ?? new JsonArray() : null
+            ["reuseMusic"] = timeline.MusicTrackId is not null ? Take("music") ?? new JsonArray() : null
         };
+        if (timeline.UsesFootage)
+        {
+            inputs["footageSources"] = stored["media"]?["additionalSources"]?.DeepClone() ?? new JsonArray();
+            inputs["footage"] = stored["media"]?["footage"]?.DeepClone() ?? new JsonArray();
+        }
         using var bytes = new MemoryStream();
         using (var writer = new Utf8JsonWriter(bytes)) WriteCanonical(inputs, writer);
         return Convert.ToHexStringLower(SHA256.HashData(bytes.GetBuffer().AsSpan(0, (int)bytes.Length)));
