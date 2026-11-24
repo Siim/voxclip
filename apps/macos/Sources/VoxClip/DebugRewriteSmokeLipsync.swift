@@ -42,7 +42,7 @@ extension DebugRewriteSmoke.Harness {
     }
 
     /// Puts the real lip-sync run over the stood-in fal.ai under every take plan this Rewrite makes.
-    func installFalShortResult(droppingFrames: Int = 5) throws -> FalShortResult {
+    func installFalShortResult(droppingFrames: Int = 5, exactPicture: Bool = false) throws -> FalShortResult {
         guard let editor, let shared = app.shared else { throw DebugRewriteSmoke.Failure.setup("no editor") }
         app.providerKeyStoreOverride = RewriteSmokeFalKey(base: app.providerKeyStore)
         let catalog = try VoiceLabPriceCatalog(data: Data(contentsOf: shared.root.appendingPathComponent("catalog/voice-lab.json")))
@@ -51,8 +51,9 @@ extension DebugRewriteSmoke.Harness {
         let fal = FalShortResult(http: http)
         let app = self.app
         editor.lipsyncSmoke = { request, window, recordID, model, mayPay, redoVersion, checkpoint, progress in
-            try await Self.smokeLipsync(app: app, catalog: catalog, fal: fal, request: request, window: window, recordID: recordID,
-                                        model: model, mayPay: mayPay, redoVersion: redoVersion, checkpoint: checkpoint, progress: progress)
+            if exactPicture { await http.returnPicture(seconds: window.seconds(sampleRate: request.timeline.sampleRate)) }
+            return try await Self.smokeLipsync(app: app, catalog: catalog, fal: fal, request: request, window: window, recordID: recordID,
+                                               model: model, mayPay: mayPay, redoVersion: redoVersion, checkpoint: checkpoint, progress: progress)
         }
         return fal
     }

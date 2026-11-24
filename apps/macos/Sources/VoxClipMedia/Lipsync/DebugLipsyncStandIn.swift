@@ -8,7 +8,7 @@ import VoxClipCore
 /// track of the upload's audio resampled to 24 kHz and a little shorter than the picture. The picture is the upload's own,
 /// so the face, colour and size checks see what they would.
 package enum LipsyncShortResultStandIn {
-    package static func make(video: Data, audio: Data, droppingFrames: Int) async throws -> Data {
+    package static func make(video: Data, audio: Data, droppingFrames: Int, pictureSeconds: Double? = nil) async throws -> Data {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-fal-standin-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -29,10 +29,12 @@ package enum LipsyncShortResultStandIn {
             }
             return MediaReadQueue.DecodedFrames(frames)
         }.buffers
-        guard frames.count > droppingFrames + 1 else { throw LipsyncError.invalidMedia }
-        frames.removeLast(droppingFrames)
+        let count = pictureSeconds.map { Int(($0 * fps).rounded()) } ?? frames.count - droppingFrames
+        guard count > 1, count <= frames.count else { throw LipsyncError.invalidMedia }
+        frames.removeLast(frames.count - count)
         let picture = folder.appendingPathComponent("picture.mp4")
         try await writePicture(frames, fps: fps, size: size, to: picture)
+        if pictureSeconds != nil { return try Data(contentsOf: picture) }
         let pictureSeconds = Double(frames.count) / fps
         let sound = folder.appendingPathComponent("sound.m4a")
         try await writeAAC24k(wav, to: sound)
@@ -101,6 +103,7 @@ package enum LipsyncShortResultStandIn {
 /// first poll, the result is `LipsyncShortResultStandIn` over the last upload, and the payload delete answers as documented.
 package actor LipsyncSmokeFalHTTP: LipsyncHTTPClient {
     private let droppingFrames: Int
+    private var pictureSeconds: Double?
     private var uploads: [Data] = []
     package private(set) var submits = 0
     package private(set) var deletions = 0
@@ -112,6 +115,10 @@ package actor LipsyncSmokeFalHTTP: LipsyncHTTPClient {
 
     package init(droppingFrames: Int, recoveryRoot: URL? = nil, interruptOnPoll: Bool = false) {
         self.droppingFrames = droppingFrames; self.recoveryRoot = recoveryRoot; self.interruptOnPoll = interruptOnPoll
+    }
+
+    package func returnPicture(seconds: Double) {
+        pictureSeconds = seconds
     }
 
     package func send(_ request: URLRequest, limit: Int, permit: VoiceDispatchPermit?) async throws -> LipsyncHTTPResponse {
@@ -163,7 +170,7 @@ package actor LipsyncSmokeFalHTTP: LipsyncHTTPClient {
         }
         guard uploads.count >= 2 else { throw LipsyncError.invalidResponse }
         let result = try await LipsyncShortResultStandIn.make(video: uploads[uploads.count - 2], audio: uploads[uploads.count - 1],
-                                                              droppingFrames: droppingFrames)
+                                                              droppingFrames: droppingFrames, pictureSeconds: pictureSeconds)
         try result.write(to: file)
     }
 }

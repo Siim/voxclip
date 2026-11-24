@@ -263,7 +263,7 @@ extension DebugRewriteSmoke.Harness {
             }
             editor.replace(longTake, name: "Long take")
         }
-        let lipsync = try installFalShortResult()
+        let lipsync = try installFalShortResult(exactPicture: true)
         let before = speechRequests
         let aiBefore = await connector?.sendCount
         _ = editor.setScope(nil)
