@@ -93,6 +93,7 @@ internal sealed class RewritePhraseMicrophone
     internal bool Busy => State != MicrophoneState.Idle;
     /// <summary>Microphone access: once Windows refused it, the denied guidance stays until a recording starts.</summary>
     internal PhraseMicrophoneAccess Access => access() is var now && now == PhraseMicrophoneAccess.Allowed && denied ? PhraseMicrophoneAccess.Denied : now;
+    internal Uri? PrivacySettings => Access == PhraseMicrophoneAccess.Denied ? new(VoiceLabCopy.MicrophoneSettingsUri) : null;
     /// <summary>The take the last recording of phrase <paramref name="index"/> made, for Record again.</summary>
     internal Guid? LastTake(int index) => lastTake.TryGetValue(index, out var id) ? id : null;
     internal event EventHandler? Changed;
@@ -179,6 +180,7 @@ internal sealed class RewritePhraseMicrophone
         if (failure is not null || samples.Length == 0 || rate <= 0)
         {
             State = MicrophoneState.Idle;
+            if (failure == MicrophoneError.Permission) denied = true;
             Problem = PhraseMicrophoneCopy.Copy(new MicrophoneException(failure ?? MicrophoneError.DeviceLost));
             Notify();
             return;

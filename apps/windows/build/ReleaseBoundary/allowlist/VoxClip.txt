@@ -5974,6 +5974,7 @@ member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_Lev
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_Limit()
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_Meters()
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_Phrase()
+member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_PrivacySettings()
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_Problem()
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_Seconds()
 member VoxClip.App.ViewModels.RewritePhraseMicrophone :: method internal get_State()

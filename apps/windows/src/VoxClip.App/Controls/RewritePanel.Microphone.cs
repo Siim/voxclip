@@ -9,7 +9,7 @@ namespace VoxClip.App.Controls;
 /// <summary>The Say it myself segment of a phrase card (design.md §6.3.8, voice-lab.md §8.13; Mac <c>PhraseMicrophoneRow</c>,
 /// <c>OwnTakeRow</c>), inline: [● Record] with the words to say, the level meter, time against the gap and [Stop] while recording,
 /// then each own take's line with Play, [Use your take] (or Use anyway) and [Record again]. Denied access shows its guidance with a
-/// Settings link; with no microphone, Record is hidden. No dialogs.</summary>
+/// Settings link and keeps Record available for a retry; with no microphone, Record is disabled. No dialogs.</summary>
 internal sealed partial class RewritePanel
 {
     private readonly StackPanel microphoneBox = Ui.Stack(6);
@@ -23,38 +23,47 @@ internal sealed partial class RewritePanel
         if (!shown) return;
         if (session.PhraseMicrophone is not { } microphone)
         {
+            microphoneBox.Children.Add(new Button { Content = "● Record", IsEnabled = false });
             microphoneBox.Children.Add(Wrapped(PhraseMicrophoneCopy.NoMicrophone));
             return;
         }
         var active = microphone.Phrase == index;
         var busy = generation.IsRunning || session.IsGeneratingBatch;
+        var noMicrophone = microphone.Access == PhraseMicrophoneAccess.NoMicrophone;
+        var settingsUri = microphone.PrivacySettings;
         if (active && microphone.State is RewritePhraseMicrophone.MicrophoneState.Recording or RewritePhraseMicrophone.MicrophoneState.Cueing)
             microphoneBox.Children.Add(RecordingRow(microphone, index));
         else if (active && microphone.State == RewritePhraseMicrophone.MicrophoneState.Checking)
             microphoneBox.Children.Add(Wrapped("Checking your take on this PC…"));
-        else if (microphone.Access == PhraseMicrophoneAccess.NoMicrophone)
-            microphoneBox.Children.Add(Wrapped(PhraseMicrophoneCopy.NoMicrophone));
-        else if (microphone.Access == PhraseMicrophoneAccess.Denied)
-        {
-            microphoneBox.Children.Add(Themed(Wrapped(PhraseMicrophoneCopy.Denied), TextBlock.ForegroundProperty, "VcStatusWarningBrush"));
-            var settings = new HyperlinkButton { Content = PhraseMicrophoneCopy.OpenSettings, NavigateUri = new Uri(VoiceLabCopy.MicrophoneSettingsUri) };
-            AutomationProperties.SetAutomationId(settings, "Rewrite.MicrophoneSettings");
-            microphoneBox.Children.Add(settings);
-        }
-        else if (!busy && microphone.State == RewritePhraseMicrophone.MicrophoneState.Idle)
+        else if (microphone.State == RewritePhraseMicrophone.MicrophoneState.Idle)
         {
             var again = microphone.LastTake(index) is { } last && generation.Rows.Any(row => row.Id == last);
             var title = again ? "Record again" : "● Record";
             var record = Ui.Button(title, () => _ = session.RecordPhraseAsync(index));
+            record.IsEnabled = !busy && !noMicrophone;
             AutomationProperties.SetAutomationId(record, "Rewrite.MicrophoneRecord");
             SetName(record, again ? $"Record phrase {index + 1} again" : $"Record phrase {index + 1}");
             ToolTipService.SetToolTip(record, "Say the phrase in your own voice. It stops by itself at the gap plus 1.5 s.");
             microphoneBox.Children.Add(record);
-            var say = Themed(Wrapped($"Say: “{session.CurrentWording(index)}”"), TextBlock.ForegroundProperty, "VcTextTertiaryBrush");
-            AutomationProperties.SetAutomationId(say, "Rewrite.MicrophoneSay");
-            microphoneBox.Children.Add(say);
+            if (noMicrophone)
+                microphoneBox.Children.Add(Wrapped(PhraseMicrophoneCopy.NoMicrophone));
+            else if (settingsUri is not null)
+            {
+                microphoneBox.Children.Add(Themed(Wrapped(PhraseMicrophoneCopy.Denied), TextBlock.ForegroundProperty, "VcStatusWarningBrush"));
+                var settings = new HyperlinkButton { Content = PhraseMicrophoneCopy.OpenSettings, NavigateUri = settingsUri };
+                AutomationProperties.SetAutomationId(settings, "Rewrite.MicrophoneSettings");
+                microphoneBox.Children.Add(settings);
+            }
+            else
+            {
+                var say = Themed(Wrapped($"Say: “{session.CurrentWording(index)}”"), TextBlock.ForegroundProperty, "VcTextTertiaryBrush");
+                AutomationProperties.SetAutomationId(say, "Rewrite.MicrophoneSay");
+                microphoneBox.Children.Add(say);
+            }
         }
-        if (active && microphone.Problem.Length > 0)
+        if (active && microphone.Problem.Length > 0
+            && !(settingsUri is not null && microphone.Problem == PhraseMicrophoneCopy.Denied)
+            && !(noMicrophone && microphone.Problem == PhraseMicrophoneCopy.NoMicrophone))
         {
             var problem = Themed(Wrapped(microphone.Problem), TextBlock.ForegroundProperty, "VcStatusWarningBrush");
             AutomationProperties.SetAutomationId(problem, "Rewrite.MicrophoneProblem");

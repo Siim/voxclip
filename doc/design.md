@@ -1841,7 +1841,8 @@ Once per phrase, passing short takes use the inline f12 grammar: `Short phrase �
   - Footer: "Next: listen, then Use. Lip sync follows if it's on."
   - The user's words are final: the automatic fixes never reword a phrase in My words (or Say it myself), and the word check expects the user's words.
 - **Say it myself.**
-  - **● Record** shows only when a microphone exists, with "Say: “{phrase}”". Microphone access off reads "Microphone access is off for VoxClip. Allow it in System Settings → Privacy & Security → Microphone, then record." with **Open Microphone Settings**; no alert. No microphone reads "No microphone is connected. Connect one to say it yourself."
+  - On Mac, **● Record** shows only when a microphone exists, with "Say: “{phrase}”". Microphone access off reads "Microphone access is off for VoxClip. Allow it in System Settings → Privacy & Security → Microphone, then record." with **Open Microphone Settings**; no alert. No microphone reads "No microphone is connected. Connect one to say it yourself."
+  - On Windows, **● Record** stays visible, disabled when no microphone is connected. If Windows denies microphone access before or during recording, the row explains why and offers **Open Microphone Settings** (`ms-settings:privacy-microphone`). Use **Record** again after changing the setting.
   - Before recording: with headphones, up to 2 s of the clip's audio before the phrase plays as a cue; without headphones, a three-beep count-in plays, so the clip doesn't bleed into the take.
   - While recording: a red dot, a level waveform, "{t} s / gap {g} s" and **Stop**. It stops by itself at the gap plus 1.5 s.
   - After Stop, "Checking your take on this Mac…": on-device transcription (Apple's speech engine, else the project's Whisper model) gives the words and their timings; the take is trimmed to the speech, its loudness matched to the source, and fitted and joined as a generated take is, with the same join check.
