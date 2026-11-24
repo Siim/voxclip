@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/harness-proposal.schema.json",
+  "title": "VoxClip pending harness proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "projectId", "baseRevision", "timeline"],
+  "properties": {
+    "version": {"const": 1},
+    "id": {"type": "string", "format": "uuid"},
+    "projectId": {"type": "string", "minLength": 1},
+    "baseRevision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timeline": {"$ref": "harness-timeline.schema.json"}
+  }
+}

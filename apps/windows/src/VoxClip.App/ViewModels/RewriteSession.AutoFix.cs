@@ -117,7 +117,6 @@ internal sealed partial class RewriteSession
         AutoFix.Reset();
         AutoFix.Armed = true;
         AutoFix.Allowance = Math.Min(AutoFixAllowance(batch.Estimate.Usd), AutoFixCeiling ?? decimal.MaxValue);
-        foreach (var window in generationWindows) window.KeepEveryTake();
     }
 
     /// <summary>Counts <paramref name="usd"/> against the allowance. Past it the step waits for Keep fixing and its round is given back.</summary>
@@ -482,7 +481,6 @@ internal sealed partial class RewriteSession
         var voice = previous.VoiceId;
         if (!ReviewSurroundingSentence(phrase.Ordinals[0]) || SentenceReview is not { } review || !AcceptSurroundingSentence(review)) return;
         if (generationWindows.ElementAtOrDefault(index) is not { } window) return;
-        window.KeepEveryTake();
         await window.DiscoverAsync();
         if (voice is not null) await window.ChooseVoiceAsync(voice);
         await window.PendingUpdate;

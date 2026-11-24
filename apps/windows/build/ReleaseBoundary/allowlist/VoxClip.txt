@@ -5441,7 +5441,6 @@ member VoxClip.App.ViewModels.RewriteGeneration :: field private rejected
 member VoxClip.App.ViewModels.RewriteGeneration :: field private release
 member VoxClip.App.ViewModels.RewriteGeneration :: field private reviewEnd
 member VoxClip.App.ViewModels.RewriteGeneration :: field private revision
-member VoxClip.App.ViewModels.RewriteGeneration :: field private runInputRecorded
 member VoxClip.App.ViewModels.RewriteGeneration :: field private runStarted
 member VoxClip.App.ViewModels.RewriteGeneration :: field private runner
 member VoxClip.App.ViewModels.RewriteGeneration :: field private seed
@@ -5481,7 +5480,6 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal InputFor(Syst
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal InputsChangedAsync(bool)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal IsBeforeExpression(System.Guid)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal IsRecorded(System.Guid)
-member VoxClip.App.ViewModels.RewriteGeneration :: method internal KeepEveryTake()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal LeaveOut()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal Length(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal LengthFits(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
@@ -5534,7 +5532,6 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_IsPrepari
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_IsRequestingConsent()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_IsRunning()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_KeepSourceCopy()
-member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_KeepsEveryTake()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_LastAcceptanceError()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_LastAcceptanceUnusable()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_LastRunResult()
@@ -5558,6 +5555,7 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ProgressC
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Quote()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ReadyToAccept()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_RetimeCopy()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ReviewRows()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ReviewedInput()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ReviewedInputsCurrent()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Rows()
@@ -5613,7 +5611,6 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method private set_HasDiscove
 member VoxClip.App.ViewModels.RewriteGeneration :: method private set_HasStartedDiscovery(bool)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private set_IsPreparing(bool)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private set_IsRequestingConsent(bool)
-member VoxClip.App.ViewModels.RewriteGeneration :: method private set_KeepsEveryTake(bool)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private set_LastAcceptanceError(System.Exception)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private set_LastAcceptanceUnusable(bool)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private set_LeftOut(bool)

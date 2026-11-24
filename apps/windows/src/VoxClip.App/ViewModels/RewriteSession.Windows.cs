@@ -124,7 +124,6 @@ internal sealed partial class RewriteSession
             var window = reusable ? previous[index] : generationFactory(index);
             window.FixedModelId = synthesisModel;
             window.ShareVoiceChecks(VoiceChecks, index);
-            if (AutoFix.Armed) window.KeepEveryTake();
             generationWindows.Add(window);
             if (!reusable) { ApplyRememberedBlock(window, desired.ElementAtOrDefault(index)); PreferVideoVoice(window); window.Changed += GenerationChanged; }
             else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();

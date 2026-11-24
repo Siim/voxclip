@@ -86,10 +86,7 @@ import VoxClipMedia
         var selected: Take? { takes.first { $0.id == selectedID } }
         var originalLength: Double { window.end - window.start }
         var lengthDifference: Double? { selected?.length.map { $0 - originalLength } }
-        var nextTakeNumber: Int {
-            guard takes.count == 3 else { return takes.count + 1 }
-            return takes.filter { $0.id != selectedID }.min { ($0.row.score ?? -1) < ($1.row.score ?? -1) }?.number ?? 3
-        }
+        var nextTakeNumber: Int { (takes.map(\.number).max() ?? 0) + 1 }
     }
     enum Failure: Error, Equatable {
         /// `index` is the refused hunk's index in the plan's hunks.
@@ -301,8 +298,6 @@ import VoxClipMedia
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
     let audition: VoiceLabAudition
     let lipsync = RewriteLipsyncSession()
-    /// Automatic fixes and expression changes add takes beside the old ones: a fourth take never replaces a paid one.
-    var keepsEveryTake = false
     @ObservationIgnored private var auditionTurn = UUID()
     @ObservationIgnored private var receivedInBatch: Set<UUID> = []
     @ObservationIgnored private var fatalPhrases: Set<Int> = []
@@ -868,7 +863,6 @@ import VoxClipMedia
         phrases[index].beforeExpression.formUnion(phrases[index].takes.map(\.id))
         if phrases[index].selectedID != nil { clearPreparedVideo() }
         phrases[index].selectedID = nil; phrases[index].videoChoice = nil; phrases[index].explicitlySelected = false
-        keepsEveryTake = true
         await prepareQuote(indices: spent.units > 0 ? [index] : phrases.map(\.id), decoding: true, candidates: 1)
     }
     /// Whether a take's own length fits its slot with the source video or a cut, selected or not: a take that failed its
@@ -1368,22 +1362,8 @@ import VoxClipMedia
             guard receivedInBatch.insert(row.id).inserted else { continue }
             guard !phrases[phrase].takes.contains(where: { $0.id == row.id }) else { continue }
             if stale { phrases[phrase].madeBeforeEdit.insert(row.id) }
-            // A stale plan replaces no take: every paid one stays until the user discards them.
             let number = phrases[phrase].nextTakeNumber
-            if phrases[phrase].takes.count >= 3, !keepsEveryTake, !stale,
-               let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
-                let evicted = phrases[phrase].takes[replaced].id
-                await backend?.retire(phrase, evicted)
-                guard (revision == version || stopping), !retired else {
-                    await backend?.retire(phrase, row.id)
-                    continue
-                }
-                if !isCurrent() { phrases[phrase].madeBeforeEdit.insert(row.id) }
-                phrases[phrase].takes[replaced] = Take(number: number, row: row)
-            } else {
-                let number = (phrases[phrase].takes.map(\.number).max() ?? 0) + 1
-                phrases[phrase].takes.append(Take(number: number, row: row))
-            }
+            phrases[phrase].takes.append(Take(number: number, row: row))
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
         guard !lipsync.blocksMutation(phrase) else { return }
@@ -1556,7 +1536,6 @@ import VoxClipMedia
             return false
         }
         stopAudition()
-        keepsEveryTake = true
         microphoneTakes[take.row.id] = take; takeInputs[take.row.id] = take.input
         if let replacing, replacing != phrases[index].selectedID, microphoneTakes[replacing] != nil,
            let at = phrases[index].takes.firstIndex(where: { $0.id == replacing }) {
@@ -1564,7 +1543,7 @@ import VoxClipMedia
             let old = microphoneTakes.removeValue(forKey: replacing); takeInputs[replacing] = nil
             Task { await old?.scratch.invalidate() }
         } else {
-            let number = (phrases[index].takes.map(\.number).max() ?? 0) + 1
+            let number = phrases[index].nextTakeNumber
             phrases[index].takes.append(Take(number: number, row: take.row, source: .microphone))
         }
         if case .generating = phrases[index].status {} else { phrases[index].status = .ready }

@@ -75,7 +75,6 @@ internal sealed class DebugRewriteTakeRunner : IVoiceLabTakeRunner, IDisposable
         if (BeforeTransport is { } pause) await pause(ct);
         await dispatch.AuthorizeAsync(quote.Takes[0].Synthesis.Review.RequestId, ct);
         await dispatch.Start(() => { PaidRequests++; return Task.FromResult(true); }, ct);
-        if (assets is not null) await assets.InvalidateAsync();
         if (progress is not null) await progress([]);
         if (State == "provider-error") return new([new(Guid.NewGuid(), 0, quote.Takes[0].Seed, Failure: new VoiceLabException(VoiceLabErrorKind.Unauthorized))], VoiceLabTakeRunEnd.Fatal);
         if (State == "generating") await new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task.WaitAsync(ct);

@@ -5,6 +5,10 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Windows, Rewrite can revoice a whole clip, lip sync the picture with fal.ai, and recover a saved voice or an accepted lip-sync job without paying for it again once the native voice check is available.
+- On Mac, Claude Code and Codex can read a saved VoxClip project and propose timeline edits for Keep or Undo. Paid music still needs its own priced click in VoxClip.
+- On Mac, you can Rewrite a clip after using a whole-clip revoice. The earlier revoice stays until you use the new one. A selection that can't replace it offers a free Undo.
+- Rewrite keeps your earlier takes on Mac and Windows, newest first, so you can play or switch back to a take you already paid for without being charged again.
+- Mac app tests no longer crash during untitled-project autosave on macOS 27. Saving in the app is unchanged.
 - The VoxClip launch page now shows Claude’s one-click workflow, Rewrite in your own voice, and feed-ready exports, with real clip examples and downloads for Mac and Windows.
 - Claude mode and Make it postable can add zooms, punch-ins, animated titles, lower thirds and emoji on the words where they fit, and choose a title for the exported cover.
 - In ✦ Claude does it all, Mac can start finding clips with Apple Speech while Whisper or an approved Scribe run checks the words. The clip style card shows the transcription choice on Mac and Windows, and later clips arrive without interrupting your review.
