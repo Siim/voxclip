@@ -106,8 +106,8 @@ test('fixture build: valid structure, local resources, links, token parity and d
     assert.match(html, /0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/);
     assert.match(html, /SHA-256 not listed/);
     assert.ok(!tags.some(tag => tag.name === 'video'));
-    assert.match(html, /showreel isn’t available yet/);
-    assert.match(html, /Video guides aren’t available yet/);
+    assert.doesNotMatch(html, /available yet/);
+    assert.ok(!html.includes('id="showreel"') && !html.includes('id="tutorials"'));
     for (const file of ['style.css', 'tokens.css']) {
       const text = await readFile(join(out, file), 'utf8');
       assert.doesNotMatch(text, /@import|https?:\/\/(?!www\.w3\.org)/);

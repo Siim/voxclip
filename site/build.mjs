@@ -82,8 +82,17 @@ export async function build({ releasePath = join(site, 'latest.json'), out = joi
   const { config, assets: pins, approved } = await readMedia(configPath);
   const hasMedia = Boolean(mediaDir && approved);
   const videoHTML = item => `<video controls preload="none" playsinline aria-label="${escapeHTML(item.title)}"><source src="media/${item.video}" type="video/mp4"><track kind="captions" src="media/${item.captions}" srclang="en" label="English" default><p><a href="media/${item.video}">Download ${escapeHTML(item.title)}</a></p></video>`;
-  data.SHOWREEL = hasMedia ? videoHTML(config.videos[0]) : '<p>The showreel isn’t available yet.</p>';
-  data.TUTORIALS = hasMedia ? `<ul class="tutorials">${config.videos.slice(1).map(item => `<li><h3>${escapeHTML(item.title)}</h3>${videoHTML(item)}</li>`).join('')}</ul>` : '<p>Video guides aren’t available yet.</p>';
+  // The showreel and tutorials appear only once their media is approved and pinned; a launch page never shows empty slots.
+  data.WATCH = hasMedia ? `<div class="section watch-grid">
+      <section id="showreel" aria-labelledby="showreel-title">
+        <h2 id="showreel-title">Showreel</h2>
+        ${videoHTML(config.videos[0])}
+      </section>
+      <section id="tutorials" aria-labelledby="tutorials-title">
+        <h2 id="tutorials-title">Tutorials</h2>
+        <ul class="tutorials">${config.videos.slice(1).map(item => `<li><h3>${escapeHTML(item.title)}</h3>${videoHTML(item)}</li>`).join('')}</ul>
+      </section>
+    </div>` : '';
   if (hasMedia) {
     await mkdir(join(out, 'media'), { recursive: true });
     for (const pin of pins) {
