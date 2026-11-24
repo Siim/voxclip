@@ -57,7 +57,7 @@ test('release fetch is read-only, verifies media and requires both platforms', a
   } finally { await rm(scratch, { recursive: true, force: true }); }
 });
 
-test('unapproved media fetches only app metadata and builds placeholders', async () => {
+test('unapproved media fetches only app metadata', async () => {
   await mkdir('/tmp/voxclip-sol-launch-tooling', { recursive: true });
   const scratch = await mkdtemp('/tmp/voxclip-sol-launch-tooling/release-tests-');
   try {

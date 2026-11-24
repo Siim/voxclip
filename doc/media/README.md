@@ -161,10 +161,10 @@ PYTHONPATH=tools/media /tmp/voxclip-sol-launch-tooling/venv/bin/python -m edit p
 PYTHONPATH=tools/media /tmp/voxclip-sol-launch-tooling/venv/bin/python -m edit contact editor.png home.png --out /tmp/voxclip-sol-launch-tooling/contact.png
 ```
 
-## Static site scaffold
+## Static launch site
 
 `site/` contains HTML, CSS and a dependency-free Node 22 builder. It reads tokens
-directly, emits light/dark CSS variables, copies unmodified DM Sans and its OFL
+directly, emits dark CSS variables, copies unmodified DM Sans and its OFL
 licence, and resolves release download sizes and optional GitHub `digest` SHA-256.
 No browser API calls, analytics, external fonts, runtime scripts or dependencies.
 The offline builder reads saved release JSON. The Pages workflow fetches it at build time.
@@ -182,9 +182,9 @@ requires its matching release's FFmpeg source archive and the architecture §6.1
 LGPL notice. The builder refuses drafts, prereleases, duplicate/unsafe URLs and
 malformed digests. Production fetching requires both platforms' installers.
 
-The scaffold retains explicit screenshot placeholders. Voice Lab remains labelled
-**Voice Lab (beta, coming)** with its voice recordings / words-to-ElevenLabs and
-video/audio-to-lip-sync-provider disclosure (voice-lab §2.5). It is not a shipped-feature claim.
+The site copies the maintainer-approved README artwork from `doc/media/readme/`
+unchanged. Its Rewrite and lip sync copy says what gets sent to ElevenLabs and
+fal.ai (voice-lab §2.5). The still-image approval does not cover launch videos.
 
 ### GitHub Pages and release media
 
@@ -199,13 +199,12 @@ Approved MP4s and matching English VTTs for the showreel and four tutorials are
 release assets, never committed. `node site/fetch-release.mjs <staging-directory>`
 fetches the latest stable app metadata and the configured media release, validates
 public-repo URLs, requires the API size/digest and downloaded bytes to match the reviewed size and SHA-256 pins in `media.json`, and writes staging files for the
-offline builder. Asset downloads never receive the API credential. Commit the expected size and SHA-256 for every MP4 and VTT alongside the user's capture approval. Until all files are approved, every size and SHA-256 entry stays null: no media release or media bytes are requested, and the builder uses placeholders even if a media directory is supplied. A missing,
+offline builder. Asset downloads never receive the API credential. Commit the expected size and SHA-256 for every MP4 and VTT alongside the user's capture approval. Until all files are approved, every size and SHA-256 entry stays null: no media release or media bytes are requested, and no video players appear even if a media directory is supplied. A missing,
 corrupt or incorrectly named media asset fails publication. Each asset is capped
 at 100 MB and combined media at 900 MB. The media release must be **not latest**,
 so it cannot displace the stable app release in `/releases/latest`. Its tag must
 include this workflow. Videos use local artifact paths, native controls,
-`preload="none"`, captions and no autoplay. Five tutorial rows include Voice Lab's
-coming status; only the four shipped flows receive videos.
+`preload="none"`, captions and no autoplay. Tutorial titles come from the reviewed manifest.
 
 ### Go live — user's approval required
 
