@@ -301,6 +301,12 @@ enum CLIWorkflow {
         let project = prepared.project, render = prepared.render, activeClip = prepared.activeClip
         let aspect = prepared.aspect, quality = prepared.quality, styleID = prepared.styleID
         try Task.checkCancellation()
+        if options.format == "fcpxml", let output = options.output {
+            let name = activeClip?.title ?? project.title ?? render.sourceURL.deletingPathExtension().lastPathComponent
+            let url = try await FCPXMLExporter.write(name: name, render: render, to: URL(fileURLWithPath: output), replacing: true)
+            return success("export", fields: ["format": .string("fcpxml"), "output": .string(url.path),
+                "captionStyle": .string(styleID), "aspect": .string(aspect.rawValue)])
+        }
         let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version,
                                   cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
         let job = ExportJob(render: render, aspect: aspect, quality: quality, outputURL: URL(fileURLWithPath: options.output!),

@@ -511,7 +511,7 @@ struct EditorRenderSnapshot {
         // An idle entry follows the active tab; only a render in flight keeps its
         // captured target regardless of where the user has navigated.
         let requestedIDs = clipIDs ?? activeClip.map { [$0.id] } ?? []
-        if !exporting && (!exportJob.isOpen || clipIDs != nil || exportJob.requestedIDs != requestedIDs) {
+        if !exporting && !exportJob.voxConvo.running && (!exportJob.isOpen || clipIDs != nil || exportJob.requestedIDs != requestedIDs) {
             exportJob.draft.commit(model: self)
             exportJob = ExportJobState()
             exports = []; exportDisclosureLines = [:]; exportError = nil
@@ -525,7 +525,7 @@ struct EditorRenderSnapshot {
         onPresentExport?()
     }
     func finishExportJob() {
-        guard !exporting else { return }
+        guard !exporting, !exportJob.voxConvo.running else { return }
         exportJob.draft.commit(model: self)
         exportJob.isOpen = false
         onFinishExport?()
