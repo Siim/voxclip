@@ -551,30 +551,19 @@ public sealed class RewriteGenerationTests
         test.Generation.MarkEstimateShown(test.Generation.Quote!); Assert.True(test.Generation.CanExecute);
     }
     [Fact]
-    public async Task PriorReviewIsReplacedOnlyAtTheFakeFirstPaidTransport()
+    public async Task TwoRoundsKeepBothTakesSelectableWithoutNewRequests()
     {
         await using var test = new Harness(); await test.ReadyAsync(); await test.GenerateAsync();
-        var selected = test.Generation.SelectedTakeId!.Value; test.Generation.AuditionTake(selected);
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        test.Runner.BeforeTransport = async ct => { entered.SetResult(); await resume.Task.WaitAsync(ct); };
+        var first = Assert.Single(test.Generation.Rows);
         test.Generation.MarkEstimateShown(test.Generation.Quote!);
-        var pending = test.GenerateAsync(); await entered.Task;
-        Assert.Single(test.Generation.Rows); Assert.Equal(selected, test.Generation.SelectedTakeId);
-        Assert.Equal(selected, test.Generation.AuditionedTakeId);
-        var atTransport = false;
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        test.Generation.Changed += (_, _) =>
-        {
-            if (test.Generation.Phase != RewriteGenerationPhase.Generating) return;
-            atTransport = true; Assert.Empty(test.Generation.Rows); Assert.Null(test.Generation.SelectedTakeId); Assert.Null(test.Generation.AuditionedTakeId);
-            started.TrySetResult();
-        };
-        test.Runner.State = "generating";
-        resume.SetResult();
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
-        Assert.True(atTransport);
-        await test.Generation.CancelAsync(); await pending;
+        await test.GenerateAsync();
+        var second = Assert.Single(test.Generation.Rows, row => row.Id != first.Id);
+        Assert.Equal(new[] { second.Id, first.Id }, test.Generation.ReviewRows.Select(row => row.Id));
+        Assert.Equal(new[] { "Take 2", "Take 1" }, test.Generation.ReviewRows.Select(row => row.DisplayName));
+        Assert.True(await test.Generation.SelectTakeAsync(second.Id));
+        Assert.True(await test.Generation.SelectTakeAsync(first.Id));
+        Assert.Equal(first.Id, test.Generation.SelectedTakeId);
+        Assert.Equal(2, test.Generation.Rows.Count);
         Assert.Equal(2, test.Runner.PaidRequests);
     }
     [Fact]

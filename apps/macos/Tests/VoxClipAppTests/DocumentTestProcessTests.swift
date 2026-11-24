@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 @testable import VoxClipCore
 @testable import VoxClip
 
@@ -18,6 +19,41 @@ import Testing
     }
 
     @Test func aTestProcessIsDetected() { #expect(TestProcess.isRunning) }
+
+    @Test func anUntitledDocumentOnlyAutosavesAfterItHasATestURL() async throws {
+        let document = try document()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-autosave-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        defer { document.close() }
+        document.fileType = UTType.voxclipProject.identifier
+        let before = document.project.modifiedAt
+        document.updateChangeCount(.changeDone)
+
+        let untitled = await withTestDeadline(returning: false) { continuation in
+            document.autosave(withImplicitCancellability: false) { error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+        try #require(untitled)
+        try #require(document.autosavedContentsFileURL == nil)
+        #expect(document.hasUnautosavedChanges)
+
+        let url = folder.appendingPathComponent("Project.voxclip")
+        try JSONProjectStore.encode(document.project).write(to: url)
+        document.fileURL = url
+        let saved = await withTestDeadline(returning: false) { continuation in
+            document.autosave(withImplicitCancellability: false) { error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+
+        try #require(saved)
+        let project = try JSONProjectStore.decode(Data(contentsOf: url))
+        #expect(project.id == document.project.id)
+        #expect(project.modifiedAt != before)
+        #expect(!document.hasUnautosavedChanges)
+    }
 
     @Test func anErrorIsRecordedNotShownInAnAlert() throws {
         let document = try document()
