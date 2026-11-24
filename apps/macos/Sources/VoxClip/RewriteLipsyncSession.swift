@@ -135,6 +135,7 @@ import VoxClipMedia
     @ObservationIgnored private var currentRun: Task<ImportedLipsyncResult, any Error>?
     @ObservationIgnored private var turn = UUID()
     @ObservationIgnored private var invalidated: Set<UUID> = []
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAgain = false
     @ObservationIgnored private var refreshAfterUse = false
     /// The paid results this session got back (`Reusable`), newest last.
@@ -267,14 +268,29 @@ import VoxClipMedia
     }
 
     func refresh() async {
-        guard automaticallyRefreshOffers, let backend, !usingTakes else { return }
-        guard !refreshing else { refreshAgain = true; return }
-        let revision = turn
-        refreshing = true
-        defer {
-            refreshing = false
-            if refreshAgain { refreshAgain = false; Task { await self.refresh() } }
+        guard automaticallyRefreshOffers, backend != nil, !usingTakes else { return }
+        if let refreshTask {
+            refreshAgain = true
+            await refreshTask.value
+            return
         }
+        refreshing = true
+        let task = Task {
+            repeat {
+                refreshAgain = false
+                await refreshOffers()
+            } while refreshAgain
+            refreshTask = nil
+            refreshing = false
+        }
+        refreshTask = task
+        await task.value
+    }
+
+    private func refreshOffers() async {
+        guard automaticallyRefreshOffers, let backend else { return }
+        guard !usingTakes else { refreshAfterUse = true; return }
+        let revision = turn
         keyAvailable = await backend.hasKey()
         consentAccepted = backend.hasConsent()
         do {
