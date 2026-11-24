@@ -2016,9 +2016,19 @@ this shape after parsing. Older replies can omit the list. Ask Claude uses the s
 Both Cores replay `shared/fixtures/clip-effects/clip-plan-effect-cases.json`. Only spoken, kept spans of 0.1–5 s
 inside the clip map to operations; a span crossing a cut or tightened pause is dropped. Zoom eases in and out,
 punch-in cuts directly to the closer frame, titles and lower thirds rise, and bundled emoji pop. Video effects
-reuse the source-time motion and v4 clip-effect entries; absent `animation` preserves old rendering. Sound effects,
-generated illustrations, timed colour looks and speed for part of a clip are reserved in the schema but are not
-offered to the planner or executed. No asset is fetched and no paid work is introduced by these effects.
+reuse the source-time motion and v4 clip-effect entries; absent `animation` preserves old rendering. A colour look
+overrides the clip's look only for its kept span. A partial speed override changes that span's output duration and
+keeps speech pitch; captions, cover and export checks use the same time map. Where two overrides of the same kind
+overlap, the later entry wins.
+
+Sound effects are fetched from Openverse's sound-effects category only. CC0, CC BY and Public Domain Mark are
+allowed; a CC BY result without attribution is skipped. The sound must fit the selected span, is mixed under the
+voice, and its title, licence, attribution and source are recorded with the effect. The MP4 comment carries the
+sound credits. Illustrations use the fal.ai key and the fixed price and size in `shared/data/clip-illustration.json`.
+They are cutaways at the selected words, not replacements for the clip's audio. Claude mode and Make it postable
+skip generation if the remaining cap cannot cover it. Ask Claude shows the free sound action or a single priced
+illustration action inline. An illustration is written to the project's asset folder before placement, even if the
+run was stopped while the provider finished; the same prompt can reuse it without another charge.
 
 `frames.cover.title` is optional, validated only for a listed candidate, saved as `clipControls.coverTitle` and
 restored with the cover on undo. It is added only to the cover JPEG and embedded artwork, never the video stream.
