@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrite keeps your earlier takes on Mac and Windows, newest first, so you can play or switch back to a take you already paid for without being charged again.
 - On Mac, Rewrite stops retrying after the same words fail verification twice with the same voice. It keeps verified takes and offers free ways to move on instead of a third paid attempt.
 - On Mac and Windows, diagnostics identify which action failed and what kind of error occurred, without recording error messages or personal data.
 - ✦ Claude does it all stops when Find Clips needs your help, including when the selected model isn't available. It retries temporary connection problems up to three times, then shows what to do next.
