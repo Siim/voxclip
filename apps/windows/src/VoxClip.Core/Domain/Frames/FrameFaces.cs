@@ -54,7 +54,7 @@ public interface IFrameFaces
 public static class FrameFaces
 {
     /// <summary>The line a caller shows or prints when faces are unavailable.</summary>
-    public const string UnavailableMessage = "The face models aren't installed on this PC, so faces in the video's frames can't be measured. Nothing was analyzed.";
+    public const string UnavailableMessage = "Face analysis is off or the face models couldn't load. Nothing was analyzed.";
 
     /// <summary><paramref name="faces"/>, or <see cref="FrameFacesUnavailableException"/> when it is null.</summary>
     public static IFrameFaces Require(IFrameFaces? faces) => faces ?? throw new FrameFacesUnavailableException();

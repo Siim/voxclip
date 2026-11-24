@@ -68,6 +68,7 @@
       "required": ["w0", "w1", "w2", "eyesOpen", "facingSpan", "pitch0", "sharpness", "quantileMap", "gates"],
       "properties": {
         "w0": {"type": "number", "minimum": 0}, "w1": {"type": "number", "minimum": 0}, "w2": {"type": "number", "minimum": 0},
+        "widthWeight": {"type": "number", "minimum": 0},
         "eyesOpen": {"$ref": "#/$defs/pair"},
         "facingSpan": {"type": "number", "exclusiveMinimum": 0},
         "pitch0": {"type": "number"},

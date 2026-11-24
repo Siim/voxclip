@@ -38,6 +38,6 @@ public sealed class FrameFacesTests
         var error = Assert.Throws<FrameFacesUnavailableException>(() => FrameFaces.Require(null));
         Assert.Equal((VoxClipErrorCode.ModelMissing, "modelMissing", 7), (error.Code, error.WireCode, error.ExitCode));
         Assert.Equal(FrameFaces.UnavailableMessage, error.Message);
-        Assert.StartsWith("The face models aren't installed on this PC", error.Message, StringComparison.Ordinal);
+        Assert.Equal("Face analysis is off or the face models couldn't load. Nothing was analyzed.", error.Message);
     }
 }

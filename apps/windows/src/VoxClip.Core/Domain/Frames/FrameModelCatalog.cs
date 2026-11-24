@@ -57,6 +57,8 @@ public sealed record FrameFaceCalibration
     public required double W1 { get; init; }
     /// <summary>The weight of sharpness.</summary>
     public required double W2 { get; init; }
+    /// <summary>The weight of face width on the 1,280 px analysis scale; zero in older calibrations.</summary>
+    public double WidthWeight { get; init; }
     /// <summary>The Vision-scale mean eye ratio where eyes-open starts rising from 0.</summary>
     public required double EyesClosedAt { get; init; }
     /// <summary>The Vision-scale mean eye ratio where eyes-open reaches 1.</summary>
@@ -101,6 +103,7 @@ public sealed record FrameFaceCalibration
                 Status = value.GetProperty("status").GetString() ?? "",
                 EyeAspect = Linear(value.GetProperty("eyeAspect")), Yaw = Linear(value.GetProperty("yaw")), Pitch = Linear(value.GetProperty("pitch")),
                 W0 = Number(quality, "w0"), W1 = Number(quality, "w1"), W2 = Number(quality, "w2"),
+                WidthWeight = quality.TryGetProperty("widthWeight", out _) ? Number(quality, "widthWeight") : 0,
                 EyesClosedAt = eyes.Item1, EyesOpenAt = eyes.Item2, FacingSpan = Number(quality, "facingSpan"), Pitch0 = Number(quality, "pitch0"),
                 SharpLow = sharp.Item1, SharpHigh = sharp.Item2, QuantileMap = Array.AsReadOnly(map),
                 Gates = new FrameQualityGates(Number(gates, "minimumFaceWidth"), luma.Item1, luma.Item2, Number(gates, "clippedBelow"),
@@ -115,7 +118,8 @@ public sealed record FrameFaceCalibration
                 previous = point;
             }
             if (calibration.Status is not ("provisional" or "calibrated") || calibration.W0 < 0 || calibration.W1 < 0 || calibration.W2 < 0 ||
-                !(calibration.EyesOpenAt > calibration.EyesClosedAt) || !(calibration.FacingSpan > 0) || !(calibration.SharpLow > 0) ||
+                calibration.WidthWeight < 0 || !(calibration.EyesOpenAt > calibration.EyesClosedAt) ||
+                !(calibration.FacingSpan > 0) || !(calibration.SharpLow > 0) ||
                 !(calibration.SharpHigh > calibration.SharpLow) || !(luma.Item2 >= luma.Item1) || calibration.Gates.MinimumFaceWidth < 0 ||
                 calibration.Gates.ClippedFraction is < 0 or > 1 || calibration.SpeakerScore is < 0 or > 1 || calibration.EyesFromWidth < 0)
                 throw new InvalidDataException("The face calibration is out of range.");
