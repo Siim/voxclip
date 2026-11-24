@@ -382,11 +382,23 @@ import VoxClipMedia
         if let partsBack { restoredPartsBack = min(max(partsBack, 0), restoredParts) }
     }
 
+    @ObservationIgnored private var quoteTask: Task<Void, Never>?
+
     /// Prices the card and reads the fal.ai key. Free.
     func refreshQuote() async {
-        guard let backend, !running, !quoting else { return }
+        if let quoteTask { await quoteTask.value; return }
+        guard let backend, !running else { return }
         quoting = true
-        defer { quoting = false }
+        let task = Task { [self] in
+            await readQuote(backend)
+            quoting = false
+            quoteTask = nil
+        }
+        quoteTask = task
+        await task.value
+    }
+
+    private func readQuote(_ backend: Backend) async {
         keyAvailable = await backend.hasKey()
         let script = try? backend.script()
         quotedScript = script

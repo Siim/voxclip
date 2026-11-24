@@ -203,6 +203,36 @@ private struct FalKeyOnly: ProviderKeyStore {
         })
     }
 
+    @Test func aSecondQuoteRequestWaitsForThePriceAlreadyInFlight() async throws {
+        let session = session(Stubs())
+        var backend = try #require(session.backend)
+        let price = backend.quote
+        var releaseQuote: CheckedContinuation<Void, Never>?
+        var quoteCalls = 0
+        backend.quote = { script, model in
+            quoteCalls += 1
+            if quoteCalls == 1 { await withCheckedContinuation { releaseQuote = $0 } }
+            return try await price(script, model)
+        }
+        session.backend = backend
+        defer { releaseQuote?.resume() }
+        let first = Task { await session.refreshQuote() }
+        await TestDeadline.until { releaseQuote != nil }
+        var checkingPrice = false
+        let second = Task {
+            checkingPrice = true
+            await session.refreshQuote()
+            return session.quote?.wholeUSD
+        }
+        await TestDeadline.until { checkingPrice }
+        let release = try #require(releaseQuote)
+        releaseQuote = nil
+        release.resume()
+        #expect(await second.value == Decimal(string: "1.61"))
+        await first.value
+        #expect(quoteCalls == 1 && !session.quoting)
+    }
+
     @Test func aRunGoesScriptVoiceFitLipSyncThenReviewAndUse() async {
         let stubs = Stubs()
         let session = session(stubs)
