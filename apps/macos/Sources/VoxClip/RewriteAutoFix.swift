@@ -133,7 +133,6 @@ extension RewriteSession {
         autoFix.reset()
         autoFix.armed = true; autoFix.plan = plan
         autoFix.allowance = Self.autoFixAllowance(plan.estimate)
-        plan.keepsEveryTake = true
     }
     /// Counts `usd` against the allowance. Past it, the step waits for Keep fixing and its round is given back.
     func autoFixCharge(_ usd: Decimal?, phrase: Int) -> Bool {

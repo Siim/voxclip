@@ -1,0 +1,24 @@
+{
+  "format": "voxclip-clip-plan-effect-cases/1",
+  "words": [
+    {"start": 0.5, "end": 1.0}, {"start": 1.2, "end": 2.5},
+    {"start": 3.0, "end": 4.5}, {"start": 5.0, "end": 6.0}
+  ],
+  "cases": [
+    {"id": "zoom", "entry": {"kind":"zoom","startWord":0,"endWord":1,"scale":1.2,"reason":"Build into the claim."}, "placement":{"start":0.5,"end":2.5,"scales":[1,1.2,1.2,1]}},
+    {"id": "punch", "entry": {"kind":"punchIn","startWord":2,"endWord":2,"scale":1.3,"reason":"Land the punchline."}, "placement":{"start":3,"end":4.5,"scales":[1.3,1.3]}},
+    {"id": "title", "entry": {"kind":"motionTitle","startWord":1,"endWord":2,"text":"The catch","reason":"Introduce the reversal."}, "placement":{"start":1.2,"end":4.5,"overlayKind":"title","position":"top","animation":"rise"}},
+    {"id": "lower", "entry": {"kind":"lowerThird","startWord":0,"endWord":1,"text":"Ada · Editor","reason":"Identify the speaker."}, "placement":{"start":0.5,"end":2.5,"overlayKind":"lowerThird","position":"bottom","animation":"rise"}},
+    {"id": "emoji", "entry": {"kind":"emojiPop","startWord":2,"endWord":2,"text":"🔥","reason":"Punctuate the result."}, "placement":{"start":3,"end":4.5,"overlayKind":"sticker","position":"topRight","animation":"pop"}},
+    {"id": "sound-reserved", "entry": {"kind":"soundEffect","startWord":2,"endWord":2,"query":"soft chime","reason":"Mark the reveal."}},
+    {"id": "illustration-reserved", "entry": {"kind":"illustration","startWord":1,"endWord":2,"prompt":"A paper map on a desk","reason":"Show the analogy."}},
+    {"id": "look-reserved", "entry": {"kind":"colourLook","startWord":1,"endWord":2,"look":"warm","reason":"Distinguish the memory."}},
+    {"id": "speed-reserved", "entry": {"kind":"speedForPart","startWord":1,"endWord":2,"rate":1.15,"reason":"Move through setup."}},
+    {"id": "cut-anchor", "entry": {"kind":"motionTitle","startWord":0,"endWord":2,"text":"The catch","reason":"Introduce the reversal."}, "cutWords":[1]},
+    {"id": "unlisted-anchor", "entry": {"kind":"punchIn","startWord":0,"endWord":4,"scale":1.25,"reason":"Land the claim."}},
+    {"id": "unsupported-emoji", "entry": {"kind":"emojiPop","startWord":1,"endWord":1,"text":"plain","reason":"Punctuate the result."}},
+    {"id": "missing-payload", "entry": {"kind":"punchIn","startWord":0,"endWord":1,"reason":"Land the claim."}, "invalid":true},
+    {"id": "extra-payload", "entry": {"kind":"punchIn","startWord":0,"endWord":1,"scale":1.2,"text":"The catch","reason":"Land the claim."}, "invalid":true},
+    {"id": "missing-reason", "entry": {"kind":"punchIn","startWord":0,"endWord":1,"scale":1.2}, "invalid":true}
+  ]
+}

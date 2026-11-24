@@ -47,7 +47,7 @@ extension RewriteSession {
         } catch { generationProblem(error) }
     }
     func prepareTakes() async {
-        guard !wordingIsLocked else { return }
+        guard !wordingIsLocked, wholeClipReplacement == nil else { return }
         if let reviewing { await reviewing.value }
         if let ordinal = surroundingSentenceOrdinal, acceptedSpeechContext == nil {
             reviewTimingSpeechContext(ordinal: ordinal)

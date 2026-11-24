@@ -157,13 +157,17 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
     public var sound: Sound?
     /// `sound`: level relative to the voice, in dB.
     public var gainDb: Double?
+    public enum Animation: String, Codable, Sendable { case rise, pop }
+    public var animation: Animation?
+
+    static func allowsAnimation(_ kind: Kind) -> Bool { kind.usesText }
 
     public init(id: String, clipId: String?, kind: Kind, start: Double, end: Double, wordIds: [String]? = nil, rect: Rect? = nil,
                 tracking: Tracking? = nil, track: [TrackSample]? = nil, text: String? = nil, position: Position? = nil, scale: Double? = nil,
-                sound: Sound? = nil, gainDb: Double? = nil) {
+                sound: Sound? = nil, gainDb: Double? = nil, animation: Animation? = nil) {
         self.id = id; self.clipId = clipId; self.kind = kind; self.start = start; self.end = end; self.wordIds = wordIds; self.rect = rect
         self.tracking = tracking; self.track = track; self.text = text; self.position = position; self.scale = scale; self.sound = sound
-        self.gainDb = gainDb
+        self.gainDb = gainDb; self.animation = animation
     }
 
     // MARK: Limits
@@ -205,7 +209,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
     }
     static let commonKeys: Set<String> = ["id", "clipId", "kind", "start", "end"]
 
-    private enum CodingKeys: String, CodingKey { case id, clipId, kind, start, end, wordIds, rect, tracking, track, text, position, scale, sound, gainDb }
+    private enum CodingKeys: String, CodingKey { case id, clipId, kind, start, end, wordIds, rect, tracking, track, text, position, scale, sound, gainDb, animation }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -225,6 +229,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         if has(.scale) { scale = try values.decode(Double.self, forKey: .scale) }
         if has(.sound) { sound = try values.decode(Sound.self, forKey: .sound) }
         if has(.gainDb) { gainDb = try values.decode(Double.self, forKey: .gainDb) }
+        if values.contains(.animation) { animation = try values.decode(Animation.self, forKey: .animation) }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -242,6 +247,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         if has(.scale) { try values.encode(scale, forKey: .scale) }
         if has(.sound) { try values.encode(sound, forKey: .sound) }
         if has(.gainDb) { try values.encode(gainDb, forKey: .gainDb) }
+        try values.encodeIfPresent(animation, forKey: .animation)
     }
 
     // MARK: Render helpers
@@ -269,6 +275,17 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         let fade = min(Self.overlayFadeSeconds, (end - start) / 2)
         guard fade > 0 else { return 1 }
         return min(1, (time - start) / fade, (end - time) / fade)
+    }
+
+    public func overlayPose(at time: Double) -> (scale: Double, down: Double) {
+        guard let animation, end > start else { return (1, 0) }
+        let progress = max(0, min(1, (time - start) / min(0.24, (end - start) / 2)))
+        switch animation {
+        case .rise: return (1, 0.035 * (1 - progress) * (1 - progress))
+        case .pop:
+            let scale = progress <= 0.6 ? 0.72 + 0.4 * progress / 0.6 : 1.12 - 0.12 * (progress - 0.6) / 0.4
+            return (scale, 0)
+        }
     }
 }
 
@@ -310,6 +327,9 @@ public enum ClipEffects {
     public static func validate(_ effect: ClipEffect, projectId: String) throws {
         func require(_ condition: Bool, _ reason: String) throws { if !condition { throw ClipEffectError.invalidEntry(reason) } }
         try require(matches(effect.id, identifier), "id")
+        if let animation = effect.animation {
+            try require(ClipEffect.allowsAnimation(effect.kind) && animation == (effect.kind == .sticker ? .pop : .rise), "animation")
+        }
         try require(effect.clipId.map { matches($0, identifier) } ?? true, "clip id")
         try require(effect.start.isFinite && effect.end.isFinite && effect.start >= 0 && effect.end > effect.start
                     && effect.end - effect.start <= ClipEffect.maximumSeconds + 1e-9, "range")
@@ -375,13 +395,17 @@ public enum ClipEffects {
         }
         for entry in entries {
             guard case .object(let object) = entry, case .string(let raw) = object["kind"], let kind = ClipEffect.Kind(rawValue: raw),
-                  Set(object.keys) == ClipEffect.commonKeys.union(ClipEffect.kindKeys(kind)) else {
+                  Set(object.keys) == ClipEffect.commonKeys.union(ClipEffect.kindKeys(kind))
+                    .union(ClipEffect.allowsAnimation(kind) && object["animation"] != nil ? ["animation"] : []) else {
                 throw ClipEffectError.invalidEntry("unknown or missing field")
             }
             guard string(object["id"]), string(object["clipId"], nullable: true), number(object["start"]), number(object["end"]) else {
                 throw ClipEffectError.invalidEntry("field type")
             }
             var valid = true
+            if let animation = object["animation"] {
+                valid = animation == .string(kind == .sticker ? "pop" : "rise")
+            }
             if let words = object["wordIds"] {
                 if case .array(let ids) = words { valid = valid && ids.allSatisfy { string($0) } } else { valid = false }
             }

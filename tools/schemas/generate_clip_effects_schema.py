@@ -80,7 +80,8 @@ def definitions():
         'position': {'enum': POSITIONS},
         'scale': {'type': 'number', 'minimum': 0.5, 'maximum': 3},
         'sound': {'oneOf': [{'$ref': '#/$defs/clipEffectBundledSound'}, {'$ref': '#/$defs/clipEffectLibrarySound'}]},
-        'gainDb': {'type': 'number', 'minimum': -30, 'maximum': 6, 'description': 'Relative to the voice.'}}
+        'gainDb': {'type': 'number', 'minimum': -30, 'maximum': 6, 'description': 'Relative to the voice.'},
+        'animation': {'enum': ['rise', 'pop'], 'description': 'Optional entrance on title, lowerThird or sticker.'}}
     entry = {'description': 'One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes '
                             'id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the '
                             'clip and words exist, a freeze is at most 5 s, a sound spans its own length, a sticker is at '
@@ -89,7 +90,9 @@ def definitions():
     entry['allOf'] = [
         {'if': {'properties': {'kind': {'const': kind}}},
          'then': {'required': COMMON + KIND_KEYS[kind],
-                  'propertyNames': {'enum': COMMON + KIND_KEYS[kind]}}}
+                  'propertyNames': {'enum': COMMON + KIND_KEYS[kind] + (['animation'] if kind in ('title', 'lowerThird', 'sticker') else [])},
+                  **({'properties': {'animation': {'const': 'pop' if kind == 'sticker' else 'rise'}}}
+                     if kind in ('title', 'lowerThird', 'sticker') else {})}}
         for kind in KINDS]
     return {'clipEffectRect': rect, 'clipEffectTrackSample': sample, 'clipEffectBundledSound': bundled,
             'clipEffectLibrarySound': library, 'clipEffect': entry}

@@ -889,6 +889,53 @@ import VoxClipCore
 
         /// The evidence controls the panel drew last.
         private var drawn: [Control] { steps.last?.snapshot.controls.filter { $0.source == "evidence" && $0.enabled } ?? [] }
+        func keepOlderTakes() async throws {
+            try await start()
+            try await getPrice()
+            try await click(["takeQuote-"])
+            guard let session, let plan = session.takePlan else { throw Failure.setup("No takes plan") }
+            if session.task.confirm != nil { try await click(["approveTakeQuote"]) }
+            _ = await chooseOfferedTakeIfNeeded()
+            guard let first = plan.phrases.first?.takes.first,
+                  drawn.contains(where: { $0.id == "priceAnother.0" }) else {
+                throw Failure.setup("The first take has no Try Another control")
+            }
+            try await act("price another take for phrase 1", clicked: "priceAnother.0") { session.priceAnotherTake(phrase: 0) }
+            guard let action = session.pricedTakeAction(phrase: 0), drawn.contains(where: { $0.id == action.id }) else {
+                throw Failure.setup("The second take has no priced control")
+            }
+            try await act("click [\(action.title)]", clicked: action.id) { action.perform() }
+            if session.task.confirm != nil { try await click(["approveTakeQuote"]) }
+
+            let counts = RewriteSmokeHTTP.script.withLock { ($0.syntheses, $0.checks) }
+            let takes = plan.phrases[0].takes
+            guard counts.0 == 2, takes.count == 2, takes.first?.id == first.id, let second = takes.last,
+                  let host else { throw Failure.setup("The two approved rounds did not leave both takes") }
+            let markers = DebugRightColumn.markers(in: host)
+            guard let newer = markers["director.button.pickTake.0.2"], let older = markers["director.button.pickTake.0.1"],
+                  host.isFlipped ? newer.midY < older.midY : newer.midY > older.midY else {
+                throw Failure.setup("Takes are not drawn newest first")
+            }
+            for take in [second, first] {
+                let play = "playTake.0.\(take.number)"
+                let pick = "pickTake.0.\(take.number)"
+                guard drawn.contains(where: { $0.id == play }), drawn.contains(where: { $0.id == pick }) else {
+                    throw Failure.setup("Take \(take.number) is missing Play or Pick")
+                }
+                var played = false
+                try await act("play take \(take.number)", clicked: play) {
+                    await session.playTake(take.id, phrase: 0)
+                    played = plan.audition.isPlaying && plan.audition.takeId == take.id
+                }
+                guard played else { throw Failure.setup("Take \(take.number) did not play") }
+                try await act("pick take \(take.number)", clicked: pick) { session.pickTake(take.id, phrase: 0) }
+                guard plan.phrases[0].selectedID == take.id else { throw Failure.setup("Take \(take.number) was not picked") }
+            }
+            guard RewriteSmokeHTTP.script.withLock({ ($0.syntheses, $0.checks) == counts }) else {
+                throw Failure.setup("Playing or picking a take sent a paid request")
+            }
+            try await finish()
+        }
         /// A passing take the automatic choice may not pick (its voice couldn't be measured, ADR-R37) waits for the user's click
         /// on its number in the phrase card; a join advisory never does (ADR-R39).
         private func chooseOfferedTakeIfNeeded() async -> Bool {
@@ -896,8 +943,7 @@ import VoxClipCore
                   let phrase = plan.phrases.first(where: { plan.offeredTake(phrase: $0.id) != nil }),
                   let take = plan.offeredTake(phrase: phrase.id) else { return false }
             try? await act("click take \(take.number) on phrase \(phrase.id + 1)", clicked: "takeNumber") {
-                session.focusedTakePhrase = phrase.id
-                session.mutateLipsync(phrase: phrase.id) { _ = plan.select(take: take.id, phrase: phrase.id) }
+                session.pickTake(take.id, phrase: phrase.id)
             }
             return true
         }
@@ -1092,7 +1138,7 @@ import VoxClipCore
         /// Row buttons that only listen, navigate or show more do not move the Rewrite on.
         /// Evidence controls that only choose a voice or open the expression chooser do not move the Rewrite on.
         static func acts(_ id: String) -> Bool {
-            !["expression.", "voicePicker"].contains { id.hasPrefix($0) }
+            !["expression.", "voicePicker", "playTake.", "pickTake."].contains { id.hasPrefix($0) }
         }
         static func editableFields(in view: NSView) -> Int {
             guard !view.isHidden else { return 0 }
@@ -1274,6 +1320,10 @@ import VoxClipCore
             harness.makeItAppend([Check(invariant: "SV1",
                 passed: requests.0 == ["fixtureOwnVoice"] && requests.1 == 1 && qa?.outputSpeakerCheckSkipped == true && qa?.shortSpeech == nil,
                 detail: "\(requests.0.count) syntheses · \(requests.1) word checks · skipped speaker check: \(qa?.outputSpeakerCheckSkipped == true)")])
+        },
+        Definition(id: "S-older-takes", title: "two rounds keep both takes playable and selectable for free", voiced: 1,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            try await harness.keepOlderTakes()
         },
         Definition(id: "S2", title: "two changes close together",
             fixture: Fixture(rewrites: [.passage(replace([("keep the pauses", "preserve all breaks"), ("remove the ones", "cut every one")]))],

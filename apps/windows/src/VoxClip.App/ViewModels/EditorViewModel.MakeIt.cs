@@ -411,7 +411,7 @@ public sealed partial class EditorViewModel
         try
         {
             if (services.SharedRoot is not { } root) throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "fonts");
-            operations = ClipAutopilotMapping.Operations(plan, run.ClipId, project, ClipAutopilotFonts.Load(root));
+            operations = ClipAutopilotMapping.Operations(plan, run.ClipId, project, ClipAutopilotFonts.Load(root), AskClaudePrompt.Load(root).Stickers);
         }
         catch (Exception exception) when (exception is VoxClipException or VoiceLabException)
         {
@@ -615,6 +615,16 @@ public sealed partial class EditorViewModel
                 var text = card.TryGetProperty("text", out var value) ? value.GetString() ?? hook.Text : hook.Text;
                 return (new MakeItInverse.Effect(card.GetProperty("id").GetString()!, previous),
                     new(operation.Id, MakeItController.HookRowText(text, "Claude")) { Kind = MakeItRowKind.Choice, Detail = MakeItController.HookDetail, Play = ClipPlay(hook.ClipId, next), Undoable = true, Change = MakeItChange.Hook });
+            }
+            case ClipAutopilotAction.Effect { Value: var value }:
+            {
+                var overlay = ClipEffect.Parse(value);
+                System.Text.Json.JsonElement? previous = next.ClipEffects.FirstOrDefault(item => item.GetProperty("id").GetString() == overlay.Id);
+                if (previous?.ValueKind == System.Text.Json.JsonValueKind.Undefined) previous = null;
+                next = ClipEffects.Adding([value], next);
+                var name = overlay.Kind switch { "title" => "Motion title", "lowerThird" => "Lower third", _ => "Emoji pop" };
+                return (new MakeItInverse.Effect(overlay.Id, previous), new(operation.Id, $"{name}: {overlay.Text}")
+                    { Detail = operation.Reason, Play = Math.Max(0, overlay.Start - 0.5), Undoable = true });
             }
             default:
                 return (null, null);

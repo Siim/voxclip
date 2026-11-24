@@ -1572,7 +1572,7 @@ member VoxClip.Media.Pipeline.Exporter :: field private frameObserver
 member VoxClip.Media.Pipeline.Exporter :: field private recordFailure
 member VoxClip.Media.Pipeline.Exporter :: field private runExport
 member VoxClip.Media.Pipeline.Exporter :: method internal .ctor(VoxClip.Core.Services.Media.IFrameComposer,VoxClip.Core.Services.Media.IEncoderProbe,System.Func`5<VoxClip.Core.Domain.Shared.ExportJob,string,System.IProgress`1<VoxClip.Core.Domain.Shared.ExportProgress>,System.Threading.CancellationToken,VoxClip.Core.Domain.Shared.ExportResult>,System.Action`2<VoxClip.Core.Domain.Shared.EncoderCacheKey,string>,VoxClip.Media.Pipeline.ExportFrameObserver)
-member VoxClip.Media.Pipeline.Exporter :: method internal CoverImage(VoxClip.Core.Domain.Captions.PixelBuffer)
+member VoxClip.Media.Pipeline.Exporter :: method internal CoverImage(VoxClip.Core.Domain.Captions.PixelBuffer,string)
 member VoxClip.Media.Pipeline.Exporter :: method internal EditedTime(VoxClip.Core.Domain.Shared.ComposeSnapshot,long,double)
 member VoxClip.Media.Pipeline.Exporter :: method internal EmbedCover(byte[],string,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.Exporter :: method internal Measure(VoxClip.Media.Audio.StereoRead,long,int,System.Threading.CancellationToken)

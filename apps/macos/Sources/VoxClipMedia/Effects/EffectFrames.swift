@@ -141,8 +141,13 @@ public final class EffectFrames: Sendable {
                 let fraction = end > start ? min(1, max(0, (outputTime - start) / (end - start))) : 1
                 result = Self.faded(Self.progress(fraction: fraction, position: effect.position ?? .bottom, output: output), opacity).composited(over: result)
             } else if let overlay = overlay(effect, output: output) {
-                result = Self.faded(overlay, opacity).composited(over: result)
-            } else if effect.kind == .title || effect.kind == .lowerThird {
+                let pose = effect.overlayPose(at: time)
+                let extent = overlay.extent
+                let transform = CGAffineTransform(a: pose.scale, b: 0, c: 0, d: pose.scale,
+                                                  tx: extent.midX * (1 - pose.scale),
+                                                  ty: extent.midY * (1 - pose.scale) - output.height * pose.down)
+                result = Self.faded(overlay.transformed(by: transform), opacity).composited(over: result)
+            } else if effect.kind == .title || effect.kind == .lowerThird || effect.animation == .pop {
                 overlayFailed()
             }
         }

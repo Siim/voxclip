@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreImage
 import VideoToolbox
 import Darwin
 import ImageIO
@@ -142,20 +143,21 @@ public actor AVExporter: Exporter {
     static let coverQuality = 0.9
 
     /// The export's frame at `seconds` of its output, rendered by the export's own composition and compositor, as a JPEG.
-    private func coverImage(_ graph: RenderGraph, at seconds: Double) async throws -> Data {
+    private func coverImage(_ graph: RenderGraph, cover: ExportCover) async throws -> Data {
         guard let composition = graph.composition.copy() as? AVComposition else { throw VoxClipError.exportFailed("Cannot copy the cover's composition") }
         let generator = AVAssetImageGenerator(asset: composition)
         generator.videoComposition = graph.videoComposition
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
-        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
-        let image: CGImage = try await withCheckedThrowingContinuation { continuation in
+        let time = CMTime(seconds: max(0, cover.seconds), preferredTimescale: 600)
+        let frame: CGImage = try await withCheckedThrowingContinuation { continuation in
             generator.generateCGImageAsynchronously(for: time) { image, _, error in
                 if let image { continuation.resume(returning: image) }
                 else { continuation.resume(throwing: error ?? VoxClipError.exportFailed("Cannot render the cover")) }
             }
         }
         withExtendedLifetime(generator) {}
+        let image = Self.coverTitle(cover.title, on: frame)
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw VoxClipError.exportFailed("Cannot encode the cover")
@@ -165,6 +167,16 @@ public actor AVExporter: Exporter {
             throw VoxClipError.exportFailed("Cannot encode the cover")
         }
         return data as Data
+    }
+
+    static func coverTitle(_ title: String?, on frame: CGImage) -> CGImage {
+        guard let title else { return frame }
+        let output = CGSize(width: frame.width, height: frame.height)
+        let effect = ClipEffect(id: "cover-title", clipId: nil, kind: .title, start: 0, end: 1, text: title, position: .bottom)
+        let frames = EffectFrames(input: .init(effects: [effect], soundURLs: [:]))
+        let image = CIImage(cgImage: frame)
+        guard let overlay = frames.overlay(effect, output: output) else { return frame }
+        return CIContext().createCGImage(overlay.composited(over: image), from: image.extent) ?? frame
     }
 
     /// The cover inside the MP4 (ADR-R48): `MP4CoverEmbed` writes the JPEG as its iTunes `covr` art, which players,
@@ -377,7 +389,7 @@ public actor AVExporter: Exporter {
         // The cover (ADR-R48): the frame this export renders at its time, through the same compositor (crop, captions,
         // title), embedded as the MP4's cover art and written beside it.
         var coverJPEG: Data?
-        if let cover = job.cover { coverJPEG = try await coverImage(graph, at: cover.seconds) }
+        if let cover = job.cover { coverJPEG = try await coverImage(graph, cover: cover) }
         try Task.checkCancellation()
         let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
         writer.directoryForTemporaryFiles = workDirectory

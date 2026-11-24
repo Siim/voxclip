@@ -157,15 +157,19 @@ public enum ClipPicture {
         public var reason: String?
         /// The cover it replaced (the row's Undo).
         public var previous: Double?
+        public var title: String?
+        public var previousTitle: String?
     }
 
     /// The reply's pick among the cover candidates, or the best measured one when it named none. Nil without candidates.
     public static func cover(_ project: Project, clipID: String, frames: ClipAutopilotFrames, plan: ClipAutopilotPlan) -> (project: Project, cover: Cover)? {
         let named = plan.frames?.cover.flatMap { frames.coverCandidate($0.id) }
+        let title = named == nil || plan.frames?.cover?.fallback == true ? nil : plan.frames?.cover?.title.flatMap(ClipHookTitle.text)
         guard let candidate = named ?? frames.cover.first, let controls = ClipControlsProject.controls(for: clipID, in: project),
-              let next = settingControls(clipID, in: project, { $0.coverSeconds = candidate.time }) else { return nil }
+              let next = settingControls(clipID, in: project, { $0.coverSeconds = candidate.time; $0.coverTitle = title }) else { return nil }
         let reason = named == nil ? nil : plan.frames?.cover.flatMap { $0.fallback || $0.reason.isEmpty ? nil : $0.reason }
-        return (next, Cover(candidate: candidate, named: named != nil, reason: reason, previous: controls.coverSeconds))
+        return (next, Cover(candidate: candidate, named: named != nil, reason: reason, previous: controls.coverSeconds,
+                            title: title, previousTitle: controls.coverTitle))
     }
 
     // MARK: All four

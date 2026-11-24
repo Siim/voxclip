@@ -71,7 +71,7 @@ public enum ClipAutopilotMapping {
     /// look, speed, zooms, music, hook and post text. `clipID` names the clip: an existing clip is updated, a new id (a series clip) is added as an AI
     /// clip. `fonts` is the bundled font table (`ClipAutopilotFonts`).
     public static func operations(for plan: ClipAutopilotPlan, clipID: String, project: Project,
-                                  fonts: [ClipAutopilotPlan.Font: String]) throws -> [ClipAutopilotOperation] {
+                                  fonts: [ClipAutopilotPlan.Font: String], stickers: Set<String> = []) throws -> [ClipAutopilotOperation] {
         guard let transcript = project.transcript else { throw VoiceLabError.invalidInput }
         let words = transcript.words
         guard plan.startWord >= 0, plan.endWord < words.count, plan.startWord <= plan.endWord,
@@ -161,11 +161,36 @@ public enum ClipAutopilotMapping {
             add("zoom-\(index)", .zoom, .motion(cue), reason)
             zoomRanges.append(range)
         }
+        let cutIDs = state.cutWordIds.union(plan.cuts.flatMap { cut in
+            (cut.startWord...cut.endWord).compactMap { words.indices.contains($0) ? words[$0].id : nil }
+        })
+        let tightened = Set(plan.pauseCuts.map(\.afterWord)).union(state.pauses.filter { state.cutPauseIds.contains($0.id) }.map(\.afterIndex))
+        var overlayRanges: [Range<Double>] = []
+        var openingTitle = false
+        for (index, entry) in (plan.effects ?? []).prefix(ClipPlanEffect.maximumEntries).enumerated() {
+            let id = "\(clipID.prefix(48))-plan-fx-\(index)"
+            guard let operation = entry.operation(id: id, clipID: clipID, scope: plan.startWord...plan.endWord, words: words,
+                                                  cut: cutIDs, tightenedAfter: tightened, stickers: stickers) else { continue }
+            switch operation.action {
+            case .motion(let cue):
+                let range = cue.sourceStart..<cue.sourceEnd
+                guard !zoomRanges.contains(where: { $0.overlaps(range) }) else { continue }
+                zoomRanges.append(range)
+            case .effect(let overlay):
+                let range = overlay.start..<overlay.end
+                guard !overlayRanges.contains(where: { $0.overlaps(range) }) else { continue }
+                overlayRanges.append(range)
+                let opening = (plan.startWord...plan.endWord).first(where: { !cutIDs.contains(words[$0].id) }) ?? plan.startWord
+                openingTitle = openingTitle || (overlay.kind == .title && overlay.start < words[opening].start + 2)
+            default: continue
+            }
+            operations.append(operation)
+        }
         if let picked = plan.pickedMusic {
             add("music", .music, .music(ClipAutopilotMusicCue(clipID: clipID, picked: picked,
                 alternatives: plan.music.filter { $0 != picked }, seconds: editedSeconds(plan, state: state))), picked.reason)
         }
-        if !plan.hook.isEmpty { add("hook", .hook, .hook(clipID: clipID, text: plan.hook)) }
+        if !plan.hook.isEmpty && !openingTitle { add("hook", .hook, .hook(clipID: clipID, text: plan.hook)) }
         if !plan.postText.isEmpty { add("post", .postText, .shareText(clipID: clipID, text: plan.postText)) }
         return operations
     }

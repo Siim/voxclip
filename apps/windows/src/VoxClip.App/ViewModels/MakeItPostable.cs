@@ -205,7 +205,7 @@ public abstract record MakeItInverse
     /// <summary>The clip's crop before "9:16 follows your face".</summary>
     public sealed record Reframe(string ClipId, ReframeSettings? Previous) : MakeItInverse;
     /// <summary>The clip's cover before "Cover frame chosen".</summary>
-    public sealed record Cover(string ClipId, double? Previous) : MakeItInverse;
+    public sealed record Cover(string ClipId, double? Previous, string? PreviousTitle = null) : MakeItInverse;
 }
 
 /// <summary>Where a decision's Change goes. <see cref="Screens"/>: a blurred screen lists the clip's screens inline, each a toggle;

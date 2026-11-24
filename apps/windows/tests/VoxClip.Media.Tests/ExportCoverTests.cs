@@ -70,6 +70,19 @@ public sealed class ExportCoverTests : IDisposable
         Assert.Null(Exporter.CoverImage(new PixelBuffer(Array.Empty<byte>(), 0, 0, 0)));
     }
 
+    [Fact]
+    public void TheCoverTitleChangesTheJpegWithoutChangingTheVideoFrame()
+    {
+        const int width = 640, height = 360;
+        var pixels = Enumerable.Repeat((byte)255, width * height * 4).ToArray();
+        var frame = new PixelBuffer(pixels, width, height, width * 4);
+        var plain = Assert.IsType<byte[]>(Exporter.CoverImage(frame));
+        var titled = Assert.IsType<byte[]>(Exporter.CoverImage(frame, "Ship every week"));
+        Assert.False(titled.AsSpan().SequenceEqual(plain));
+        Assert.Equal(new PixelSize(width, height), VoxClip.Media.Frames.FrameJpeg.Size(titled));
+        Assert.All(pixels, pixel => Assert.Equal(byte.MaxValue, pixel));
+    }
+
     /// <summary>The CLI's export (and so <c>autopilot --out-dir</c>) hands the exporter the clip's cover: the snapshot it prepares has
     /// the clip's <c>coverSeconds</c>, at its place in the render.</summary>
     [Fact]

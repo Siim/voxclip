@@ -44,6 +44,8 @@ def clip_controls_definition():
     fields['coverSeconds'] = {'type': 'number', 'minimum': 0,
                               'description': '"Cover frame chosen": the source second of the clip\'s cover, written beside each '
                                              'export as <name>-cover.jpg and embedded as its cover art. Omitted when there is none.'}
+    fields['coverTitle'] = {'type': 'string', 'minLength': 1, 'maxLength': 80,
+                            'description': 'Optional text on the exported cover image, never on the clip video.'}
     color_controls = ['brightness', 'contrast', 'saturation', 'warmth']
     fields['colorAdjustments'] = {
         'type': 'object', 'additionalProperties': False, 'required': color_controls,
@@ -52,9 +54,10 @@ def clip_controls_definition():
         'not': {'properties': {name: {'const': 0} for name in color_controls}}}
     return {
         'description': 'One clip\'s playback controls; doc/design.md section 6.9. Every required key is written; reframe and '
-                       'coverSeconds and colorAdjustments are omitted when absent. Runtime also checks that '
+                       'coverSeconds, coverTitle and colorAdjustments are omitted when absent. Runtime also checks that '
                        'the clip exists, that a clip has one entry and that no entry is stored at its defaults.',
-        'type': 'object', 'additionalProperties': False, 'required': required, 'properties': fields}
+        'type': 'object', 'additionalProperties': False, 'required': required, 'properties': fields,
+        'dependentRequired': {'coverTitle': ['coverSeconds']}}
 
 
 def main():

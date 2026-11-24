@@ -283,8 +283,10 @@ The fixture is a small synthetic recording: 160×90 H.264 with 24 kHz LPCM audio
 
 It drives the real Rewrite session through these scenarios using only clicks a user could make:
 
+- S-rewrite-used-revoice and S-rewrite-used-revoice-partial: use a lip-synced clip and open Rewrite again. The whole clip can be replaced in one undo step; a partial selection offers a free Undo before sending. Both run at realistic and exact lengths.
 - S1: happy path.
 - S-phrase-selected-voice: a phrase whose generated voice would fail the old speaker comparison applies after one synthesis and one word check.
+- S-older-takes: make two rounds, then play both takes and pick the earlier one without sending a paid request.
 - S2: two nearby changes refused as too close.
 - S3: takes too long for the slot.
 - S4: "Claude Code" heard as "cloud code".
@@ -336,7 +338,7 @@ It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel
 
 The page address is **clip.voxconvo.com**, served by GitHub Pages from this public repository (ADR-R32, user decision 2026-10-27). Pages is disabled until the user approves going live. The implementation task does not change DNS, repo settings, upload assets or publish releases.
 
-Prepare approved captures and completed `doc/media/CREDITS.md`. Commit the approved byte size and SHA-256 for every MP4 and VTT in `site/media.json` with the user's capture approval. Stage those exact bytes in the media release named there. Until all pins are approved, leave their size and SHA-256 entries null: fetching skips the media release entirely and the builder uses placeholders. Approved fetching requires the API size/digest and downloaded bytes to match the committed pins. Use a tag containing the Pages workflow, and mark this media release **not latest**, preserving the latest stable `vX.Y.Z` app release for downloads. Videos never enter Git. Production fetching requires the Mac, Windows x64 and Windows Arm installers and matching FFmpeg corresponding source. Both platforms must pass acceptance before publishing 0.1.0 (ADR-R33).
+The site uses the approved README stills. Prepare approved video captures and completed `doc/media/CREDITS.md` separately. Commit the approved byte size and SHA-256 for every MP4 and VTT in `site/media.json` with the user's capture approval. Stage those exact bytes in the media release named there. Until all pins are approved, leave their size and SHA-256 entries null: fetching skips the media release entirely and the builder displays availability notes instead of video players. Approved fetching requires the API size/digest and downloaded bytes to match the committed pins. Use a tag containing the Pages workflow, and mark this media release **not latest**, preserving the latest stable `vX.Y.Z` app release for downloads. Videos never enter Git. Production fetching requires the Mac, Windows x64 and Windows Arm installers and matching FFmpeg corresponding source. Both platforms must pass acceptance before publishing 0.1.0 (ADR-R33).
 
 Each of these go-live actions needs the user's approval:
 

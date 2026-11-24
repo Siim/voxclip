@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Clips;
@@ -73,12 +74,14 @@ public sealed record ProjectClipControls(string ClipId, double Speed, ClipShape?
     double FadeInSeconds, double FadeOutSeconds, bool MuteSource, bool FlipHorizontal, int RotationDegrees,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? CoverSeconds = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClipColorAdjustments? ColorAdjustments = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClipColorAdjustments? ColorAdjustments = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CoverTitle = null)
 {
     /// <summary>Every control at its default.</summary>
     [JsonIgnore]
     public bool IsDefault => Speed == 1 && Shape is null && Look == ClipLook.Original && GainDb == 0 && FadeInSeconds == 0 &&
-        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null && ColorAdjustments is null;
+        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null &&
+        ColorAdjustments is null && CoverTitle is null;
 
     /// <summary>The face-follow centre (0–1 from the top left of the source) for an output of width over height
     /// <paramref name="outputAspect"/>: only in face mode and for 9:16 and 1:1 (16:9 ignores it). Twin of the Mac <c>cropCenter</c>.</summary>
@@ -127,6 +130,7 @@ public static class ClipControlsProject
             if (entry.Reframe is { } reframe)
                 Require(reframe.Mode == ReframeSettings.FaceMode && reframe.Zoom == 1 && reframe.CenterX is >= 0 and <= 1 && reframe.CenterY is >= 0 and <= 1);
             if (entry.CoverSeconds is { } cover) Require(double.IsFinite(cover) && cover >= 0);
+            if (entry.CoverTitle is { } title) Require(entry.CoverSeconds is not null && ClipHookTitle.Text(title) == title);
             if (entry.ColorAdjustments is { } adjustments) Require(adjustments.IsValid);
             Require(!entry.IsDefault && clips.Contains(entry.ClipId) && seen.Add(entry.ClipId));
         }
@@ -140,7 +144,7 @@ public static class ClipControlsProject
         {
             Require(entry.ValueKind == JsonValueKind.Object);
             var keys = entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
-            keys.Remove("reframe"); keys.Remove("coverSeconds"); keys.Remove("colorAdjustments");
+            keys.Remove("reframe"); keys.Remove("coverSeconds"); keys.Remove("coverTitle"); keys.Remove("colorAdjustments");
             Require(keys.SetEquals("clipId speed shape look gainDb fadeInSeconds fadeOutSeconds muteSource flipHorizontal rotationDegrees".Split(' ')));
             if (entry.TryGetProperty("reframe", out var reframe))
             {
@@ -150,6 +154,7 @@ public static class ClipControlsProject
                 foreach (var key in new[] { "zoom", "centerX", "centerY" }) Number(reframe.GetProperty(key));
             }
             if (entry.TryGetProperty("coverSeconds", out var cover)) Number(cover);
+            if (entry.TryGetProperty("coverTitle", out var title)) Require(title.ValueKind == JsonValueKind.String);
             if (entry.TryGetProperty("colorAdjustments", out var adjustments)) ReadColorAdjustments(adjustments);
             Require(entry.GetProperty("clipId").ValueKind == JsonValueKind.String && entry.GetProperty("look").ValueKind == JsonValueKind.String);
             Require(entry.GetProperty("shape").ValueKind is JsonValueKind.String or JsonValueKind.Null);

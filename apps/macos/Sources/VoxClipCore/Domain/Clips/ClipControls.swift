@@ -78,6 +78,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     /// "Cover frame chosen" (ADR-R48): the source second of the clip's cover, which an export writes beside the video as
     /// a JPEG and embeds as its cover art. Omitted when the clip has none.
     public var coverSeconds: Double?
+    public var coverTitle: String?
 
     public static let speedRange = 0.5...2.0
     public static let speedPresets: [Double] = [0.75, 1, 1.1, 1.25, 1.5, 2]
@@ -89,16 +90,17 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     public init(clipId: String, speed: Double = 1, shape: ClipShape? = nil, look: ClipLook = .original, gainDb: Double = 0,
                 fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0, muteSource: Bool = false, flipHorizontal: Bool = false,
                 rotationDegrees: Int = 0, reframe: ReframeSettings? = nil, coverSeconds: Double? = nil,
-                colorAdjustments: ClipColorAdjustments? = nil) {
+                colorAdjustments: ClipColorAdjustments? = nil, coverTitle: String? = nil) {
         self.clipId = clipId; self.speed = speed; self.shape = shape; self.look = look; self.gainDb = gainDb
         self.fadeInSeconds = fadeInSeconds; self.fadeOutSeconds = fadeOutSeconds; self.muteSource = muteSource
         self.flipHorizontal = flipHorizontal; self.rotationDegrees = rotationDegrees; self.reframe = reframe; self.coverSeconds = coverSeconds
         self.colorAdjustments = colorAdjustments == .neutral ? nil : colorAdjustments
+        self.coverTitle = coverTitle
     }
 
     private enum CodingKeys: String, CodingKey {
         case clipId, speed, shape, look, gainDb, fadeInSeconds, fadeOutSeconds, muteSource, flipHorizontal, rotationDegrees, reframe, coverSeconds
-        case colorAdjustments
+        case colorAdjustments, coverTitle
     }
 
     public init(from decoder: any Decoder) throws {
@@ -115,6 +117,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         rotationDegrees = try values.decode(Int.self, forKey: .rotationDegrees)
         reframe = try values.decodeIfPresent(ReframeSettings.self, forKey: .reframe)
         coverSeconds = try values.decodeIfPresent(Double.self, forKey: .coverSeconds)
+        coverTitle = try values.decodeIfPresent(String.self, forKey: .coverTitle)
         colorAdjustments = try values.decodeIfPresent(ClipColorAdjustments.self, forKey: .colorAdjustments)
     }
 
@@ -132,6 +135,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         try values.encode(rotationDegrees, forKey: .rotationDegrees)
         try values.encodeIfPresent(reframe, forKey: .reframe)
         try values.encodeIfPresent(coverSeconds, forKey: .coverSeconds)
+        try values.encodeIfPresent(coverTitle, forKey: .coverTitle)
         try values.encodeIfPresent(colorAdjustments, forKey: .colorAdjustments)
     }
 
@@ -234,6 +238,7 @@ public enum ClipControlsProject {
             try require([reframe.centerX, reframe.centerY].allSatisfy { $0.map { $0.isFinite && (0...1).contains($0) } == true }, "reframe centre")
         }
         if let cover = entry.coverSeconds { try require(cover.isFinite && cover >= 0, "cover") }
+        if let title = entry.coverTitle { try require(entry.coverSeconds != nil && ClipHookTitle.text(title) == title, "cover title") }
         guard !entry.isDefault else { throw ClipControlsProjectError.defaultEntry }
     }
 
@@ -244,7 +249,7 @@ public enum ClipControlsProject {
         }
         let keys: Set<String> = ["clipId", "speed", "shape", "look", "gainDb", "fadeInSeconds", "fadeOutSeconds", "muteSource",
                                  "flipHorizontal", "rotationDegrees"]
-        let optional: Set<String> = ["reframe", "coverSeconds", "colorAdjustments"]
+        let optional: Set<String> = ["reframe", "coverSeconds", "coverTitle", "colorAdjustments"]
         for entry in entries {
             guard case .object(let object) = entry, Set(object.keys).subtracting(optional) == keys else {
                 throw ClipControlsProjectError.invalidEntry("unknown or missing field")
@@ -258,6 +263,9 @@ public enum ClipControlsProject {
             }
             if let cover = object["coverSeconds"] {
                 guard case .number(let value) = cover, value.isFinite else { throw ClipControlsProjectError.invalidEntry("cover") }
+            }
+            if let title = object["coverTitle"] {
+                guard case .string = title else { throw ClipControlsProjectError.invalidEntry("cover title") }
             }
             if let adjustments = object["colorAdjustments"] {
                 let controls = ClipColorAdjustments.Control.allCases.map(\.rawValue)

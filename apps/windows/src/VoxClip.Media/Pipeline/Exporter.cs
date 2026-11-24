@@ -5,9 +5,11 @@ using System.Text;
 using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Loudness;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
+using VoxClip.Core.Services.Project;
 using VoxClip.Media.Audio;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.VoiceLab;
@@ -239,7 +241,7 @@ public sealed class Exporter : IExporter
                     var sourceTime = cursor.Source(editedTime);
                     var decoded = decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
                     composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);
-                    if (index == coverFrame) coverJpeg = CoverImage(bgra);
+                    if (index == coverFrame) coverJpeg = CoverImage(bgra, snapshot.Clip?.Controls?.CoverTitle);
                     Native.Check(ffmpeg.av_frame_make_writable(nv12), "Reuse export video frame", VoxClipErrorCode.ExportFailed);
                     using (var memory = bgra.Pixels.Pin())
                     {
@@ -377,11 +379,19 @@ public sealed class Exporter : IExporter
 
     /// <summary>The cover JPEG of a composed export frame, full size at the Mac's 0.9 quality; null when it can't be encoded within
     /// <see cref="Core.Domain.Share.ExportCover.Limit"/>. The cover is extra: the export goes on without it.</summary>
-    internal static byte[]? CoverImage(PixelBuffer composed)
+    internal static byte[]? CoverImage(PixelBuffer composed, string? title = null)
     {
         if (composed.Width <= 0 || composed.Height <= 0) return null;
         try
         {
+            if (title is not null)
+            {
+                var copy = new PixelBuffer(composed.Pixels.ToArray(), composed.Width, composed.Height, composed.Stride);
+                var effect = new ClipEffect("cover-title", null, "title", 0, 1) { Text = title, Position = "bottom" };
+                using var frames = new EffectFrames(new([effect], new Dictionary<string, string>()), SharedResources.ResolveRoot());
+                frames.DrawFrame(copy, 0.5, 0.5, time => time, CancellationToken.None);
+                composed = copy;
+            }
             var jpeg = Frames.FrameJpeg.Encode(composed, Math.Max(composed.Width, composed.Height), Core.Domain.Share.ExportCover.Quality);
             return jpeg.Length is > 0 and <= (int)Core.Domain.Share.ExportCover.Limit ? jpeg : null;
         }

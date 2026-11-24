@@ -74,7 +74,8 @@ public static partial class ClipAutopilotMapping
 
     /// <summary>The operations for one plan, in review order: the clip, its title, corrections, cuts, pause cuts, rewrites, captions,
     /// look, speed, zooms, music, hook and post text. An existing clip is updated; a new id is added as an AI clip.</summary>
-    public static IReadOnlyList<ClipAutopilotOperation> Operations(ClipAutopilotPlan plan, string clipId, Project project, IReadOnlyDictionary<ClipAutopilotFont, string> fonts)
+    public static IReadOnlyList<ClipAutopilotOperation> Operations(ClipAutopilotPlan plan, string clipId, Project project,
+        IReadOnlyDictionary<ClipAutopilotFont, string> fonts, IReadOnlySet<string>? stickers = null)
     {
         if (EditingEngine.FromProject(project) is not { } state) throw ClipAutopilotRequestBuilder.Invalid();
         var words = state.Transcript.Words;
@@ -172,9 +173,36 @@ public static partial class ClipAutopilotMapping
             Add(key, ClipAutopilotDecision.Zoom, new ClipAutopilotAction.Motion(cue, zoom.Direction), reason);
             zoomRanges.Add(range);
         }
+        var cutIds = state.CutWordIds.Concat(plan.Cuts.SelectMany(cut => new WordSpan(cut.StartWord, cut.EndWord).Indices
+            .Where(index => index >= 0 && index < words.Count).Select(index => words[index].Id))).ToHashSet(StringComparer.Ordinal);
+        var tightened = plan.PauseCuts.Select(pause => pause.AfterWord).Concat(state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id))
+            .Select(pause => pause.AfterIndex)).ToHashSet();
+        var overlayRanges = new List<(double Start, double End)>();
+        var scope = new WordSpan(plan.StartWord, plan.EndWord);
+        var opening = scope.Indices.FirstOrDefault(index => !cutIds.Contains(words[index].Id), plan.StartWord);
+        var openingTitle = false;
+        var saved = plan.Effects ?? [];
+        for (var index = 0; index < Math.Min(saved.Count, ClipPlanEffect.MaximumEntries); index++)
+        {
+            var id = $"{clipId[..Math.Min(48, clipId.Length)]}-plan-fx-{index.ToString(CultureInfo.InvariantCulture)}";
+            if (saved[index].Operation(id, clipId, scope, words, cutIds, tightened, stickers ?? new HashSet<string>()) is not { } operation) continue;
+            if (operation.Action is ClipAutopilotAction.Motion { Cue: var cue })
+            {
+                if (zoomRanges.Any(other => other.Start < cue.SourceEnd && cue.SourceStart < other.End)) continue;
+                zoomRanges.Add(new(cue.SourceStart, cue.SourceEnd));
+            }
+            else if (operation.Action is ClipAutopilotAction.Effect { Value: var entry })
+            {
+                var overlay = ClipEffect.Parse(entry);
+                if (overlayRanges.Any(other => other.Start < overlay.End && overlay.Start < other.End)) continue;
+                overlayRanges.Add((overlay.Start, overlay.End));
+                openingTitle |= overlay.Kind == "title" && overlay.Start < words[opening].Start + 2;
+            }
+            operations.Add(operation);
+        }
         if (plan.PickedMusic is { } picked)
             Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.Music(new(clipId, picked, plan.MusicChoices.Where(item => item != picked).ToArray(), EditedSeconds(plan, state))), picked.Reason);
-        if (plan.Hook.Length > 0) Add("hook", ClipAutopilotDecision.Hook, new ClipAutopilotAction.Hook(clipId, plan.Hook));
+        if (plan.Hook.Length > 0 && !openingTitle) Add("hook", ClipAutopilotDecision.Hook, new ClipAutopilotAction.Hook(clipId, plan.Hook));
         if (plan.PostText.Length > 0) Add("post", ClipAutopilotDecision.PostText, new ClipAutopilotAction.ShareText(clipId, plan.PostText));
         return operations;
     }

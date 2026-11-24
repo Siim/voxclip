@@ -229,12 +229,13 @@ public sealed partial class EditorViewModel
     private MakeItRow? MakeItCoverRow(MakeItFrameRecord record, ClipAutopilotPlan plan, MakeItRun run)
     {
         if (ClipPicture.CoverOf(project, run.ClipId, record.Sent, plan) is not { } found) return null;
-        run.Inverses[ClipPicture.CoverRowId] = new MakeItInverse.Cover(run.ClipId, found.Cover.Previous);
+        run.Inverses[ClipPicture.CoverRowId] = new MakeItInverse.Cover(run.ClipId, found.Cover.Previous, found.Cover.PreviousTitle);
         ReplaceProject(found.Project, "Make it postable");
         var detail = found.Cover.Reason ?? "Eyes open, the clearest look measured on this PC";
+        var title = found.Cover.Title is { } text ? $" · Title: {text}" : "";
         return new(ClipPicture.CoverRowId, "Cover frame chosen")
         {
-            Kind = MakeItRowKind.Choice, Detail = detail + " · saved next to the export as a cover image", Play = found.Cover.Candidate.Time, Undoable = true,
+            Kind = MakeItRowKind.Choice, Detail = detail + title + " · saved next to the export as a cover image", Play = found.Cover.Candidate.Time, Undoable = true,
             Change = MakeItChange.Cover, Options = MakeItCoverOptions(record, run, found.Cover.Candidate.Time)
         };
     }
@@ -286,7 +287,7 @@ public sealed partial class EditorViewModel
         {
             MakeItInverse.LeadIn leadIn => ClipPicture.SettingLeadIn(leadIn.Previous, leadIn.ClipId, project),
             MakeItInverse.Reframe reframe => ClipPicture.SettingControls(reframe.ClipId, project, controls => controls with { Reframe = reframe.Previous }),
-            MakeItInverse.Cover cover => ClipPicture.SettingControls(cover.ClipId, project, controls => controls with { CoverSeconds = cover.Previous }),
+            MakeItInverse.Cover cover => ClipPicture.SettingControls(cover.ClipId, project, controls => controls with { CoverSeconds = cover.Previous, CoverTitle = cover.PreviousTitle }),
             _ => null
         };
         if (next is null) return false;

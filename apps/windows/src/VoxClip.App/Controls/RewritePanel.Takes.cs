@@ -183,7 +183,7 @@ internal sealed partial class RewritePanel
     {
         RenderOwnWords(generation);
         RenderTakeExpression(generation);
-        var rows = generation.Rows;
+        var rows = generation.ReviewRows;
         updating = true;
         if (!renderedRows.SequenceEqual(rows) || renderedBest != generation.BestTakeId)
         {

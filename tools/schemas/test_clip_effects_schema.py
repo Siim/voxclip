@@ -44,6 +44,19 @@ class ClipEffectsSchemaTests(unittest.TestCase):
         kinds = self.schema["$defs"]["clipEffect"]["properties"]["kind"]["enum"]
         self.assertEqual(sorted(kinds), sorted({effect["kind"] for effect in self.project["clipEffects"]}))
 
+    def test_declarative_effects_share_the_schema_with_planner_vocabulary(self):
+        plan = json.loads((ROOT / "shared/schemas/clip-plan-effect.schema.json").read_text())
+        vectors = json.loads((ROOT / "shared/fixtures/clip-effects/clip-plan-effect-cases.json").read_text())["cases"]
+        Draft202012Validator.check_schema(plan)
+        validator = Draft202012Validator(plan)
+        for vector in vectors:
+            with self.subTest(vector["id"]):
+                self.assertEqual(not vector.get("invalid", False), validator.is_valid(vector["entry"]))
+        prompt = json.loads((ROOT / "shared/prompts/clip-autopilot.json").read_text())
+        offered = prompt["schema"]["properties"]["effects"]["items"]["properties"]["kind"]["enum"]
+        self.assertEqual(set(offered), {vector["entry"]["kind"] for vector in vectors if "placement" in vector})
+        self.assertEqual(set(plan["properties"]["kind"]["enum"]), {vector["entry"]["kind"] for vector in vectors})
+
     def test_library_sounds_never_accept_noncommercial_no_derivatives_or_share_alike(self):
         licenses = self.schema["$defs"]["clipEffectLibrarySound"]["properties"]["license"]["enum"]
         self.assertEqual(["cc0", "by", "pdm"], licenses)

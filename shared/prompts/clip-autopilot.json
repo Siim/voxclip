@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "promptVersion": 9,
   "directionalZooms": {
-    "promptVersion": 10,
+    "promptVersion": 11,
     "section": "Zooms\n- Leave the framing alone unless a specific spoken beat earns a move. Use zoomIn to draw attention to a key claim, number or punchline; use zoomOut to release emphasis on a resolution, pivot or reflective line. Do not alternate mechanically. Return an empty list when no beat benefits.\n- For each zoom, use direction (zoomIn or zoomOut), word (first spoken word), untilWord (last spoken word) and scale. Anchor both ends to the actual kept phrase in the indexed transcript, with no cuts or tightened pauses inside it. Use {minDirectionalZoomSeconds} to {maxDirectionalZoomSeconds} seconds, with starts at least {minDirectionalZoomSpacing} seconds apart, and a scale from {minZoomScale} to {maxDirectionalZoomScale}. In reason, briefly say why moving in or out on this particular phrase helps the viewer; do not invent a quote or a visual event.",
     "directionSchema": { "type": "string", "enum": ["zoomIn", "zoomOut"] }
   },
@@ -21,7 +21,9 @@
       "speed",
       "music",
       "zooms",
+      "effects",
       "frames",
+      "coverTitle",
       "text",
       "score",
       "questions",
@@ -49,7 +51,7 @@
     "corrections": "Corrections, which fix how a word is written in the captions (the audio stays as it is)\n- Speech recognition mishears names, brands, products and jargon, such as \"Tvilio\" for Twilio or \"Jason\" for JSON. When you are confident what the speaker said, add a correction: word is its index, heard is the word exactly as the transcript writes it, text is the right spelling (1 to {maxCorrectionWords} words, which replace that one word), and reason says how you know, such as the topic or another mention. Correct every occurrence inside the clip, one entry per index. The request may list names written elsewhere in the recording: a near-spelling of one inside the clip is usually the same name misheard.\n- Never correct grammar, accent or word choice: that is the speaker's voice. Never guess: when unsure, ask in questions and leave the word as it is.",
     "rewrites": "Rewrites, which an AI copy of the speaker's voice re-records and the app labels as AI\n- Use few and short ones, only where the clip clearly needs it: a wrong word, a broken sentence that no cut can fix, or a phrase a stranger would misunderstand. Most clips need none. Never more than {maxRewrites} in a clip. Prefer a cut to a rewrite, and a correction when only the spelling is wrong.\n- Keep the speaker's voice, meaning and register. Never add facts, numbers, names or claims.\n- A rewrite replaces the inclusive word range [startWord, endWord] of at most {maxRewriteWords} words. The first and last words of the range are its bridge words: words you keep unchanged, which join the new voice to the recording. text is the complete new phrase as it will be spoken, and it must begin with the range's first word and end with its last word, exactly as written. Keep it about as long as the words it replaces.",
     "tone": "Tone\n- The request gives the clip a tone, asks you to choose one, or says to keep the creator's own. A tone shapes only the words you write: the rewrites, the title, the hook and the post text. It never changes what the creator said: keep their facts, names, numbers, claims and meaning, and never invent any.\n- With a tone, rewrite where it helps most, such as turning the opening line into a hook or a slow line into a punchy one, even when nothing sounds wrong: still at most {maxRewrites} rewrites. Every rewrite rule still holds. The cloned voice says each one, so it stays speakable, with no emoji, hashtags, links or stage directions; it keeps its bridge words; and it stays close to the length of the words it replaces.\n- When you choose, pick the tone that suits the clip's idea and the creator's delivery, or none when their own tone already works. Never force a tone the clip cannot carry.\n- tone is the id of the tone you wrote in, or \"none\" when you kept the creator's own tone. toneSummary says in a few words what the tone changed, such as \"Hook first, two lines tightened\"; it is empty with none.",
-    "captions": "Captions\n- Pick the caption style that suits this clip from the list, and say in captionReason, in a few words, why it suits the clip (not the font): a punchy claim suits bold, one-word or pop styles; a calm story suits subtitle or minimal styles; a list or a number suits highlight styles. When the request names a style picked for this clip, keep it unless it clearly does not suit. When the caption preference fixes a style, font or case, use exactly that.\n- captionFont is the family name alone, such as Roboto, and captionWeight its weight, such as 900 (Roboto 900 is Roboto Black, the default). Choose the case (upper, lower or asSaid) and how many words show at once, from {minWordsPerCaption} to {maxWordsPerCaption} (1 to 4 suits a fast talking-head clip).",
+    "captions": "Captions\n- Pick the caption style that suits this clip from the list, and say in captionReason, in a few words, why it suits the clip (not the font): a punchy claim suits bold, one-word or pop styles; a calm story suits subtitle or minimal styles; a list or a number suits highlight styles. When the request names a style picked for this clip, keep it unless it clearly does not suit. When the caption preference fixes a style, font or case, use exactly that.\n- Use Roboto Black across caption styles unless the creator fixed a different font: captionFont Roboto, captionWeight 900. Choose the case (upper, lower or asSaid) and how many words show at once, from {minWordsPerCaption} to {maxWordsPerCaption} (1 to 4 suits a fast talking-head clip).",
     "look": "Look\n- Pick the clip's colour look, with a short reason in lookReason:\n{looks}\n- You cannot see the footage, so choose by the clip's mood and topic. For a talking head, warm flatters skin and suits most personal, founder or opinion talk; muted suits a sober, technical or cautionary point; bw suits a dramatic or reflective beat; original suits a demo, a screen or anything whose colours matter. Don't pick muted just because the topic is business.",
     "speed": "Speed\n- speed plays the whole clip faster or slower, from {minSpeed} to {maxSpeed}; 1 plays it as recorded, which suits most clips. Use another speed only when it clearly helps, such as 1.1 for a slow, deliberate speaker whose clip still drags after the cuts, and say why in speedReason (empty for 1). Never use speed to squeeze an over-long clip: cut it instead.",
     "music": "Music\n- Suggest exactly 3 instrumental background tracks that fit the clip's mood and pace. Give each a title, a mood, a prompt for Eleven Music (instrumental only, no vocals: genre, instruments, tempo in BPM and energy; never name an artist or a song), a short reason, and underVoiceDb: how many dB the music sits under the voice, from {minUnderVoiceDb} to {maxUnderVoiceDb} (18 is typical; more under dense talking). Set musicPick to the index, 0 to 2, of the one to use.",
@@ -58,6 +60,8 @@
     "text": "Title, hook and post\n- title: a short working title for the clip, at most 8 words.\n- hook: the on-screen text for the first 2 seconds, at most 8 words. It may tease the payoff but never lies.\n- postText: what the creator posts with the clip on X or LinkedIn, in their voice: short and punchy, 1 to 3 short sentences with a clear point or question. At most 2 hashtags, no emoji unless the speaker's tone calls for one, no clickbait.\n- Write title, hook and postText in the language of the clip, with corrected spellings. Write reasons and questions in English.",
     "score": "Score\n- score, 1 to 10: how well the finished clip will do as a post, judged honestly against the best short-form clips, so a 9 or 10 is rare. verdict is postFirst (the strongest: post it first; at most one clip of a series), post, casualPost (fine for a casual or niche post) or holdBack (not worth posting). scoreReason says why in one sentence.",
     "questions": "Questions\n- When something is uncertain, such as a name you could not correct with confidence, a claim that may be out of date or whether a joke lands, ask it as a question with your pre-picked answer and up to {maxOptions} options. The plan already follows your answer. Use an empty list when nothing is uncertain.",
+    "effects": "Effects\n- Use effects for zoom and punchIn instead of legacy zooms; use legacy zooms only to zoom away. zoom eases in and back; punchIn cuts straight to the closer frame. Use scale from 1.05 to 1.2 for a subtle move, at most 1.35.\n- A motionTitle introduces a beat, a lowerThird identifies a speaker or place, and an emojiPop punctuates a genuinely expressive beat. Use actual on-screen text or exactly one of these emoji: {effectStickers}. Do not open with both a hook card and a motion title.\n- Anchor startWord and endWord to spoken, kept words enclosing 0.1–5 seconds without a cut or tightened pause. Each effect needs one short reason specific to that beat. Use only as many effects as help, avoid overlapping graphics, and use an empty list if none helps. Set unused scale to 0 or unused text to an empty string.",
+    "coverTitle": "Cover title\n- Optionally give the chosen frames.cover a short title in its title field. Use a few truthful words that make the image understandable in a feed. Use an empty string if the picture works better by itself or if no cover is offered. This text appears only on the exported cover image, not in the clip.",
     "planEnd": "Return only the structured plan.",
     "momentsEnd": "Return only the structured list of moments."
   },
@@ -384,6 +388,22 @@
           }
         }
       },
+      "effects": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "startWord", "endWord", "reason", "scale", "text"],
+          "properties": {
+            "kind": {"type": "string", "enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop"]},
+            "startWord": {"type": "integer"},
+            "endWord": {"type": "integer"},
+            "reason": {"type": "string"},
+            "scale": {"type": "number"},
+            "text": {"type": "string"}
+          }
+        }
+      },
       "music": {
         "type": "array",
         "items": {
@@ -499,6 +519,9 @@
                 "type": "string"
               },
               "reason": {
+                "type": "string"
+              },
+              "title": {
                 "type": "string"
               }
             }
