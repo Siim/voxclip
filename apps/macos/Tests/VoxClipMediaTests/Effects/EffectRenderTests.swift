@@ -275,7 +275,18 @@ import VoxClipCore
         #expect(stacked[(row * 80)..<(row * 81)] != stacked[(row * 240)..<(row * 241)], "the panes show two different recordings")
         #expect(graph.composition.duration == plain.composition.duration)
         #expect(graph.audioTrack?.segments.count == plain.audioTrack?.segments.count)
-        print("Multi-source fixture: native graph and six sampled frames in \(start.duration(to: clock.now))")
+        let samplingTime = start.duration(to: clock.now)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appendingPathComponent("multi-source.mp4")
+        let result = try await AVExporter(cleanupRegistry: directory.appendingPathComponent("Scratch"))
+            .export(ExportJob(render: request, outputURL: output)) { _ in }
+        let probe = try await AVMediaProbe().probe(output)
+        #expect(probe.orientedSize == request.output.size)
+        #expect(probe.videoCodec == "h264" && probe.audio?.sampleRate == 48_000)
+        #expect(result.frames == 60 && result.audioSamples == 96_000)
+        print("Multi-source fixture: picture checks in \(samplingTime); native portrait export in \(result.elapsedSeconds) s")
     }
 
     // MARK: Audio
