@@ -3,71 +3,121 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="VoxClip is a free, open-source native video editor for Mac and Windows. Cut talking-head video by editing its words.">
-  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Turn long recordings into postable clips with Claude. Edit by words, rewrite in your own voice, and export for the feed. Free and open source for Mac and Windows.">
+  <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'">
-  <title>VoxClip — Cut video by its words.</title>
+  <title>VoxClip — Long takes in. Postable clips out.</title>
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="page-header wrap">
-    <a class="wordmark" href="#main" aria-label="VoxClip home"><span aria-hidden="true">[</span> VoxClip <span aria-hidden="true">]</span></a>
-    <nav aria-label="Main navigation"><a href="#features">The editor</a><a href="#tutorials">Tutorials</a><a href="https://github.com/Siim/voxclip">Source ↗</a></nav>
+    <a class="wordmark" href="#main" aria-label="VoxClip home"><span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>voxclip.</a>
+    <nav aria-label="Main navigation"><a href="#features">The editor</a><a href="https://github.com/Siim/voxclip">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#downloads">Download <span aria-hidden="true">↓</span></a></nav>
   </header>
-  <main id="main" class="wrap">
+  <main id="main" class="wrap" tabindex="-1">
     {{FIXTURE_NOTICE}}
     <section class="hero" aria-labelledby="hero-title">
-      <p class="eyebrow">A native editor for talking-head video</p>
-      <h1 id="hero-title">Cut video<br>by its words.</h1>
-      <div class="hero-bottom"><p>Start with a recording. Keep the words that matter.<br>Make something worth sharing.</p><a class="capsule hero-button" href="#downloads">Get VoxClip <span aria-hidden="true">↓</span></a></div>
-      <figure class="hero-image"><img src="assets/placeholder.svg" width="1440" height="900" alt="Editor screenshot placeholder. A real VoxClip editor capture will replace this illustration."><figcaption>Editor capture / coming after the final UI</figcaption></figure>
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="marker" aria-hidden="true"></span> The talking-head clipper</p>
+        <h1 id="hero-title">Long takes in. <span>Postable clips out.</span></h1>
+        <p class="lede">Turn one recording into clips ready for the feed. Let Claude make the first cut, edit it by changing the words, or fix a line in your own voice.</p>
+        <div class="hero-actions"><a class="capsule" href="#downloads">Get VoxClip <span aria-hidden="true">↓</span></a><a class="text-link" href="#features">See how it works <span aria-hidden="true">↓</span></a></div>
+        <p class="hero-meta">Free and open source <span>·</span> macOS and Windows</p>
+      </div>
+      <figure class="hero-art">
+        <div class="art-crop hero-crop"><img src="assets/hero.jpg" width="1600" height="700" fetchpriority="high" alt="Four portrait clips from the same talking-head recording, each with a different caption style."></div>
+        <figcaption><span>01—04 / Example clips</span><span>9:16 · Captioned</span></figcaption>
+      </figure>
     </section>
-    <section id="showreel" class="section showreel" aria-labelledby="showreel-title">
-      <div><p class="eyebrow">A recording, rethought</p><h2 id="showreel-title">See the whole flow.</h2><p>From the first word to the final clip.</p><p class="placeholder-note">{{SHOWREEL_NOTE}}</p></div>
-      <div class="video-slot">
-        <!-- Approved captures are downloaded from the media release during the Pages build. preload=none defers requests. -->
-        {{SHOWREEL}}
-        <p id="showreel-status">{{SHOWREEL_STATUS}}</p>
+
+    <section id="features" class="section workflow" aria-labelledby="features-title">
+      <div class="section-heading">
+        <p class="eyebrow"><span class="marker" aria-hidden="true"></span> 01 / The first cut</p>
+        <h2 id="features-title">Claude does it all.</h2>
+        <p class="lede">Drop in a long take and click once. Claude picks the strongest moments, cuts on word boundaries, removes fillers and dead air, and gives each clip a caption style, a cover, a title and post text.</p>
+      </div>
+      <div class="workflow-grid">
+        <figure class="feature-art">
+          <div class="art-crop frames-crop"><img src="assets/claude-sees.jpg" width="1600" height="600" loading="lazy" alt="Six sampled frames showing face detection and a portrait crop. The frame with a clear look at the camera is marked as the cover."></div>
+          <figcaption>Frame analysis / Crop and cover selection</figcaption>
+        </figure>
+        <dl class="edit-list">
+          <div><dt><span aria-hidden="true">01</span> Find the opening</dt><dd>Claude can use sampled frames to open on a clear look, follow your face in portrait or square, and blur screens showing text.</dd></div>
+          <div><dt><span aria-hidden="true">02</span> Add automatic effects</dt><dd>Let Claude place zooms, punch-ins, animated titles, lower thirds and emoji on the words they fit.</dd></div>
+          <div><dt><span aria-hidden="true">03</span> Keep the final say</dt><dd>Review what changed and undo individual choices. Set a spending cap before any paid work.</dd></div>
+        </dl>
       </div>
     </section>
-    <section id="downloads" class="section" aria-labelledby="downloads-title">
-      <div class="section-heading"><div><p class="eyebrow">Yours to make things with</p><h2 id="downloads-title">One tool. Your computer.</h2></div><a href="{{RELEASE_URL}}">{{VERSION}} · release notes &amp; checksums ↗</a></div>
-      <!-- Requirements: doc/decisions.md ADR-005; doc/publishing.md §4.1; apps/macos/Package.swift and apps/windows/src/VoxClip.App/VoxClip.App.csproj SupportedOSPlatformVersion. Only assets actually listed in the release become download links. -->
+
+    <section class="section finish" aria-labelledby="finish-title">
+      <div class="section-heading">
+        <p class="eyebrow"><span class="marker" aria-hidden="true"></span> 02 / Make it yours</p>
+        <h2 id="finish-title">Change the words.<br>Keep your voice.</h2>
+      </div>
+      <div class="finish-grid">
+        <article>
+          <p class="eyebrow">Edit / Rewrite</p>
+          <h3>Say it again in your own voice.</h3>
+          <p>Delete words in the transcript to cut the video. If you got a number wrong, use Rewrite to replace the line in your cloned voice. On Mac, revoice the whole clip for a single continuous take and use lip sync to match the picture to the new audio.</p>
+        </article>
+        <article>
+          <p class="eyebrow">Style / Export</p>
+          <h3>Give it the right look and sound.</h3>
+          <p>Choose captions that stay clear of feed controls, add music under your voice, and try different colour looks. Export a portrait, square or landscape MP4 with a cover and loudness matched to the feed at −14 LUFS.</p>
+        </article>
+      </div>
+      <div class="export-proof">
+        <figure class="feature-art">
+          <div class="art-crop check-crop"><img src="assets/self-check.jpg" width="1600" height="680" loading="lazy" alt="A finished portrait clip and its passing self-check for words, audio and video sync, loudness, and caption placement."></div>
+          <figcaption>Example export / Local self-check</figcaption>
+        </figure>
+        <div>
+          <p class="eyebrow">Before you post</p>
+          <h3>Check the finished clip.</h3>
+          <p>Claude mode checks its exports on your machine. It listens again to compare the spoken words with your edit and checks sync, loudness and caption placement.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="privacy" class="section privacy" aria-labelledby="privacy-title">
+      <div class="section-heading">
+        <p class="eyebrow"><span class="marker" aria-hidden="true"></span> 03 / Your setup</p>
+        <h2 id="privacy-title">Your machine. Your own keys.</h2>
+      </div>
+      <div class="privacy-grid">
+        <article><h3>Choose your AI.</h3><p>Use your Claude Code or Codex sign-in, bring a provider API key, or run a local model. Cloud AI receives the transcript and, for plans that use the picture, sampled frames.</p></article>
+        <article><h3>See what gets sent.</h3><p>Voice cloning sends approved voice samples to ElevenLabs; generated speech sends the words and context. Lip sync sends the selected video and audio to fal.ai. Use your own keys and see the price before paid steps.</p></article>
+        <article><h3>Work locally.</h3><p>Transcribe with local Whisper after a model download, or opt into cloud transcription that sends audio to the provider. Keys are stored in Keychain on Mac or encrypted for your Windows account. No telemetry.</p></article>
+      </div>
+    </section>
+
+    <section id="downloads" class="section download-section" aria-labelledby="downloads-title">
+      <div class="section-heading">
+        <p class="eyebrow"><span class="marker" aria-hidden="true"></span> 04 / Get the app</p>
+        <h2 id="downloads-title">Download VoxClip.</h2>
+        <p class="lede">A free, open-source desktop app for Mac and Windows.</p>
+      </div>
       <div class="downloads">{{DOWNLOADS}}</div>
-      <!-- doc/architecture.md §6.1 requires this LGPL wording and the matching release source. -->
+      <p class="release-link"><a href="{{RELEASE_URL}}">{{VERSION}} · Release notes and checksums <span aria-hidden="true">↗</span></a></p>
       <p class="ffmpeg-notice">{{FFMPEG_NOTICE}}</p>
     </section>
-    <section id="features" class="section features" aria-labelledby="features-title">
-      <div class="section-heading"><div><p class="eyebrow">A quieter way to edit</p><h2 id="features-title">Follow the words.</h2></div></div>
-      <!-- Feature claims: doc/spec/editing.md (word cuts, fillers and pauses); doc/spec/ai.md (Find Clips); doc/spec/captions.md (burned captions); doc/design.md §8 (aspect/export). -->
-      <article class="feature-row"><div><p class="eyebrow">01 / Edit</p><h3>Keep the words you want.</h3><p>Select words in the transcript to cut the video. Remove filler words and tighten long pauses.</p></div><figure><img src="assets/placeholder.svg" width="1440" height="900" loading="lazy" alt="Word editing screenshot placeholder"><figcaption>Word editing / capture pending</figcaption></figure></article>
-      <article class="feature-row"><div><p class="eyebrow">02 / Find</p><h3>A good take has more in it.</h3><p>Find Clips turns a transcript into suggestions with the AI connector you choose. Review what to keep.</p></div><figure><img src="assets/placeholder.svg" width="1440" height="900" loading="lazy" alt="Find Clips screenshot placeholder"><figcaption>Find Clips / capture pending</figcaption></figure></article>
-      <article class="feature-row"><div><p class="eyebrow">03 / Caption</p><h3>Give the words their place.</h3><p>Choose a caption style and burn readable captions into the video.</p></div><figure><img src="assets/placeholder.svg" width="1440" height="900" loading="lazy" alt="Caption styles screenshot placeholder"><figcaption>Caption gallery / capture pending</figcaption></figure></article>
-      <article class="feature-row"><div><p class="eyebrow">04 / Export</p><h3>Ready for a different frame.</h3><p>Make a portrait, square or landscape clip. Export the result as an MP4.</p></div><figure><img src="assets/placeholder.svg" width="1440" height="900" loading="lazy" alt="Export screenshot placeholder"><figcaption>Export / capture pending</figcaption></figure></article>
-    </section>
-    <section id="tutorials" class="section" aria-labelledby="tutorials-title">
-      <div class="section-heading"><h2 id="tutorials-title">A few minutes to get going.</h2><p>{{TUTORIAL_NOTE}}</p></div>
-      <ol class="tutorials">{{TUTORIALS}}<li><span>Voice Lab (beta, coming)</span><span>Recording pending</span></li></ol>
-    </section>
-    <section id="privacy" class="section privacy" aria-labelledby="privacy-title">
-      <p class="eyebrow">Your work, your choices</p><h2 id="privacy-title">Keep it close.</h2>
-      <div class="privacy-columns">
-        <!-- doc/spec/transcription.md §1 goals 3–4 and §2 engines: whisper.cpp is local; ElevenLabs is opt-in cloud and receives audio. Model downloads still need a network connection. -->
-        <article><h3>Local transcription</h3><p>Transcribe on your computer with a local model. Download the model first. Cloud transcription is an explicit choice and sends audio to the provider.</p></article>
-        <!-- doc/spec/ai.md §1 rule 4, §8.1, §12 (AI tighten is M2) and doc/architecture.md §11.4: user-chosen connectors, API keys in Keychain/DPAPI; no provider tokens copied from CLI configuration. Voice Lab disclosure: doc/spec/voice-lab.md §1, §2.5 consent table and §12 (what leaves the device). -->
-        <article><h3>Your own keys</h3><p>Choose your AI connector and bring your own API keys. The app stores keys in the macOS Keychain or encrypted for your Windows account. Find Clips sends transcript text to the connector you choose. AI tighten (coming) will do the same. Voice Lab (beta, coming) will send your voice recordings, the words to speak and a little surrounding transcript for context to ElevenLabs with your key, after consent; its Rewrite will send the selected passage to your AI connector, and lip sync the selected video and its audio to the provider you choose.</p></article>
-        <!-- doc/architecture.md §11.3: no analytics, crash reports or usage pings. Network activity still includes chosen providers, model downloads, update checks and publishing. -->
-        <article><h3>No telemetry</h3><p>No analytics, crash reports or usage pings. Chosen providers, model downloads, update checks and publishing still use the network.</p></article>
-      </div>
-    </section>
-    <section id="open-source" class="section open-source" aria-labelledby="source-title">
-      <div><p class="eyebrow">Open from the start</p><h2 id="source-title">Free to use.<br>Free to make your own.</h2></div>
-      <!-- Root LICENSE grants MIT rights. Bundled components retain their licences: THIRD_PARTY_NOTICES.md and doc/release.md §1.1 (Windows FFmpeg source asset). -->
-      <div><p>VoxClip is released under the <a href="LICENSE.txt">MIT licence</a>. Bundled fonts and libraries keep their own licences.</p><p><a href="https://github.com/Siim/voxclip">Browse the source ↗</a></p><p>{{FFMPEG}}</p><p><a href="https://github.com/Siim/voxclip/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices ↗</a></p></div>
-    </section>
+
+    <div class="section watch-grid">
+      <section id="showreel" aria-labelledby="showreel-title">
+        <h2 id="showreel-title">Showreel</h2>
+        {{SHOWREEL}}
+      </section>
+      <section id="tutorials" aria-labelledby="tutorials-title">
+        <h2 id="tutorials-title">Tutorials</h2>
+        {{TUTORIALS}}
+      </section>
+    </div>
   </main>
-  <footer class="page-footer wrap"><a class="wordmark" href="#main">VoxClip</a><p>A free tool from <a href="https://voxconvo.com">VoxConvo</a>.</p><a href="#downloads">Downloads ↑</a></footer>
+  <footer class="page-footer wrap">
+    <div><a class="wordmark" href="#main">voxclip.</a><p>A free tool from <a href="https://voxconvo.com">VoxConvo</a>.</p></div>
+    <nav aria-label="Project links"><a href="LICENSE.txt">MIT licence</a><a href="https://github.com/Siim/voxclip/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a><a href="#downloads">Downloads ↑</a></nav>
+  </footer>
 </body>
 </html>

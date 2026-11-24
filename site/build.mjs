@@ -9,11 +9,11 @@ const root = resolve(site, '..');
 export const repository = 'https://github.com/Siim/voxclip';
 export const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 
-export function tokenProperties(tokens, mode) {
+function tokenProperties(tokens) {
   const properties = {};
   function visit(node, path = []) {
     if (node.$type === 'color') {
-      const value = node.$value[mode];
+      const value = node.$value.dark;
       // Native system values stay native; the site does not use these tokens.
       if (value.startsWith('system:')) return;
       if (!/^#[\da-f]{6}([\da-f]{2})?$/i.test(value)) throw new Error(`Invalid color ${path.join('.')}`);
@@ -25,17 +25,12 @@ export function tokenProperties(tokens, mode) {
     }
   }
   visit(tokens);
-  for (const [role, token] of Object.entries(mode === 'dark'
-    ? { fill: 'accent-text', label: 'word-playingForeground', hover: 'word-playingBackground' }
-    : { fill: 'accent-default', label: 'accent-on', hover: 'accent-pressed' })) {
-    properties[`--button-${role}`] = properties[`--color-${token}`];
-  }
   return properties;
 }
 
-export function tokenCSS(tokens) {
-  const block = mode => Object.entries(tokenProperties(tokens, mode)).map(([key, value]) => `  ${key}: ${value};`).join('\n');
-  return `/* Built from shared/design/tokens.json. */\n:root {\n  color-scheme: light dark;\n${block('light')}\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n${block('dark')}\n  }\n}\n`;
+function tokenCSS(tokens) {
+  const properties = Object.entries(tokenProperties(tokens)).map(([key, value]) => `  ${key}: ${value};`).join('\n');
+  return `/* Built from shared/design/tokens.json. */\n:root {\n  color-scheme: dark;\n${properties}\n}\n`;
 }
 
 function safeURL(value, prefix) {
@@ -73,9 +68,8 @@ export function releaseData(release) {
   const windows = assets.has('VoxClip-win-x64-Setup.exe') || assets.has('VoxClip-win-arm64-Setup.exe');
   const source = assets.get('VoxClip-win-ffmpeg-source.tar.xz');
   if (windows && !source) throw new Error('Windows downloads require the corresponding FFmpeg source asset');
-  const ffmpeg = source ? `<a href="${escapeHTML(source.browser_download_url)}">FFmpeg LGPL corresponding source</a>` : `<a href="${repository}/tree/main/tools/ffmpeg-build">FFmpeg LGPL source and build instructions</a>`;
-  const ffmpegNotice = windows ? `This software uses libraries from the FFmpeg project under the LGPL. Source: ${ffmpeg}.` : '';
-  return { FFMPEG_NOTICE: ffmpegNotice, DOWNLOADS: downloads, RELEASE_URL: page, FFMPEG: ffmpeg, VERSION: escapeHTML(tag) };
+  const ffmpegNotice = windows ? `This software uses libraries from the FFmpeg project under the LGPL. Source: <a href="${escapeHTML(source.browser_download_url)}">FFmpeg LGPL corresponding source</a>.` : '';
+  return { FFMPEG_NOTICE: ffmpegNotice, DOWNLOADS: downloads, RELEASE_URL: page, VERSION: escapeHTML(tag) };
 }
 
 export async function build({ releasePath = join(site, 'latest.json'), out = join(site, 'dist'), mediaDir, configPath = join(site, 'media.json') } = {}) {
@@ -87,13 +81,9 @@ export async function build({ releasePath = join(site, 'latest.json'), out = joi
   const data = releaseData(release);
   const { config, assets: pins, approved } = await readMedia(configPath);
   const hasMedia = Boolean(mediaDir && approved);
-  // Approved media gets no poster: the placeholder says "recording pending", and preload="none" would show it until play.
   const videoHTML = item => `<video controls preload="none" playsinline aria-label="${escapeHTML(item.title)}"><source src="media/${item.video}" type="video/mp4"><track kind="captions" src="media/${item.captions}" srclang="en" label="English" default><p><a href="media/${item.video}">Download ${escapeHTML(item.title)}</a></p></video>`;
-  data.SHOWREEL = hasMedia ? videoHTML(config.videos[0]) : '<video controls preload="none" playsinline poster="assets/video-placeholder.svg" aria-label="Showreel placeholder; video has not been recorded"><p>The showreel has not been recorded yet.</p></video>';
-  data.SHOWREEL_STATUS = hasMedia ? 'Captions available. Press play to watch.' : 'Showreel not recorded yet.';
-  data.SHOWREEL_NOTE = hasMedia ? 'A tour of the editor, from import to export.' : 'Showreel placeholder · video and captions to follow.';
-  data.TUTORIAL_NOTE = hasMedia ? 'Short guides to editing and exporting.' : 'Tutorials to follow the final interface.';
-  data.TUTORIALS = config.videos.slice(1).map(item => `<li><span>${escapeHTML(item.title)}</span>${hasMedia ? videoHTML(item) : '<span>Recording pending</span>'}</li>`).join('');
+  data.SHOWREEL = hasMedia ? videoHTML(config.videos[0]) : '<p>The showreel isn’t available yet.</p>';
+  data.TUTORIALS = hasMedia ? `<ul class="tutorials">${config.videos.slice(1).map(item => `<li><h3>${escapeHTML(item.title)}</h3>${videoHTML(item)}</li>`).join('')}</ul>` : '<p>Video guides aren’t available yet.</p>';
   if (hasMedia) {
     await mkdir(join(out, 'media'), { recursive: true });
     for (const pin of pins) {
@@ -102,7 +92,7 @@ export async function build({ releasePath = join(site, 'latest.json'), out = joi
       await writeFile(join(out, 'media', pin.name), bytes);
     }
   }
-  data.FIXTURE_NOTICE = resolve(releasePath) === join(site, 'fixtures/latest.json') ? '<p class="preview-notice" role="note">Site scaffold preview. Release details are fixture data; screenshots and videos are placeholders.</p>' : '';
+  data.FIXTURE_NOTICE = resolve(releasePath) === join(site, 'fixtures/latest.json') ? '<p class="preview-notice" role="note">Local preview · Release details are fixture data.</p>' : '';
   const html = template.replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => {
     if (!(key in data)) throw new Error(`Unknown template key ${key}`);
     return data[key];
@@ -111,9 +101,9 @@ export async function build({ releasePath = join(site, 'latest.json'), out = joi
   await Promise.all([
     writeFile(join(out, 'index.html'), html), writeFile(join(out, 'style.css'), css),
     writeFile(join(out, 'tokens.css'), tokenCSS(tokens)),
-    copyFile(join(site, 'assets/placeholder.svg'), join(out, 'assets/placeholder.svg')),
-    copyFile(join(site, 'assets/video-placeholder.svg'), join(out, 'assets/video-placeholder.svg')),
+    ...['hero.jpg', 'claude-sees.jpg', 'self-check.jpg'].map(name => copyFile(join(root, 'doc/media/readme', name), join(out, 'assets', name))),
     copyFile(join(root, 'shared/fonts/dm-sans/DMSans-Medium.ttf'), join(out, 'assets/DMSans-Medium.ttf')),
+    copyFile(join(root, 'shared/fonts/dm-sans/DMSans-Bold.ttf'), join(out, 'assets/DMSans-Bold.ttf')),
     copyFile(join(root, 'shared/fonts/dm-sans/OFL.txt'), join(out, 'assets/OFL.txt')),
     copyFile(join(root, 'LICENSE'), join(out, 'LICENSE.txt')),
     copyFile(join(site, 'CNAME'), join(out, 'CNAME'))
