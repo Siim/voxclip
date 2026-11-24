@@ -451,7 +451,7 @@ public sealed class RewritePanelTests
         var ask = opening.IndexOf("if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction))) return;", StringComparison.Ordinal);
         Assert.True(ask > 0 && ask < opening.IndexOf("RetireRewrite();", StringComparison.Ordinal), "the open Rewrite asks before anything is retired");
         var guard = page[page.IndexOf("private bool AskBeforeReplacingRewrite", StringComparison.Ordinal)..page.IndexOf("private void ShowRewriteSession", StringComparison.Ordinal)];
-        Assert.Contains("rewrite is not { IsOpen: true, HasPaidTakes: true } open", guard);
+        Assert.Contains("rewrite is not { IsOpen: true, HoldsPaidWork: true } open", guard);
         Assert.Contains("rightContent.RevealRewrite(panel)", guard);
         Assert.Contains("panel.AskBeforeReplacing(() => RunAsync(replay, \"Rewrite\"))", guard);
         // The panel can't come forward while a job that stays holds the column: the notice names that job, the step that shows

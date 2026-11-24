@@ -99,9 +99,9 @@ no generated row.
 
 ### 3.3 Your music
 
-The Music folder setting is the Mac preference `VoxClipMusicFolder`; without it, `~/Music/VoxClip` when that folder
-exists. The section lists its MP3, M4A, WAV and AIFF files (not subfolders, at most 200). "Add a file…" opens the system
-file picker for the same types.
+The Music folder setting is the Mac preference `VoxClipMusicFolder` or, on Windows, `music.folder` (Settings → General).
+Without an override, use the VoxClip subfolder of the user's Music folder if it exists. The section lists its MP3, M4A,
+WAV and AIFF files (not subfolders, at most 200). "Add a file…" opens the system file picker for the same types.
 
 ### 3.4 Suggestions
 
@@ -203,14 +203,13 @@ All audio in tests is synthetic (tones and seeded noise); no test downloads musi
   speech level from the edited voice, the bed at `gainDb` under it, −12 dB ducking (150 ms attack, 400 ms release),
   the fades and equal-power loops, on the rendered clock through cuts and speed (Core `MusicMix`, Media `MusicBed`).
   `shared/fixtures/music/music-mix-cases.json` (`voxclip-music-mix-cases/1`, `tools/fixtures/music/generate_music_mix.py`)
-  holds the arithmetic both platforms replay; the Mac replay is owed. An export stops with "Export stopped: the music
-  file {name} is missing. Your edits are saved." or, for a video with no sound, "Export stopped: this video has no sound,
-  so Windows can't add its music yet. Remove the music, or export it on a Mac. Your edits are saved."; preview plays the
-  voice alone in both cases.
+  holds the arithmetic both platforms replay. With no source audio, Windows uses the same no-speech fallback and plays
+  or exports the bed alone, creating an AAC stream on export only when there is something to carry. An export stops with
+  "Export stopped: the music file {name} is missing. Your edits are saved."; preview continues without the missing bed.
 - The Windows Music section sits under the Captions rows: Openverse (the free library), the Music folder
   (`Music\VoxClip`, plus Add a file…) and Eleven Music, whose "Make · $x" (priced from `voice-lab.json`) is the approval.
   Make it postable's "Picking music…" step uses the first free track, or a generated one within what the run's cap has
-  left; its review row has ▶, Undo and Change. Not on Windows yet: the Music folder setting and the timeline's M1 lane.
-- The default timeline height (216 pt) ends just above M1; the lane is reached with the timeline's vertical scroll or a
-  taller timeline.
+  left; its review row has ▶, Undo and Change. Windows draws the scope's music on the M1 lane below FX with its title,
+  gain, ducking and fade ramps. On Mac the default timeline height (216 pt) ends just above M1; scroll or make the
+  timeline taller to see it.
 - Openverse previews stream from the track's host when ▶ is pressed; only Use downloads.

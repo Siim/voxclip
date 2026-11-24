@@ -276,6 +276,13 @@ public sealed class ElevenMusicClient(IKeyProvider keys, VoiceLabPriceCatalog ca
 /// when it exists) and "Add a file…" for MP3, M4A, WAV and AIFF.</summary>
 public static class MusicLibraryFolder
 {
+    /// <summary>The saved local folder override.</summary>
+    public const string SettingsKey = "music.folder";
+
+    /// <summary>The chosen folder, even if offline, or the platform default when none was chosen.</summary>
+    public static string? Resolve(string? chosen, string? music = null) =>
+        string.IsNullOrEmpty(chosen) ? DefaultFolder(music) : chosen;
+
     /// <summary>The types offered.</summary>
     public static readonly IReadOnlySet<string> Extensions = new HashSet<string>(["mp3", "m4a", "wav", "aif", "aiff"], StringComparer.Ordinal);
 

@@ -13,6 +13,7 @@ using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Updates;
+using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Media.Frames;
 using VoxClip.Media.Pipeline;
@@ -244,7 +245,13 @@ internal sealed class AppServices : IAsyncDisposable
         await Task.Run(() => VoiceLabBackend.ReconcileLocalStatements(Data), ct);
         await VoiceLab.ReconcileStartupAsync();
         // Every project's take journal keeps its unused takes 60 days, opened or not (Mac VoiceLabAssetRetention at launch).
-        await Task.Run(() => VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement.SweepStale(Path.Combine(Data.Root, "VoiceLab"), DateTimeOffset.UtcNow), ct);
+        await Task.Run(() =>
+        {
+            var paidRoot = Path.Combine(Data.Root, "VoiceLab");
+            var now = DateTimeOffset.UtcNow;
+            VoxClip.Media.VoiceLab.VoiceLabTakeJournalSettlement.SweepStale(paidRoot, now);
+            SavedRewriteProposalStore.SweepStale(paidRoot, now);
+        }, ct);
     }
 
     internal LlmConnector Connector(ConnectorId id)

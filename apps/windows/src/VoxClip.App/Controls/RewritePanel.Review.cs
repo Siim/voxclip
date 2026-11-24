@@ -51,6 +51,11 @@ internal sealed partial class RewritePanel
     private async Task SendProposalAsync()
     {
         if (requestingApproval || session.Prepared is not { } action || !session.CanPropose) return;
+        if (session.HasPaidTakes && !session.RequestClose())
+        {
+            ShowCloseQuestion(SendProposalAsync, stayOpen: true);
+            return;
+        }
         requestingApproval = true;
         App.Services.BusyOperations++;
         try

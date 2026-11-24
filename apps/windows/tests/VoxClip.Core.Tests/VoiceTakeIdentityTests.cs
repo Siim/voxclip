@@ -7,6 +7,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
+using VoxClip.Media.VoiceLab;
 using static VoxClip.Core.Tests.Tracks.WinUi.RewriteAutoFixTests;
 #else
 using VoxClip.Tests.Support;
@@ -48,6 +49,8 @@ public sealed class VoiceTakeIdentityTests
             Assert.True(sameIdentity == row["sameIdentity"]!.GetValue<bool>(), id + ": " + row["why"]!.GetValue<string>());
             var sameInputs = ProjectVoiceTakeIdentity.RewriteInputsKey(baseline, scope, enclosing) == ProjectVoiceTakeIdentity.RewriteInputsKey(changed, scope, enclosing);
             Assert.True(sameInputs == row["sameRewriteInputs"]!.GetValue<bool>(), id + " (rewrite inputs): " + row["why"]!.GetValue<string>());
+            var proposal = new VoxClip.Core.Services.VoiceLab.SavedRewriteProposalStore("", baseline.Id, scope, enclosing);
+            Assert.True((proposal.Inputs(baseline) == proposal.Inputs(changed)) == row["sameRewriteInputs"]!.GetValue<bool>(), id + " (saved Rewrite inputs)");
             Assert.NotEqual(ProjectSerialization.Serialize(baseline), ProjectSerialization.Serialize(changed));
         }
     }
@@ -93,6 +96,53 @@ public sealed class VoiceTakeIdentityTests
 /// AI connector no longer ends takes.</summary>
 public sealed class VoiceTakeIdentitySessionTests
 {
+    [Fact]
+    public void SavedReviewOpensWithoutAnAiAndExplicitDiscardRemovesIt()
+    {
+        var root = Directory.CreateTempSubdirectory("voxclip-saved-review-").FullName;
+        try
+        {
+            var editor = Editor();
+            var store = new VoxClip.Core.Services.VoiceLab.SavedRewriteProposalStore(root, editor.Project.Id, RewriteScope.Selection(10, 12), null);
+            var journal = JsonNode.Parse(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-journal-cases.json")))!;
+            var entry = journal["entries"]![0]!.AsObject();
+            var request = Guid.Parse(entry["requestID"]!.GetValue<string>());
+            var assetId = Path.GetFileNameWithoutExtension(entry["assetFile"]!.GetValue<string>());
+            var now = DateTimeOffset.UtcNow;
+            var asset = VoiceLabAssetStore.Write(new byte[480], 24000, editor.Project.Id, assetId, root, now, TestContext.Current.CancellationToken);
+            entry["assetFile"] = asset.File;
+            entry["assetSha256"] = asset.Sha256;
+            entry["createdAt"] = now.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+            var takes = Directory.CreateDirectory(Path.Combine(root, editor.Project.Id, "takes"));
+            File.WriteAllText(Path.Combine(takes.FullName, assetId + ".json"), entry.ToJsonString());
+            using (var original = new RewriteSession(editor, 10, 12, Envelope(), null))
+            {
+                Assert.False(original.ConfigureSavedProposal(root));
+                original.Edit("New wording here");
+                Assert.Null(store.Load(editor.Project, DateTimeOffset.UtcNow));
+                original.PaidTakeSaved(request, entry["recordID"]!.GetValue<string>(), .04m);
+            }
+            var checkpoint = Assert.IsType<VoxClip.Core.Services.VoiceLab.SavedRewriteProposal>(store.Load(editor.Project, DateTimeOffset.UtcNow));
+            Assert.Equal(.04m, checkpoint.PatchUsd);
+            Assert.Equal(request, Assert.Single(checkpoint.PatchRequests));
+
+            using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
+            Assert.True(session.ConfigureSavedProposal(root));
+            Assert.Equal("New wording here", session.NewWords);
+            Assert.Equal(new[] { "New", "wording", "here" }, Assert.Single(session.Review!.Diff.Hunks).NewTokens);
+            Assert.Equal(1, session.PaidTakeCount);
+            Assert.True(session.HoldsPaidWork);
+            Assert.False(session.RequestClose());
+            session.KeepWorking();
+            Assert.NotNull(store.Load(editor.Project, DateTimeOffset.UtcNow));
+            Assert.True(session.DiscardForAnotherProposal());
+            Assert.False(session.HoldsPaidWork);
+            Assert.Null(store.Load(editor.Project, DateTimeOffset.UtcNow));
+            Assert.Contains(request, VoiceLabTakeJournalSettlement.RecoverableRequests(editor.Project.Id, root, now));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public void EditsOutsideTheRewriteKeepTheSessionAndItsGeneration()
     {

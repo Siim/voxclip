@@ -43,6 +43,7 @@
     "export.quality": { "enum": ["standard", "high"], "default": "standard", "description": "New projects copy it into export.quality." },
     "export.srt": { "type": "boolean", "default": false, "description": "New projects copy it into export.srt (\"Burn in + .srt\")." },
     "export.folder": { "type": ["string", "null"], "minLength": 1, "default": null, "description": "Default export folder; null is the platform default (architecture.md section 2.5)." },
+    "music.folder": { "type": ["string", "null"], "minLength": 1, "description": "Windows Music folder override; missing or null uses Music/VoxClip if it exists (music.md section 3.3)." },
     "export.fileNamePattern": { "type": "string", "minLength": 1, "maxLength": 200, "default": "{project}-{clip}-{aspect}", "description": "Tokens {project}, {clip}, {aspect}. design.md section 8." },
     "export.openFolderAfter": { "type": "boolean", "default": false },
 

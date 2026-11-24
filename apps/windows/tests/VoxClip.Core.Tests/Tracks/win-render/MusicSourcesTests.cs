@@ -14,6 +14,21 @@ namespace VoxClip.Core.Tests.Tracks.WinRender;
 /// ElevenMusicClientTests and MusicSuggestionServiceTests. Every reply is hand-written; nothing reaches the network.</summary>
 public sealed class MusicSourcesTests
 {
+    [Fact]
+    public void AChosenFolderWinsOverTheDefaultEvenWhenItIsMissing()
+    {
+        var root = Directory.CreateTempSubdirectory("voxclip-music-folder-").FullName;
+        try
+        {
+            var fallback = Directory.CreateDirectory(Path.Combine(root, "VoxClip")).FullName;
+            var chosen = Path.Combine(root, "chosen");
+            Assert.Equal(fallback, MusicLibraryFolder.Resolve(null, root));
+            Assert.Equal(chosen, MusicLibraryFolder.Resolve(chosen, root));
+            Assert.Empty(MusicLibraryFolder.Files(MusicLibraryFolder.Resolve(chosen, root)));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private sealed class Http(params MusicHttpReply[] replies) : IMusicHttp
     {
         private readonly Queue<MusicHttpReply> queue = new(replies);
