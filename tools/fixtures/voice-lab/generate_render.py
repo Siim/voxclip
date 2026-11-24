@@ -2,6 +2,7 @@
 import copy
 import json
 import math
+import re
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[3]
@@ -109,7 +110,9 @@ for segment in selected_voice['voiceLab']['segments']:
     for candidate in segment['candidates']:
         qa = candidate['recipe']['qa']
         qa.update(speakerScore=None, speakerThreshold=None, speakerModel=None, speakerPassed=None, outputSpeakerCheckSkipped=True)
-(fixtures / 'selected-voice-render-v3.voxclip').write_text(json.dumps(selected_voice, indent=2, ensure_ascii=False) + '\n')
+wire = json.dumps(selected_voice, indent=2, ensure_ascii=False)
+wire = re.sub(r'("\w+At": "\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)Z"', r'\1.000Z"', wire)
+(fixtures / 'selected-voice-render-v3.voxclip').write_text(wire + '\n')
 for suffix, duration in [('at-30', 2.1), ('above-30', 2.101)]:
     project = copy.deepcopy(base)
     segment = project['voiceLab']['segments'][0]

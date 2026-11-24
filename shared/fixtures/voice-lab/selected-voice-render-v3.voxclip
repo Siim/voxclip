@@ -3,8 +3,8 @@
   "schemaVersion": 3,
   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
   "title": "Interview take 3",
-  "createdAt": "2026-10-25T09:12:03Z",
-  "modifiedAt": "2026-10-25T09:31:47Z",
+  "createdAt": "2026-10-25T09:12:03.000Z",
+  "modifiedAt": "2026-10-25T09:31:47.000Z",
   "savedBy": {
     "app": "VoxClip",
     "version": "0.1.0",
@@ -155,7 +155,7 @@
     "refined": true,
     "pipelineVersion": 1,
     "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
-    "createdAt": "2026-10-25T09:12:41Z"
+    "createdAt": "2026-10-25T09:12:41.000Z"
   },
   "edits": {
     "pauseThresholdSeconds": 0.8,
@@ -206,7 +206,7 @@
         "sha256": "f89d9092f56d06276191795adbfafa0cc73df5b216c9170b20202cd6b1201771",
         "durationSeconds": 0.9,
         "sampleRate": 24000,
-        "createdAt": "2026-10-25T12:10:00Z"
+        "createdAt": "2026-10-25T12:10:00.000Z"
       },
       {
         "id": "asset-two",
@@ -215,7 +215,7 @@
         "sha256": "13a83c1e1006fb36a61049bb15979582210bc7a9a06d6f902f7a474764483666",
         "durationSeconds": 1,
         "sampleRate": 24000,
-        "createdAt": "2026-10-25T12:10:00Z"
+        "createdAt": "2026-10-25T12:10:00.000Z"
       }
     ],
     "segments": [
@@ -263,7 +263,7 @@
           "consentRecordId": "consent-fixture",
           "requestId": "request-7",
           "seed": 7,
-          "createdAt": "2026-10-25T12:10:00Z",
+          "createdAt": "2026-10-25T12:10:00.000Z",
           "region": "us"
         },
         "qa": {
@@ -369,7 +369,7 @@
                 "consentRecordId": "consent-fixture",
                 "requestId": "request-7",
                 "seed": 7,
-                "createdAt": "2026-10-25T12:10:00Z",
+                "createdAt": "2026-10-25T12:10:00.000Z",
                 "region": "us"
               },
               "cost": {
@@ -378,7 +378,7 @@
               },
               "voiceSource": "own",
               "voiceRefId": "voice-fixture",
-              "consentVerifiedAt": "2026-10-25T12:09:00Z"
+              "consentVerifiedAt": "2026-10-25T12:09:00.000Z"
             }
           },
           {
@@ -477,7 +477,7 @@
                 "consentRecordId": "consent-fixture",
                 "requestId": "request-8",
                 "seed": 8,
-                "createdAt": "2026-10-25T12:10:00Z",
+                "createdAt": "2026-10-25T12:10:00.000Z",
                 "region": "us"
               },
               "cost": {
@@ -486,7 +486,7 @@
               },
               "voiceSource": "own",
               "voiceRefId": "voice-fixture",
-              "consentVerifiedAt": "2026-10-25T12:09:00Z"
+              "consentVerifiedAt": "2026-10-25T12:09:00.000Z"
             }
           }
         ],
