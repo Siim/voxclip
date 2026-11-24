@@ -1989,7 +1989,7 @@ One small card decides how clips are made: who makes them (the mode), caption ty
 
 - **Header.** "How should clips be made?" (13/600, heading), then a borderless "Done" on the trailing side.
 - **Mode.** A two-segment control on top: "✦ Claude does it all | I'll pick" (12; the selected segment 600 on `bg.selectedRow`, Claude's in `ai.tint`). It writes `clips.mode` at once.
-- **Claude mode rows** (one vertical stack): **Clips** ("Top {1, 3, 5} per video"), **Spend** ("Up to $1.00 per video", or "No paid voice or music ($0)"), **Rewording** (the row below), **Style** (the preset chips collapse to one menu: "✦ Auto · Claude decides", "Punchy talking head"…; choosing one keeps the card open) and **Shape**, then the **Tone** row (its own view, as in "I'll pick" mode). Captions, Music and Length are Claude's (the preset sets them). The footer reads "Free on your Claude plan; the cap covers ElevenLabs voice and generated music. Claude never spends past it. Next: Done, then drop a video."
+- **Claude mode rows** (one vertical stack): **Clips** ("Top {1, 3, 5} per video"), **Spend** ("Up to $1.00 per video", or "No paid voice or music ($0)"), **Transcript** (the transcription choice, below), **Rewording** (the row below), **Style** (the preset chips collapse to one menu: "✦ Auto · Claude decides", "Punchy talking head"…; choosing one keeps the card open) and **Shape**, then the **Tone** row (its own view, as in "I'll pick" mode). Captions, Music and Length are Claude's (the preset sets them). The footer reads "Free on your Claude plan; the cap covers ElevenLabs voice and generated music. Claude never spends past it. Next: Done, then drop a video."
 - **"I'll pick" rows:** the chips and rows below, as before, with the footer "Claude suggests clips; ✦ Make it postable on a clip uses this style. Next: Done."
 - **Chips** ("I'll pick" only). These wrap in a flow layout and are 24 high. The selected chip is 600.
 
@@ -2002,6 +2002,7 @@ One small card decides how clips are made: who makes them (the mode), caption ty
   | My style | Your saved choices | `mine` |
 
 - **Rows.** Each row has a 68-wide label (11 `text.tertiary`) and a menu showing its value (12, up to 3 lines):
+  - **Transcript** (Claude mode, read-only). On Mac: "Apple Speech → Whisper" when the draft engine is ready, with "Apple Speech if available → Whisper" before it's checked. Without an Apple pass, including on Windows, show "Whisper on this device". If the selected engine is Scribe, add "(approval required)". The existing inline transcription controls handle changes and approval; the row does not start a send or change the voice/music cap. If configured to ask, show "Ask before transcribing".
   - **Captions.** "Auto · Claude picks per clip", "Off", or a library style shown as "{name} · {font}" (for example "Marker · Roboto Black"), in gallery order.
   - **Music.** "Auto" (tooltip: "Free library first, generated if nothing fits, then your folder") or "No music".
   - **Length.** "Up to {30, 45, 60, 90, 120} s".
