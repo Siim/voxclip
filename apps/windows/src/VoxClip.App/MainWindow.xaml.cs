@@ -899,7 +899,6 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         WindowNotice.Message = message;
         WindowNotice.IsOpen = true;
         RefreshShellStatus();
-        App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", $"action={action} code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)} inner={exception.GetBaseException().GetType().Name} hresult=0x{exception.GetBaseException().HResult:X8}");
     }
     /// <summary>Whole-window drop target: overlay copy from design §7 and §13.</summary>
     private async void FileDragOver(object sender, DragEventArgs args)
@@ -1033,7 +1032,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             WindowNotice.IsOpen = true;
         }
         catch (OperationCanceledException) { }
-        catch (HttpRequestException) when (manual) { WindowNotice.ActionButton = null; WindowNotice.Message = "Couldn't check for updates. You're offline."; WindowNotice.Severity = InfoBarSeverity.Warning; WindowNotice.IsOpen = true; }
+        catch (HttpRequestException exception) when (manual) { UiError.WriteFailure(exception, "Update"); WindowNotice.ActionButton = null; WindowNotice.Message = "Couldn't check for updates. You're offline."; WindowNotice.Severity = InfoBarSeverity.Warning; WindowNotice.IsOpen = true; }
         catch (Exception exception) { if (manual) ShowError(exception, "Update"); else App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "update", "automatic check unavailable"); }
     }
     private async void WindowClosed(object sender, WindowEventArgs args)

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices.WindowsRuntime;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Services.Logging;
 
 namespace VoxClip.App.Services;
@@ -32,9 +33,7 @@ internal static class StartupDiagnostics
         failed = true;
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            var detail = current is Microsoft.UI.Xaml.Markup.XamlParseException or System.Resources.MissingManifestResourceException
-                ? current.Message : "";
-            Log.Write(LogLevel.Error, "startup", $"stage={stage} type={current.GetType().FullName} hresult=0x{current.HResult:X8} {detail}");
+            Log.Write(LogLevel.Error, "startup", $"stage={stage} {UiError.FailureKind(current)}");
 #if DEBUG
             var frames = new System.Diagnostics.StackTrace(current, true).GetFrames()
                 .Where(frame => frame.GetMethod()?.DeclaringType?.Namespace?.StartsWith("VoxClip", StringComparison.Ordinal) == true)

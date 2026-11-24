@@ -598,6 +598,7 @@ enum ContextDemoUIError: Error {
         }
         phase = .failed
         message = Self.message(for: error)
+        if let app = model?.app { Task { await app.logFailure(error, context: .contextDemo) } }
     }
     static func message(for error: Error) -> String {
         switch error {

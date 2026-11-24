@@ -197,7 +197,10 @@ extension EditorModel {
     private func add() {
         guard model.timelineEditor == route, canAdd else { return }
         do { try model.addTimelineTitle(newTitle); newTitle = ""; error = nil }
-        catch { self.error = error.localizedDescription }
+        catch {
+            self.error = error.localizedDescription
+            Task { await model.app.logFailure(error, context: .editing) }
+        }
     }
     private func finish() {
         guard model.timelineEditor == route else { return }

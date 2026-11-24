@@ -239,6 +239,7 @@ struct MusicPanelServices: Sendable {
                 if case .offline? = error as? VoxClipError { message = "Openverse is unavailable while you’re offline." }
                 else { message = UserMessages.message(error) }
                 self.catalogNote = (page == 1 ? "Search failed: " : "Couldn’t load more tracks: ") + message
+                Task { await model.app.logFailure(error, context: .music) }
             }
         }
     }
@@ -366,6 +367,7 @@ struct MusicPanelServices: Sendable {
             } catch {
                 guard !Task.isCancelled else { return }
                 self?.phase = .failed(UserMessages.message(error))
+                if self != nil { Task { await model.app.logFailure(error, context: .music) } }
             }
         }
     }
@@ -374,7 +376,10 @@ struct MusicPanelServices: Sendable {
         guard model.capabilities.edit, !isUsing, model.currentMusic != nil else { return }
         stopAudition()
         do { try apply(nil, clipId: model.renderedActiveClipID, model: model, name: "Remove music") }
-        catch { phase = .failed(UserMessages.message(error)) }
+        catch {
+            phase = .failed(UserMessages.message(error))
+            Task { await model.app.logFailure(error, context: .music) }
+        }
     }
 
     /// The one volume control: the bed's level under the voice, −40 to 0 dB (−20 by default).
@@ -384,7 +389,10 @@ struct MusicPanelServices: Sendable {
         guard rounded != entry.gainDb else { return }
         entry.gainDb = rounded
         do { try apply(entry, clipId: entry.clipId, model: model, name: "Change music volume") }
-        catch { phase = .failed(UserMessages.message(error)) }
+        catch {
+            phase = .failed(UserMessages.message(error))
+            Task { await model.app.logFailure(error, context: .music) }
+        }
     }
 
     private func apply(_ entry: ProjectMusic?, clipId: String?, model: EditorModel, name: String) throws {

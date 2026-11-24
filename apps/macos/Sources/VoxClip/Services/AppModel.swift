@@ -336,9 +336,9 @@ extension ProviderChoice {
         self.updates = updates
         self.modelDownloader = modelDownloader
         do { shared = try SharedResources.locate() }
-        catch { shared = nil; startupError = .sharedResourcesMissing }
+        catch { shared = nil; reportStartupFailure(error) }
         // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export sheet.
-        if shared != nil { do { try SharePostText.preflight() } catch { startupError = .sharedResourcesMissing } }
+        if shared != nil { do { try SharePostText.preflight() } catch { reportStartupFailure(error) } }
         loadCatalogue()
     }
 
@@ -381,7 +381,7 @@ extension ProviderChoice {
             pendingSettings.removeAll()
         } catch {
             loadingSettings = false
-            notice = await safeError(error, context: "Settings could not be loaded.")
+            notice = await safeError(error, context: .settings, messageContext: "Settings could not be loaded.")
             return
         }
         if !Self.isTestSession {
@@ -491,7 +491,7 @@ extension ProviderChoice {
                 try await settingsStore.save(settings)
             } catch is CancellationError {} catch {
                 guard let self else { return }
-                notice = await safeError(error, context: "Settings could not be saved.")
+                notice = await safeError(error, context: .settings, messageContext: "Settings could not be saved.")
             }
         }
     }
@@ -503,7 +503,7 @@ extension ProviderChoice {
         await pending?.value
         guard settingsLoaded else { return }
         do { try await settingsStore.save(settings); try await settingsStore.flush() }
-        catch { notice = await safeError(error, context: "Settings could not be saved.") }
+        catch { notice = await safeError(error, context: .settings, messageContext: "Settings could not be saved.") }
     }
     private func startVoiceRecovery() {
         voiceRecoveryTask = Task { [weak self] in
@@ -605,17 +605,17 @@ extension ProviderChoice {
     var appearance: ColorScheme? {
         switch string("general.appearance", fallback: "system") { case "dark": .dark; case "light": .light; default: nil }
     }
-    func safeError(_ error: any Error, context: String = "") async -> String {
-        let provider = providers.first { context == "ai:\($0.label)" || context == "ai-test:\($0.label)" }
-        let message = UserMessages.message(error, context: context, model: provider.map { string("llm.model.\($0.id)", fallback: $0.defaultModel ?? "the selected model") } ?? "the selected model", installHint: provider?.cli?.installHint, signInHint: provider?.cli?.signInHint, connectorID: provider?.id)
+    func safeError(_ error: any Error, context: FailureContext, messageContext: String = "") async -> String {
+        guard !FailureDiagnostic.isCancellation(error) else { return "" }
+        let provider = providers.first { messageContext == "ai:\($0.label)" || messageContext == "ai-test:\($0.label)" }
+        let message = UserMessages.message(error, context: messageContext, model: provider.map { string("llm.model.\($0.id)", fallback: $0.defaultModel ?? "the selected model") } ?? "the selected model", installHint: provider?.cli?.installHint, signInHint: provider?.cli?.signInHint, connectorID: provider?.id)
         guard !message.isEmpty else { return "" }
         await logFailure(error, context: context)
         return await log.redact(message)
     }
-    /// Writes a failure's code to the app log, never its text: "llm: code=operationFailed" for an AI context.
-    func logFailure(_ error: any Error, context: String) async {
-        let category = context.hasPrefix("ai") ? "llm" : context == "export" ? "export" : "settings"
-        await log.write(LogEntry(level: .error, category: category, message: "code=\((error as? VoxClipError)?.code.rawValue ?? (error is LLMError ? "llmFailure" : "operationFailed"))"))
+    func logFailure(_ error: any Error, context: FailureContext) async {
+        guard !FailureDiagnostic.isCancellation(error) else { return }
+        await log.write(LogEntry(level: .error, category: context.rawValue, message: FailureDiagnostic.describe(error)))
     }
     func checkUpdates(manual: Bool) async {
         do {
@@ -630,7 +630,7 @@ extension ProviderChoice {
             }
             await log.write(LogEntry(level: .info, category: "update", message: update == nil ? "check=current" : "check=available"))
         } catch {
-            await log.write(LogEntry(level: .warn, category: "update", message: "check=failed"))
+            await logFailure(error, context: .update)
             if manual {
                 let offline = (error as? VoxClipError) == .offline || (error as? URLError).map { [.notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed].contains($0.code) } == true
                 notice = offline ? "Couldn't check for updates. You're offline." : "Couldn't check for updates. Try again later."
@@ -643,7 +643,11 @@ extension ProviderChoice {
             let data = try Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))
             providers = try JSONDecoder().decode(ProviderCatalogue.self, from: data).connectors.filter { $0.platforms.contains("macos") && $0.enabled != false }
             styles = try CaptionStyleLibrary(shared: shared).styles
-        } catch { startupError = .sharedResourcesMissing }
+        } catch { reportStartupFailure(error) }
+    }
+    private func reportStartupFailure(_ error: any Error) {
+        startupError = .sharedResourcesMissing
+        Task { await logFailure(error, context: .startup) }
     }
     func connector(_ id: String) -> any LLMConnector {
         if let connectorOverride { return connectorOverride(id) }

@@ -804,7 +804,7 @@ struct EditorRenderSnapshot {
                     if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
                 case .playing(let playing): isPlaying = playing
                 case .failed(let error, let reason):
-                    if let reason { await previewFailed(reason) } else { previewError = await app.safeError(error) }
+                    if let reason { await previewFailed(reason) } else { previewError = await app.safeError(error, context: .preview) }
                 case .frame: break
                 }
             }
@@ -822,7 +822,7 @@ struct EditorRenderSnapshot {
             } catch {
                 // The file resolved but its probe failed: it is there and can't be read.
                 mediaUnreadable = mediaResolved
-                previewError = await app.safeError(error)
+                previewError = await app.safeError(error, context: .preview)
             }
         }
         // The check has answered (a project without a video path has none to make).
@@ -882,7 +882,7 @@ struct EditorRenderSnapshot {
             do {
                 _ = try await resolveMediaIdentity()
                 await updatePreview(load: true)
-            } catch is CancellationError {} catch { previewError = await app.safeError(error) }
+            } catch is CancellationError {} catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
     func editState() -> EditState? {
@@ -975,6 +975,7 @@ struct EditorRenderSnapshot {
         } catch {
             plan = nil; voiceLabPlan = nil
             previewError = UserMessages.message(error)
+            Task { await app.logFailure(error, context: .preview) }
         }
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
@@ -1068,7 +1069,7 @@ struct EditorRenderSnapshot {
                 }
                 try await Task.sleep(for: .milliseconds(150))
                 await updatePreview(load: mediaChanged)
-            } catch is CancellationError {} catch { previewError = await app.safeError(error) }
+            } catch is CancellationError {} catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
     #if DEBUG
@@ -1138,7 +1139,7 @@ struct EditorRenderSnapshot {
                 guard revision == mediaRelinkRevision else { return }
                 await prepareMediaRelink(url: url, probe: probe)
             }
-            catch { if revision == mediaRelinkRevision { previewError = await app.safeError(error) } }
+            catch { if revision == mediaRelinkRevision { previewError = await app.safeError(error, context: .relink) } }
         }
     }
     func prepareMediaRelink(url: URL, probe: MediaProbeResult) async {
@@ -1161,7 +1162,7 @@ struct EditorRenderSnapshot {
             }
             guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
             await applyMediaRelink(next)
-        } catch { previewError = await app.safeError(error) }
+        } catch { previewError = await app.safeError(error, context: .relink) }
     }
     /// Only the banner's explicit Use It action confirms different media.
     func confirmMediaRelink() async {
@@ -1187,7 +1188,7 @@ struct EditorRenderSnapshot {
             mediaRelinkCandidate = nil
             await applyMediaRelink(current)
         } catch {
-            if revision == mediaRelinkRevision { previewError = await app.safeError(error) }
+            if revision == mediaRelinkRevision { previewError = await app.safeError(error, context: .relink) }
         }
     }
     private func applyMediaRelink(_ next: Project) async {
@@ -1536,7 +1537,7 @@ struct EditorRenderSnapshot {
         Task { [weak self] in
             guard let self else { return }
             do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source }
-            catch { previewError = await app.safeError(error) }
+            catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
     func transport(_ key: String, shift: Bool = false) {
@@ -1761,7 +1762,7 @@ struct EditorRenderSnapshot {
         } catch is CancellationError {} catch {
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             preview.close(); isPlaying = false; previewStop = nil
-            let message = await app.safeError(error)
+            let message = await app.safeError(error, context: .preview)
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             previewError = message
         }
@@ -1887,7 +1888,7 @@ extension EditorModel {
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
                 } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
                     guard !Task.isCancelled else { return }
-                    let message = await app.safeError(error, context: "ai:\(provider.label)")
+                    let message = await app.safeError(error, context: .llm, messageContext: "ai:\(provider.label)")
                     guard !Task.isCancelled else { return }
                     // A connector that is not ready fails in the route, before the run revealed the sidebar.
                     if !message.isEmpty { clipError = message; fallbackNote = nil; onNeedsSidebar?() }

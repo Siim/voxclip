@@ -116,7 +116,7 @@ import VoxClipCore
             Task {
                 await model.start()
                 do { try await DebugRewriteGeneration.show(state, app: model) }
-                catch { model.shell.notice = await model.safeError(error) }
+                catch { model.shell.notice = await model.safeError(error, context: .rewrite) }
             }
         }
         // Crash recovery and accent checks from a bundle.sh build (DebugProbes).
@@ -127,7 +127,7 @@ import VoxClipCore
                     let document = VoxClipDocument(project: try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[index + 1])), demo: true)
                     NSDocumentController.shared.addDocument(document)
                     if !(await model.shell.replaceProject(with: document)), !model.shell.holdsForPaidWork(document) { document.close() }
-                } catch { model.shell.notice = await model.safeError(error) }
+                } catch { model.shell.notice = await model.safeError(error, context: .projectOpen) }
             }
         }
         if AppModel.isTestSession {

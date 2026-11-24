@@ -166,7 +166,7 @@ extension AppModel {
                             if provider.id == "codex" { await app.refreshCodexModels(force: true) }
                             else {
                                 do { refreshed = try await app.connector(provider.id).models(refresh: true) }
-                                catch { result = await app.safeError(error) }
+                                catch { result = await app.safeError(error, context: .settings) }
                             }
                         }
                     }.disabled(refreshing || (provider.id == "codex" && app.codexModelsRefreshing))
@@ -261,20 +261,20 @@ extension AppModel {
             HStack {
                 SecureField(saved ? "Saved in the Keychain; paste to replace" : "API key", text: $value).textContentType(.password).accessibilityLabel("\(label) API key")
                 Button("Save key") {
-                    Task { do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true; result = "Saved in the Keychain." } catch { result = await app.safeError(error) } }
+                    Task { do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true; result = "Saved in the Keychain." } catch { result = await app.safeError(error, context: .settings) } }
                 }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button(testing ? "Testing…" : "Test") {
                     testing = true
                     Task {
                         defer { testing = false }
                         if !value.isEmpty {
-                            do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true } catch { result = await app.safeError(error); return }
+                            do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true } catch { result = await app.safeError(error, context: .settings); return }
                         }
                         if provider == "elevenlabs" { result = await testSpeechKey(app: app) }
                         else if let choice = app.providers.first(where: { $0.id == provider }) { result = await testProvider(choice, app: app) }
                     }
                 }.disabled(testing || !saved && value.isEmpty).accessibilityIdentifier("provider.\(provider).test").auditButtonAction("provider.\(provider).test")
-                if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error) } } } }
+                if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error, context: .settings) } } } }
             }
             Text(provider == "elevenlabs" ? "The key stays in the macOS Keychain and is shared with Voice Lab when you turn it on." : "The key stays in the macOS Keychain and is used only for AI features.").font(.caption).foregroundStyle(.secondary)
             Text(provider == "elevenlabs" ? "Sends the audio track to ElevenLabs." : "Sends transcript text only. No audio or video.").font(.caption).foregroundStyle(.secondary)
@@ -348,7 +348,7 @@ extension AppModel {
                 status = "Found codex \(found.version) at \(executable) · \(signIn)"
             } catch {
                 guard !Task.isCancelled, path == cliPath else { return }
-                status = await app.safeError(error, context: "ai-test:\(provider.label)")
+                status = await app.safeError(error, context: .settings, messageContext: "ai-test:\(provider.label)")
             }
             await app.refreshCodexModels(force: true)
             return
@@ -365,7 +365,7 @@ extension AppModel {
             status = "Found \(cli.executable) at \(path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")) · Sign-in status unavailable"
             let connectorStatus = await app.connectorStatus(provider)
             if connectorStatus == .ready { status += " · Ready" }
-        } catch { status = await app.safeError(error) }
+        } catch { status = await app.safeError(error, context: .settings) }
     }
 }
 
@@ -403,7 +403,8 @@ extension AppModel {
     catch {
         guard isCurrent() else { return "" }
         if draft != nil, let failure = error as? LLMError, case .modelNotFound = failure { app.codexDraftModel = nil }
-        return "Failed: " + (await app.safeError(error, context: "ai-test:\(provider.label)"))
+        let message = await app.safeError(error, context: .settings, messageContext: "ai-test:\(provider.label)")
+        return message.isEmpty ? "" : "Failed: " + message
     }
 }
 
@@ -426,9 +427,14 @@ extension AppModel {
         case 429: .rateLimited("elevenlabs")
         default: .providerError("The request could not be completed.", provider: "ElevenLabs", status: status)
         }
-        return UserMessages.message(error)
-    } catch let error as URLError where error.code != .cancelled { return UserMessages.message(VoxClipError.offline)
-    } catch { return "Failed: " + (await app.safeError(error)) }
+        return await app.safeError(error, context: .settings)
+    } catch let error as URLError where error.code != .cancelled {
+        await app.logFailure(error, context: .settings)
+        return UserMessages.message(VoxClipError.offline)
+    } catch {
+        let message = await app.safeError(error, context: .settings)
+        return message.isEmpty ? "" : "Failed: " + message
+    }
 }
 
 @MainActor struct ExportSettings: View {

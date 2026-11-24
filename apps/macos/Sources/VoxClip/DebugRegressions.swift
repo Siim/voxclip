@@ -76,10 +76,10 @@ actor RegressionSettingsStore: SettingsStore {
         for provider in app.providers.filter({ ["claude-code", "codex"].contains($0.id) }) {
             let cli = provider.id == "claude-code" ? "Claude Code" : "Codex"
             let context = "ai:\(provider.label)"
-            let missing = await app.safeError(LLMError.cliMissing, context: context)
-            let signedOut = await app.safeError(LLMError.cliSignedOut, context: context)
-            let limit = await app.safeError(LLMError.planLimit(message: nil), context: context)
-            let failed = await app.safeError(LLMError.cliFailed("fixture"), context: context)
+            let missing = await app.safeError(LLMError.cliMissing, context: .llm, messageContext: context)
+            let signedOut = await app.safeError(LLMError.cliSignedOut, context: .llm, messageContext: context)
+            let limit = await app.safeError(LLMError.planLimit(message: nil), context: .llm, messageContext: context)
+            let failed = await app.safeError(LLMError.cliFailed("fixture"), context: .llm, messageContext: context)
             check("CLI placeholders use the canonical name for \(provider.id)", missing.hasPrefix("\(cli) isn't installed.") && signedOut.hasPrefix("\(cli) isn't signed in.") && limit.hasPrefix("Your \(cli) plan's usage limit is reached.") && failed.hasPrefix("\(cli) stopped with an error:"))
         }
         check("Keychain errors have one reassurance", UserMessages.message(SecretError.status(-50)).components(separatedBy: "Your video and edits are still here.").count == 2)
