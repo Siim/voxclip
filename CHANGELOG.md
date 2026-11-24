@@ -4,7 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- Claude Code and Codex can propose title cards, kinetic captions, logo stings and counters on Mac and Windows. On Mac, VoxClip renders them locally after you choose Keep.
+- On Windows, review agent timeline proposals above the transcript. Keep makes one undoable edit; Undo dismisses the proposal. Music still needs a separate priced click.
+- Claude Code and Codex can propose title cards, kinetic captions, logo stings and counters on Mac and Windows. VoxClip renders them locally after you choose Keep.
 - On Windows, revoicing a whole clip in your selected voice no longer rejects or retries a paid take just because it sounds different. Source voice, word and audio checks still apply.
 - On Mac, import new recordings from a card or folder, find the best moments across the shoot, add footage from another recording, and review local checks after export.
 - On Windows, Claude Code and Codex can read a saved VoxClip project and stage a timeline proposal without changing the project or spending money.

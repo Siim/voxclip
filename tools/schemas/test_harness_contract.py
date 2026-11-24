@@ -127,7 +127,11 @@ class HarnessContract(unittest.TestCase):
                 self.pending.unlink()
                 cli = self.run_cli("propose-timeline", json.dumps(timeline))
                 self.assertEqual(cli.returncode, 0, cli.stderr)
-                self.assertEqual(json.loads(cli.stdout)["proposal"]["timeline"], timeline)
+                cli_staged = json.loads(cli.stdout)
+                proposal_validator().validate(cli_staged["proposal"])
+                self.assertEqual(cli_staged["proposal"]["timeline"], timeline)
+                self.assertEqual(cli_staged["pricedActions"], [])
+                self.assertEqual(json.loads(self.pending.read_text()), cli_staged["proposal"])
                 self.pending.unlink()
                 self.assertEqual(self.project.read_bytes(), self.original)
 

@@ -9,6 +9,28 @@ namespace VoxClip.Core.Tests.Tracks.WinCoreNative;
 
 public sealed class HarnessProposalTests
 {
+    [Theory]
+    [InlineData("titleCard")]
+    [InlineData("kineticCaption")]
+    [InlineData("logoSting")]
+    [InlineData("counter")]
+    public void SharedMotionTemplatesMaterializeAsLocalClipEffects(string name)
+    {
+        using var fixtures = FixtureLoader.ReadJson("fixtures/clip-effects/motion-template-cases.json");
+        var effect = fixtures.RootElement.EnumerateArray().Single(item => item.GetProperty("template").GetProperty("name").GetString() == name);
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip"));
+        var timeline = JsonSerializer.SerializeToElement(new { clipId = "clip-2f1c", reason = "Make a showreel.", effects = new[] { effect } });
+        var proposal = new HarnessProposal(HarnessTimeline.Read(timeline), project);
+
+        var applied = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(proposal.Applying(project, FixtureLoader.SharedRoot)));
+
+        var template = Assert.Single(applied.ClipEffects);
+        Assert.Equal("clip-2f1c", template.GetProperty("clipId").GetString());
+        Assert.True(JsonElement.DeepEquals(effect.GetProperty("template"), template.GetProperty("template")));
+        Assert.Empty(applied.Music);
+        Assert.Empty(project.ClipEffects);
+    }
+
     [Fact]
     public async Task ProposedEditsMaterializeAsAValidProjectWithoutApplyingTheMusicBrief()
     {
