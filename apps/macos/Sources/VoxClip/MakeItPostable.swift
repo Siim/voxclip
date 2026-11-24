@@ -485,7 +485,7 @@ extension EditorModel {
                 for run in runs where run.running { run.phase = .stopped }
                 return
             }
-            let message = await app.safeError(error, context: "ai:make-it")
+            let message = await app.safeError(error, context: .makeIt, messageContext: "ai:make-it")
             for (index, run) in runs.enumerated() where !applied.contains(index) {
                 run.phase = .failed(message.isEmpty ? "Claude couldn't plan these clips. Nothing was changed." : message)
             }
@@ -585,7 +585,7 @@ extension EditorModel {
         catch is CancellationError { run.phase = .stopped; return }
         catch LLMError.cancelled { run.phase = .stopped; return }
         catch {
-            let message = await app.safeError(error, context: "ai:make-it")
+            let message = await app.safeError(error, context: .makeIt, messageContext: "ai:make-it")
             run.phase = .failed(message.isEmpty ? "Claude couldn't plan this clip. Nothing was changed." : message)
             return
         }
@@ -926,7 +926,10 @@ extension EditorModel {
             guard active else { return nil }
             if let kept { return kept }
             do { return try await use(candidate) }
-            catch { freeProblem = "The free track couldn't be added: " + UserMessages.message(error) }
+            catch {
+                freeProblem = "The free track couldn't be added: " + UserMessages.message(error)
+                Task { await app.logFailure(error, context: .makeIt) }
+            }
         }
         guard active else { return nil }
         if let kept { return kept }
@@ -949,7 +952,10 @@ extension EditorModel {
         guard active else { return nil }
         if let kept { return kept }
         do { return try await use(made) }
-        catch { return note("Eleven Music couldn't add the track: " + UserMessages.message(error)) }
+        catch {
+            Task { await app.logFailure(error, context: .makeIt) }
+            return note("Eleven Music couldn't add the track: " + UserMessages.message(error))
+        }
     }
 
     /// Claude mode at the cap: the run waits for Continue (exactly `shortfall`) or Stop. The creator's edits meanwhile are

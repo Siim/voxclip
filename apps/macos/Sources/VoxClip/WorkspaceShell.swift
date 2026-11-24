@@ -255,7 +255,7 @@ enum SidebarItem: Hashable {
             if !next.isDocumentEdited { next.markEdited() }
             return true
         } catch {
-            notice = await app.safeError(error)
+            notice = await app.safeError(error, context: .projectOpen)
             return false
         }
     }
@@ -341,7 +341,7 @@ enum SidebarItem: Hashable {
                 }
                 await opened()
             } catch is CancellationError {
-            } catch { notice = await app.safeError(error) }
+            } catch { notice = await app.safeError(error, context: .importMedia) }
         }
         importTask = task
         await task.value
@@ -369,7 +369,7 @@ enum SidebarItem: Hashable {
             if !holdsForPaidWork(next) { refused() }
             return false
         } catch {
-            notice = await app.safeError(error)
+            notice = await app.safeError(error, context: .projectOpen)
             return false
         }
     }

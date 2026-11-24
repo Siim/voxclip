@@ -99,7 +99,7 @@ extension RewriteSession {
     }
     /// A key the Keychain refused, in the app's words for it: "Couldn't save the key. Keychain access failed (-25293). …".
     func keyProblem(_ error: any Error) async -> String {
-        "Couldn't save the key. " + (await editor.app.safeError(error))
+        "Couldn't save the key. " + (await editor.app.safeError(error, context: .rewrite))
     }
 
     /// The AIs to offer (design.md R0), CLIs first, then this Mac, then API keys: an installed CLI, a local server that
@@ -211,14 +211,12 @@ extension RewriteSession {
 
     func panelError(_ error: any Error) async -> PanelError {
         if let plan = error as? ScopeRewritePlanError, let size = PanelError(plan) { return size }
-        // The rest is a failure the app log keeps by its code: a plan Core refused, a placement, a quote the service
-        // refused, missing resources. Each shows the session's own copy. An AI's error is its connector's to log.
-        if !(error is LLMError) { await editor.app.logFailure(error, context: "ai:\(aiName)") }
+        logFailure(error, stage: "proposal")
         if let plan = error as? ScopeRewritePlanError {
             return .message(plan == .empty ? "\(task.words.subject) has no words left to rewrite. Your edits are saved."
                                             : "\(task.words.subject) can't be rewritten as it stands. Your edits are saved.")
         }
-        guard let error = error as? LLMError else { return .message(await editor.app.log.redact(reported(error, stage: "proposal"))) }
+        guard let error = error as? LLMError else { return .message(await editor.app.log.redact(Self.refusal(error))) }
         switch error {
         case .cancelled: return .message("The rewrite stopped before a reply was received. Try Again. Your edits are saved.")
         case .cliNetworkUnreachable(let detail):

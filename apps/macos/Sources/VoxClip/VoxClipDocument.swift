@@ -316,6 +316,9 @@ extension UTType {
         if saveOperation == .saveAsOperation { nameChange.withLock { $0 = NameChange(previous: fileURL, destination: url) } }
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             guard let self else { completionHandler(error); return }
+            if let error, let app = self.editorModel?.app {
+                Task { await app.logFailure(error, context: .projectSave) }
+            }
             let snapshot = self.pendingWrite.withLock { pending -> WriteSnapshot? in let result = pending; pending = nil; return result }
             if saveOperation == .saveAsOperation { self.nameChange.withLock { $0 = nil } }
             var retitled = false

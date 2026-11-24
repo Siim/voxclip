@@ -972,7 +972,7 @@ import ApplicationServices
             try FileManager.default.copyItem(at: fixture, to: outside)
             do { _ = try DemoEditing.loadFixture(outside); check("demo path is restricted", false) } catch { check("demo path is restricted", true) }
             try FileManager.default.removeItem(at: outside)
-            let unavailable = await app.safeError(VoxClipError.notImplemented("mac-media"))
+            let unavailable = await app.safeError(VoxClipError.notImplemented("mac-media"), context: .preview)
             check("unimplemented service is truthful", unavailable.contains("not available") && unavailable.contains("Your video and edits are still here."))
             results += try await DebugHome.run(app: app, fixture: project, directory: destination)
             results += try await DebugExplorer.run(app: app, fixture: project, directory: destination)

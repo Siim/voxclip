@@ -1501,40 +1501,17 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// "rewrite failure stage=takes type=ClipTakePlan.Failure case=tooManyPhrases" through the app logger.
     func logFailure(_ error: any Error, stage: String) {
-        guard !(error is CancellationError) else { return }
-        let entry = LogEntry(level: .warn, category: "rewrite", message: "rewrite failure stage=\(stage) " + Self.failureKind(error))
+        guard !FailureDiagnostic.isCancellation(error) else { return }
+        let safeStage = switch stage {
+        case "plan", "takes", "generation", "voices", "review", "reask", "proposal", "ownWords", "wordingFit", "use": stage
+        default: "other"
+        }
+        let entry = LogEntry(level: .warn, category: FailureContext.rewrite.rawValue, message: "rewrite failure stage=\(safeStage) " + Self.failureKind(error))
         let log = editor.app.log
         Task { await log.write(entry) }
     }
-    /// An error's type and case, with no associated text: "type=VoiceLabError case=permissionMissing",
-    /// "type=ClipTakePlan.Failure case=placement.geometry.windowTooShort", or an NSError's domain and code.
     nonisolated static func failureKind(_ error: any Error) -> String {
-        // A lip-sync result's named check (its numbers are logged on their own line by the import).
-        if let check = error as? LipsyncResultCheck { return "type=LipsyncResultCheck case=\(check.name.rawValue)" }
-        // The module and any "(unknown context at $…)" of a private type are dropped.
-        let type = String(reflecting: Swift.type(of: error)).split(separator: ".").dropFirst()
-            .filter { $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" } }.joined(separator: ".")
-        let mirror = Mirror(reflecting: error)
-        guard mirror.displayStyle == .enum else {
-            let ns = error as NSError
-            let domain = ns.domain.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" }
-            return "type=\(type.isEmpty ? "unknown" : type) domain=\(domain) code=\(ns.code)"
-        }
-        return "type=\(type) case=\(caseName(error, depth: 0))"
-    }
-    private nonisolated static func caseName(_ value: Any, depth: Int) -> String {
-        let mirror = Mirror(reflecting: value)
-        guard let child = mirror.children.first else {
-            let name = String(describing: value)
-            return name.range(of: #"\A[A-Za-z_][A-Za-z0-9_]*\z"#, options: .regularExpression) != nil ? name : "unnamed"
-        }
-        let label = child.label ?? "unnamed"
-        guard depth < 3 else { return label }
-        // A case's payload is its value, or a tuple when the case has several; the first enum in it names the inner case.
-        let payload = Mirror(reflecting: child.value)
-        let first: Any? = payload.displayStyle == .tuple ? payload.children.first?.value : child.value
-        guard let inner = first, Mirror(reflecting: inner).displayStyle == .enum else { return label }
-        return label + "." + caseName(inner, depth: depth + 1)
+        FailureDiagnostic.describe(error)
     }
 
     nonisolated static func refusal(_ error: any Error) -> String {

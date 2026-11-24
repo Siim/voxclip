@@ -189,7 +189,7 @@ import VoxClipMedia
         do {
             try await app.providerKeyStore.save(flow.keyDraft, for: "elevenlabs")
             flow.keyDraft = ""; flow.keyReady = true; message = nil
-        } catch { message = "Couldn't save the key. " + (await app.safeError(error)) }
+        } catch { message = "Couldn't save the key. " + (await app.safeError(error, context: .settings)) }
     }
     func turnOnVoiceJob() {
         guard flow.keyReady, !busy else { return }
@@ -778,6 +778,7 @@ import VoxClipMedia
         } else { message = "The consent record still could not be saved. Retry saving or Remove This Voice. Do not create it again." }
     }
     func errorMessage(_ error: any Error) async -> String {
+        await app.logFailure(error, context: .voiceLab)
         if let error = error as? VoiceConsentError { return error.localizedDescription }
         if let error = error as? MicrophoneError { return error.localizedDescription }
         if let error = error as? VoiceLabError {
@@ -794,7 +795,7 @@ import VoxClipMedia
             default: return "ElevenLabs could not complete this action. Your videos and edits are still here. No automatic retry was made."
             }
         }
-        return await app.safeError(error)
+        return await app.log.redact(UserMessages.message(error))
     }
 }
 

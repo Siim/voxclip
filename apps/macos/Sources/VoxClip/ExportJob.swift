@@ -196,7 +196,7 @@ import VoxClipCore
                 guard let url = try await Task.detached(priority: .userInitiated, operation: { try ShareText.url(destination, caption: caption, disclosureLine: line) }).value,
                       ShareText.allowsOpening(url) else { return }
                 NSWorkspace.shared.open(url)
-            } catch { model.exportError = await model.app.safeError(error) }
+            } catch { model.exportError = await model.app.safeError(error, context: .share) }
         }
     }
 }
@@ -385,7 +385,10 @@ extension EditorModel {
                         if case .clip(let id) = target, let text = postTexts[id], !text.isEmpty {
                             let note = result.outputURL.deletingPathExtension().appendingPathExtension("txt")
                             do { try Data(text.utf8).write(to: note, options: .atomic) }
-                            catch { exportFileFailures.append("\(note.lastPathComponent): the post text couldn't be saved.") }
+                            catch {
+                                await app.logFailure(error, context: .export)
+                                exportFileFailures.append("\(note.lastPathComponent): the post text couldn't be saved.")
+                            }
                         }
                         recordShareDisclosure(target, disclosure: render.voiceLab?.prepared.disclosure)
                         try app.exportLedger.record(ExportRecord(projectID: shaped.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
@@ -399,7 +402,7 @@ extension EditorModel {
                         if let key = activeExportKey { failedExports[key] = folder }
                         if let failed = attempt { try? app.exportLedger.record(failed) }
                         attempt = nil; activeExportKey = nil
-                        let message = await app.safeError(error, context: "export")
+                        let message = await app.safeError(error, context: .export, messageContext: "export")
                         let name = targetNames[ExportLedger.targetID(target)] ?? "Full Take"
                         exportFileFailures.append("\(name) · \(aspectRatio.rawValue): " + (message.isEmpty ? "couldn't be saved." : message))
                     }
@@ -428,7 +431,7 @@ extension EditorModel {
                     do { try app.exportLedger.record(attempt) }
                     catch { await app.log.write(LogEntry(level: .error, category: "export", message: "Could not save failed export state")) }
                 }
-                exportError = await app.safeError(error, context: "export")
+                exportError = await app.safeError(error, context: .export, messageContext: "export")
                 if let exportError, !exportError.isEmpty { announce(exportError) }
             }
         }

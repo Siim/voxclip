@@ -67,7 +67,7 @@ import VoxClipMedia
                     }
                 }
                 failure = nil
-            } catch is CancellationError { failure = nil } catch VoxClipError.cancelled { failure = nil } catch { failure = await app.safeError(error) }
+            } catch is CancellationError { failure = nil } catch VoxClipError.cancelled { failure = nil } catch { failure = await app.safeError(error, context: .models) }
             guard revision == current else { return }
             task = nil
             state = .needsDownload

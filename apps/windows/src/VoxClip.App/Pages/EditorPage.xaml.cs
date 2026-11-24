@@ -241,7 +241,7 @@ public sealed partial class EditorPage : Page
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
         catch (Exception exception)
         {
-            App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "waveform", UiError.Message(exception, "Waveform"));
+            UiError.WriteFailure(exception, "Waveform");
         }
         finally
         {
@@ -332,7 +332,7 @@ public sealed partial class EditorPage : Page
         LocateMedia.Visibility = Visibility.Visible;
         captions?.MediaUnavailable();
         ViewModel.Notice = EditorMediaPresentation.Notice(mediaState, EditorMediaPresentation.FileName(ViewModel.Project.Media.Source.AbsolutePath));
-        App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "preview", UiError.Message(exception, "Preview"));
+        UiError.WriteFailure(exception, "Preview");
         SizeStage();
         pendingStandIn = RenderUnavailableCaptionsAsync();
         UpdateExport();
@@ -392,7 +392,7 @@ public sealed partial class EditorPage : Page
             image.Invalidate(); PreviewImage.Source = image;
         }
         catch (OperationCanceledException) { }
-        catch (Exception exception) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "preview-card", UiError.Message(exception, "Preview")); }
+        catch (Exception exception) { UiError.WriteFailure(exception, "Preview card"); }
     }
     private void ModelChanged(object? sender, EventArgs args)
     {
