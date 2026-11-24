@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- If word alignment fails after ElevenLabs returns a transcript, VoxClip keeps the words and offers a free Retry without uploading the audio again.
+
 - On Mac, whole-clip revoice uses the selected authorized voice without rechecking the generated speaker or charging for speaker retries. Matching saved takes previously rejected only by that check can be reused after words and audio quality are checked.
 
 - On Mac, reopening a whole-clip Rewrite after a crash lets you play its saved voice before retrying. If fal.ai already accepted the lip sync and its result is still recoverable, Try Again charges only for the voice checks and cannot submit another lip sync.

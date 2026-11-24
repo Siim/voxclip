@@ -284,6 +284,37 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         await model.workTask?.value
         #expect(sends == 1 && model.project.transcript == result)
     }
+    @Test func failedAlignmentOffersAFreeRetryEvenWithoutAKey() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = try editor(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": directory.path]))
+        defer { model.close(); try? FileManager.default.removeItem(at: directory) }
+        let flow = model.transcription
+        model.app.set("transcription.engineMode", .string("elevenlabs"))
+        await flow.open(); flow.hasKey = true
+        let cost = try #require(flow.estimate)
+        let result = try transcript()
+        var sends = 0
+        flow.requestRunOverride = { request in
+            sends += 1
+            request.evidence.recordUploadStarted()
+            request.evidence.recordAlignmentReady(TranscriptionAlignmentRetry(providerRequestID: "test-transcription", align: { result }))
+            throw VoxClipError.transcriptionFailed("Synthetic alignment failure")
+        }
+
+        flow.activate(); await model.workTask?.value
+        flow.hasKey = false
+        #expect(flow.primaryTitle == "Retry")
+        #expect(flow.canStart)
+        #expect(flow.sendLine.contains("ElevenLabs' words are saved"))
+        #expect(model.project.transcript == nil)
+        #expect(flow.spendToday == cost)
+        #expect(!flow.spendUncertain)
+
+        flow.activate(); await model.workTask?.value
+        #expect(sends == 1)
+        #expect(flow.spendToday == cost)
+        #expect(model.project.transcript == result)
+    }
     @Test(arguments: [false, true])
     func cancellationExplainsWhatCanBeBilled(uploaded: Bool) async throws {
         let model = try editor(); defer { model.close() }

@@ -5,6 +5,36 @@ import Testing
 
 @Suite("Speech orchestration", .serialized, .timeLimit(.minutes(1)), .offlineFixtures)
 struct TranscriptionServiceTests {
+    @Test func paidWordsSurviveAlignmentFailureAndRetryWithoutUpload() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let activity = SpeechJobActivity()
+        let engine = CountingSpeechEngine(engine: .elevenlabs, activity: activity, delay: .zero)
+        let attempts = Mutex(0)
+        let service = TranscriptionService(locations: SpeechTestFiles.locations(root), gate: SpeechJobGate(), align: { raw, audio, envelope, key in
+            if attempts.withLock({ count in count += 1; return count }) == 1 {
+                throw VoxClipError.transcriptionFailed("Synthetic alignment failure")
+            }
+            return try TranscriptionService.align(raw, audio: audio, envelope: envelope, rawKey: key)
+        })
+        let request = try SpeechTestFiles.request(root)
+        let evidence = TranscriptionEvidence()
+        await #expect(throws: VoxClipError.transcriptionFailed("Synthetic alignment failure")) {
+            try await service.transcribeResult(request, using: engine, envelope: nil, evidence: evidence)
+        }
+
+        let retry = try #require(evidence.snapshot.alignmentRetry)
+        let transcript = try await retry.finish()
+        #expect(transcript.words.filter { $0.kind == .word }.map(\.text) == ["hello"])
+        #expect(await activity.started == [0])
+
+        let reopened = TranscriptionService(locations: SpeechTestFiles.locations(root), gate: SpeechJobGate())
+        let cached = try await reopened.transcribeResult(request, using: engine, envelope: nil, evidence: evidence)
+        #expect(cached.fromCache)
+        #expect(evidence.snapshot.alignmentRetry?.providerRequestID == "test-transcription")
+        #expect(cached.transcript.words.filter { $0.kind == .word }.map(\.text) == ["hello"])
+        #expect(await activity.started == [0])
+    }
+
     /// Seven services share one queue: one local and two cloud jobs run together, the others wait,
     /// and each finished job hands its slot to the oldest waiter of its kind; transcription §13.4.
     /// Jobs stay in their engines until the test lets them go, so no step races a clock, and a
@@ -291,7 +321,7 @@ private struct CountingSpeechEngine: Transcriber {
             for index in 0..<1000 { progress(TranscriptionProgress(stage: .transcribing, fraction: Double(index) / 1000)) }
             if let afterProgress { await afterProgress() } else { try await Task.sleep(for: delay) }
             await activity.end(engine, job: job)
-            return RawTranscript(engine: EngineRef(id: engine, modelId: engine == .elevenlabs ? "scribe_v3" : nil, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native)
+            return RawTranscript(engine: EngineRef(id: engine, modelId: engine == .elevenlabs ? "scribe_v3" : nil, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native, providerRequestID: engine == .elevenlabs ? "test-transcription" : nil)
         } catch { await activity.end(engine, job: job); throw error }
     }
 }

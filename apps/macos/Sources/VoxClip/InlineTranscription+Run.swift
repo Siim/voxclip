@@ -8,14 +8,16 @@ extension InlineTranscription {
         let project: Project
         let plan: TranscriptionPlan
         let cost: Double?
+        let alignmentRetry: TranscriptionAlignmentRetry?
         let approvedAt = Date()
         let evidence = TranscriptionEvidence()
         var cancelled = false
         var watch: Task<Void, Never>?
         var spendRecorded = false
 
-        init(revision: Int, project: Project, plan: TranscriptionPlan, cost: Double?) {
+        init(revision: Int, project: Project, plan: TranscriptionPlan, cost: Double?, alignmentRetry: TranscriptionAlignmentRetry? = nil) {
             self.revision = revision; self.project = project; self.plan = plan; self.cost = cost
+            self.alignmentRetry = alignmentRetry
         }
     }
 
@@ -43,15 +45,21 @@ extension InlineTranscription {
         var succeeded = false
         do {
             try validate(request)
-            model.progress = "Reading video…"; model.progressStage = .readingVideo
             let result: TranscriptionResult
-            #if DEBUG
-            if let requestRunOverride { result = try await requestRunOverride(request) }
-            else if let runOverride { result = TranscriptionResult(transcript: try await runOverride(request.plan)) }
-            else { result = try await transcribe(request) }
-            #else
-            result = try await transcribe(request)
-            #endif
+            if let retry = request.alignmentRetry {
+                model.progress = "Aligning words…"; model.progressStage = .aligning
+                model.announce("Aligning words…")
+                result = TranscriptionResult(transcript: try await retry.finish(), fromCache: true)
+            } else {
+                model.progress = "Reading video…"; model.progressStage = .readingVideo
+                #if DEBUG
+                if let requestRunOverride { result = try await requestRunOverride(request) }
+                else if let runOverride { result = TranscriptionResult(transcript: try await runOverride(request.plan)) }
+                else { result = try await transcribe(request) }
+                #else
+                result = try await transcribe(request)
+                #endif
+            }
             if result.fromCache { request.evidence.recordCacheHit() }
             try validate(request)
             let transcript = result.transcript
@@ -66,7 +74,7 @@ extension InlineTranscription {
             }
             completedAt = Date()
             completion = "Transcribed \(request.cost == nil ? "on this Mac" : "with ElevenLabs") · \(transcript.words.count) words"
-            if result.fromCache && request.cost != nil { completion = "Using the earlier ElevenLabs transcript of this file (no charge)." }
+            if result.fromCache && request.plan.engine == .elevenlabs { completion = "Using the earlier ElevenLabs transcript of this file (no charge)." }
             model.announce(completion ?? "Transcribed")
             succeeded = true
         } catch is CancellationError {
@@ -85,9 +93,13 @@ extension InlineTranscription {
                 if isCurrent(request), request.cancelled || Task.isCancelled {
                     cancelledNote = cancellationNote(request)
                 } else if isCurrent(request) {
-                    self.error = message
+                    if let retry = request.alignmentRetry ?? request.evidence.snapshot.alignmentRetry,
+                       request.project == model.project, mediaReady {
+                        pendingAlignment = (request.project, retry)
+                        self.error = "Couldn't finish aligning the words. ElevenLabs' words are saved. Your media and edits are safe."
+                    } else { self.error = message }
                     if let failure = error as? VoxClipError, (failure.code == .keyRejected || failure.code == .keyPermissionMissing) { hasKey = false }
-                    model.announce(message)
+                    model.announce(self.error ?? message)
                 }
             }
         }
@@ -95,15 +107,18 @@ extension InlineTranscription {
         let evidence = request.evidence.snapshot
         if let cost = request.cost, !evidence.fromCache, evidence.uploadStarted, !request.spendRecorded {
             request.spendRecorded = true
-            let total = await model.app.transcriptionSpend.record(cost, uncertain: !succeeded, at: request.approvedAt)
+            let total = await model.app.transcriptionSpend.record(cost, uncertain: !succeeded && evidence.alignmentRetry == nil, at: request.approvedAt)
             if isCurrent(request) { spendToday = total.amount; spendUncertain = total.uncertain }
         }
         guard isCurrent(request) else { return }
         pendingCost = nil; model.progress = nil; model.progressFraction = nil; model.progressStage = nil
-        phase = succeeded ? .hidden : cancelledNote != nil ? (again ? .hidden : .folded) : .choosing
+        if succeeded { pendingAlignment = nil; phase = .hidden }
+        else if cancelledNote != nil && request.alignmentRetry == nil { phase = again ? .hidden : .folded }
+        else { phase = .choosing }
         keyGuard.reset(); activeRun = nil
     }
     func cancellationNote(_ request: ApprovedRun) -> String {
+        if request.alignmentRetry != nil { return "Cancelled. Your saved words, media and edits are safe." }
         let evidence = request.evidence.snapshot
         if let cost = request.cost, evidence.uploadStarted, !evidence.fromCache {
             return "Cancelled. ElevenLabs may still bill audio it already received. Up to \(Self.money(cost)) for this request. Your video is still here."
