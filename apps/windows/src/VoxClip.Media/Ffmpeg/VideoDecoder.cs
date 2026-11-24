@@ -31,9 +31,9 @@ internal sealed unsafe class VideoDecoder : IDisposable
     /// <summary>The stream's display rotation (0, 90, 180 or 270), as the probe reads it.</summary>
     internal int RotationDegrees => VoxClip.Media.Pipeline.FfmpegMediaProbe.Rotation(decoder.Stream->codecpar);
 
-    internal VideoDecoder(string path, bool hardware = true)
+    internal VideoDecoder(string path, bool hardware = true, bool localQuickTime = false)
     {
-        decoder = new(path, AVMediaType.AVMEDIA_TYPE_VIDEO, hardware);
+        decoder = new(path, AVMediaType.AVMEDIA_TYPE_VIDEO, hardware, localQuickTime);
         try
         {
             Width = decoder.Codec->width; Height = decoder.Codec->height;
