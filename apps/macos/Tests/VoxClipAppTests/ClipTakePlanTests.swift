@@ -4371,10 +4371,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     /// says so with Undo, and the footer's Apply completes the Rewrite with the text fix.
     @Test func afterThreeRoundsThePhraseKeepsItsOriginalWordsAndApplyCompletes() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let (editor, session) = try await productionSession(fixture, rewriteConnector: MeasuredFitConnector()); defer { editor.close() }
+        let connector = ScriptedFitConnector(["Corrected Hi", "corrected, HI", "Corrected A"])
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
         let plan = try #require(session.takePlan)
-        ClipTakeHTTP.state.withLock { $0.failQA = true }
+        ClipTakeHTTP.state.withLock { $0.duration += 5; $0.echoQA = true }
         try approvePrice(session)
+        session.autoFix.allowance = 100
         await settle(session)
         #expect(session.autoFix.rounds[0] == RewriteAutoFixState.maximumRounds && session.autoFix.gaveUp == [0])
         #expect(plan.phrases[0].leftOut && plan.phrases[0].selectedID == nil && !plan.isRetired && session.takePlan === plan)
@@ -4531,8 +4533,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         barrier.resume()
         await settle(session)
         #expect(session.autoFix.stopped && session.takePlan === plan && !plan.phrases[0].takes.isEmpty)
-        #expect(session.task.nextSteps.contains { $0.id == "take.0" && $0.chips.contains { $0.action.id == "tryAnother.0" } })
-        #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
+        let steps = try #require(session.task.nextSteps.first { $0.id == "take.0" })
+        #expect(steps.chips.map(\.id) == ["editFailedWords.0", "keepOriginal.0"])
+        #expect(!steps.chips.contains { $0.action.priced })
     }
 
     // MARK: Expressions on a takes-panel phrase (design.md R2 "Expressions")

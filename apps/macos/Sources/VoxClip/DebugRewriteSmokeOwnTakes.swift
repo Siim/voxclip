@@ -101,6 +101,11 @@ extension DebugRewriteSmoke {
             if session.task.confirm != nil { try await harness.click(["approveTakeQuote"]) }
             try await harness.finish()
         },
+        Definition(id: "S-phrase-same-failure", title: "two failed word checks stop a phrase with an inline way to edit its words",
+                   requiresCompletion: false, fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))],
+                                                               voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            try await harness.stopPhraseAfterTwoWordFailures()
+        },
         Definition(id: "S-own-mic", title: "Say it myself: the user records the phrase, it is checked on this Mac, Use", voiced: 1,
             fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.start()
@@ -142,6 +147,37 @@ extension DebugRewriteSmoke {
         try await harness.act("click [\(anyway ? "Use anyway" : "Use your take")] on phrase 1", clicked: "microphone.use") {
             session.mutateLipsync(phrase: 0) { _ = plan.select(take: take.id, phrase: 0) }
         }
+    }
+}
+
+extension DebugRewriteSmoke.Harness {
+    func stopPhraseAfterTwoWordFailures() async throws {
+        try await start()
+        try await getPrice()
+        guard let session, let plan = session.takePlan, let phrase = plan.phrases.first else {
+            throw DebugRewriteSmoke.Failure.setup("a priced phrase is needed")
+        }
+        RewriteSmokeHTTP.script.withLock { voice in
+            voice.misheardScript = phrase.text
+            if !voice.exactFit { voice.seconds = voice.fitting.mapValues { $0 * 0.99 } }
+        }
+        try await click(["takeQuote-"])
+        if session.task.confirm != nil { try await click(["approveTakeQuote"]) }
+        let scripts = RewriteSmokeHTTP.script.withLock { $0.synthesisScripts }
+        let steps = session.stuckSteps().first { $0.id == "take.\(phrase.id)" }
+        let actions = steps?.chips.map(\.action) ?? []
+        let edit = actions.first { $0.title == "Edit the Words" }
+        let line = steps?.line ?? ""
+        makeItAppend([.init(invariant: "PW1", passed: scripts.count == 2 && Set(scripts).count == 1
+            && edit?.priced == false && !actions.contains(where: \.priced) && session.task.footer.primary?.priced == false
+            && line.contains("twice"),
+            detail: "\(scripts.count) takes · \(line) · [\(actions.map(\.title).joined(separator: "] ["))]")])
+        try await click(["editFailedWords."])
+        await session.priceOwnWords(phrase: phrase.id)
+        let count = RewriteSmokeHTTP.script.withLock { $0.syntheses }
+        makeItAppend([.init(invariant: "PW2", passed: session.ownWordsEditing == phrase.id && count == scripts.count
+            && session.ownWordsTakeAction(phrase: phrase.id) == nil && plan.phrases[phrase.id].takes.count == 2,
+            detail: "Edit the Words keeps both takes without offering another take of the same words")])
     }
 }
 #endif

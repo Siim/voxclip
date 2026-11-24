@@ -199,7 +199,7 @@ extension RewriteSession {
         }
     }
     func priceAnotherTake(phrase: Int) {
-        guard voiceSpendCurrent, let plan = takePlan, !takesBusy else { return }
+        guard voiceSpendCurrent, let plan = takePlan, !takesBusy, !plan.stoppedForRepeatedWords(phrase: phrase) else { return }
         focusedTakePhrase = phrase; takeQuotePhrase = phrase
         takesTask = Task { [weak self, weak plan] in
             guard let self, let plan, voiceSpendCurrent, takePlan === plan else { return }
@@ -212,6 +212,9 @@ extension RewriteSession {
         if autoFix.running, let line = autoFix.lines[phrase.id] { return line }
         if phrase.leftOut { return "Keeps your original words. Its takes stay listed." }
         if let blocked = blockedStatus(phrase, plan: plan) { return blocked }
+        if plan.stoppedForRepeatedWords(phrase: phrase.id), phrase.selected?.row.selectable != true {
+            return ClipTakePlan.repeatedWordCheckCopy
+        }
         if let reason = stuckReason(phrase, plan: plan) {
             if case .length(_, _, _, _, _, true) = reason { return phrase.takeDetail }
             return Self.stuckSentence(reason, phrase: phrase.id + 1)
@@ -531,7 +534,8 @@ extension ClipTakePlan.Phrase {
                     }
                 }
             }
-            if phrase.wording == .suggested, phrase.blocked == nil, !session.takesBusy, session.autoFix.choicesShown,
+            if phrase.wording == .suggested, phrase.blocked == nil, !plan.stoppedForRepeatedWords(phrase: phrase.id),
+               !session.takesBusy, session.autoFix.choicesShown,
                plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
                 if let action = session.pricedTakeAction(phrase: phrase.id) {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
