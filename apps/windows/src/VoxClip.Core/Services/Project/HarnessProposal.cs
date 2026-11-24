@@ -9,6 +9,7 @@ using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Services.VoiceLab;
 
@@ -270,7 +271,11 @@ public sealed class HarnessProposal
         var rate = source.Audio?.SampleRate ?? 48_000;
         var edit = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, rate, state.PauseKeepSeconds);
         var speed = ClipControlsProject.Controls(timeline.ClipId, candidate)?.Speed ?? 1;
-        return MusicPricing.Label(MusicPricing.Estimate(MusicPricing.LengthSeconds(edit.Duration / speed), VoiceLabPrices.Load(sharedRoot)));
+        RenderTimeline rendered = new RenderTimeline.Legacy(edit);
+        if (candidate.SchemaVersion >= 3 && VoiceLabOutputPlanner.Build(candidate, VoiceLabOutputScope.Clip(timeline.ClipId)) is
+            { RequiresSyntheticRendering: true } reviewed) rendered = new RenderTimeline.VoiceLab(reviewed);
+        var timing = ClipSpeedTiming.ForEffects(speed, rendered.MapTime, ClipEffects.Rendered(candidate, timeline.ClipId));
+        return MusicPricing.Label(MusicPricing.Estimate(MusicPricing.LengthSeconds(timing.Rendered(rendered.Duration)), VoiceLabPrices.Load(sharedRoot)));
     }
 
     private static string Revision(Domain.Shared.Project snapshot, HarnessTimeline timeline)

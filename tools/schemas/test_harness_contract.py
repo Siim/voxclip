@@ -172,13 +172,15 @@ class HarnessContract(unittest.TestCase):
         original = self.project.read_bytes()
         entries = [
             {"kind": "bRoll", "footage": {"sourceKey": companion["contentKey"], "start": 1}},
+            {"kind": "screenshot", "startWord": 11, "endWord": 11, "footage": {"sourceKey": companion["contentKey"], "start": 2}},
+            {"kind": "videoStack", "startWord": 14, "endWord": 14, "footage": {"sourceKey": companion["contentKey"], "start": 3}},
             {"kind": "illustration", "prompt": "A cutaway of a lighthouse"},
             {"kind": "soundEffect", "query": "wind"},
             {"kind": "colourLook", "look": "warm"},
-            {"kind": "speedForPart", "rate": 1.5},
+            {"kind": "speedForPart", "endWord": 16, "rate": 0.5},
         ]
-        timeline = {"clipId": "clip-2f1c", "reason": "Show the scene.", "effects": [
-            dict(entry, startWord=9, endWord=9, reason="Show the scene.") for entry in entries]}
+        timeline = {"clipId": "clip-2f1c", "reason": "Show the scene.", "generateMusic": "A restrained piano bed", "effects": [
+            {"startWord": 9, "endWord": 9, "reason": "Show the scene.", **entry} for entry in entries]}
         listing, clips, reply = self.replay({"method": "tools/list"}, self.call("read_clips"), self.call("propose_timeline", **timeline))
         schema = next(tool["inputSchema"] for tool in listing["tools"] if tool["name"] == "propose_timeline")
         jsonschema.validate(timeline, schema)
@@ -191,8 +193,9 @@ class HarnessContract(unittest.TestCase):
                 result = json.loads(cli.stdout)
             proposal_validator().validate(result["proposal"])
             self.assertEqual(result["proposal"]["timeline"], timeline)
-            self.assertEqual([action["kind"] for action in result["pricedActions"]], ["generateIllustration"])
-            self.assertTrue(result["pricedActions"][0]["price"].startswith("$"))
+            self.assertEqual([action["kind"] for action in result["pricedActions"]], ["generateMusic", "generateIllustration"])
+            self.assertEqual(result["pricedActions"][0]["price"], "$0.02")
+            self.assertTrue(result["pricedActions"][1]["price"].startswith("$"))
             self.assertEqual(result["freeActions"][0]["kind"], "findSound")
             self.assertEqual(self.project.read_bytes(), original)
 

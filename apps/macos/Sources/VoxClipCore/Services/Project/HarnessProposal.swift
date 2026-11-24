@@ -149,14 +149,12 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
     }
 
     public func estimatedMusicPrice(in project: Project, shared: SharedResources) throws -> String? {
-        guard timeline.generateMusic != nil, let transcript = project.transcript,
-              let clip = project.edits.clips.first(where: { $0.id == timeline.clipId }) else { return nil }
-        let state = try EditState(transcript: transcript, edits: project.edits)
-        let segments = try buildSegments(state, activeClip: clip)
-        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
-        let edit = try buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: rate, pauseKeepSeconds: state.pauseKeepSeconds)
-        let speed = ClipControlsProject.controls(for: clip.id, in: project)?.speed ?? 1
-        let seconds = MusicPricing.lengthSeconds(forClip: Double(edit.outputSamples) / rate / speed)
+        guard timeline.generateMusic != nil, project.transcript != nil else { return nil }
+        let clipID = timeline.clipId
+        let edit = try RenderCallerInputs.timeline(project: project, clipID: clipID)
+        let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
+        let timing = ClipSpeedTiming(speed: speed, timeline: edit, effects: ClipEffects.rendered(in: project, clipID: clipID))
+        let seconds = MusicPricing.lengthSeconds(forClip: timing.rendered(edit.duration))
         let price = try MusicPricing.estimate(seconds: seconds, catalog: VoiceLabPriceCatalog.load(shared: shared))
         return MusicPricing.label(price)
     }
