@@ -479,7 +479,7 @@ public sealed class RewritePanelTests
         Assert.Equal("Close Rewrite and discard 2 paid takes?", RewriteSession.CloseQuestion(2));
         var page = AppSource("Pages", "EditorPage.xaml.cs");
         var opening = page[page.IndexOf("private async Task OpenRewriteAsync", StringComparison.Ordinal)..page.IndexOf("private bool AskBeforeReplacingRewrite", StringComparison.Ordinal)];
-        var ask = opening.IndexOf("if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction))) return;", StringComparison.Ordinal);
+        var ask = opening.IndexOf("if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction, wholeClipIntent))) return;", StringComparison.Ordinal);
         Assert.True(ask > 0 && ask < opening.IndexOf("RetireRewrite();", StringComparison.Ordinal), "the open Rewrite asks before anything is retired");
         var guard = page[page.IndexOf("private bool AskBeforeReplacingRewrite", StringComparison.Ordinal)..page.IndexOf("private void ShowRewriteSession", StringComparison.Ordinal)];
         Assert.Contains("rewrite is not { IsOpen: true, HoldsPaidWork: true } open", guard);
