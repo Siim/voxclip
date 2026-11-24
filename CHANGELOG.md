@@ -4,7 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- In ✦ Claude does it all, Mac can start finding clips with Apple Speech while Whisper or an approved Scribe run checks the words. The clip style card shows the transcription choice on Mac and Windows.
+- In ✦ Claude does it all, Mac can start finding clips with Apple Speech while Whisper or an approved Scribe run checks the words. The clip style card shows the transcription choice on Mac and Windows, and later clips arrive without interrupting your review.
 - On Mac, Rewrite stops retrying after the same words fail verification twice with the same voice. It keeps verified takes and offers free ways to move on instead of a third paid attempt.
 - On Mac and Windows, diagnostics identify which action failed and what kind of error occurred, without recording error messages or personal data.
 - ✦ Claude does it all stops when Find Clips needs your help, including when the selected model isn't available. It retries temporary connection problems up to three times, then shows what to do next.
