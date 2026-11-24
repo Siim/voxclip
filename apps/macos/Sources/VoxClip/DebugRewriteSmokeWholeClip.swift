@@ -536,9 +536,10 @@ extension DebugRewriteSmoke.Harness {
         let reads = speechRequests
         let offer = again.wholeClipPrimary()
         let quoted = card.quote
-        let checkOnly = quoted?.voiceUSD == 0 && quoted?.wordChecksUSD == whole.quote?.wordChecksUSD
+        let expectedChecks = first.prices.flatMap(RewriteSession.wordCheckUSD).map { $0 * Decimal(plan.phrases.count) }
+        let checkOnly = quoted?.voiceUSD == 0 && expectedChecks != nil && quoted?.wordChecksUSD == expectedChecks
         makeItAppend([wholeClipCheck("WA1", checkOnly && offer?.priced == true && quoted?.wholeUSD != whole.quote?.wholeUSD,
-            "new card \(offer?.title ?? "none") · voice \(String(describing: quoted?.voiceUSD)) · checks \(String(describing: quoted?.wordChecksUSD))")])
+            "new card \(offer?.title ?? "none") · voice \(String(describing: quoted?.voiceUSD)) · checks \(String(describing: quoted?.wordChecksUSD)) (expected \(String(describing: expectedChecks)))")])
         try await runWholeClip(again, card, title: offer?.title ?? "Revoice Whole Clip")
         makeItAppend([wholeClipCheck("WA2", card.phase == .review && speechRequests == reads,
             "\(phaseText(card)) · new speech requests \(speechRequests - reads)")])
