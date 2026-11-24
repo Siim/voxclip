@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, revoicing a whole clip in your selected voice no longer rejects or retries a paid take just because it sounds different. Source voice, word and audio checks still apply.
 - On Mac and Windows, changed phrases use your selected voice without rejecting paid takes on a second voice comparison. Word and audio checks still run.
 - Mac adds VoxConvo account and export controls for direct posting, disabled until VoxConvo's device sign-in is ready.
 - On Mac, ask Claude for a suggested order, posting times, and drafts with hashtags for X, LinkedIn, and VoxConvo after exporting clips.

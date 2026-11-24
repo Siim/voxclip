@@ -82,14 +82,15 @@ public sealed class WholeClipRevoiceWireTests
         var cases = Cases();
         var clipId = cases["clipId"]!.GetValue<string>();
         var valid = cases["valid"]!.AsArray();
-        Assert.Equal(14, valid.Count);
+        Assert.Equal(15, valid.Count);
         foreach (var item in valid)
         {
             var id = item!["id"]!.GetValue<string>();
             var input = Applied(item);
             var project = ProjectSerialization.Deserialize(input.ToJsonString());
             var encoded = ProjectSerialization.Serialize(project);
-            Assert.Equal(encoded, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(encoded)));
+            var reopened = ProjectSerialization.Deserialize(encoded);
+            Assert.Equal(encoded, ProjectSerialization.Serialize(reopened));
             var saved = JsonNode.Parse(encoded)!.AsObject()["voiceLab"]!.AsObject();
             var records = input["voiceLab"]!["wholeClipRevoices"];
             if (records is null) Assert.False(saved.ContainsKey("wholeClipRevoices"), id);
@@ -102,7 +103,22 @@ public sealed class WholeClipRevoiceWireTests
             }
             Assert.True(item["revoiced"]!.GetValue<bool>() == WholeClipRevoice.IsRevoiced(clipId, project), id);
             Assert.False(WholeClipRevoice.IsRevoiced("clip-other", project), id);
-            var disclosure = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight).Disclosure;
+            var prepared = VoiceLabRenderContract.Prepare(reopened, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+            if (item["outputSpeakerCheckSkipped"]?.GetValue<bool>() is { } skipped)
+            {
+                Assert.Equal(2, prepared.SelectedSegmentRecipes.Count);
+                Assert.All(prepared.SelectedSegmentRecipes, selected =>
+                {
+                    var qa = selected.Recipe.Qa;
+                    Assert.Equal(skipped, qa.OutputSpeakerCheckSkipped);
+                    Assert.Null(qa.SpeakerScore);
+                    Assert.Null(qa.SpeakerThreshold);
+                    Assert.Null(qa.SpeakerModel);
+                    Assert.Null(qa.SpeakerPassed);
+                    Assert.Null(qa.ShortSpeech);
+                });
+            }
+            var disclosure = prepared.Disclosure;
             Assert.True(disclosure.Required, id);
             Assert.Equal(item["kinds"]!.AsArray().Select(kind => kind!.GetValue<string>()), disclosure.Kinds);
             Assert.Equal(item["postText"]!.GetValue<string>(), disclosure.PostText);

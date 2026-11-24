@@ -1275,6 +1275,25 @@ public sealed partial class VoiceLabTakeRunTests
     }
 
     [Fact]
+    public async Task SelectedVoiceTakeForAnEditedClipDoesNotBuyASpeakerRetry()
+    {
+        await using var fixture = new Fixture(input => input with
+        {
+            EditedLayout = new([], 0.5),
+            ChecksGeneratedSpeaker = false,
+        }) { SpeakerFailure = true };
+        var quote = await fixture.Prepare();
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        var row = Assert.IsType<VoiceLabTakeRow>(result.BestAutomatic);
+        Assert.True(row.Qa!.OutputSpeakerCheckSkipped);
+        Assert.Null(row.Qa.SpeakerScore);
+        Assert.NotEmpty(fixture.Speech);
+        Assert.Empty(fixture.Embedded);
+        Assert.Single(fixture.Remote.Seeds);
+        Assert.Equal(1, fixture.Remote.Qa);
+    }
+
+    [Fact]
     public async Task ApprovedRemainderSurvivesExpiryButChangedInputsStopAndDiscardIt()
     {
         await using var fixture = new Fixture();

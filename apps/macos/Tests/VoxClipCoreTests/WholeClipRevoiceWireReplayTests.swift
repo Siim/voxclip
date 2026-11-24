@@ -17,6 +17,7 @@ import Testing
         let revoiced: Bool?
         let kinds: [String]?
         let postText: String?
+        let outputSpeakerCheckSkipped: Bool?
     }
     private struct Cases: Decodable {
         let format: String
@@ -62,7 +63,7 @@ import Testing
 
     @Test func validCorpusOpensRendersItsDisclosureAndSavesUnchanged() throws {
         let file = try cases()
-        #expect(file.valid.count == 14)
+        #expect(file.valid.count == 15)
         for item in file.valid {
             let project = try JSONProjectStore.decode(data(item, project: file.project))
             try VoiceLabProject.validate(project)
@@ -70,7 +71,18 @@ import Testing
             #expect(try JSONProjectStore.encode(JSONProjectStore.decode(encoded)) == encoded, "\(item.id)")
             let revoiced: Bool = WholeClipRevoice.isRevoiced(clipId: file.clipId, in: project)
             #expect(revoiced == item.revoiced, "\(item.id)")
-            let disclosure = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight).disclosure
+            let reopened = try JSONProjectStore.decode(encoded)
+            let prepared = try VoiceLabRenderContract.prepare(reopened, scope: .full, labelPosition: .topRight)
+            if let skipped = item.outputSpeakerCheckSkipped {
+                #expect(prepared.selectedSegmentRecipes.count == 2)
+                for selected in prepared.selectedSegmentRecipes {
+                    let qa = selected.recipe.qa
+                    #expect(qa.outputSpeakerCheckSkipped == skipped)
+                    #expect(qa.speakerScore == nil && qa.speakerThreshold == nil && qa.speakerModel == nil && qa.speakerPassed == nil)
+                    #expect(qa.shortSpeech == nil)
+                }
+            }
+            let disclosure = prepared.disclosure
             #expect(disclosure.required, "\(item.id)")
             #expect(disclosure.kinds == item.kinds, "\(item.id)")
             #expect(disclosure.postText == item.postText, "\(item.id)")
