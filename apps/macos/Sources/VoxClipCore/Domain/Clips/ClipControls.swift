@@ -394,7 +394,12 @@ public struct ClipSpeedTiming: Sendable, Equatable {
     public var isIdentity: Bool { speed == 1 && spans.isEmpty }
 
     public func segments(through duration: Double) -> [Span] {
-        let boundaries = Set([0, duration] + spans.flatMap { [max(0, min(duration, $0.start)), max(0, min(duration, $0.end))] }).sorted()
+        let spanBoundaries: [Double] = spans.flatMap { span in
+            let start: Double = max(0, min(duration, span.start))
+            let end: Double = max(0, min(duration, span.end))
+            return [start, end]
+        }
+        let boundaries: [Double] = Set([0, duration] + spanBoundaries).sorted()
         return zip(boundaries, boundaries.dropFirst()).map { start, end in
             Span(start: start, end: end, rate: spans.first(where: { $0.start <= start && $0.end >= end })?.rate ?? speed)
         }
@@ -403,7 +408,9 @@ public struct ClipSpeedTiming: Sendable, Equatable {
     /// Rendered seconds for an edited time.
     public func rendered(_ edited: Double) -> Double {
         spans.reduce(edited / speed) { value, span in
-            value + max(0, min(span.end, edited) - span.start) * (1 / span.rate - 1 / speed)
+            let length: Double = max(0, min(span.end, edited) - span.start)
+            let rateDifference: Double = 1 / span.rate - 1 / speed
+            return value + length * rateDifference
         }
     }
     /// Edited seconds for a rendered time.

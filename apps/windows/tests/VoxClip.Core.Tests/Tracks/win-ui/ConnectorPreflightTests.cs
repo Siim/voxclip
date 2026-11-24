@@ -188,7 +188,8 @@ public sealed class ConnectorPreflightTests
         var rewrite = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.xaml.cs"));
         var panel = File.ReadAllText(Path.Combine(root, "Controls/RewritePanel.cs"));
         Assert.Contains("ConnectorConsentAction.Rewrite", panel);
-        Assert.Contains("if (entry is not null) await ProviderCatalog.ProbeAsync", rewrite);
+        Assert.Contains("var restored = !demo && session.ConfigureSavedProposal(", rewrite);
+        Assert.Contains("if (entry is not null && (!restored || entry.Cli)) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);", rewrite);
         Assert.DoesNotContain("ProviderCatalog.ConsentAsync", rewrite);
         Assert.Contains("var status = await connector.Connector.GetStatusAsync(token)", panel);
         var settings = File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs"));

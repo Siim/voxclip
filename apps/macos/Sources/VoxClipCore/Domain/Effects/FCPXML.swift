@@ -14,7 +14,11 @@ public enum FCPXML {
             }
         }
 
-        func frame(_ seconds: Double) -> Int64 { Int64((seconds * Double(denominator) / Double(numerator)).rounded()) }
+        func frame(_ seconds: Double) -> Int64 {
+            let scaled: Double = seconds * Double(denominator)
+            let frames: Double = scaled / Double(numerator)
+            return Int64(frames.rounded())
+        }
         func time(_ frames: Int64) -> String { FCPXML.time(frames * numerator, denominator) }
         func seconds(_ frames: Int64) -> Double { Double(frames * numerator) / Double(denominator) }
     }

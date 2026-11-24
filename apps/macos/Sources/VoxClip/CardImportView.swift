@@ -102,7 +102,9 @@ import VoxClipMedia
                 step("Transcribing on this Mac, two at a time", value: "\(card.transcribed) of \(card.rows.count)", complete: card.stage == .ranking, active: card.rows.contains { $0.status == "Transcribing" })
                 step(card.stage == .ranking ? "Ranking moments and merging retakes" : "Finding moments", value: "\(card.moments.count) so far", complete: false, active: card.stage == .ranking || card.rows.contains { $0.status == "Finding" })
                 step("Making the best ones postable", value: "", complete: false, active: false)
-                ProgressView(value: Double(card.copied + card.transcribed), total: Double(max(1, card.rows.count * 2)))
+                let completed: Double = Double(card.copied + card.transcribed)
+                let total: Double = Double(max(1, card.rows.count * 2))
+                ProgressView(value: completed, total: total)
                     .accessibilityLabel("Copy and transcription progress")
             }.padding(12)
             ForEach(card.rows) { row in recordingRow(row) }

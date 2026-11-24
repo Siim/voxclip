@@ -511,6 +511,7 @@ extension ClipTakePlan.Phrase {
             if take.playable, !session.takesBusy {
                 let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
                 let verb = playing ? "Pause" : "Play"
+                let evidenceTitle: String = "\(verb) \(title)"
                 Button {
                     Task { await session.playTake(take.id, phrase: phrase.id) }
                 } label: {
@@ -520,7 +521,7 @@ extension ClipTakePlan.Phrase {
                 .accessibilityLabel("\(verb) phrase \(phrase.id + 1), take \(take.number)\(take.notChecked ? ", not checked" : "")")
                 .help(take.notChecked ? "Listen to this take as ElevenLabs returned it. It was not checked and stays left out."
                                       : "Listen to take \(take.number).")
-                .modifier(PanelButtonEvidence(id: "playTake.\(id)", title: verb + " " + title))
+                .modifier(PanelButtonEvidence(id: "playTake.\(id)", title: evidenceTitle))
             }
             if take.row.selectable {
                 if session.takesBusy {
