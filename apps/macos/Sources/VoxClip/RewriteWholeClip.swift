@@ -678,7 +678,8 @@ extension RewriteSession {
         do {
             let final = try editor.voiceLabReviewProject(localCommands: localCommands)
             let hunks = script.hunks(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds), cutPauseIds: Set(final.edits.cutPauseIds))
-            let phraseInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })
+            let phraseInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope,
+                checksGeneratedSpeaker: false, model: { created?.modelID ?? model })
             // One timeline: each part's take is laid out on the clip as edited, as generated (provider pace 1.0, never
             // stretched): a shorter take first speeds the picture up evenly to at most 1.2×, then its sentence-end pauses
             // grow within the project's pause threshold, then the picture's end is trimmed (ADR-R46, "Your own pace").

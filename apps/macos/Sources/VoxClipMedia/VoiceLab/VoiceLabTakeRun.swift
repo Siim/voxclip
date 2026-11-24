@@ -284,13 +284,13 @@ public actor VoiceLabTakeRun {
             releaseReservation(value.adopted)
             throw error
         }
-        let pool = shortTakePool ?? VoiceLabShortTakePool()
+        let pool = value.input.checksGeneratedSpeaker ? shortTakePool ?? VoiceLabShortTakePool() : nil
         let operation = Task { await self.perform(value, revision: currentRevision, dispatch: dispatch, pool: pool, phraseID: phraseID, progress: progress) }
         task = operation; runningID = quote.id
         var result = await withTaskCancellationHandler { await operation.value } onCancel: {
             operation.cancel()
         }
-        if shortTakePool == nil {
+        if shortTakePool == nil, let pool {
             let checked = await pool.finish()
             result = VoiceLabTakeRunResult(rows: result.rows.map { checked[$0.id] ?? $0 }, end: result.end, failure: result.failure)
             if !checked.isEmpty { await progress(result.rows) }
@@ -360,7 +360,7 @@ public actor VoiceLabTakeRun {
         #endif
         try reservation(expected)
     }
-    private func perform(_ value: Pending, revision expected: Int, dispatch: VoiceLabRunDispatch, pool: VoiceLabShortTakePool,
+    private func perform(_ value: Pending, revision expected: Int, dispatch: VoiceLabRunDispatch, pool: VoiceLabShortTakePool?,
                          phraseID: Int?, progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void) async -> VoiceLabTakeRunResult {
         var rows: [VoiceLabTakeRow] = []
         for take in value.quote.takes {
@@ -440,7 +440,7 @@ public actor VoiceLabTakeRun {
                 audio = processed
                 var voiced: [Float] = []
                 var score: Double?
-                if value.input.checksGeneratedSpeaker {
+                if let pool {
                     do {
                         voiced = try await speaker.generatedVoicedSamples(processed.trimmed, sampleRate: processed.sampleRate)
                         if voiced.count >= SpeakerAudio.windowSize {
@@ -460,7 +460,7 @@ public actor VoiceLabTakeRun {
                     }
                 }
                 let short = value.input.checksGeneratedSpeaker && voiced.count < SpeakerAudio.windowSize
-                if let score {
+                if let score, let pool {
                     await pool.measured(id: take.synthesis.requestID, voiced: voiced, record: value.record,
                                         phrase: phraseID, passed: score >= value.record.speaker.threshold)
                     if score < value.record.speaker.threshold, qaReceipt == nil {
@@ -505,7 +505,7 @@ public actor VoiceLabTakeRun {
                     qaReceipt: qaReceipt, generated: generated, quote: take, accepted: adoptedRequest,
                     voiceCheck: value.input.checksGeneratedSpeaker ? (short ? .waiting : .perTake) : .selectedVoice,
                     adoptedAsset: take.adoptedAsset)
-                if short {
+                if short, let pool {
                     try await pool.append(row, voiced: voiced, record: value.record, speaker: speaker,
                                           store: store, phrase: phraseID, current: inputsAreCurrent)
                 }

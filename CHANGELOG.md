@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac and Windows, changed phrases use your selected voice without rejecting paid takes on a second voice comparison. Word and audio checks still run.
 - On Mac, AI settings warn when your fal.ai key can't delete finished lip syncs. Your result is kept on this Mac, and fal.ai's copy stays until it expires.
 - On Mac, Rewrite stops retrying after the same words fail verification twice with the same voice. It keeps verified takes and offers free ways to move on instead of a third paid attempt.
 - On Mac, recordings whose audio starts before the picture keep a visible preview after processing and when switching to an imported lip-sync result.
