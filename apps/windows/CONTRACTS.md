@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-24 — Saved patch Rewrite proposals and Music parity (track/c19b-win-proposal-music)
+
+- Paid patch audio is journaled before timing and QA, and that write checkpoints the fitted proposal for its project and scope. A matching reopen needs no proposal call; Take Run still checks consent and prices only the word checks for adoptable audio. Use and explicit discard clear the proposal, not its assets. See `doc/spec/voice-lab.md` §3.5.
+- Settings → General selects or resets the Music folder. The timeline's M1 lane shows the bed, fades and flagged track level. Preview and export mix onto silence if the video has no source audio. See `doc/spec/music.md`.
+- Portable coverage: saved proposal storage and relaunch, shared Rewrite identity and music wire/mix cases, timeline geometry, and silent-source mixing. Native WinUI, WASAPI and MP4 playback/export still need Windows verification.
+
 ### 2026-11-24 — Project-scoped CLI and MCP (issue #18, ADR-R52)
 
 - The Windows CLI pins one local saved project by canonical path and id. The five allowlisted handlers share the same reads and proposal validation between MCP and the CLI. Frame reads verify the saved source identity and decode only local MP4/MOV/M4V with external references disabled.

@@ -16,6 +16,8 @@ public sealed partial class EditorPage
     private OpenverseMusicClient? openverse;
     private ElevenMusicClient? elevenMusic;
 
+    private static string? MusicFolder() => MusicLibraryFolder.Resolve(App.Services.Settings.GetString(MusicLibraryFolder.SettingsKey));
+
     private void InitializeMusic()
     {
         if (demo || App.Services.SharedRoot is not { } root) return;
@@ -26,11 +28,11 @@ public sealed partial class EditorPage
             elevenMusic = new ElevenMusicClient(App.Services.Keys, prices, new VoiceLabSpendLedger(App.Services.Data),
                 ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log), new HttpClientMusicHttp(TimeSpan.FromMinutes(5)));
         musicSuggestions = new MusicSuggestionService(openverse, elevenMusic,
-            async ct => await App.Services.Keys.GetKeyAsync(ElevenMusicClient.KeyAccount, ct) is { Length: > 0 }, () => MusicLibraryFolder.DefaultFolder());
+            async ct => await App.Services.Keys.GetKeyAsync(ElevenMusicClient.KeyAccount, ct) is { Length: > 0 }, MusicFolder);
         ViewModel.Music.Services = new MusicPanelServices(
             (brief, seconds, ct) => musicSuggestions.CandidatesAsync(brief, seconds, ct),
             FetchMusicAsync,
-            () => MusicLibraryFolder.DefaultFolder(),
+            MusicFolder,
             VoxClip.Media.Audio.MusicFiles.DurationSecondsAsync,
             App.Services.Data.Root);
         ViewModel.Music.Audition = new MusicAudition(this);

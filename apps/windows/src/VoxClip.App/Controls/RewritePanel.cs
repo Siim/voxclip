@@ -57,6 +57,9 @@ internal sealed partial class RewritePanel : Grid
     private readonly Button cancelGeneration = new() { Content = "Cancel" };
     private readonly InfoBar generationError = new() { Severity = InfoBarSeverity.Error, IsClosable = false };
     private readonly TextBlock nonePassed = Ui.Text(RewriteGeneration.NonePassed);
+    private readonly TextBlock restoredProposalNote = Ui.Text("");
+    private Button? discardPaidProposal;
+    private TextBlock? discardWait;
     private string generationAnnouncement = "";
     internal Control FocusTarget => instruction;
     internal bool IsSessionOpen => session.IsOpen;
@@ -71,7 +74,7 @@ internal sealed partial class RewritePanel : Grid
     /// the send asks first.</summary>
     internal async Task SendNowAsync()
     {
-        if (session.Prepared is not { } action) return;
+        if (session.HasRestoredProposal || session.Prepared is not { } action) return;
         session.MarkEstimateShown(action);
         await SendProposalAsync();
     }
@@ -155,7 +158,8 @@ internal sealed partial class RewritePanel : Grid
         body.Children.Add(newHeader);
         BuildWordingFit();
         BuildNextSteps();
-        body.Children.Add(words); body.Children.Add(wordingFit); body.Children.Add(review); body.Children.Add(paidReviewChange); body.Children.Add(sentenceReview); body.Children.Add(problem);
+        body.Children.Add(words); body.Children.Add(wordingFit); body.Children.Add(review); body.Children.Add(restoredProposalNote);
+        body.Children.Add(paidReviewChange); body.Children.Add(sentenceReview); body.Children.Add(problem);
         body.Children.Add(nextSteps);
         BuildGeneration();
         body.Children.Add(generationBody);
@@ -352,6 +356,9 @@ internal sealed partial class RewritePanel : Grid
         problem.Visibility = session.Problem.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         RenderWordingFit();
         RenderChangeReview();
+        restoredProposalNote.Text = string.Join("\n", new[] { session.SavedProposalNote, session.WaitingInstructionNote }.OfType<string>());
+        restoredProposalNote.Visibility = restoredProposalNote.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RenderDiscardAvailability();
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
         RenderGeneration();
         RenderWholeClip();
@@ -546,21 +553,33 @@ internal sealed partial class RewritePanel : Grid
         if (session.RequestClose()) { Close(); _ = replay(); return; }
         ShowCloseQuestion(replay);
     }
-    private void ShowCloseQuestion(Func<Task>? replay)
+    private void ShowCloseQuestion(Func<Task>? replay, bool stayOpen = false)
     {
         if (!session.CloseAsked) return;
         closeQuestion.Children.Clear();
-        var question = session.HoldsWholeClipWork
-            ? (replay is null ? "Close Rewrite?" : "Start a new Rewrite?") + " Whole-clip work stops here. Any paid voice and lip sync stay saved."
+        var closeKeepsWholeClip = session.HoldsWholeClipWork && !session.HasPaidTakes;
+        var question = closeKeepsWholeClip
+            ? replay is null ? "Close Rewrite?" : "Start a new Rewrite?"
             : RewriteSession.CloseQuestion(session.PaidTakeCount, newRewrite: replay is not null);
+        if (session.HoldsWholeClipWork) question += " Whole-clip work stops here. Any paid voice and lip sync stay saved.";
         var text = Ui.Text(question);
         AutomationProperties.SetAutomationId(text, "Rewrite.CloseQuestion");
         var keep = Ui.Button("Keep Working", KeepWorking, accent: true);
-        var title = session.HoldsWholeClipWork ? replay is null ? "Close Rewrite" : "Start New Rewrite"
+        var title = closeKeepsWholeClip ? replay is null ? "Close Rewrite" : "Start New Rewrite"
             : replay is null ? "Discard and Close" : "Discard and Rewrite";
         var discard = Ui.Button(title, () =>
         {
-            Close();
+            if (!session.CanDiscardPaidProposal) return;
+            if (stayOpen)
+            {
+                if (!session.DiscardForAnotherProposal()) return;
+                KeepWorking();
+            }
+            else
+            {
+                if (!closeKeepsWholeClip) session.ForgetSavedProposal();
+                Close();
+            }
             if (replay is not null) _ = replay();
         });
         SetName(keep, "Keep Working"); SetName(discard, title);
@@ -569,6 +588,10 @@ internal sealed partial class RewritePanel : Grid
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         buttons.Children.Add(keep); buttons.Children.Add(discard);
         closeQuestion.Children.Add(text); closeQuestion.Children.Add(buttons);
+        discardPaidProposal = discard;
+        discardWait = Ui.Text("Wait for the current take step to finish before discarding it.");
+        closeQuestion.Children.Add(discardWait);
+        RenderDiscardAvailability();
         closeQuestion.Visibility = Visibility.Visible;
         keep.Focus(FocusState.Programmatic);
         Ui.Announce(this, question, "rewrite", AutomationNotificationProcessing.ImportantMostRecent);
@@ -576,8 +599,16 @@ internal sealed partial class RewritePanel : Grid
     private void KeepWorking()
     {
         session.KeepWorking();
+        discardPaidProposal = null;
+        discardWait = null;
         closeQuestion.Children.Clear();
         closeQuestion.Visibility = Visibility.Collapsed;
+    }
+    private void RenderDiscardAvailability()
+    {
+        if (discardPaidProposal is null || discardWait is null) return;
+        discardPaidProposal.IsEnabled = session.CanDiscardPaidProposal;
+        discardWait.Visibility = discardPaidProposal.IsEnabled ? Visibility.Collapsed : Visibility.Visible;
     }
     private bool NativeReturnTarget(DependencyObject? target)
     {

@@ -12,6 +12,7 @@ using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Models;
+using VoxClip.Core.Services.Music;
 
 namespace VoxClip.App;
 
@@ -303,6 +304,7 @@ public sealed partial class SettingsWindow : Window
         textSize.ValueChanged += (_, _) => Save("general.transcriptTextSize", textSize.Value); AddSetting(textSize);
         var confidence = new ToggleSwitch { Header = "Mark low-confidence words", IsOn = App.Services.Get("general.showLowConfidence", false) };
         confidence.Toggled += (_, _) => Save("general.showLowConfidence", confidence.IsOn); AddSetting(confidence);
+        AddMusicFolderSetting();
         // Caption cards (design §5.4.2).
         var placeholders = new ToggleSwitch { Header = "Show transcript words on placeholders", IsOn = App.Services.ShowPlaceholderWords };
         placeholders.Toggled += (_, _) => Save("general.showPlaceholderWords", placeholders.IsOn); AddSetting(placeholders);
@@ -326,6 +328,40 @@ public sealed partial class SettingsWindow : Window
         Body.Children.Add(Ui.Text(CacheUpkeep.ClearHelp, "HelperText"));
         Body.Children.Add(Ui.Text("Local first. No telemetry. No account wall. Your source media is never changed.", "HelperText"));
         Body.Children.Add(Ui.Button("Show data folder", () => ShareHelpers.Reveal(App.Services.Data.Logs)));
+    }
+
+    private void AddMusicFolderSetting()
+    {
+        var row = Ui.Stack(4);
+        var path = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        var choose = new Button { Content = "Choose Music Folder…" };
+        var reset = new Button { Content = "Use Default Folder" };
+        void Refresh()
+        {
+            var chosen = App.Services.Settings.GetString(MusicLibraryFolder.SettingsKey);
+            path.Text = MusicLibraryFolder.Resolve(chosen) ?? "No Music folder selected.";
+            reset.IsEnabled = chosen is not null;
+        }
+        choose.Click += (_, _) => RunSensitive(async () =>
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            picker.FileTypeFilter.Add("*");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            if (await picker.PickSingleFolderAsync() is not { } folder || preparing || lifetime.IsCancellationRequested) return;
+            await App.Services.SetAsync(MusicLibraryFolder.SettingsKey, folder.Path, lifetime.Token);
+            Refresh();
+        }, "Choose Music Folder");
+        reset.Click += (_, _) => RunSensitive(async () =>
+        {
+            await App.Services.SetAsync<string?>(MusicLibraryFolder.SettingsKey, null, lifetime.Token);
+            Refresh();
+        }, "Save settings");
+        Refresh();
+        row.Children.Add(new TextBlock { Text = "Music folder" });
+        row.Children.Add(path);
+        row.Children.Add(choose);
+        row.Children.Add(reset);
+        AddSetting(row);
     }
     /// <summary>Clear cache, or Clear everything, then say what happened. A failed pass is only logged: a missing entry is
     /// recomputed. An update restart waits for it.</summary>

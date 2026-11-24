@@ -370,7 +370,7 @@ public sealed class PreviewEngine : IPreviewEngine
 
     private void Resume(CancellationToken ct)
     {
-        if (snapshot!.Media.Audio is not null) StartAudio(origin, ct);
+        if (snapshot!.Media.Audio is not null || snapshot.Clip?.Music is not null) StartAudio(origin, ct);
         playing = true; videoClock.Restart(); UpdatePosition(origin);
     }
 

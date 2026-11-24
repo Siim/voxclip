@@ -193,7 +193,7 @@ public sealed class MusicBedTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
-    public void AStartOffsetBeginsInsideTheTrackAndAMissingFileOrSilentVideoStopsTheExport()
+    public void AStartOffsetBeginsInsideTheTrackAndAMissingFileStopsTheExport()
     {
         // The offset reads the track from 0.5 s: a WAV whose first half second is silent starts sounding at once.
         var path = Track(3);
@@ -209,10 +209,24 @@ public sealed class MusicBedTests(ITestOutputHelper output) : IDisposable
         var job = new ExportJob(missing, new ExportTarget.Clip("c"), ExportAspect.Source, ExportQuality.Standard, Path.Combine(Path.GetTempPath(), "voxclip-music-out.mp4"), null);
         Assert.Equal("Export stopped: the music file music-gone.mp3 is missing. Your edits are saved.",
             Assert.Throws<VoxClipException>(() => Exporter.Validate(job)).Message);
-        var silent = Snapshot(2, null, new(Entry(), path));
-        silent = silent with { Media = silent.Media with { Audio = null } };
-        Assert.Equal(MusicBed.NoAudioMessage, Assert.Throws<VoxClipException>(() => Exporter.Validate(job with { Snapshot = silent })).Message);
-        Assert.Equal(MusicBed.NoAudioMessage, Assert.Throws<VoxClipException>(() => MusicBed.Stage(silent, Rate, () => throw new InvalidOperationException(), CancellationToken.None)).Message);
+    }
+
+    [Fact]
+    public void SilentVideoCarriesTheMusicWithoutOpeningASourceAudioDecoder()
+    {
+        var snapshot = Snapshot(2, null, new(Entry(fadeIn: 0, fadeOut: 0), Track(3)));
+        snapshot = snapshot with { Media = snapshot.Media with { Audio = null } };
+        var job = new ExportJob(snapshot, new ExportTarget.Clip("c"), ExportAspect.Source, ExportQuality.Standard,
+            Path.Combine(Path.GetTempPath(), "voxclip-music-out.mp4"), null);
+        Exporter.Validate(job);
+        var bed = MusicBed.Stage(snapshot, Rate, () => throw new InvalidOperationException(), CancellationToken.None);
+        Assert.NotNull(bed);
+        Assert.Null(bed.SpeechDb);
+        using var reader = RenderedAudioReader.Open(snapshot, Rate, startEdited: 0.5, ct: TestContext.Current.CancellationToken, music: bed);
+        Assert.Equal(72_000, reader.TotalFrames);
+        var stereo = new float[2048];
+        Assert.Equal(1024, reader.Read(stereo, 1024, CancellationToken.None));
+        Assert.Contains(stereo, value => Math.Abs(value) > 0.01f);
     }
 
     [Fact]

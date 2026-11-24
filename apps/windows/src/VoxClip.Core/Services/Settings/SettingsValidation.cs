@@ -63,7 +63,9 @@ internal static class SettingsValidation
                 case "transcription.elevenlabs.region": Choice(value, "default", "us", "eu", "in", "sg"); break;
                 case "export.defaultAspect": Choice(value, "source", "16:9", "9:16", "1:1"); break;
                 case "export.quality": Choice(value, "standard", "high"); break;
-                case "export.folder": if (value.ValueKind != JsonValueKind.Null) Text(value, 1, int.MaxValue); break;
+                case "export.folder": case Music.MusicLibraryFolder.SettingsKey:
+                    if (value.ValueKind != JsonValueKind.Null) Text(value, 1, int.MaxValue);
+                    break;
                 case "export.fileNamePattern": Text(value, 1, 200); break;
                 case "update.lastCheckAt": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.String && value.TryGetDateTimeOffset(out _)); break;
                 case "update.latestVersion": if (value.ValueKind != JsonValueKind.Null) Text(value, 0, int.MaxValue); break;

@@ -44,18 +44,14 @@ internal sealed class MusicBed
     internal static MusicBed? Stage(ComposeSnapshot snapshot, int rate, Func<RenderedAudioReader> openVoice, CancellationToken ct)
     {
         if (snapshot.Clip?.Music is not { } input) return null;
-        if (snapshot.Media.Audio is null) throw new VoxClipException(VoxClipErrorCode.ExportFailed, NoAudioMessage);
         var outputFrames = (long)Math.Round(snapshot.RenderedDuration * rate, MidpointRounding.AwayFromZero);
         if (outputFrames <= 0) throw new VoxClipException(VoxClipErrorCode.ExportFailed, "The clip is too short for music. Your edits are saved.");
-        double[] speech;
-        using (var voice = openVoice()) speech = SpeechLevels(voice, rate, ct);
+        double[] speech = [];
+        if (snapshot.Media.Audio is not null)
+            using (var voice = openVoice()) speech = SpeechLevels(voice, rate, ct);
         var seconds = Math.Min(input.Entry.Asset.DurationSeconds, input.Entry.StartOffsetSeconds + outputFrames / (double)rate + 0.05);
         return Create(input.Entry, Decode(input, seconds, rate), speech, outputFrames, rate);
     }
-
-    /// <summary>A Windows export of a video without an audio track has no audio stream to carry music.</summary>
-    internal const string NoAudioMessage =
-        "Export stopped: this video has no sound, so Windows can't add its music yet. Remove the music, or export it on a Mac. Your edits are saved.";
 
     /// <summary>The bed for <paramref name="trackStereo"/> (interleaved stereo at <paramref name="rate"/>) under a voice with these
     /// 10 ms <paramref name="speechLevels"/>, spanning <paramref name="outputFrames"/>.</summary>
