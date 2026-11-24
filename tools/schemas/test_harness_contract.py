@@ -1,4 +1,5 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -41,7 +42,8 @@ class HarnessContract(unittest.TestCase):
 
     def command(self, command, *options):
         guard = ["/usr/bin/sandbox-exec", "-p", "(version 1) (allow default) (deny network*)"]
-        return [*guard, str(CLI), command, "--project", str(self.project), *options]
+        launcher = ["dotnet", str(CLI.resolve())] if CLI.suffix == ".dll" else [str(CLI)]
+        return [*guard, *launcher, command, "--project", str(self.project), *options]
 
     def run_cli(self, command, body=None, *options):
         return subprocess.run(self.command(command, *options), input=body,
@@ -115,9 +117,48 @@ class HarnessContract(unittest.TestCase):
         self.assertFalse(self.pending.exists())
         self.assertEqual(self.project.read_bytes(), self.original)
 
+    def test_rejects_invalid_edit_anchors_without_staging(self):
+        cuts = dict(self.timeline["cuts"][0], startWord=0, endWord=0)
+        duplicate = self.timeline["cuts"] * 2
+        overlap = dict(self.timeline["effects"][1], startWord=11)
+        invalid = [dict(self.timeline, cuts=[cuts]), dict(self.timeline, cuts=duplicate),
+                   dict(self.timeline, effects=[overlap]), dict(self.timeline, captionStyle="not-a-bundled-style")]
+        for response in self.replay(*(self.call("propose_timeline", **timeline) for timeline in invalid)):
+            self.assertTrue(response["isError"])
+        self.assertFalse(self.pending.exists())
+        self.assertEqual(self.project.read_bytes(), self.original)
+
+    def test_concurrent_proposals_leave_one_complete_sidecar(self):
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            requests = [workers.submit(self.run_cli, "propose-timeline", json.dumps(dict(self.timeline, title=title)))
+                        for title in ("First edit", "Second edit")]
+            replies = [request.result() for request in requests]
+        winners = [json.loads(reply.stdout)["proposal"] for reply in replies if reply.returncode == 0]
+        self.assertEqual(len(winners), 1)
+        self.assertEqual(json.loads(self.pending.read_text()), winners[0])
+        self.assertEqual(self.project.read_bytes(), self.original)
+
+    def test_oversized_message_does_not_close_the_stdio_session(self):
+        process = self.run_cli("mcp", " " * (128 * 1024 + 1) + '\n{"jsonrpc":"2.0","id":1,"method":"ping"}\n')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        refused, ping = [json.loads(line) for line in process.stdout.splitlines()]
+        self.assertEqual(refused["error"]["code"], -32700)
+        self.assertEqual(ping, {"jsonrpc": "2.0", "id": 1, "result": {}})
+        self.assertFalse(self.pending.exists())
+
     def test_missing_media_is_a_local_frame_error(self):
         result, = self.replay(self.call("read_frames", times=[0]))
         self.assertTrue(result["isError"])
+
+    def test_source_identity_must_match_before_decoding(self):
+        fixture = ROOT / "shared/fixtures/media/counter-1080p.mp4"
+        project = json.loads(self.original)
+        project["media"]["source"].update(absolutePath=str(fixture), relativePath=None, sizeBytes=fixture.stat().st_size,
+                                           contentKey="0" * 64)
+        self.project.write_text(json.dumps(project))
+        result, = self.replay(self.call("read_frames", times=[0]))
+        self.assertTrue(result["isError"])
+        self.assertIn("Relink", result["content"][0]["text"])
 
     def test_project_source_frames_are_jpeg_content(self):
         fixture = ROOT / "shared/fixtures/media/counter-1080p.mp4"

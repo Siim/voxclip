@@ -877,6 +877,7 @@ literal "segment_time_order"
 literal "segment_voice"
 literal "segments_missing_or_empty"
 literal "similarity_boost"
+literal "sound_effect"
 literal "speaker_id"
 literal "speech_to_speech"
 literal "start_line"
@@ -1236,6 +1237,30 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method public GetHas
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method public ToString()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public .ctor(string,string,string,double,double,string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public Deconstruct(string&,string&,string&,double&,double&,string&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Id()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Kind()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Start()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Text()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Id(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Kind(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Start(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Text(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method protected get_EqualityContract()
@@ -4436,17 +4461,35 @@ member VoxClip.Core.Domain.Clips.ClipShape :: field public PortraitFourFive
 member VoxClip.Core.Domain.Clips.ClipShape :: field public Square
 member VoxClip.Core.Domain.Clips.ClipShape :: field public value__
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method private PrintMembers(System.Text.StringBuilder)
-member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public .ctor(double)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public .ctor(double,System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span>)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Edited(double)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Equals(VoxClip.Core.Domain.Clips.ClipSpeedTiming)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Equals(object)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public ForEffects(double,System.Func`2<double,double>,System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Effects.ClipEffect>)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public GetHashCode()
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Rendered(double)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public RenderedSamples(long)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Segments(double,double)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public ToString()
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public get_Spans()
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public get_Speed()
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public op_Equality(VoxClip.Core.Domain.Clips.ClipSpeedTiming,VoxClip.Core.Domain.Clips.ClipSpeedTiming)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public op_Inequality(VoxClip.Core.Domain.Clips.ClipSpeedTiming,VoxClip.Core.Domain.Clips.ClipSpeedTiming)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public .ctor(double,double,double)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public Deconstruct(double&,double&,double&)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public Equals(VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public Equals(object)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public GetHashCode()
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public ToString()
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public get_End()
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public get_Rate()
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public get_Start()
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public op_Equality(VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span,VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public op_Inequality(VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span,VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public set_End(double)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public set_Rate(double)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span :: method public set_Start(double)
 member VoxClip.Core.Domain.Clips.ClipStyle :: field public Presets
 member VoxClip.Core.Domain.Clips.ClipStyle :: method internal IsSlug(string)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method private .cctor()
@@ -6137,9 +6180,12 @@ member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_ClipId()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_End()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_GainDb()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Id()
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_ImageFile()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_IsCensor()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Kind()
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Look()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Position()
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Rate()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Rect()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Scale()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Sound()
@@ -6158,8 +6204,11 @@ member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_ClipId(string
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_End(double)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_GainDb(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Id(string)
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_ImageFile(string)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Kind(string)
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Look(string)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Position(string)
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Rate(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Rect(System.Nullable`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Scale(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Sound(VoxClip.Core.Domain.Effects.ClipEffectSound)
@@ -6195,16 +6244,26 @@ member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public Equals(VoxCl
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public Equals(object)
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public GetHashCode()
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public ToString()
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_Attribution()
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_Creator()
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_DurationSeconds()
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_File()
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_Id()
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_License()
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_Source()
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_SourceUrl()
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public get_Title()
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public op_Equality(VoxClip.Core.Domain.Effects.ClipEffectSound,VoxClip.Core.Domain.Effects.ClipEffectSound)
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public op_Inequality(VoxClip.Core.Domain.Effects.ClipEffectSound,VoxClip.Core.Domain.Effects.ClipEffectSound)
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_Attribution(string)
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_Creator(string)
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_DurationSeconds(double)
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_File(string)
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_Id(string)
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_License(string)
 member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_Source(string)
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_SourceUrl(string)
+member VoxClip.Core.Domain.Effects.ClipEffectSound :: method public set_Title(string)
 member VoxClip.Core.Domain.Effects.ClipEffectTrackSample :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Effects.ClipEffectTrackSample :: method public .ctor(double,VoxClip.Core.Domain.Effects.ClipEffectRect)
 member VoxClip.Core.Domain.Effects.ClipEffectTrackSample :: method public Deconstruct(double&,VoxClip.Core.Domain.Effects.ClipEffectRect&)
@@ -6251,19 +6310,23 @@ member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public Decon
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public Equals(VoxClip.Core.Domain.Effects.ClipEffectsRenderInput)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public Equals(object)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public GetHashCode()
+member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public ImageRoot(string)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public PictureTime(double)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public Resolve(VoxClip.Core.Domain.Shared.Project,string,string,string)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public SoundRoot(string)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public ToString()
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_Audio()
+member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_Credits()
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_Effects()
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_Freezes()
+member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_Images()
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_Picture()
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_SoundPaths()
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public get_WithoutSounds()
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public op_Equality(VoxClip.Core.Domain.Effects.ClipEffectsRenderInput,VoxClip.Core.Domain.Effects.ClipEffectsRenderInput)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public op_Inequality(VoxClip.Core.Domain.Effects.ClipEffectsRenderInput,VoxClip.Core.Domain.Effects.ClipEffectsRenderInput)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public set_Effects(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffect>)
+member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public set_Images(System.Collections.Generic.IReadOnlyDictionary`2<string,string>)
 member VoxClip.Core.Domain.Effects.ClipEffectsRenderInput :: method public set_SoundPaths(System.Collections.Generic.IReadOnlyDictionary`2<string,string>)
 member VoxClip.Core.Domain.Effects.ClipEffectsRendering :: method private Alphanumeric(System.Text.Rune)
 member VoxClip.Core.Domain.Effects.ClipEffectsRendering :: method public Masked(string)
@@ -17006,16 +17069,16 @@ member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private now
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: field public Endpoint
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: field public MaximumDownloadBytes
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private .cctor()
-member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Candidate(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Candidate(System.Text.Json.Nodes.JsonObject,bool)
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Clipped(string,int)
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Extension(string,System.Uri)
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Text(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public .ctor(VoxClip.Core.Services.Music.IMusicHttp,System.Func`1<System.DateTimeOffset>)
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public DownloadAsync(VoxClip.Core.Domain.Music.MusicCandidate,System.Threading.CancellationToken)
-member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public Parse(byte[])
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public Parse(byte[],bool)
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public Ranked(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>,System.Collections.Generic.IReadOnlySet`1<string>,double)
-member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public SearchAsync(string,System.Collections.Generic.IReadOnlySet`1<string>,double,System.Threading.CancellationToken)
-member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public SearchUri(string,int)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public SearchAsync(string,System.Collections.Generic.IReadOnlySet`1<string>,double,System.Threading.CancellationToken,bool)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public SearchUri(string,int,bool)
 member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method internal get_StandardError()
 member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method internal get_StandardOutput()
 member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method public .ctor(string,string)
@@ -17350,6 +17413,38 @@ member VoxClip.Core.Services.Project.DataLocations :: method public set_Models(s
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Root(string)
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Secrets(string)
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Settings(string)
+member VoxClip.Core.Services.Project.HarnessException :: method public .ctor(string)
+member VoxClip.Core.Services.Project.HarnessProposal :: field public MaximumBytes
+member VoxClip.Core.Services.Project.HarnessProposal :: method private Revision(VoxClip.Core.Domain.Shared.Project,bool)
+member VoxClip.Core.Services.Project.HarnessProposal :: method private WriteCanonical(System.Text.Json.Nodes.JsonNode,System.Text.Json.Utf8JsonWriter)
+member VoxClip.Core.Services.Project.HarnessProposal :: method private get_BaseRevision()
+member VoxClip.Core.Services.Project.HarnessProposal :: method private get_Id()
+member VoxClip.Core.Services.Project.HarnessProposal :: method private get_ProjectId()
+member VoxClip.Core.Services.Project.HarnessProposal :: method public .ctor(VoxClip.Core.Services.Project.HarnessTimeline,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public Applying(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public EstimatedMusicPrice(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public ToJson()
+member VoxClip.Core.Services.Project.HarnessTimeline :: field private CutKeys
+member VoxClip.Core.Services.Project.HarnessTimeline :: field private Keys
+member VoxClip.Core.Services.Project.HarnessTimeline :: field private SupportedEffects
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_CaptionStyle()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_ClipId()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Cuts()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Effects()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_MusicTrackId()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Title()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Wire()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private .cctor()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private .ctor(System.Text.Json.JsonElement,string,string,string,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.WordSpan>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipPlanEffect>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private Index(System.Text.Json.JsonElement,string)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private InvalidTimeline()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private Items(System.Text.Json.JsonElement,string,int)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private ReadCut(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private ReadEffect(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private Text(System.Text.Json.JsonElement,string,System.Nullable`1<int>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public Read(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public RequireObject(System.Text.Json.JsonElement,System.Collections.Generic.IReadOnlyCollection`1<string>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public get_GenerateMusic()
 member VoxClip.Core.Services.Project.IProjectStore :: method public ComputeContentKeyAsync(string,System.IProgress`1<double>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.IProjectStore :: method public LoadAsync(string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.IProjectStore :: method public RelinkAsync(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.Shared.MediaInfo,bool,System.Threading.CancellationToken)
@@ -18729,6 +18824,7 @@ type VoxClip.Core.Domain.Autopilot.ClaudeModeClock
 type VoxClip.Core.Domain.Autopilot.ClaudeModeStage
 type VoxClip.Core.Domain.Autopilot.ClaudeModeTiming
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect
@@ -18933,6 +19029,7 @@ type VoxClip.Core.Domain.Clips.ClipPreset
 type VoxClip.Core.Domain.Clips.ClipPresetRules
 type VoxClip.Core.Domain.Clips.ClipShape
 type VoxClip.Core.Domain.Clips.ClipSpeedTiming
+type VoxClip.Core.Domain.Clips.ClipSpeedTiming+Span
 type VoxClip.Core.Domain.Clips.ClipStyle
 type VoxClip.Core.Domain.Clips.ClipStyleCard
 type VoxClip.Core.Domain.Clips.ClipStyleCatalog
@@ -19790,6 +19887,9 @@ type VoxClip.Core.Services.Project.CacheKeyLease
 type VoxClip.Core.Services.Project.CacheKeyRegistry
 type VoxClip.Core.Services.Project.CacheTimestampConverter
 type VoxClip.Core.Services.Project.DataLocations
+type VoxClip.Core.Services.Project.HarnessException
+type VoxClip.Core.Services.Project.HarnessProposal
+type VoxClip.Core.Services.Project.HarnessTimeline
 type VoxClip.Core.Services.Project.IProjectStore
 type VoxClip.Core.Services.Project.IRuntimeAgreementFiles
 type VoxClip.Core.Services.Project.ProjectOpenResult

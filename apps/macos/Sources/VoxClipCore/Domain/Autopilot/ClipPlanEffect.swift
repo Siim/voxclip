@@ -15,12 +15,6 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
             }
         }
 
-        public var canPlace: Bool {
-            switch self {
-            case .zoom, .punchIn, .motionTitle, .lowerThird, .emojiPop: true
-            case .soundEffect, .illustration, .colourLook, .speedForPart: false
-            }
-        }
     }
 
     public static let maximumEntries = 12
@@ -69,7 +63,7 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
     }
 
     static func providerEntry(_ value: JSONValue) -> Self? {
-        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)), kind.canPlace else { return nil }
+        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)) else { return nil }
         let keys = ["kind", "startWord", "endWord", "reason", kind.payloadKey]
         return read(.object(Dictionary(uniqueKeysWithValues: keys.map { ($0, value[ai: $0]) })))
     }
@@ -83,7 +77,7 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
 
     public func operation(id: String, clipID: String, scope: ClosedRange<Int>, anchor: (Int) -> Range<Double>?,
                           isCut: (Int) -> Bool = { _ in false }, stickers: Set<String>) -> ClipAutopilotOperation? {
-        guard kind.canPlace, scope.contains(startWord), scope.contains(endWord),
+        guard scope.contains(startWord), scope.contains(endWord),
               let first = anchor(startWord), let last = anchor(endWord),
               !(startWord...endWord).contains(where: isCut) else { return nil }
         let duration = last.upperBound - first.lowerBound
@@ -105,7 +99,15 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
                                     text: text, position: position, scale: kind == .emojiPop ? 1 : nil,
                                     animation: kind == .emojiPop ? .pop : .rise)
             return .init(id: id, decision: .overlay, action: .effect(effect), reason: reason)
-        case .soundEffect, .illustration, .colourLook, .speedForPart: return nil
+        case .colourLook, .speedForPart:
+            let effect = ClipEffect(id: id, clipId: clipID, kind: kind == .colourLook ? .colourLook : .speedForPart,
+                                    start: first.lowerBound, end: last.upperBound, look: look, rate: rate)
+            return .init(id: id, decision: kind == .colourLook ? .look : .stretch, action: .effect(effect), reason: reason)
+        case .soundEffect, .illustration:
+            guard let text = query ?? prompt else { return nil }
+            let asset = ClipPlanAsset(id: id, kind: kind == .soundEffect ? .sound : .illustration, clipID: clipID,
+                                     start: first.lowerBound, end: last.upperBound, text: text)
+            return .init(id: id, decision: kind == .soundEffect ? .sound : .overlay, action: .asset(asset), reason: reason)
         }
     }
 
@@ -119,4 +121,14 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
             return word.start..<word.end
         }, isCut: { cut.contains(words[$0].id) }, stickers: stickers)
     }
+}
+
+public struct ClipPlanAsset: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable { case sound, illustration }
+    public let id: String
+    public let kind: Kind
+    public let clipID: String
+    public let start: Double
+    public let end: Double
+    public let text: String
 }

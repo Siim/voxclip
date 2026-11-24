@@ -364,13 +364,60 @@ public enum ClipControlsProject {
 /// rendered frame time back before it looks up captions, motion and Voice Lab layers.
 public struct ClipSpeedTiming: Sendable, Equatable {
     public let speed: Double
+    public let spans: [Span]
 
-    public init(speed: Double) { self.speed = speed.isFinite && speed > 0 ? speed : 1 }
+    public struct Span: Sendable, Equatable {
+        public let start: Double
+        public let end: Double
+        public let rate: Double
+        public init(start: Double, end: Double, rate: Double) { self.start = start; self.end = end; self.rate = rate }
+    }
+
+    public init(speed: Double, overrides: [Span] = []) {
+        let base = speed.isFinite && speed > 0 ? speed : 1
+        self.speed = base
+        let valid = overrides.filter { $0.start.isFinite && $0.end.isFinite && $0.end > $0.start && (0.5...2).contains($0.rate) }
+        let boundaries = Set(valid.flatMap { [$0.start, $0.end] }).sorted()
+        spans = zip(boundaries, boundaries.dropFirst()).compactMap { start, end in
+            guard let entry = valid.last(where: { $0.start <= start && $0.end >= end }), entry.rate != base else { return nil }
+            return Span(start: start, end: end, rate: entry.rate)
+        }
+    }
+
+    public init(speed: Double, timeline: RenderTimeline, effects: [ClipEffect]) {
+        self.init(speed: speed, overrides: effects.compactMap { effect in
+            guard effect.kind == .speedForPart, let rate = effect.rate else { return nil }
+            return Span(start: timeline.mapTime(effect.start), end: timeline.mapTime(effect.end), rate: rate)
+        })
+    }
+
+    public var isIdentity: Bool { speed == 1 && spans.isEmpty }
+
+    public func segments(through duration: Double) -> [Span] {
+        let boundaries = Set([0, duration] + spans.flatMap { [max(0, min(duration, $0.start)), max(0, min(duration, $0.end))] }).sorted()
+        return zip(boundaries, boundaries.dropFirst()).map { start, end in
+            Span(start: start, end: end, rate: spans.first(where: { $0.start <= start && $0.end >= end })?.rate ?? speed)
+        }
+    }
 
     /// Rendered seconds for an edited time.
-    public func rendered(_ edited: Double) -> Double { speed == 1 ? edited : edited / speed }
+    public func rendered(_ edited: Double) -> Double {
+        spans.reduce(edited / speed) { value, span in
+            value + max(0, min(span.end, edited) - span.start) * (1 / span.rate - 1 / speed)
+        }
+    }
     /// Edited seconds for a rendered time.
-    public func edited(_ rendered: Double) -> Double { speed == 1 ? rendered : rendered * speed }
+    public func edited(_ rendered: Double) -> Double {
+        var correction = 0.0
+        for span in spans {
+            let start = span.start / speed + correction
+            if rendered <= start { break }
+            let length = (span.end - span.start) / span.rate
+            if rendered < start + length { return span.start + (rendered - start) * span.rate }
+            correction += length - (span.end - span.start) / speed
+        }
+        return (rendered - correction) * speed
+    }
     /// The rendered sample count of `samples` edited samples.
     public func renderedSamples(_ samples: Int64) -> Int64 {
         speed == 1 ? samples : Int64((Double(samples) / speed).rounded())
@@ -380,9 +427,9 @@ public struct ClipSpeedTiming: Sendable, Equatable {
 extension RenderRequest {
     /// The clip's speed (1 without controls).
     public var speed: Double { clipControls?.speed ?? 1 }
-    public var speedTiming: ClipSpeedTiming { ClipSpeedTiming(speed: speed) }
+    public var speedTiming: ClipSpeedTiming { .init(speed: speed, timeline: timeline, effects: effects?.effects ?? []) }
     /// The rendered length in samples at the timeline's rate: the edited length divided by the speed.
-    public var renderedSamples: Int64 { speedTiming.renderedSamples(timeline.outputSamples) }
+    public var renderedSamples: Int64 { Int64((speedTiming.rendered(timeline.duration) * timeline.sampleRate).rounded()) }
     /// The rendered length in seconds.
     public var renderedDuration: Double { Double(renderedSamples) / timeline.sampleRate }
 
@@ -390,6 +437,7 @@ extension RenderRequest {
     public var withoutClipControls: RenderRequest {
         var result = self
         result.clipControls = nil
+        if let effects { result.effects = .init(effects: effects.effects.filter { $0.kind != .speedForPart }, soundURLs: effects.soundURLs, imageURLs: effects.imageURLs) }
         return result
     }
 }

@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-24 — Project-scoped CLI and MCP (issue #18, ADR-R52)
+
+- The Windows CLI pins one local saved project by canonical path and id. The five allowlisted handlers share the same reads and proposal validation between MCP and the CLI. Frame reads verify the saved source identity and decode only local MP4/MOV/M4V with external references disabled.
+- A schema-valid timeline materializes through the existing Core edit and validation rules, but the CLI writes only one atomically published proposal sidecar. It never replaces a pending proposal. An Eleven Music brief returns a catalog estimate only; no tool can call providers, spend or capture voice consent.
+- The shared replay can run against the .NET CLI on macOS with the subprocess network denied. The Windows editor Keep/Undo and new named motion templates are outside this change.
+
 ### 2026-11-24 — Whole-clip revoice and lip sync (issue #19, first item)
 
 - **Built:** Rewrite's inline card prices voice and picture together, checks consent and the provider account, and uses lipsync-2 first with a separately priced sync-3 upgrade. It can audition a saved voice, A/B a synced picture, Use it atomically or Use Voice Without Lip Sync. Core owns the edited-timeline fit, merged windows and one-step edit; Media owns guarded takes, durable drafts and fal.ai receipts, staging, preview and export. An accepted job resumes from its request ID; an ambiguous submit blocks a second dispatch. Stop ends local polling and does not cancel an accepted remote job.
