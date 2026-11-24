@@ -1,5 +1,7 @@
 # Wireless ingest
 
+For importing recordings already on a camera card or disk, see [Card and folder import](footage.md).
+
 Status: normative design for **M2**. Section 3.1 lists the one M1 item (camera file compatibility tests). Sections 6 to 18 are implementer-ready; parts of section 9 (live clipping) are scheduled for M2.x (section 9.14). Anything marked **[HW]** depends on a hardware test in section 19 and must not be advertised as "works with Osmo Pocket 4" until that test passes. Written 2026-10-25.
 
 This spec covers how footage from a DJI Osmo Pocket 4 (and any other camera or phone app that streams RTMP) gets into VoxClip without a cable. It covers:

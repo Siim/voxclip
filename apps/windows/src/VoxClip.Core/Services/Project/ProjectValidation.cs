@@ -33,20 +33,63 @@ internal static class ProjectValidation
         var saved = root.GetProperty("savedBy");
         Object(saved, "app version platform"); String(saved.GetProperty("app"), "VoxClip");
         String(saved.GetProperty("version"), "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?"); Choice(saved.GetProperty("platform"), "macos", "windows");
-        var media = root.GetProperty("media"); Object(media, "source");
-        var source = media.GetProperty("source"); Object(source, "absolutePath relativePath sizeBytes durationSeconds contentKey video audio");
-        Text(source.GetProperty("absolutePath"), 1, 4096);
-        Nullable(source.GetProperty("relativePath"), value => { Text(value, 1, 4096); Require(!value.GetString()!.Contains('\\')); });
-        Number(source.GetProperty("sizeBytes"), 0, long.MaxValue, true); Number(source.GetProperty("durationSeconds"), 0); String(source.GetProperty("contentKey"), Hash);
-        Nullable(source.GetProperty("video"), video =>
+        var media = root.GetProperty("media"); Object(media, "source", supportsContext ? "additionalSources footage" : "");
+        var source = media.GetProperty("source");
+        ValidateSource(source);
+        var sourceKeys = new HashSet<string>(StringComparer.Ordinal) { FootageKey(source) };
+        var companionDurations = new Dictionary<string, double>(StringComparer.Ordinal);
+        if (media.TryGetProperty("additionalSources", out var additionalSources))
         {
-            Object(video, "width height frameRate rotationDegrees"); Number(video.GetProperty("width"), 1, int.MaxValue, true); Number(video.GetProperty("height"), 1, int.MaxValue, true);
-            Number(video.GetProperty("frameRate"), double.Epsilon); Require(video.GetProperty("rotationDegrees").TryGetInt32(out var rotation) && rotation is 0 or 90 or 180 or 270);
-        });
-        Nullable(source.GetProperty("audio"), audio =>
+            Array(additionalSources, reference =>
+            {
+                ValidateSource(reference);
+                var key = FootageKey(reference);
+                Require(sourceKeys.Add(key));
+                if (reference.GetProperty("video").ValueKind == JsonValueKind.Object)
+                    companionDurations.Add(key, reference.GetProperty("durationSeconds").GetDouble());
+            });
+            Require(additionalSources.GetArrayLength() > 0);
+        }
+        var placements = new List<ProjectFootage>();
+        var placementIds = new HashSet<string>(StringComparer.Ordinal);
+        if (media.TryGetProperty("footage", out var footage))
         {
-            Object(audio, "sampleRate channels"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
-        });
+            Array(footage, placement =>
+            {
+                Object(placement, "id clipID kind start end footage");
+                String(placement.GetProperty("id"), Id); String(placement.GetProperty("clipID"), Id);
+                Choice(placement.GetProperty("kind"), "bRoll", "screenshot", "videoStack");
+                Number(placement.GetProperty("start"), 0); Number(placement.GetProperty("end"), 0);
+                var selected = placement.GetProperty("footage"); Object(selected, "sourceKey start");
+                String(selected.GetProperty("sourceKey"), Hash); Number(selected.GetProperty("start"), 0);
+                var entry = new ProjectFootage(placement.GetProperty("id").GetString()!, placement.GetProperty("clipID").GetString()!,
+                    placement.GetProperty("kind").GetString()!, placement.GetProperty("start").GetDouble(), placement.GetProperty("end").GetDouble(),
+                    new FootageSelection(selected.GetProperty("sourceKey").GetString()!, selected.GetProperty("start").GetDouble()));
+                Require(placementIds.Add(entry.Id) && entry.End <= source.GetProperty("durationSeconds").GetDouble() &&
+                    companionDurations.TryGetValue(entry.Footage.SourceKey, out var duration) && entry.Fits(duration) &&
+                    !placements.Any(other => other.ClipId == entry.ClipId && other.Start < entry.End && entry.Start < other.End));
+                placements.Add(entry);
+            });
+            Require(placements.Count > 0);
+        }
+        static string FootageKey(JsonElement reference) => (reference.TryGetProperty("recordingHash", out var hash) ? hash : reference.GetProperty("contentKey")).GetString()!;
+        void ValidateSource(JsonElement reference)
+        {
+            Object(reference, "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", supportsContext ? "recordingHash" : "");
+            if (reference.TryGetProperty("recordingHash", out var hash)) String(hash, Hash);
+            Text(reference.GetProperty("absolutePath"), 1, 4096);
+            Nullable(reference.GetProperty("relativePath"), value => { Text(value, 1, 4096); Require(!value.GetString()!.Contains('\\')); });
+            Number(reference.GetProperty("sizeBytes"), 0, long.MaxValue, true); Number(reference.GetProperty("durationSeconds"), 0); String(reference.GetProperty("contentKey"), Hash);
+            Nullable(reference.GetProperty("video"), video =>
+            {
+                Object(video, "width height frameRate rotationDegrees"); Number(video.GetProperty("width"), 1, int.MaxValue, true); Number(video.GetProperty("height"), 1, int.MaxValue, true);
+                Number(video.GetProperty("frameRate"), double.Epsilon); Require(video.GetProperty("rotationDegrees").TryGetInt32(out var rotation) && rotation is 0 or 90 or 180 or 270);
+            });
+            Nullable(reference.GetProperty("audio"), audio =>
+            {
+                Object(audio, "sampleRate channels"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
+            });
+        }
         Nullable(root.GetProperty("transcript"), value => Transcript(value, normalizeWordText));
         var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId");
         Number(edits.GetProperty("pauseThresholdSeconds"), double.Epsilon, 10); Number(edits.GetProperty("pauseKeepSeconds"), 0, 1);

@@ -643,6 +643,8 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
+    @ObservationIgnored var cardPlanPath: String?
+    @ObservationIgnored var onCardProjectChange: ((Project) -> Void)?
     @ObservationIgnored private var initialised = false
     /// This editor's lease on its project's cache entry, from `start` to `close` (architecture §8.2). Every editor holds
     /// its own, so a Versions window showing the same project never releases or moves the main window's lease.
@@ -1054,7 +1056,7 @@ struct EditorRenderSnapshot {
         openRewrite?.follow(changed, name: name)
         // A relink, or its undo or redo, may change the content key: the lease moves with the project.
         if mediaChanged { holdCacheEntry() }
-        recordDocumentChange()
+        if let onCardProjectChange { onCardProjectChange(changed) } else { recordDocumentChange() }
         error = nil
         refresh()
         schedulePreviewUpdate(mediaChanged: mediaChanged)
@@ -1851,7 +1853,7 @@ extension EditorModel {
                   self.rewriteConnectorSignature == selectedSignature,
                   let lease = self.llmRuns.acquire() else { return }
             let runs = self.llmRuns
-            let connector = self.app.connector(provider.id)
+            let connector: any LLMConnector = if let cardPlanPath { CardPlanConnector(app: app, provider: provider, path: cardPlanPath) } else { app.connector(provider.id) }
             if claudeMode.findNeedsAction || claudeMode.afterFind != nil {
                 claudeMode.cancelFindContinuation()
                 if claudeMode.armed, claudeModeOn { claudeMode.phase = .waiting }
@@ -1870,11 +1872,12 @@ extension EditorModel {
                     // The route comes first (design §6.2: the consent, then "while it runs"); only the lease is held. A
                     // declined send leaves the sidebar, the last error and the fallback note as they were and announces
                     // nothing, and no "Finding clips…" row shows behind a sheet.
-                    guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
+                    let authorized = if cardPlanPath != nil { true } else { try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
                         wordCount: transcript.words.filter { $0.kind == .word }.count, rewrite: selectedPreset == .hooks ? DirectorScope(kind: .fullTake, wordCount: transcript.words.filter { $0.kind == .word }.count) : nil, confirmation: sendConfirmation, verb: selectedPreset == .hooks ? "Hook" : nil, isCurrent: { [self] in
                             let current = project == snapshot || (draft?.request.confirmedTranscript != nil && project.transcript == draft?.request.confirmedTranscript)
                             return !isLeaving && current && rewriteConnectorSignature == selectedSignature && (draft == nil || canSearchClaudeDraft(provider))
-                        }) else {
+                        }) }
+                    guard authorized else {
                             if let draft { await draft.work.value }
                             if !Task.isCancelled, project == snapshot, rewriteConnectorSignature == selectedSignature { outcome = .needsApproval }
                             else if draft != nil, !Task.isCancelled, capabilities.edit { outcome = .needsApproval }

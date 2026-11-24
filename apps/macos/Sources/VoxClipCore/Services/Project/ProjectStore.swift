@@ -195,6 +195,8 @@ public actor JSONProjectStore: ProjectStore {
         result.edits.clips = project.edits.clips.filter { clipIndices($0, words: words) != nil }
         warn("clip", project.edits.clips.count - result.edits.clips.count)
         let clipIDs = Set(result.edits.clips.map(\.id)), aiIDs = Set(project.ai.results.map(\.id))
+        result.media.footage.removeAll { !clipIDs.contains($0.clipID) }
+        warn("companion footage", project.media.footage.count - result.media.footage.count)
         if let active = result.edits.activeClipId, !clipIDs.contains(active) { result.edits.activeClipId = nil; warn("active clip", 1) }
         for index in result.edits.clips.indices {
             if let id = result.edits.clips[index].aiResultId, !aiIDs.contains(id) {

@@ -707,6 +707,7 @@ Voice Lab (only when you turn it on; each provider action requires your approval
 @MainActor func chooseFile(app: AppModel, projectsOnly: Bool = false, moviesOnly: Bool = false) {
     let panel = NSOpenPanel()
     panel.allowedContentTypes = projectsOnly ? [.voxclipProject] : moviesOnly ? [.movie] : [.voxclipProject, .movie]
+    panel.canChooseDirectories = !projectsOnly
     panel.allowsMultipleSelection = false
     if panel.runModal() == .OK, let url = panel.url { openFile(url, app: app) }
 }
@@ -742,7 +743,11 @@ Voice Lab (only when you turn it on; each provider action requires your approval
     }
     func receive(_ urls: [URL]) {
         for url in urls {
-            if url.pathExtension.lowercased() == "voxclip" { projectOpener(url) }
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                let shell = AppModel.sharedModel.shell
+                shell.selection = .home
+                shell.cardImport.offer(url)
+            } else if url.pathExtension.lowercased() == "voxclip" { projectOpener(url) }
             else if ["mov", "mp4", "m4v"].contains(url.pathExtension.lowercased()) {
                 if let movieOpener { movieOpener(url) } else { bufferedMovies.append(url) }
             } else { AppModel.sharedModel.shell.notice = "VoxClip can't open \(url.pathExtension.uppercased()) files on Mac yet. Export the video as MP4 or MOV and try again." }
