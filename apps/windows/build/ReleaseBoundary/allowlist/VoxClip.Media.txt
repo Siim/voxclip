@@ -28,6 +28,7 @@ literal "LARGE_V3_TURBO"
 literal "SMALL_EN"
 literal "VOXCLIP_FRAME_FACES"
 literal "emoji_u"
+literal "enable_drefs"
 literal "h264_amf"
 literal "h264_mf"
 literal "h264_nvenc"
@@ -932,7 +933,7 @@ member VoxClip.Media.Ffmpeg.DecodeSession :: field private hardwareFormat
 member VoxClip.Media.Ffmpeg.DecodeSession :: field private input
 member VoxClip.Media.Ffmpeg.DecodeSession :: field private lastTimestamp
 member VoxClip.Media.Ffmpeg.DecodeSession :: field private packet
-member VoxClip.Media.Ffmpeg.DecodeSession :: method internal .ctor(string,FFmpeg.AutoGen.AVMediaType,bool)
+member VoxClip.Media.Ffmpeg.DecodeSession :: method internal .ctor(string,FFmpeg.AutoGen.AVMediaType,bool,bool)
 member VoxClip.Media.Ffmpeg.DecodeSession :: method internal Next(System.Threading.CancellationToken)
 member VoxClip.Media.Ffmpeg.DecodeSession :: method internal Seek(double)
 member VoxClip.Media.Ffmpeg.DecodeSession :: method internal SeekWithFallback(double,double,double,System.Func`2<long,int>)
@@ -974,7 +975,7 @@ member VoxClip.Media.Ffmpeg.Native :: method internal Check(int,string,VoxClip.C
 member VoxClip.Media.Ffmpeg.Native :: method internal Colors(FFmpeg.AutoGen.SwsContext*,bool,FFmpeg.AutoGen.AVColorSpace)
 member VoxClip.Media.Ffmpeg.Native :: method internal Decoder(FFmpeg.AutoGen.AVStream*)
 member VoxClip.Media.Ffmpeg.Native :: method internal Frame(FFmpeg.AutoGen.AVPixelFormat,int,int)
-member VoxClip.Media.Ffmpeg.Native :: method internal Open(string)
+member VoxClip.Media.Ffmpeg.Native :: method internal Open(string,bool)
 member VoxClip.Media.Ffmpeg.Native :: method internal Round(double)
 member VoxClip.Media.Ffmpeg.Native :: method internal Seconds(long,FFmpeg.AutoGen.AVRational)
 member VoxClip.Media.Ffmpeg.Native :: method internal SourceMatrix(FFmpeg.AutoGen.AVColorSpace)
@@ -1035,7 +1036,7 @@ member VoxClip.Media.Ffmpeg.VideoDecoder :: field private toneHeight
 member VoxClip.Media.Ffmpeg.VideoDecoder :: field private toneMapper
 member VoxClip.Media.Ffmpeg.VideoDecoder :: field private toneWidth
 member VoxClip.Media.Ffmpeg.VideoDecoder :: field private transfer
-member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal .ctor(string,bool)
+member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal .ctor(string,bool,bool)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal ReadAt(double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal ReadNear(double,double,System.Threading.CancellationToken)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal Seek(double)
@@ -1062,14 +1063,16 @@ member VoxClip.Media.Frames.DecodedFrame :: method public op_Equality(VoxClip.Me
 member VoxClip.Media.Frames.DecodedFrame :: method public op_Inequality(VoxClip.Media.Frames.DecodedFrame,VoxClip.Media.Frames.DecodedFrame)
 member VoxClip.Media.Frames.DecodedFrame :: method public set_Pixels(VoxClip.Core.Domain.Captions.PixelBuffer)
 member VoxClip.Media.Frames.DecodedFrame :: method public set_Time(double)
+member VoxClip.Media.Frames.FfmpegFrameDecoder :: method private Open(string,int,double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.FfmpegFrameDecoder :: method public .ctor()
 member VoxClip.Media.Frames.FfmpegFrameDecoder :: method public Fit(int,int,int)
 member VoxClip.Media.Frames.FfmpegFrameDecoder :: method public Open(string,int,double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FfmpegFrameDecoder :: method public OpenLocalQuickTime(string,int,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private decoder
 member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private output
 member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private rotation
 member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private tolerance
-member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: method internal .ctor(string,int,double)
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: method internal .ctor(string,int,double,bool)
 member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: method public Dispose()
 member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: method public Read(double,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.FrameAnalysisCache :: field private gate
