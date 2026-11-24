@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, import new recordings from a card or folder, find the best moments across the shoot, add footage from another recording, and review local checks after export.
 - The VoxClip launch page now shows Claude’s one-click workflow, Rewrite in your own voice, and feed-ready exports, with real clip examples and downloads for Mac and Windows.
 - Claude mode and Make it postable can add zooms, punch-ins, animated titles, lower thirds and emoji on the words where they fit, and choose a title for the exported cover.
 - In ✦ Claude does it all, Mac can start finding clips with Apple Speech while Whisper or an approved Scribe run checks the words. The clip style card shows the transcription choice on Mac and Windows, and later clips arrive without interrupting your review.

@@ -2,9 +2,11 @@ import SwiftUI
 import Observation
 import UniformTypeIdentifiers
 import VoxClipCore
+import VoxClipMedia
 
 /// Per-editor job state survives view removal, tab changes and panel switches.
 @MainActor @Observable final class ExportJobState {
+    var checks: [String: [ClipExportReview]] = [:]
     var isOpen = false
     var scope = ExportScope.fullVideo
     var requestedIDs: [String] = []
@@ -88,6 +90,9 @@ import VoxClipCore
                 HStack { Image(systemName: "film"); Text(result.outputURL.lastPathComponent).lineLimit(1).truncationMode(.middle); Spacer(); Text(timecode(result.durationSeconds)).font(DesignValues.mono()) }.draggable(result.outputURL)
             }
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL)) }
+            ForEach(model.exportClipIDs, id: \.self) { id in
+                ForEach(job.checks[id] ?? []) { review in ExportSelfCheckRows(review: review) }
+            }
             DisclosureGroup("Share to X or LinkedIn…", isExpanded: model.app.boolBinding("ui.export.shareExpanded")) { shareControls.padding(.top, 8) }
             if let error = model.exportError { InlineNotice(text: error) }
         }
@@ -301,7 +306,7 @@ extension EditorModel {
     /// click exports the clip style's shapes).
     /// `postTexts` (by clip id) are written beside each of that clip's videos as `<video name>.txt`. With `keepGoing`
     /// (Claude mode's Export all) a file that fails is named in `exportFileFailures` and the rest still render.
-    func beginExport(targets: [ExportTarget], folder: URL, aspects: [AspectRatio]? = nil, postTexts: [String: String] = [:], keepGoing: Bool = false) {
+    func beginExport(targets: [ExportTarget], folder: URL, aspects: [AspectRatio]? = nil, postTexts: [String: String] = [:], keepGoing: Bool = false, checkExports: Bool = true) {
         guard !exporting, !targets.isEmpty, canExport, mediaExportable else { return }
         // A new render has a new disclosure snapshot. Keep an edited caption, then
         // lazily load fresh drafts (and the off-default opt-in) from its result.
@@ -397,6 +402,9 @@ extension EditorModel {
                             byteSize: (try? result.outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)))
                         attempt = nil
                         activeExportKey = nil
+                        if checkExports, let clipID, FileManager.default.fileExists(atPath: result.outputURL.path) {
+                            await checkClipExport(result.outputURL, job: job, clipID: clipID, project: shaped)
+                        }
                     } catch let error where keepGoing && !Self.isExportCancellation(error) {
                         // Export all: name this file and go on with the next one.
                         if let key = activeExportKey { failedExports[key] = folder }
@@ -435,6 +443,27 @@ extension EditorModel {
                 if let exportError, !exportError.isEmpty { announce(exportError) }
             }
         }
+    }
+
+    private func checkClipExport(_ url: URL, job: ExportJob, clipID: String, project: Project) async {
+        var report: ExportCheckReport?
+        do {
+            var edits = project.edits
+            edits.activeClipId = clipID
+            let state = try project.transcript.map { try EditState(transcript: $0, edits: edits) }
+            let edit = try ExportCheckExpectation.edit(render: job.render, state: state)
+            let hearing = if let shared = app.shared {
+                await ExportChecker.localHearing(transcript: project.transcript, locations: app.locations, shared: shared)
+            } else { nil as ExportChecker.Hearing? }
+            let scratch = app.locations.root.appendingPathComponent("Scratch/export-check", isDirectory: true)
+            report = try await ExportChecker(hearing: hearing, scratch: scratch)
+                .check(export: url, render: job.render, edit: edit, loudness: job.loudness).report
+        } catch is CancellationError { return }
+        catch { await app.logFailure(error, context: .export) }
+        guard !Task.isCancelled else { return }
+        let row = ClipExportReview(url: url, aspect: job.aspect, report: report)
+        exportJob.checks[clipID, default: []].removeAll { $0.aspect == job.aspect }
+        exportJob.checks[clipID, default: []].append(row)
     }
     nonisolated static func isExportCancellation(_ error: any Error) -> Bool {
         if error is CancellationError { return true }

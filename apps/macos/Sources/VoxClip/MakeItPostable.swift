@@ -137,6 +137,7 @@ enum MakeItInverse {
     case speed(clipID: String, previous: Double)
     /// An effect the run added (the hook's title card): removed, or put back as it was when the run replaced one.
     case effect(id: String, previous: ClipEffect?)
+    case footage(id: String, previous: ClipFootage?)
     /// The clip's opening lead-in before "Opens on a clear look at you" (ADR-R48).
     case leadIn(clipID: String, previous: Double?)
     /// The clip's crop before "9:16 follows your face".
@@ -193,6 +194,7 @@ struct MakeItRow: Identifiable, Equatable {
 @MainActor @Observable final class MakeItBudget {
     /// The per-video cap the creator chose (Settings `clips.autopilot.capUSD`).
     let cap: Decimal
+    private let fixed: Bool
     /// The cap plus every amount Continue approved.
     private(set) var approved: Decimal
     private(set) var spent: Decimal = 0
@@ -200,7 +202,8 @@ struct MakeItRow: Identifiable, Equatable {
     private(set) var needed: Decimal?
     @ObservationIgnored private var waiting: CheckedContinuation<Bool, Never>?
 
-    init(cap: Decimal) { self.cap = cap; approved = cap }
+    convenience init(cap: Decimal) { self.init(cap: cap, fixed: false) }
+    init(cap: Decimal, fixed: Bool) { self.cap = cap; self.fixed = fixed; approved = cap }
 
     var remaining: Decimal { max(0, approved - spent) }
     /// A $0 cap means no paid voice or music at all: fixes are cuts and wording only, and nothing asks for more.
@@ -209,7 +212,7 @@ struct MakeItRow: Identifiable, Equatable {
 
     /// Waits at the cap for the creator: true once Continue approved `shortfall` (rounded up to the cent), false after Stop.
     func ask(_ shortfall: Decimal) async -> Bool {
-        guard paidAllowed, shortfall > 0, waiting == nil else { return false }
+        guard !fixed, paidAllowed, shortfall > 0, waiting == nil else { return false }
         var value = shortfall * 100, cents = Decimal()
         NSDecimalRound(&cents, &value, 0, .up)
         needed = cents / 100
@@ -415,7 +418,12 @@ extension EditorModel {
     /// step, kept first. Claude mode passes the video's `budget` (the runs share it instead of each having its own cap) and
     /// its `clock`, which times each clip's plan and apply.
     func makeTopPostable(_ count: Int = 3, budget: MakeItBudget? = nil, clock: ClaudeModeClock? = nil) {
-        let ranked = suggestedClips.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>, moment: ClipAutopilotMoment)? in
+        makeTopPostable(count, budget: budget, clock: clock, only: nil)
+    }
+
+    func makeTopPostable(_ count: Int, budget: MakeItBudget?, clock: ClaudeModeClock? = nil, only clipIDs: Set<String>?) {
+        let chosen = suggestedClips.filter { clipIDs?.contains($0.id) ?? true }
+        let ranked = chosen.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>, moment: ClipAutopilotMoment)? in
             guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
             let found = foundSuggestion(clip)
             let moment = ClipAutopilotMoment.found(lower...upper, title: clip.title ?? found?.title ?? "", reason: found?.reason ?? "",
@@ -429,7 +437,7 @@ extension EditorModel {
         onShowMakeIt?()
         let request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
                                            captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone(),
-                                           moments: ranked.map(\.moment))
+                                           moments: ranked.map(\.moment), footageSources: project.media.additionalSources)
         let task = Task { [weak self] () -> Void in await self?.performSeries(runs, spans: ranked.map(\.span), request: request, clock: clock) }
         for run in runs { run.task = task }
         makeIt.holdQueue(task)
@@ -626,7 +634,8 @@ extension EditorModel {
         guard let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == clipID }),
               let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
         return ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clip(lower...upper),
-                                    captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone())
+                                    captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone(),
+                                    footageSources: project.media.additionalSources)
     }
 
     /// The planner's tone (ai.md §16.3): a Change's tone once, else the style's. Auto offers the catalogue tones; a tone
@@ -816,6 +825,12 @@ extension EditorModel {
                               play: max(0, effect.start - 0.5), undoable: true))
         case .stretch, .translateCaptions, .musicDucking:
             return (nil, nil)
+        case .footage(let entry):
+            let previous = project.media.footage.first { $0.id == entry.id }
+            guard project.media.setFootage(entry) else { return (nil, nil) }
+            let label = switch entry.kind { case .bRoll: "B-roll"; case .screenshot: "Screenshot"; case .videoStack: "Two-video stack" }
+            return (.footage(id: entry.id, previous: previous), MakeItRow(id: operation.id, text: label,
+                    detail: operation.reason, play: max(0, entry.start - 0.5), undoable: true))
         }
     }
 
@@ -1080,6 +1095,12 @@ extension EditorModel {
         case .effect(let id, let previous):
             let next = previous.flatMap { try? ClipEffects.adding([$0], to: project) } ?? (try? ClipEffects.removing([id], from: project))
             guard let next else { return false }
+            if next != project { replace(next, name: name) }
+            return true
+        case .footage(let id, let previous):
+            var next = project
+            next.media.footage.removeAll { $0.id == id }
+            if let previous, !next.media.setFootage(previous) { return false }
             if next != project { replace(next, name: name) }
             return true
         case .leadIn(let clipID, let previous):
@@ -1373,17 +1394,21 @@ extension EditorModel {
         guard let shared = app.shared, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else {
             throw LLMError.noConnector
         }
-        let connector = app.connector(provider.id)
+        let connector: any LLMConnector = if let cardPlanPath { CardPlanConnector(app: app, provider: provider, path: cardPlanPath) } else { app.connector(provider.id) }
         let model = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
         guard let lease = llmRuns.acquire() else { throw VoxClipError.providerError("Another AI request on this project is still running. Try again when it finishes.", provider: provider.id) }
         defer { llmRuns.release(lease) }
         let words = request.transcript.words.filter { $0.kind == .word }.count
-        guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips, wordCount: words,
-                                                      confirmation: sendConfirmation, verb: "Make it postable") else { throw CancellationError() }
+        if cardPlanPath == nil {
+            guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips, wordCount: words,
+                                                          confirmation: sendConfirmation, verb: "Make it postable") else { throw CancellationError() }
+        }
         let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
         let service = ClipAutopilotService(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
         // Claude Code runs one process per connector: two more lanes plan a series' clips three at once.
-        let lanes: [any LLMConnector] = provider.id == ConnectorID.claudeCode.rawValue ? [app.connector(provider.id), app.connector(provider.id)] : []
+        let lanes: [any LLMConnector] = if let cardPlanPath {
+            (0..<2).map { _ in CardPlanConnector(app: app, provider: provider, path: cardPlanPath) }
+        } else if provider.id == ConnectorID.claudeCode.rawValue { [app.connector(provider.id), app.connector(provider.id)] } else { [] }
         return try await service.plan(request, connector: connector, model: model, lanes: lanes, frames: frames, progress: progress).series
     }
 }

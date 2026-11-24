@@ -112,6 +112,7 @@ enum SidebarItem: Hashable {
 /// controller while it is open and detached before it closes.
 @MainActor @Observable final class WorkspaceShell {
     let app: AppModel
+    let cardImport = CardImport()
     private(set) var document: VoxClipDocument?
     private(set) var editor: EditorModel?
     var selection: SidebarItem = .home { didSet { if selection != oldValue { followSelection() } } }
@@ -354,6 +355,7 @@ enum SidebarItem: Hashable {
     /// Opens a project file without a window of its own and replaces the open project
     /// with it. Opening the project that is already open selects Full take.
     @discardableResult func openProject(at url: URL) async -> Bool {
+        guard !cardImport.owns(url) else { notice = "This recording is still being worked on. Open it once the card finishes."; return false }
         windowController?.window?.makeKeyAndOrderFront(nil)
         if let open = document?.fileURL, open.standardizedFileURL == url.standardizedFileURL {
             selection = .fullTake
