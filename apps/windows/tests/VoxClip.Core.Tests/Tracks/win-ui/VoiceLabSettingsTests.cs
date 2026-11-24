@@ -462,7 +462,7 @@ public sealed class VoiceLabSettingsTests
     {
         var editor = AppSource(Path.Combine("Pages", "EditorPage.xaml.cs"));
         Assert.DoesNotContain("VoiceLabDialogs.TurnOnAsync", editor);
-        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite)", editor);
+        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(session);", editor);
         Assert.Contains("session.GenerationIsCurrent && App.Services.VoiceLabEnabled", editor);
         Assert.DoesNotContain("Title = \"Turn on Voice Lab\"", editor);
         Assert.DoesNotContain("EnablementCopy", AppSource(Path.Combine("ViewModels", "RewriteEntryPolicy.cs")));
