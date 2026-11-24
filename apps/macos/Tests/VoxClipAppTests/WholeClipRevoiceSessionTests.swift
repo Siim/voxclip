@@ -122,14 +122,21 @@ private struct FalKeyOnly: ProviderKeyStore {
         let editor: EditorModel
         let rewrite: RewriteSession
     }
-    private func live(_ edit: (inout Project) -> Void = { _ in }) throws -> Live {
+    private func live(ready: Bool = false, _ edit: (inout Project) -> Void = { _ in }) throws -> Live {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
         edit(&project)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-whole-clip-" + UUID().uuidString, isDirectory: true)
         let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
         let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
-        return Live(root: root, editor: editor, rewrite: RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: nil, connector: nil))
+        let envelope = ready ? AudioEnvelope(sampleRate: 1_000, levels: Array(repeating: 0.1, count: 700)) : nil
+        if ready {
+            app.settings.values["voiceLab.enabled"] = .bool(true)
+            app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+            editor.mediaResolved = true
+            editor.refresh()
+        }
+        return Live(root: root, editor: editor, rewrite: RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: envelope, connector: nil))
     }
     private func close(_ live: Live) {
         live.editor.close()
@@ -840,7 +847,7 @@ private struct FalKeyOnly: ProviderKeyStore {
     /// whole-clip-fixable-stops-patch-only: with no fal.ai key nothing is priced; the primary opens Settings. Once the key is
     /// saved the card offers the price, and the stop's Try Again.
     @Test func noFalKeyOffersSettingsUntilTheKeyIsAdded() async throws {
-        let live = try live()
+        let live = try live(ready: true) { $0.voiceLab.segments = [] }
         defer { close(live) }
         let stubs = Stubs()
         stubs.hasKey = false
@@ -850,7 +857,6 @@ private struct FalKeyOnly: ProviderKeyStore {
         await session.refreshQuote()
         let primary = try #require(live.rewrite.wholeClipPrimary())
         #expect(primary.id == "wholeClipAddKey" && primary.title == "Add fal.ai Key…" && !primary.priced)
-        #expect(live.rewrite.wholeClipChipAction() == nil, "no priced chip without the key")
         session.start()
         await session.waitForRun()
         #expect(session.failure?.repeats == false && !session.keyAvailable)

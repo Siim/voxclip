@@ -283,8 +283,8 @@ extension RewriteSession {
     func startWholeClip(automatic: Bool = false, budget: Decimal? = nil, approved: Decimal? = nil) {
         guard let session = wholeClip, let clip = wholeClipRecordScope, !session.running, !session.submissionUnconfirmed,
               session.repeatedWordCheckPart == nil else { return }
-        guard session.phase != .choose || wholeClipUnavailable == nil else { return }
         if let approved {
+            guard session.phase != .choose || wholeClipUnavailable == nil else { return }
             guard !session.quoting, !session.needsRequote else { return }
             let price = session.isStopped ? session.retryUSD : session.quote?.wholeUSD
             guard let price, price <= approved else { return }
