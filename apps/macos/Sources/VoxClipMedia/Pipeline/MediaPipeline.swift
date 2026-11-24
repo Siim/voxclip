@@ -199,15 +199,17 @@ public struct CompositionBuilder: Sendable {
         // Clip controls (design.md §6.9): the voice is staged with its speed, level, fades and mute, then the whole
         // composition is time-scaled; captions, motion and Voice Lab layers keep edited times the compositor maps back.
         let rendered = CMTime(value: request.renderedSamples, timescale: rate)
+        let timing = request.speedTiming
         var voiceTrack = audio
         var voiceLease: ClipVoiceLease?
-        if let controls = request.clipControls, controls.changesAudio, let audio {
+        if let audio, request.clipControls?.changesAudio == true || !timing.isIdentity {
+            let controls = request.clipControls ?? ProjectClipControls(clipId: "render")
             voiceLease = try await ClipVoiceRenderer.stage(composition: composition, voice: audio, audioMix: mix, editedDuration: duration,
-                                                           renderedDuration: rendered, controls: controls, scratchRoot: scratchRoot)
+                                                           renderedDuration: rendered, controls: controls, timing: timing, scratchRoot: scratchRoot)
             composition.removeTrack(audio)
             voiceTrack = nil; mix = nil
         }
-        if request.speed != 1 { composition.scaleTimeRange(CMTimeRange(start: .zero, duration: duration), toDuration: rendered) }
+        ClipVoiceRenderer.scale(duration, timing: timing, apply: composition.scaleTimeRange(_:toDuration:))
         if let voiceLease {
             let staged = AVURLAsset(url: voiceLease.url) // Held while its track is inserted.
             guard let stagedTrack = try await MediaSupport.audioTrack(in: staged),
@@ -302,13 +304,13 @@ public struct CompositionBuilder: Sendable {
             }
         var spanIndex = 0, layerIndex = 0
         // Edited boundaries onto the rendered timeline: identical at 1×, divided by the clip's speed otherwise.
-        let speed = request.speed
+        let timing = request.speedTiming
         let samples = request.renderedSamples
         let timescale = Int32(request.timeline.sampleRate)
         func rendered(_ time: CMTime) -> CMTime {
-            guard speed != 1 else { return time }
+            guard !timing.isIdentity else { return time }
             if time == duration { return CMTime(value: samples, timescale: timescale) }
-            return CMTime(value: min(samples, Int64((time.seconds * request.timeline.sampleRate / speed).rounded())), timescale: timescale)
+            return CMTime(value: min(samples, Int64((timing.rendered(time.seconds) * request.timeline.sampleRate).rounded())), timescale: timescale)
         }
         let instructions = zip(boundaries, boundaries.dropFirst()).compactMap { start, end -> RenderInstruction? in
             while spanIndex < framingSpans.count && framingSpans[spanIndex].output.end <= start { spanIndex += 1 }

@@ -214,7 +214,13 @@ public struct AskClaudeAnswer: Sendable, Equatable {
 
     /// The rows that need a paid click before they run: a voice rewrite, generated music.
     public var paid: [ClipAutopilotOperation] {
-        operations.filter { if case .rewrite = $0.action { true } else if case .music = $0.action { true } else { false } }
+        operations.filter {
+            switch $0.action {
+            case .rewrite, .music: true
+            case .asset(let asset): asset.kind == .illustration
+            default: false
+            }
+        }
     }
 }
 
@@ -262,7 +268,8 @@ public struct AskClaudeValidator: Sendable {
             }
             func drop(_ why: String) { answer.repairs.append("Left out \(kind.isEmpty ? "a change" : kind): \(why).") }
             let wordAnchored = item[ai: "target"].aiString == "planEffect"
-            if ["punchIn", "motionTitle", "emojiPop"].contains(kind) || (wordAnchored && ["zoom", "lowerThird"].contains(kind)) {
+            if ["punchIn", "motionTitle", "emojiPop", "soundEffect", "illustration", "colourLook", "speedForPart"].contains(kind) ||
+                (wordAnchored && ["zoom", "lowerThird"].contains(kind)) {
                 let listed = scope.words.map { $0.lowerBound...min($0.upperBound, $0.lowerBound + prompt.maxSelectionWords - 1) }
                 let clip = scope.clipID ?? clipContaining(scope)
                 var serial = 1

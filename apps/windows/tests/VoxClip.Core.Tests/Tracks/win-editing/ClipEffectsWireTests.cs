@@ -93,7 +93,7 @@ public sealed class ClipEffectsWireTests
     {
         var project = ProjectSerialization.Deserialize(Fixture().ToJsonString());
         VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
-        Assert.Equal(12, project.ClipEffects.Count);
+        Assert.Equal(15, project.ClipEffects.Count);
         var typed = project.ClipEffects.Select(ClipEffect.Parse).ToArray();
         Assert.Equal(project.ClipEffects.Select(effect => effect.GetProperty("id").GetString()), typed.Select(effect => effect.Id));
         // Censor kinds render everywhere; the others only in their own clip, or the full video for a null clip (ai.md §18.5).

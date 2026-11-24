@@ -146,7 +146,7 @@ import Testing
         let project = try fixture()
         let full = ClipEffects.rendered(in: project, clipID: nil).map(\.id)
         #expect(full == ["fx-bleep-1", "fx-blur-1", "fx-pixelate-1", "fx-mute-1"])
-        #expect(ClipEffects.rendered(in: project, clipID: "clip-main").count == 12)
+        #expect(ClipEffects.rendered(in: project, clipID: "clip-main").count == 15)
     }
 
     @Test func bleepedWordsAreMaskedInCaptionsAndPunctuationStays() {

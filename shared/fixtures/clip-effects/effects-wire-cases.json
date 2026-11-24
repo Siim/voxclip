@@ -711,6 +711,46 @@
       ]
     },
     {
+      "id": "unknown-colour-look",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/12/look",
+          "value": "sepia"
+        }
+      ]
+    },
+    {
+      "id": "speed-outside-limits",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/13/rate",
+          "value": 2.1
+        }
+      ]
+    },
+    {
+      "id": "speed-without-clip",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/13/clipId",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "other-project-illustration-folder",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/14/imageFile",
+          "value": "00000000-0000-0000-0000-000000000001/illustration-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
+        }
+      ]
+    },
+    {
       "id": "v1-effects",
       "schemaValid": false,
       "patches": [

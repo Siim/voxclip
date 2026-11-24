@@ -16,12 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 PATH = ROOT / 'shared/schemas/project.schema.json'
 
 IDENTIFIER = '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'
-KINDS = ['bleep', 'mute', 'blur', 'pixelate', 'title', 'lowerThird', 'sticker', 'arrow', 'circle', 'progress', 'freeze', 'sound']
+KINDS = ['bleep', 'mute', 'blur', 'pixelate', 'title', 'lowerThird', 'sticker', 'arrow', 'circle', 'progress', 'freeze', 'sound',
+         'colourLook', 'speedForPart', 'illustration']
 KIND_KEYS = {
     'bleep': ['wordIds'], 'mute': ['wordIds'],
     'blur': ['rect', 'tracking', 'track'], 'pixelate': ['rect', 'tracking', 'track'],
     'title': ['text', 'position'], 'lowerThird': ['text', 'position'], 'sticker': ['text', 'position', 'scale'],
-    'arrow': ['rect'], 'circle': ['rect'], 'progress': ['position'], 'freeze': [], 'sound': ['sound', 'gainDb']}
+    'arrow': ['rect'], 'circle': ['rect'], 'progress': ['position'], 'freeze': [], 'sound': ['sound', 'gainDb'],
+    'colourLook': ['look'], 'speedForPart': ['rate'], 'illustration': ['imageFile']}
 COMMON = ['id', 'clipId', 'kind', 'start', 'end']
 POSITIONS = ['top', 'center', 'bottom', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight']
 
@@ -81,7 +83,10 @@ def definitions():
         'scale': {'type': 'number', 'minimum': 0.5, 'maximum': 3},
         'sound': {'oneOf': [{'$ref': '#/$defs/clipEffectBundledSound'}, {'$ref': '#/$defs/clipEffectLibrarySound'}]},
         'gainDb': {'type': 'number', 'minimum': -30, 'maximum': 6, 'description': 'Relative to the voice.'},
-        'animation': {'enum': ['rise', 'pop'], 'description': 'Optional entrance on title, lowerThird or sticker.'}}
+        'animation': {'enum': ['rise', 'pop'], 'description': 'Optional entrance on title, lowerThird or sticker.'},
+        'look': {'enum': ['original', 'muted', 'warm', 'bw']},
+        'rate': {'type': 'number', 'minimum': 0.5, 'maximum': 2},
+        'imageFile': {'type': 'string', 'pattern': '^[0-9a-f-]{36}/illustration-[0-9a-f]{64}\\.png$'}}
     entry = {'description': 'One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes '
                             'id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the '
                             'clip and words exist, a freeze is at most 5 s, a sound spans its own length, a sticker is at '
@@ -92,7 +97,9 @@ def definitions():
          'then': {'required': COMMON + KIND_KEYS[kind],
                   'propertyNames': {'enum': COMMON + KIND_KEYS[kind] + (['animation'] if kind in ('title', 'lowerThird', 'sticker') else [])},
                   **({'properties': {'animation': {'const': 'pop' if kind == 'sticker' else 'rise'}}}
-                     if kind in ('title', 'lowerThird', 'sticker') else {})}}
+                     if kind in ('title', 'lowerThird', 'sticker') else {}),
+                  **({'properties': {'clipId': {'type': 'string'}}}
+                     if kind in ('colourLook', 'speedForPart', 'illustration') else {})}}
         for kind in KINDS]
     return {'clipEffectRect': rect, 'clipEffectTrackSample': sample, 'clipEffectBundledSound': bundled,
             'clipEffectLibrarySound': library, 'clipEffect': entry}

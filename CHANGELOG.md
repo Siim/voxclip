@@ -5,6 +5,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac, import new recordings from a card or folder, find the best moments across the shoot, add footage from another recording, and review local checks after export.
+- Claude can add credited sound effects, illustrations within your spend cap, colour looks and speed changes on individual beats. Ask Claude can make the same edits.
+- On Mac and Windows, changed phrases use your selected voice without rejecting paid takes on a second voice comparison. Word and audio checks still run.
 - Mac adds VoxConvo account and export controls for direct posting, disabled until VoxConvo's device sign-in is ready.
 - On Mac, ask Claude for a suggested order, posting times, and drafts with hashtags for X, LinkedIn, and VoxConvo after exporting clips.
 - On Mac, Export and the CLI can save editable FCPXML timelines with cuts, text titles, captions, and separate voice and music.

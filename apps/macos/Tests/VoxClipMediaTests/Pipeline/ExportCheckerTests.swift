@@ -58,7 +58,9 @@ extension HeavyMediaTests {
                 [{"kind":"motionTitle","startWord":0,"endWord":1,"text":"Ship every week","reason":"Introduce the point."},
                  {"kind":"punchIn","startWord":3,"endWord":4,"scale":1.2,"reason":"Land the reveal."},
                  {"kind":"lowerThird","startWord":5,"endWord":6,"text":"Ada · Editor","reason":"Identify the speaker."},
-                 {"kind":"emojiPop","startWord":7,"endWord":8,"text":"🔥","reason":"Punctuate the result."}]
+                 {"kind":"emojiPop","startWord":7,"endWord":8,"text":"🔥","reason":"Punctuate the result."},
+                 {"kind":"speedForPart","startWord":0,"endWord":1,"rate":1.5,"reason":"Tighten the opening."},
+                 {"kind":"colourLook","startWord":5,"endWord":6,"look":"warm","reason":"Warm the explanation."}]
                 """.utf8))
             let captions = ClipAutopilotPlan.Captions(styleId: "vox-highlight", font: .init(family: "Roboto", weight: 900),
                                                         textCase: .asSaid, wordsPerCaption: 3)
@@ -81,10 +83,15 @@ extension HeavyMediaTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let (url, prepared) = try await exported(directory, automaticLooks: true)
         let render = prepared.render
-        #expect(render.effects?.effects.map(\.animation) == [.rise, .rise, .pop])
+        #expect(render.effects?.effects.compactMap(\.animation) == [.rise, .rise, .pop])
         #expect(render.motionCues.count == 1)
+        #expect(render.effects?.look(at: 3.1) == .warm)
+        #expect(render.effects?.look(at: 2.4) == nil)
+        #expect(abs(render.timeline.duration - render.renderedDuration - 0.24) < 0.001)
         #expect(ExportChecker.titleBoxes(render: render).count == 1)
         let edit = try ExportCheckExpectation.edit(render: render, state: prepared.state)
+        let last = try #require(edit.words.last)
+        #expect(abs(last.end - (render.timeline.mapTime(4.46) - 0.24)) < 0.001)
         let (_, hearing) = StubHearing.hearing(edit.words.map { ExportCheckInput.Heard(text: $0.text, start: $0.start, end: $0.end) })
         let checked = try await ExportChecker(hearing: hearing, scratch: directory).check(export: url, render: render, edit: edit, loudness: .social)
         #expect(checked.report[.sync]?.status == .ok)

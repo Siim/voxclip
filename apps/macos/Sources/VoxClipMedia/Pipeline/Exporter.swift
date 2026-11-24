@@ -239,8 +239,8 @@ public actor AVExporter: Exporter {
         let source = job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath()
         guard destination != source else { throw VoxClipError.exportFailed("The export must not overwrite the source") }
         let srtURL = job.writeSRT ? (job.srtURL ?? destination.deletingPathExtension().appendingPathExtension("srt")).standardizedFileURL.resolvingSymlinksInPath() : nil
-        let speed = job.render.speed
-        let srtText = srtURL == nil ? nil : (job.render.captionLayout.map { CaptionSubtitles.srt($0, speed: speed) } ?? Self.srt(job.render.captions, speed: speed))
+        let timing = job.render.speedTiming
+        let srtText = srtURL == nil ? nil : (job.render.captionLayout.map { CaptionSubtitles.srt($0, timing: timing) } ?? Self.srt(job.render.captions, timing: timing))
         if let sidecar = srtURL {
             try ExportSafety.validateDestination(sidecar)
             let sidecarPartial = try ExportSafety.partialURL(for: sidecar)
@@ -270,6 +270,12 @@ public actor AVExporter: Exporter {
             throw VoxClipError.exportFailed("Export outputs overlap")
         }
         if let input = job.render.voiceLab { try Self.preventPaidOverwrite(input, paths: allPaths) }
+        if let effects = job.render.effects {
+            let assets = Set((Array(effects.imageURLs.values) + Array(effects.soundURLs.values)).map { $0.standardizedFileURL.resolvingSymlinksInPath().path })
+            guard allPaths.allSatisfy({ !assets.contains($0.standardizedFileURL.resolvingSymlinksInPath().path) }) else {
+                throw VoxClipError.exportFailed("The export must not overwrite an effect asset")
+            }
+        }
         try Self.preventDemoOverwrite(job.render, paths: allPaths)
         for extra in extras {
             try ExportSafety.validateDestination(extra.destination)
@@ -392,6 +398,12 @@ public actor AVExporter: Exporter {
         if let cover = job.cover { coverJPEG = try await coverImage(graph, cover: cover) }
         try Task.checkCancellation()
         let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
+        if let credits = job.render.effects?.credits, !credits.isEmpty {
+            let item = AVMutableMetadataItem()
+            item.identifier = .iTunesMetadataUserComment
+            item.value = credits.joined(separator: "\n") as NSString
+            writer.metadata = [item]
+        }
         writer.directoryForTemporaryFiles = workDirectory
         writer.shouldOptimizeForNetworkUse = true
         writer.movieTimeScale = 48000
@@ -546,6 +558,7 @@ public actor AVExporter: Exporter {
         request.contextDemo?.placements.isEmpty != false &&
         !request.motionCues.contains(where: { $0.clipID == request.motionClipID && $0.isValid }) &&
         request.clipControls?.changesPicture != true && request.clipControls?.shape == nil &&
+        request.effects?.effects.contains(where: { [.colourLook, .speedForPart, .illustration].contains($0.kind) }) != true &&
         request.style == nil && request.captionLayout == nil && request.captions.words.isEmpty && request.captions.pages.isEmpty
     }
 
@@ -759,7 +772,9 @@ public actor AVExporter: Exporter {
         }
     }
 
-    static func srt(_ track: CaptionTrack, speed: Double = 1) -> String {
+    static func srt(_ track: CaptionTrack, speed: Double = 1) -> String { srt(track, timing: .init(speed: speed)) }
+
+    static func srt(_ track: CaptionTrack, timing: ClipSpeedTiming) -> String {
         func timestamp(_ time: Double) -> String {
             let milliseconds = max(0, Int((time * 1000).rounded()))
             return String(format: "%02d:%02d:%02d,%03d", milliseconds / 3600000,
@@ -772,7 +787,7 @@ public actor AVExporter: Exporter {
             let text = !validLines ? page.words.map(\.text).joined(separator: " ") : page.lines.map { line in
                 line.words.map { track.words[$0].text }.joined(separator: " ")
             }.joined(separator: "\n")
-            return "\(index + 1)\n\(timestamp(page.start / speed)) --> \(timestamp(page.end / speed))\n\(text)\n\n"
+            return "\(index + 1)\n\(timestamp(timing.rendered(page.start))) --> \(timestamp(timing.rendered(page.end)))\n\(text)\n\n"
         }.joined()
     }
 

@@ -25,6 +25,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         case freeze
         /// A short sound at `start`.
         case sound
+        case colourLook, speedForPart, illustration
 
         public var isCensor: Bool { [.bleep, .mute, .blur, .pixelate].contains(self) }
         public var usesWords: Bool { self == .bleep || self == .mute }
@@ -159,15 +160,19 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
     public var gainDb: Double?
     public enum Animation: String, Codable, Sendable { case rise, pop }
     public var animation: Animation?
+    public var look: ClipLook?
+    public var rate: Double?
+    public var imageFile: String?
 
     static func allowsAnimation(_ kind: Kind) -> Bool { kind.usesText }
 
     public init(id: String, clipId: String?, kind: Kind, start: Double, end: Double, wordIds: [String]? = nil, rect: Rect? = nil,
                 tracking: Tracking? = nil, track: [TrackSample]? = nil, text: String? = nil, position: Position? = nil, scale: Double? = nil,
-                sound: Sound? = nil, gainDb: Double? = nil, animation: Animation? = nil) {
+                sound: Sound? = nil, gainDb: Double? = nil, animation: Animation? = nil, look: ClipLook? = nil, rate: Double? = nil,
+                imageFile: String? = nil) {
         self.id = id; self.clipId = clipId; self.kind = kind; self.start = start; self.end = end; self.wordIds = wordIds; self.rect = rect
         self.tracking = tracking; self.track = track; self.text = text; self.position = position; self.scale = scale; self.sound = sound
-        self.gainDb = gainDb; self.animation = animation
+        self.gainDb = gainDb; self.animation = animation; self.look = look; self.rate = rate; self.imageFile = imageFile
     }
 
     // MARK: Limits
@@ -205,11 +210,14 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         case .progress: ["position"]
         case .freeze: []
         case .sound: ["sound", "gainDb"]
+        case .colourLook: ["look"]
+        case .speedForPart: ["rate"]
+        case .illustration: ["imageFile"]
         }
     }
     static let commonKeys: Set<String> = ["id", "clipId", "kind", "start", "end"]
 
-    private enum CodingKeys: String, CodingKey { case id, clipId, kind, start, end, wordIds, rect, tracking, track, text, position, scale, sound, gainDb, animation }
+    private enum CodingKeys: String, CodingKey { case id, clipId, kind, start, end, wordIds, rect, tracking, track, text, position, scale, sound, gainDb, animation, look, rate, imageFile }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -229,6 +237,9 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         if has(.scale) { scale = try values.decode(Double.self, forKey: .scale) }
         if has(.sound) { sound = try values.decode(Sound.self, forKey: .sound) }
         if has(.gainDb) { gainDb = try values.decode(Double.self, forKey: .gainDb) }
+        if has(.look) { look = try values.decode(ClipLook.self, forKey: .look) }
+        if has(.rate) { rate = try values.decode(Double.self, forKey: .rate) }
+        if has(.imageFile) { imageFile = try values.decode(String.self, forKey: .imageFile) }
         if values.contains(.animation) { animation = try values.decode(Animation.self, forKey: .animation) }
     }
 
@@ -247,6 +258,9 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         if has(.scale) { try values.encode(scale, forKey: .scale) }
         if has(.sound) { try values.encode(sound, forKey: .sound) }
         if has(.gainDb) { try values.encode(gainDb, forKey: .gainDb) }
+        if has(.look) { try values.encode(look, forKey: .look) }
+        if has(.rate) { try values.encode(rate, forKey: .rate) }
+        if has(.imageFile) { try values.encode(imageFile, forKey: .imageFile) }
         try values.encodeIfPresent(animation, forKey: .animation)
     }
 
@@ -334,6 +348,13 @@ public enum ClipEffects {
         try require(effect.start.isFinite && effect.end.isFinite && effect.start >= 0 && effect.end > effect.start
                     && effect.end - effect.start <= ClipEffect.maximumSeconds + 1e-9, "range")
         let kind = effect.kind
+        if kind == .colourLook { try require(effect.clipId != nil && effect.look != nil, "timed look") }
+        if kind == .speedForPart { try require(effect.clipId != nil && effect.rate.map { (0.5...2).contains($0) } == true, "timed speed") }
+        if kind == .illustration {
+            try require(effect.clipId != nil && effect.imageFile.map {
+                $0.hasPrefix(projectId + "/") && matches($0, #"\A[0-9a-f-]{36}/illustration-[0-9a-f]{64}\.png\z"#)
+            } == true, "illustration path")
+        }
         if kind.usesWords {
             let ids = effect.wordIds ?? []
             try require(!ids.isEmpty && ids.count <= ClipEffect.maximumWords && Set(ids).count == ids.count && ids.allSatisfy { matches($0, identifier) }, "words")

@@ -985,22 +985,24 @@ struct VoiceLabTakeRunTests {
             #expect(result.rows.allSatisfy { $0.receipt != nil && $0.qaReceipt == nil && $0.qa?.values.transcriptMatch == nil })
         }
     }
-    @Test(arguments: [false, true]) func wholeClipChecksWordsInsteadOfGeneratedSpeaker(wrongWords: Bool) async throws {
+    @Test(arguments: [false, true], [false, true]) func selectedVoiceChecksWordsInsteadOfGeneratedSpeaker(wrongWords: Bool, editedLayout: Bool) async throws {
         let fixture = try await fixture({ $0.mismatchCount = wrongWords ? 1 : 0 }, drift: true)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         var input = fixture.input
-        input.editedLayout = VoiceLabEditedLayout(cuts: [], pauseBoundSeconds: 0.2, maximumPictureSpeed: 1.2)
+        input.checksGeneratedSpeaker = false
+        if editedLayout { input.editedLayout = VoiceLabEditedLayout(cuts: [], pauseBoundSeconds: 0.2, maximumPictureSpeed: 1.2) }
         let quote = try await fixture.run.prepare(input, candidates: 1)
         let result = try await fixture.run.execute(quote, approved: true)
         let row = try #require(result.rows.first)
         #expect(sent(fixture) == (1, 1))
+        #expect(row.voiceCheck == .selectedVoice)
         #expect(row.qa?.values.speakerScore == nil)
         #expect(row.qa?.values.peakDbfs != nil)
         #expect(row.selectable == !wrongWords)
         #expect(row.qa?.hardFailures == (wrongWords ? [.transcript] : []))
     }
 
-    @Test(arguments: ["pass", "wrong words", "revoked"]) func wholeClipReusesSpeakerRejectedTakeWithoutBuyingSynthesis(_ scenario: String) async throws {
+    @Test(arguments: ["pass", "wrong words", "revoked"]) func phraseReusesSpeakerRejectedTakeWithoutBuyingSynthesis(_ scenario: String) async throws {
         let speaker = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: true), calibratedThreshold: 0.45)
         let fixture = try await fixture({ $0.mismatchCount = scenario == "wrong words" ? 1 : 0 }, drift: true, laterSpeaker: speaker)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -1011,7 +1013,7 @@ struct VoiceLabTakeRunTests {
         await fixture.run.invalidate()
 
         var input = fixture.input
-        input.editedLayout = VoiceLabEditedLayout(cuts: [], pauseBoundSeconds: 0.2, maximumPictureSpeed: 1.2)
+        input.checksGeneratedSpeaker = false
         let quote = try await fixture.later.prepare(input, candidates: 1)
         #expect(quote.takes.first?.adoptedAsset == saved.assetFile)
         #expect(quote.takes.first?.synthesis.estimate.usd == 0)

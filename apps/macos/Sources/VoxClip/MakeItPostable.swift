@@ -85,6 +85,7 @@ struct MakeItServices {
     var framePass: @MainActor (_ editor: EditorModel) -> VideoFramePass? = { _ in nil }
     /// The AI the frames go to: its name, whether it takes images, and who pays; nil sends no frames.
     var frameAI: @MainActor (_ editor: EditorModel) async -> MakeItFrameAI? = { _ in nil }
+    var effectAssets: ClipPlanAssets?
 }
 
 /// One rewrite for the voice step.
@@ -366,6 +367,9 @@ extension EditorModel {
         }
         // The frames an API key bills for (ADR-R48): at most a full sheet, priced before the send.
         if let images = makeItImageEstimate() { total += images; priced = true }
+        if makeIt.services == nil, let quote = clipIllustrationQuote {
+            total += quote.usdPerImage; priced = true
+        }
         return priced && total > 0 ? total : nil
     }
 
@@ -706,6 +710,17 @@ extension EditorModel {
             }
         }
         if let offer = whole?.offer { rows.append(offer) }
+        if let assets = services.effectAssets {
+            var illustrated = false
+            for operation in operations where !makeItStopped(run) {
+                guard case .asset(let asset) = operation.action else { continue }
+                if asset.kind == .illustration {
+                    guard !illustrated else { continue }
+                    illustrated = true
+                }
+                rows.append(await makeItAssetStep(asset, operation: operation, run: run, client: assets))
+            }
+        }
         // Music, once the clip's length is final.
         if makeItStyle.music, !makeItStopped(run) {
             run.line("Picking music…")
@@ -813,15 +828,15 @@ extension EditorModel {
             return (.effect(id: card.id, previous: previous),
                     MakeItRow(id: operation.id, kind: .choice, text: Self.makeItHookRowText(card.text ?? text, chosenBy: "Claude"),
                               detail: Self.makeItHookDetail, play: clipPlay(clipID, in: project), undoable: true, change: .hook))
-        case .rewrite, .music:
+        case .rewrite, .music, .asset:
             return nil
         case .effect(let effect):
             let previous = project.clipEffects.first { $0.id == effect.id }
             guard let changed = try? ClipEffects.adding([effect], to: project) else { return (nil, nil) }
             project = changed
-            let name = effect.kind == .title ? "Motion title" : effect.kind == .lowerThird ? "Lower third" : "Emoji pop"
+            let name = Self.rowTitle(operation)
             return (.effect(id: effect.id, previous: previous),
-                    MakeItRow(id: operation.id, text: "\(name): \(effect.text ?? "")", detail: operation.reason,
+                    MakeItRow(id: operation.id, text: effect.text.map { "\(name): \($0)" } ?? name, detail: operation.reason,
                               play: max(0, effect.start - 0.5), undoable: true))
         case .stretch, .translateCaptions, .musicDucking:
             return (nil, nil)
@@ -844,8 +859,9 @@ extension EditorModel {
     func makeItRenderedSeconds(_ clipID: String) -> Double {
         guard let clip = project.edits.clips.first(where: { $0.id == clipID }) else { return 0 }
         let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
-        let edited = renderedActiveClipID == clipID ? renderTimeline?.duration ?? editedDuration(clip) : editedDuration(clip)
-        return ClipSpeedTiming(speed: speed).rendered(edited)
+        let timeline = (renderedActiveClipID == clipID ? renderTimeline : nil) ?? (try? RenderCallerInputs.timeline(project: project, clipID: clipID))
+        guard let timeline else { return ClipSpeedTiming(speed: speed).rendered(editedDuration(clip)) }
+        return ClipSpeedTiming(speed: speed, timeline: timeline, effects: ClipEffects.rendered(in: project, clipID: clipID)).rendered(timeline.duration)
     }
 
     private func pausePlay(_ id: String?, in project: Project) -> Double? {
@@ -1383,7 +1399,7 @@ extension MakeItServices {
             wholeClipQuote: { request, editor in await liveWholeClipQuote(request, editor: editor) },
             revoiceWholeClip: { request, editor in await liveRevoiceWholeClip(request, editor: editor) },
             framePass: { editor in editor.liveFramePass() },
-            frameAI: { editor in await editor.liveFrameAI() })
+            frameAI: { editor in await editor.liveFrameAI() }, effectAssets: EditorModel.clipPlanAssets)
     }
 }
 
