@@ -274,7 +274,7 @@ public sealed partial class EditorViewModel
             await LlmRuns.SharingAsync(() => FinishAsync(run, plan, services));
         }
         finally { EndUndoGroup(); }
-        if (clock is not null && started is { } since) clock.Record(ClaudeModeStage.Apply, clip, since);
+        if (run.Phase == MakeItPhase.Ready && clock is not null && started is { } since) clock.Record(ClaudeModeStage.Apply, clip, since);
         return run.Phase == MakeItPhase.Stopped;
     }
 

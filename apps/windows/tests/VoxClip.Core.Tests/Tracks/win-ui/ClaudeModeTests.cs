@@ -362,7 +362,7 @@ public sealed class ClaudeModeTests
         var window = File.ReadAllText(Path.Combine(app, "MainWindow.xaml"));
         Assert.Contains("x:Name=\"ClaudeModeHost\"", window);
         var import = File.ReadAllText(Path.Combine(app, "MainWindow.xaml.cs"));
-        Assert.True(import.IndexOf("ArmClaudeMode()", StringComparison.Ordinal) is > 0 and var arm && arm < import.IndexOf("await incoming.PromptTranscriptionAsync()", StringComparison.Ordinal));
+        Assert.True(import.IndexOf("ArmClaudeMode(importClock)", StringComparison.Ordinal) is > 0 and var arm && arm < import.IndexOf("await incoming.PromptTranscriptionAsync()", StringComparison.Ordinal));
         var page = File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.MakeIt.cs"));
         Assert.Contains("FindClips.Started += (_, find) => ViewModel.ClaudeModeFindStarted(find)", page);
         var find = File.ReadAllText(Path.Combine(app, "Controls", "FindClipsJob.cs"));
@@ -370,7 +370,7 @@ public sealed class ClaudeModeTests
         var settings = File.ReadAllText(Path.Combine(app, "SettingsWindow.xaml"));
         Assert.Contains("Tag=\"Clips\"", settings);
         var card = File.ReadAllText(Path.Combine(app, "Controls", "ClipStyleCardPanel.cs"));
-        foreach (var row in new[] { "\"Clips\"", "\"Spend\"", "\"Tone\"", "\"Mode\"" }) Assert.Contains(row, card);
+        foreach (var row in new[] { "\"Clips\"", "\"Spend\"", "\"Tone\"", "\"Mode\"", "\"Transcript\"" }) Assert.Contains(row, card);
     }
 }
 #endif
