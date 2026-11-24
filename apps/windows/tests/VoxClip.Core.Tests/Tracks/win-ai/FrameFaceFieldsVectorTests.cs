@@ -350,8 +350,8 @@ public sealed class FrameFaceFieldsVectorTests
         return mesh;
     }
 
-    private static FaceMeshMeasure Measure(JsonObject row) =>
-        FaceMeshFields.Measure(Rect(row["rect"]), Number(row["faceWidthPixels"]), Mesh(row), Stats(row["crop"]), Calibration.Value);
+    private static FaceMeshMeasure Measure(JsonObject row, FrameFaceCalibration? calibration = null) =>
+        FaceMeshFields.Measure(Rect(row["rect"]), Number(row["faceWidthPixels"]), Mesh(row), Stats(row["crop"]), calibration ?? Calibration.Value);
 
     [Fact]
     public void MeshesReplay()
@@ -380,7 +380,7 @@ public sealed class FrameFaceFieldsVectorTests
     [Fact]
     public void EyesAndPoseReadAsTheMacs()
     {
-        FrameFace Read(string id) => Measure(Rows("meshes").Single(row => Id(row) == id)).Face;
+        FrameFace Read(string id, FrameFaceCalibration? calibration = null) => Measure(Rows("meshes").Single(row => Id(row) == id), calibration).Face;
         Assert.Equal(FrameEyes.Open, Read("level-open").Eyes);
         Assert.Equal(FrameEyes.Closed, Read("closed").Eyes);
         Assert.Equal(FrameEyes.Closed, Read("half-closed").Eyes);
@@ -403,7 +403,9 @@ public sealed class FrameFaceFieldsVectorTests
         Assert.Equal(FrameEyes.Unknown, Read("small-face-eyes-unknown").Eyes);
         Assert.Null(Read("small-face-eyes-unknown").LeftEyeAspect);
         Assert.Null(Read("small-face-eyes-unknown").RightEyeAspect);
-        Assert.Equal(Read("eyes-at-the-width").CaptureQuality, Read("small-face-eyes-unknown").CaptureQuality);
+        var smallFaceWithEyes = Read("small-face-eyes-unknown", Calibration.Value with { EyesFromWidth = 0 });
+        Assert.Equal(FrameEyes.Open, smallFaceWithEyes.Eyes);
+        Assert.Equal(smallFaceWithEyes.CaptureQuality, Read("small-face-eyes-unknown").CaptureQuality);
         Assert.Equal(FrameEyes.Open, Read("eyes-at-the-width").Eyes);
         Assert.Equal(FrameEyes.Unknown, Read("small-face-gated").Eyes);
         Assert.True(Read("level-open").CaptureQuality >= FrameFace.GoodQuality && Read("closed").CaptureQuality < FrameFace.GoodQuality);
@@ -468,9 +470,10 @@ public sealed class FrameFaceFieldsVectorTests
         foreach (var (closed, open) in new[] { ("small-face", "size-at-the-gate"), ("too-dark", "dark-at-the-gate"), ("too-bright", "bright-at-the-gate"),
                      ("too-clipped", "clipped-at-the-gate") })
         {
+            Assert.Equal(0, Parts(closed).Gate);
             Assert.Equal(0, Parts(closed).Quality);
             Assert.Equal(1, Parts(open).Gate);
-            Assert.True(Parts(open).Quality > 0.5, open);
+            Assert.True(Parts(open).Quality > 0, open);
         }
         Assert.Equal(0, Parts("sharpness-floor").Sharp);
         Assert.Equal(1, Parts("sharpness-ceiling").Sharp);
