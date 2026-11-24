@@ -1,4 +1,4 @@
-# Windows faces calibrated against the Mac (W7, W8)
+# Calibrating Windows faces against the Mac
 
 On Windows, VoxClip measures faces with YuNet and Face Mesh V2 (`OnnxFrameFaces`). The Mac uses Apple Vision. The shared
 decisions read both platforms' numbers with the same lines: eyes closed below 0.20, a good capture from 0.4, an open look
@@ -19,8 +19,8 @@ them on held-out people and writes the result back. ADR-R48 (Windows calibration
 The repository never holds frames, faces or video. NASA's guidelines give identifiable people publicity rights and say some
 NASA media embeds third-party material. The frames are decoded into the work folder (`VOXCLIP_CALIBRATION_WORK`, default
 `/tmp/voxclip-w7`) one subject at a time, fed to both pipelines and deleted. Only the paired numbers stay in
-`<work>/paired/*.jsonl`. A frame whose bytes differ from its pin is refused, which happens when NASA re-encodes an asset or
-ffmpeg's output changes; re-pin and re-run in that case.
+`<work>/paired/*.jsonl`. A frame whose bytes differ from its pin is refused. Use the pinned FFmpeg first. If an asset was
+re-encoded, changing its pins starts a new evaluation, not a rerun of this set. The fit refuses incomplete or duplicate runs.
 
 The manifest's segments were chosen by scanning candidate videos with the face detector. Each one is a single continuous shot
 of its subject, and each was checked by eye. Rejected: JPL, ESA and partner productions; still photos, b-roll and title cards;
@@ -28,11 +28,13 @@ anything showing a child; school hosts' feeds inside downlinks; and wide shots o
 
 ## Rerun (when macOS, Vision's request set or the catalogue changes)
 
-Needs ffmpeg/ffprobe (6.1.1 pinned the hashes), Python 3 with numpy and scipy (no other packages), Xcode, and the .NET 10 SDK.
-Run on the Mac, not while the frames would contend with other work: about 12 minutes for 5,620 frames (M3 Max, 2026-11-09), and 15 GB free disk.
+Needs ffmpeg/ffprobe (6.1.1 pinned the hashes), Python 3 with numpy and scipy, Xcode, and the .NET 10 SDK.
+Run on the Mac, not while the frames would contend with other work: about 12 minutes for 5,620 frames (M3 Max, 2026-11-09).
+Leave more than 15 GiB free after allowing for one subject's frames. The work folder is outside the checkout and capped at 6 GB.
 
 ```sh
-cd apps/macos && VOXCLIP_NO_KEYCHAIN=1 swift build --build-tests
+export VOXCLIP_CALIBRATION_WORK="$(mktemp -d /tmp/voxclip-calibration.XXXXXX)"
+cd apps/macos && VOXCLIP_NO_KEYCHAIN=1 VOXCLIP_DATA_DIR="$VOXCLIP_CALIBRATION_WORK/data" swift build --build-tests --jobs 2
 cd ../../tools/frames/calibrate/windows-runner && dotnet build -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 cd ../../../..
 python3 -I tools/frames/calibrate/calibrate.py measure     # resumable: subjects with numbers are skipped (--again to redo)
@@ -61,8 +63,12 @@ Then update the C# constants in `FrameModelCatalogTests` and the goldens in `Onn
 7. **(W8) The small-face width** (`eyesFromWidth`): the top of the highest 20 px band of fit faces, with at least 30 faces, whose
    eye agreement with Vision is below the fit split's overall agreement.
 8. **(W8) The per-recording quality offset:** each quality moves by strength × (the fit recordings' mean Vision median − its own
-   recording's median), strength 0–1 by 0.25, the best mean of the two quality lines on the fit split. It chose 0 on
-   2026-11-09, so the app applies none and `write` refuses a non-zero strength until the app has the map.
+   recording's median), strength 0–1 by 0.25, the best mean of the two quality lines on the fit split. This is a diagnostic of
+   the W8 baseline, not applied to the Windows score.
+9. **(Third pass) The face-scale term:** add `widthWeight × clamp((widthAt1280 − 40) / 200, 0, 1)` to the score before the
+   gate and remap. The width anchors are fixed; the nonnegative weight, other weights, pitch offset and quantiles are fit on
+   the same fit people as before. Face width is an observable shot-level quality cue, not an identity or a per-person offset.
+   The eyes and speaker rules stay the W8 rules and are refit on the fit split only.
 
 These stay as in the study: the eyes-open span (0.12 to 0.26), the facing span (0.6) and the sharpness range (30 to 400).
 `SHARPNESS_GRID` can try a range, but a fitted range lowered the held-out agreement on 2026-11-09. Frames where the two face
@@ -93,5 +99,7 @@ decisions read it (not an open look: it agrees with Vision's closed and disagree
 leaves out frames whose Vision ratio is within 0.02 of the 0.20 line. The opening and cover lines run on every frame, so they
 carry what an unknown costs.
 
-The report also gives the acceptance after each W8 change (`steps`: W7's path, the speaker rule, then the small faces) and two
-diagnostics: the validation split without faces under 100 px, and without different-face frames.
+The report also gives the acceptance after each change (`steps`: W7's path, the speaker rule, small faces, then face scale)
+and two diagnostics: the validation split without faces under 100 px, and without different-face frames. `speakerOverlap`
+counts selections with IoU ≥ 0.3 against Vision where both found a face. It checks the same-face assumption geometrically;
+it does not prove who was speaking, and does not filter the held-out gates.

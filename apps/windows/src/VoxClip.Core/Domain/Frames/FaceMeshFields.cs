@@ -48,7 +48,7 @@ public readonly record struct FaceCropStats(double SharpnessVariance, double Mea
 /// <param name="Facing">clamp(1 − max(|yaw|, |pitch − pitch0|) / span, 0, 1), on Vision's scale.</param>
 /// <param name="Sharp">clamp((ln variance − ln low) / (ln high − ln low), 0, 1); 0 for a flat crop.</param>
 /// <param name="Gate">0 for a face too small, too dark, too bright or too clipped; else 1.</param>
-/// <param name="Score">clamp(gate · (w0 + w1·eyesOpen·facing + w2·sharp), 0, 1).</param>
+/// <param name="Score">The gated sum of the constant, eye/pose, sharpness and face-width terms, clamped to 0–1.</param>
 /// <param name="Quality">The score through the calibration's quantile remap, clamped to 0–1.</param>
 public sealed record FaceQualityParts(double EyesOpen, double Facing, double Sharp, double Gate, double Score, double Quality);
 
@@ -142,7 +142,8 @@ public static class FaceMeshFields
         var gates = c.Gates;
         var gate = faceWidthPixels >= gates.MinimumFaceWidth && crop.MeanLuma >= gates.LumaLow && crop.MeanLuma <= gates.LumaHigh &&
             crop.ClippedFraction <= gates.ClippedFraction ? 1.0 : 0.0;
-        var score = Math.Clamp(gate * (c.W0 + c.W1 * eyesOpen * facing + c.W2 * sharp), 0, 1);
+        var width = Math.Clamp((faceWidthPixels - 40) / 200, 0, 1);
+        var score = gate == 0 ? 0 : Math.Clamp(c.W0 + c.W1 * eyesOpen * facing + c.W2 * sharp + c.WidthWeight * width, 0, 1);
         return new FaceQualityParts(eyesOpen, facing, sharp, gate, score, Math.Clamp(c.Remap(score), 0, 1));
     }
 

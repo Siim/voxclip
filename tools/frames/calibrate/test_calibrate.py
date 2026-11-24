@@ -98,8 +98,45 @@ def box(width, score, measured=True, x=0.4):
     return {'rect': rect, 'detectorScore': score, 'widthAt1280': width * 1280, 'measured': face}
 
 
+class FaceScaleTests(unittest.TestCase):
+    def test_fit_recovers_capture_quality_from_face_width(self):
+        rows = synthetic_rows()
+        for index, row in enumerate(rows):
+            width = 40 + (index % 20) * 10
+            row['windows']['face']['faceWidthPixels'] = width
+            row['mac']['face']['captureQuality'] = 0.1 + 0.5 * (width - 40) / 200
+
+        calibration = calibrate.calibration_from(calibrate.fit_constants(rows, use_face_scale=True))
+        self.assertAlmostEqual(calibration['quality']['widthWeight'], 0.5)
+        for row in rows:
+            actual = calibrate.windows_observation(row, calibration)['face']['captureQuality']
+            self.assertAlmostEqual(actual, row['mac']['face']['captureQuality'], delta=0.0001)
+
+
+class ManifestCoverageTests(unittest.TestCase):
+    def test_acceptance_refuses_missing_or_duplicate_pinned_frames(self):
+        data = {'subjects': [{'id': 's01', 'videos': [{'nasaId': 'nasa', 'segments': [
+            {'start': 4, 'fps': 10, 'frames': ['first', 'second']},
+        ]}]}]}
+        first = {'subject': 's01', 'video': 'nasa', 'segment': 0, 'time': 4, 'sha256': 'first'}
+        second = first | {'time': 4.1, 'sha256': 'second'}
+
+        calibrate.require_manifest_coverage([first, second], data)
+        for rows in ([first], [first, first], [first, second | {'sha256': 'other'}]):
+            with self.assertRaisesRegex(SystemExit, 'pinned manifest'):
+                calibrate.require_manifest_coverage(rows, data)
+
+
 class SpeakerTests(unittest.TestCase):
     """W8: the twin of SpeakerFace (no screens) and the fit of its score."""
+
+    def test_same_face_check_distinguishes_a_different_person_from_a_missing_face(self):
+        rows = synthetic_rows()
+        calibration = calibrate.calibration_from(calibrate.fit_constants(rows))
+        rows[0]['windows']['face']['rect'] = {'x': 0, 'y': 0, 'width': 0.05, 'height': 0.05}
+        rows[1]['windows'] = {'faceCount': 0, 'face': None}
+
+        self.assertEqual(calibrate.evaluate(rows, calibration)['speakerOverlap'], {'matched': 118, 'of': 119})
 
     def test_a_weak_larger_box_gives_way_to_a_confident_one_and_is_not_counted(self):
         row = {'windows': {'candidates': [box(0.43, 0.77), box(0.15, 0.94, x=0.66)]}}

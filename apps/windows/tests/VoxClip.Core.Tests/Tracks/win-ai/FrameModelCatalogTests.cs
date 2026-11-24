@@ -50,6 +50,28 @@ public sealed class FrameModelCatalogTests
     }
 
     [Fact]
+    public void CaptureQualityUsesFaceScaleWithoutBypassingExposureGates()
+    {
+        var catalogue = Shipped();
+        var quality = Model(catalogue)["calibration"]!["quality"]!;
+        quality["w0"] = 0.2;
+        quality["w1"] = 0;
+        quality["w2"] = 0;
+        quality["widthWeight"] = 0.4;
+        quality["quantileMap"] = new JsonArray();
+        var calibration = Load(catalogue).Entry.Calibration;
+        var crop = new FaceCropStats(150, 120, 0);
+
+        Assert.Equal(0.2, FaceMeshFields.Quality(0.25, 0, 0, 40, crop, calibration)!.Quality, 9);
+        Assert.Equal(0.4, FaceMeshFields.Quality(0.25, 0, 0, 140, crop, calibration)!.Quality, 9);
+        Assert.Equal(0.6, FaceMeshFields.Quality(0.25, 0, 0, 300, crop, calibration)!.Quality, 9);
+        Assert.Equal(0, FaceMeshFields.Quality(0.25, 0, 0, 300, crop with { MeanLuma = 20 }, calibration)!.Quality, 9);
+
+        quality["widthWeight"] = -0.1;
+        Assert.Throws<InvalidDataException>(() => Load(catalogue));
+    }
+
+    [Fact]
     public void TheDisabledCatalogueInstallsNothing()
     {
         var catalogue = Shipped();
