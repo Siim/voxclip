@@ -46,6 +46,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case shareText(clipID: String, text: String)
         /// An effect added to `project.clipEffects` (ai.md §18.2): censoring, an overlay, a freeze frame or a sound.
         case effect(ClipEffect)
+        case asset(ClipPlanAsset)
         /// One stretch (source seconds) played at `rate`, pitch kept. A clip has one speed (design.md §6.9), so `apply`
         /// sets it when the stretch covers a whole clip and leaves a part of a clip pending.
         case stretch(clipID: String?, start: Double, end: Double, rate: Double)
@@ -176,13 +177,13 @@ public enum ClipAutopilotMapping {
                 let range = cue.sourceStart..<cue.sourceEnd
                 guard !zoomRanges.contains(where: { $0.overlaps(range) }) else { continue }
                 zoomRanges.append(range)
-            case .effect(let overlay):
+            case .effect(let overlay) where overlay.kind.usesText:
                 let range = overlay.start..<overlay.end
                 guard !overlayRanges.contains(where: { $0.overlaps(range) }) else { continue }
                 overlayRanges.append(range)
                 let opening = (plan.startWord...plan.endWord).first(where: { !cutIDs.contains(words[$0].id) }) ?? plan.startWord
                 openingTitle = openingTitle || (overlay.kind == .title && overlay.start < words[opening].start + 2)
-            default: continue
+            default: break
             }
             operations.append(operation)
         }
@@ -257,7 +258,7 @@ public enum ClipAutopilotMapping {
             case .translateCaptions(let clipID, let start, let end, let language, let text):
                 // The captions of those words in another language (ai.md §18.2); the voice and transcript stay.
                 result = try CaptionTranslations.translating(start...end, clipID: clipID, language: language, text: text, in: result)
-            case .rewrite, .music: pending.append(operation)
+            case .rewrite, .music, .asset: pending.append(operation)
             }
         }
         result = try ClipEffects.adding(effects, to: result)

@@ -2,10 +2,12 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-private struct ShortSpeechRecipeCase: Decodable, Sendable {
+private struct ShortSpeechRecipeCase: Decodable, Sendable, CustomTestStringConvertible {
     let name: String
     let qa: [String: JSONValue]
     let error: String?
+
+    var testDescription: String { name }
 }
 private struct ShortSpeechRecipeDocument: Decodable {
     let schema: String

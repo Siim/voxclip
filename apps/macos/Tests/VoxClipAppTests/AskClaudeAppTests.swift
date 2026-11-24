@@ -31,7 +31,7 @@ private actor AskFixtureConnector: LLMConnector {
 @MainActor struct AskClaudeAppTests {
     private static func op(_ kind: String, _ fields: [String: Any] = [:]) -> [String: Any] {
         var value: [String: Any] = ["kind": kind, "startWord": -1, "endWord": -1, "start": -1, "end": -1, "text": "", "target": "", "x": 0, "y": 0,
-                                    "width": 0, "height": 0, "tracking": "", "position": "", "rate": 0, "scale": 0, "sound": "", "language": "",
+                                    "width": 0, "height": 0, "tracking": "", "position": "", "rate": 0, "scale": 0, "sound": "", "language": "", "query": "", "prompt": "", "look": "",
                                     "choice": "", "reason": "\(kind) because it was asked"]
         for (key, field) in fields { value[key] = field }
         return value

@@ -79,7 +79,8 @@ def instruction(prompt, doc, case):
 
 def op(kind, **fields):
     value = {'kind': kind, 'startWord': -1, 'endWord': -1, 'start': -1, 'end': -1, 'text': '', 'target': '', 'x': 0, 'y': 0, 'width': 0,
-             'height': 0, 'tracking': '', 'position': '', 'rate': 0, 'scale': 0, 'sound': '', 'language': '', 'choice': '', 'reason': f'{kind} reason'}
+             'height': 0, 'tracking': '', 'position': '', 'rate': 0, 'scale': 0, 'sound': '', 'language': '',
+             'query': '', 'prompt': '', 'look': '', 'choice': '', 'reason': f'{kind} reason'}
     value.update(fields)
     return value
 

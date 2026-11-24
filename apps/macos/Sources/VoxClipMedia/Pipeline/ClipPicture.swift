@@ -22,8 +22,8 @@ enum ClipPicture {
         return result.transformed(by: CGAffineTransform(translationX: -result.extent.minX, y: -result.extent.minY))
     }
 
-    static func grade(_ image: CIImage, controls: ProjectClipControls) -> CIImage {
-        let base = look(image, controls.look)
+    static func grade(_ image: CIImage, controls: ProjectClipControls, override: ClipLook? = nil) -> CIImage {
+        let base = look(image, override ?? controls.look)
         guard let adjustments = controls.colorAdjustments else { return base }
         return apply(ClipLookRecipe(adjustments: adjustments), to: base)
     }

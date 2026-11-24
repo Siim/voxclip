@@ -21,7 +21,7 @@ enum ClipVoiceRenderer {
     static let rate = 48_000.0
 
     static func stage(composition: AVComposition, voice: AVCompositionTrack, audioMix: AVAudioMix?, editedDuration: CMTime,
-                      renderedDuration: CMTime, controls: ProjectClipControls, scratchRoot: URL,
+                      renderedDuration: CMTime, controls: ProjectClipControls, timing: ClipSpeedTiming, scratchRoot: URL,
                       isolation: isolated (any Actor)? = #isolation) async throws -> ClipVoiceLease {
         try Task.checkCancellation()
         let directory = scratchRoot.appendingPathComponent("voxclip-clip-voice-" + UUID().uuidString.lowercased(), isDirectory: true)
@@ -50,10 +50,7 @@ enum ClipVoiceRenderer {
         try withExtendedLifetime(staged) {
             try stretched.insertTimeRange(CMTimeRange(start: .zero, duration: flatRange.duration), of: flatTrack, at: .zero)
         }
-        if controls.speed != 1 {
-            stretched.scaleTimeRange(CMTimeRange(start: .zero, duration: flatRange.duration),
-                                     toDuration: CMTimeMultiplyByFloat64(flatRange.duration, multiplier: 1 / controls.speed))
-        }
+        scale(flatRange.duration, timing: timing, apply: stretched.scaleTimeRange(_:toDuration:))
         let writer = try MusicCAFWriter(url: url, channels: 2)
         let duration = Double(frames) / rate
         var written = 0
@@ -71,11 +68,22 @@ enum ClipVoiceRenderer {
             written += count
         }
         try await read(stretch, tracks: [stretched], mix: nil, range: CMTimeRange(start: .zero, duration: stretched.timeRange.duration),
-                       pitch: controls.speed == 1 ? nil : .spectral, handle: write)
+                       pitch: timing.isIdentity ? nil : .spectral, handle: write)
         while written < frames { try write([Float](repeating: 0, count: min(48_000, frames - written) * 2)) }
         writer.close()
         try? FileManager.default.removeItem(at: flat)
         return lease
+    }
+
+    static func scale(_ duration: CMTime, timing: ClipSpeedTiming, apply: (CMTimeRange, CMTime) -> Void) {
+        guard !timing.isIdentity else { return }
+        for span in timing.segments(through: duration.seconds).reversed() where span.rate != 1 {
+            let start = CMTime(seconds: span.start, preferredTimescale: duration.timescale)
+            let end = CMTime(seconds: span.end, preferredTimescale: duration.timescale)
+            let outputStart = CMTime(seconds: timing.rendered(span.start), preferredTimescale: duration.timescale)
+            let outputEnd = CMTime(seconds: timing.rendered(span.end), preferredTimescale: duration.timescale)
+            if end > start && outputEnd > outputStart { apply(CMTimeRange(start: start, end: end), outputEnd - outputStart) }
+        }
     }
 
     /// Streams interleaved stereo floats at 48 kHz from `tracks` through `mix`, stretching with `pitch` when given.

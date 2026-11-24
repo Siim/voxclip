@@ -35,6 +35,7 @@ public static class WholeClipVoiceRun
             var input = new VoiceLabTakeInput(PartText(part), modelId, recordId, project.Transcript.Language ?? "en", (uint)index,
                 project.Media.Source.ContentKey, source.Excerpt, source.Envelope, rate, words, cuts, window, silence.Incoming, silence.Outgoing, false, true)
             {
+                ChecksGeneratedSpeaker = false,
                 EditedLayout = new(WholeClipRevoice.EditedCuts(plan.Original, window.StartSample, window.EndSample), project.Edits.PauseThresholdSeconds),
             };
             var runner = createRunner();

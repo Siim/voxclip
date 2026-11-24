@@ -50,6 +50,8 @@ public abstract record ClipAutopilotAction
     public sealed record ShareText(string ClipId, string Text) : ClipAutopilotAction;
     /// <summary>An Ask Claude effect (ai.md §18.2), the stored <c>clipEffects</c> entry, already valid.</summary>
     public sealed record Effect(JsonElement Value) : ClipAutopilotAction;
+    /// <summary>A timed request for a library sound or generated illustration.</summary>
+    public sealed record Asset(string Id, string Kind, string ClipId, double Start, double End, string Text) : ClipAutopilotAction;
     /// <summary>A stretch played at <c>Rate</c> (source seconds). Over a whole clip it sets that clip's speed; over part of one it stays
     /// pending and the editor offers the speed for the whole clip.</summary>
     public sealed record Stretch(string? ClipId, double Start, double End, double Rate) : ClipAutopilotAction;
@@ -191,7 +193,8 @@ public static partial class ClipAutopilotMapping
                 if (zoomRanges.Any(other => other.Start < cue.SourceEnd && cue.SourceStart < other.End)) continue;
                 zoomRanges.Add(new(cue.SourceStart, cue.SourceEnd));
             }
-            else if (operation.Action is ClipAutopilotAction.Effect { Value: var entry })
+            else if (operation.Action is ClipAutopilotAction.Effect { Value: var entry } &&
+                     entry.GetProperty("kind").GetString() is "title" or "lowerThird" or "sticker")
             {
                 var overlay = ClipEffect.Parse(entry);
                 if (overlayRanges.Any(other => other.Start < overlay.End && overlay.Start < other.End)) continue;

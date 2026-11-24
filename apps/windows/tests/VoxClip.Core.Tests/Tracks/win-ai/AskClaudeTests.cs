@@ -63,7 +63,7 @@ public sealed class AskClaudeTests
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(bytes)), Text(Fixture(), "promptSha256"));
         Assert.Equal(Text(Fixture(), "promptSha256"), Prompt().Sha256);
         Assert.Equal("voxclip-ask-claude/1", Text(Fixture(), "format"));
-        Assert.Equal(23, Prompt().Kinds.Count);
+        Assert.Equal(27, Prompt().Kinds.Count);
         Assert.Equal(1, Prompt().PromptVersion);
         // Stickers are exactly the bundled emoji images, so every sticker renders from the app's own files.
         var bundled = Directory.GetFiles(Path.Combine(Root, "fonts", "noto-emoji", "png128"), "emoji_u*.png").Select(path =>
