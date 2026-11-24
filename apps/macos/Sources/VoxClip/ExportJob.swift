@@ -172,6 +172,12 @@ import VoxClipCore
                 TextField("File name", text: Binding(get: { job.fileNamePattern }, set: { job.fileNamePattern = $0 })).accessibilityLabel("File name pattern")
             }
             Text("{project} · {clip} · {aspect} · .mp4").font(.system(size: 11)).foregroundStyle(.secondary)
+            let reason = model.timelineExportUnavailable(targets)
+            Button("Save editable timeline (.fcpxml)") { model.beginTimelineExport(targets: targets, folder: folder) }
+                .disabled(reason != nil).help(reason ?? "Open in Final Cut Pro or DaVinci Resolve")
+                .accessibilityIdentifier("voxclip.export.fcpxml")
+            Text(reason ?? "The timeline links to your original media. It isn’t a video to share.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
             if let disclosure = model.exportDisclosure(targets) { Label(disclosure, systemImage: "waveform").font(.system(size: 11)).accessibilityIdentifier("voxclip.export.aiNotice") }
             if let note = model.captionError { InlineNotice(text: note) }
             if let error = model.exportError { InlineNotice(text: error) }
@@ -186,12 +192,6 @@ import VoxClipCore
                     .buttonStyle(.borderedProminent)
                     .accessibilityLabel(model.exportAccessibleName(model.exportPrimaryTitle(targets), targets: targets))
                     .accessibilityIdentifier("voxclip.export.primary").disabled(!model.canExport || targets.isEmpty)
-                let reason = model.timelineExportUnavailable(targets)
-                Button("Save editable timeline (.fcpxml)") { model.beginTimelineExport(targets: targets, folder: folder) }
-                    .disabled(reason != nil).help(reason ?? "Open in Final Cut Pro or DaVinci Resolve")
-                    .accessibilityIdentifier("voxclip.export.fcpxml")
-                Text(reason ?? "The timeline links to your original media. It isn’t a video to share.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
                 Button("Cancel") { model.finishExportJob() }
             } else if !model.exporting {
                 if model.exportError != nil, job.timelineFiles.isEmpty { Button("Try again") { model.beginExport(targets: targets, folder: folder) } }

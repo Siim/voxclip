@@ -2405,7 +2405,7 @@ Setup uses the Captions job's flat spacing, 16 pt inset, 24 pt property rows, 12
 - **AI speech:** when an export includes AI voice, the read-aloud notice remains “This video contains AI-modified speech. It will show AI MODIFIED.” The mandatory burned-in video label and provenance are unchanged. The post line is optional, separately controlled below.
 - Footer: **0:38 · about 24 MB · H.264**, estimated from target edited duration and the resolved video/audio bitrates. The primary reads **Export Clip 1**, **Export 4 Clips** or **Export Full Edit**; after failure it reads **Try again**.
 
-On Mac, **Save editable timeline (.fcpxml)** is a separate action in the Export footer. It uses the same scope and destination but does not render an MP4 or add a finished video to export history. It explains that the timeline links to original media, and shows a reason when the edit needs a rendered video instead (publishing.md §2.4).
+On Mac, **Save editable timeline (.fcpxml)** is a separate action in the scrollable Export setup. It uses the same scope and destination but does not render an MP4 or add a finished video to export history. It explains that the timeline links to original media, and shows a reason when the edit needs a rendered video instead (publishing.md §2.4).
 
 While running, inline progress reads “Rendering 1 of 2 · 42% · about 1 min left” and exposes **Cancel**. The status bar continues showing its export progress. Switching panel or tab leaves the editor-owned export task running. Errors appear inline, and Retry in the Explorer opens setup for the failed target and folder. A successful target still records the export ledger (§6.2).
 
