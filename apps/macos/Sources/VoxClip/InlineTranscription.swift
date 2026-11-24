@@ -40,6 +40,7 @@ import VoxClipMedia
     var pendingCost: Double?
     var completion: String?
     var completedAt: Date?
+    var pendingAlignment: (project: Project, retry: TranscriptionAlignmentRetry)?
     @ObservationIgnored var revision = 0
     @ObservationIgnored var activeRun: ApprovedRun?
     @ObservationIgnored private var downloadRevision = 0
@@ -63,6 +64,8 @@ import VoxClipMedia
     var paid: Bool { engine == "elevenlabs" }
     var isVisible: Bool { phase != .hidden || cancelledNote != nil }
     var isRunning: Bool { phase == .running }
+    var retryingAlignment: Bool { isRunning && pendingAlignment != nil }
+    var alignmentRetryCopy: String { "Retry aligns the saved words on this computer. Nothing is uploaded or billed." }
     var isDownloading: Bool { installing != nil || systemDownloading }
     var terms: [String] { keyterms.split(whereSeparator: { $0 == "," || $0.isNewline }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
     var estimate: Double? {
@@ -93,11 +96,13 @@ import VoxClipMedia
             && model.sourceDuration.isFinite && model.sourceDuration > 0
     }
     var canStart: Bool {
+        if let pendingAlignment { return mediaReady && phase == .choosing && pendingAlignment.project == model.project }
         guard mediaReady, phase == .choosing, readiness != nil, !savingKey else { return false }
         if paid { return hasKey && estimate != nil }
         return readiness == .ready || needsDownload || speechDidNotAnswer
     }
     var primaryTitle: String {
+        if pendingAlignment != nil { return "Retry" }
         if speechDidNotAnswer { return "Retry" }
         if again && !againConfirmed { return "Transcribe Again" + (paid ? " · " + price : "") }
         if paid { return (error == nil ? "Upload and Transcribe" : "Retry") + " · " + price }
@@ -105,6 +110,7 @@ import VoxClipMedia
         return needsDownload ? "Download and Transcribe" : "Transcribe"
     }
     var cancelCopy: String {
+        if retryingAlignment { return "Nothing is uploaded or billed for this retry." }
         let evidence = activeRun?.evidence.snapshot
         let uploaded = evidence.map { $0.uploadStarted && !$0.fromCache } ?? uploadStarted
         return uploaded ? "If you cancel now, ElevenLabs may still bill audio it already received." : "Nothing has been sent yet. Cancel now and nothing is billed."
@@ -170,8 +176,18 @@ import VoxClipMedia
         model.armClaudeMode()
         await open(automatic: true)
     }
+    func changeOptions() async {
+        guard !isRunning else { return }
+        pendingAlignment = nil
+        await open(again: again)
+    }
     func open(automatic: Bool = false, again: Bool = false) async {
         guard !isRunning else { return }
+        if pendingAlignment?.project == model.project {
+            phase = .choosing; cancelledNote = nil
+            return
+        }
+        pendingAlignment = nil
         startedOnImport = false
         revision += 1
         let request = revision
@@ -214,7 +230,7 @@ import VoxClipMedia
         spendToday = total.amount; spendUncertain = total.uncertain
     }
     func choicesChanged() {
-        guard !isRunning else { return }
+        guard !isRunning, pendingAlignment == nil else { return }
         revision += 1
         error = nil; cancelledNote = nil; readiness = nil; savingKey = false; key = ""; keyGuard.reset()
         choiceTask?.cancel()
@@ -286,6 +302,10 @@ import VoxClipMedia
     func pressReturn(timestamp: TimeInterval, now: TimeInterval, repeatKey: Bool, command: Bool, focusedPrimary: Bool = false) {
         // f25 is destructive: neither a default Return nor ⌘Return is its confirmation.
         guard !repeatKey else { return }
+        if pendingAlignment != nil {
+            if focusedPrimary || command { activate() }
+            return
+        }
         if again {
             guard focusedPrimary, !command else { return }
         }
@@ -295,6 +315,7 @@ import VoxClipMedia
     /// The click is approval. Saving a key, consent already on disk and download completion never reach a paid send.
     func activate() {
         guard canStart else { return }
+        if pendingAlignment != nil { startApprovedRun(); return }
         if speechDidNotAnswer { choicesChanged(); return }
         guard terms.count <= 100, !terms.contains(where: { $0.count > 50 }) else { error = "Use at most 100 keyterms, each up to 50 characters."; return }
         downloadBaseline = !paid && needsDownload ? model.project : nil
@@ -382,6 +403,7 @@ import VoxClipMedia
     }
     func close() {
         downloadBaseline = nil
+        pendingAlignment = nil
         activeRun?.cancelled = true
         activeRun?.watch?.cancel(); activeRun = nil
         revision += 1; choiceTask?.cancel(); installTask?.cancel(); model.workTask?.cancel()
@@ -393,11 +415,13 @@ import VoxClipMedia
         pendingCost = nil; model.progress = nil; model.progressFraction = nil; model.progressStage = nil
     }
     func startApprovedRun(paidApproval: Bool = false) {
-        guard mediaReady, phase == .choosing, !isRunning, !paid || paidApproval else { return }
-        let plan = makePlan(), cost = paid ? estimate : nil
-        let baseline = downloadBaseline ?? model.project
+        let retry = pendingAlignment?.retry
+        guard mediaReady, phase == .choosing, !isRunning, !paid || paidApproval || retry != nil,
+              retry == nil || canStart else { return }
+        let plan = makePlan(), cost = paid && retry == nil ? estimate : nil
+        let baseline = pendingAlignment?.project ?? downloadBaseline ?? model.project
         downloadBaseline = nil
-        if remember { model.app.set("transcription.language", .string(language)) }
+        if remember && retry == nil { model.app.set("transcription.language", .string(language)) }
         model.findTask?.cancel(); model.sendConfirmation.cancel()
         model.rewriteOpenTask?.cancel()
         // Stop new AI work while retaining the review until replacement actually succeeds.
@@ -406,7 +430,7 @@ import VoxClipMedia
         model.openRewrite?.takesTask?.cancel()
         phase = .running; error = nil; cancelledNote = nil; progress = nil; uploadStarted = false; runStage = 0; pendingCost = cost
         revision += 1
-        let request = ApprovedRun(revision: revision, project: baseline, plan: plan, cost: cost)
+        let request = ApprovedRun(revision: revision, project: baseline, plan: plan, cost: cost, alignmentRetry: retry)
         activeRun = request
         model.workTask = Task { [weak self, model] in
             guard let self else { return }

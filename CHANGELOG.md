@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac, Rewrite stops retrying after the same words fail verification twice with the same voice. It keeps verified takes and offers free ways to move on instead of a third paid attempt.
+- If word alignment fails after ElevenLabs returns a transcript, VoxClip keeps the words and offers a free Retry without uploading the audio again.
 
 - On Mac, whole-clip revoice uses the selected authorized voice without rechecking the generated speaker or charging for speaker retries. Matching saved takes previously rejected only by that check can be reused after words and audio quality are checked.
 

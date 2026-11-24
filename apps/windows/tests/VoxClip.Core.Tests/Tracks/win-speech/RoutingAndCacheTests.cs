@@ -13,6 +13,42 @@ namespace VoxClip.Core.Tests.Tracks.Speech;
 
 public sealed class RoutingAndCacheTests
 {
+    [Fact]
+    public async Task PaidWordsSurviveAlignmentFailureAndRetryWithoutUpload()
+    {
+        using var files = new SpeechFiles();
+        var uploads = 0;
+        using var handler = new StubHttp((_, _) =>
+        {
+            uploads++;
+            return Task.FromResult(StubHttp.Json(ElevenLabsTests.Response));
+        });
+        var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
+        var attempts = 0;
+        var service = new TranscriptionService([engine], dataRoot: files.Root, analysisEnvelope: (_, _) =>
+            ++attempts == 1 ? throw new InvalidOperationException("Synthetic alignment failure") : Task.FromResult<AudioEnvelope?>(null));
+        var ct = TestContext.Current.CancellationToken;
+        TranscriptionAlignmentRetry? retry = null;
+        var request = files.Request() with { AlignmentReady = value => retry = value };
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.TranscribeAsync(request, new CaptureProgress<TranscriptionProgress>(), ct));
+        Assert.Equal("Synthetic alignment failure", failure.Message);
+
+        Assert.NotNull(retry);
+        Assert.Equal("test-request", retry.ProviderRequestId);
+        var transcript = await retry.FinishAsync(ct);
+        Assert.True(transcript.FromCache);
+        Assert.Contains(transcript.Words, word => word.Text == "Tere,");
+        Assert.Equal(1, uploads);
+
+        var reopened = new TranscriptionService([engine], dataRoot: files.Root);
+        var cached = await reopened.TranscribeAsync(request, null, null, ct);
+        Assert.True(cached.FromCache);
+        Assert.Equal("test-request", retry?.ProviderRequestId);
+        Assert.Contains(cached.Words, word => word.Text == "Tere,");
+        Assert.Equal(1, uploads);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
