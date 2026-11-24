@@ -34,7 +34,7 @@ import VoxClipMedia
 
 @MainActor private final class ClipTakeVoicePool {
     let session = VoiceLabVoiceCheckSession()
-    var value = VoiceLabShortTakePool()
+    var value: VoiceLabShortTakePool?
 }
 
 @MainActor @Observable final class ClipTakePlan {
@@ -216,14 +216,15 @@ import VoxClipMedia
             }
             approve = { batch, indices, continuing in
                 if !continuing {
-                    pool.value = VoiceLabShortTakePool(session: pool.session, retryPhrase: indices.count == 1 ? indices.first : nil)
+                    pool.value = batch.windows.contains { $0.input.checksGeneratedSpeaker }
+                        ? VoiceLabShortTakePool(session: pool.session, retryPhrase: indices.count == 1 ? indices.first : nil) : nil
                 }
                 try await VoiceLabTakeBatchRun(runs: indices.map { runs[$0] }).approve(batch)
             }
             execute = { batch, index, phrase, progress in
                 try await runs[phrase].execute(batch.windows[index].quote, approved: true, keepingPreviousTakes: true, shortTakePool: pool.value, phraseID: phrase, progress: progress)
             }
-            finishVoice = { await pool.value.finish() }
+            finishVoice = { await pool.value?.finish() ?? [:] }
             discard = { for run in runs { await run.cancel(keepingTakes: true) } }
             release = { indices in for index in indices { await runs[index].cancel(keepingTakes: true) } }
             invalidate = {
@@ -892,7 +893,7 @@ import VoxClipMedia
             return left.distance != right.distance ? left.distance < right.distance : left.score > right.score
         }.map(\.take)
     }
-    /// The take chosen automatically (ADR-R37, ADR-R39, ADR-R51): a measured pass or a passing whole-clip take in the selected voice, never one made before the expression
+    /// The take chosen automatically (ADR-R37, ADR-R39, ADR-R51): a measured pass or a passing take in the selected voice, never one made before the expression
     /// changed or before an edit (`madeBeforeEdit`). Among usable takes the best score wins, as before; when no duration
     /// can carry any of them, the one closest to the slot, so the automatic fixes reword from the nearest take. A take
     /// whose only issue is a join advisory is chosen when it ranks best, after any clean take at the same rank (ADR-R39:
@@ -990,7 +991,7 @@ import VoxClipMedia
                             sourceEnvelope: input.sourceEnvelope, sourceSampleRate: input.sourceSampleRate, items: input.items,
                             cutWordIDs: input.cutWordIDs, window: input.window, incomingSilence: input.incomingSilence,
                             outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: pace,
-                            hardJoinSmoothing: input.hardJoinSmoothing, audioTags: input.audioTags)
+                            hardJoinSmoothing: input.hardJoinSmoothing, audioTags: input.audioTags, checksGeneratedSpeaker: input.checksGeneratedSpeaker)
                         nextSeeds[index] &+= UInt32(candidates)
                         inputs[index].pauseProfile = input.pauseProfile
                         inputs[index].editedLayout = input.editedLayout

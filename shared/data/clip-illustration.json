@@ -1,0 +1,5 @@
+{
+  "endpoint": "https://fal.run/fal-ai/flux/schnell",
+  "size": 768,
+  "usdPerImage": 0.003
+}

@@ -199,7 +199,8 @@ internal sealed partial class RewriteSession : IDisposable
             read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
             silence.Incoming, silence.Outgoing, false, providerConsent,
             RewriteReview.MeasureTiming(this, combined, text, window, modelId, requestTags).Pace)
-            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue), AudioTags = requestTags };
+            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue),
+                AudioTags = requestTags, ChecksGeneratedSpeaker = false };
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,

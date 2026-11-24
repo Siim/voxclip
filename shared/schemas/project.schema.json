@@ -3641,7 +3641,10 @@
             "circle",
             "progress",
             "freeze",
-            "sound"
+            "sound",
+            "colourLook",
+            "speedForPart",
+            "illustration"
           ]
         },
         "start": {
@@ -3726,6 +3729,23 @@
             "pop"
           ],
           "description": "Optional entrance on title, lowerThird or sticker."
+        },
+        "look": {
+          "enum": [
+            "original",
+            "muted",
+            "warm",
+            "bw"
+          ]
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "imageFile": {
+          "type": "string",
+          "pattern": "^[0-9a-f-]{36}/illustration-[0-9a-f]{64}\\.png$"
         }
       },
       "allOf": [
@@ -4108,6 +4128,108 @@
                 "sound",
                 "gainDb"
               ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "colourLook"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "look"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "look"
+              ]
+            },
+            "properties": {
+              "clipId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "speedForPart"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "rate"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "rate"
+              ]
+            },
+            "properties": {
+              "clipId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "illustration"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "imageFile"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "imageFile"
+              ]
+            },
+            "properties": {
+              "clipId": {
+                "type": "string"
+              }
             }
           }
         }

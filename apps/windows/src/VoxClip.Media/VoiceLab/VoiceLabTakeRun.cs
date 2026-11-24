@@ -189,7 +189,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         for (var attempt = 0; attempt < 4; attempt++)
         {
             var skip = excluded.ToFrozenSet(StringComparer.Ordinal);
-            var found = await Task.Run(() => VoiceLabTakeJournal.Match(key, storage.ProjectId, storage.PaidRoot, skip), ct).ConfigureAwait(false);
+            var found = await Task.Run(() => VoiceLabTakeJournal.Match(key, storage.ProjectId, storage.PaidRoot, skip,
+                forSelectedVoice: !input.ChecksGeneratedSpeaker), ct).ConfigureAwait(false);
             if (found is null) return null;
             if (VoiceLabTakeJournalClaims.Claim(VoiceLabTakeJournalClaims.Key(found.AssetFile, storage.PaidRoot), claimOwner)) return found;
             excluded.Add(found.AssetFile);
@@ -283,10 +284,10 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             await Checkpoint("approval", value, token).ConfigureAwait(false);
             await Checkpoint("launch", value, token).ConfigureAwait(false);
             var shared = ShortTakePool;
-            var pool = shared ?? new VoiceLabShortTakePool(VoiceChecks, PhraseId);
+            var pool = value.Input.ChecksGeneratedSpeaker ? shared ?? new VoiceLabShortTakePool(VoiceChecks, PhraseId) : null;
             var report = progress ?? (_ => Task.CompletedTask);
             var result = await PerformAsync(() => value, approvals, report, () => transportStarted, () => launchCleanup, pool, token).ConfigureAwait(false);
-            if (shared is not null) return result;
+            if (shared is not null || pool is null) return result;
             // A run of its own checks its short takes at its end, Stop included, over the completed ones.
             var checkedRows = await pool.FinishAsync().ConfigureAwait(false);
             if (checkedRows.Count == 0) return result;
@@ -329,7 +330,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         store.ValidateUse(value.Record);
     }
     private async Task<VoiceLabTakeRunResult> PerformAsync(Func<Pending> current, IReadOnlyList<VoiceLabAuthorization> approvals,
-        Func<IReadOnlyList<VoiceLabTakeRow>, Task> progress, Func<bool> hasStarted, Func<Task> launchCleanup, VoiceLabShortTakePool pool, CancellationToken ct)
+        Func<IReadOnlyList<VoiceLabTakeRow>, Task> progress, Func<bool> hasStarted, Func<Task> launchCleanup, VoiceLabShortTakePool? pool, CancellationToken ct)
     {
         var rows = new List<VoiceLabTakeRow>();
         foreach (var take in current().Quote.Takes)
@@ -436,30 +437,37 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 audio = staged.Audio;
                 // ADR-R37: a take with three seconds of voiced speech keeps its own speaker check; a shorter one is checked for
                 // words and acoustics now and waits for its run's pooled voice check.
-                float[] voiced;
-                float[]? vector = null;
-                try
+                float[] voiced = [];
+                double? score = null;
+                if (pool is not null)
                 {
-                    voiced = await checks.Voiced(audio.Trimmed, audio.SampleRate, ct).ConfigureAwait(false);
-                    if (voiced.Length >= SpeakerAudio.WindowSize) vector = await checks.Embedding(voiced, ct).ConfigureAwait(false);
-                }
-                catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch)
-                {
-                    // Rejected by generated-speaker extraction: the paid Scribe request is skipped.
-                    var failed = new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
-                        VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
-                    pool.Measured(take.Synthesis.Review.RequestId, [], value.Record, PhraseId, passed: false);
-                    await JournalChecksAsync(VoiceLabTakeJournalChecks.SpeakerFailed, paid).ConfigureAwait(false);
-                    rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed)
-                        { AdoptedAsset = take.AdoptedAsset, Accepted = adoptedRequest });
-                    await progress(rows.AsReadOnly()).ConfigureAwait(false);
-                    await ValidateAsync(value, ct).ConfigureAwait(false);
-                    continue;
+                    float[]? vector = null;
+                    try
+                    {
+                        voiced = await checks.Voiced(audio.Trimmed, audio.SampleRate, ct).ConfigureAwait(false);
+                        if (voiced.Length >= SpeakerAudio.WindowSize) vector = await checks.Embedding(voiced, ct).ConfigureAwait(false);
+                    }
+                    catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch)
+                    {
+                        // Rejected by generated-speaker extraction: the paid Scribe request is skipped.
+                        var failed = new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
+                            VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
+                        pool.Measured(take.Synthesis.Review.RequestId, [], value.Record, PhraseId, passed: false);
+                        await JournalChecksAsync(VoiceLabTakeJournalChecks.SpeakerFailed, paid).ConfigureAwait(false);
+                        rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed)
+                            { AdoptedAsset = take.AdoptedAsset, Accepted = adoptedRequest });
+                        await progress(rows.AsReadOnly()).ConfigureAwait(false);
+                        await ValidateAsync(value, ct).ConfigureAwait(false);
+                        continue;
+                    }
+                    if (vector is not null)
+                    {
+                        var ownerVector = VoiceConsentRecord.DecodeEmbedding(value.Record.Speaker.Embedding) ?? throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+                        score = SpeakerAudio.Cosine(ownerVector, vector);
+                        pool.Measured(take.Synthesis.Review.RequestId, voiced, value.Record, PhraseId, score >= value.Record.Speaker.Threshold);
+                    }
                 }
                 await ValidateAsync(value, ct).ConfigureAwait(false);
-                var ownerVector = VoiceConsentRecord.DecodeEmbedding(value.Record.Speaker.Embedding) ?? throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
-                double? score = vector is null ? null : SpeakerAudio.Cosine(ownerVector, vector);
-                if (score is { } own) pool.Measured(take.Synthesis.Review.RequestId, voiced, value.Record, PhraseId, own >= value.Record.Speaker.Threshold);
                 string[] inside;
                 // The recovered take's word check already ran on its own audio: every word it heard is the take's.
                 if (heard is not null) inside = heard.Select(word => word.Text).ToArray();
@@ -474,16 +482,18 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 }
                 var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold,
                     audio.Seams.Select(seam => seam == audio.PatchStart).ToArray(), audio.SeamExcesses, value.Input.HasRequestTags,
-                    VoiceLabTakeQuality.ReplacementWords(value.Input.Text, value.Input.Items, value.Input.Window));
-                // A take that dropped or changed words, clipped or failed its own speaker check does so again: the next run never adopts it.
+                    VoiceLabTakeQuality.ReplacementWords(value.Input.Text, value.Input.Items, value.Input.Window))
+                    with { OutputSpeakerCheckSkipped = !value.Input.ChecksGeneratedSpeaker };
+                // Keep hard failures with the asset so adoption can apply the next run's policy.
                 await JournalChecksAsync(VoiceLabTakeJournalChecks.Of(qa, value.Record.Speaker.Threshold), paid).ConfigureAwait(false);
                 var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
                     qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
                 var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank)
-                    { VoiceCheck = vector is null ? VoiceLabTakeVoiceCheck.Waiting : VoiceLabTakeVoiceCheck.PerTake, AdoptedAsset = take.AdoptedAsset, Accepted = adoptedRequest };
+                    { VoiceCheck = qa.OutputSpeakerCheckSkipped ? VoiceLabTakeVoiceCheck.SelectedVoice :
+                        score is null ? VoiceLabTakeVoiceCheck.Waiting : VoiceLabTakeVoiceCheck.PerTake, AdoptedAsset = take.AdoptedAsset, Accepted = adoptedRequest };
                 rows.Add(row);
                 lock (sync) { Check(value.Revision, value.Binding, ct); acceptedRows[row.Id] = (row, value); }
-                if (vector is null)
+                if (pool is not null && score is null)
                 {
                     var checkedValue = value;
                     pool.Append(new(row, voiced, PhraseId, value.Record, token => ValidateVoiceAsync(checkedValue, token), checks.Embedding));

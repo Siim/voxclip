@@ -309,7 +309,9 @@ public sealed partial class EditorViewModel
             var detail = AskClaudeRowDetail(operation);
             var choice = answer.Choices.GetValueOrDefault(operation.Id);
             AskClaudeRow row;
-            if (paid.Contains(operation.Id))
+            if (operation.Action is ClipAutopilotAction.Asset)
+                row = new(operation, AskClaudeRowStatus.Asset, title, detail, choice);
+            else if (paid.Contains(operation.Id))
                 row = AskClaudePrice(operation) is { Length: > 0 } price
                     ? new(operation, AskClaudeRowStatus.Paid, title, detail, choice) { Price = price }
                     : new(operation, AskClaudeRowStatus.Later, title, detail, choice) { Reason = AskClaudeLaterReason(operation) };
@@ -321,6 +323,9 @@ public sealed partial class EditorViewModel
             run.Rows.Add(row);
         }
         AskClaude.Run = run;
+        AskClaude.IllustrationReady = null;
+        if (run.Rows.Any(row => row.Operation.Action is ClipAutopilotAction.Asset { Kind: "illustration" }))
+            _ = CheckAskIllustrationAsync(run);
         AskClaude.Selection = null;
         AskClaude.Text = "";
         AskClaude.Error = null;
@@ -344,10 +349,11 @@ public sealed partial class EditorViewModel
                 {
                     "bleep" => "Bleep", "mute" => "Mute", "blur" => still ? "Blur" : "Blur, tracked", "pixelate" => still ? "Pixelate" : "Pixelate, tracked",
                     "title" => "Title", "lowerThird" => "Lower third", "sticker" => "Emoji", "arrow" => "Arrow", "circle" => "Circle",
-                    "progress" => "Progress bar", "freeze" => "Freeze frame",
+                    "progress" => "Progress bar", "freeze" => "Freeze frame", "colourLook" => "Colour look", "speedForPart" => "Speed for this beat",
                     "sound" => "Sound: " + (value.TryGetProperty("sound", out var sound) && sound.TryGetProperty("title", out var name) ? name.GetString() : "effect"),
                     _ => effect.Kind
                 };
+            case ClipAutopilotAction.Asset asset: return asset.Kind == "soundEffect" ? "Sound effect" : "Illustration";
             case ClipAutopilotAction.Motion: return "Zoom in";
             case ClipAutopilotAction.Edit { Operation: EditOperation.Correct }: return "Fix a word";
             case ClipAutopilotAction.Edit { Operation: EditOperation.CutSelection }: return "Jump cut";
@@ -384,6 +390,7 @@ public sealed partial class EditorViewModel
                 if (effect.UsesWords) return (effect.WordIds.Count == 1 ? "1 word" : effect.WordIds.Count.ToString(CultureInfo.InvariantCulture) + " words") + " · " + range;
                 return range;
             }
+            case ClipAutopilotAction.Asset asset: return Clock(asset.Start) + "–" + Clock(asset.End);
             case ClipAutopilotAction.Motion { Cue: var cue }: return Clock(cue.SourceStart) + "–" + Clock(cue.SourceEnd);
             case ClipAutopilotAction.Edit { Operation: EditOperation.Correct correct }:
                 return (Index(correct.Id) is var at and >= 0 ? DisplayText(Words[at]) : "") + " → " + correct.Text;
@@ -400,7 +407,7 @@ public sealed partial class EditorViewModel
     /// <summary>Why a later row changed nothing.</summary>
     public static string AskClaudeLaterReason(ClipAutopilotOperation operation) => operation.Action switch
     {
-        ClipAutopilotAction.Stretch => "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed.",
+        ClipAutopilotAction.Stretch => "Ask on a clip to change its speed. Nothing changed.",
         ClipAutopilotAction.MusicDucking => "This clip has no music to duck.",
         _ => "Not available yet. Nothing changed."
     };
@@ -451,6 +458,7 @@ public sealed partial class EditorViewModel
         switch (operation.Action)
         {
             case ClipAutopilotAction.Effect { Value: var value }: var effect = ClipEffect.Parse(value); return (effect.Start, effect.End);
+            case ClipAutopilotAction.Asset asset: return (asset.Start, asset.End);
             case ClipAutopilotAction.Motion { Cue: var cue }: return (cue.SourceStart, cue.SourceEnd);
             case ClipAutopilotAction.Stretch stretch: return (stretch.Start, stretch.End);
             case ClipAutopilotAction.Edit { Operation: EditOperation.Correct correct }:
@@ -545,6 +553,7 @@ public sealed partial class EditorViewModel
             switch (operation.Action)
             {
                 case ClipAutopilotAction.Effect { Value: var value }: effects.Add(value.GetProperty("id").GetString()!); break;
+                case ClipAutopilotAction.Asset asset: effects.Add(asset.Id); break;
                 case ClipAutopilotAction.Motion { Cue: var cue }: cues.Add(cue.Id); break;
                 case ClipAutopilotAction.Edit { Operation: EditOperation.Correct correct }:
                 {

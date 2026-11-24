@@ -2,6 +2,8 @@
 
 Date: 2026-11-02. Status: accepted lead decision.
 
+**Amended by ADR-R51 (2026-11-24):** Mac and Windows take runs skip all generated-speaker comparisons, including pooling, when the flow selects an active, authorized own voice. The rules below describe only takes whose input still requests a generated-speaker check. The word and acoustic checks and ADR-R40's source-speech guard are independent and still run.
+
 The casual-speech replay spent 39 synthesis requests on 13 phrases and rejected every take before checking words. Raw lengths were 1.36–3.12 seconds; trimming and VAD left less than the calibrated three seconds of voiced speech. A local transcript review found the intended words in 37 takes and “fight simulator” in two. Test audio is synthetic; no user recording is stored.
 
 Every completed take receives the existing Scribe word comparison, clipping and seam-loudness checks within the approved quote. A take already rejected by generated-speaker extraction skips Scribe and records only its synthesis spend. Five tokens or fewer still require exact words. Longer generated takes with at least 48,000 voiced samples at 16 kHz keep their own speaker check.

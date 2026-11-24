@@ -17,7 +17,19 @@ public readonly record struct ClipEffectRect(double X, double Y, double Width, d
 public readonly record struct ClipEffectTrackSample(double T, ClipEffectRect Rect);
 
 /// <summary>The sound a <c>sound</c> effect plays: a bundled id, or a library file under the data folder's SFX root.</summary>
-public sealed record ClipEffectSound(string Source, string? Id, string? File, double DurationSeconds);
+public sealed record ClipEffectSound(string Source, string? Id, string? File, double DurationSeconds)
+{
+    /// <summary>Display title for the sound.</summary>
+    public string? Title { get; init; }
+    /// <summary>Creator credited by Openverse.</summary>
+    public string? Creator { get; init; }
+    /// <summary>The source licence ID.</summary>
+    public string? License { get; init; }
+    /// <summary>Credit supplied by Openverse.</summary>
+    public string? Attribution { get; init; }
+    /// <summary>Original landing page.</summary>
+    public string? SourceUrl { get; init; }
+}
 
 /// <summary>One effect as the renderer reads it (Mac ClipEffect, ai.md §18.2): the stored JSON entry, typed. Times are source
 /// seconds. Picture kinds (blur, pixelate, arrow, circle) carry a rect of the source as filmed; frame kinds (title, lowerThird,
@@ -55,6 +67,12 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
     public double? GainDb { get; init; }
     /// <summary>Optional entrance for titles, lower thirds or stickers.</summary>
     public string? Animation { get; init; }
+    /// <summary>Timed colour look.</summary>
+    public string? Look { get; init; }
+    /// <summary>Timed playback rate.</summary>
+    public double? Rate { get; init; }
+    /// <summary>Project-relative PNG of a generated illustration.</summary>
+    public string? ImageFile { get; init; }
 
     /// <summary>bleep, mute, blur and pixelate render wherever their range plays.</summary>
     public bool IsCensor => ClipEffects.IsCensor(Kind);
@@ -77,7 +95,7 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
             entry.GetProperty("kind").GetString()!, entry.GetProperty("start").GetDouble(), entry.GetProperty("end").GetDouble())
         {
             Text = Text("text"), Position = Text("position"), Tracking = Text("tracking"), Scale = Number("scale"), GainDb = Number("gainDb"),
-            Animation = Text("animation")
+            Animation = Text("animation"), Look = Text("look"), Rate = Number("rate"), ImageFile = Text("imageFile")
         };
         if (entry.TryGetProperty("wordIds", out var words)) effect = effect with { WordIds = words.EnumerateArray().Select(word => word.GetString()!).ToArray() };
         if (entry.TryGetProperty("rect", out var rect)) effect = effect with { Rect = Rect(rect) };
@@ -86,7 +104,8 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
         if (entry.TryGetProperty("sound", out var sound))
         {
             string? Field(string key) => sound.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-            effect = effect with { Sound = new(sound.GetProperty("source").GetString()!, Field("id"), Field("file"), sound.GetProperty("durationSeconds").GetDouble()) };
+            effect = effect with { Sound = new(sound.GetProperty("source").GetString()!, Field("id"), Field("file"), sound.GetProperty("durationSeconds").GetDouble())
+                { Title = Field("title"), Creator = Field("creator"), License = Field("license"), Attribution = Field("attribution"), SourceUrl = Field("sourceUrl") } };
         }
         return effect;
     }
@@ -138,6 +157,21 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
 /// the file each sound effect plays.</summary>
 public sealed record ClipEffectsRenderInput(IReadOnlyList<ClipEffect> Effects, IReadOnlyDictionary<string, string> SoundPaths)
 {
+    /// <summary>Resolved generated illustration files, by effect ID.</summary>
+    public IReadOnlyDictionary<string, string> Images { get; init; } = new Dictionary<string, string>();
+    /// <summary>Library sound credits for the export's metadata.</summary>
+    public IReadOnlyList<string> Credits => Effects.Where(effect => SoundPaths.ContainsKey(effect.Id) && effect.Sound is { Source: "library", SourceUrl: not null })
+        .Select(effect => effect.Sound!).DistinctBy(sound => sound.SourceUrl).Select(sound =>
+        {
+            var license = sound.License == "by" ? "CC BY" : sound.License?.ToUpperInvariant();
+            var creator = sound.Creator is { } name ? " by " + name : "";
+            var text = sound.Attribution ?? $"{sound.Title}{creator} ({license})";
+            return $"Sound: {text} — {sound.SourceUrl} (mixed into video)";
+        }).ToArray();
+
+    /// <summary>Library of generated illustrations, holding one folder per project ID.</summary>
+    public static string ImageRoot(string dataRoot) => Path.Combine(dataRoot, "Illustrations");
+
     /// <summary><c>&lt;data folder&gt;/SFX</c>, holding one folder per project id.</summary>
     public static string SoundRoot(string dataRoot) => Path.Combine(dataRoot, "SFX");
 
@@ -157,11 +191,12 @@ public sealed record ClipEffectsRenderInput(IReadOnlyList<ClipEffect> Effects, I
             else if (sound.Source == "library" && sound.File is { } file)
                 paths[effect.Id] = Path.Combine(SoundRoot(dataRoot), file.Replace('/', Path.DirectorySeparatorChar));
         }
-        return new(effects, paths);
+        return new(effects, paths) { Images = effects.Where(effect => effect.ImageFile is not null).ToDictionary(effect => effect.Id,
+            effect => Path.Combine(ImageRoot(dataRoot), effect.ImageFile!.Replace('/', Path.DirectorySeparatorChar)), StringComparer.Ordinal) };
     }
 
     /// <summary>Picture effects: everything but bleeps, mutes and sounds.</summary>
-    public IReadOnlyList<ClipEffect> Picture => Effects.Where(effect => effect.Kind is not ("bleep" or "mute" or "sound")).ToArray();
+    public IReadOnlyList<ClipEffect> Picture => Effects.Where(effect => effect.Kind is not ("bleep" or "mute" or "sound" or "colourLook" or "speedForPart")).ToArray();
     /// <summary>Audio effects: bleeps, mutes and sounds.</summary>
     public IReadOnlyList<ClipEffect> Audio => Effects.Where(effect => effect.Kind is "bleep" or "mute" or "sound").ToArray();
     /// <summary>Freeze frames.</summary>
@@ -174,7 +209,7 @@ public sealed record ClipEffectsRenderInput(IReadOnlyList<ClipEffect> Effects, I
         get
         {
             var kept = Effects.Where(effect => effect.Kind != "sound").ToArray();
-            return kept.Length == 0 ? null : new(kept, new Dictionary<string, string>());
+            return kept.Length == 0 ? null : new(kept, new Dictionary<string, string>()) { Images = Images };
         }
     }
 

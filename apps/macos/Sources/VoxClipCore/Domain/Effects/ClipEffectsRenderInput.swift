@@ -6,11 +6,16 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
     public let effects: [ClipEffect]
     /// The audio file of each `sound` effect, by effect id: `shared/data/sfx/<id>.wav` or the library clip in the data folder.
     public let soundURLs: [String: URL]
+    public let imageURLs: [String: URL]
 
-    public init(effects: [ClipEffect], soundURLs: [String: URL]) { self.effects = effects; self.soundURLs = soundURLs }
+    public init(effects: [ClipEffect], soundURLs: [String: URL], imageURLs: [String: URL] = [:]) {
+        self.effects = effects; self.soundURLs = soundURLs; self.imageURLs = imageURLs
+    }
 
     /// `<data folder>/SFX`, holding one folder per project id.
     public static func soundRoot(dataRoot: URL) -> URL { dataRoot.appendingPathComponent("SFX", isDirectory: true) }
+
+    public static func imageRoot(dataRoot: URL) -> URL { dataRoot.appendingPathComponent("Illustrations", isDirectory: true) }
 
     public static func bundledSoundURL(_ id: String, shared: SharedResources) -> URL {
         shared.root.appendingPathComponent("data/sfx/\(id).wav", isDirectory: false)
@@ -28,11 +33,27 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
             case .library: if let file = sound.file { urls[effect.id] = soundRoot(dataRoot: dataRoot).appendingPathComponent(file, isDirectory: false) }
             }
         }
-        return ClipEffectsRenderInput(effects: effects, soundURLs: urls)
+        let images = effects.compactMap { effect in effect.imageFile.map { (effect.id, imageRoot(dataRoot: dataRoot).appendingPathComponent($0)) } }
+        return ClipEffectsRenderInput(effects: effects, soundURLs: urls, imageURLs: Dictionary(uniqueKeysWithValues: images))
     }
 
     /// Picture effects: everything but bleeps, mutes and sounds.
-    public var picture: [ClipEffect] { effects.filter { ![.bleep, .mute, .sound].contains($0.kind) } }
+    public var picture: [ClipEffect] { effects.filter { ![.bleep, .mute, .sound, .colourLook, .speedForPart].contains($0.kind) } }
+
+    public func look(at sourceTime: Double) -> ClipLook? {
+        effects.last { $0.kind == .colourLook && $0.start <= sourceTime && sourceTime < $0.end }?.look
+    }
+
+    public var credits: [String] {
+        var seen = Set<String>()
+        return effects.compactMap { effect in
+            guard let sound = effect.sound, sound.source == .library, let url = sound.sourceUrl,
+                  soundURLs[effect.id] != nil, seen.insert(url).inserted else { return nil }
+            let license = sound.license == "by" ? "CC BY" : sound.license.uppercased()
+            let text = sound.attribution ?? "\(sound.title)\(sound.creator.map { " by \($0)" } ?? "") (\(license))"
+            return "Sound: \(text) — \(url) (mixed into video)"
+        }
+    }
     /// Audio effects: bleeps, mutes and sounds.
     public var audio: [ClipEffect] { effects.filter { [.bleep, .mute, .sound].contains($0.kind) } }
     public var freezes: [ClipEffect] { effects.filter { $0.kind == .freeze } }
@@ -41,7 +62,7 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
     /// probes). Bleeps and mutes stay: they silence the voice itself, so the edited audio is censored like the video.
     public var withoutAudio: ClipEffectsRenderInput? {
         let kept = effects.filter { $0.kind != .sound }
-        return kept.isEmpty ? nil : ClipEffectsRenderInput(effects: kept, soundURLs: [:])
+        return kept.isEmpty ? nil : ClipEffectsRenderInput(effects: kept, soundURLs: [:], imageURLs: imageURLs)
     }
 
     /// The source time the picture shows at source time `time`: a freeze's start while it holds, else `time`.

@@ -60,7 +60,7 @@
     "text": "Title, hook and post\n- title: a short working title for the clip, at most 8 words.\n- hook: the on-screen text for the first 2 seconds, at most 8 words. It may tease the payoff but never lies.\n- postText: what the creator posts with the clip on X or LinkedIn, in their voice: short and punchy, 1 to 3 short sentences with a clear point or question. At most 2 hashtags, no emoji unless the speaker's tone calls for one, no clickbait.\n- Write title, hook and postText in the language of the clip, with corrected spellings. Write reasons and questions in English.",
     "score": "Score\n- score, 1 to 10: how well the finished clip will do as a post, judged honestly against the best short-form clips, so a 9 or 10 is rare. verdict is postFirst (the strongest: post it first; at most one clip of a series), post, casualPost (fine for a casual or niche post) or holdBack (not worth posting). scoreReason says why in one sentence.",
     "questions": "Questions\n- When something is uncertain, such as a name you could not correct with confidence, a claim that may be out of date or whether a joke lands, ask it as a question with your pre-picked answer and up to {maxOptions} options. The plan already follows your answer. Use an empty list when nothing is uncertain.",
-    "effects": "Effects\n- Use effects for zoom and punchIn instead of legacy zooms; use legacy zooms only to zoom away. zoom eases in and back; punchIn cuts straight to the closer frame. Use scale from 1.05 to 1.2 for a subtle move, at most 1.35.\n- A motionTitle introduces a beat, a lowerThird identifies a speaker or place, and an emojiPop punctuates a genuinely expressive beat. Use actual on-screen text or exactly one of these emoji: {effectStickers}. Do not open with both a hook card and a motion title.\n- Anchor startWord and endWord to spoken, kept words enclosing 0.1–5 seconds without a cut or tightened pause. Each effect needs one short reason specific to that beat. Use only as many effects as help, avoid overlapping graphics, and use an empty list if none helps. Set unused scale to 0 or unused text to an empty string.",
+    "effects": "Effects\n- Use effects for zoom and punchIn instead of legacy zooms; use legacy zooms only to zoom away. zoom eases in and back; punchIn cuts straight to the closer frame. Use scale from 1.05 to 1.2 for a subtle move, at most 1.35.\n- A motionTitle introduces a beat, a lowerThird identifies a speaker or place, and an emojiPop punctuates a genuinely expressive beat. Use actual on-screen text or exactly one of these emoji: {effectStickers}. Do not open with both a hook card and a motion title.\n- A soundEffect uses a short Openverse search query for a quiet accent, not music. An illustration uses a standalone visual prompt for a brief cutaway when the idea is hard to picture; suggest at most one. Do not put private names, identifying details, or quoted speech in the query or prompt.\n- A colourLook uses original, muted, warm or bw for that beat only. A speedForPart uses rate 0.5 to 2; keep speech natural.\n- Anchor startWord and endWord to spoken, kept words enclosing 0.1–5 seconds without a cut or tightened pause. Each effect needs one short reason specific to that beat. Use only as many effects as help, avoid overlapping graphics, and use an empty list if none helps. Set unused numbers to 0 and unused strings to empty.",
     "coverTitle": "Cover title\n- Optionally give the chosen frames.cover a short title in its title field. Use a few truthful words that make the image understandable in a feed. Use an empty string if the picture works better by itself or if no cover is offered. This text appears only on the exported cover image, not in the clip.",
     "planEnd": "Return only the structured plan.",
     "momentsEnd": "Return only the structured list of moments."
@@ -393,14 +393,18 @@
         "items": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind", "startWord", "endWord", "reason", "scale", "text"],
+          "required": ["kind", "startWord", "endWord", "reason", "scale", "text", "query", "prompt", "look", "rate"],
           "properties": {
-            "kind": {"type": "string", "enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop"]},
+            "kind": {"type": "string", "enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop", "soundEffect", "illustration", "colourLook", "speedForPart"]},
             "startWord": {"type": "integer"},
             "endWord": {"type": "integer"},
             "reason": {"type": "string"},
             "scale": {"type": "number"},
-            "text": {"type": "string"}
+            "text": {"type": "string"},
+            "query": {"type": "string"},
+            "prompt": {"type": "string"},
+            "look": {"type": "string"},
+            "rate": {"type": "number"}
           }
         }
       },

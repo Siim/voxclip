@@ -1309,6 +1309,18 @@ import VoxClipCore
             try await harness.start()
             try await harness.finish()
         },
+        Definition(id: "S-phrase-selected-voice", title: "a changed phrase uses the selected voice without a speaker gate",
+            voiced: 1, fixture: Fixture(rewrites: [.passage(replace([twoChanges[1]]))],
+                voice: RewriteSmokeVoiceScript(offset: -0.2, rejectedSpeakerRequests: [1]))) { harness in
+            try await harness.start()
+            try await harness.finish()
+            let requests = RewriteSmokeHTTP.script.withLock { ($0.synthesisVoices, $0.checks) }
+            let segment = harness.editor?.project.voiceLab.segments.last
+            let qa = segment.flatMap { $0.candidates.indices.contains($0.selectedCandidateIndex) ? $0.candidates[$0.selectedCandidateIndex].recipe?.qa : nil }
+            harness.makeItAppend([Check(invariant: "SV1",
+                passed: requests.0 == ["fixtureOwnVoice"] && requests.1 == 1 && qa?.outputSpeakerCheckSkipped == true && qa?.shortSpeech == nil,
+                detail: "\(requests.0.count) syntheses · \(requests.1) word checks · skipped speaker check: \(qa?.outputSpeakerCheckSkipped == true)")])
+        },
         Definition(id: "S-older-takes", title: "two rounds keep both takes playable and selectable for free", voiced: 1,
             fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.keepOlderTakes()

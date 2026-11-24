@@ -80,6 +80,8 @@ internal sealed record VoiceLabTakeJournalEntry(string Schema, string AssetFile,
     internal string AssetId => Path.GetFileNameWithoutExtension(AssetFile.Split('/')[^1]);
     /// <summary>False once a check failed in a way the same audio repeats (<see cref="VoiceLabTakeJournalChecks.HardFailures"/>).</summary>
     internal bool Adoptable => Checks is null || Checks.HardFailures.Count == 0;
+    internal bool AdoptableForSelectedVoice => Adoptable ||
+        Checks is { HardFailures: ["speaker"], Words: not VoiceLabTakeJournalOutcome.Failed };
 }
 
 /// <summary>The App's settle of the take journals (Mac <c>VoiceLabAssetRetention</c>). At a project's open and close the entries of the
@@ -189,8 +191,10 @@ internal static class VoiceLabTakeJournal
 
     /// <summary>The newest adoptable entry over <paramref name="key"/> (no check failed it) whose asset is still there with its frame
     /// count and SHA-256, leaving out the asset files in <paramref name="claimed"/> (already taken by a live run); null when none.</summary>
-    internal static VoiceLabTakeJournalEntry? Match(VoiceLabTakeJournalKey key, string projectId, string paidRoot, IReadOnlySet<string>? claimed = null) =>
-        List(projectId, paidRoot).Where(entry => entry.Key == key && entry.Adoptable && entry.SampleRate == 24000 && claimed?.Contains(entry.AssetFile) != true)
+    internal static VoiceLabTakeJournalEntry? Match(VoiceLabTakeJournalKey key, string projectId, string paidRoot, IReadOnlySet<string>? claimed = null,
+        bool forSelectedVoice = false) =>
+        List(projectId, paidRoot).Where(entry => entry.Key == key && (forSelectedVoice ? entry.AdoptableForSelectedVoice : entry.Adoptable) &&
+            entry.SampleRate == 24000 && claimed?.Contains(entry.AssetFile) != true)
             .OrderByDescending(entry => entry.CreatedAt).ThenByDescending(entry => entry.AssetFile, StringComparer.Ordinal)
             .FirstOrDefault(entry => TryPcm(entry, projectId, paidRoot) is not null);
 
