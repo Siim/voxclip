@@ -31,6 +31,7 @@ import VoxClipCore
         var cards: [String] = []
         var texts: [String] = []
         var controls: [Control] = []
+        var disabledReasons: [String: String] = [:]
         var textFields = 0
         var footer: String?
         var resolverRunning = false
@@ -1092,6 +1093,8 @@ import VoxClipCore
                                 source: "evidence", role: "button", acts: !passive))
                         } else if name.hasPrefix("voice.quote.") {
                             snapshot.drawnQuotes.append(text)
+                        } else if name.hasPrefix("voice.action.reason."), !text.isEmpty {
+                            snapshot.disabledReasons[String(name.dropFirst("voice.action.reason.".count))] = text
                         } else if name.hasPrefix("voice.phrase.") || name.hasSuffix(".line") {
                             texts.append(text)
                         }
@@ -1165,9 +1168,11 @@ import VoxClipCore
                 checks.append(Check(invariant: "I1", passed: !acting.isEmpty || snapshot.resolverRunning || explainsUnavailable,
                     detail: acting.isEmpty ? (snapshot.resolverRunning ? "resolver running" : DebugRewriteSmoke.summary(snapshot))
                         : "acts: " + acting.map(\.title).prefix(4).joined(separator: ", ")))
-                let disabled = snapshot.controls.filter { !$0.enabled && DebugRewriteSmoke.allowedDisabled[$0.title] == nil }
+                let disabled = snapshot.controls.filter {
+                    !$0.enabled && snapshot.disabledReasons[$0.id] == nil && DebugRewriteSmoke.allowedDisabled[$0.title] == nil
+                }
                 checks.append(Check(invariant: "I2", passed: disabled.isEmpty,
-                    detail: disabled.isEmpty ? "no disabled control" : "disabled: " + disabled.map { "'\($0.title)'" }.joined(separator: ", ")
+                    detail: disabled.isEmpty ? "no disabled control without a reason" : "disabled: " + disabled.map { "'\($0.title)'" }.joined(separator: ", ")
                         + (snapshot.texts.first(where: { $0.contains("first.") || $0.contains("Choose a take") }).map { " beside '\($0)'" } ?? "")))
                 checks.append(Check(invariant: "I3", passed: snapshot.textFields <= 1,
                     detail: "\(snapshot.textFields) free-text field\(snapshot.textFields == 1 ? "" : "s")"))

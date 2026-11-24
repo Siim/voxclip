@@ -5,6 +5,10 @@ public struct LipsyncWindow: Codable, Sendable, Equatable {
     public let endSample: Int64
     public let phraseIDs: [Int]
 
+    package init(startSample: Int64, endSample: Int64, phraseIDs: [Int]) {
+        self.startSample = startSample; self.endSample = endSample; self.phraseIDs = phraseIDs
+    }
+
     public static func make(seamIn: Int64, seamOut: Int64, totalSamples: Int64, sampleRate: Int,
                             phraseID: Int) throws -> LipsyncWindow {
         guard (8_000...192_000).contains(sampleRate), totalSamples >= Int64(sampleRate) * 3,

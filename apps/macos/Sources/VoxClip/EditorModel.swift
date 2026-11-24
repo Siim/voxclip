@@ -27,7 +27,7 @@ struct EditorRenderSnapshot {
     /// Told when a whole-clip voice plan is priced, so the smoke's scripted voice knows its windows.
     @ObservationIgnored var wholeClipPrepared: (@MainActor (ClipTakePlan) -> Void)?
     /// The Rewrite smoke's lip sync: the real run over a stood-in fal.ai (`LipsyncSmokeFalHTTP`), for every take plan.
-    @ObservationIgnored var lipsyncSmoke: (@MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, Bool,
+    @ObservationIgnored var lipsyncSmoke: (@MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, Bool, String?,
                                                        @escaping @MainActor @Sendable (LipsyncQuote) -> Void,
                                                        @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult)?
     #endif

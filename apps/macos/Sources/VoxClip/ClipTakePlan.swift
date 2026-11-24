@@ -995,6 +995,7 @@ import VoxClipMedia
                         nextSeeds[index] &+= UInt32(candidates)
                         inputs[index].pauseProfile = input.pauseProfile
                         inputs[index].editedLayout = input.editedLayout
+                        inputs[index].redoVersion = input.redoVersion
                     }
                 }
                 try validate(inputs.map(\.window))

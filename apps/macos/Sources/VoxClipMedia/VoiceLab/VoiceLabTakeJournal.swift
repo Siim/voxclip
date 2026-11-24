@@ -16,12 +16,14 @@ public struct VoiceLabTakeJournalKey: Sendable, Hashable {
     public let previousText: String
     public let nextText: String
     public let pace: Double
+    public let redoVersion: String?
 
     public init(recordID: String, voiceID: String, modelID: String, language: String, requestText: String,
-                previousText: String, nextText: String, pace: Double?) {
+                previousText: String, nextText: String, pace: Double?, redoVersion: String? = nil) {
         self.recordID = recordID; self.voiceID = voiceID; self.modelID = modelID; self.language = language
         self.requestText = requestText; self.previousText = previousText; self.nextText = nextText
         self.pace = VoiceLabPace.rounded(pace)
+        self.redoVersion = redoVersion
     }
 
     /// The key of `input`'s take `take` in the clone `voiceID`.
@@ -29,7 +31,7 @@ public struct VoiceLabTakeJournalKey: Sendable, Hashable {
         let options = input.options(take: take)
         self.init(recordID: input.recordID, voiceID: voiceID, modelID: input.modelID, language: input.language,
                   requestText: input.requestText, previousText: options.previousText ?? "", nextText: options.nextText ?? "",
-                  pace: options.pace)
+                  pace: options.pace, redoVersion: input.redoVersion)
     }
 }
 
@@ -110,6 +112,7 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
     /// The synthesis request's quoted price in US dollars, as a decimal string; nil when it was unknown.
     public let estimateUSD: String?
     public let createdAt: Date
+    public let redoVersion: String?
 
     public init(assetFile: String, assetSha256: String, requestID: UUID, providerRequestID: String?, key: VoiceLabTakeJournalKey,
                 seed: UInt32, sampleRate: Int, frames: Int, alignment: Alignment?, checks: Checks? = nil, receipt: Receipt,
@@ -123,11 +126,12 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
         self.checks = checks; self.receipt = receipt
         self.estimateUSD = estimateUSD.map { NSDecimalNumber(decimal: $0).stringValue }
         self.createdAt = createdAt
+        redoVersion = key.redoVersion
     }
 
     public var key: VoiceLabTakeJournalKey {
         VoiceLabTakeJournalKey(recordID: recordID, voiceID: voiceID, modelID: modelID, language: language, requestText: requestText,
-                               previousText: previousText, nextText: nextText, pace: pace)
+                               previousText: previousText, nextText: nextText, pace: pace, redoVersion: redoVersion)
     }
     /// The asset's ID, the journal file's name.
     public var assetID: String { String((assetFile.split(separator: "/").last ?? "").dropLast(".wav".count)) }

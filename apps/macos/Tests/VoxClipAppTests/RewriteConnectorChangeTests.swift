@@ -67,7 +67,7 @@ private struct ConnectorChangeKeys: KeyProvider {
     }
 
     /// The whole clip's variant: its paid voice is kept through an AI change, as paid takes are. What the voice and lip sync
-    /// are made from has no AI in it (`wholeClipInputsCurrency`), so Try Again after a failed lip sync reaches Review over
+    /// are made from has no AI in it (`wholeClipInputsStillCurrent`), so Try Again after a failed lip sync reaches Review over
     /// the paid voice and Use puts it in; only a new wording, which asks the AI, waits for Rewrite Again.
     @Test func anAIChangeKeepsAPaidWholeClipUsable() async throws {
         let (app, editor, _, root) = try await open(paid: false)
@@ -82,7 +82,7 @@ private struct ConnectorChangeKeys: KeyProvider {
                                      connectorIsCurrent: { [weak editor] in editor?.rewriteConnectorSignature == signature })
         editor.openRewrite = session
         let stubs = WholeClipRevoiceSessionTests.Stubs()
-        stubs.isCurrent = session.wholeClipInputsCurrency()
+        stubs.isCurrent = session.wholeClipInputsStillCurrent()
         stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.http(503), local: false)
         let whole = WholeClipRevoiceSession()
         whole.backend = WholeClipRevoiceSessionTests.backend(stubs)

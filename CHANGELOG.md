@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, redo a used whole take after reopening it: make a new voice and lip sync, or pay only for new lip sync and keep the voice you already made.
 - On Mac, VoxClip asks for Screen Recording and Accessibility when you need them, links to the right settings, and explains why card import needs access. On Windows, Rewrite links to microphone privacy settings when access is blocked.
 - On Mac, Voice shows whole-take revoice and its price in Full Take and clips, even with no changed words. Find it in ⌘K or the clip menu, and redo it without replacing the version in use until you click Use.
 - VoxClip builds from source on Xcode 26 with companion footage enabled.

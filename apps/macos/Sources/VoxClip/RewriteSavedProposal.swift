@@ -48,9 +48,11 @@ struct RewriteSavedProposal: Codable, Equatable {
         let quoteID: UUID
         let videoSHA256: String
         let audioSHA256: String
+        var redoVersion: String? = nil
 
         func acceptedUSD(projectID: String, root: URL, now: Date = Date()) -> Decimal? {
-            guard let attempt = LipsyncAttemptStore.load(videoSHA256: videoSHA256, audioSHA256: audioSHA256, projectID: projectID, paidRoot: root),
+            guard let attempt = LipsyncAttemptStore.load(videoSHA256: videoSHA256, audioSHA256: audioSHA256, projectID: projectID,
+                                                        paidRoot: root, model: key.model.rawValue, redoVersion: redoVersion),
                   attempt.quoteID == quoteID, attempt.model == key.model.rawValue,
                   attempt.keptResult || attempt.importedAsset != nil || attempt.refetchable(at: now) else { return nil }
             return attempt.estimate.usd
@@ -68,6 +70,8 @@ struct RewriteSavedProposal: Codable, Equatable {
         var parts: Int
         var partRequests: [String]
         var pending: PendingLipsync?
+        var pictureRedoModel: WholeClipRevoice.Lipsync? = nil
+        var submissionUnconfirmed: Bool? = nil
     }
 
     var schema = Self.schema
@@ -402,7 +406,9 @@ extension RewriteSession {
         let base: WholeClipScript = whole.savedBaseScript ?? script
         return RewriteSavedProposal.WholeClip(script: script, baseScript: base, voices: savedVoices, lipsyncs: savedLipsyncs,
                                               billed: whole.billedLipsyncs, parts: parts, partRequests: requests,
-                                              pending: whole.pendingLipsync.flatMap { voices[$0.key.voice] == nil ? nil : $0 })
+                                              pending: whole.pendingLipsync.flatMap { voices[$0.key.voice] == nil ? nil : $0 },
+                                              pictureRedoModel: whole.pictureRedoModel,
+                                              submissionUnconfirmed: whole.pictureRedoModel != nil && whole.submissionUnconfirmed ? true : nil)
     }
 
     /// Puts the restored whole clip on a fresh card: a stop whose Try Again puts the paid voice back for its parts' word
@@ -410,16 +416,23 @@ extension RewriteSession {
     /// the parts that can't come back and lip syncs the clip again, priced so before the click.
     func restoreWholeClip(into session: WholeClipRevoiceSession) {
         guard let saved = restoredProposal?.wholeClip else { return }
+        let root = editor.app.locations.root.appendingPathComponent("VoiceLab")
+        let accepted = saved.pending.flatMap { $0.acceptedUSD(projectID: project.id, root: root) }
+        var lipPrices = Dictionary(saved.lipsyncs.map { ($0.key, $0.usd) }, uniquingKeysWith: +)
+        if let pending = saved.pending, let accepted { lipPrices[pending.key] = accepted }
+        if let model = saved.pictureRedoModel {
+            guard let record = usedWholeClip, let source = try? wholeClipPictureRedoSource(record) else { return }
+            let uncertain = saved.submissionUnconfirmed == true || (saved.pending != nil && accepted == nil)
+            restoredProposal?.wholeClip = nil
+            holdPictureRedo(session, source: source, script: saved.script, model: model)
+            session.restorePictureRedo(paid: lipPrices, billed: saved.billed, pending: saved.pending, uncertain: uncertain)
+            return
+        }
         restoredProposal?.wholeClip = nil
         let catalog = prices ?? editor.app.shared.flatMap { try? VoiceLabPriceCatalog.load(shared: $0) }
         let adoptable = adoptableJournalRequests()
         let back = saved.partRequests.filter { !$0.isEmpty && adoptable.contains($0) }.count
-        var lipPrices = Dictionary(saved.lipsyncs.map { ($0.key, $0.usd) }, uniquingKeysWith: +)
-        if let pending = saved.pending, lipPrices[pending.key] == nil,
-           let usd = pending.acceptedUSD(projectID: project.id, root: editor.app.locations.root.appendingPathComponent("VoiceLab")) {
-            session.pendingLipsync = pending
-            lipPrices[pending.key] = usd
-        }
+        if accepted != nil { session.pendingLipsync = saved.pending }
         session.restore(.init(script: saved.script, baseScript: saved.baseScript,
                               voices: Dictionary(saved.voices.map { ($0.key, $0.usd) }, uniquingKeysWith: +),
                               lipsyncs: lipPrices,

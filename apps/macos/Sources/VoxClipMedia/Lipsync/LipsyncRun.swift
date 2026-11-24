@@ -9,20 +9,21 @@ public struct LipsyncRun: Sendable {
     /// The window's face check; nil uses Vision. Tests and the DEBUG smoke stand in for a face their synthetic media lack.
     package var detector: LipsyncWindowPreparation.FaceDetector?
     package var beforeSubmit: (@Sendable (LipsyncQuote) async -> Void)?
+    package var redoVersion: String?
 
     public init(provider: FalLipsyncProvider, consentStore: VoiceConsentStore, paidRoot: URL, scratchRoot: URL) {
         self.provider = provider; self.consentStore = consentStore; self.paidRoot = paidRoot; self.scratchRoot = scratchRoot
     }
 
     package static func hasIndexedResult(request: RenderRequest, window: LipsyncRenderWindow, model: LipsyncModel,
-                                         paidRoot: URL, scratchRoot: URL, now: Date = Date(),
+                                         paidRoot: URL, scratchRoot: URL, now: Date = Date(), redoVersion: String? = nil,
                                          detector: LipsyncWindowPreparation.FaceDetector? = nil) async -> Bool {
         guard let projectID = request.voiceLab?.project.id,
               !LipsyncAttemptStore.importedAssets(inProject: projectID, paidRoot: paidRoot).isEmpty else { return false }
         do {
             try FileManager.default.createDirectory(at: scratchRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let prepared = try await LipsyncWindowPreparation.prepare(request: request, window: window, scratchRoot: scratchRoot, detector: detector)
-            guard let attempt = LipsyncAttemptStore.find(prepared, model: model.id, projectID: projectID, paidRoot: paidRoot),
+            guard let attempt = LipsyncAttemptStore.find(prepared, model: model.id, projectID: projectID, paidRoot: paidRoot, redoVersion: redoVersion),
                   let importedAt = attempt.importedAt, now.timeIntervalSince(importedAt) <= LipsyncAttemptStore.importedLifetime else { return false }
             return LipsyncAttemptStore.importedResult(attempt, projectID: projectID, paidRoot: paidRoot) != nil
         } catch { return false }
@@ -53,7 +54,7 @@ public struct LipsyncRun: Sendable {
         let chosen = model ?? provider.rewriteModel
         LipsyncAttemptStore.prune(projectID: projectID, paidRoot: paidRoot, now: await provider.date())
         var recoveryClosed = false
-        if let attempt = LipsyncAttemptStore.find(prepared, model: chosen.id, projectID: projectID, paidRoot: paidRoot) {
+        if let attempt = LipsyncAttemptStore.find(prepared, model: chosen.id, projectID: projectID, paidRoot: paidRoot, redoVersion: redoVersion) {
             if attempt.importedAsset != nil {
                 if let result = LipsyncAttemptStore.importedResult(attempt, projectID: projectID, paidRoot: paidRoot) {
                     await provider.note("lipsync result reused=imported")
@@ -100,12 +101,13 @@ public struct LipsyncRun: Sendable {
         }
         var attempt = LipsyncAttempt(job: job, quote: quote, neededSeconds: prepared.neededSeconds)
         attempt.picture = prepared.picture
+        attempt.redoVersion = redoVersion
         var recorded = false
         /// A free Try Again finds the attempt only by its record on disk: written when fal.ai accepted the job, or by the
         /// import (a kept file, the imported index).
         func findable() -> Bool {
             recorded || LipsyncAttemptStore.load(videoSHA256: attempt.videoSHA256, audioSHA256: attempt.audioSHA256,
-                                                 projectID: projectID, paidRoot: paidRoot) != nil
+                                                 projectID: projectID, paidRoot: paidRoot, model: chosen.id, redoVersion: redoVersion) != nil
         }
         do {
             // The attempt's sidecar: written as soon as fal.ai accepted the job, so its result is never lost.
@@ -120,7 +122,7 @@ public struct LipsyncRun: Sendable {
             }
             let result = try await LipsyncResultImporter().importResult(provider: provider, job: job, quote: quote,
                 neededSeconds: prepared.neededSeconds, picture: prepared.picture, projectID: projectID, paidRoot: paidRoot,
-                sourceWidth: prepared.width, sourceHeight: prepared.height, referenceVideo: prepared.video)
+                sourceWidth: prepared.width, sourceHeight: prepared.height, referenceVideo: prepared.video, redoVersion: redoVersion)
             await provider.untrack(job)
             return result
         } catch let failure as LipsyncAttemptFailure {

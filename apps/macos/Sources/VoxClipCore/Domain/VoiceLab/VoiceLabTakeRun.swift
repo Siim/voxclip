@@ -26,6 +26,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public var pauseProfile: VoiceLabPauseProfile? = nil
     /// Set for a whole-clip revoice's parts: the take is laid out on the clip as edited.
     public var editedLayout: VoiceLabEditedLayout? = nil
+    package var redoVersion: String? = nil
     public var checksGeneratedSpeaker: Bool
     public let contentKey: String
     /// The source frames the run reads, at `sourceSampleRate`.
@@ -76,6 +77,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
             checksGeneratedSpeaker: checksGeneratedSpeaker)
         input.pauseProfile = pauseProfile
         input.editedLayout = editedLayout
+        input.redoVersion = redoVersion
         return input
     }
     public func options(take: Int) -> VoiceLabSpeechOptions {
@@ -99,6 +101,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
             checksGeneratedSpeaker: checksGeneratedSpeaker)
         input.pauseProfile = pauseProfile
         input.editedLayout = editedLayout
+        input.redoVersion = redoVersion
         return input
     }
 }

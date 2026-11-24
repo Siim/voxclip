@@ -97,8 +97,9 @@ import VoxClipCore
             Text("Sends the script to ElevenLabs, then \(seconds) of video and the new voice to fal.ai.")
                 .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
         }
-        if let primary = rewrite.wholeClipPrimary() { PanelButton(action: primary, kind: .primary) }
-        else { Button(session.wholeSelected ? "Revoice Whole Take" : "Make Takes") {}.disabled(true) }
+        cardButton(rewrite.wholeClipPrimary(), id: "wholeClipRevoice",
+                   title: session.wholeSelected ? "Revoice Whole Take" : "Make Takes",
+                   kind: .primary, unavailable: rewrite.wholeClipPrimaryUnavailable)
         if let reason = quote?.reason {
             VStack(alignment: .leading, spacing: 6) {
                 Text(WholeClipRevoice.callout(reason)).fixedSize(horizontal: false, vertical: true)
@@ -163,16 +164,18 @@ import VoxClipCore
         .padding(8).frame(maxWidth: .infinity, alignment: .leading)
         .background(DesignValues.color("bg.muted"), in: RoundedRectangle(cornerRadius: 6))
         ExpressionFlow(spacing: VCTokens.spacingChipGap) {
-            if let action = rewrite.wholeClipPrimary() { PanelButton(action: action, kind: .bordered) }
-            else { Button("Redo Voice and Lip Sync") {}.disabled(true) }
-            redoButton(.standard, title: "Redo Lip Sync Only")
-            redoButton(.sync3, title: "Sharper Lip Sync · sync-3")
-            PanelButton(action: PanelAction(id: "wholeClipBackToRecording", title: "Back to My Recording") { rewrite.backToMyRecording() }, kind: .bordered)
-        }
-        if let reason = rewrite.wholeClipUnavailable {
-            Text(reason).font(VCType.small.font())
-        } else if rewrite.wholeClipLipRedo(.standard) == nil {
-            Text("Lip-sync-only redo needs the voice from this review.").font(VCType.small.font())
+            cardButton(rewrite.wholeClipPrimary(), id: "wholeClipRevoice", title: "Redo Voice and Lip Sync",
+                       kind: .bordered, unavailable: rewrite.wholeClipPrimaryUnavailable)
+            cardButton(rewrite.wholeClipLipRedo(.standard), id: "wholeClipLipRedo", title: "Redo Lip Sync Only",
+                       kind: .bordered, unavailable: rewrite.wholeClipLipRedoUnavailable)
+            cardButton(rewrite.wholeClipLipRedo(.sync3), id: "wholeClipSharperRedo", title: "Sharper Lip Sync · sync-3",
+                       kind: .bordered, unavailable: rewrite.wholeClipLipRedoUnavailable)
+            let back = rewrite.backToMyRecordingUnavailable
+            let restore = back == nil ? PanelAction(id: "wholeClipBackToRecording", title: "Back to My Recording") {
+                rewrite.backToMyRecording()
+            } : nil
+            cardButton(restore, id: "wholeClipBackToRecording", title: "Back to My Recording", kind: .bordered,
+                       unavailable: back ?? "Your recording isn’t available.")
         }
         Text("Redo makes a new version. The one you have stays until you click Use on the new one.")
             .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
@@ -181,12 +184,24 @@ import VoxClipCore
     private func usedDetails(_ record: WholeClipRevoiceRecord) -> String {
         let spent = record.usd.map { VoiceLabCostPresentation.format(Decimal($0)) + " spent" }
         let used = "used " + record.createdAt.formatted(date: .abbreviated, time: .shortened)
-        return [record.lipsyncModel, spent, used].compactMap { $0 }.joined(separator: " · ")
+        let model = WholeClipRevoice.Lipsync(rawValue: record.lipsyncModel)?.name ?? record.lipsyncModel
+        return [model, spent, used].compactMap { $0 }.joined(separator: " · ")
     }
 
-    @ViewBuilder private func redoButton(_ model: WholeClipRevoice.Lipsync, title: String) -> some View {
-        if let action = rewrite.wholeClipLipRedo(model) { PanelButton(action: action, kind: .bordered) }
-        else { Button(title) {}.disabled(true) }
+    @ViewBuilder private func cardButton(_ action: PanelAction?, id: String, title: String, kind: PanelButton.Kind,
+                                        unavailable: @autoclosure () -> String) -> some View {
+        if let action {
+            PanelButton(action: action, kind: kind)
+        } else {
+            let reason = unavailable()
+            VStack(alignment: .leading, spacing: 4) {
+                Button {} label: { Text(title).modifier(PanelButtonEvidence(id: id, title: title)) }
+                    .disabled(true).accessibilityHint(reason)
+                Text(reason).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .columnLayoutEvidence("voice.action.reason.\(id)", text: reason)
+            }
+        }
     }
 
     @ViewBuilder private var running: some View {
@@ -279,7 +294,8 @@ import VoxClipCore
             PanelButton(action: upgrade, kind: .bordered)
         }
         HStack {
-            Text("Undo keeps your original audio and video.").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+            Text(rewrite.usedWholeClip == nil ? "Undo keeps your original audio and video." : "Undo keeps the earlier version.")
+                .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
             Spacer()
             PanelButton(action: PanelAction(id: "wholeClipUndo", title: "Undo") { [weak rewrite] in rewrite?.discardWholeClip() }, kind: .bordered)
             PanelButton(action: PanelAction(id: "wholeClipUse", title: "Use Whole Clip") { [weak rewrite] in rewrite?.useWholeClip() }, kind: .primary)

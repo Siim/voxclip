@@ -82,10 +82,11 @@ public struct LipsyncResultImporter: Sendable {
     /// request ID. Every failure after the submit throws `LipsyncAttemptFailure`.
     public func importResult(provider: FalLipsyncProvider, job: LipsyncJob, quote: LipsyncQuote, neededSeconds: Double? = nil,
                              picture: Data? = nil, projectID: String, paidRoot: URL, sourceWidth: Int, sourceHeight: Int,
-                             referenceVideo: LipsyncUploadFile? = nil) async throws -> ImportedLipsyncResult {
+                             referenceVideo: LipsyncUploadFile? = nil, redoVersion: String? = nil) async throws -> ImportedLipsyncResult {
         let needed = neededSeconds ?? quote.outputDurationSeconds
         var attempt = LipsyncAttempt(job: job, quote: quote, neededSeconds: needed)
         attempt.picture = picture
+        attempt.redoVersion = redoVersion
         do {
             guard UUID(uuidString: projectID)?.uuidString.lowercased() == projectID,
                   try await provider.quote(for: job) == quote, quote.model == job.model,

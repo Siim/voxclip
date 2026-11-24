@@ -958,7 +958,7 @@ private struct RefusingAssetHTTP: MusicHTTP {
                 backend.script = live.script
                 backend.voiceReadiness = live.voiceReadiness
                 backend.voice = { script, progress in
-                    stubs.isCurrent = session.wholeClipInputsCurrency()
+                    stubs.isCurrent = session.wholeClipInputsStillCurrent()
                     try await beforeVoice()
                     return try await stubbed.voice(script, progress)
                 }
@@ -972,7 +972,7 @@ private struct RefusingAssetHTTP: MusicHTTP {
     }
 
     /// makeit-false-stale-double-pay: the run's own "Make it postable" edit dirties the document, and an autosave lands
-    /// while the voice is made. A save changes nothing the voice and lip sync are made from (`wholeClipInputsCurrency`), so
+    /// while the voice is made. A save changes nothing the voice and lip sync are made from (`wholeClipInputsStillCurrent`), so
     /// the run ends revoiced and no phrase is voiced on top. It used to go stale at the Fit, drop the paid voice and pay for
     /// the patch.
     @Test func anAutosaveDuringTheVoiceStillRevoicesAndNeverPatches() async throws {

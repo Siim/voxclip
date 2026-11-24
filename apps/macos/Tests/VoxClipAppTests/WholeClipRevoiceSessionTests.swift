@@ -47,7 +47,7 @@ private struct FalKeyOnly: ProviderKeyStore {
         /// Thrown by the free checks before a voice is paid (the source within the lip sync's limits).
         var preflightError: (any Error)?
         var preflights = 0
-        /// The real currency of what the voice is made from (`RewriteSession.wholeClipInputsCurrency`): the Fit step's
+        /// The scope guard for what the voice is made from (`RewriteSession.wholeClipInputsStillCurrent`): the Fit step's
         /// picture stops as the live one does once it is false.
         var isCurrent: (@MainActor () -> Bool)?
         /// The lip syncs applied to the parts, as the live plan holds them, when a test follows them.
@@ -740,13 +740,13 @@ private struct FalKeyOnly: ProviderKeyStore {
 
     /// wholeclip-fit-stale-retry-loop, wholeclip-stale-snapshot-blocks-free-lipsync-retry: the voice is paid, the lip sync
     /// fails, then a save and a music track change the project. The plan's currency reads what the voice is made from
-    /// (`RewriteSession.wholeClipInputsCurrency`), so Try Again reaches the lip sync over the paid voice. A word cut in the
+    /// (`RewriteSession.wholeClipInputsStillCurrent`), so Try Again reaches the lip sync over the paid voice. A word cut in the
     /// clip is what changes it.
     @Test func aSaveOrMusicNeverMakesThePaidVoiceStaleButAWordEditDoes() async throws {
         let live = try live()
         defer { close(live) }
         let stubs = Stubs()
-        stubs.isCurrent = live.rewrite.wholeClipInputsCurrency()
+        stubs.isCurrent = live.rewrite.wholeClipInputsStillCurrent()
         stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncNotSubmitted(error: URLError(.networkConnectionLost)), local: false)
         let session = session(stubs)
         live.rewrite.wholeClip = session

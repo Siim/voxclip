@@ -322,6 +322,7 @@ import VoxClipMedia
     /// paid over this voice and picture (the ledger) or a kept result. Once the Fit step matched the picture, the lip sync
     /// is priced on that picture, as its step pays it.
     var retryUSD: Decimal? {
+        if let model = pictureRedoModel { return pictureRedoPrice(model) }
         guard repeatedWordCheckPart == nil, let quote, let voicePrice = quote.voicePassUSD, let quoted = quote.lipsyncUSD else { return nil }
         let kept = voice.flatMap { $0.key.script == script?.text && ledger.paid($0.key) ? $0 : nil }
         // A voice paid before a relaunch comes back for its parts' word checks, and its lip sync for free, only under its own
@@ -433,6 +434,10 @@ import VoxClipMedia
     /// pays only what is left. `budget` is what an automatic run may still spend, which a reworded voice must stay within.
     func start(automatic: Bool = false, budget: Decimal? = nil) {
         guard backend != nil, !running, phase != .used, !submissionUnconfirmed, repeatedWordCheckPart == nil else { return }
+        if let model = pictureRedoModel {
+            if let price = retryUSD { runPictureRedo(model, approved: price) }
+            return
+        }
         // A retry priced for the picture and the lip sync can't buy speech: it keeps the voice it stopped with.
         let retained = retainedVoice
         let model: Lipsync = retained != nil ? (synced?.model ?? .standard) : .standard
@@ -525,20 +530,34 @@ import VoxClipMedia
         launch { await $0.performUpgrade(voice: voice, picture: picture, kept: kept, entries: entries, before: before, price: upgradePrice) }
     }
 
-    func redoLipPrice(_ model: Lipsync) -> Decimal? {
-        guard phase == .used, !running, !submissionUnconfirmed, let voice, let picture else { return nil }
-        if ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)) { return 0 }
+    private func pictureRedoPrice(_ model: Lipsync) -> Decimal? {
+        guard let voice, let picture, backend?.voiceCurrent(voice) == true else { return nil }
+        let key = WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)
+        if lipsyncKept || ledger.paid(key) || restoredLipsyncs[key] != nil { return 0 }
         return (try? backend?.lipsyncPrice(model)) ?? nil
     }
 
+    private(set) var pictureRedoModel: Lipsync?
     @ObservationIgnored private(set) var redoLipApproval: Decimal?
 
-    func redoLipSync(_ model: Lipsync, approved: Decimal) {
-        guard let price = redoLipPrice(model), price <= approved, let voice, let picture else { return }
-        if price == 0, synced?.model == model {
-            phase = .review
-            return
-        }
+    func holdPictureRedo(script: WholeClipScript, voice: Voice, picture: Picture, model: Lipsync) {
+        self.script = script; baseScript = script; self.voice = voice; self.picture = picture; pictureRedoModel = model
+        ledger.record(voice.key, usd: 0)
+        steps[.script] = .done("Script · kept from your used take")
+        steps[.voice] = .done("Voice · kept from your used take")
+        steps[.fit] = .done("Fit · kept from your used take")
+    }
+
+    func restorePictureRedo(paid: [WholeClipRevoiceLedger.LipsyncKey: Decimal], billed: [String: Decimal],
+                            pending: RewriteSavedProposal.PendingLipsync?, uncertain: Bool) {
+        restoredLipsyncs = paid; billedLipsyncs = billed; pendingLipsync = pending
+        submissionUnconfirmed = uncertain
+        stoppedAt = .lipsync; currentStep = .lipsync
+        phase = .stopped(uncertain ? Self.copy(LipsyncError.submissionUncertain) : "Your used take is kept. Try Again brings back the paid lip sync.")
+    }
+
+    func runPictureRedo(_ model: Lipsync, approved: Decimal) {
+        guard !running, let price = pictureRedoPrice(model), price <= approved, let voice, let picture else { return }
         redoLipApproval = approved
         phase = .running; started = Date(); progress = nil; failure = nil; upgradeNote = nil; currentStep = .lipsync
         launch {
@@ -561,6 +580,10 @@ import VoxClipMedia
     func lipsyncAfterCheckingFal() {
         guard backend != nil, !running, isStopped, submissionUnconfirmed, let voice, let picture else { return }
         submissionUnconfirmed = false; checkedFal = true
+        if let model = pictureRedoModel, let price = checkedFalUSD {
+            runPictureRedo(model, approved: price)
+            return
+        }
         previousFailure = failure
         phase = .running; started = Date(); progress = nil; failure = nil; stopError = nil; currentStep = .lipsync
         steps[.lipsync] = .waiting
@@ -759,12 +782,14 @@ import VoxClipMedia
             let price = (try? backend.lipsyncPrice(model)).flatMap { $0 }
             // A lip sync already paid over this voice, picture speed and model is only put back (its imported index), never
             // paid again, as in a run's own Lip sync step.
-            lipsyncMayPay = !ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model))
+            let key = WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)
+            if restoredLipsyncs[key] != nil { restoringLipsync = key }
+            lipsyncMayPay = !ledger.paid(key) && !lipsyncKept && restoringLipsync == nil
             try await lipsyncStep(voice: voice, factor: picture.speed, model: model, backend: backend)
             try Task.checkCancellation()
             steps[.lipsync] = .done("Lip sync · fal.ai \(model.name)" + (price.map { " · " + VoiceLabCostPresentation.format($0) } ?? ""))
             match = await backend.match(voice)
-            upgradeUSD = model == .sync3 ? nil : (try? backend.lipsyncPrice(.sync3)).flatMap { $0 }
+            upgradeUSD = pictureRedoModel != nil || model == .sync3 ? nil : (try? backend.lipsyncPrice(.sync3)).flatMap { $0 }
             phase = .review
         } catch {
             checkedFal = false; lipsyncMayPay = true
@@ -775,6 +800,7 @@ import VoxClipMedia
     /// What "I Checked fal.ai · Lip Sync Again" charges: nothing when this lip sync was already paid over the voice and
     /// picture (it is only put back), else the lip sync's price. Nil while unpriced.
     var checkedFalUSD: Decimal? {
+        if let model = pictureRedoModel { return pictureRedoPrice(model) }
         guard let voice, let picture else { return quote?.lipsyncUSD }
         let model = synced?.model ?? .standard
         if ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)) { return 0 }
@@ -921,7 +947,7 @@ import VoxClipMedia
         // no plan holds the voice now: that voice can't be laid out or lip synced again, so the next click makes a fresh
         // one (a free take a journal adopts costs nothing; the button prices it as a new voice) instead of meeting the
         // same stale stop again.
-        if case ClipTakePlan.Failure.stale? = error as? ClipTakePlan.Failure { forgetVoice() }
+        if pictureRedoModel == nil, case ClipTakePlan.Failure.stale? = error as? ClipTakePlan.Failure { forgetVoice() }
         // A stop whose way on is a fresh price (the clip changed, a plan made fresh) prices the clip as it is now. Free.
         if case Stop.voiceInputsChanged = error { await requote(backend) }
         else if Self.isStale(error) { await requote(backend) }
@@ -1015,7 +1041,7 @@ import VoxClipMedia
     /// A paid voice for this script whose lip sync can't run: the run stopped at the lip sync (a failure, a lost submit
     /// answer, a lip sync that couldn't be put back), or at the Fit on the lip sync's own check. Its words still match.
     var canUseVoiceOnly: Bool {
-        guard isStopped, failure?.atUse != true, !stoppedForInputs, let voice, voice.key.script == script?.text,
+        guard pictureRedoModel == nil, isStopped, failure?.atUse != true, !stoppedForInputs, let voice, voice.key.script == script?.text,
               ledger.paid(voice.key) else { return false }
         switch stoppedAt {
         case .lipsync?: return true
@@ -1141,6 +1167,11 @@ import VoxClipMedia
         stoppedAt = .voice; currentStep = .voice
         // What Try Again does with it depends on the voice chosen, which can change: `restoredVoiceNote` says it.
         phase = .stopped(Self.restoredLine(restored) + paidNote)
+    }
+
+    func restoreUnconfirmedSubmission(_ pending: RewriteSavedProposal.PendingLipsync?) {
+        pendingLipsync = pending
+        submissionUnconfirmed = true
     }
 
     /// The restored stop's line: what of the paid whole clip is kept. A voice the journal gives back only in part keeps
