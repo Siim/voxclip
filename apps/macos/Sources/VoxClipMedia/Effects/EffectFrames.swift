@@ -13,6 +13,7 @@ public final class EffectFrames: Sendable {
     public let input: ClipEffectsRenderInput
     private let shared: SharedResources?
     private let cache = Mutex<[String: CIImage]>([:])
+    private let templateTextCache = Mutex<[String: (text: String, image: CIImage)]>([:])
 
     public init(input: ClipEffectsRenderInput, shared: SharedResources? = try? SharedResources.locate()) {
         self.input = input; self.shared = shared
@@ -133,10 +134,13 @@ public final class EffectFrames: Sendable {
     public func frame(_ image: CIImage, output: CGSize, time: Double, outputTime: Double, mapTime: (Double) -> Double,
                       overlayFailed: () -> Void = {}) -> CIImage {
         var result = image
-        for effect in input.picture where effect.kind.usesPosition && time >= effect.start && time < effect.end {
+        for effect in input.picture where (effect.kind.usesPosition || effect.kind == .motionTemplate) && time >= effect.start && time < effect.end {
             let opacity = effect.opacity(at: time)
             guard opacity > 0 else { continue }
-            if effect.kind == .progress {
+            if effect.kind == .motionTemplate {
+                guard let graphic = motionTemplate(effect, output: output, time: time) else { overlayFailed(); continue }
+                result = Self.faded(graphic, opacity).composited(over: result)
+            } else if effect.kind == .progress {
                 let start = mapTime(effect.start), end = mapTime(effect.end)
                 let fraction = end > start ? min(1, max(0, (outputTime - start) / (end - start))) : 1
                 result = Self.faded(Self.progress(fraction: fraction, position: effect.position ?? .bottom, output: output), opacity).composited(over: result)
@@ -152,6 +156,45 @@ public final class EffectFrames: Sendable {
             }
         }
         return result
+    }
+
+    private func motionTemplate(_ effect: ClipEffect, output: CGSize, time: Double) -> CIImage? {
+        guard let template = effect.template, effect.end > effect.start else { return nil }
+        let progress = (time - effect.start) / (effect.end - effect.start)
+        let sample = template.presentation(progress: progress)
+        let position: ClipEffect.Position
+        let ink: CGColor, paper: CGColor
+        switch template {
+        case .titleCard:
+            position = .center; ink = CGColor(gray: 1, alpha: 1); paper = CGColor(gray: 0, alpha: 0)
+        case .kineticCaption:
+            position = .bottom; ink = CGColor(gray: 1, alpha: 1); paper = CGColor(gray: 0, alpha: 0.82)
+        case .logoSting:
+            position = .center; ink = CGColor(gray: 0, alpha: 1); paper = Self.accent
+        case .counter:
+            position = .center; ink = Self.accent; paper = CGColor(gray: 0, alpha: 0.82)
+        }
+        let key = "\(effect.id)|\(output.width)x\(output.height)"
+        let cached = templateTextCache.withLock { $0[key] }
+        let textImage: CIImage
+        if let cached, cached.text == sample.text {
+            textImage = cached.image
+        } else {
+            guard let drawn = title(sample.text, position: position, output: output, ink: ink, paper: paper,
+                                    minimumFontFraction: 0.012) else { return nil }
+            textImage = drawn
+            templateTextCache.withLock { $0[key] = (sample.text, drawn) }
+        }
+        let extent = textImage.extent
+        let transformed = textImage.transformed(by: CGAffineTransform(a: sample.scale, b: 0, c: 0, d: sample.scale,
+            tx: extent.midX * (1 - sample.scale), ty: extent.midY * (1 - sample.scale) - output.height * sample.down))
+        guard case .titleCard = template else { return transformed }
+        let frame = CGRect(origin: .zero, size: output)
+        let fill = CIImage(color: CIColor(red: 0.047, green: 0.059, blue: 0.086)).cropped(to: frame)
+        let accentBox = CGRect(x: output.width * 0.39, y: output.height * 0.32,
+                               width: output.width * 0.22 * min(1, progress / 0.65), height: max(2, output.height * 0.006))
+        let accent = CIImage(color: CIColor(cgColor: Self.accent)).cropped(to: accentBox)
+        return transformed.composited(over: accent.composited(over: fill))
     }
 
     static func progress(fraction: Double, position: ClipEffect.Position, output: CGSize) -> CIImage {
@@ -206,10 +249,10 @@ public final class EffectFrames: Sendable {
     /// shrinking to 5 % of the short side before it would need a fourth, so every word stays in the frame in 9:16 and 16:9.
     /// The box keeps the single line's edge nearest the frame's edge (its top at the top, its bottom at the bottom) and
     /// grows inwards.
-    func titleLayout(_ text: String, position: ClipEffect.Position, output: CGSize) -> TitleLayout {
+    func titleLayout(_ text: String, position: ClipEffect.Position, output: CGSize,
+                     ink: CGColor = CGColor(gray: 1, alpha: 1), minimumFontFraction: CGFloat = 0.05) -> TitleLayout {
         let short = min(output.width, output.height)
-        let largest = (short * 0.075).rounded(), smallest = max(1, (short * 0.05).rounded())
-        let white = CGColor(gray: 1, alpha: 1)
+        let largest = (short * 0.075).rounded(), smallest = max(1, (short * minimumFontFraction).rounded())
         func set(_ size: CGFloat) -> (face: CTFont, padX: CGFloat, limit: CGFloat) {
             let padX = size * 0.45
             return (font(Self.titleFontPath, size: size), padX, output.width * 0.92 - padX * 2)
@@ -217,11 +260,11 @@ public final class EffectFrames: Sendable {
         var size = largest
         var (face, padX, limit) = set(size)
         var texts = [text]
-        var lines = [Self.line(text, font: face, color: white)]
+        var lines = [Self.line(text, font: face, color: ink)]
         if CTLineGetBoundsWithOptions(lines[0], .useOpticalBounds).width > limit {
             let words = text.split(separator: " ").map(String.init)
             func width(_ words: ArraySlice<String>) -> CGFloat {
-                CTLineGetBoundsWithOptions(Self.line(words.joined(separator: " "), font: face, color: white), .useOpticalBounds).width
+                CTLineGetBoundsWithOptions(Self.line(words.joined(separator: " "), font: face, color: ink), .useOpticalBounds).width
             }
             // Greedy lines no wider than `limit`; a single word wider than it gets a line of its own and doesn't fit.
             func wrap(_ limit: CGFloat) -> (lines: [String], fits: Bool) {
@@ -236,7 +279,7 @@ public final class EffectFrames: Sendable {
             }
             var wrapped = wrap(limit)
             while !(wrapped.fits && wrapped.lines.count <= Self.titleMaxLines), size > smallest {
-                size = max(smallest, (size * 0.94).rounded())
+                size = max(smallest, min(size - 1, (size * 0.94).rounded()))
                 (face, padX, limit) = set(size)
                 wrapped = wrap(limit)
             }
@@ -248,7 +291,7 @@ public final class EffectFrames: Sendable {
                 if trial.fits && trial.lines.count <= wrapped.lines.count { high = middle } else { low = middle }
             }
             texts = wrap(high).lines
-            lines = texts.map { Self.line($0, font: face, color: white) }
+            lines = texts.map { Self.line($0, font: face, color: ink) }
         }
         let padY = size * 0.28, lineHeight = size * 1.25
         let width = min(output.width * 0.92, (lines.map { CTLineGetBoundsWithOptions($0, .useOpticalBounds).width }.max() ?? 0) + padX * 2)
@@ -282,12 +325,13 @@ public final class EffectFrames: Sendable {
     }
 
     /// Big centred text on a dark rounded box: top, centre or bottom of the frame (`titleLayout`).
-    func title(_ text: String, position: ClipEffect.Position, output: CGSize) -> CIImage? {
-        let layout = titleLayout(text, position: position, output: output)
+    func title(_ text: String, position: ClipEffect.Position, output: CGSize, ink: CGColor = CGColor(gray: 1, alpha: 1),
+               paper: CGColor = CGColor(gray: 0, alpha: 0.62), minimumFontFraction: CGFloat = 0.05) -> CIImage? {
+        let layout = titleLayout(text, position: position, output: output, ink: ink, minimumFontFraction: minimumFontFraction)
         let box = layout.box
         let radius = (layout.lineHeight + layout.padY * 2) * 0.22
         return Self.raster(bounds: box, output: output, flipped: false) { context in
-            context.setFillColor(CGColor(gray: 0, alpha: 0.62))
+            context.setFillColor(paper)
             context.addPath(CGPath(roundedRect: box, cornerWidth: radius, cornerHeight: radius, transform: nil)); context.fillPath()
             context.saveGState(); context.clip(to: box.insetBy(dx: layout.padX * 0.5, dy: 0))
             if layout.lines.count == 1, let line = layout.lines.first {

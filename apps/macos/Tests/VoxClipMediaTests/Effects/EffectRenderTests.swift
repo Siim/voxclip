@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import CoreImage
 import CoreText
+import CryptoKit
 import Foundation
 import ImageIO
 import Testing
@@ -214,6 +215,43 @@ import VoxClipCore
                                               space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
         graphics.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return rgba
+    }
+
+    @Test func harnessMotionTemplatesRenderInTheSharedComposition() async throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/projects/clip-from-long-take.voxclip"))
+        let vectors = try FixtureLoader.decode([JSONValue].self, at: "fixtures/clip-effects/motion-template-cases.json")
+        let source = shared.root.appendingPathComponent("fixtures/media/joins-tone.mov")
+        var request = Self.request(source, effects: [])
+        request.plan = EditPlan(sampleRate: 48_000, totalSamples: 576_000, kept: [.init(startSample: 264_000, endSample: 360_000)])
+        let plain = try await CompositionBuilder().build(request)
+        func digest(_ graph: RenderGraph, at seconds: Double) async throws -> SHA256.Digest {
+            SHA256.hash(data: Data(try await Self.frame(graph, at: seconds)))
+        }
+        var templateFrames = Set<SHA256.Digest>()
+        for vector in vectors {
+            let timeline = try HarnessTimeline.read(.object([
+                "clipId": .string("clip-2f1c"), "reason": .string("Make a showreel."), "effects": .array([vector])
+            ]))
+            let proposal = try HarnessProposal(timeline: timeline, project: project)
+            let edited = try proposal.applying(to: project, shared: shared)
+            let saved = try JSONProjectStore.decode(JSONProjectStore.encode(edited))
+            let effects = ClipEffects.rendered(in: saved, clipID: "clip-2f1c")
+            let placed = try #require(effects.first)
+            #expect(effects.count == 1)
+            #expect(placed.start == 5.9 && placed.end == 6.24)
+            request.effects = ClipEffectsRenderInput(effects: effects, soundURLs: [:])
+            let graph = try await CompositionBuilder().build(request)
+            let before = try await digest(plain, at: 0.3)
+            #expect(try await digest(graph, at: 0.3) == before)
+            let middle = try await digest(graph, at: 0.5333333333333333)
+            #expect(middle != (try await digest(plain, at: 0.5333333333333333)))
+            #expect(middle == (try await digest(graph, at: 0.5333333333333333)))
+            #expect(middle != (try await digest(graph, at: 0.6)))
+            #expect(try await digest(graph, at: 0.8) == (try await digest(plain, at: 0.8)))
+            templateFrames.insert(middle)
+        }
+        #expect(templateFrames.count == vectors.count)
     }
 
     @Test(.timeLimit(.minutes(2))) func freezeHoldsThePictureAndTheVoicePlaysOn() async throws {

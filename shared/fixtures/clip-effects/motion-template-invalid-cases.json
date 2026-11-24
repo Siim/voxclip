@@ -1,0 +1,11 @@
+[
+  {"name":"customScript","text":"Draw a logo"},
+  {"name":"logoSting","text":"VOXCLIP","url":"https://example.invalid/mark.svg"},
+  {"name":"titleCard","text":"Release day","provider":"paid"},
+  {"name":"kineticCaption","text":"line one\nline two"},
+  {"name":"logoSting","text":"This logo text is too long"},
+  {"name":"counter","from":1.5,"to":10},
+  {"name":"counter","from":0,"to":1000000},
+  {"name":"counter","from":0},
+  {"name":"counter","from":0,"to":10,"text":"Anything"}
+]

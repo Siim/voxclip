@@ -41,21 +41,34 @@ class ClipEffectsSchemaTests(unittest.TestCase):
                 self.assertEqual(case["schemaValid"], actual)
 
     def test_every_kind_is_in_the_fixture(self):
-        kinds = self.schema["$defs"]["clipEffect"]["properties"]["kind"]["enum"]
-        self.assertEqual(sorted(kinds), sorted({effect["kind"] for effect in self.project["clipEffects"]}))
+        kinds = set(self.schema["$defs"]["clipEffect"]["properties"]["kind"]["enum"])
+        self.assertEqual(kinds - {"motionTemplate"}, {effect["kind"] for effect in self.project["clipEffects"]})
+        for index, vector in enumerate(self.templates()):
+            effect = {"id": f"template-{index}", "clipId": None, "kind": vector["kind"],
+                      "start": 1, "end": 2, "template": vector["template"]}
+            self.validator.validate(dict(self.project, clipEffects=[effect]))
+
+    @staticmethod
+    def templates():
+        return json.loads((ROOT / "shared/fixtures/clip-effects/motion-template-cases.json").read_text())
 
     def test_declarative_effects_share_the_schema_with_planner_vocabulary(self):
         plan = json.loads((ROOT / "shared/schemas/clip-plan-effect.schema.json").read_text())
         vectors = json.loads((ROOT / "shared/fixtures/clip-effects/clip-plan-effect-cases.json").read_text())["cases"]
         Draft202012Validator.check_schema(plan)
-        validator = Draft202012Validator(plan)
+        registry, _ = load_registry()
+        validator = Draft202012Validator(plan, registry=registry)
         for vector in vectors:
             with self.subTest(vector["id"]):
                 self.assertEqual(not vector.get("invalid", False), validator.is_valid(vector["entry"]))
         prompt = json.loads((ROOT / "shared/prompts/clip-autopilot.json").read_text())
         offered = prompt["schema"]["properties"]["effects"]["items"]["properties"]["kind"]["enum"]
         self.assertEqual(set(offered), {vector["entry"]["kind"] for vector in vectors if "placement" in vector})
-        self.assertEqual(set(plan["properties"]["kind"]["enum"]), {vector["entry"]["kind"] for vector in vectors})
+        templates = self.templates()
+        for template in templates:
+            validator.validate(template)
+        self.assertEqual(set(plan["properties"]["kind"]["enum"]),
+                         {vector["entry"]["kind"] for vector in vectors} | {template["kind"] for template in templates})
 
     def test_library_sounds_never_accept_noncommercial_no_derivatives_or_share_alike(self):
         licenses = self.schema["$defs"]["clipEffectLibrarySound"]["properties"]["license"]["enum"]

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, Claude Code and Codex can propose title cards, kinetic captions, logo stings and counters that VoxClip renders locally after you choose Keep.
 - On Windows, Rewrite can revoice a whole clip, lip sync the picture with fal.ai, and recover a saved voice or an accepted lip-sync job without paying for it again once the native voice check is available.
 - On Mac, Claude Code and Codex can read a saved VoxClip project and propose timeline edits for Keep or Undo. Paid music still needs its own priced click in VoxClip.
 - On Mac, you can Rewrite a clip after using a whole-clip revoice. The earlier revoice stays until you use the new one. A selection that can't replace it offers a free Undo.

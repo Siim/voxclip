@@ -259,6 +259,7 @@ extension EditorModel {
             case .blur: return effect.tracking == ClipEffect.Tracking.none ? "Blur" : "Blur, tracked"
             case .pixelate: return effect.tracking == ClipEffect.Tracking.none ? "Pixelate" : "Pixelate, tracked"
             case .title: return "Title"
+            case .motionTemplate: return effect.template?.label ?? "Motion template"
             case .lowerThird: return "Lower third"
             case .sticker: return "Emoji"
             case .arrow: return "Arrow"

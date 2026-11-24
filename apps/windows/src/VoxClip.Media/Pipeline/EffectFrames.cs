@@ -84,7 +84,7 @@ internal sealed class EffectFrames : IDisposable
     internal unsafe void DrawFrame(PixelBuffer frame, double time, double outputTime, Func<double, double> mapTime, CancellationToken ct,
         Action? overlayFailed = null)
     {
-        var active = Picture.Where(effect => effect.UsesPosition && time >= effect.Start && time < effect.End).ToArray();
+        var active = Picture.Where(effect => (effect.UsesPosition || effect.Kind == "motionTemplate") && time >= effect.Start && time < effect.End).ToArray();
         if (active.Length == 0) return;
         using var pin = frame.Pixels.Pin();
         using var surface = SKSurface.Create(new SKImageInfo(frame.Width, frame.Height, SKColorType.Bgra8888, SKAlphaType.Premul), (IntPtr)pin.Pointer, frame.Stride)
@@ -95,7 +95,11 @@ internal sealed class EffectFrames : IDisposable
             ct.ThrowIfCancellationRequested();
             var opacity = effect.OpacityAt(time);
             if (opacity <= 0) continue;
-            if (effect.Kind == "progress")
+            if (effect.Kind == "motionTemplate")
+            {
+                if (!DrawMotionTemplate(canvas, effect, frame.Width, frame.Height, time, opacity)) overlayFailed?.Invoke();
+            }
+            else if (effect.Kind == "progress")
             {
                 var start = mapTime(effect.Start);
                 var end = mapTime(effect.End);
@@ -115,6 +119,45 @@ internal sealed class EffectFrames : IDisposable
             else if (effect.Kind is "title" or "lowerThird" || effect.Animation == "pop") overlayFailed?.Invoke();
         }
         canvas.Flush();
+    }
+
+    private bool DrawMotionTemplate(SKCanvas canvas, ClipEffect effect, int width, int height, double time, double opacity)
+    {
+        if (effect.Template is not { } template || effect.End <= effect.Start) return false;
+        var progress = (time - effect.Start) / (effect.End - effect.Start);
+        var (text, scale, down) = template.Presentation(progress);
+        var isCard = template.Name == "titleCard";
+        var position = template.Name == "kineticCaption" ? "bottom" : "center";
+        var (ink, paper) = template.Name switch
+        {
+            "titleCard" => (SKColors.White, SKColors.Transparent),
+            "logoSting" => (SKColors.Black, Accent),
+            "counter" => (Accent, new SKColor(0, 0, 0, 209)),
+            _ => (SKColors.White, new SKColor(0, 0, 0, 209))
+        };
+        Overlay? DrawText() => Title(text, position, width, height, ink, paper, 0.012);
+        var dynamic = template.Name is "kineticCaption" or "counter";
+        var overlay = dynamic ? DrawText() : overlays.GetOrAdd($"template|{effect.Id}|{width}x{height}", _ => DrawText());
+        if (overlay is null) return false;
+        using var temporary = dynamic ? overlay.Image : null;
+        WithOpacity(canvas, opacity, target =>
+        {
+            if (isCard)
+            {
+                using var paint = new SKPaint { Color = new SKColor(12, 15, 22) };
+                target.DrawRect(0, 0, width, height, paint);
+                paint.Color = Accent;
+                var barHeight = Math.Max(2, height * 0.006f);
+                target.DrawRect(width * 0.39f, height * 0.68f - barHeight,
+                    (float)(width * 0.22 * Math.Min(1, progress / 0.65)), barHeight, paint);
+            }
+            target.Save();
+            target.Translate(0, (float)(height * down));
+            target.Scale((float)scale, (float)scale, overlay.Box.MidX, overlay.Box.MidY);
+            target.DrawImage(overlay.Image, overlay.Box.Left, overlay.Box.Top);
+            target.Restore();
+        });
+        return true;
     }
 
     private static void WithOpacity(SKCanvas canvas, double opacity, Action<SKCanvas> draw)
@@ -271,19 +314,20 @@ internal sealed class EffectFrames : IDisposable
 
     /// <summary>Big centred text on a dark rounded box: top, centre or bottom of the frame, a long one in up to three balanced
     /// lines (<see cref="EffectTitleLayout"/>).</summary>
-    internal Overlay? Title(string text, string position, int width, int height)
+    internal Overlay? Title(string text, string position, int width, int height, SKColor? textColor = null,
+        SKColor? background = null, double minimumFontFraction = 0.05)
     {
         if (TextFont(TitleFontPath) is not { } font) return null;
-        var layout = EffectTitleLayout.Make(font, text, position, width, height);
+        var layout = EffectTitleLayout.Make(font, text, position, width, height, minimumFontFraction);
         var box = layout.Box;
         var radius = (layout.LineHeight + layout.PadY * 2) * 0.22f;
         return Raster(box, width, height, canvas =>
         {
-            using var fill = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 158) };
+            using var fill = new SKPaint { IsAntialias = true, Color = background ?? new SKColor(0, 0, 0, 158) };
             canvas.DrawRoundRect(new SKRect(box.Left, box.Top, box.Right, box.Bottom), radius, radius, fill);
             canvas.Save();
             canvas.ClipRect(new SKRect(box.Left + layout.PadX * 0.5f, box.Top, box.Right - layout.PadX * 0.5f, box.Bottom));
-            using var ink = new SKPaint { IsAntialias = true, Color = SKColors.White };
+            using var ink = new SKPaint { IsAntialias = true, Color = textColor ?? SKColors.White };
             if (layout.Lines.Count == 1)
             {
                 var line = layout.Lines[0];

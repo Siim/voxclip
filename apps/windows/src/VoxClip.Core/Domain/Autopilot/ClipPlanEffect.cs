@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Autopilot;
@@ -33,6 +34,7 @@ public sealed class ClipPlanEffect
     {
         "zoom" or "punchIn" => "scale",
         "motionTitle" or "lowerThird" or "emojiPop" => "text",
+        "motionTemplate" => "template",
         "soundEffect" => "query", "illustration" => "prompt", "colourLook" => "look", "speedForPart" => "rate",
         _ => null
     };
@@ -59,6 +61,7 @@ public sealed class ClipPlanEffect
             "zoom" or "punchIn" => AiJson.Number(payload) is >= 1.05 and <= ClipAutopilotMapping.MaximumZoomScale,
             "motionTitle" or "lowerThird" => Line(payload, 80) is not null,
             "emojiPop" => Line(payload, 16) is not null,
+            "motionTemplate" => MotionTemplate.Read(payload) is not null,
             "soundEffect" => Line(payload, 120) is not null,
             "illustration" => Line(payload, 500) is not null,
             "colourLook" => AiJson.String(payload) is "original" or "muted" or "warm" or "bw",
@@ -81,7 +84,7 @@ public sealed class ClipPlanEffect
     public ClipAutopilotOperation? Operation(string id, string clipId, WordSpan scope,
         Func<int, (double Start, double End)?> anchor, Func<int, bool> isCut, IReadOnlySet<string> stickers)
     {
-        if (Kind is not ("zoom" or "punchIn" or "motionTitle" or "lowerThird" or "emojiPop") ||
+        if (Kind is not ("zoom" or "punchIn" or "motionTitle" or "lowerThird" or "emojiPop" or "motionTemplate") ||
             StartWord < scope.Start || EndWord > scope.End || anchor(StartWord) is not { } first || anchor(EndWord) is not { } last ||
             Enumerable.Range(StartWord, EndWord - StartWord + 1).Any(isCut) ||
             !double.IsFinite(first.Start) || !double.IsFinite(last.End) || first.Start < 0 || last.End - first.Start is not (>= 0.1 and <= 5)) return null;
@@ -93,15 +96,23 @@ public sealed class ClipPlanEffect
             MotionKeyframe[] frames = Kind == "zoom" ? [Frame(0), Frame(0.28, scale), Frame(0.7, scale), Frame(1)] : [Frame(0, scale), Frame(1, scale)];
             return new(id, ClipAutopilotDecision.Zoom, new ClipAutopilotAction.Motion(new(id, clipId, first.Start, last.End, frames)), Reason);
         }
-        var text = AiJson.String(payload)!;
-        if (Kind == "emojiPop" && !stickers.Contains(text)) return null;
-        var (kind, position, animation) = Kind switch
+        var overlay = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["start"] = first.Start, ["end"] = last.End };
+        if (Kind == "motionTemplate")
         {
-            "motionTitle" => ("title", "top", "rise"), "lowerThird" => ("lowerThird", "bottom", "rise"), _ => ("sticker", "topRight", "pop")
-        };
-        var overlay = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["kind"] = kind, ["start"] = first.Start, ["end"] = last.End,
-            ["text"] = text, ["position"] = position, ["animation"] = animation };
-        if (kind == "sticker") overlay["scale"] = 1;
+            overlay["kind"] = Kind;
+            overlay["template"] = payload.DeepClone();
+        }
+        else
+        {
+            var text = AiJson.String(payload)!;
+            if (Kind == "emojiPop" && !stickers.Contains(text)) return null;
+            var (kind, position, animation) = Kind switch
+            {
+                "motionTitle" => ("title", "top", "rise"), "lowerThird" => ("lowerThird", "bottom", "rise"), _ => ("sticker", "topRight", "pop")
+            };
+            overlay["kind"] = kind; overlay["text"] = text; overlay["position"] = position; overlay["animation"] = animation;
+            if (kind == "sticker") overlay["scale"] = 1;
+        }
         using var stored = JsonDocument.Parse(overlay.ToJsonString());
         return new(id, ClipAutopilotDecision.Overlay, new ClipAutopilotAction.Effect(stored.RootElement.Clone()), Reason);
     }

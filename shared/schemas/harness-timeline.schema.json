@@ -23,7 +23,7 @@
     "generateMusic": {"type": "string", "minLength": 1, "maxLength": 500, "description": "A music brief for a separate priced action in VoxClip. Never sends or spends."},
     "effects": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"allOf": [
       {"$ref": "clip-plan-effect.schema.json"},
-      {"properties": {"kind": {"enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop"]}}}
+      {"properties": {"kind": {"enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop", "motionTemplate"]}}}
     ]}}
   },
   "anyOf": [

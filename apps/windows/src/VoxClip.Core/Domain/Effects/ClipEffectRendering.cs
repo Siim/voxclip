@@ -55,6 +55,8 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
     public double? GainDb { get; init; }
     /// <summary>Optional entrance for titles, lower thirds or stickers.</summary>
     public string? Animation { get; init; }
+    /// <summary>The parameters of a named compositor graphic.</summary>
+    public MotionTemplate? Template { get; init; }
 
     /// <summary>bleep, mute, blur and pixelate render wherever their range plays.</summary>
     public bool IsCensor => ClipEffects.IsCensor(Kind);
@@ -80,6 +82,7 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
             Animation = Text("animation")
         };
         if (entry.TryGetProperty("wordIds", out var words)) effect = effect with { WordIds = words.EnumerateArray().Select(word => word.GetString()!).ToArray() };
+        if (entry.TryGetProperty("template", out var template)) effect = effect with { Template = MotionTemplate.Read(template) };
         if (entry.TryGetProperty("rect", out var rect)) effect = effect with { Rect = Rect(rect) };
         if (entry.TryGetProperty("track", out var track))
             effect = effect with { Track = track.EnumerateArray().Select(sample => new ClipEffectTrackSample(sample.GetProperty("t").GetDouble(), Rect(sample))).ToArray() };

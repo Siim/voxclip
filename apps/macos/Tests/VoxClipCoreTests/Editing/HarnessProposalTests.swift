@@ -5,6 +5,29 @@ import Testing
 @Suite("Project harness proposals", .offlineFixtures)
 struct HarnessProposalTests {
     @Test(.enabled(if: SchemaPython.enabled, SchemaPython.skipReason))
+    func allHarnessMotionTemplatesReplayAsSchemaValidProjects() throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))
+        let vectors = try JSONDecoder().decode([JSONValue].self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/clip-effects/motion-template-cases.json")))
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-motion-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("fixture.voxclip")
+        let timeline = try HarnessTimeline.read(.object(["clipId": .string("clip-2f1c"), "reason": .string("Make a showreel."), "effects": .array(vectors)]))
+        try HarnessInbox.stage(HarnessProposal(timeline: timeline, project: project), for: file)
+        let proposal = try #require(try HarnessInbox.read(for: file))
+        let candidate = try proposal.applying(to: project, shared: shared)
+        let rendered = ClipEffects.rendered(in: candidate, clipID: "clip-2f1c")
+        #expect(rendered.count == vectors.count)
+        #expect(ClipEffects.rendered(in: candidate, clipID: nil).isEmpty)
+        #expect(rendered.map(\.template) == timeline.effects?.map(\.template))
+        #expect(candidate.music == project.music)
+        #expect(try proposal.estimatedMusicPrice(in: project, shared: shared) == nil)
+        try JSONProjectStore.encode(candidate).write(to: file)
+        try SchemaPython.validate([file])
+    }
+
+    @Test(.enabled(if: SchemaPython.enabled, SchemaPython.skipReason))
     func stagedTimelineReplaysAsSchemaValidProject() throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))

@@ -27,8 +27,11 @@ struct HarnessReviewTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         editor.undoManager = undo
-        let raw: JSONValue = .object(["clipId": .string("clip-2f1c"), "reason": .string("Make the point clear."),
-                                      "title": .string("A new title"), "generateMusic": .string("A warm instrumental")])
+        let raw = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            {"clipId":"clip-2f1c","reason":"Make the point clear.","title":"A new title","generateMusic":"A warm instrumental",
+             "effects":[{"kind":"motionTemplate","startWord":9,"endWord":10,"reason":"Name the point.",
+                         "template":{"name":"titleCard","text":"A new title"}}]}
+            """.utf8))
         let timeline = try HarnessTimeline.read(raw)
         let rejected = try HarnessProposal(timeline: timeline, project: project)
         try HarnessInbox.stage(rejected, for: url)
@@ -51,11 +54,13 @@ struct HarnessReviewTests {
         undo.endUndoGrouping()
         #expect(editor.undoSteps == 1)
         #expect(editor.project.edits.clips.first?.title == "A new title")
+        #expect(editor.project.clipEffects.map(\.template) == [.titleCard("A new title")])
         #expect(editor.project.music == project.music)
         #expect(editor.musicPanel.phase == .idle)
         #expect(try HarnessInbox.read(for: url) == nil)
         undo.undo()
         #expect(editor.project.edits == project.edits)
+        #expect(editor.project.clipEffects == project.clipEffects)
     }
 }
 #endif

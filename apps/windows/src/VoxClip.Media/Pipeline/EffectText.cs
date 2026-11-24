@@ -128,11 +128,12 @@ internal sealed record EffectTitleLayout(IReadOnlyList<EffectTextLine> Lines, fl
     /// one (a hook, design §6.7) wraps into balanced lines, at most three, shrinking to 5% of the short side before it would need
     /// a fourth. The box keeps the single line's edge nearest the frame's edge (its top at the top, its bottom at the bottom)
     /// and grows inwards.</summary>
-    internal static EffectTitleLayout Make(EffectTextFont font, string text, string position, int width, int height)
+    internal static EffectTitleLayout Make(EffectTextFont font, string text, string position, int width, int height,
+        double minimumFontFraction = 0.05)
     {
         var shortSide = Math.Min(width, height);
         var largest = Rounded(shortSide * 0.075);
-        var smallest = Math.Max(1, Rounded(shortSide * 0.05));
+        var smallest = Math.Max(1, Rounded(shortSide * minimumFontFraction));
         var size = largest;
         var padX = size * 0.45f;
         var limit = width * 0.92f - padX * 2;
@@ -162,7 +163,7 @@ internal sealed record EffectTitleLayout(IReadOnlyList<EffectTextLine> Lines, fl
             var wrapped = Wrap(limit);
             while (!(wrapped.Fits && wrapped.Lines.Count <= MaximumLines) && size > smallest)
             {
-                size = Math.Max(smallest, Rounded(size * 0.94));
+                size = Math.Max(smallest, Math.Min(size - 1, Rounded(size * 0.94)));
                 padX = size * 0.45f;
                 limit = width * 0.92f - padX * 2;
                 wrapped = Wrap(limit);

@@ -113,10 +113,17 @@ extension EditorModel {
     }
 
     private func effectLabel(_ effect: ClipPlanEffect) -> String {
+        if let template = effect.template {
+            switch template {
+            case .titleCard(let text), .kineticCaption(let text), .logoSting(let text): return "\(template.label) “\(text)”"
+            case .counter(let from, let to): return "\(template.label) \(from) to \(to)"
+            }
+        }
         let name: String = switch effect.kind {
         case .zoom: "Zoom"
         case .punchIn: "Punch in"
         case .motionTitle: "Animated title"
+        case .motionTemplate: effect.template?.label ?? "Motion template"
         case .lowerThird: "Lower third"
         case .emojiPop: "Emoji pop"
         default: "Effect"

@@ -16,6 +16,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         case mute
         case blur, pixelate
         case title, lowerThird
+        case motionTemplate
         /// An emoji, drawn with the system emoji font.
         case sticker
         case arrow, circle
@@ -159,15 +160,16 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
     public var gainDb: Double?
     public enum Animation: String, Codable, Sendable { case rise, pop }
     public var animation: Animation?
+    public var template: MotionTemplate?
 
     static func allowsAnimation(_ kind: Kind) -> Bool { kind.usesText }
 
     public init(id: String, clipId: String?, kind: Kind, start: Double, end: Double, wordIds: [String]? = nil, rect: Rect? = nil,
                 tracking: Tracking? = nil, track: [TrackSample]? = nil, text: String? = nil, position: Position? = nil, scale: Double? = nil,
-                sound: Sound? = nil, gainDb: Double? = nil, animation: Animation? = nil) {
+                sound: Sound? = nil, gainDb: Double? = nil, animation: Animation? = nil, template: MotionTemplate? = nil) {
         self.id = id; self.clipId = clipId; self.kind = kind; self.start = start; self.end = end; self.wordIds = wordIds; self.rect = rect
         self.tracking = tracking; self.track = track; self.text = text; self.position = position; self.scale = scale; self.sound = sound
-        self.gainDb = gainDb; self.animation = animation
+        self.gainDb = gainDb; self.animation = animation; self.template = template
     }
 
     // MARK: Limits
@@ -200,6 +202,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         case .bleep, .mute: ["wordIds"]
         case .blur, .pixelate: ["rect", "tracking", "track"]
         case .title, .lowerThird: ["text", "position"]
+        case .motionTemplate: ["template"]
         case .sticker: ["text", "position", "scale"]
         case .arrow, .circle: ["rect"]
         case .progress: ["position"]
@@ -209,7 +212,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
     }
     static let commonKeys: Set<String> = ["id", "clipId", "kind", "start", "end"]
 
-    private enum CodingKeys: String, CodingKey { case id, clipId, kind, start, end, wordIds, rect, tracking, track, text, position, scale, sound, gainDb, animation }
+    private enum CodingKeys: String, CodingKey { case id, clipId, kind, start, end, wordIds, rect, tracking, track, text, position, scale, sound, gainDb, animation, template }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -225,6 +228,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         if has(.tracking) { tracking = try values.decode(Tracking.self, forKey: .tracking) }
         if has(.track) { track = try values.decode([TrackSample].self, forKey: .track) }
         if has(.text) { text = try values.decode(String.self, forKey: .text) }
+        if has(.template) { template = try values.decode(MotionTemplate.self, forKey: .template) }
         if has(.position) { position = try values.decode(Position.self, forKey: .position) }
         if has(.scale) { scale = try values.decode(Double.self, forKey: .scale) }
         if has(.sound) { sound = try values.decode(Sound.self, forKey: .sound) }
@@ -243,6 +247,7 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
         if has(.tracking) { try values.encode(tracking ?? ClipEffect.Tracking.none, forKey: .tracking) }
         if has(.track) { try values.encode(track ?? [], forKey: .track) }
         if has(.text) { try values.encode(text, forKey: .text) }
+        if has(.template) { try values.encode(template, forKey: .template) }
         if has(.position) { try values.encode(position, forKey: .position) }
         if has(.scale) { try values.encode(scale, forKey: .scale) }
         if has(.sound) { try values.encode(sound, forKey: .sound) }
@@ -334,6 +339,7 @@ public enum ClipEffects {
         try require(effect.start.isFinite && effect.end.isFinite && effect.start >= 0 && effect.end > effect.start
                     && effect.end - effect.start <= ClipEffect.maximumSeconds + 1e-9, "range")
         let kind = effect.kind
+        if kind == .motionTemplate { try require(effect.template?.isValid == true, "motion template") }
         if kind.usesWords {
             let ids = effect.wordIds ?? []
             try require(!ids.isEmpty && ids.count <= ClipEffect.maximumWords && Set(ids).count == ids.count && ids.allSatisfy { matches($0, identifier) }, "words")

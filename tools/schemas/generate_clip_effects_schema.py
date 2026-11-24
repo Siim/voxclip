@@ -16,12 +16,13 @@ ROOT = Path(__file__).resolve().parents[2]
 PATH = ROOT / 'shared/schemas/project.schema.json'
 
 IDENTIFIER = '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'
-KINDS = ['bleep', 'mute', 'blur', 'pixelate', 'title', 'lowerThird', 'sticker', 'arrow', 'circle', 'progress', 'freeze', 'sound']
+KINDS = ['bleep', 'mute', 'blur', 'pixelate', 'title', 'lowerThird', 'sticker', 'arrow', 'circle', 'progress', 'freeze', 'sound', 'motionTemplate']
 KIND_KEYS = {
     'bleep': ['wordIds'], 'mute': ['wordIds'],
     'blur': ['rect', 'tracking', 'track'], 'pixelate': ['rect', 'tracking', 'track'],
     'title': ['text', 'position'], 'lowerThird': ['text', 'position'], 'sticker': ['text', 'position', 'scale'],
-    'arrow': ['rect'], 'circle': ['rect'], 'progress': ['position'], 'freeze': [], 'sound': ['sound', 'gainDb']}
+    'arrow': ['rect'], 'circle': ['rect'], 'progress': ['position'], 'freeze': [], 'sound': ['sound', 'gainDb'],
+    'motionTemplate': ['template']}
 COMMON = ['id', 'clipId', 'kind', 'start', 'end']
 POSITIONS = ['top', 'center', 'bottom', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight']
 
@@ -77,6 +78,7 @@ def definitions():
         'track': {'type': 'array', 'maxItems': 2401, 'items': {'$ref': '#/$defs/clipEffectTrackSample'},
                   'description': 'Empty while untracked, so rect holds.'},
         'text': text(80),
+        'template': {'$ref': '#/$defs/motionTemplate'},
         'position': {'enum': POSITIONS},
         'scale': {'type': 'number', 'minimum': 0.5, 'maximum': 3},
         'sound': {'oneOf': [{'$ref': '#/$defs/clipEffectBundledSound'}, {'$ref': '#/$defs/clipEffectLibrarySound'}]},
@@ -94,8 +96,10 @@ def definitions():
                   **({'properties': {'animation': {'const': 'pop' if kind == 'sticker' else 'rise'}}}
                      if kind in ('title', 'lowerThird', 'sticker') else {})}}
         for kind in KINDS]
+    template = json.loads(PATH.with_name('motion-template.schema.json').read_text())
+    del template['$id'], template['$schema']
     return {'clipEffectRect': rect, 'clipEffectTrackSample': sample, 'clipEffectBundledSound': bundled,
-            'clipEffectLibrarySound': library, 'clipEffect': entry}
+            'clipEffectLibrarySound': library, 'clipEffect': entry, 'motionTemplate': template}
 
 
 def main():

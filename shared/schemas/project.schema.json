@@ -3641,7 +3641,8 @@
             "circle",
             "progress",
             "freeze",
-            "sound"
+            "sound",
+            "motionTemplate"
           ]
         },
         "start": {
@@ -3687,6 +3688,9 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 80
+        },
+        "template": {
+          "$ref": "#/$defs/motionTemplate"
         },
         "position": {
           "enum": [
@@ -4110,6 +4114,35 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "motionTemplate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "template"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "template"
+              ]
+            }
+          }
         }
       ]
     },
@@ -4450,6 +4483,84 @@
           "format": "date-time"
         }
       }
+    },
+    "motionTemplate": {
+      "title": "VoxClip local motion template",
+      "description": "A named graphic drawn by VoxClip. Logo stings use a text wordmark, not an asset or URL.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "titleCard",
+            "kineticCaption",
+            "logoSting",
+            "counter"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^\\S(?:.*\\S)?$",
+          "not": {
+            "pattern": "[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]"
+          }
+        },
+        "from": {
+          "type": "integer",
+          "minimum": -999999,
+          "maximum": 999999
+        },
+        "to": {
+          "type": "integer",
+          "minimum": -999999,
+          "maximum": 999999
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "const": "counter"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "to"
+            ],
+            "maxProperties": 3
+          },
+          "else": {
+            "required": [
+              "text"
+            ],
+            "maxProperties": 2
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "const": "logoSting"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "maxLength": 24
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

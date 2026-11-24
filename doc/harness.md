@@ -57,7 +57,24 @@ The [timeline schema](../shared/schemas/harness-timeline.schema.json) is also th
 }
 ```
 
-Use inclusive transcript indices from the current project. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and a span of 0.1–5 seconds. This version supports `zoom`, `punchIn`, `motionTitle`, `lowerThird` and `emojiPop` (bundled stickers). `musicTrackId` reuses a saved track; `generateMusic` instead describes a new track and returns a local estimate. New templates such as standalone title cards, kinetic captions, logo stings and counters are follow-ups.
+Use inclusive transcript indices from the current project. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and a span of 0.1–5 seconds. Use `zoom`, `punchIn`, `motionTitle`, `lowerThird`, `emojiPop` (bundled stickers), or `motionTemplate`. `musicTrackId` reuses a saved track; `generateMusic` instead describes a new track and returns a local estimate.
+
+### Motion templates
+
+Add a `motionTemplate` to `effects` with a `template` object, for example:
+
+```json
+{"kind":"motionTemplate","startWord":9,"endWord":15,"reason":"Show the improvement.","template":{"name":"counter","from":0,"to":100}}
+```
+
+| `template.name` | Parameters | What appears |
+|---|---|---|
+| `titleCard` | `text`, up to 80 characters | A full-frame card with an animated accent and centered title. |
+| `kineticCaption` | `text`, up to 80 characters | Words reveal in sequence, separate from the clip's normal captions. |
+| `logoSting` | `text`, up to 24 characters | A wordmark that pops in and settles. Use brand lettering, not a logo file or URL. |
+| `counter` | `from` and `to`, integers from −999999 to 999999 | A number counts up or down and holds briefly on the final value. |
+
+Text must be a single nonempty line with no leading or trailing whitespace. The template starts and ends with the selected words, not the file's start or the render clock. VoxClip draws it locally in the same compositor for preview and export. Templates can't fetch assets, invoke providers, or authorize a charge. Keeping a template uses the same Keep/Undo review as other edits.
 
 ## Review in VoxClip
 
