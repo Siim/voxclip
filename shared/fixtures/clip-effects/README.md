@@ -17,3 +17,8 @@ rules are in doc/spec/ai.md section 18.2.
 shared `clip-plan-effect.schema.json`. Both Core suites replay the same vectors and check source spans,
 framing keyframes, overlay templates, and refusal of invalid or reserved operations. Update expectations
 by hand only when the documented placement contract changes; the values describe intended behaviour.
+
+`footage-cases.json` is hand-authored using the same convention. Both Core suites check companion source keys,
+source-time bounds (including a still near the end), and the `bRoll`, `screenshot`, and `videoStack` vocabulary.
+`footage-project-cases.json` layers companion media onto the same base project to verify persistence and rejection
+of invalid, duplicate, or overlapping placements. Update these vectors by hand only when the contract changes.

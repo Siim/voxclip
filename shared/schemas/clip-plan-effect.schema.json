@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["kind", "startWord", "endWord", "reason"],
   "properties": {
-    "kind": {"enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop", "soundEffect", "illustration", "colourLook", "speedForPart"]},
+    "kind": {"enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop", "soundEffect", "illustration", "colourLook", "speedForPart", "bRoll", "screenshot", "videoStack"]},
     "startWord": {"type": "integer", "minimum": 0},
     "endWord": {"type": "integer", "minimum": 0},
     "reason": {"type": "string", "minLength": 1, "maxLength": 240},
@@ -16,7 +16,10 @@
     "query": {"type": "string", "minLength": 1, "maxLength": 120},
     "prompt": {"type": "string", "minLength": 1, "maxLength": 500},
     "look": {"enum": ["original", "muted", "warm", "bw"]},
-    "rate": {"type": "number", "minimum": 0.5, "maximum": 2}
+    "rate": {"type": "number", "minimum": 0.5, "maximum": 2},
+    "footage": {"type": "object", "additionalProperties": false, "required": ["sourceKey", "start"], "properties": {
+      "sourceKey": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"}, "start": {"type": "number", "minimum": 0}
+    }}
   },
   "allOf": [
     {"if": {"properties": {"kind": {"enum": ["zoom", "punchIn"]}}}, "then": {"required": ["scale"], "maxProperties": 5}},
@@ -25,6 +28,7 @@
     {"if": {"properties": {"kind": {"const": "soundEffect"}}}, "then": {"required": ["query"], "maxProperties": 5}},
     {"if": {"properties": {"kind": {"const": "illustration"}}}, "then": {"required": ["prompt"], "maxProperties": 5}},
     {"if": {"properties": {"kind": {"const": "colourLook"}}}, "then": {"required": ["look"], "maxProperties": 5}},
-    {"if": {"properties": {"kind": {"const": "speedForPart"}}}, "then": {"required": ["rate"], "maxProperties": 5}}
+    {"if": {"properties": {"kind": {"const": "speedForPart"}}}, "then": {"required": ["rate"], "maxProperties": 5}},
+    {"if": {"properties": {"kind": {"enum": ["bRoll", "screenshot", "videoStack"]}}}, "then": {"required": ["footage"], "maxProperties": 5}}
   ]
 }

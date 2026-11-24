@@ -173,6 +173,8 @@ public struct MediaReference: Codable, Sendable, Equatable {
     public var durationSeconds: Double
     /// contentKey; doc/architecture.md §3; shared/schemas/project.schema.json
     public var contentKey: String
+    public var recordingHash: String?
+    public var footageKey: String { recordingHash ?? contentKey }
     /// video; doc/architecture.md §3; shared/schemas/project.schema.json
     public var video: MediaVideo?
     /// audio; doc/architecture.md §3; shared/schemas/project.schema.json
@@ -195,6 +197,7 @@ public struct MediaReference: Codable, Sendable, Equatable {
         case sizeBytes
         case durationSeconds
         case contentKey
+        case recordingHash
         case video
         case audio
     }
@@ -206,6 +209,7 @@ public struct MediaReference: Codable, Sendable, Equatable {
         self.sizeBytes = try values.decode(Int64.self, forKey: .sizeBytes)
         self.durationSeconds = try values.decode(Double.self, forKey: .durationSeconds)
         self.contentKey = try values.decode(String.self, forKey: .contentKey)
+        self.recordingHash = try values.decodeIfPresent(String.self, forKey: .recordingHash)
         self.video = try values.decode(Optional<MediaVideo>.self, forKey: .video)
         self.audio = try values.decode(Optional<MediaAudio>.self, forKey: .audio)
     }
@@ -217,6 +221,7 @@ public struct MediaReference: Codable, Sendable, Equatable {
         try values.encode(self.sizeBytes, forKey: .sizeBytes)
         try values.encode(self.durationSeconds, forKey: .durationSeconds)
         try values.encode(self.contentKey, forKey: .contentKey)
+        try values.encodeIfPresent(self.recordingHash, forKey: .recordingHash)
         try values.encode(self.video, forKey: .video)
         try values.encode(self.audio, forKey: .audio)
     }
@@ -227,24 +232,33 @@ public struct MediaReference: Codable, Sendable, Equatable {
 public struct ProjectMedia: Codable, Sendable, Equatable {
     /// source; doc/architecture.md §3; shared/schemas/project.schema.json
     public var source: MediaReference
+    public var additionalSources: [MediaReference]
+    public var footage: [ClipFootage]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(source: MediaReference) {
+    public init(source: MediaReference, additionalSources: [MediaReference] = [], footage: [ClipFootage] = []) {
         self.source = source
+        var seen = Set([source.footageKey])
+        self.additionalSources = additionalSources.filter { seen.insert($0.footageKey).inserted }
+        self.footage = footage
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source
+        case source, additionalSources, footage
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        self.source = try values.decode(MediaReference.self, forKey: .source)
+        self.init(source: try values.decode(MediaReference.self, forKey: .source),
+                  additionalSources: try values.decodeIfPresent([MediaReference].self, forKey: .additionalSources) ?? [],
+                  footage: try values.decodeIfPresent([ClipFootage].self, forKey: .footage) ?? [])
     }
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.source, forKey: .source)
+        if !additionalSources.isEmpty { try values.encode(additionalSources, forKey: .additionalSources) }
+        if !footage.isEmpty { try values.encode(footage, forKey: .footage) }
     }
 
 }

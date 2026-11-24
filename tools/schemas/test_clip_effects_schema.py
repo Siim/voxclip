@@ -55,7 +55,25 @@ class ClipEffectsSchemaTests(unittest.TestCase):
         prompt = json.loads((ROOT / "shared/prompts/clip-autopilot.json").read_text())
         offered = prompt["schema"]["properties"]["effects"]["items"]["properties"]["kind"]["enum"]
         self.assertEqual(set(offered), {vector["entry"]["kind"] for vector in vectors if "placement" in vector})
-        self.assertEqual(set(plan["properties"]["kind"]["enum"]), {vector["entry"]["kind"] for vector in vectors})
+        footage = json.loads((ROOT / "shared/fixtures/clip-effects/footage-cases.json").read_text())
+        for vector in footage:
+            with self.subTest(kind=vector["kind"], reason=vector["reason"]):
+                entry = {key: value for key, value in vector.items() if key not in {"duration", "placement", "invalid"}}
+                self.assertEqual(not vector.get("invalid", False), validator.is_valid(entry))
+        self.assertEqual(set(plan["properties"]["kind"]["enum"]),
+                         {vector["entry"]["kind"] for vector in vectors} | {vector["kind"] for vector in footage})
+
+    def test_companion_media_is_version_four_only(self):
+        vectors = json.loads((ROOT / "shared/fixtures/clip-effects/footage-project-cases.json").read_text())
+        media = {"source": {**self.project["media"]["source"], "recordingHash": vectors["recordingHash"]},
+                 "additionalSources": [vectors["companion"]], "footage": vectors["valid"]}
+        self.validator.validate({**self.project, "media": media})
+        legacy = {key: value for key, value in self.project.items() if key != "clipEffects"}
+        legacy["schemaVersion"] = 3
+        self.validator.validate(legacy)
+        for fields in ({"source": media["source"]}, {"additionalSources": media["additionalSources"]}, {"footage": media["footage"]}):
+            with self.subTest(fields=list(fields)):
+                self.assertFalse(self.validator.is_valid({**legacy, "media": {**legacy["media"], **fields}}))
 
     def test_library_sounds_never_accept_noncommercial_no_derivatives_or_share_alike(self):
         licenses = self.schema["$defs"]["clipEffectLibrarySound"]["properties"]["license"]["enum"]

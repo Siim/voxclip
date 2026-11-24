@@ -38,6 +38,28 @@ public sealed class ClipEffectsWireTests
     public void FormatIsItsOwnFile() => Assert.Equal("voxclip-clip-effects-wire-cases/1", Cases()["format"]!.GetValue<string>());
 
     [Fact]
+    public void CompanionRecordingsRoundTripAndBadPlacementsAreRejected()
+    {
+        var vectors = JsonNode.Parse(FixtureLoader.ReadText("fixtures/clip-effects/footage-project-cases.json"))!;
+        var document = Fixture();
+        var media = document["media"]!;
+        media["source"]!["recordingHash"] = vectors["recordingHash"]!.DeepClone();
+        media["additionalSources"] = new JsonArray(vectors["companion"]!.DeepClone());
+        media["footage"] = vectors["valid"]!.DeepClone();
+        var project = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.True(JsonNode.DeepEquals(media, JsonNode.Parse(ProjectSerialization.Serialize(project))!["media"]));
+        foreach (var invalid in vectors["invalid"]!.AsArray())
+        {
+            var placements = media["footage"]!.AsArray();
+            placements.Add(invalid!.DeepClone());
+            Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+            placements.RemoveAt(placements.Count - 1);
+        }
+        media["additionalSources"]!.AsArray().Add(vectors["companion"]!.DeepClone());
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+    }
+
+    [Fact]
     public void MacProjectsWithEffectsOpenValidateAndSaveUnchanged()
     {
         foreach (var item in Cases()["valid"]!.AsArray())

@@ -82,6 +82,20 @@
       "properties": {
         "source": {
           "$ref": "#/$defs/mediaReference"
+        },
+        "additionalSources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/mediaReference"
+          }
+        },
+        "footage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/clipFootage"
+          }
         }
       }
     },
@@ -279,6 +293,37 @@
               "required": [
                 "captionTranslations"
               ]
+            },
+            {
+              "properties": {
+                "media": {
+                  "required": [
+                    "additionalSources"
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "media": {
+                  "required": [
+                    "footage"
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "media": {
+                  "properties": {
+                    "source": {
+                      "required": [
+                        "recordingHash"
+                      ]
+                    }
+                  }
+                }
+              }
             }
           ]
         },
@@ -932,6 +977,10 @@
               }
             }
           ]
+        },
+        "recordingHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     },
@@ -4448,6 +4497,59 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "clipFootage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "clipID",
+        "kind",
+        "start",
+        "end",
+        "footage"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "clipID": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "bRoll",
+            "screenshot",
+            "videoStack"
+          ]
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end": {
+          "type": "number",
+          "minimum": 0
+        },
+        "footage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceKey",
+            "start"
+          ],
+          "properties": {
+            "sourceKey": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
         }
       }
     }

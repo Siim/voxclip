@@ -1,0 +1,24 @@
+{
+  "recordingHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "companion": {
+    "absolutePath": "/Users/alex/Movies/VoxClip/overhead.mov",
+    "relativePath": "overhead.mov",
+    "sizeBytes": 100000,
+    "durationSeconds": 4,
+    "contentKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "recordingHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "video": {"width": 1080, "height": 1920, "frameRate": 30, "rotationDegrees": 0},
+    "audio": null
+  },
+  "valid": [
+    {"id":"angle-1","clipID":"clip-main","kind":"videoStack","start":0,"end":2,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":1}},
+    {"id":"still-1","clipID":"clip-main","kind":"screenshot","start":2,"end":3,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":3.9}}
+  ],
+  "invalid": [
+    {"id":"angle-1","clipID":"clip-main","kind":"bRoll","start":3,"end":4,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0}},
+    {"id":"broll-1","clipID":"clip-main","kind":"bRoll","start":1,"end":2,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0}},
+    {"id":"broll-1","clipID":"clip-main","kind":"bRoll","start":3,"end":5,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":3}},
+    {"id":"broll-1","clipID":"clip-main","kind":"bRoll","start":3,"end":4,"footage":{"sourceKey":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","start":0}},
+    {"id":"broll-1","clipID":"clip-main","kind":"bRoll","start":6,"end":8,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0}}
+  ]
+}
