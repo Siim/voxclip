@@ -697,6 +697,7 @@ if (insertion ||
         }
         session.ConfigureGenerationFactory(index => CreateRewriteGeneration(session, index));
         ConfigureRewriteMicrophone(session);
+        ConfigureWholeClip(session);
     }
     /// <summary>Say it myself (design.md §6.3.8): the WASAPI microphone, a lead-in through headphones or a count-in, and on-device
     /// recognition from the installed Whisper models. Its takes are written to the project's Voice Lab folders; nothing is sent.</summary>

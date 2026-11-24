@@ -702,6 +702,7 @@ member VoxClip.App.Controls.RewritePanel :: field private ExpressionNote
 member VoxClip.App.Controls.RewritePanel :: field private VideoModes
 member VoxClip.App.Controls.RewritePanel :: field private Wordings
 member VoxClip.App.Controls.RewritePanel :: field private acceptBlocker
+member VoxClip.App.Controls.RewritePanel :: field private announcedWholeClip
 member VoxClip.App.Controls.RewritePanel :: field private announcements
 member VoxClip.App.Controls.RewritePanel :: field private apply
 member VoxClip.App.Controls.RewritePanel :: field private applyingTake
@@ -786,6 +787,21 @@ member VoxClip.App.Controls.RewritePanel :: field private videoDetails
 member VoxClip.App.Controls.RewritePanel :: field private videoLine
 member VoxClip.App.Controls.RewritePanel :: field private voice
 member VoxClip.App.Controls.RewritePanel :: field private voiceText
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipApprove
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipBody
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipCancel
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipCompare
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipLine
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipOriginal
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipPrice
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipRestore
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipScript
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipScriptView
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipSharper
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipTransfer
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipUse
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipVoice
+member VoxClip.App.Controls.RewritePanel :: field private wholeClipVoiceOnly
 member VoxClip.App.Controls.RewritePanel :: field private windowPicker
 member VoxClip.App.Controls.RewritePanel :: field private wordingBox
 member VoxClip.App.Controls.RewritePanel :: field private wordingChoice
@@ -813,6 +829,7 @@ member VoxClip.App.Controls.RewritePanel :: method private BuildMicrophone()
 member VoxClip.App.Controls.RewritePanel :: method private BuildNextSteps()
 member VoxClip.App.Controls.RewritePanel :: method private BuildOwnWords()
 member VoxClip.App.Controls.RewritePanel :: method private BuildTakes()
+member VoxClip.App.Controls.RewritePanel :: method private BuildWholeClip()
 member VoxClip.App.Controls.RewritePanel :: method private BuildWindowPicker()
 member VoxClip.App.Controls.RewritePanel :: method private BuildWordingFit()
 member VoxClip.App.Controls.RewritePanel :: method private Changed(object,System.EventArgs)
@@ -851,6 +868,7 @@ member VoxClip.App.Controls.RewritePanel :: method private RenderTakeButtons(Vox
 member VoxClip.App.Controls.RewritePanel :: method private RenderTakeExpression(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.Controls.RewritePanel :: method private RenderTakes(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.Controls.RewritePanel :: method private RenderVideoChoices(VoxClip.App.ViewModels.RewriteGeneration)
+member VoxClip.App.Controls.RewritePanel :: method private RenderWholeClip()
 member VoxClip.App.Controls.RewritePanel :: method private RenderWordingFit()
 member VoxClip.App.Controls.RewritePanel :: method private RequestClose()
 member VoxClip.App.Controls.RewritePanel :: method private SendProposalAsync()
@@ -1852,6 +1870,7 @@ member VoxClip.App.Pages.EditorPage :: method private CloseFindClicked(object,Mi
 member VoxClip.App.Pages.EditorPage :: method private CompositorFailed(object,VoxClip.Core.Services.Media.PreviewFailureReason)
 member VoxClip.App.Pages.EditorPage :: method private ConfigureRewriteGeneration(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.Pages.EditorPage :: method private ConfigureRewriteMicrophone(VoxClip.App.ViewModels.RewriteSession)
+member VoxClip.App.Pages.EditorPage :: method private ConfigureWholeClip(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.Pages.EditorPage :: method private CorrectClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private CreateRewriteGeneration(VoxClip.App.ViewModels.RewriteSession,int)
 member VoxClip.App.Pages.EditorPage :: method private CutMatchesClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -2371,9 +2390,11 @@ member VoxClip.App.Services.RestartResult :: field public value__
 member VoxClip.App.Services.RewriteGenerationBackend :: field private client
 member VoxClip.App.Services.RewriteGenerationBackend :: field private current
 member VoxClip.App.Services.RewriteGenerationBackend :: field private gate
+member VoxClip.App.Services.RewriteGenerationBackend :: field private stillCurrent
 member VoxClip.App.Services.RewriteGenerationBackend :: field private storage
 member VoxClip.App.Services.RewriteGenerationBackend :: field private store
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal .ctor(VoxClip.Core.Services.Project.DataLocations,VoxClip.Core.Services.LLM.IKeyProvider,VoxClip.Core.Services.Logging.ILog,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,VoxClip.Core.Services.Speech.ElevenLabsRegion,string,System.Func`1<bool>,System.Func`2<System.Action,System.Threading.Tasks.Task>,VoxClip.Media.VoiceLab.VoiceLabLocalTiming)
+member VoxClip.App.Services.RewriteGenerationBackend :: method internal CreateRunner(VoxClip.Media.VoiceLab.VoiceLabLocalTiming)
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal DiscoverAsync(string,System.Threading.CancellationToken)
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal PaidAudioAsync(System.Guid,System.Threading.CancellationToken)
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal VoiceLabel(string,System.DateTimeOffset)
@@ -6025,6 +6046,7 @@ member VoxClip.App.ViewModels.RewriteSession :: field private revision
 member VoxClip.App.ViewModels.RewriteSession :: field private scopeHunks
 member VoxClip.App.ViewModels.RewriteSession :: field private scopePlan
 member VoxClip.App.ViewModels.RewriteSession :: field private sending
+member VoxClip.App.ViewModels.RewriteSession :: field private sendingWholeClip
 member VoxClip.App.ViewModels.RewriteSession :: field private sentenceReplacements
 member VoxClip.App.ViewModels.RewriteSession :: field private service
 member VoxClip.App.ViewModels.RewriteSession :: field private sessionRates
@@ -6035,6 +6057,13 @@ member VoxClip.App.ViewModels.RewriteSession :: field private videoMedia
 member VoxClip.App.ViewModels.RewriteSession :: field private videoVoiceLab
 member VoxClip.App.ViewModels.RewriteSession :: field private videoVoiceMeasured
 member VoxClip.App.ViewModels.RewriteSession :: field private voiceIdentity
+member VoxClip.App.ViewModels.RewriteSession :: field private wholeClipGate
+member VoxClip.App.ViewModels.RewriteSession :: field private wholeClipPreview
+member VoxClip.App.ViewModels.RewriteSession :: field private wholeClipPrice
+member VoxClip.App.ViewModels.RewriteSession :: field private wholeClipRestore
+member VoxClip.App.ViewModels.RewriteSession :: field private wholeClipSelection
+member VoxClip.App.ViewModels.RewriteSession :: field private wholeClipValidateUse
+member VoxClip.App.ViewModels.RewriteSession :: field private wholeClipWork
 member VoxClip.App.ViewModels.RewriteSession :: field private wordings
 member VoxClip.App.ViewModels.RewriteSession :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,int,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,VoxClip.App.ViewModels.RewriteConnector,System.Nullable`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<bool>,System.Func`2<string,bool>,VoxClip.Core.Domain.VoiceLab.RewriteScope,string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AcceptSurroundingSentence(VoxClip.App.ViewModels.RewriteSentenceReview)
@@ -6046,6 +6075,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyLocalChange
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyTakeAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyTextFixesOnly()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyThreadOwnWords(string)
+member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyWholeClip(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyWordingFit(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitUpdate>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApproveMeasuredFitAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal AskForLongerAsync()
@@ -6075,6 +6105,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureInlineC
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureMicrophone(VoxClip.App.ViewModels.RewritePhraseMicrophone,VoxClip.Media.VoiceLab.VoiceLabTakeStorage)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureRateCalibrations(VoxClip.App.ViewModels.RateCalibrations)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureVideoVoice(VoxClip.App.ViewModels.VoiceLabSession,System.Func`1<string>)
+member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureWholeClip(System.Func`4<VoxClip.App.ViewModels.WholeClipSelection,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.App.ViewModels.WholeClipOffer>>,System.Func`3<string,string,VoxClip.Media.VoiceLab.SavedWholeClipVoice>,System.Action`1<string>,System.Func`5<VoxClip.Core.Domain.Shared.Project,string,bool,System.Threading.CancellationToken,System.Threading.Tasks.Task>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfirmCostAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfirmPaidReviewChangeAsync(VoxClip.App.ViewModels.RewritePaidReviewChange)
 member VoxClip.App.ViewModels.RewriteSession :: method internal CurrentWording(int)
@@ -6099,6 +6130,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal GenerateWindowsA
 member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationHunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationInputAsync(string,string,uint,bool,VoxClip.App.ViewModels.RewriteSourceReader,System.Threading.CancellationToken,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal HardFailures(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
+member VoxClip.App.ViewModels.RewriteSession :: method internal InvalidateWholeClip()
 member VoxClip.App.ViewModels.RewriteSession :: method internal IsAccountFailure(VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind)
 member VoxClip.App.ViewModels.RewriteSession :: method internal IsPricedAfresh(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepBlockedAsRecorded()
@@ -6111,11 +6143,13 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal KeepMyWords()
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepOriginal(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepTextFixesOnly()
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepThreadChange()
+member VoxClip.App.ViewModels.RewriteSession :: method internal KeepWholeClipVoice(VoxClip.App.ViewModels.WholeClipSelection,VoxClip.Media.VoiceLab.SavedWholeClipVoice)
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepWorking()
 member VoxClip.App.ViewModels.RewriteSession :: method internal LeaveThreadOwnWords(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal LogFailure(System.Exception,string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MakeMeasuredTakeAsync(System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MakeOwnWordsTakeAsync(int,System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>)
+member VoxClip.App.ViewModels.RewriteSession :: method internal MakeWholeClipAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal MarkBatchEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MarkEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MeasuredFitsNoDuration(VoxClip.App.ViewModels.RewriteMeasuredWording)
@@ -6134,11 +6168,13 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal OwnWordsText(int
 member VoxClip.App.ViewModels.RewriteSession :: method internal PassageRange(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.Transcript.AudioEnvelope,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PhraseList(System.Collections.Generic.IReadOnlyList`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PhraseStatus(int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal PlayWholeClipAsync(bool,bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PrepareShorterAsync(System.Nullable`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PressThreadBubbleAsync(string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PriceItAnyway(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PriceOwnWordsAsync(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PriceTakeAsync(int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal PriceWholeClipAsync(VoxClip.Core.Domain.VoiceLab.WholeClipLipsync)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ProposeAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ProviderFix(VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ProviderProblem(System.Exception)
@@ -6151,6 +6187,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal Refusal(System.E
 member VoxClip.App.ViewModels.RewriteSession :: method internal RemoveExpression(int,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ReplaceHeldNotice(string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal RequestClose()
+member VoxClip.App.ViewModels.RewriteSession :: method internal RestoreWholeClipAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal RetryThreadAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ReviewDiff()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ReviewSurroundingSentence(int)
@@ -6191,6 +6228,8 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal UndoKeepOriginal
 member VoxClip.App.ViewModels.RewriteSession :: method internal UndoThreadChange()
 member VoxClip.App.ViewModels.RewriteSession :: method internal UnplaceableReason(VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException)
 member VoxClip.App.ViewModels.RewriteSession :: method internal UnusableNote(int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal WholeClipBinding()
+member VoxClip.App.ViewModels.RewriteSession :: method internal WholeClipCurrent(VoxClip.App.ViewModels.WholeClipSelection)
 member VoxClip.App.ViewModels.RewriteSession :: method internal Wording(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal add_Changed(System.EventHandler)
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_AcceptanceBlocker()
@@ -6207,6 +6246,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_BlockedVoice
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_CanAcceptAll()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_CanGenerateAll()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_CanPropose()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_CanRestoreWholeClip()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_ChangeStates()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_CloseAsked()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Collision()
@@ -6256,6 +6296,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_MeasuredWord
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_MeasuredWork()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_NewWords()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_NextStepCards()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_OffersWholeClip()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_OtherVideoVoices()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_OwnWordsAdvice()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_OwnWordsEditing()
@@ -6314,6 +6355,14 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoiceConsent
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoiceSpendCurrent()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoicedOrdinals()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_VoicesUnavailable()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipBlocked()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipBusy()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipPrice()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipReview()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipReviewCurrent()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipScriptText()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipStatus()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipVoice()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WordingFitAwaitingApproval()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WordingFitCompleted()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WordingFitKept()
@@ -6351,6 +6400,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private CanWidenToSentenc
 member VoxClip.App.ViewModels.RewriteSession :: method private CancelMeasuredWording()
 member VoxClip.App.ViewModels.RewriteSession :: method private CancelPhraseMicrophone(System.Nullable`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method private ChangeTime(int)
+member VoxClip.App.ViewModels.RewriteSession :: method private CheckWholeClipCurrent()
 member VoxClip.App.ViewModels.RewriteSession :: method private ClearMeasuredWording()
 member VoxClip.App.ViewModels.RewriteSession :: method private CollisionChips(System.ValueTuple`2<int,int>)
 member VoxClip.App.ViewModels.RewriteSession :: method private CollisionSentence(System.ValueTuple`2<int,int>)
@@ -6426,7 +6476,9 @@ member VoxClip.App.ViewModels.RewriteSession :: method private TryApplyReviewedW
 member VoxClip.App.ViewModels.RewriteSession :: method private UndecidedDurations()
 member VoxClip.App.ViewModels.RewriteSession :: method private UseAnchorForVideosAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method private VideoVoiceLabChanged(object,System.EventArgs)
+member VoxClip.App.ViewModels.RewriteSession :: method private WholeClipBaseKey(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.App.ViewModels.RewriteSession :: method private WidenToSentenceAsync(int)
+member VoxClip.App.ViewModels.RewriteSession :: method private WorkWholeClipAsync(System.Func`3<System.IProgress`1<string>,System.Threading.CancellationToken,System.Threading.Tasks.Task>)
 member VoxClip.App.ViewModels.RewriteSession :: method private get_BillingCurrent()
 member VoxClip.App.ViewModels.RewriteSession :: method private get_Language()
 member VoxClip.App.ViewModels.RewriteSession :: method private get_OffersVideoVoiceHere()
@@ -6464,6 +6516,10 @@ member VoxClip.App.ViewModels.RewriteSession :: method private set_TakeWindowsMo
 member VoxClip.App.ViewModels.RewriteSession :: method private set_Transcript(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_VideoVoiceMatchWork(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_VideoVoiceWork(System.Threading.Tasks.Task)
+member VoxClip.App.ViewModels.RewriteSession :: method private set_WholeClipPrice(VoxClip.App.ViewModels.WholeClipOffer)
+member VoxClip.App.ViewModels.RewriteSession :: method private set_WholeClipReview(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand+AcceptWholeClip)
+member VoxClip.App.ViewModels.RewriteSession :: method private set_WholeClipStatus(string)
+member VoxClip.App.ViewModels.RewriteSession :: method private set_WholeClipVoice(VoxClip.Media.VoiceLab.SavedWholeClipVoice)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_WordingFitAwaitingApproval(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_WordingFitCompleted(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_WordingFitPhrases(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase>)
@@ -8553,6 +8609,53 @@ member VoxClip.App.ViewModels.VoiceTrainingProject :: method public set_Project(
 member VoxClip.App.ViewModels.VoiceTrainingSource :: field public Project
 member VoxClip.App.ViewModels.VoiceTrainingSource :: field public ReadAloud
 member VoxClip.App.ViewModels.VoiceTrainingSource :: field public value__
+member VoxClip.App.ViewModels.WholeClipOffer :: method private .ctor(VoxClip.App.ViewModels.WholeClipOffer)
+member VoxClip.App.ViewModels.WholeClipOffer :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.WholeClipOffer :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public .ctor(VoxClip.App.ViewModels.WholeClipSelection,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,System.Decimal,VoxClip.Media.VoiceLab.WholeClipPictureApproval,string,System.Func`4<VoxClip.App.ViewModels.WholeClipOffer,System.IProgress`1<string>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand+AcceptWholeClip>>)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public Deconstruct(VoxClip.App.ViewModels.WholeClipSelection&,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync&,System.Decimal&,VoxClip.Media.VoiceLab.WholeClipPictureApproval&,string&,System.Func`4<VoxClip.App.ViewModels.WholeClipOffer,System.IProgress`1<string>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand+AcceptWholeClip>>&)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public Equals(VoxClip.App.ViewModels.WholeClipOffer)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public Equals(object)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public GetHashCode()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public ToString()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public get_Disclosure()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public get_Execute()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public get_Model()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public get_Picture()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public get_Selection()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public get_VoicePrice()
+member VoxClip.App.ViewModels.WholeClipOffer :: method public op_Equality(VoxClip.App.ViewModels.WholeClipOffer,VoxClip.App.ViewModels.WholeClipOffer)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public op_Inequality(VoxClip.App.ViewModels.WholeClipOffer,VoxClip.App.ViewModels.WholeClipOffer)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public set_Disclosure(string)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public set_Execute(System.Func`4<VoxClip.App.ViewModels.WholeClipOffer,System.IProgress`1<string>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand+AcceptWholeClip>>)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public set_Model(VoxClip.Core.Domain.VoiceLab.WholeClipLipsync)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public set_Picture(VoxClip.Media.VoiceLab.WholeClipPictureApproval)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public set_Selection(VoxClip.App.ViewModels.WholeClipSelection)
+member VoxClip.App.ViewModels.WholeClipOffer :: method public set_VoicePrice(System.Decimal)
+member VoxClip.App.ViewModels.WholeClipSelection :: method internal get_ClipId()
+member VoxClip.App.ViewModels.WholeClipSelection :: method internal get_Identity()
+member VoxClip.App.ViewModels.WholeClipSelection :: method internal get_RecordId()
+member VoxClip.App.ViewModels.WholeClipSelection :: method private .ctor(VoxClip.App.ViewModels.WholeClipSelection)
+member VoxClip.App.ViewModels.WholeClipSelection :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.WholeClipSelection :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public .ctor(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.WholeClipRevoicePlan,VoxClip.Media.VoiceLab.WholeClipVoiceRecovery,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public Deconstruct(VoxClip.Core.Domain.Shared.Project&,VoxClip.Core.Domain.VoiceLab.WholeClipRevoicePlan&,VoxClip.Media.VoiceLab.WholeClipVoiceRecovery&,int&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>&)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public Equals(VoxClip.App.ViewModels.WholeClipSelection)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public Equals(object)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public GetHashCode()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public ToString()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public get_Edited()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public get_Operations()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public get_Plan()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public get_Recovery()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public get_Revision()
+member VoxClip.App.ViewModels.WholeClipSelection :: method public op_Equality(VoxClip.App.ViewModels.WholeClipSelection,VoxClip.App.ViewModels.WholeClipSelection)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public op_Inequality(VoxClip.App.ViewModels.WholeClipSelection,VoxClip.App.ViewModels.WholeClipSelection)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public set_Edited(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public set_Operations(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public set_Plan(VoxClip.Core.Domain.VoiceLab.WholeClipRevoicePlan)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public set_Recovery(VoxClip.Media.VoiceLab.WholeClipVoiceRecovery)
+member VoxClip.App.ViewModels.WholeClipSelection :: method public set_Revision(int)
 member VoxClip.App.ViewModels.WorkflowProgress`1 :: method public .ctor(System.Action`1<!0>,System.Action`1<!0>,System.Action`1<System.Action>)
 member VoxClip.App.ViewModels.WorkflowProgress`1 :: method public Report(!0)
 type VoxClip.App.App
@@ -8977,4 +9080,6 @@ type VoxClip.App.ViewModels.VoiceRebuildQuote
 type VoxClip.App.ViewModels.VoiceRebuildState
 type VoxClip.App.ViewModels.VoiceTrainingProject
 type VoxClip.App.ViewModels.VoiceTrainingSource
+type VoxClip.App.ViewModels.WholeClipOffer
+type VoxClip.App.ViewModels.WholeClipSelection
 type VoxClip.App.ViewModels.WorkflowProgress`1
