@@ -36,7 +36,7 @@ extension RewriteSession {
             guard let first = source.first, let last = source.last else { return [] }
             bounds = TimeRange(start: first.start, end: last.end)
         case .fullTake:
-            return []
+            return project.voiceLab.segments.filter(\.enabled)
         }
         return enabledReplacements(in: bounds)
     }
@@ -59,6 +59,11 @@ extension RewriteSession {
     }
 
     var wholeClipReplacement: RewriteReplacement? {
+        if case .fullTake = rewriteScope {
+            let ids = Set(overlappingReplacementSegments.map(\.id))
+            guard !ids.isEmpty, usedWholeClip.map({ Set($0.segmentIds) == ids }) == true else { return nil }
+            return RewriteReplacement(overlapping: ids, in: project)
+        }
         guard let clipID = wholeClipID, let range = Self.clipRange(clipID, in: project),
               let clip = project.edits.clips.first(where: { $0.id == clipID }),
               let bounds = try? clipTimes(transcript, clip: clip, startIndex: range.lowerBound, endIndex: range.upperBound),

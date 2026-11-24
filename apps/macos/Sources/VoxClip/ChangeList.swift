@@ -199,8 +199,13 @@ extension RewriteSession {
                 footer: PanelFooter(link: getPrice == nil ? nil : undo, primary: getPrice ?? undo), askAgain: askAgain)
         }
         guard !items.isEmpty else {
+            let voiceCards = wholeClipCard().map { [$0] } ?? []
+            if voicePanelAsEdited {
+                return ProposalContent(set: set, headline: PanelHeadline(text: "Voice"), cards: voiceCards,
+                                       footer: PanelFooter(), askAgain: nil)
+            }
             return ProposalContent(set: set, headline: headline,
-                                   cards: [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],
+                                   cards: voiceCards + [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],
                                    footer: PanelFooter(primary: askForSomethingElse), askAgain: askAgain)
         }
         var footer = proposalFooter(set)
@@ -266,7 +271,12 @@ extension RewriteSession {
         // A matching voice for this video (voice-lab §6.13): the one-time question, or what the video's voice is doing.
         if set.voiceCount > 0, let steps = videoVoiceSteps() { cards.insert(.nextSteps(steps), at: 0) }
         // "How should it sound?" (ADR-R46): once per clip, at the price step.
-        if set.voiceCount > 0, let card = wholeClipCard() { cards.insert(card, at: cards.firstIndex { if case .nextSteps(let steps) = $0 { steps.id == "videoVoice" } else { false } }.map { $0 + 1 } ?? 0) }
+        if let card = wholeClipCard() {
+            cards.insert(card, at: 0)
+            if wholeClip?.wholeSelected == false, footer.footer.primary?.id == pricedTakeAction()?.id {
+                footer.footer.primary = nil
+            }
+        }
         return ProposalContent(set: set, headline: headline, cards: cards, footer: footer.footer, askAgain: askAgain)
     }
 

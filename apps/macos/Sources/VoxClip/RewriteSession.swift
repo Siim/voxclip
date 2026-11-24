@@ -146,6 +146,8 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored var wholeClipPlan: ClipTakePlan?
     @ObservationIgnored var wholeClipPlanScript: WholeClipScript?
     @ObservationIgnored var wholeClipPlanSettled = false
+    @ObservationIgnored var wholeClipUsedPlanIdentity: Project?
+    var voicePanelAsEdited = false
     var retiredWholeClipVoiceSpend: Decimal = 0
     var speechContextOffer: RewriteSpeechContextReview?
     private var requestedSurroundingSentenceOrdinal: Int?
@@ -474,6 +476,13 @@ struct RewriteChange: Equatable, Sendable {
             actionTask = Task { _ = await work.value }
         }
     }
+    func startVoicePanel(whole: Bool) {
+        voicePanelAsEdited = true
+        task.appeared = nil
+        if !restoreSavedProposal() { showProposal() }
+        selectWholeClipMode(whole)
+    }
+
     /// Runs Rewrite on the scope again, asking `instruction` when given (the Ask field's text): Rewrite Again, Try Again
     /// and a new Rewrite of the same scope. False when nothing was proposed.
     @discardableResult func run(instruction next: String? = nil, feedback: String? = nil) async -> Bool {
@@ -712,7 +721,8 @@ struct RewriteChange: Equatable, Sendable {
     /// nothing was saved for these inputs.
     @discardableResult func restoreSavedProposal() -> Bool {
         guard isOpen, !hasRun, let inputs = savedProposalInputs, let saved = RewriteSavedProposalStore.load(savedProposalURL),
-              saved.projectId == project.id, saved.scope == savedProposalScope, saved.inputs == inputs, !saved.changes.isEmpty else { return false }
+              saved.projectId == project.id, saved.scope == savedProposalScope, saved.inputs == inputs,
+              !saved.changes.isEmpty || saved.wholeClip != nil else { return false }
         let found = saved.changes.map(\.change)
         receive(found)
         guard review != nil else { changes = []; problem = ""; return false }

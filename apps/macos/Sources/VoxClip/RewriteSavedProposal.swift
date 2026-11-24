@@ -331,7 +331,7 @@ extension RewriteSession {
             if savedProposalData != nil || restoredProposal != nil { forgetSavedProposal() }
             return
         }
-        guard !paidWorkUsed, ownProposal != nil else { return }
+        guard !paidWorkUsed, ownProposal != nil || voicePanelAsEdited else { return }
         let whole = savedWholeClip
         let planTakes = hasPaidPatchWork ? paidTakeCount : 0
         let planUSD = hasPaidPatchWork ? (takePlan.flatMap { $0.isRetired ? nil : $0.spent.usd } ?? 0) : 0

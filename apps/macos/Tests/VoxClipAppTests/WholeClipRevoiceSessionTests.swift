@@ -1225,8 +1225,6 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(aside.components(separatedBy: "for free").count == 2, "\(aside)")
     }
 
-    /// whole-clip-card-hidden-after-pick: the pick only sets the default. After the patch the card is one row, "Revoice the
-    /// Whole Clip Instead · ≈ $X"; Undo Whole Clip clears the pick.
     @Test func thePatchPickOnlyChoosesTheDefault() async throws {
         let live = try live()
         defer { close(live) }
@@ -1234,13 +1232,10 @@ private struct FalKeyOnly: ProviderKeyStore {
         let session = session(stubs)
         live.rewrite.wholeClip = session
         await session.refreshQuote()
-        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: false, proposal: live.rewrite.proposalID)
-        session.wholeSelected = false
-        #expect(live.rewrite.wholeClipCompact)
-        let instead = try #require(live.rewrite.wholeClipInsteadAction())
-        #expect(instead.id == "wholeClipInstead" && instead.title == "Revoice the Whole Clip Instead · " + VoiceLabCostPresentation.format(Decimal(string: "1.61")!) && instead.priced)
-        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: true, proposal: live.rewrite.proposalID)
-        #expect(!live.rewrite.wholeClipCompact)
+        live.rewrite.selectWholeClipMode(false)
+        #expect(!session.wholeSelected && live.rewrite.wholeClipCard() == .wholeClip)
+        live.rewrite.selectWholeClipMode(true)
+        #expect(session.wholeSelected)
         let record = WholeClipRevoiceRecord(id: "wholeclip-1", clipId: "clip-main", segmentIds: ["s"], script: "x", consentRecordId: "r1",
                                             videoRetime: 1, lipsyncModel: WholeClipRevoice.Lipsync.lipsync2.rawValue, usd: 1, match: nil, createdAt: Date())
         live.editor.removeWholeClip(record)
@@ -1269,10 +1264,9 @@ private struct FalKeyOnly: ProviderKeyStore {
         later.wholeClip = second
         await second.refreshQuote()
         #expect(later.proposalID != live.rewrite.proposalID)
-        #expect(!later.wholeClipCompact, "the earlier pick was for another proposal")
-        // The same proposal keeps its pick.
-        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: false, proposal: later.proposalID)
-        #expect(later.wholeClipCompact)
+        #expect(second.wholeSelected, "the earlier pick was for another proposal")
+        later.selectWholeClipMode(false)
+        #expect(later.wholeClipCard() == .wholeClip && !second.wholeSelected)
         later.close()
     }
 

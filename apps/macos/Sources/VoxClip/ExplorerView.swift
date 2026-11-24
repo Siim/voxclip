@@ -418,6 +418,10 @@ import VoxClipCore
                 RewriteAsMenuItems(model: editor, place: "explorerMenu.\(clip.id)") { shell.rewriteExplorerClip(clip.id, as: $0) }
             }
         }
+        Button("Revoice Whole Clip, with Lip Sync") { editor.openExplorerWholeClipVoice(clip.id) }
+        Button("Voice Only the Changed Phrases") { editor.openExplorerWholeClipVoice(clip.id, whole: false) }
+        Button("Redo Voice and Lip Sync") { editor.openExplorerWholeClipVoice(clip.id) }
+            .disabled(!WholeClipRevoice.isRevoiced(clipId: clip.id, in: editor.project))
         // ✦ Ask Claude on the whole clip (design.md §6.8): the clip opens and the right panel takes the request.
         // Offered only when it can act: an editable project with an AI, on a kept clip.
         if editor.canAskClaude, editor.project.edits.clips.contains(where: { $0.id == clip.id }) {

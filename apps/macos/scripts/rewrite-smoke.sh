@@ -34,7 +34,7 @@ while (( $# > 0 )); do
 done
 
 if [[ -z $target ]]; then
-    (cd "$package" && nice -n 10 swift build --product VoxClip >&2)
+    (cd "$package" && nice -n 10 swift build --jobs 2 --product VoxClip >&2)
     executable=$package/.build/debug/VoxClip
 elif [[ -d $target && -x $target/Contents/MacOS/VoxClip ]]; then
     executable=$target/Contents/MacOS/VoxClip
