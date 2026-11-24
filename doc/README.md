@@ -10,6 +10,7 @@
 - [Dependency notices audit](dependency-notices-audit.md): distribution evidence.
 - [2 November feature integration validation](integration-2026-11-02.md): local test results, isolated Mac build and remaining acceptance gates.
 - [Agents vs VoxClip](agent-clipping-benchmark.md): how agents made clips without the app, measured VoxClip timings on a 29-minute file, and the gaps to close.
+- [Connect Claude Code or Codex](harness.md): read one saved project and propose a timeline for review in VoxClip.
 - [Launch media and static page](media/README.md): captures, still exports, offline editing, site build and budgets.
 
 Topic specifications: [editing](spec/editing.md), [transcription](spec/transcription.md),
