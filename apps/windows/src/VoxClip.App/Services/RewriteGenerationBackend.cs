@@ -18,6 +18,7 @@ internal sealed class RewriteGenerationBackend : IDisposable
     private readonly VoiceLabDispatchGate gate = new();
     private readonly Func<bool> current;
     internal VoiceLabTakeRun Runner { get; }
+    private readonly Func<CancellationToken, Task<bool>> stillCurrent;
     internal RewriteGenerationBackend(DataLocations data, IKeyProvider keys, ILog log, VoiceLabPriceCatalog prices,
         ElevenLabsRegion region, string projectId, Func<bool> current, Func<Action, Task> onUi, VoiceLabLocalTiming? localTiming = null)
     {
@@ -25,17 +26,18 @@ internal sealed class RewriteGenerationBackend : IDisposable
         store = new(data);
         client = new(keys, region, log, prices, new VoiceLabSpendLedger(data));
         storage = new(projectId, Path.Combine(data.Root, "VoiceLab"), Path.Combine(data.Root, "VoiceLabScratch"));
-        Runner = new(client, store, VoiceSpeakerCheck.Unavailable,
-            storage, gate,
-            async ct =>
-            {
-                var valid = false;
-                await onUi(() => valid = !ct.IsCancellationRequested && current());
-                return valid;
-            })
+        stillCurrent = async ct =>
+        {
+            var valid = false;
+            await onUi(() => valid = !ct.IsCancellationRequested && current());
+            return valid;
+        };
+        Runner = CreateRunner(localTiming);
+    }
+    internal VoiceLabTakeRun CreateRunner(VoiceLabLocalTiming? localTiming) =>
+        new(client, store, VoiceSpeakerCheck.Unavailable, storage, gate, stillCurrent)
         // A take with no usable provider or word-check timing is timed on device from its own PCM (voice-lab.md §8.5).
         { LocalTiming = localTiming };
-    }
     internal async Task<PreparedVoiceLabAsset?> PaidAudioAsync(Guid id, CancellationToken ct)
     {
         RequireCurrent(ct);

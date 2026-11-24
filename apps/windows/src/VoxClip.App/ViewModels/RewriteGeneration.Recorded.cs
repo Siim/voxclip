@@ -54,7 +54,6 @@ internal sealed partial class RewriteGeneration
         }
         selectionRevision++;
         if (takes is not null) await takes.Audition.StopAsync();
-        KeepEveryTake();
         VoiceLabRecordedPhraseTake? old = null;
         var at = replacing is { } previous && previous != SelectedTakeId ? recordedRows.FindIndex(row => row.Id == previous) : -1;
         var row = take.Row with { Index = at >= 0 ? recordedRows[at].Index : Rows.Select(existing => existing.Index + 1).DefaultIfEmpty(0).Max() };

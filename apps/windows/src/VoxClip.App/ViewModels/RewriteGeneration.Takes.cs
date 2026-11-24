@@ -23,7 +23,6 @@ internal sealed partial class RewriteGeneration
     private bool refreshingOutput;
     private bool accepting;
     private bool runStarted;
-    private bool runInputRecorded;
     private readonly Dictionary<Guid, VoiceLabTakeInput> takeInputs = [];
     /// <summary>The input a take was made from: its text, tags and window. Null for a take this window did not make.</summary>
     internal VoiceLabTakeInput? InputFor(Guid id) => takeInputs.GetValueOrDefault(id);
@@ -122,15 +121,6 @@ internal sealed partial class RewriteGeneration
             TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true, AutomaticallySelectable: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
         if (result.End == VoiceLabTakeRunEnd.Blocked && Blocked is not null) Announcement = Blocked;
         Notify();
-    }
-    /// <summary>Automatic fixes (voice-lab.md §8.2.2): later runs add their takes beside these, so no paid take is replaced
-    /// (Mac <c>ClipTakePlan.keepsEveryTake</c>).</summary>
-    internal bool KeepsEveryTake { get; private set; }
-    internal void KeepEveryTake()
-    {
-        KeepsEveryTake = true;
-        core.KeepsEarlierTakes = true;
-        if (takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun run) run.KeepsEarlierTakes = true;
     }
     /// <summary>The phrase keeps its original words (Keep original words, or the last automatic round): no take is used and
     /// every take stays listed (Mac <c>ClipTakePlan.leaveOut</c>). <see cref="Restore"/> undoes it.</summary>

@@ -11,7 +11,7 @@ extension EditorModel {
     /// Commits all included takes, cuts and fixes through one native project-snapshot undo transaction.
     func applyVoiceLab(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference?,
                       scope: RewriteScope, localCommands: [EditCommand] = [], videoAssets: [VoiceLabVideoAsset] = [],
-                      wholeClip: WholeClipRevoiceRecord? = nil) throws {
+                      wholeClip: WholeClipRevoiceRecord? = nil, replacing replacement: RewriteReplacement? = nil) throws {
         let output: VoiceLabOutputScope
         let words: DirectorScope
         switch scope {
@@ -31,13 +31,13 @@ extension EditorModel {
             words = DirectorScope(kind: .selection(inClip: project.edits.activeClipId != nil), wordCount: count)
         }
         var changed = try changedByVoiceLab(.acceptAll(segments: segments, assets: assets, voice: voice), localCommands: localCommands,
-                                            outputScope: output, videoAssets: videoAssets)
+                                            outputScope: output, videoAssets: videoAssets, replacing: replacement)
         // A whole-clip revoice's record goes in with its segments, in the same undo step (ADR-R46).
         if let wholeClip {
             changed.voiceLab.wholeClipRevoices = (changed.voiceLab.wholeClipRevoices ?? []) + [wholeClip]
             try VoiceLabProject.validate(changed)
         }
-        replace(changed, name: wholeClip == nil ? words.title : "Revoice Whole Clip")
+        replace(changed, name: wholeClip == nil && replacement == nil ? words.title : "Revoice Whole Clip")
     }
 
     /// Whether these takes would go into the project as Use puts them, without changing it: how Use finds the phrase
@@ -59,10 +59,10 @@ extension EditorModel {
         replace(try changedByVoiceLab(command, localCommands: localCommands, outputScope: outputScope, videoAssets: videoAssets), name: name)
     }
     private func changedByVoiceLab(_ command: VoiceLabEditCommand, localCommands: [EditCommand],
-                                   outputScope: VoiceLabOutputScope, videoAssets: [VoiceLabVideoAsset]) throws -> Project {
+                                   outputScope: VoiceLabOutputScope, videoAssets: [VoiceLabVideoAsset], replacing replacement: RewriteReplacement? = nil) throws -> Project {
         guard app.voiceLabRewriteEnabled, capabilities.edit, !capabilities.exporting, !capabilities.aiBusy else { throw VoiceLabProjectError.invalidSegment }
         let changed = try voiceLabReviewProject(localCommands: localCommands)
-        return try command.applying(to: changed, outputScope: outputScope, videoAssets: videoAssets)
+        return try command.applying(to: replacement?.removing(from: changed) ?? changed, outputScope: outputScope, videoAssets: videoAssets)
     }
 
     /// The passage quote and single acceptance both use the review after its local edits, in the active output scope.

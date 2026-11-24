@@ -11,9 +11,10 @@ internal sealed class VoiceLabRenderSession : IDisposable
     private readonly IReadOnlyDictionary<string, VoiceLabTempoTrack> tracks;
     private bool disposed;
     private VoiceLabRenderSession(VoiceLabPreparedRender prepared, IReadOnlyDictionary<string, PreparedVoiceLabAsset> assets,
-        IReadOnlyDictionary<string, VoiceLabTempoTrack> tracks)
-    { Prepared = prepared; this.assets = assets; this.tracks = tracks; }
+        IReadOnlyDictionary<string, VoiceLabTempoTrack> tracks, LipsyncVideoLayer? lipsync)
+    { Prepared = prepared; this.assets = assets; this.tracks = tracks; Lipsync = lipsync; }
     internal VoiceLabPreparedRender Prepared { get; }
+    internal LipsyncVideoLayer? Lipsync { get; }
 
     internal static async Task<VoiceLabRenderSession?> PrepareAsync(ComposeSnapshot snapshot, CancellationToken ct,
         params VoiceLabCapacity.Allocation[] outputs)
@@ -56,7 +57,8 @@ internal sealed class VoiceLabRenderSession : IDisposable
                         fadeIn.FadeSamples / 2,
                         fadeOut.FadeSamples - fadeOut.FadeSamples / 2, ct));
             }
-            return new(input.Prepared, handles, tracks);
+            var lipsync = await LipsyncVideoLayer.PrepareAsync(input, project, scratchRoot, ct).ConfigureAwait(false);
+            return new(input.Prepared, handles, tracks, lipsync);
         }
         catch
         {
@@ -76,6 +78,7 @@ internal sealed class VoiceLabRenderSession : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        Lipsync?.Dispose();
         foreach (var track in tracks.Values) track.Dispose();
         foreach (var asset in assets.Values) asset.Dispose();
     }

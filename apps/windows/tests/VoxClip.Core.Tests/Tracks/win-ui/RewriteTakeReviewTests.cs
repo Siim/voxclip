@@ -490,18 +490,37 @@ public sealed class RewriteTakeReviewTests
         Assert.Equal(1, test.Runner.PaidRequests);
     }
     [Fact]
-    public async Task FirstPaidTransportStopsAndInvalidatesPriorAuditionBeforeNewRows()
+    public async Task FirstPaidTransportStopsAuditionButKeepsTheEarlierTake()
     {
         await using var test = new Harness(); await test.GenerateAsync();
-        var scratch = test.Runner.Scratch(test.Generation.SelectedTakeId!.Value)!;
+        var selected = test.Generation.SelectedTakeId!.Value;
+        var scratch = test.Runner.Scratch(selected)!;
         test.Generation.MarkEstimateShown(test.Generation.Quote!); test.Runner.State = "generating";
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         test.Generation.Changed += (_, _) => { if (test.Generation.Phase == RewriteGenerationPhase.Generating) entered.TrySetResult(); };
         var pending = test.Generation.GenerateAsync((_, _) => Task.FromResult(true)); await entered.Task.WaitAsync(Token);
-        Assert.False(test.Audition.Snapshot.IsPlaying); Assert.False(scratch.IsValid);
-        Assert.Null(test.Generation.SelectedTakeId); Assert.Empty(test.Generation.Rows);
+        Assert.False(test.Audition.Snapshot.IsPlaying); Assert.True(scratch.IsValid);
+        Assert.Equal(selected, test.Generation.SelectedTakeId); Assert.Equal(selected, Assert.Single(test.Generation.Rows).Id);
         await test.Generation.CancelAsync(); await pending;
         Assert.False(test.Generation.ReadyToAccept);
+    }
+    [Fact]
+    public async Task PlayEitherRoundAndApplyTheEarlierTakeWithoutPayingAgain()
+    {
+        await using var test = new Harness(); await test.GenerateAsync();
+        var first = Assert.Single(test.Generation.ReviewRows);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        await test.Generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        Assert.Equal(2, test.Generation.ReviewRows.Count);
+        foreach (var row in test.Generation.ReviewRows)
+        {
+            await test.Generation.PlayTakeAsync(row.Id);
+            Assert.True(test.Audition.Snapshot.IsPlaying);
+            Assert.Equal(row.Id, test.Audition.Snapshot.TakeId);
+        }
+        Assert.Equal(first.Id, test.Generation.SelectedTakeId);
+        Assert.True(await test.Session.ApplyTakeAsync(), test.Generation.Problem);
+        Assert.Equal(2, test.Runner.PaidRequests);
     }
     [Fact]
     public async Task ExpiringTheNextRunQuoteDoesNotDisableTheAlreadyReviewedPaidTake()
