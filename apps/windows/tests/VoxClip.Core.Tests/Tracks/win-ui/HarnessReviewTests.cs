@@ -22,7 +22,7 @@ public sealed class HarnessReviewTests
             Available = () => true,
             CostLine = () => "Fixture only",
             Assets = new(0.03m, _ => Task.FromResult<string?>("fixture"), (_, _) => null,
-                (_, _, _) => throw new InvalidOperationException("No sound was requested."), (_, _, _) =>
+                (_, _, _) => throw new InvalidOperationException("No sound was requested."), (_, _, _, _) =>
                 {
                     sends++;
                     return Task.FromResult(JsonSerializer.SerializeToElement(new
