@@ -2053,6 +2053,8 @@ User, 2026-11-04: "still too hard. too many click to actually use it. claude cod
 
 A suggestion is kept first, in the same undo step as everything the run applies.
 
+**Automatic looks.** In Make it postable and Claude mode, Claude places zooms, punch-ins, motion titles, lower thirds and emoji pops on the words they serve. The review lists the reason for each placement; undo stays part of the clip's edit. These effects need no separate click or spend. Claude can also choose a short title for the exported cover only. Caption styles and their catalog order stay the same; the planner's default font is Roboto Black unless the creator fixed another font.
+
 **The cap.** The button's amount is an upfront ceiling, and the click approves it. It is the voice for up to the planner's rewrite limit on this clip's length (`maxRewrites` × `maxRewriteTextWords` words, at most the clip's own words, at the clip's mean word length, Eleven v4), doubled for Rewrite's automatic fixes. It adds a generated track for the clip's edited length when the clip style allows one. When nothing can cost anything (no voice can be made and no track may be generated), the button has no amount. Inside the cap, every paid step goes through the existing quote, approval and spend-ledger paths. Before a step runs, its price is checked against what is left, and a step past the cap does not run. Paid takes are never discarded.
 
 **The run** (the right column's **Make it postable** job, which stays in view while the run drives Rewrite):
