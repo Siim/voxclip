@@ -518,10 +518,11 @@ extension EditorModel {
             run.phase = .failed("This clip changed. Nothing was changed."); return false
         }
         let started = clock?.elapsed
-        makeIt.shownClipID = run.clipID
+        let reveal = run.budget == nil || claudeModeReady.isEmpty
+        if reveal { makeIt.shownClipID = run.clipID }
         beginUndoGroup("Make it postable")
         if isSuggestion(run.clipID) { _ = keepForRowAction(run.clipID) }
-        _ = setScope(run.clipID)
+        if reveal { _ = setScope(run.clipID) }
         await llmRuns.sharing { await finish(run, plan: plan, services: services) }
         endUndoGroup()
         if run.phase == .ready, let clock, let started { clock.record(.apply, clip: clip, since: started) }
@@ -1004,7 +1005,7 @@ extension EditorModel {
         let name = "Undo " + makeItRowText(run.rows[index], run: run)
         // The post text keeps the hook the card last showed.
         if run.rows[index].change == .hook { run.hook = makeItHook(run) }
-        guard undoInverse(inverse, name: name) else { return }
+        guard undoInverse(inverse, clipID: run.clipID, name: name) else { return }
         run.rows[index].undone = true
         run.inverses[rowID] = nil
         run.seconds = makeItRenderedSeconds(run.clipID)
@@ -1028,10 +1029,10 @@ extension EditorModel {
         let ids = rows ?? run.rows.filter { !$0.undone && run.inverses[$0.id] != nil }.map(\.id)
         for id in ids.reversed() { makeItUndo(id, in: run) }
         // Inverses without a row (the post text) go too.
-        for (id, inverse) in run.inverses { _ = undoInverse(inverse, name: "Undo Make it postable"); run.inverses[id] = nil }
+        for (id, inverse) in run.inverses { _ = undoInverse(inverse, clipID: run.clipID, name: "Undo Make it postable"); run.inverses[id] = nil }
     }
 
-    private func undoInverse(_ inverse: MakeItInverse, name: String) -> Bool {
+    private func undoInverse(_ inverse: MakeItInverse, clipID: String, name: String) -> Bool {
         switch inverse {
         case .edits(let commands): return apply(commands, name: name)
         case .captionPick(let clipID, let previous):
@@ -1056,7 +1057,7 @@ extension EditorModel {
             replace(next, name: name); return true
         case .voice(let segments):
             var next = project
-            let output = project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
+            let output = VoiceLabOutputScope.clip(clipID)
             for id in segments { next = (try? VoiceLabEditCommand.setEnabled(segmentID: id, enabled: false).applying(to: next, outputScope: output)) ?? next }
             guard next != project else { return false }
             replace(next, name: name); return true

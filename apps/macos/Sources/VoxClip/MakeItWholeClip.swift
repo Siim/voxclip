@@ -253,7 +253,8 @@ extension MakeItServices {
     /// Rewrite holding unused or running paid work (takes, a whole clip's voice or lip sync) is never closed for it: nil.
     @MainActor static func openWholeClip(_ request: WholeClipAutoRequest, editor: EditorModel) async -> RewriteSession? {
         // The quote's session goes on to the revoice: one Rewrite, one voice plan, nothing quoted twice.
-        if let open = editor.openRewrite, open.isOpen, open.rewriteScope == .selection(request.range), let whole = open.wholeClip,
+        if let open = editor.openRewrite, open.isOpen, open.project.edits.activeClipId == request.clipID,
+           open.rewriteScope == .selection(request.range), let whole = open.wholeClip,
            whole.phase == .choose, !open.hasUnusedPaidWork {
             await whole.refreshQuote()
             return open
@@ -261,7 +262,8 @@ extension MakeItServices {
         if let open = editor.openRewrite, open.isOpen {
             guard !open.asksBeforeClosing, editor.closeRewrite(returnFocus: false) else { return nil }
         }
-        guard let session = MakeItRewriteDriver.openSession(editor: editor, range: request.range, text: wholeClipPassage(request, editor: editor)) else { return nil }
+        guard let session = MakeItRewriteDriver.openSession(editor: editor, clipID: request.clipID, range: request.range,
+                                                            text: wholeClipPassage(request, editor: editor)) else { return nil }
         #if DEBUG
         await editor.makeItGeneration?(session)
         #endif

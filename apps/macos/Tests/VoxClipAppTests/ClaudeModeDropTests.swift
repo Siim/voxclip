@@ -106,6 +106,8 @@ import VoxClipMedia
         await editor.claudeMode.afterFind?.value
         for _ in 0..<100 where editor.claudeModeReady.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
         #expect(editor.claudeModeReady.count == 1 && plannedCount > 1)
+        editor.reviewClaudeMode()
+        let reviewing = try #require(editor.claudeModeReady.first?.clipID)
         gate?.resume(); gate = nil
         await editor.claudeMode.task?.value
         let clock = try #require(editor.claudeMode.clock)
@@ -120,6 +122,8 @@ import VoxClipMedia
         #expect(!editor.project.ai.results.flatMap(\.clips).contains { $0.title.contains("Seem") })
         #expect(editor.project.ai.results.flatMap(\.clips).contains { $0.startWordId == "confirm-1" && $0.title.hasPrefix("Siim") })
         #expect(editor.claudeModeReady.count == plannedCount)
+        #expect(editor.makeIt.shown?.clipID == reviewing)
+        #expect(editor.project.edits.activeClipId == reviewing)
     }
 }
 
