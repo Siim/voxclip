@@ -93,6 +93,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal VoiceLabCostPresentationResult? Cost => core.Cost;
     /// <summary>The phrase's one take list: its generated takes, then the user's own recorded takes (Say it myself).</summary>
     internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows.Where(row => !rejected.Contains(row.Id)).Concat(recordedRows).ToArray();
+    internal IReadOnlyList<VoiceLabTakeRow> ReviewRows => Rows.Reverse().ToArray();
     internal Guid? SelectedTakeId => recordedSelection ?? core.SelectedTakeId;
     internal Guid? AuditionedTakeId => core.AuditionedTakeId;
     internal VoiceLabTakeInput? ReviewedInput { get; private set; }
@@ -113,7 +114,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal string ButtonName => Quote?.Estimate.Usd is { } amount
         ? "Generate up to 3 new takes, about " + VoiceLabCostPresentation.Format(amount).Replace("≈ ", "", StringComparison.Ordinal)
         : "Generate up to 3 new takes";
-    internal string ProgressCopy => $"Generating take {Math.Min(3, Rows.Count + 1)} of 3…";
+    internal string ProgressCopy => "Making takes…";
     internal Task PendingUpdate { get; private set; } = Task.CompletedTask;
     internal Task Cleanup { get; private set; } = Task.CompletedTask;
     internal Task DeferredCleanup { get; private set; } = Task.CompletedTask;
@@ -132,7 +133,8 @@ internal sealed partial class RewriteGeneration : IDisposable
         this.release = release ?? (() => (takeRunner as IDisposable)?.Dispose());
         clock = timeProvider ?? TimeProvider.System;
         runner = new(takeRunner, ProgressAsync, () => spendObserver?.Invoke() ?? Task.CompletedTask);
-        core = new(runner) { ReadMonthlyCapAsync = readMonthlyCap };
+        core = new(runner) { ReadMonthlyCapAsync = readMonthlyCap, KeepsEarlierTakes = true };
+        if (takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun run) run.KeepsEarlierTakes = true;
     }
 
     internal Task DiscoverAsync()
@@ -286,7 +288,6 @@ internal sealed partial class RewriteGeneration : IDisposable
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         executing = cancellation;
         runStarted = false;
-        runInputRecorded = false;
         var declinedAtDispatch = false;
         core.ConfirmCostAsync = async (copy, token) =>
         {
@@ -395,34 +396,27 @@ internal sealed partial class RewriteGeneration : IDisposable
         : Rows.Count == 0 ? RewriteGenerationPhase.Idle : RewriteGenerationPhase.NonePassed;
     private async Task ProgressAsync()
     {
+        var started = false;
+        await onUi(() =>
+        {
+            if (closed || executing is null || executing.IsCancellationRequested) return;
+            if (!runStarted)
+            {
+                started = runStarted = true;
+                ReviewedInput = pendingInput;
+            }
+            foreach (var made in core.Rows) if (pendingInput is { } input) takeInputs.TryAdd(made.Id, input);
+            if (Rows.LastOrDefault() is { Selectable: true } row) Announcement = TakeRowPresentation.Ready(row.Index);
+            if (!started) Notify();
+        });
+        if (!started) return;
+        if (takes is not null) await takes.Audition.StopAsync();
         await onUi(() =>
         {
             if (closed || executing is null || executing.IsCancellationRequested) return;
             Phase = RewriteGenerationPhase.Generating;
-            if (core.Rows.Count == 0)
-            {
-                runStarted = true; rejected.Clear(); BestTakeId = null; VideoChoice = null;
-                reviewEnd = null;
-                ReviewedInput = pendingInput;
-            }
-            // Automatic fixes keep every earlier take: this run's takes join them, reviewed with this run's input.
-            else if (!runInputRecorded && KeepsEveryTake)
-            {
-                runStarted = true;
-                if (pendingInput is { } next && (ReviewedInput is null || next.Text != ReviewedInput.Text || next.RequestText != ReviewedInput.RequestText))
-                    ReviewedInput = next;
-            }
-            // A run from reworded text reviews that text; earlier takes keep the input they were made from.
-            else if (!runInputRecorded && pendingInput is { } reworded && ReviewedInput is { } reviewed && reworded.Text != reviewed.Text)
-            {
-                runStarted = true; ReviewedInput = reworded;
-            }
-            runInputRecorded = true;
-            foreach (var made in core.Rows) if (pendingInput is { } input) takeInputs.TryAdd(made.Id, input);
-            if (Rows.LastOrDefault() is { Selectable: true } row) Announcement = TakeRowPresentation.Ready(row.Index);
             Notify();
         });
-        if (core.Rows.Count == 0 && takes is not null) await takes.Audition.InvalidateAsync();
     }
     private void Fail(Exception error)
     {

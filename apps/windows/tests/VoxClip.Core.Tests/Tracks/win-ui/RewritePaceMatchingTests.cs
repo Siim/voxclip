@@ -482,7 +482,7 @@ public sealed class RewritePaceMatchingTests
         Assert.Equal(expected, generation.NextPace);
         await generation.GenerateAsync((_, _) => Task.FromResult(true), generation.Quote, autoplay: false);
         Assert.Equal(2, runner.Sends);
-        Assert.Equal(expected, generation.Selected!.Receipt!.Pace);
+        Assert.Equal(expected, generation.ReviewRows[0].Receipt!.Pace);
     }
 
     [Fact]

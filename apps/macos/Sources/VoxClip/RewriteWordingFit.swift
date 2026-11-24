@@ -94,7 +94,7 @@ extension RewriteSession {
     }
 
     func beginAutomaticWordingFit() async {
-        guard current, showsVoiceLab, !blockedVoiceOrdinals.isEmpty, !hasPaidTakes,
+        guard wholeClipReplacement == nil, current, showsVoiceLab, !blockedVoiceOrdinals.isEmpty, !hasPaidTakes,
               let connector, let shared = editor.app.shared else { return }
         stopWordingFit(refresh: false)
         wordingFit.round = 0; wordingFit.completed = false; wordingFit.stopped = false

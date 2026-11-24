@@ -205,7 +205,6 @@ internal sealed partial class RewriteSession
         if (!IsPricedAfresh(index))
         {
             // A fresh quote: the account may have changed since the failure (a key, credit or permission).
-            window.KeepEveryTake();
             await window.InputsChangedAsync(preserveReview: true);
             if (window.Quote is { } quote) { window.MarkEstimateShown(quote); AutoFix.Priced.Add(index); }
             Changed?.Invoke(this, EventArgs.Empty);

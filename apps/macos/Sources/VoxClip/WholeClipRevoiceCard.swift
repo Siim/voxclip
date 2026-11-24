@@ -112,10 +112,17 @@ import VoxClipCore
             .background(DesignValues.color("bg.muted"), in: RoundedRectangle(cornerRadius: 6))
         }
         Text("How should it sound?").font(VCType.callout.font(.semibold))
-        option(whole: false, title: "Only the changed phrases", price: quote?.patchUSD,
-               lines: ["Your recording stays. \(phrases) in your voice, joined to it."])
-        option(whole: true, title: "The whole clip in one voice, with lip sync", price: quote?.wholeUSD, lines: wholeLines)
+        let replacing = rewrite.wholeClipReplacement != nil
+        option(whole: false, title: "Only the changed phrases", price: quote?.patchUSD, available: !replacing,
+               lines: [replacing ? RewriteReplacement.undoCopy : "Your recording stays. \(phrases) in your voice, joined to it."])
+        option(whole: true, title: "The whole clip in one voice, with lip sync", price: quote?.wholeUSD,
+               available: !replacing || quote != nil, lines: wholeLines)
         if let primary = rewrite.wholeClipPrimary() { PanelButton(action: primary, kind: .primary) }
+        else if replacing {
+            Button("Revoice Whole Clip") {}.disabled(true)
+            Text(session.quoting ? "Checking whether the whole clip can be revoiced…" : RewriteReplacement.undoCopy)
+                .foregroundStyle(DesignValues.color("text.secondary"))
+        }
     }
 
     private var phrases: String { (quote?.phrases ?? 0) == 1 ? "1 phrase" : "\(quote?.phrases ?? 0) phrases" }
@@ -125,10 +132,11 @@ import VoxClipCore
         let voice = quote.voiceName + (quote.voiceNote.isEmpty ? "" : " (\(quote.voiceNote))")
         let seconds = WholeClipRevoiceSession.clock(quote.clipSeconds)
         let sends = "Sends the clip's new words to ElevenLabs (\(quote.voicePassUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), and its \(seconds) of video with the new audio to fal.ai \(WholeClipRevoice.Lipsync.standard.name) (\(quote.lipsyncUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), with your keys. Exports say “\(WholeClipRevoice.disclosureLine)”"
-        return ["All \(seconds) said again in \(voice), fitted to the clip's length, then lip synced. No seams.", sends]
+        let lines = ["All \(seconds) said again in \(voice), fitted to the clip's length, then lip synced. No seams.", sends]
+        return rewrite.wholeClipReplacement == nil ? lines : lines + ["Rewrite starts from your recording’s words. The earlier revoice stays until you use the new one."]
     }
 
-    private func option(whole: Bool, title: String, price: Decimal?, lines: [String]) -> some View {
+    private func option(whole: Bool, title: String, price: Decimal?, available: Bool = true, lines: [String]) -> some View {
         Button { session.wholeSelected = whole } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: session.wholeSelected == whole ? "largecircle.fill.circle" : "circle")
@@ -137,8 +145,10 @@ import VoxClipCore
                     HStack(alignment: .firstTextBaseline) {
                         Text(title).font(VCType.callout.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
                         Spacer(minLength: 8)
-                        Text(price.map(VoiceLabCostPresentation.format) ?? "Get Price").monospacedDigit()
-                            .foregroundStyle(DesignValues.color("text.primary"))
+                        if available {
+                            Text(price.map(VoiceLabCostPresentation.format) ?? "Get Price").monospacedDigit()
+                                .foregroundStyle(DesignValues.color("text.primary"))
+                        }
                     }
                     ForEach(lines, id: \.self) { line in
                         Text(line).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
@@ -151,6 +161,7 @@ import VoxClipCore
             .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(DesignValues.color(session.wholeSelected == whole ? "tint.default" : "line.default"), lineWidth: 1) }
         }
         .buttonStyle(.plain)
+        .disabled(!available)
         .accessibilityLabel(title + (price.map { ", " + VoiceLabCostPresentation.format($0) } ?? ""))
         .accessibilityAddTraits(session.wholeSelected == whole ? .isSelected : [])
     }

@@ -583,8 +583,16 @@ private final class WorkThreads: Sendable {
         let session = try await rewrite(editor)
         #expect(session.task.state == .error(.message("Clip 1 has no words left to rewrite. Your edits are saved.")))
         #expect(await stub.requests.isEmpty)
-        let log = (try? String(contentsOf: app.locations.logs.appendingPathComponent("voxclip.log"), encoding: .utf8)) ?? ""
-        #expect(log.contains("[error] llm: code=operationFailed") && !log.contains("word10"))
+        // The Rewrite failure line is written from a detached task, so wait for it briefly.
+        let file = app.locations.logs.appendingPathComponent("voxclip.log")
+        var log = ""
+        for _ in 0..<60 {
+            log = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+            if log.contains("rewrite failure stage=proposal") { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(log.contains("[warn] rewrite: rewrite failure stage=proposal type=") && log.contains("case=empty"))
+        #expect(!log.contains("word10"))
     }
 
     /// With Voice Lab off, a selection beside a cut still rewrites (design.md §8). In speech with no pause between words
