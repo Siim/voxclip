@@ -258,6 +258,13 @@ internal sealed class AskClaudePanel : InlineEditorJob
         }
         switch (row.Status)
         {
+            case AskClaudeRowStatus.Asset when row.Operation.Action is ClipAutopilotAction.Asset asset:
+                var (assetTitle, blocked) = Editor.AskAssetAction(asset);
+                var collect = Ui.Button(assetTitle, () => _ = Editor.ApplyAskAssetAsync(row.Id));
+                collect.IsEnabled = blocked is null;
+                panel.Children.Add(collect);
+                if (blocked is not null) panel.Children.Add(Secondary(blocked));
+                break;
             case AskClaudeRowStatus.Paid:
                 var paid = Ui.Button(row.Price, () => Editor.RunPaidAskClaudeRow(row.Id));
                 AutomationProperties.SetAutomationId(paid, "AskClaude.Paid." + row.Id);

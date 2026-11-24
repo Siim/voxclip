@@ -238,10 +238,14 @@ public sealed class FrameComposer : IFrameComposer
         CancellationToken ct, bool forPreview = false, PreviewFrameFailures? failures = null)
     {
         if (snapshot.Clip is not { } clip) return;
-        if (clip.Controls is { } controls && controls.HasColorGrade()) ClipPicture.Grade(output, controls.Look, controls.ColorAdjustments, ct);
         var timeline = snapshot.Timeline;
         var sourceTime = timeline.SourceTime(editedTime);
         var frames = clip.Effects is { } input ? effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot)) : null;
+        frames?.DrawIllustration(output, sourceTime);
+        var timedLook = clip.Effects?.Effects.LastOrDefault(effect => effect.Kind == "colourLook" && effect.Start <= sourceTime && sourceTime < effect.End)?.Look;
+        var look = timedLook switch { "warm" => ClipLook.Warm, "muted" => ClipLook.Muted, "bw" => ClipLook.Bw,
+            "original" => ClipLook.Original, _ => clip.Controls?.Look ?? ClipLook.Original };
+        if (look != ClipLook.Original || clip.Controls?.ColorAdjustments is not null) ClipPicture.Grade(output, look, clip.Controls?.ColorAdjustments, ct);
         if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip.Effects!.PictureTime(sourceTime), clip.Controls, ct);
         if (clip.Motion.Count > 0 && !(forPreview && clip.ReduceMotionInPreview))
             ClipPicture.Motion(output, VoxClip.Core.Domain.ContextDemo.MotionCueRendering.Transform(clip.Motion, sourceTime), forPreview, ct);

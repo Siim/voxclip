@@ -284,7 +284,8 @@ public sealed record LlmRequestParts(string System, string Instruction, string S
 public sealed record AskClaudeAnswer(string Summary, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyDictionary<string, string> Choices, IReadOnlyList<string> Repairs)
 {
     /// <summary>The rows that need a paid click before they run: a voice rewrite, music.</summary>
-    public IReadOnlyList<ClipAutopilotOperation> Paid => Operations.Where(operation => operation.Action is ClipAutopilotAction.Rewrite or ClipAutopilotAction.Music).ToArray();
+    public IReadOnlyList<ClipAutopilotOperation> Paid => Operations.Where(operation => operation.Action is
+        ClipAutopilotAction.Rewrite or ClipAutopilotAction.Music or ClipAutopilotAction.Asset { Kind: "illustration" }).ToArray();
 }
 
 /// <summary>Checks a reply op by op, as the planner's validator does: a field outside its range is clamped, a missing one takes the
@@ -344,7 +345,8 @@ public sealed partial class AskClaudeValidator(AskClaudePrompt prompt, AskClaude
             }
             void Drop(string why) => repairs.Add("Left out " + (kind.Length == 0 ? "a change" : kind) + ": " + why + ".");
             var wordAnchored = AiJson.String(AiJson.Get(item, "target")) == "planEffect";
-            if (kind is "punchIn" or "motionTitle" or "emojiPop" || wordAnchored && kind is ("zoom" or "lowerThird"))
+            if (kind is "punchIn" or "motionTitle" or "emojiPop" or "soundEffect" or "illustration" or "colourLook" or "speedForPart" ||
+                wordAnchored && kind is ("zoom" or "lowerThird"))
             {
                 var serial = 1;
                 while (planEffectIds.Contains("ask-fx-" + AskClaudePrompt.Int(serial))) serial++;

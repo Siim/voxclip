@@ -8,9 +8,11 @@ using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Music;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Media.Frames;
+using VoxClip.Media.Pipeline;
 
 namespace VoxClip.App.Pages;
 
@@ -38,7 +40,7 @@ public sealed partial class EditorPage
         var faces = App.Services.FrameFaces;
         ViewModel.MakeIt.Services = new MakeItServices(MakeItPlanAsync, MakeItVoiceAsync, MakeItVoiceAvailable, MakeItExportAsync, ShareHelpers.Copy)
         {
-            SharedRoot = root, Prices = prices, Tones = tones,
+            SharedRoot = root, Prices = prices, Tones = tones, Assets = PlanAssets(root),
             SavedTones = MyRewriteTones.Decode(App.Services.Settings.Values.TryGetValue(RewriteToneCatalog.SettingsKey, out var saved) ? saved : null),
             FramePass = faces is null ? null : project => MakeItFramePass(faces, project)
         };
@@ -51,6 +53,20 @@ public sealed partial class EditorPage
         InitializeRewriteTones();
         InitializeAskClaude();
         InitializeMusic();
+    }
+
+    private static PlanAssetServices PlanAssets(string? shared)
+    {
+        ClipIllustrationQuote? quote = null;
+        if (shared is not null)
+            try { quote = ClipIllustrationQuote.Load(shared); }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException) { }
+        var root = App.Services.Data.Root;
+        var client = new ClipPlanAssets(new HttpClientMusicHttp(TimeSpan.FromMinutes(2)));
+        return new(quote?.UsdPerImage, ct => App.Services.Keys.GetKeyAsync("fal-api-key", ct),
+            (asset, project) => quote is null ? null : client.SavedIllustration(asset, project, root, quote),
+            (asset, project, ct) => client.SoundAsync(asset, project, root, ct),
+            (asset, project, key) => client.IllustrationAsync(asset, project, root, quote!, key));
     }
 
     /// <summary>"✦ Claude does it all" (design §6.7): the remembered choice in Settings, Find Clips started by Claude when it needs

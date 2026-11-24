@@ -24,9 +24,9 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
     /// <summary>The screen recordings placed over this scope (doc/spec/context-demo.md); null draws the source picture throughout.</summary>
     public VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers? ContextDemo { get; init; }
     /// <summary>The clip's speed timing; 1× without controls.</summary>
-    public ClipSpeedTiming Speed => new(Clip?.Controls?.Speed ?? 1);
+    public ClipSpeedTiming Speed => ClipSpeedTiming.ForEffects(Clip?.Controls?.Speed ?? 1, Timeline.MapTime, Clip?.Effects?.Effects ?? []);
     /// <summary>The rendered length in samples at the timeline rate: the edited length divided by the speed.</summary>
-    public long RenderedSamples => Speed.RenderedSamples(Timeline.OutputSamples);
+    public long RenderedSamples => (long)Math.Round(Speed.Rendered(Timeline.Duration) * Timeline.SampleRate, MidpointRounding.AwayFromZero);
     /// <summary>The rendered length in seconds.</summary>
     public double RenderedDuration => RenderedSamples / Timeline.SampleRate;
     /// <summary>The single timeline used for duration, source frames, and audio.</summary>
@@ -101,5 +101,6 @@ public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsR
 
     /// <summary>The same input for the edited WAV: 1× with no controls, bleeps and mutes kept, no sound effects and no music
     /// (the edited-audio path reads the voice alone).</summary>
-    public ClipRenderInput? ForEditedAudio => Effects?.WithoutSounds is { } kept ? new(null, kept) : null;
+    public ClipRenderInput? ForEditedAudio => Effects?.WithoutSounds is { } kept
+        ? new(null, kept with { Effects = kept.Effects.Where(effect => effect.Kind != "speedForPart").ToArray() }) : null;
 }

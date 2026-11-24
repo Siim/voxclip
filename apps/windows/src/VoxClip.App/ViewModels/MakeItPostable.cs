@@ -97,6 +97,7 @@ public sealed record MakeItServices(
     Func<string, IReadOnlyList<ExportAspect>, CancellationToken, Task<IReadOnlyList<string>>>? Export = null,
     Action<string>? Copy = null)
 {
+    internal PlanAssetServices? Assets { get; init; }
     /// <summary>The shared root for the planner's prompt, fonts and prices.</summary>
     public string? SharedRoot { get; init; }
     /// <summary>The Voice Lab price catalog for the cap; null prices nothing.</summary>

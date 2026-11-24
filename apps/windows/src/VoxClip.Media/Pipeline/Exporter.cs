@@ -102,6 +102,11 @@ public sealed class Exporter : IExporter
                     VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.StaleRenderContract);
         }
         var protectedPaths = new List<string> { snapshot.Media.Path };
+        if (snapshot.Clip?.Effects is { } effects)
+        {
+            protectedPaths.AddRange(effects.SoundPaths.Values);
+            protectedPaths.AddRange(effects.Images.Values);
+        }
         if (snapshot.VoiceLab is { } voiceInput)
         {
             var project = voiceInput.IsolatedProject();
@@ -139,7 +144,7 @@ public sealed class Exporter : IExporter
             new(sidecar, sidecarBytes)
         };
         if (srt is not null)
-            allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
+            allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed))));
         var cover = snapshot.Clip?.Controls?.CoverSeconds is null ? null : Core.Domain.Share.ExportCover.PathFor(destination);
         if (cover is not null) allocations.Add(new(cover, Core.Domain.Share.ExportCover.Limit));
         if (publish)
@@ -211,7 +216,7 @@ public sealed class Exporter : IExporter
             var music = snapshot.Media.Audio is null ? null : MusicBed.Stage(snapshot, 48_000, voiceSession, ct);
             using (var video = new EncoderSession(encoderName, output))
             using (var audio = snapshot.Media.Audio is null ? null : new EncoderSession("aac", output, true))
-            using (var mux = CreateMux(partial, video, audio, out var videoStream, out var audioStream))
+            using (var mux = CreateMux(partial, video, audio, snapshot.Clip?.Effects?.Credits, out var videoStream, out var audioStream))
             using (var decoder = new VideoDecoder(snapshot.Media.Path))
             using (var nv12Handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame))
             using (var scaling = NativeHandle.Own(ffmpeg.sws_getContext(size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_BGRA,
@@ -301,7 +306,7 @@ public sealed class Exporter : IExporter
                     new(sidecarDestination!, 1_048_576)
                 };
                 if (srtDestination is not null)
-                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed))));
                 if (publish)
                 {
                     remaining.Add(VoiceLabCapacity.Rollback(destination));
@@ -321,7 +326,7 @@ public sealed class Exporter : IExporter
                 remaining.Clear();
                 remaining.Add(new(sidecarDestination!, staged.SidecarData.Length));
                 if (srtDestination is not null)
-                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed))));
                 if (publish)
                 {
                     remaining.Add(VoiceLabCapacity.Rollback(destination));
@@ -342,7 +347,7 @@ public sealed class Exporter : IExporter
             if (srtPartial is not null)
             {
                 using (OutputSafety.CreatePartial(srtPartial)) { hasSrtPartial = true; }
-                File.WriteAllText(srtPartial, Subtitles(snapshot.Captions, snapshot.Speed.Speed), new UTF8Encoding(false));
+                File.WriteAllText(srtPartial, Subtitles(snapshot.Captions, snapshot.Speed), new UTF8Encoding(false));
                 ct.ThrowIfCancellationRequested();
             }
             var destinations = new List<string> { destination };
@@ -418,7 +423,7 @@ public sealed class Exporter : IExporter
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
     }
 
-    private static unsafe NativeHandle CreateMux(string path, EncoderSession video, EncoderSession? audio, out int videoIndex, out int audioIndex)
+    private static unsafe NativeHandle CreateMux(string path, EncoderSession video, EncoderSession? audio, IReadOnlyList<string>? credits, out int videoIndex, out int audioIndex)
     {
         AVFormatContext* format = null;
         Native.Check(ffmpeg.avformat_alloc_output_context2(&format, null, "mp4", path), "Create MP4 muxer", VoxClipErrorCode.ExportFailed);
@@ -443,6 +448,8 @@ public sealed class Exporter : IExporter
             AVDictionary* options = null;
             try
             {
+                if (credits is { Count: > 0 }) Native.Check(ffmpeg.av_dict_set(&format->metadata, "comment", string.Join('\n', credits), 0),
+                    "Write sound credits", VoxClipErrorCode.ExportFailed);
                 Native.Check(ffmpeg.av_dict_set(&options, "movflags", "+faststart", 0), "Set MP4 faststart", VoxClipErrorCode.ExportFailed);
                 Native.Check(ffmpeg.avformat_write_header(format, &options), "Write MP4 header", VoxClipErrorCode.ExportFailed);
             }
@@ -547,8 +554,10 @@ public sealed class Exporter : IExporter
 
     /// <summary>The SRT of <paramref name="captions"/>, cues on the rendered timeline: page times ÷ the clip's speed.</summary>
     internal static string Subtitles(CaptionTrack? captions, double speed = 1, Func<string, CaptionText, string>? transform = null)
+        => Subtitles(captions, new ClipSpeedTiming(speed), transform);
+
+    private static string Subtitles(CaptionTrack? captions, ClipSpeedTiming timing, Func<string, CaptionText, string>? transform = null)
     {
-        var timing = new ClipSpeedTiming(speed);
         if (captions is null) return string.Empty;
         var output = new StringBuilder();
         var index = 0;

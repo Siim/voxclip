@@ -216,7 +216,8 @@ public sealed class PreviewEngine : IPreviewEngine
                         if (nextFrame < clock - 0.1) nextFrame = clock;
                         Present(nextFrame, false, CancellationToken.None);
                         // Frames are due on the rendered clock; a clip's speed plays that many edited seconds per frame.
-                        nextFrame += snapshot.Speed.Speed / snapshot.Output.FrameRate;
+                        var timing = snapshot.Speed;
+                        nextFrame = timing.Edited(timing.Rendered(nextFrame) + 1 / snapshot.Output.FrameRate);
                     }
                 }
                 catch (Exception exception) { RecoverPlayback(exception); }
@@ -457,7 +458,8 @@ public sealed class PreviewEngine : IPreviewEngine
         if (clockOverride is not null) return clockOverride();
         var elapsed = audio is not null ? audio.FramesPlayed / (double)audio.DeviceRate : videoClock.Elapsed.TotalSeconds;
         // The clock plays rendered seconds; positions stay on the edited timeline (design §6.9).
-        return Math.Min(snapshot!.Timeline.Duration, origin + snapshot.Speed.Edited(elapsed));
+        var timing = snapshot!.Speed;
+        return Math.Min(snapshot.Timeline.Duration, timing.Edited(timing.Rendered(origin) + elapsed));
     }
 
     /// <summary>A failed output device first lands the playhead on its last played frame. A lost device then gets exactly one
@@ -465,7 +467,8 @@ public sealed class PreviewEngine : IPreviewEngine
     /// playback continues muted. Any other device error, including one from the reopen, faults playback at that frame.</summary>
     private void ReopenAfterLoss(IPreviewAudioOutput failed, Exception error)
     {
-        var lost = Math.Min(snapshot!.Timeline.Duration, origin + snapshot.Speed.Edited(failed.FramesPlayed / (double)failed.DeviceRate));
+        var timing = snapshot!.Speed;
+        var lost = Math.Min(snapshot.Timeline.Duration, timing.Edited(timing.Rendered(origin) + failed.FramesPlayed / (double)failed.DeviceRate));
         UpdatePosition(lost);
         if (IPreviewAudioOutput.Unavailable(error) is null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
         StartAudio(lost, CancellationToken.None);

@@ -53,6 +53,7 @@ public sealed class AskClaudeAppTests
         {
             ["kind"] = kind, ["startWord"] = -1, ["endWord"] = -1, ["start"] = -1, ["end"] = -1, ["text"] = "", ["target"] = "", ["x"] = 0, ["y"] = 0,
             ["width"] = 0, ["height"] = 0, ["tracking"] = "", ["position"] = "", ["rate"] = 0, ["scale"] = 0, ["sound"] = "", ["language"] = "",
+            ["query"] = "", ["prompt"] = "", ["look"] = "",
             ["choice"] = "", ["reason"] = kind + " because it was asked"
         };
         foreach (var (key, field) in fields) value[key] = field;
