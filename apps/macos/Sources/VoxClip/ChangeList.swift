@@ -392,6 +392,18 @@ extension RewriteSession {
                 return PanelFooter(note: note, link: all,
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
+            if autoFix.work == nil, let phrase = takePlan.phrases.first(where: {
+                !$0.leftOut && $0.selected?.row.selectable != true && takePlan.stoppedForRepeatedWords(phrase: $0.id)
+            }) {
+                let index = phrase.id
+                let action = ownWordsEditing == index
+                    ? PanelAction(id: "keepFailedWordsFooter.\(index)", title: "Keep Original Words") { [weak self] in
+                        self?.keepOriginal(phrase: index)
+                    }
+                    : editFailedWordsAction(phrase: index, footer: true)
+                return PanelFooter(note: "Phrase \(index + 1): " + ClipTakePlan.repeatedWordCheckCopy + "\n" + takeSpendLine,
+                                   primary: action)
+            }
             if let blocker = takePlan.acceptanceBlocker {
                 return PanelFooter(note: blocker + " " + takeSpendLine, primary: acceptanceForward(takePlan))
             }
@@ -424,6 +436,12 @@ extension RewriteSession {
         }
         return PanelFooter(note: unpaid + " " + takeSendLine, link: keepAll,
             primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(priceableVoiceCount)) { [weak self] in self?.makeTakes() })
+    }
+
+    func editFailedWordsAction(phrase: Int, footer: Bool = false) -> PanelAction {
+        PanelAction(id: footer ? "editFailedWordsFooter.\(phrase)" : "editFailedWords.\(phrase)", title: "Edit the Words") { [weak self] in
+            self?.chooseWording(.ownWords, phrase: phrase)
+        }
     }
 
     /// The footer's title for a duration choice the take allows (the phrase card's radio, as a primary).

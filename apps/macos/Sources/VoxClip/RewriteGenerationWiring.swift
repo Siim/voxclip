@@ -105,7 +105,7 @@ extension RewriteSession {
                     return staleCause(basis, generation: generation) == nil
                 }, acceptedChargesChanged: { [weak app = editor.app] in
                     await app?.refreshMonthlySpend()
-                })
+                }, wordCheckFailures: wordCheckFailures)
             created = plan
             plan.onFailure = { [weak self] error in self?.logFailure(error, stage: "takes") }
             plan.describeStale = { [weak self, weak plan] in

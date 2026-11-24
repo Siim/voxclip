@@ -320,7 +320,7 @@ import VoxClipMedia
     /// paid over this voice and picture (the ledger) or a kept result. Once the Fit step matched the picture, the lip sync
     /// is priced on that picture, as its step pays it.
     var retryUSD: Decimal? {
-        guard let quote, let voicePrice = quote.voicePassUSD, let quoted = quote.lipsyncUSD else { return nil }
+        guard repeatedWordCheckPart == nil, let quote, let voicePrice = quote.voicePassUSD, let quoted = quote.lipsyncUSD else { return nil }
         let kept = voice.flatMap { $0.key.script == script?.text && ledger.paid($0.key) ? $0 : nil }
         // A voice paid before a relaunch comes back for its parts' word checks, and its lip sync for free, only under its own
         // key: the voice and model chosen now are the ones it was made with.
@@ -415,7 +415,7 @@ import VoxClipMedia
     /// Revoice Whole Clip · ≈ $X: the click is the approval for one voice and the lip sync at the shown price. Try Again
     /// pays only what is left. `budget` is what an automatic run may still spend, which a reworded voice must stay within.
     func start(automatic: Bool = false, budget: Decimal? = nil) {
-        guard backend != nil, !running, phase != .used, !submissionUnconfirmed else { return }
+        guard backend != nil, !running, phase != .used, !submissionUnconfirmed, repeatedWordCheckPart == nil else { return }
         // A retry priced for the picture and the lip sync can't buy speech: it keeps the voice it stopped with.
         let retained = retainedVoice
         let model: Lipsync = retained != nil ? (synced?.model ?? .standard) : .standard
@@ -471,7 +471,7 @@ import VoxClipMedia
     /// approved, nothing is let go or paid: the stop stays, its button carrying the new price, which a new click approves.
     /// Otherwise the voice that no longer matches is let go (what it cost stays counted) and true: the run may start.
     func startOver(approved: Decimal) async -> Bool {
-        guard let backend, !running, isStopped else { return false }
+        guard let backend, !running, isStopped, repeatedWordCheckPart == nil || stoppedForInputs else { return false }
         let script = try? backend.script()
         let fresh: Quote? = if let script { try? await backend.quote(script, .standard) } else { nil }
         quotedScript = script
@@ -863,7 +863,7 @@ import VoxClipMedia
             if steps[step] == .waiting { steps[step] = .failed(Self.copy(error)) }
             let part = Self.part(error)
             let kind = Self.failureKind(error)
-            let again = previousFailure.map { $0.step == step && $0.kind == kind } ?? false
+            let again = previousFailure.map { $0.step == step && $0.part == part && $0.kind == kind } ?? false
             var made = Failure(step: step, part: part, repeats: step == .script || Self.repeats(error), kind: kind, again: again)
             made.rewordable = step == .fit && Self.rewordable(error) && rewordRound < WholeClipRevoice.maximumRewordRounds
             failure = made
@@ -1124,6 +1124,8 @@ import VoxClipMedia
     var stoppedForInputs: Bool {
         guard isStopped else { return false }
         if case Stop.voiceInputsChanged? = stopError { return true }
+        if case Stop.repeatedWordCheck(_, _, let recordID)? = stopError, let script,
+           let chosen = backend?.voiceKey(script), chosen.recordId != recordID { return true }
         // A restored voice whose voice or model isn't the one chosen now (`restoredVoiceChosen`).
         if restoredVoiceKey != nil, !restoredVoiceChosen { return true }
         guard heldVoiceSpent > 0, let baseScript, let now = try? backend?.script() else { return false }
@@ -1149,10 +1151,15 @@ import VoxClipMedia
 
     /// An Undo made the paid voice match again: Try Again uses it.
     var inputsRestored: Bool {
-        guard stoppedForInputs, let backend, let baseScript, (try? backend.script()) == baseScript else { return false }
+        guard repeatedWordCheckPart == nil, stoppedForInputs, let backend, let baseScript, (try? backend.script()) == baseScript else { return false }
         // A restored voice is usable again once its own voice and model are chosen.
         if restoredVoiceKey != nil { return restoredVoiceChosen }
         return voice.map { backend.voiceCurrent($0) } ?? true
+    }
+
+    var repeatedWordCheckPart: Int? {
+        guard case Stop.repeatedWordCheck(let part, _, _)? = stopError else { return nil }
+        return part
     }
 
     enum Stop: Error, Equatable {
@@ -1175,6 +1182,7 @@ import VoxClipMedia
         /// current again; otherwise the Rewrite is sent again for the clip as it is.
         case rewriteChanged(clip: Int)
         case partVoice(part: Int, reason: String, checks: [VoiceLabTakeQAFailure])
+        case repeatedWordCheck(part: Int, kept: Int, recordID: String)
         /// Part `part` (1-based)'s picture allows no cut or kept-source video under its laid-out take.
         case pictureUnmatched(part: Int)
         /// The user edited what the paid voice (`usd`) was made from: its words, cuts, pauses or corrections, the source or the
@@ -1212,6 +1220,9 @@ import VoxClipMedia
             return "You edited Clip \(clip) after this Rewrite was made, so its changes may no longer fit. Nothing was sent. "
                 + "Undo the edit to go on, or send the Rewrite again."
         case Stop.partVoice(let part, let reason, _): return "Part \(part): " + reason
+        case Stop.repeatedWordCheck(let part, let kept, _):
+            let saved = kept > 0 ? " \(kept) verified \(kept == 1 ? "part is" : "parts are") kept." : ""
+            return "Part \(part): " + ClipTakePlan.repeatedWordCheckCopy + saved
         case Stop.pictureUnmatched(let part):
             return "Part \(part)'s picture can't be matched to its voice on the clip as edited. Nothing was sent for lip sync."
         case Stop.voiceInputsChanged(let clip, let usd, let switched):
@@ -1269,6 +1280,7 @@ import VoxClipMedia
     /// The refused part, 1-based, of a placement refusal or a picture that can't be matched.
     static func part(_ error: any Error) -> Int? {
         if case Stop.partVoice(let part, _, _) = cause(error) { return part }
+        if case Stop.repeatedWordCheck(let part, _, _) = error { return part }
         if case Stop.pictureUnmatched(let part) = error { return part }
         if let unmatched = error as? Unmatched, let part = unmatched.part { return part }
         if case ClipTakePlan.Failure.placement(_, let index) = cause(error) { return index + 1 }
@@ -1330,6 +1342,7 @@ import VoxClipMedia
             return true
         }
         if case Stop.voiceInputsChanged = error { return true }
+        if case Stop.repeatedWordCheck = error { return true }
         if error is Unmatched { return true }
         if case Stop.pictureUnmatched = error { return true }
         if let failed = error as? LipsyncFailed {
