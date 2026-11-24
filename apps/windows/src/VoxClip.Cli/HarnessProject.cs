@@ -30,7 +30,7 @@ internal sealed class HarnessProject
 
     internal static async Task<HarnessProject> OpenAsync(string path, CancellationToken ct)
     {
-        path = CanonicalPath(path, allowLinks: true);
+        path = HarnessInbox.CanonicalLocalPath(path, allowLinks: true);
         return new(path, (await ReadAsync(path, ct).ConfigureAwait(false)).Id);
     }
 
@@ -75,7 +75,7 @@ internal sealed class HarnessProject
     private static async Task<Project> ReadAsync(string path, CancellationToken ct)
     {
         if (!string.Equals(Path.GetExtension(path), ".voxclip", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(path, CanonicalPath(path, allowLinks: false), PathComparison) ||
+            !string.Equals(path, HarnessInbox.CanonicalLocalPath(path, allowLinks: false), PathComparison) ||
             (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.Device)) != 0)
             throw new HarnessException("Choose a saved .voxclip project file.");
         return ProjectSerialization.Deserialize(await File.ReadAllTextAsync(path, new UTF8Encoding(false, true), ct).ConfigureAwait(false));
@@ -157,7 +157,7 @@ internal sealed class HarnessProject
                 Path.GetExtension(candidate).ToLowerInvariant() is not (".mp4" or ".mov" or ".m4v")) continue;
             try
             {
-                var full = CanonicalPath(candidate, allowLinks: false);
+                var full = HarnessInbox.CanonicalLocalPath(candidate, allowLinks: false);
                 var info = new FileInfo(full);
                 if (info.Exists && info.Length == source.SizeBytes &&
                     await store.ComputeContentKeyAsync(full, null, ct).ConfigureAwait(false) == source.ContentKey) return full;
@@ -165,28 +165,6 @@ internal sealed class HarnessProject
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or HarnessException) { }
         }
         throw new HarnessException("The project's source video is missing. Relink it in VoxClip.");
-    }
-
-    private static string CanonicalPath(string path, bool allowLinks, int remainingLinks = 32)
-    {
-        var full = Path.GetFullPath(path);
-        var root = Path.GetPathRoot(full)!;
-        if (OperatingSystem.IsWindows() && (root.Length != 3 || !char.IsAsciiLetter(root[0]) || root[1] != ':' ||
-            full.AsSpan(2).Contains(':') || new DriveInfo(root).DriveType is not (DriveType.Fixed or DriveType.Removable or DriveType.Ram)))
-            throw new HarnessException("Choose a local path for the project and its source video.");
-        var current = root;
-        foreach (var component in full[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
-        {
-            current = Path.Join(current, component);
-            var attributes = File.GetAttributes(current);
-            if ((attributes & FileAttributes.ReparsePoint) == 0) continue;
-            if (!allowLinks || remainingLinks == 0)
-                throw new HarnessException("The selected file changed. Restart the connection or relink the source.");
-            FileSystemInfo info = (attributes & FileAttributes.Directory) != 0 ? new DirectoryInfo(current) : new FileInfo(current);
-            current = info.ResolveLinkTarget(returnFinalTarget: false) is { } target
-                ? CanonicalPath(target.FullName, allowLinks, --remainingLinks) : throw new HarnessException("Choose a saved .voxclip project file.");
-        }
-        return current;
     }
 
     private async Task StageAsync(JsonObject proposal, CancellationToken ct)

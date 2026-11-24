@@ -175,6 +175,7 @@ public sealed partial class EditorPage : Page
         }
         if (mediaPath is null || demo) ViewModel.Notice = EditorMediaPresentation.Notice(mediaState, EditorMediaPresentation.FileName(project.Media.Source.AbsolutePath));
         ready = true;
+        StartHarnessReview();
         InitializeShell();
         projectWrites.Mark(ViewModel.Project);
         UpdateAiTag();
@@ -1251,6 +1252,7 @@ if (insertion ||
     {
         if (disposed) return;
         disposed = true; autosave?.Cancel();
+        harnessTimer?.Stop();
         // Work still reading the entry, such as a waveform load, holds its own lease.
         cacheLease?.Dispose();
         await lifetime.CancelAsync();

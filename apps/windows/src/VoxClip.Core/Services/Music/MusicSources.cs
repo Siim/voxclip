@@ -400,24 +400,30 @@ public sealed class MusicSuggestionService(OpenverseMusicClient? library, Eleven
         }
         if (eleven is not null)
         {
-            if (await hasElevenKey(ct).ConfigureAwait(false))
-            {
-                try
-                {
-                    var quote = eleven.Quote(brief.CompositionPrompt, clipSeconds);
-                    var title = brief.Mood.Trim();
-                    title = title.Length == 0 ? "Made for this clip" : char.ToUpperInvariant(title[0]) + title[1..];
-                    var candidate = new MusicCandidate("eleven-" + quote.Id.ToString("D"), MusicSource.Generated, title.Length <= 200 ? title : title[..200],
-                        MusicLicense.Generated, "mp3") { Prompt = quote.Prompt, DurationSeconds = quote.LengthSeconds, Estimate = quote.Estimate, Reason = brief.Reason ?? "Made to the clip's length" };
-                    lock (gate) quotes[candidate.Id] = quote;
-                    candidates.Add(candidate);
-                }
-                catch (VoxClipException exception) { notes[MusicSource.Generated] = Note(exception); }
-            }
-            else notes[MusicSource.Generated] = "Add an ElevenLabs key in Settings to make music for this clip.";
+            var (candidate, note) = await PriceGenerationAsync(brief, clipSeconds, ct).ConfigureAwait(false);
+            if (candidate is not null) candidates.Add(candidate);
+            if (note is not null) notes[MusicSource.Generated] = note;
         }
         if (MusicLibraryFolder.Best(MusicLibraryFolder.Files(folder()), brief.Keywords) is { } own) candidates.Add(own with { Reason = "From your Music folder" });
         return new(candidates, notes);
+    }
+
+    /// <summary>Prepares just the generated candidate locally; it neither searches the library nor sends the brief.</summary>
+    public async Task<(MusicCandidate? Candidate, string? Note)> PriceGenerationAsync(MusicBrief brief, double clipSeconds, CancellationToken ct)
+    {
+        if (eleven is null) return (null, "VoxClip can't confirm a price for music right now.");
+        if (!await hasElevenKey(ct).ConfigureAwait(false)) return (null, "Add an ElevenLabs key in Settings to make music for this clip.");
+        try
+        {
+            var quote = eleven.Quote(brief.CompositionPrompt, clipSeconds);
+            var title = brief.Mood.Trim();
+            title = title.Length == 0 ? "Made for this clip" : char.ToUpperInvariant(title[0]) + title[1..];
+            var candidate = new MusicCandidate("eleven-" + quote.Id.ToString("D"), MusicSource.Generated, title.Length <= 200 ? title : title[..200],
+                MusicLicense.Generated, "mp3") { Prompt = quote.Prompt, DurationSeconds = quote.LengthSeconds, Estimate = quote.Estimate, Reason = brief.Reason ?? "Made to the clip's length" };
+            lock (gate) quotes[candidate.Id] = quote;
+            return (candidate, null);
+        }
+        catch (VoxClipException exception) { return (null, Note(exception)); }
     }
 
     /// <summary>The approved quote behind a generated candidate, used once.</summary>
