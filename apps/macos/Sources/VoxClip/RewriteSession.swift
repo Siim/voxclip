@@ -173,6 +173,7 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored var publishOverride: ((Int, VoiceLabPublishedTake) -> VoiceLabPublishedTake)?
     #endif
     var takeQuotePhrase: Int?
+    let wordCheckFailures = RewriteWordCheckFailures()
     var focusedTakePhrase = 0
     var takeRowsShown = true
     /// The phrase whose My words field shows: one free-text field at a time (PhraseOwnWords.swift).

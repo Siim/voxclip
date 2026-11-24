@@ -309,11 +309,17 @@ extension RewriteSession {
         if let plan = takePlan, !takesBusy {
             let several = plan.phrases.count > 1
             for phrase in plan.phrases where !phrase.leftOut {
+                let name = several ? " for phrase \(phrase.id + 1)" : ""
+                let keep = chip("keepOriginal.\(phrase.id)", "Keep original words" + name) { [weak self] in self?.keepOriginal(phrase: phrase.id) }
+                if plan.stoppedForRepeatedWords(phrase: phrase.id), phrase.selected?.row.selectable != true {
+                    let edit = NextStepChip(action: editFailedWordsAction(phrase: phrase.id))
+                    let line = "Phrase \(phrase.id + 1): " + ClipTakePlan.repeatedWordCheckCopy
+                    steps.append(NextSteps(id: "take.\(phrase.id)", line: line, chips: [edit, keep]))
+                    continue
+                }
                 guard let why = stuckReason(phrase, plan: plan), autoFix.lines[phrase.id] == nil else { continue }
                 if case .length(_, _, _, _, _, true) = why { continue }    // its row has the length steps
                 let ordinals = takePhraseOrdinals(phrase)
-                let name = several ? " for phrase \(phrase.id + 1)" : ""
-                let keep = chip("keepOriginal.\(phrase.id)", "Keep original words" + name) { [weak self] in self?.keepOriginal(phrase: phrase.id) }
                 var chips: [NextStepChip]
                 if case .provider = why {
                     // The cause and its one fix (voice-lab §8.2.2): never wording chips.
@@ -332,6 +338,7 @@ extension RewriteSession {
                 note(ordinals, .take)
             }
             for phrase in plan.phrases where phrase.leftOut && autoFix.gaveUp.contains(phrase.id) {
+                if plan.stoppedForRepeatedWords(phrase: phrase.id) { continue }
                 let tries = autoFix.rounds[phrase.id, default: RewriteAutoFixState.maximumRounds]
                 steps.append(NextSteps(id: "kept.\(phrase.id)",
                     line: "Phrase \(phrase.id + 1) kept your original audio after \(tries) \(tries == 1 ? "try" : "tries").",

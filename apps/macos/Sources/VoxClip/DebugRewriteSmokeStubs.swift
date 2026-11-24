@@ -197,6 +197,7 @@ struct RewriteSmokeVoiceScript: Sendable {
     var seconds: [String: Double] = [:]
     /// Word-check transcript substitutions, lowercased: "claude code" heard as "cloud code".
     var heard: [String: String] = [:]
+    var misheardScript: String?
     /// Quirky v4 timing for every synthesis, cycling in order.
     var quirks: [RewriteSmokeTimingQuirk] = []
     var quirkIndex = 0
@@ -213,6 +214,7 @@ struct RewriteSmokeVoiceScript: Sendable {
     /// Every request, as "METHOD /path", and the voice each paid synthesis used.
     var requests: [String] = []
     var synthesisVoices: [String] = []
+    var synthesisScripts: [String] = []
     var lastText = ""
     var lastDuration = 1.0
     var wordCheckCache: URL?
@@ -293,6 +295,7 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                     let fixed = script.seconds.first { Self.words(text).contains($0.key) }?.value
                     let base: Double = fixed ?? (script.exactFit ? fits : Self.naturalSeconds(text) + script.offset)
                     script.lastText = Self.words(text); script.lastDuration = max(0.3, base * factor)
+                    script.synthesisScripts.append(script.lastText)
                     return (script.lastDuration, script.rejectedSpeakerRequests.contains(script.syntheses) ? 300 : 120)
                 }
                 data = try Self.synthesis(text: text, duration: duration, dialogue: dialogue, pitch: pitch)
@@ -300,6 +303,9 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                 let (text, duration) = Self.script.withLock { script -> (String, Double) in
                     script.checks += 1
                     var heard = script.lastText
+                    if let misheard = script.misheardScript, script.lastText == Self.words(misheard) {
+                        heard = script.lastText.split(separator: " ").map { _ in "unrelated" }.joined(separator: " ")
+                    }
                     for (said, misheard) in script.heard { heard = heard.replacing(said, with: misheard, maxReplacements: .max) }
                     for (said, misheard) in script.heard {
                         let capitalised = said.split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
