@@ -1118,7 +1118,7 @@ extension ClaudeModeTests {
                 #expect(row.text == "Finish the whole clip in Rewrite: its paid voice is kept")
                 #expect(editor.claudeMode.budget?.spent == Decimal(string: "0.06"), "only the whole clip's voice was paid")
             } else {
-                #expect(stubs.rewords.isEmpty && stubs.voices.count == 1 && stubs.lipsyncs == [.lipsync2], "laid out, never a longer wording")
+                #expect(stubs.rewords.isEmpty && stubs.voices.count == 1 && stubs.lipsyncs == [.sync3], "laid out, never a longer wording")
                 guard case .revoiced? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
                 #expect(row.text == "Revoiced the whole clip in your voice, lip synced")
                 #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")

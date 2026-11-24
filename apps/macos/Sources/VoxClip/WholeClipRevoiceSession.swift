@@ -1018,7 +1018,9 @@ import VoxClipMedia
     func discard() async {
         guard let backend, phase == .review || isStopped else { return }
         await backend.discard()
+        phase = .choose; voice = nil; synced = nil; match = nil; steps = [:]; picture = nil
         failure = nil; stopError = nil; stoppedAt = nil; shorterWording = nil
+        syncedEntries = [:]; lipsyncKept = false; submissionUnconfirmed = false; checkedFal = false
         baseScript = nil; rewordRound = 0; usedVoiceOnly = false; usedFrom = nil; undoneUse = nil
         // What was paid before a relaunch goes with it, and stays counted.
         restoredLetGo += restoredVoices.values.reduce(0, +) + restoredLipsyncs.values.reduce(0, +)
