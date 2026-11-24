@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Claude mode and Make it postable can add zooms, punch-ins, animated titles, lower thirds and emoji on the words where they fit, and choose a title for the exported cover.
+- In ✦ Claude does it all, Mac can start finding clips with Apple Speech while Whisper or an approved Scribe run checks the words. The clip style card shows the transcription choice on Mac and Windows, and later clips arrive without interrupting your review.
 - On Mac, AI settings warn when your fal.ai key can't delete finished lip syncs. Your result is kept on this Mac, and fal.ai's copy stays until it expires.
 - On Mac, Rewrite stops retrying after the same words fail verification twice with the same voice. It keeps verified takes and offers free ways to move on instead of a third paid attempt.
 - On Mac, recordings whose audio starts before the picture keep a visible preview after processing and when switching to an imported lip-sync result.

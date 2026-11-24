@@ -265,16 +265,17 @@ public sealed partial class EditorViewModel
         if (!span.Contains(plan.StartWord) || !span.Contains(plan.EndWord)) { Fail(run, "Claude couldn't plan this clip. Nothing was changed."); return false; }
         if (IsReadOnly || isLeaving || state?.Clips.Any(item => item.Id == run.ClipId) != true) { Fail(run, "This clip changed. Nothing was changed."); return false; }
         var started = clock?.Elapsed;
-        MakeIt.ShownClipId = run.ClipId;
+        var reveal = run.Budget is null || ClaudeModeReady.Count == 0;
+        if (reveal) MakeIt.ShownClipId = run.ClipId;
         BeginUndoGroup("Make it postable");
         try
         {
             if (Clips.FirstOrDefault(item => item.Id == run.ClipId)?.IsSuggested == true) KeepForRowAction(run.ClipId);
-            SetScope(run.ClipId);
+            if (reveal) SetScope(run.ClipId);
             await LlmRuns.SharingAsync(() => FinishAsync(run, plan, services));
         }
         finally { EndUndoGroup(); }
-        if (clock is not null && started is { } since) clock.Record(ClaudeModeStage.Apply, clip, since);
+        if (run.Phase == MakeItPhase.Ready && clock is not null && started is { } since) clock.Record(ClaudeModeStage.Apply, clip, since);
         return run.Phase == MakeItPhase.Stopped;
     }
 
@@ -640,9 +641,7 @@ public sealed partial class EditorViewModel
         var panel = Music;
         if (panel.Services is null)
             return row with { Kind = MakeItRowKind.Note, Text = $"Claude suggests music “{cue.Picked.Title}”", Detail = "Music has no sources here. Change opens Music." };
-        if (project.Edits.ActiveClipId != run.ClipId) SetScope(run.ClipId);
-        if (project.Edits.ActiveClipId != run.ClipId) return row with { Kind = MakeItRowKind.Note, Detail = "Open the clip, then choose music." };
-        await panel.SuggestAsync(Core.Domain.Music.MusicBrief.From(cue.Picked));
+        await panel.SuggestAsync(Core.Domain.Music.MusicBrief.From(cue.Picked), run.ClipId);
         var candidate = panel.Candidates.FirstOrDefault(item => item.Source != Core.Domain.Music.MusicSource.Generated);
         if (candidate is null && panel.Candidates.FirstOrDefault(item => item.NeedsGeneration) is { Estimate.Usd: { } usd } made && run.Budget is not { PaidAllowed: false })
         {
@@ -652,7 +651,7 @@ public sealed partial class EditorViewModel
         if (candidate is null || MakeItStopped(run))
             return row with { Kind = MakeItRowKind.Note, Text = $"No free track fit “{cue.Picked.Mood}”",
                 Detail = panel.Notes.Count > 0 ? panel.Notes[0] + " Change to pick one." : "A generated track would pass this clip's cap. Change to pick one." };
-        await panel.UseAsync(candidate, -cue.Picked.UnderVoiceDb);
+        await panel.UseAsync(candidate, -cue.Picked.UnderVoiceDb, run.ClipId);
         if (Core.Domain.Music.MusicProject.Entry(run.ClipId, project) is not { } entry || entry == previous)
         {
             var reason = panel.Failure ?? "";

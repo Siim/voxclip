@@ -33,6 +33,7 @@ extension UTType {
         let destination: URL
     }
     private let state: Mutex<State>
+    @MainActor var importClock: ClaudeModeClock?
     @MainActor private var retainedVoiceLabFiles: Set<String> = []
     @MainActor private var voiceLabActivity: VoiceLabAssetActivity?
     @MainActor private var voiceLabActivityReady = false

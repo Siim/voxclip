@@ -926,7 +926,8 @@ private final class Calls: Sendable {
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         editor.makeIt.services?.wholeClipQuote = { request, editor in
             if editor.openRewrite?.wholeClip == nil,
-               let session = MakeItRewriteDriver.openSession(editor: editor, range: request.range, text: MakeItServices.wholeClipPassage(request, editor: editor)) {
+               let session = MakeItRewriteDriver.openSession(editor: editor, clipID: request.clipID, range: request.range,
+                                                             text: MakeItServices.wholeClipPassage(request, editor: editor)) {
                 try? DebugRewriteGeneration.install("voice", in: session)
                 let whole = WholeClipRevoiceSession()
                 session.configureWholeClip(whole)

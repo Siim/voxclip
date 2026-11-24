@@ -37,7 +37,7 @@ internal sealed class ClipStyleCardPanel : Grid
 
     /// <summary>Lays the card out for <paramref name="style"/>.</summary>
     internal void Show(ClipStyle style, ClipStyleCatalog catalog, IReadOnlyList<CaptionStyle> library, ClipStyle? saved,
-        ClipsAutopilotSettings? autopilot = null, IReadOnlyList<RewriteTone>? tones = null)
+        ClipsAutopilotSettings? autopilot = null, IReadOnlyList<RewriteTone>? tones = null, string? transcription = null)
     {
         var stack = Ui.Stack(Token("VcSpacingGroupGap"));
         if (autopilot is not null) stack.Children.Add(Mode(autopilot));
@@ -77,6 +77,13 @@ internal sealed class ClipStyleCardPanel : Grid
                 index => CountChosen?.Invoke(ClipsMode.Counts[index])));
             claudeRows.Children.Add(Row("Spend", ClipsMode.CapsUsd.Select(cap => cap == 0 ? "$0 · no paid voice" : $"Up to ${cap} per video").ToArray(),
                 ClipsMode.CapsUsd.ToList().IndexOf(claude.CapUsd), index => CapChosen?.Invoke(ClipsMode.CapsUsd[index])));
+            if (transcription is not null)
+            {
+                var speech = Ui.Text(transcription, "HelperText");
+                speech.TextWrapping = TextWrapping.Wrap;
+                AutomationProperties.SetAutomationId(speech, "ClipStyle.Transcription");
+                claudeRows.Children.Add(Labeled("Transcript", speech));
+            }
             stack.Children.Add(claudeRows);
         }
 

@@ -212,7 +212,7 @@ member VoxClip.App.Controls.ClipStyleCardPanel :: field private CountChosen
 member VoxClip.App.Controls.ClipStyleCardPanel :: field private ModeChosen
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal .ctor()
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal FontName(VoxClip.Core.Domain.Captions.CaptionStyle)
-member VoxClip.App.Controls.ClipStyleCardPanel :: method internal Show(VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Domain.Clips.ClipStyleCatalog,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionStyle>,VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Services.Settings.ClipsAutopilotSettings,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal Show(VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Domain.Clips.ClipStyleCatalog,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionStyle>,VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Services.Settings.ClipsAutopilotSettings,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>,string)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_CapChosen(System.Action`1<int>)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_Chosen(System.Action`2<VoxClip.Core.Domain.Clips.ClipStyle,bool>)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_CountChosen(System.Action`1<int>)
@@ -3689,7 +3689,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyAskClaudeStr
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyBatch(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.EditOperation>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceReference,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>,System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRateSample>>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
-member VoxClip.App.ViewModels.EditorViewModel :: method public ArmClaudeMode()
+member VoxClip.App.ViewModels.EditorViewModel :: method public ArmClaudeMode(VoxClip.Core.Domain.Autopilot.ClaudeModeClock)
 member VoxClip.App.ViewModels.EditorViewModel :: method public AskClaudeEffect(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public AskClaudeFollowNote(VoxClip.Core.Domain.Effects.ClipEffect)
 member VoxClip.App.ViewModels.EditorViewModel :: method public AskClaudeLabel(VoxClip.Core.Domain.Autopilot.AskClaudeScope)
@@ -4959,9 +4959,9 @@ member VoxClip.App.ViewModels.MusicPanelModel :: method public SendsLine(VoxClip
 member VoxClip.App.ViewModels.MusicPanelModel :: method public SetGain(double)
 member VoxClip.App.ViewModels.MusicPanelModel :: method public SettledAsync()
 member VoxClip.App.ViewModels.MusicPanelModel :: method public StopAudition()
-member VoxClip.App.ViewModels.MusicPanelModel :: method public SuggestAsync(VoxClip.Core.Domain.Music.MusicBrief)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public SuggestAsync(VoxClip.Core.Domain.Music.MusicBrief,string)
 member VoxClip.App.ViewModels.MusicPanelModel :: method public ToggleAudition(VoxClip.Core.Domain.Music.MusicCandidate)
-member VoxClip.App.ViewModels.MusicPanelModel :: method public UseAsync(VoxClip.Core.Domain.Music.MusicCandidate,System.Nullable`1<double>)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public UseAsync(VoxClip.Core.Domain.Music.MusicCandidate,System.Nullable`1<double>,string)
 member VoxClip.App.ViewModels.MusicPanelModel :: method public UsingRowId(VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.App.ViewModels.MusicPanelModel :: method public add_Changed(System.EventHandler)
 member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Audition()
@@ -6036,7 +6036,7 @@ member VoxClip.App.ViewModels.RewriteSession :: field private videoVoiceLab
 member VoxClip.App.ViewModels.RewriteSession :: field private videoVoiceMeasured
 member VoxClip.App.ViewModels.RewriteSession :: field private voiceIdentity
 member VoxClip.App.ViewModels.RewriteSession :: field private wordings
-member VoxClip.App.ViewModels.RewriteSession :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,int,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,VoxClip.App.ViewModels.RewriteConnector,System.Nullable`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<bool>,System.Func`2<string,bool>,VoxClip.Core.Domain.VoiceLab.RewriteScope)
+member VoxClip.App.ViewModels.RewriteSession :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,int,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,VoxClip.App.ViewModels.RewriteConnector,System.Nullable`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<bool>,System.Func`2<string,bool>,VoxClip.Core.Domain.VoiceLab.RewriteScope,string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AcceptSurroundingSentence(VoxClip.App.ViewModels.RewriteSentenceReview)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AcceptThreadWords(int,string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AddExpression(int,string,int)

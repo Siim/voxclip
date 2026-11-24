@@ -1180,9 +1180,12 @@ member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public get_Timing
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Apply
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Audio
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Check
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Confirm
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Draft
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Export
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Find
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Frames
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Ingest
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Opening
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Plan
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Probe
@@ -17337,6 +17340,22 @@ member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method private .cto
 member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method public Find(string)
 member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method public Load(string)
 member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method public get_Styles()
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method private .ctor(VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method private get_EqualityContract()
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public .ctor(string,string)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public Deconstruct(string&,string&)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public Equals(VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public Equals(object)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public ForWindows(string)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public GetHashCode()
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public ToString()
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public get_Confirmation()
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public get_Label()
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public op_Equality(VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice,VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public op_Inequality(VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice,VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public set_Confirmation(string)
+member VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice :: method public set_Label(string)
 member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method private .ctor(VoxClip.Core.Services.Settings.ClipsAutopilotSettings)
 member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method private get_EqualityContract()
@@ -19527,6 +19546,7 @@ type VoxClip.Core.Services.Project.WindowsRuntimeTerms
 type VoxClip.Core.Services.ServiceStub
 type VoxClip.Core.Services.Settings.AppSettings
 type VoxClip.Core.Services.Settings.CaptionStyleLibrary
+type VoxClip.Core.Services.Settings.ClaudeTranscriptionChoice
 type VoxClip.Core.Services.Settings.ClipsAutopilotSettings
 type VoxClip.Core.Services.Settings.ClipsMode
 type VoxClip.Core.Services.Settings.ClipsModeSettings

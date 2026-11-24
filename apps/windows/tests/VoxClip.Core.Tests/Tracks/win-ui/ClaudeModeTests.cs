@@ -189,6 +189,43 @@ public sealed class ClaudeModeTests
     }
 
     [Fact]
+    public async Task LaterPlansDoNotInterruptReviewOfTheFirstReadyClip()
+    {
+        var (editor, claude, stub) = Video();
+        var firstPlan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var laterPlans = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        editor.MakeIt.Services = stub.Services() with
+        {
+            Plan = async (request, progress, _, cancellation) =>
+            {
+                var series = stub.Series(request);
+                progress.Report(new ClipAutopilotProgress.Ready(0, series.Plans.Count, series.Plans[0]));
+                firstPlan.SetResult();
+                await laterPlans.Task.WaitAsync(cancellation);
+                return series;
+            }
+        };
+        await editor.ClaudeModeContinueAsync();
+        claude.Gate.SetResult();
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(5));
+            await firstPlan.Task.WaitAsync(deadline.Token);
+            while (editor.ClaudeModeReady.Count == 0) await Task.Delay(10, deadline.Token);
+            var reviewing = Assert.Single(editor.ClaudeModeReady).ClipId;
+            editor.ReviewClaudeMode();
+            laterPlans.SetResult();
+            await editor.ClaudeMode.WaitAsync();
+            await editor.ClaudeMode.WaitAsync();
+            Assert.Equal(3, editor.ClaudeModeReady.Count);
+            Assert.Equal(reviewing, editor.MakeIt.Shown?.ClipId);
+            Assert.Equal(reviewing, editor.Project.Edits.ActiveClipId);
+        }
+        finally { laterPlans.TrySetResult(); }
+    }
+
+    [Fact]
     public async Task AReopenedOrReadOnlyProjectNeverStarts()
     {
         var reopened = RewriteAutoFixTests.Editor();
@@ -362,7 +399,7 @@ public sealed class ClaudeModeTests
         var window = File.ReadAllText(Path.Combine(app, "MainWindow.xaml"));
         Assert.Contains("x:Name=\"ClaudeModeHost\"", window);
         var import = File.ReadAllText(Path.Combine(app, "MainWindow.xaml.cs"));
-        Assert.True(import.IndexOf("ArmClaudeMode()", StringComparison.Ordinal) is > 0 and var arm && arm < import.IndexOf("await incoming.PromptTranscriptionAsync()", StringComparison.Ordinal));
+        Assert.True(import.IndexOf("ArmClaudeMode(importClock)", StringComparison.Ordinal) is > 0 and var arm && arm < import.IndexOf("await incoming.PromptTranscriptionAsync()", StringComparison.Ordinal));
         var page = File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.MakeIt.cs"));
         Assert.Contains("FindClips.Started += (_, find) => ViewModel.ClaudeModeFindStarted(find)", page);
         var find = File.ReadAllText(Path.Combine(app, "Controls", "FindClipsJob.cs"));
@@ -370,7 +407,7 @@ public sealed class ClaudeModeTests
         var settings = File.ReadAllText(Path.Combine(app, "SettingsWindow.xaml"));
         Assert.Contains("Tag=\"Clips\"", settings);
         var card = File.ReadAllText(Path.Combine(app, "Controls", "ClipStyleCardPanel.cs"));
-        foreach (var row in new[] { "\"Clips\"", "\"Spend\"", "\"Tone\"", "\"Mode\"" }) Assert.Contains(row, card);
+        foreach (var row in new[] { "\"Clips\"", "\"Spend\"", "\"Tone\"", "\"Mode\"", "\"Transcript\"" }) Assert.Contains(row, card);
     }
 }
 #endif
