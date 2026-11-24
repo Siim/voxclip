@@ -2286,6 +2286,12 @@ Windows also preserves `colorAdjustments` when opening, saving or editing a Mac 
 
 ---
 
+### 6.10 Harness proposal assets
+
+Keeping a timeline proposal applies its local edits without sending requests. On Mac, asset rows read **Proposed illustration** or **Proposed sound effect**; Windows shows the prompt or query inline. **Find sound · free**, **Place saved illustration** or **Generate illustration · up to $X** is a separate click beside **Dismiss**. If pricing or a key is missing, keep **Generate illustration** disabled and show **Illustration pricing isn't available.** or **Add a fal.ai key in Settings to generate an illustration.** While checking, show **Checking for a fal.ai key…**. A changed project disables the action with **The edit changed. Ask for a new timeline proposal.** See [harness.md](harness.md) for the proposal and music review contracts.
+
+---
+
 ## 7. Home
 
 **macOS v2 export state.** The Explorer’s Exports section (§3.4) owns the trailing 11 pt `exclamationmark.triangle` in `status.warning` for Edited since export and Export failed. Exported has no glyph; a target with no ledger record has no Exports row. Clip rows have no export warning glyph. Export state remains in help and VoiceOver, and failed exports retain Retry in the Exports context menu (and Retry export in the clip context menu).
@@ -2393,6 +2399,12 @@ Opening a video makes it playable at once. On Mac v2, Transcribe is part of the 
 - A paid primary never focuses itself. Space plays; a Return must be fresh, not repeat, postdate the row and arrive at least 0.5 s after it appears or changes. ⌘Return approves from the block. Saving a key resets the guard. Esc in the block or ⌘. cancels the current download/run.
 - Running steps cover reading, extraction, upload, transcription and alignment, with progress and six skeleton lines. Before upload: “Nothing has been sent yet. Cancel now and nothing is billed.” After upload starts: “If you cancel now, ElevenLabs may still bill audio it already received.” Cancel discards partial results and keeps the video. The status bar suppresses the harness's cost item during a paid transcription and shows ElevenLabs' daily estimate plus pending spend; canceled/failed uploads remain an upper bound. These are estimates, not invoices.
 - **Transcribe Again…** opens the block above the existing transcript: “This replaces the transcript and removes {n} cuts, {m} corrections, {k} clips and the AI suggestions.” The neutral **Transcribe Again** action starts with focus on **Cancel** and has no default or ⌘Return shortcut. Cancel keeps every edit. For ElevenLabs it reads **Transcribe Again · ≈ $X**, stays neutral, and the explicit click approves the upload and replacement. Successful replacement clears the named edits and suggestions in one undo step, “Transcribe video”; failure or cancellation keeps them. Existing exports stay.
+
+---
+
+### 7.2 Card import (Mac)
+
+The primary reads **✦ Make clips from {n} new · up to ${cap}**. The offer reads “{connector} receives your transcript, recording names and selected still frames. Metered AI sends ask first. Voice and lip sync stay within the ${cap} card cap.” With no connector, keep the primary disabled and show **Choose an AI connector in Settings › AI.** Under **Pick recordings**, **Copy selected without making clips** needs no connector. First-use consent and metered requests are inline during import. The cap comes from the Clips spend-cap setting and stays fixed for the card. See [the footage spec](spec/footage.md).
 
 ---
 
