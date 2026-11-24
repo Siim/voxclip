@@ -127,9 +127,9 @@ import Testing
              {"kind":"illustration","startWord":3,"endWord":4,"prompt":"Cup of coffee","reason":"Show the subject."}]
             """.utf8))
         let plan = try #require(ClipAutopilotValidator.plan(.object(reply), context: Self.context(scope: 0...29)))
-        #expect(plan.effects?.map(\.kind) == [.motionTitle])
+        #expect(plan.effects?.map(\.kind) == [.motionTitle, .illustration])
         #expect(plan.effects?.first?.reason == "Name the subject.")
-        #expect(plan.repairs.filter { $0.field.hasPrefix("effects[") }.map(\.field) == ["effects[1]", "effects[2]"])
+        #expect(plan.repairs.filter { $0.field.hasPrefix("effects[") }.map(\.field) == ["effects[1]"])
     }
 
     // MARK: Request

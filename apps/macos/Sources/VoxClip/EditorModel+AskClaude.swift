@@ -11,6 +11,7 @@ struct AskClaudeRow: Identifiable, Equatable {
         case undone
         /// Needs a paid click first: a voice rewrite or generated music, with its price.
         case paid(price: String)
+        case asset(title: String, disabled: String?)
         /// The editor cannot render it yet (translated captions); the row says why and that nothing changed.
         case later(String)
         /// A speed for part of a clip, which plays at one speed (design.md §6.9): the row offers that speed for the whole
@@ -47,6 +48,8 @@ struct AskClaudeRow: Identifiable, Equatable {
     var label = ""
     var text = ""
     var asking = false
+    var assetWorking: String?
+    var illustrationKeyAvailable: Bool?
     var progress: String?
     var error: String?
     var run: AskClaudeRun?
@@ -232,7 +235,8 @@ extension EditorModel {
         }
         run.rows = answer.operations.map { operation in
             let status: AskClaudeRow.Status
-            if paid.contains(operation.id) { status = .paid(price: askClaudePrice(operation)) }
+            if case .asset(let asset) = operation.action { status = askAssetStatus(asset) }
+            else if paid.contains(operation.id) { status = .paid(price: askClaudePrice(operation)) }
             else if pending.contains(operation.id), case .stretch = operation.action, let clip = Self.stretchClip(operation, in: project) {
                 status = .wholeClip(clipID: clip)
             }
@@ -242,6 +246,19 @@ extension EditorModel {
                                 choice: answer.choices[operation.id])
         }
         askClaude.run = run
+        if answer.operations.contains(where: { if case .asset(let asset) = $0.action { asset.kind == .illustration } else { false } }) {
+            Task { [weak self] in
+                guard let self else { return }
+                let ready = await app.providerKeyStore.hasKey(for: "fal")
+                guard askClaude.run === run else { return }
+                askClaude.illustrationKeyAvailable = ready
+                for index in run.rows.indices {
+                    if case .asset(let asset) = run.rows[index].operation.action, case .asset = run.rows[index].status {
+                        run.rows[index].status = askAssetStatus(asset)
+                    }
+                }
+            }
+        }
         askClaude.selection = nil
         askClaude.text = ""
         let count = run.appliedCount
@@ -266,6 +283,9 @@ extension EditorModel {
             case .progress: return "Progress bar"
             case .freeze: return "Freeze frame"
             case .sound: return "Sound: \(effect.sound?.title ?? "effect")"
+            case .colourLook: return "Colour look"
+            case .speedForPart: return "Speed: \(Self.rate(effect.rate ?? 1))"
+            case .illustration: return "Illustration"
             }
         case .motion: return "Zoom in"
         case .edit(.correct): return "Fix a word"
@@ -274,6 +294,7 @@ extension EditorModel {
         case .stretch(_, _, _, let rate): return rate < 1 ? "Slow-mo \(Self.rate(rate))" : "Speed up \(Self.rate(rate))"
         case .translateCaptions(_, _, _, let language, _): return "Captions in \(Locale(identifier: "en").localizedString(forLanguageCode: language) ?? language)"
         case .music: return "Music change"
+        case .asset(let asset): return asset.kind == .sound ? "Sound effect" : "Illustration"
         case .musicDucking: return "Duck the music"
         default: return operation.decision.rawValue.capitalized
         }
@@ -297,6 +318,7 @@ extension EditorModel {
         case .stretch(_, let start, let end, _): return "\(Self.clock(start))\u{2013}\(Self.clock(end))"
         case .translateCaptions(_, _, _, _, let text): return "\u{201C}\(text)\u{201D}"
         case .music(let cue): return cue.picked.mood
+        case .asset: return operation.reason
         default: return operation.reason
         }
     }
@@ -350,6 +372,7 @@ extension EditorModel {
     static func sourceRange(_ operation: ClipAutopilotOperation, words: [TimedWord]) -> ClosedRange<Double>? {
         switch operation.action {
         case .effect(let effect): return effect.start...effect.end
+        case .asset(let asset): return asset.start...asset.end
         case .motion(let cue): return cue.sourceStart...cue.sourceEnd
         case .stretch(_, let start, let end, _): return start...end
         case .edit(.correct(let id, _)):
@@ -426,6 +449,7 @@ extension EditorModel {
         for operation in operations {
             switch operation.action {
             case .effect(let effect): effects.insert(effect.id)
+            case .asset(let asset): effects.insert(asset.id)
             case .motion(let cue): cues.append(cue)
             case .edit(.correct(let id, _)): next.edits.corrections[id] = base?.edits.corrections[id]
             case .edit(.cutSelection(let ids)):

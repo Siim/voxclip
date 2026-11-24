@@ -28,7 +28,7 @@ extension DebugRewriteSmoke {
     /// One op of the `ask_claude_ops` reply, every unused field at its empty value.
     nonisolated static func askOp(_ kind: String, _ fields: [String: Any] = [:]) -> [String: Any] {
         var value: [String: Any] = ["kind": kind, "startWord": -1, "endWord": -1, "start": -1, "end": -1, "text": "", "target": "", "x": 0, "y": 0,
-                                    "width": 0, "height": 0, "tracking": "", "position": "", "rate": 0, "scale": 0, "sound": "", "language": "",
+                                    "width": 0, "height": 0, "tracking": "", "position": "", "rate": 0, "scale": 0, "sound": "", "language": "", "query": "", "prompt": "", "look": "",
                                     "choice": "", "reason": "the user asked for it"]
         for (key, field) in fields { value[key] = field }
         return value
@@ -180,6 +180,7 @@ extension DebugRewriteSmoke {
         case .paid(let price): !price.isEmpty
         case .later(let reason): !reason.isEmpty
         case .wholeClip(let clip): !clip.isEmpty
+        case .asset(let title, _): !title.isEmpty
         }
     }
 

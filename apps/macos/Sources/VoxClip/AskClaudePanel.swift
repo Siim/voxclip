@@ -152,6 +152,12 @@ import VoxClipCore
             case .paid(let price):
                 PanelButton(action: PanelAction(id: "askClaude.paid.\(row.id)", title: price, priced: true) { model.runPaidAskClaudeRow(row.id) }, kind: .bordered)
                 note("Nothing is spent until you approve the exact price in the next step.")
+            case .asset(let title, let disabled):
+                PanelButton(action: PanelAction(id: "askClaude.asset.\(row.id)", title: title, priced: title.contains("$")) {
+                    model.runAskAsset(row.id)
+                }, kind: .bordered).disabled(disabled != nil || state.assetWorking != nil)
+                if let disabled { note(disabled) }
+                if state.assetWorking == row.id { note("Getting this effect…") }
             case .later(let reason): note(reason)
             case .wholeClip:
                 PanelButton(action: PanelAction(id: "askClaude.wholeClip.\(row.id)", title: EditorModel.wholeClipTitle(row.operation)) {

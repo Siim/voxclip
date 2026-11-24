@@ -179,7 +179,8 @@ extension EditorModel {
     func makeItClipTime(_ source: Double, clipID: String) -> String {
         guard let timeline = try? RenderCallerInputs.timeline(project: project, clipID: clipID) else { return AIText.formatTime(source) }
         let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
-        return AIText.formatTime(ClipSpeedTiming(speed: speed).rendered(timeline.mapTime(source)))
+        let timing = ClipSpeedTiming(speed: speed, timeline: timeline, effects: ClipEffects.rendered(in: project, clipID: clipID))
+        return AIText.formatTime(timing.rendered(timeline.mapTime(source)))
     }
 
     // MARK: The rows
