@@ -127,13 +127,18 @@ internal sealed class FindClipsJob
     internal event EventHandler<Task>? Started;
     private Task Start()
     {
+        if (starting || Running is not null || model.Busy || model.IsLeaving || model.State is null) return Task.CompletedTask;
+        FailureKind = null;
+        NeedsApproval = false;
         var task = FindAsync();
         Started?.Invoke(this, task);
         return task;
     }
 
     /// <summary>What the last find said when it failed; null otherwise.</summary>
-    internal string? FailureText => Callout?.Title;
+    internal string? FailureText => Callout is { } failure ? $"{failure.Title} {failure.Message}".Trim() : null;
+    internal LlmErrorKind? FailureKind { get; private set; }
+    internal bool NeedsApproval { get; private set; }
 
     /// <summary>Claude mode: starts a find with the job's defaults when the chosen AI needs no approval (a local server, or a CLI or
     /// key already allowed and not billed per send), and returns null; otherwise what blocks it, with its one fix.</summary>
@@ -188,7 +193,6 @@ internal sealed class FindClipsJob
 
     private async Task FindAsync()
     {
-        if (starting || Running is not null || model.Busy || model.IsLeaving || model.State is null) return;
         if (preset.SelectedIndex == 4 && string.IsNullOrWhiteSpace(instructions.Text))
         {
             Problem("Describe the clips you want.");
@@ -253,6 +257,7 @@ internal sealed class FindClipsJob
             if (!Current()) return;
             if (status is not ConnectorStatus.Ready)
             {
+                if (status is ConnectorStatus.CliSignedOut) FailureKind = LlmErrorKind.CliSignedOut;
                 Show(ClipCallouts.NotReady(chosen.Id, chosen.Label, status, CliHint(chosen, "installHint"), CliHint(chosen, "signInHint")));
                 return;
             }
@@ -277,7 +282,12 @@ internal sealed class FindClipsJob
             var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, selectedPreset,
                 instruction, state.Transcript.Language, chosen.Id, chosenModel);
             var result = await ConnectorPreflight.FindAsync(App.Services.ClipFinder, request, authorize, search.Token);
-            if (result is null || !Current()) return;
+            if (!Current()) return;
+            if (result is null)
+            {
+                NeedsApproval = !search.IsCancellationRequested;
+                return;
+            }
             // None found reads the prompt file's message (design §13), under Suggested.
             var noneFound = result.Clips.Count == 0 ? await ProviderCatalog.ClipMessageAsync("noResults", search.Token) ?? ClipAnnouncements.NoResults : null;
             if (!Current()) return;
@@ -346,6 +356,7 @@ internal sealed class FindClipsJob
     /// <summary>Any other failure (design §13). A cancelled run has no message and shows nothing.</summary>
     private void Fail(Exception exception)
     {
+        if (exception is LlmException failure) FailureKind = failure.Error.Kind;
         if (UiError.Message(exception, "Find clips") is { Length: > 0 } message) Show(ClipCallouts.Failed(message));
     }
 
