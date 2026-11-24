@@ -36,10 +36,27 @@ enum ProjectValidation {
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform")
-        let media = try object(root["media"], required: "source")
-        let source = try object(media["source"], required: "absolutePath relativePath sizeBytes durationSeconds contentKey video audio")
-        if source["video"] != .null { _ = try object(source["video"], required: "width height frameRate rotationDegrees") }
-        if source["audio"] != .null { _ = try object(source["audio"], required: "sampleRate channels") }
+        let media = try object(root["media"], required: "source", optional: isV4 ? "additionalSources footage" : "")
+        let additional = try media["additionalSources"].map { try array($0) } ?? []
+        try require(media["additionalSources"] == nil || !additional.isEmpty, "Empty companion source list")
+        var sourceKeys = Set<String>()
+        for raw in [media["source"] ?? .null] + additional {
+            let source = try object(raw, required: "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", optional: isV4 ? "recordingHash" : "")
+            if let hash = source["recordingHash"] { try require(hash.aiString.map { matches($0, hashPattern) } == true, "Invalid recording hash") }
+            if let key = (source["recordingHash"] ?? source["contentKey"])?.aiString {
+                try require(sourceKeys.insert(key).inserted, "Duplicate source recording")
+            }
+            if source["video"] != .null { _ = try object(source["video"], required: "width height frameRate rotationDegrees") }
+            if source["audio"] != .null { _ = try object(source["audio"], required: "sampleRate channels") }
+        }
+        if let footage = media["footage"] {
+            let entries = try array(footage)
+            try require(!entries.isEmpty, "Empty companion placement list")
+            for raw in entries {
+                let fields = try object(raw, required: "id clipID kind start end footage")
+                _ = try object(fields["footage"], required: "sourceKey start")
+            }
+        }
         if root["transcript"] != .null {
             let transcript = try object(root["transcript"], required: "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt")
             _ = try object(transcript["engine"], required: "id modelId modelSha256 engineVersion locale")
@@ -122,7 +139,7 @@ enum ProjectValidation {
         if let extensions = root["extensions"] { _ = try map(extensions) }
         if let demo = root["contextDemo"] {
             let document = try ContextDemoCodec.decode(ProjectJSON.encoder().encode(demo))
-            try require(root["id"] == .string(document.projectId) && source["contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
+            try require(root["id"] == .string(document.projectId) && media["source"]?[ai: "contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
         }
         if let cues = root["motionCues"] { try validateMotionCues(cues) }
         if let music = root["music"] { try MusicProject.validateWire(music) }
@@ -233,17 +250,26 @@ enum ProjectValidation {
         try text(project.title, max: 200)
         try require(project.savedBy.app == "VoxClip", "Invalid writer")
         try text(project.savedBy.version, pattern: "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?")
-        let source = project.media.source
-        try text(source.absolutePath, min: 1, max: 4096)
-        try text(source.relativePath, min: 1, max: 4096)
-        try require(source.relativePath?.contains("\\") != true && source.sizeBytes >= 0, "Invalid source reference")
-        try text(source.contentKey, pattern: hashPattern)
-        try number(source.durationSeconds)
-        if let video = source.video {
-            try require(video.width > 0 && video.height > 0 && [0, 90, 180, 270].contains(video.rotationDegrees), "Invalid video facts")
-            try number(video.frameRate, min: .leastNonzeroMagnitude)
+        for source in [project.media.source] + project.media.additionalSources {
+            try text(source.absolutePath, min: 1, max: 4096)
+            try text(source.relativePath, min: 1, max: 4096)
+            try require(source.relativePath?.contains("\\") != true && source.sizeBytes >= 0, "Invalid source reference")
+            try text(source.contentKey, pattern: hashPattern)
+            try number(source.durationSeconds)
+            if let video = source.video {
+                try require(video.width > 0 && video.height > 0 && [0, 90, 180, 270].contains(video.rotationDegrees), "Invalid video facts")
+                try number(video.frameRate, min: .leastNonzeroMagnitude)
+            }
+            if let audio = source.audio { try require(audio.sampleRate > 0 && audio.channels > 0, "Invalid audio facts") }
         }
-        if let audio = source.audio { try require(audio.sampleRate > 0 && audio.channels > 0, "Invalid audio facts") }
+        var media = ProjectMedia(source: project.media.source, additionalSources: project.media.additionalSources)
+        var placementIDs = Set<String>()
+        for entry in project.media.footage {
+            try text(entry.id, pattern: idPattern)
+            try text(entry.clipID, pattern: idPattern)
+            try text(entry.footage.sourceKey, pattern: hashPattern)
+            try require(placementIDs.insert(entry.id).inserted && media.setFootage(entry), "Invalid companion footage placement")
+        }
         if let transcript = project.transcript {
             try require(transcript.schemaVersion == 1 && transcript.pipelineVersion >= 1, "Invalid transcript version")
             try number(transcript.durationSeconds)

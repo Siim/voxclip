@@ -421,6 +421,8 @@ attribute VoxClip.Core.Domain.Shared.ExportQuality :: field public High @ System
 attribute VoxClip.Core.Domain.Shared.ExportQuality :: field public Standard @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("standard")
 attribute VoxClip.Core.Domain.Shared.ExportQuality @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Shared.ExportQuality], System.Text.Json")
 attribute VoxClip.Core.Domain.Shared.FrameRate @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Shared.FrameRateJsonConverter")
+attribute VoxClip.Core.Domain.Shared.MediaReference :: property FootageKey @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Shared.MediaReference :: property RecordingHash @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property CaptionTranslations @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipControls @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipEffects @ System.Text.Json.Serialization.JsonIgnoreAttribute()
@@ -441,6 +443,7 @@ attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMusic @ System
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMusic @ System.Text.Json.Serialization.JsonPropertyNameAttribute("music")
 attribute VoxClip.Core.Domain.Shared.Project :: property Title @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project @ System.Text.Json.Serialization.JsonUnmappedMemberHandlingAttribute(1)
+attribute VoxClip.Core.Domain.Shared.ProjectFootage :: property ClipId @ System.Text.Json.Serialization.JsonPropertyNameAttribute("clipID")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Captions.CaptionStyle")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Captions.CaptionTrack")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Clips.AiResult")
@@ -452,6 +455,8 @@ attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Seria
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Shared.Project")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Shared.TimedWord")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSourceGenerationOptionsAttribute(NewLine="\n",PropertyNamingPolicy=1,WriteIndented=true,UnmappedMemberHandling=1,RespectRequiredConstructorParameters=true,RespectNullableAnnotations=true,Converters=["VoxClip.Core.Domain.Shared.UtcTimestampConverter"])
+attribute VoxClip.Core.Domain.Shared.ProjectMedia :: property AdditionalSources @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Shared.ProjectMedia :: property Footage @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.ReframeSettings :: property CenterX @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.ReframeSettings :: property CenterY @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.VoiceLabPlaceholder :: property Assets @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -2489,8 +2494,10 @@ member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: field public MaximumEntri
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method internal Operation(string,string,VoxClip.Core.Domain.Autopilot.WordSpan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlySet`1<int>,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method internal ProviderEntry(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private .ctor(string,int,int,string,string,System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private Footage(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private Line(System.Text.Json.Nodes.JsonNode,int)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private PayloadKey(string)
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public FootagePlacement(string,string,VoxClip.Core.Domain.Autopilot.WordSpan,System.Func`2<int,System.Nullable`1<System.ValueTuple`2<double,double>>>,System.Func`2<int,bool>,System.Collections.Generic.IReadOnlyDictionary`2<string,double>)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public Operation(string,string,VoxClip.Core.Domain.Autopilot.WordSpan,System.Func`2<int,System.Nullable`1<System.ValueTuple`2<double,double>>>,System.Func`2<int,bool>,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public Read(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public ToJson()
@@ -8511,6 +8518,21 @@ member VoxClip.Core.Domain.Shared.ExportTarget+FullEdit :: method public GetHash
 member VoxClip.Core.Domain.Shared.ExportTarget+FullEdit :: method public ToString()
 member VoxClip.Core.Domain.Shared.ExportTarget+FullEdit :: method public op_Equality(VoxClip.Core.Domain.Shared.ExportTarget+FullEdit,VoxClip.Core.Domain.Shared.ExportTarget+FullEdit)
 member VoxClip.Core.Domain.Shared.ExportTarget+FullEdit :: method public op_Inequality(VoxClip.Core.Domain.Shared.ExportTarget+FullEdit,VoxClip.Core.Domain.Shared.ExportTarget+FullEdit)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method private .ctor(VoxClip.Core.Domain.Shared.FootageSelection)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public .ctor(string,double)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public Deconstruct(string&,double&)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public Equals(VoxClip.Core.Domain.Shared.FootageSelection)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public Equals(object)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public GetHashCode()
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public ToString()
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public get_SourceKey()
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public get_Start()
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public op_Equality(VoxClip.Core.Domain.Shared.FootageSelection,VoxClip.Core.Domain.Shared.FootageSelection)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public op_Inequality(VoxClip.Core.Domain.Shared.FootageSelection,VoxClip.Core.Domain.Shared.FootageSelection)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public set_SourceKey(string)
+member VoxClip.Core.Domain.Shared.FootageSelection :: method public set_Start(double)
 member VoxClip.Core.Domain.Shared.FrameRate :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Shared.FrameRate :: method public .ctor(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Shared.FrameRate :: method public Deconstruct(System.Nullable`1<double>&)
@@ -8594,6 +8616,8 @@ member VoxClip.Core.Domain.Shared.MediaReference :: method public get_AbsolutePa
 member VoxClip.Core.Domain.Shared.MediaReference :: method public get_Audio()
 member VoxClip.Core.Domain.Shared.MediaReference :: method public get_ContentKey()
 member VoxClip.Core.Domain.Shared.MediaReference :: method public get_DurationSeconds()
+member VoxClip.Core.Domain.Shared.MediaReference :: method public get_FootageKey()
+member VoxClip.Core.Domain.Shared.MediaReference :: method public get_RecordingHash()
 member VoxClip.Core.Domain.Shared.MediaReference :: method public get_RelativePath()
 member VoxClip.Core.Domain.Shared.MediaReference :: method public get_SizeBytes()
 member VoxClip.Core.Domain.Shared.MediaReference :: method public get_Video()
@@ -8603,6 +8627,7 @@ member VoxClip.Core.Domain.Shared.MediaReference :: method public set_AbsolutePa
 member VoxClip.Core.Domain.Shared.MediaReference :: method public set_Audio(VoxClip.Core.Domain.Shared.AudioTrackInfo)
 member VoxClip.Core.Domain.Shared.MediaReference :: method public set_ContentKey(string)
 member VoxClip.Core.Domain.Shared.MediaReference :: method public set_DurationSeconds(double)
+member VoxClip.Core.Domain.Shared.MediaReference :: method public set_RecordingHash(string)
 member VoxClip.Core.Domain.Shared.MediaReference :: method public set_RelativePath(string)
 member VoxClip.Core.Domain.Shared.MediaReference :: method public set_SizeBytes(long)
 member VoxClip.Core.Domain.Shared.MediaReference :: method public set_Video(VoxClip.Core.Domain.Shared.VideoTrackInfo)
@@ -8843,6 +8868,30 @@ member VoxClip.Core.Domain.Shared.ProjectExport :: method public set_Aspect(VoxC
 member VoxClip.Core.Domain.Shared.ProjectExport :: method public set_Folder(string)
 member VoxClip.Core.Domain.Shared.ProjectExport :: method public set_Quality(VoxClip.Core.Domain.Shared.ExportQuality)
 member VoxClip.Core.Domain.Shared.ProjectExport :: method public set_Srt(bool)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method private .ctor(VoxClip.Core.Domain.Shared.ProjectFootage)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public .ctor(string,string,string,double,double,VoxClip.Core.Domain.Shared.FootageSelection)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public Deconstruct(string&,string&,string&,double&,double&,VoxClip.Core.Domain.Shared.FootageSelection&)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public Equals(VoxClip.Core.Domain.Shared.ProjectFootage)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public Equals(object)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public Fits(double)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public GetHashCode()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public ToString()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public get_ClipId()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public get_End()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public get_Footage()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public get_Id()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public get_Kind()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public get_Start()
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public op_Equality(VoxClip.Core.Domain.Shared.ProjectFootage,VoxClip.Core.Domain.Shared.ProjectFootage)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public op_Inequality(VoxClip.Core.Domain.Shared.ProjectFootage,VoxClip.Core.Domain.Shared.ProjectFootage)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public set_End(double)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public set_Footage(VoxClip.Core.Domain.Shared.FootageSelection)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public set_Id(string)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public set_Kind(string)
+member VoxClip.Core.Domain.Shared.ProjectFootage :: method public set_Start(double)
 member VoxClip.Core.Domain.Shared.ProjectJsonContext :: field private InstanceMemberBindingFlags
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method private .ctor(VoxClip.Core.Domain.Shared.ProjectMedia)
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method private PrintMembers(System.Text.StringBuilder)
@@ -8853,9 +8902,13 @@ member VoxClip.Core.Domain.Shared.ProjectMedia :: method public Equals(VoxClip.C
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public Equals(object)
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public GetHashCode()
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public ToString()
+member VoxClip.Core.Domain.Shared.ProjectMedia :: method public get_AdditionalSources()
+member VoxClip.Core.Domain.Shared.ProjectMedia :: method public get_Footage()
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public get_Source()
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public op_Equality(VoxClip.Core.Domain.Shared.ProjectMedia,VoxClip.Core.Domain.Shared.ProjectMedia)
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public op_Inequality(VoxClip.Core.Domain.Shared.ProjectMedia,VoxClip.Core.Domain.Shared.ProjectMedia)
+member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_AdditionalSources(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.MediaReference>)
+member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_Footage(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.ProjectFootage>)
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_Source(VoxClip.Core.Domain.Shared.MediaReference)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method private ValidateV3EnumWire(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method public Deserialize(string)
@@ -17420,6 +17473,38 @@ member VoxClip.Core.Services.Project.DataLocations :: method public set_Models(s
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Root(string)
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Secrets(string)
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Settings(string)
+member VoxClip.Core.Services.Project.HarnessException :: method public .ctor(string)
+member VoxClip.Core.Services.Project.HarnessProposal :: field public MaximumBytes
+member VoxClip.Core.Services.Project.HarnessProposal :: method private Revision(VoxClip.Core.Domain.Shared.Project,bool)
+member VoxClip.Core.Services.Project.HarnessProposal :: method private WriteCanonical(System.Text.Json.Nodes.JsonNode,System.Text.Json.Utf8JsonWriter)
+member VoxClip.Core.Services.Project.HarnessProposal :: method private get_BaseRevision()
+member VoxClip.Core.Services.Project.HarnessProposal :: method private get_Id()
+member VoxClip.Core.Services.Project.HarnessProposal :: method private get_ProjectId()
+member VoxClip.Core.Services.Project.HarnessProposal :: method public .ctor(VoxClip.Core.Services.Project.HarnessTimeline,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public Applying(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public EstimatedMusicPrice(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public ToJson()
+member VoxClip.Core.Services.Project.HarnessTimeline :: field private CutKeys
+member VoxClip.Core.Services.Project.HarnessTimeline :: field private Keys
+member VoxClip.Core.Services.Project.HarnessTimeline :: field private SupportedEffects
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_CaptionStyle()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_ClipId()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Cuts()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Effects()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_MusicTrackId()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Title()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Wire()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private .cctor()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private .ctor(System.Text.Json.JsonElement,string,string,string,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.WordSpan>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipPlanEffect>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private Index(System.Text.Json.JsonElement,string)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private InvalidTimeline()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private Items(System.Text.Json.JsonElement,string,int)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private ReadCut(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private ReadEffect(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private Text(System.Text.Json.JsonElement,string,System.Nullable`1<int>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public Read(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public RequireObject(System.Text.Json.JsonElement,System.Collections.Generic.IReadOnlyCollection`1<string>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public get_GenerateMusic()
 member VoxClip.Core.Services.Project.IProjectStore :: method public ComputeContentKeyAsync(string,System.IProgress`1<double>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.IProjectStore :: method public LoadAsync(string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.IProjectStore :: method public RelinkAsync(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.Shared.MediaInfo,bool,System.Threading.CancellationToken)
@@ -19351,6 +19436,7 @@ type VoxClip.Core.Domain.Shared.ExportResult
 type VoxClip.Core.Domain.Shared.ExportTarget
 type VoxClip.Core.Domain.Shared.ExportTarget+Clip
 type VoxClip.Core.Domain.Shared.ExportTarget+FullEdit
+type VoxClip.Core.Domain.Shared.FootageSelection
 type VoxClip.Core.Domain.Shared.FrameRate
 type VoxClip.Core.Domain.Shared.FrameRateJsonConverter
 type VoxClip.Core.Domain.Shared.IRedactor
@@ -19369,6 +19455,7 @@ type VoxClip.Core.Domain.Shared.ProjectAi
 type VoxClip.Core.Domain.Shared.ProjectCaptions
 type VoxClip.Core.Domain.Shared.ProjectEdits
 type VoxClip.Core.Domain.Shared.ProjectExport
+type VoxClip.Core.Domain.Shared.ProjectFootage
 type VoxClip.Core.Domain.Shared.ProjectJsonContext
 type VoxClip.Core.Domain.Shared.ProjectMedia
 type VoxClip.Core.Domain.Shared.ProjectSerialization
@@ -19948,6 +20035,9 @@ type VoxClip.Core.Services.Project.CacheKeyLease
 type VoxClip.Core.Services.Project.CacheKeyRegistry
 type VoxClip.Core.Services.Project.CacheTimestampConverter
 type VoxClip.Core.Services.Project.DataLocations
+type VoxClip.Core.Services.Project.HarnessException
+type VoxClip.Core.Services.Project.HarnessProposal
+type VoxClip.Core.Services.Project.HarnessTimeline
 type VoxClip.Core.Services.Project.IProjectStore
 type VoxClip.Core.Services.Project.IRuntimeAgreementFiles
 type VoxClip.Core.Services.Project.ProjectOpenResult

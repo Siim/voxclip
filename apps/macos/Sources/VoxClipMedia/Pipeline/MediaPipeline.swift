@@ -172,6 +172,7 @@ public struct CompositionBuilder: Sendable {
         try EffectAudio.freeze(request, video: video, sourceVideo: sourceVideo, videoRange: videoRange, nominalRate: nominalRate, duration: duration)
         let demos = try await ContextDemoCompositionRoute.insert(request, into: composition, scratchRoot: scratchRoot)
         let lipsync = try await LipsyncComposition.insert(request, into: composition, scratchRoot: scratchRoot)
+        let footage = try await FootageLayer.insert(request, into: composition)
         var lease: VoiceLabRenderLease?
         if synthetic {
             guard sourceAudio != nil, let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
@@ -223,7 +224,7 @@ public struct CompositionBuilder: Sendable {
         }
         let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
             orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
-            demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync,
+            demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync, footageLayers: footage,
             includeDisclosure: includeDisclosure, colorCorrection: colorCorrection, previewFailures: previewFailures)
         let size = videoComposition.renderSize
         let frameDuration = videoComposition.frameDuration
@@ -269,7 +270,7 @@ public struct CompositionBuilder: Sendable {
                               orientation: CGImagePropertyOrientation, videoSpans: [CompositionVideoSpan] = [],
                               demoLayers: [CompositionDemoLayer] = [],
                               contextDemoLease: ContextDemoCompositionLease? = nil,
-                              lipsyncLayers: [LipsyncVideoLayer] = [], includeDisclosure: Bool = true,
+                              lipsyncLayers: [LipsyncVideoLayer] = [], footageLayers: [FootageLayer] = [], includeDisclosure: Bool = true,
                               colorCorrection: (scale: Double, bias: Double)? = nil,
                               previewFailures: PreviewFrameFailures? = nil) throws -> AVVideoComposition {
         let size = CGSize(width: request.output.size.width, height: request.output.size.height)
@@ -297,7 +298,8 @@ public struct CompositionBuilder: Sendable {
         let framingSpans = videoSpans.filter { $0.zoom > 1 }
         let boundaries = ([CMTime.zero, duration] + framingSpans.flatMap { [$0.output.start, $0.output.end] } +
             demoLayers.flatMap { [$0.output.start, $0.output.end] } +
-            lipsyncLayers.flatMap { [$0.output.start, $0.output.end] }).sorted().reduce(into: [CMTime]()) { result, time in
+            lipsyncLayers.flatMap { [$0.output.start, $0.output.end] } +
+            footageLayers.flatMap { [$0.output.start, $0.output.end] }).sorted().reduce(into: [CMTime]()) { result, time in
                 if result.last != time { result.append(time) }
             }
         var spanIndex = 0, layerIndex = 0
@@ -323,7 +325,8 @@ public struct CompositionBuilder: Sendable {
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
                 videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5,
                 lipsyncLayers: lipsyncLayers.filter { $0.output.start < end && $0.output.end > start }, colorCorrection: colorCorrection,
-                effects: effects, previewFailures: request.forPreview ? previewFailures : nil, captionDrawHook: captionDrawHook)
+                effects: effects, previewFailures: request.forPreview ? previewFailures : nil, captionDrawHook: captionDrawHook,
+                footage: footageLayers.first { $0.output.start <= start && $0.output.end > start })
         }
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,

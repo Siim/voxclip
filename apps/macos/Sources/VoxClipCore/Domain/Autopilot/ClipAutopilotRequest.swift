@@ -51,12 +51,14 @@ public struct ClipAutopilotRequest: Sendable, Equatable {
     /// plan is told its rank, its title and idea, and the other clips of the series, as a series' second stage is. Empty
     /// plans each span on its own.
     public var moments: [ClipAutopilotMoment]
+    public var footageSources: [MediaReference]
 
     public init(transcript: Transcript, edits: ProjectEdits = ProjectEdits(), mode: Mode,
                 captionPreference: ClipAutopilotCaptionPreference? = nil, language: String? = nil, note: String? = nil,
-                tone: ClipAutopilotTone? = nil, moments: [ClipAutopilotMoment] = []) {
+                tone: ClipAutopilotTone? = nil, moments: [ClipAutopilotMoment] = [], footageSources: [MediaReference] = []) {
         self.transcript = transcript; self.edits = edits; self.mode = mode; self.captionPreference = captionPreference
         self.language = language; self.note = note; self.tone = tone; self.moments = moments
+        self.footageSources = footageSources
     }
 
     public var isSeries: Bool { if case .series = mode { true } else { false } }
@@ -110,14 +112,16 @@ public struct ClipAutopilotContext: Sendable {
     public let tone: ClipAutopilotTone?
     /// The frames the request carried (ADR-R48): the candidates the reply's `frames` may name. Nil without frames.
     public let frames: ClipAutopilotFrames?
+    public let footageSources: [String: Double]
 
     public init(words: [TimedWord], corrections: [String: String] = [:], cutWordIDs: Set<String> = [], pauses: [Pause] = [],
                 cutPauseIDs: Set<String> = [], pauseKeepSeconds: Double = 0.15, scope: ClosedRange<Int>, styleIDs: Set<String>,
                 fonts: [ClipAutopilotPlan.Font: String], preference: ClipAutopilotCaptionPreference? = nil, prompt: ClipAutopilotPrompt,
-                tone: ClipAutopilotTone? = nil, frames: ClipAutopilotFrames? = nil) {
+                tone: ClipAutopilotTone? = nil, frames: ClipAutopilotFrames? = nil, footageSources: [String: Double] = [:]) {
         self.words = words; self.corrections = corrections; self.cutWordIDs = cutWordIDs; self.pauses = pauses
         self.cutPauseIDs = cutPauseIDs; self.pauseKeepSeconds = pauseKeepSeconds; self.scope = scope; self.styleIDs = styleIDs
         self.fonts = fonts; self.preference = preference; self.prompt = prompt; self.tone = tone; self.frames = frames
+        self.footageSources = footageSources
     }
 
     /// The word as shown, corrections applied.
@@ -138,14 +142,14 @@ public struct ClipAutopilotContext: Sendable {
         for correction in plan { merged[words[correction.word].id] = correction.text }
         return ClipAutopilotContext(words: words, corrections: merged, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
                                     pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts,
-                                    preference: preference, prompt: prompt, tone: tone, frames: frames)
+                                    preference: preference, prompt: prompt, tone: tone, frames: frames, footageSources: footageSources)
     }
 
     /// This context for a request that carried `frames`.
     func showing(_ frames: ClipAutopilotFrames?) -> ClipAutopilotContext {
         ClipAutopilotContext(words: words, corrections: corrections, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
                              pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts, preference: preference,
-                             prompt: prompt, tone: tone, frames: frames)
+                             prompt: prompt, tone: tone, frames: frames, footageSources: footageSources)
     }
 }
 

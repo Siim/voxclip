@@ -131,6 +131,7 @@ struct ExportRecord: Codable, Equatable {
         let motionCues: [MotionCue]?
         /// Absent without effects, so a project without them keeps its fingerprint.
         let effects: [ClipEffect]?
+        let footage: [ClipFootage]?
         /// Absent at the defaults, so a fingerprint without clip controls is unchanged.
         let clipControls: ProjectClipControls?
     }
@@ -212,7 +213,10 @@ struct ExportRecord: Codable, Equatable {
             contextDemo: project.contextDemo, motionCues: clip.flatMap { selected in
                 let cues = project.motionCues.filter { $0.clipID == selected.id }
                 return cues.isEmpty ? nil : cues
-            }, effects: effects.isEmpty ? nil : effects,
+            }, effects: effects.isEmpty ? nil : effects, footage: clip.flatMap { selected in
+                let footage = project.media.footage.filter { $0.clipID == selected.id }
+                return footage.isEmpty ? nil : footage
+            },
                clipControls: ClipControlsProject.controls(for: clip?.id, in: project).flatMap { $0.isDefault ? nil : $0 })
         let encoder = ProjectJSON.encoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

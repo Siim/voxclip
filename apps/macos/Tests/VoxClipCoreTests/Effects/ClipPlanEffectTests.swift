@@ -3,6 +3,20 @@ import Testing
 @testable import VoxClipCore
 
 @Suite(.offlineFixtures) struct ClipPlanEffectTests {
+    @Test func sharedFootageEntriesAreRecognised() throws {
+        let vectors = try JSONDecoder().decode([JSONValue].self, from: FixtureLoader.data("fixtures/clip-effects/footage-cases.json"))
+        for raw in vectors {
+            let fields = try #require(raw.aiObject)
+            let entry = ClipPlanEffect.read(.object(fields.filter { !["duration", "placement", "invalid"].contains($0.key) }))
+            #expect((entry == nil) == (fields["invalid"] == .bool(true)))
+            let operation = entry?.operation(id: "extra", clipID: "clip", scope: 0...1,
+                anchor: { Double($0) / 2..<(Double($0) / 2 + 0.5) }, stickers: [],
+                sources: ["demo": fields["duration"]?.aiDouble ?? 0])
+            #expect((operation != nil) == (fields["placement"] == .bool(true)))
+            if let entry { #expect(try JSONDecoder().decode(ClipPlanEffect.self, from: JSONEncoder().encode(entry)) == entry) }
+        }
+    }
+
     private struct Vectors: Decodable {
         struct Word: Decodable { let start: Double; let end: Double }
         struct Vector: Decodable {

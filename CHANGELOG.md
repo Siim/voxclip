@@ -6,6 +6,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - On Windows, reopen Rewrite on the same passage to get back the review for your unused paid takes without asking the AI again.
 - On Windows, choose your Music folder, see the track and its fades in the timeline, and add music to videos with no sound.
+- On Windows, revoicing a whole clip in your selected voice no longer rejects or retries a paid take just because it sounds different. Source voice, word and audio checks still apply.
+- On Mac, import new recordings from a card or folder, find the best moments across the shoot, add footage from another recording, and review local checks after export.
+- On Windows, Claude Code and Codex can read a saved VoxClip project and stage a timeline proposal without changing the project or spending money.
 - Claude can add credited sound effects, illustrations within your spend cap, colour looks and speed changes on individual beats. Ask Claude can make the same edits.
 - On Mac and Windows, changed phrases use your selected voice without rejecting paid takes on a second voice comparison. Word and audio checks still run.
 - Mac adds VoxConvo account and export controls for direct posting, disabled until VoxConvo's device sign-in is ready.

@@ -61,7 +61,7 @@ public enum ClipAutopilotValidator {
         for (index, raw) in entries.prefix(ClipPlanEffect.maximumEntries).enumerated() {
             guard let entry = ClipPlanEffect.providerEntry(raw),
                   entry.operation(id: "validate", clipID: "clip", scope: span, words: context.words, cut: cut,
-                                  tightenedAfter: tightenedAfter, stickers: context.prompt.stickers) != nil else {
+                                  tightenedAfter: tightenedAfter, stickers: context.prompt.stickers, sources: context.footageSources) != nil else {
                 log.drop("effects[\(index)]", "invalid effect or not on a kept phrase")
                 continue
             }

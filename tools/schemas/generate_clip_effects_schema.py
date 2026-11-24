@@ -107,6 +107,19 @@ def definitions():
 
 def main():
     schema = json.loads(PATH.read_text())
+    media = schema['properties']['media']['properties']
+    media['additionalSources'] = {'type': 'array', 'minItems': 1, 'items': {'$ref': '#/$defs/mediaReference'}}
+    media['footage'] = {'type': 'array', 'minItems': 1, 'items': {'$ref': '#/$defs/clipFootage'}}
+    schema['$defs']['mediaReference']['properties']['recordingHash'] = {'type': 'string', 'pattern': '^[0-9a-f]{64}$'}
+    schema['$defs']['clipFootage'] = {
+        'type': 'object', 'additionalProperties': False,
+        'required': ['id', 'clipID', 'kind', 'start', 'end', 'footage'],
+        'properties': {'id': {'type': 'string'}, 'clipID': {'type': 'string'},
+                       'kind': {'enum': ['bRoll', 'screenshot', 'videoStack']},
+                       'start': {'type': 'number', 'minimum': 0}, 'end': {'type': 'number', 'minimum': 0},
+                       'footage': {'type': 'object', 'additionalProperties': False, 'required': ['sourceKey', 'start'],
+                                   'properties': {'sourceKey': {'type': 'string', 'pattern': '^[0-9a-f]{64}$'},
+                                                  'start': {'type': 'number', 'minimum': 0}}}}}
     for name, value in definitions().items():
         schema['$defs'][name] = value
     schema['properties']['clipEffects'] = {
@@ -115,6 +128,13 @@ def main():
     for rule in schema['allOf']:
         excluded = rule.get('then', {}).get('not', {}).get('anyOf')
         if excluded is not None and {'required': ['contextDemo']} in excluded:
+            for key in ('additionalSources', 'footage'):
+                exclusion = {'properties': {'media': {'required': [key]}}}
+                if exclusion not in excluded:
+                    excluded.append(exclusion)
+            exclusion = {'properties': {'media': {'properties': {'source': {'required': ['recordingHash']}}}}}
+            if exclusion not in excluded:
+                excluded.append(exclusion)
             if {'required': ['clipEffects']} not in excluded:
                 excluded.append({'required': ['clipEffects']})
             break

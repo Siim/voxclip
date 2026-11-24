@@ -15,11 +15,12 @@ import VoxClipCore
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 notices
-                if app.recent.isEmpty && shell.isHome {
+                if app.recent.isEmpty && shell.isHome && shell.cardImport.folder == nil {
                     hero
                 } else {
                     dropBar
-                    callouts
+                    if shell.cardImport.folder != nil { CardImportView(shell: shell).padding(.top, VCTokens.spacing5) }
+                    else { callouts }
                     recentHeader.padding(.top, VCTokens.spacing7)
                     recentGrid.padding(.top, VCTokens.spacingGroupGap)
                 }
@@ -30,6 +31,9 @@ import VoxClipCore
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(DesignValues.color("bg.surface"))
+        .task { shell.cardImport.removableCards() }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in shell.cardImport.removableCards() }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didUnmountNotification)) { _ in shell.cardImport.removableCards() }
         .task(id: app.recent) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.bool("general.showPlaceholderWords", fallback: true)) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.string("captions.defaultStyleId", fallback: "vox-highlight")) { app.recentProjects.refresh(app.recent) }
@@ -57,7 +61,7 @@ import VoxClipCore
     private var dropBar: some View {
         HStack(spacing: VCTokens.spacing4) {
             Image(systemName: "square.and.arrow.down").font(.system(size: 17)).foregroundStyle(DesignValues.color("text.secondary"))
-            Text("Drop a talking-head video, or")
+            Text("Drop a talking-head video or a folder, or")
             importButtons
             Spacer(minLength: VCTokens.spacing4)
             Label("\(Self.types) · stays on this Mac", systemImage: "lock")
@@ -69,13 +73,13 @@ import VoxClipCore
         .background(DesignValues.color("bg.sunken"), in: .rect(cornerRadius: VCTokens.radiusSheet))
         .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusSheet).strokeBorder(DesignValues.color("line.strong"), style: Self.dashedStroke))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Import a video. You can also drop a video anywhere in this window.")
+        .accessibilityLabel("Import a video or folder. You can also drop one anywhere in this window.")
     }
 
     private var hero: some View {
         VStack(spacing: VCTokens.spacing3) {
             Image(systemName: "square.and.arrow.down").font(.system(size: 28)).foregroundStyle(DesignValues.color("text.secondary"))
-            Text("Drop a talking-head video").font(.title)
+            Text("Drop a talking-head video or folder").font(.title)
             Text("VoxClip transcribes it so you can cut by words, make clips and add captions.")
                 .foregroundStyle(DesignValues.color("text.secondary")).multilineTextAlignment(.center)
             importButtons.padding(.top, VCTokens.spacing3)
