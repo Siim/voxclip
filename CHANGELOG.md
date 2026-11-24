@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac, AI settings warn when your fal.ai key can't delete finished lip syncs. Your result is kept on this Mac, and fal.ai's copy stays until it expires.
+- ✦ Claude does it all stops when Find Clips needs your help, including when the selected model isn't available. It retries temporary connection problems up to three times, then shows what to do next.
 - On Mac, VoxClip picks the newest compatible Codex CLI, offers to update an older pinned copy, and only saves a new Codex model after Test Connection passes. GPT-6.2 Sol and Astra are in the Mac and Windows catalogs.
 - If word alignment fails after ElevenLabs returns a transcript, VoxClip keeps the words and offers a free Retry without uploading the audio again.
 

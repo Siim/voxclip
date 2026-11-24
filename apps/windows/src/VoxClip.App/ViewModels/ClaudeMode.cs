@@ -1,3 +1,4 @@
+using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Settings;
 
 namespace VoxClip.App.ViewModels;
@@ -13,6 +14,7 @@ public abstract record ClaudeModeBlocker(string Reason)
 {
     /// <summary>No AI is chosen, or the chosen one isn't ready: Settings › Providers &amp; Keys.</summary>
     public sealed record SetUp(string Text) : ClaudeModeBlocker(Text);
+    public sealed record AiSettings(string Text) : ClaudeModeBlocker(Text);
     /// <summary>The chosen AI asks before each send (a first use, or a key that bills it): Find Clips asks inline.</summary>
     public sealed record ApproveSend(string Text) : ClaudeModeBlocker(Text);
     /// <summary>Find Clips failed or found nothing: Find Clips again.</summary>
@@ -22,6 +24,7 @@ public abstract record ClaudeModeBlocker(string Reason)
     public string Action => this switch
     {
         SetUp => "Set Up Claude…",
+        AiSettings => "AI Settings…",
         ApproveSend => "Find Clips",
         _ => "Find Clips Again"
     };
@@ -55,6 +58,10 @@ public sealed record ClaudeModeServices(
     Func<Task<ClaudeModeBlocker?>> FindIfFree,
     Action<ClaudeModeBlocker> Fix)
 {
+    public Func<LlmErrorKind?>? FindErrorKind { get; init; }
+    public Func<bool>? FindNeedsApproval { get; init; }
+    public Func<TimeSpan, Task> WaitForRetry { get; init; } = delay => Task.Delay(delay);
+
     /// <summary>Writes one info line to the app log (category <c>claude-mode</c>): the run's stage timings, numbers only.</summary>
     public Action<string>? Log { get; init; }
 }
@@ -84,6 +91,9 @@ public sealed class ClaudeModeState
     public Core.Domain.Autopilot.ClaudeModeClock? Clock { get; internal set; }
     /// <summary>A Find Clips ran on this video since it was armed.</summary>
     public bool Searched { get; internal set; }
+    internal int FindRevision { get; set; }
+    internal int FindRetries { get; set; }
+    internal bool FindPending { get; set; }
     public ClaudeModeServices? Services { get; set; }
     /// <summary>The run, from the start to the last clip.</summary>
     internal Task? Task { get; set; }
@@ -93,7 +103,11 @@ public sealed class ClaudeModeState
     /// <summary>Waits until the run and any continuation after Find Clips have ended (tests and the smoke).</summary>
     public async Task WaitAsync()
     {
-        if (AfterFind is { } after) await after;
+        while (AfterFind is { } after)
+        {
+            await after;
+            if (ReferenceEquals(AfterFind, after)) break;
+        }
         if (Task is { } run) await run;
     }
 }
