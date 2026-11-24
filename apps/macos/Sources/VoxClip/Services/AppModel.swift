@@ -311,6 +311,8 @@ extension ProviderChoice {
     let falLipsyncCleanupNotice = FalLipsyncCleanupNotice()
     @ObservationIgnored lazy var captions = CaptionHandoff(shared: shared)
     @ObservationIgnored lazy var exportLedger = ExportLedger(file: locations.root.appendingPathComponent("exports.json"))
+    @ObservationIgnored lazy var postingHelpArchive = PostingHelpArchive(root: locations.root.appendingPathComponent("PostingHelp", isDirectory: true))
+    @ObservationIgnored lazy var voxConvo = VoxConvoConnection(secrets: secrets)
     @ObservationIgnored lazy var appleSpeechAssets = AppleSpeechAssetLibrary(app: self)
 
     /// `locations` defaults to the user's data folder, or `VOXCLIP_DATA_DIR`; tests pass their own.
