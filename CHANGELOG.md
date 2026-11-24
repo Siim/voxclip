@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac and Windows, diagnostics identify which action failed and what kind of error occurred, without recording error messages or personal data.
 - On Mac, VoxClip picks the newest compatible Codex CLI, offers to update an older pinned copy, and only saves a new Codex model after Test Connection passes. GPT-6.2 Sol and Astra are in the Mac and Windows catalogs.
 - If word alignment fails after ElevenLabs returns a transcript, VoxClip keeps the words and offers a free Retry without uploading the audio again.
 

@@ -27,7 +27,10 @@ import VoxClipMedia
                 })
             }
             installed = try await store?.verify(id: catalog.entry.id) == true
-        } catch { installed = false; message = "The own-voice check model is unavailable. No audio was sent." }
+        } catch {
+            installed = false; message = "The own-voice check model is unavailable. No audio was sent."
+            await app.logFailure(error, context: .models)
+        }
     }
     var downloadLicence: String {
         guard let model else { return "The own-voice check model is unavailable." }
@@ -56,14 +59,20 @@ import VoxClipMedia
                 }
                 try Task.checkCancellation()
                 await load()
-            } catch is CancellationError {} catch VoxClipError.cancelled {} catch { message = "The model could not be installed. Your videos and edits are still here. Retry when ready." }
+            } catch is CancellationError {} catch VoxClipError.cancelled {} catch {
+                message = "The model could not be installed. Your videos and edits are still here. Retry when ready."
+                await app.logFailure(error, context: .models)
+            }
         }
     }
     func remove() {
         guard let model, let store, progress == nil else { return }
         task = Task {
             do { try await store.remove(id: model.id); embedder = nil; installed = false }
-            catch { message = "The model could not be removed." }
+            catch {
+                message = "The model could not be removed."
+                await app.logFailure(error, context: .models)
+            }
             task = nil
         }
     }

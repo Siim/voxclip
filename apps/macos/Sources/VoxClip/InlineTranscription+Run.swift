@@ -86,9 +86,9 @@ extension InlineTranscription {
                 let message: String
                 #if DEBUG
                 if let runErrorOverride { message = await runErrorOverride(error) }
-                else { message = await model.app.safeError(error) }
+                else { message = await model.app.safeError(error, context: .transcribe) }
                 #else
-                message = await model.app.safeError(error)
+                message = await model.app.safeError(error, context: .transcribe)
                 #endif
                 if isCurrent(request), request.cancelled || Task.isCancelled {
                     cancelledNote = cancellationNote(request)

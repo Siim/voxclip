@@ -31,7 +31,7 @@ import VoxClipCore
         catch {
             struct Catalogue: Decodable { let models: [ModelDescriptor] }
             models = (try? JSONDecoder().decode(Catalogue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/transcription-models.json"))).models) ?? []
-            self.error = await app.safeError(error, context: "Installation status is unavailable.")
+            self.error = await app.safeError(error, context: .models)
         }
         struct Listing: Decodable {
             struct Entry: Decodable { let id: String; let listed: Bool?; let platforms: [String] }
@@ -81,7 +81,7 @@ import VoxClipCore
                 failedModelID = model.id
                 if let failure = error as? VoxClipError, failure.code == .rateLimited { self.error = "Hugging Face is busy. Try again in a minute." }
                 else if let failure = error as? VoxClipError, failure.code == .offline { self.error = "You're offline." }
-                else { self.error = await app.safeError(error) }
+                else { self.error = await app.safeError(error, context: .models) }
             }
         }
     }
@@ -91,7 +91,7 @@ import VoxClipCore
     }
     func remove(_ model: ModelDescriptor) {
         guard progress == nil else { return }
-        task = Task { do { try await store.remove(id: model.id); installed = Set(try await store.installedModels()) } catch { self.error = await app.safeError(error) } }
+        task = Task { do { try await store.remove(id: model.id); installed = Set(try await store.installedModels()) } catch { self.error = await app.safeError(error, context: .models) } }
     }
     func localModel(language: String) async throws -> ModelDescriptor {
         guard let shared = app.shared else { throw VoxClipError.sharedResourcesMissing }
