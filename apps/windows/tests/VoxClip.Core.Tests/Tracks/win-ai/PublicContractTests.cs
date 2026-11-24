@@ -12,6 +12,14 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 [Collection("WinAiDataIsolation")]
 public sealed class PublicContractTests
 {
+    [Fact]
+    public void CodexCuratedModelsIncludeBothGpt62Choices()
+    {
+        var models = Catalog().Models(ConnectorId.Codex);
+        Assert.Contains(models, model => model.Id == "gpt-6.2-sol" && model.Name == "GPT-6.2 Sol");
+        Assert.Contains(models, model => model.Id == "gpt-6.2-astra" && model.Name == "GPT-6.2 Astra");
+    }
+
     [Theory]
     [InlineData("CliDetection")]
     [InlineData("RefreshWarning")]

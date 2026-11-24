@@ -40,8 +40,8 @@ extension LLMCatalog {
         }
     }
 
-    public func fallback(for id: ConnectorID, model: String) -> String? {
-        connector(id)[ai: "fallbackOrder"].aiArray.compactMap(\.aiString).first { $0 != model }
+    public func fallback(for id: ConnectorID, model: String, excluding unavailable: Set<String> = []) -> String? {
+        connector(id)[ai: "fallbackOrder"].aiArray.compactMap(\.aiString).first { $0 != model && !unavailable.contains($0) }
     }
 
     /// Whether the connector passes a request's images on (`images.supported`, ai.md §19.3); false when the entry says

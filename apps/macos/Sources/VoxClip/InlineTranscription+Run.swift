@@ -195,15 +195,21 @@ extension EditorModel {
     /// Find Clips with no click, after a free transcription on drop, when the chosen AI costs nothing extra: a CLI on its
     /// plan, a local server or Apple on-device. An API key's send still asks first, inline, when Find Clips is pressed.
     /// Returns whether Find Clips started.
-    @discardableResult func findClipsIfFree() -> Bool {
+    var canFindClipsIfFree: Bool {
         guard capabilities.ai, project.ai.results.isEmpty, suggestedClips.isEmpty, !finding,
               let connector = ConnectorID(rawValue: app.string("llm.connector")),
               app.providers.contains(where: { $0.id == connector.rawValue }),
               case .inline(let amount) = app.llmSendKind(connector), amount.isEmpty else { return false }
-        findClips()
         return true
     }
+    @discardableResult func findClipsIfFree(retrying: Bool = false) -> Bool {
+        guard canFindClipsIfFree else { return false }
+        let previous = findTask
+        if retrying { retryFindClips() } else { findClips() }
+        return findTask != previous
+    }
     func replaceTranscript(_ transcript: Transcript) {
+        claudeMode.cancelFindContinuation()
         findTask?.cancel(); sendConfirmation.cancel(); closeRewrite(returnFocus: false)
         fallbackNote = nil; focusedSuggestion = nil; proposal = nil
         selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil; correctionText = ""

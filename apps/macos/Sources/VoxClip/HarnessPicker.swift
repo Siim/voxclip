@@ -101,8 +101,8 @@ extension AppModel {
     }
     /// The chosen model's display name for `provider`, from the catalogue, else its id.
     func harnessModelName(_ provider: ProviderChoice) -> String {
-        let id = string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
-        return provider.models.first { $0.id == id }?.name ?? id
+        let id = effectiveModel(for: provider)
+        return modelChoices(for: provider).first { $0.id == id }?.name ?? id
     }
     /// The menu's trailing billing (doc/design.md §6.3.2): "{model} · no extra cost", "{model} · billed to its API key",
     /// "Not signed in", "{model} · free", "on {host} · free", "Not running", "free · English", "asks before each send",
@@ -269,16 +269,7 @@ extension AppModel {
             if models.count > 1 {
                 let item = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
                 item.identifier = Self.modelItem
-                let submenu = NSMenu(title: "Model")
-                let current = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
-                for model in models {
-                    let choice = NSMenuItem(title: model.name, action: #selector(chooseModel(_:)), keyEquivalent: "")
-                    choice.target = self
-                    choice.representedObject = [provider.id, model.id]
-                    choice.state = model.id == current ? .on : .off
-                    submenu.addItem(choice)
-                }
-                item.submenu = submenu
+                item.submenu = modelMenu(for: provider)
                 menu.addItem(item)
             }
         }
@@ -292,10 +283,26 @@ extension AppModel {
 
     /// The models the Model submenu offers: the catalogue's, and the chosen one when it is not among them.
     private func modelChoices(_ provider: ProviderChoice) -> [ProviderChoice.Model] {
-        let current = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
-        var models = provider.models
+        let current = app.effectiveModel(for: provider)
+        var models = app.modelChoices(for: provider)
         if !current.isEmpty, !models.contains(where: { $0.id == current }) { models.append(.init(id: current, name: current, tier: nil)) }
         return models
+    }
+
+    private func modelMenu(for provider: ProviderChoice) -> NSMenu {
+        let menu = NSMenu(title: "Model")
+        let current = app.effectiveModel(for: provider)
+        for model in modelChoices(provider) {
+            let unavailable = app.modelUnavailable(model.id, for: provider)
+            let title = unavailable ? "\(model.name) (unavailable)" : model.name
+            let choice = NSMenuItem(title: title, action: unavailable ? nil : #selector(chooseModel(_:)), keyEquivalent: "")
+            choice.target = self
+            choice.isEnabled = !unavailable
+            choice.representedObject = [provider.id, model.id]
+            choice.state = model.id == current ? .on : .off
+            menu.addItem(choice)
+        }
+        return menu
     }
 
     /// Each AI's trailing billing as detected now, on a right tab stop past the widest name.
@@ -373,6 +380,14 @@ extension AppModel {
         openMenu = menu
         needsDisplay = true
         startDetection()
+        if let codex = app.providers.first(where: { $0.id == "codex" && $0.id == app.string("llm.connector") }) {
+            Task { [weak self] in
+                guard let self else { return }
+                await app.refreshCodexModels()
+                guard let openMenu, app.string("llm.connector") == codex.id else { return }
+                openMenu.items.first { $0.identifier == Self.modelItem }?.submenu = modelMenu(for: codex)
+            }
+        }
         Task { [weak self] in
             guard let self else { return }; await app.refreshMonthlySpend()
             if let openMenu { refresh(openMenu) }
@@ -416,8 +431,10 @@ extension AppModel {
         render()
     }
     @objc func chooseModel(_ item: NSMenuItem) {
-        guard let pair = item.representedObject as? [String], pair.count == 2 else { return }
-        app.set("llm.model.\(pair[0])", .string(pair[1]))
+        guard let pair = item.representedObject as? [String], pair.count == 2,
+              let provider = app.providers.first(where: { $0.id == pair[0] }) else { return }
+        app.chooseModel(pair[1], for: provider)
+        if provider.id == "codex", app.codexDraftModel != nil { openSettings() }
         render()
     }
     @objc private func signIn() {

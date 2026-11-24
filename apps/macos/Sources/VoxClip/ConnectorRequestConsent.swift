@@ -159,7 +159,7 @@ extension AppModel {
     /// Detection is not a request. First use and per-send billing share one inline row; saving a key never sends.
     func authorizeConnectorRequest(_ provider: ProviderChoice, connector: any LLMConnector,
                                    action: ConnectorConsentAction, wordCount: Int = 0, rewrite: DirectorScope? = nil,
-                                   confirmation: ConnectorConfirmation? = nil, verb: String? = nil,
+                                   confirmation: ConnectorConfirmation? = nil, verb: String? = nil, testingModel: String? = nil,
                                    isCurrent: @escaping @MainActor () -> Bool = { true }) async throws -> Bool {
         let serverHost = localServerHost(provider)
         guard let status = await connectorStatus(provider, using: connector) else { return false }
@@ -181,8 +181,8 @@ extension AppModel {
         let price: String
         if case .confirm(let copy) = kind { price = copy } else { price = "" }
         guard firstUse || !price.isEmpty || needsKey else { return true }
-        let modelID = string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
-        let model = provider.models.first { $0.id == modelID }?.name ?? modelID
+        let modelID = testingModel ?? effectiveModel(for: provider)
+        let model = modelChoices(for: provider).first { $0.id == modelID }?.name ?? modelID
         var prompt = provider.confirmationPrompt(action: action, wordCount: wordCount, rewrite: rewrite,
             price: price, firstUse: firstUse, model: model, verb: verb, serverHost: serverHost)
         prompt.needsKey = needsKey
