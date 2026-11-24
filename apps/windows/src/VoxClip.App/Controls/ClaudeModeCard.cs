@@ -97,6 +97,11 @@ internal sealed class ClaudeModeCard : Grid
             stack.Children.Add(go);
             stack.Children.Add(Secondary($"Continue approves exactly {MakeItController.Dollars(needed)} more for voice on this video."));
         }
+        var review = Ui.Button("Review", editor.ReviewClaudeMode);
+        review.IsEnabled = editor.ClaudeModeReady.Count > 0;
+        AutomationProperties.SetAutomationId(review, "ClaudeMode.Review");
+        if (!review.IsEnabled) AutomationProperties.SetHelpText(review, "Available when the first clip is ready.");
+        stack.Children.Add(review);
         stack.Children.Add(Secondary(editor.ClaudeModeFooter));
     }
 

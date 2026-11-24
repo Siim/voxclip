@@ -121,6 +121,9 @@ import VoxClipCore
                 .accessibilityElement().accessibilityLabel("Progress").accessibilityValue("\(Int(progress * 100)) percent")
             }
             CapContinueBlock(editor: editor, id: "claudeMode.continue")
+            PanelButton(action: PanelAction(id: "claudeMode.review", title: "Review") { editor.reviewClaudeMode() }, kind: .ghost)
+                .disabled(editor.claudeModeReady.isEmpty)
+                .help(editor.claudeModeReady.isEmpty ? "Available when the first clip is ready." : "Review the ready clips.")
             footer(editor.claudeMode.running ? editor.claudeModeFooter : "Next: wait. Claude starts once the clips are found.")
         }
     }

@@ -813,6 +813,8 @@ struct EditorRenderSnapshot {
             do {
                 let url = try await resolveMediaIdentity()
                 var changed = project
+                document.importClock?.begin(.probe)
+                defer { document.importClock?.end(.probe) }
                 let probe = try await AVMediaProbe().probe(url)
                 if document.fileURL == nil {
                     changed.media.source.durationSeconds = probe.durationSeconds
@@ -1801,9 +1803,28 @@ extension EditorModel {
     func retryFindClips() {
         findClips(preset: lastFindRequest?.preset, instruction: lastFindRequest?.instruction)
     }
+
+    struct ClaudeDraft {
+        let transcript: Transcript
+        let request: InlineTranscription.ApprovedRun
+        let work: Task<Void, Never>
+    }
+
+    private func canSearchClaudeDraft(_ provider: ProviderChoice) -> Bool {
+        guard let connector = ConnectorID(rawValue: provider.id), case .inline(let amount) = app.llmSendKind(connector), amount.isEmpty else { return false }
+        return (provider.privacy != "thirdPartyCloud" && app.localServerHost(provider) == nil) || app.bool("llm.cloudConsent.\(provider.id)")
+    }
+
+    func findClipsOnDraft(_ transcript: Transcript, request: InlineTranscription.ApprovedRun) -> Task<Void, Never>? {
+        guard claudeModeWaitsForTranscript, let workTask, let provider = findConnector, canSearchClaudeDraft(provider),
+              findTask == nil, !sendConfirmation.isPresented else { return nil }
+        findClips(draft: ClaudeDraft(transcript: transcript, request: request, work: workTask))
+        return findTask
+    }
+
     /// Asks the chosen connector for clips with `preset` and `instruction`, the popover's when nil. They arrive as
     /// suggestions in one undo step.
-    func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil) {
+    func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil, draft: ClaudeDraft? = nil) {
         if sendConfirmation.isPresented {
             let pending = findTask, session = openRewrite
             sendConfirmation.cancel(); pending?.cancel(); closeRewrite(returnFocus: false)
@@ -1814,7 +1835,8 @@ extension EditorModel {
             }
             return
         }
-        guard capabilities.ai, let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
+        let canStart = draft == nil ? capabilities.ai : capabilities.writable && capabilities.media && !llmRuns.isBusy
+        guard canStart, let shared = app.shared, let transcript = draft?.transcript ?? project.transcript, let provider = findConnector else { return }
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
         let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
@@ -1824,7 +1846,7 @@ extension EditorModel {
         lastFindRequest = (selectedPreset, instructions)
         let snapshot = project
         do {
-            guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
+            guard self.project == snapshot, self.app.string("llm.connector") == provider.id,
                   self.app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "") == selectedModel,
                   self.rewriteConnectorSignature == selectedSignature,
                   let lease = self.llmRuns.acquire() else { return }
@@ -1836,6 +1858,7 @@ extension EditorModel {
             }
             claudeMode.findNeedsAction = false
             self.findTask?.cancel(); self.showAISetup = false
+            if draft != nil { claudeMode.clock?.begin(.find) }
             self.findTask = Task { [self] in
                 var outcome = ClaudeModeFindOutcome.cancelled
                 defer {
@@ -1849,9 +1872,12 @@ extension EditorModel {
                     // nothing, and no "Finding clips…" row shows behind a sheet.
                     guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
                         wordCount: transcript.words.filter { $0.kind == .word }.count, rewrite: selectedPreset == .hooks ? DirectorScope(kind: .fullTake, wordCount: transcript.words.filter { $0.kind == .word }.count) : nil, confirmation: sendConfirmation, verb: selectedPreset == .hooks ? "Hook" : nil, isCurrent: { [self] in
-                            !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
+                            let current = project == snapshot || (draft?.request.confirmedTranscript != nil && project.transcript == draft?.request.confirmedTranscript)
+                            return !isLeaving && current && rewriteConnectorSignature == selectedSignature && (draft == nil || canSearchClaudeDraft(provider))
                         }) else {
+                            if let draft { await draft.work.value }
                             if !Task.isCancelled, project == snapshot, rewriteConnectorSignature == selectedSignature { outcome = .needsApproval }
+                            else if draft != nil, !Task.isCancelled, capabilities.edit { outcome = .needsApproval }
                             return
                         }
                     finding = true; clipError = nil; fallbackNote = nil
@@ -1861,10 +1887,26 @@ extension EditorModel {
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
                     guard let preset = presets.first(where: { $0.id == selectedPreset }) else { throw ClipFinderGateError.needInstructions(message: "Choose a clip preset.") }
-                    let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                    var result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                    if let draft {
+                        claudeMode.clock?.end(.find)
+                        await draft.work.value
+                        try Task.checkCancellation()
+                        guard claudeModeWaitsForTranscript, let confirmed = draft.request.confirmedTranscript, project.transcript == confirmed,
+                              project.edits.corrections == corrections, Set(project.edits.cutWordIds) == cuts,
+                              rewriteConnectorSignature == selectedSignature else { return }
+                        result = try Self.confirmDraftRanges(result, from: transcript, with: confirmed, preset: preset)
+                        if result.clips.isEmpty {
+                            guard canSearchClaudeDraft(provider) else { outcome = .needsApproval; return }
+                            claudeMode.clock?.begin(.find)
+                            result = try await finder.find(ClipFinderRequest(transcript: confirmed, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                            guard project.transcript == confirmed, rewriteConnectorSignature == selectedSignature else { return }
+                        }
+                    }
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
-                    guard project.transcript == transcript else { return }
+                    let publishable = draft?.request.confirmedTranscript ?? transcript
+                    guard !Task.isCancelled, project.transcript == publishable else { return }
                     outcome = .finished
                     guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
                     var next = project
@@ -1887,6 +1929,11 @@ extension EditorModel {
                     fallbackNote = usedFallback ? codexFallback ?? "Answered by \(result.model) because \(selectedModel) was busy." : nil
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
                 } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
+                    if let draft {
+                        claudeMode.clock?.end(.find)
+                        await draft.work.value
+                        guard project.transcript == draft.request.confirmedTranscript, draft.request.confirmedTranscript != nil else { return }
+                    }
                     guard !Task.isCancelled else { return }
                     let message = await app.safeError(error, context: .llm, messageContext: "ai:\(provider.label)")
                     guard !Task.isCancelled else { return }
@@ -1896,6 +1943,34 @@ extension EditorModel {
                 }
             }
         }
+    }
+
+    private nonisolated static func confirmDraftRanges(_ result: ProjectAIResult, from draft: Transcript, with confirmed: Transcript,
+                                                       preset: ClipPreset) throws -> ProjectAIResult {
+        var updated = result
+        updated.language = confirmed.language
+        if let firstLanguage = draft.language, let finalLanguage = confirmed.language,
+           SpeechText.primaryLanguage(firstLanguage) != SpeechText.primaryLanguage(finalLanguage) {
+            updated.clips = []
+            return updated
+        }
+        let draftByID = Dictionary(draft.words.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let spoken = confirmed.words.indices.filter { confirmed.words[$0].kind == .word }
+        func boundary(_ time: Double, at edge: KeyPath<TimedWord, Double>) -> Int? {
+            guard let nearest = spoken.min(by: { abs(confirmed.words[$0][keyPath: edge] - time) < abs(confirmed.words[$1][keyPath: edge] - time) }),
+                  abs(confirmed.words[nearest][keyPath: edge] - time) <= 1 else { return nil }
+            return nearest
+        }
+        let candidates: [ClipCandidate] = result.clips.compactMap { clip in
+            guard let first = draftByID[clip.startWordId], let last = draftByID[clip.endWordId],
+                  let start = boundary(first.start, at: \.start), let end = boundary(last.end, at: \.end), start <= end else { return nil }
+            let title = confirmed.words[start...end].lazy.filter { $0.kind == .word }.prefix(6).map(\.text).joined(separator: " ")
+            return ClipCandidate(title: title, reason: "Suggested moment", score: Double(clip.score), startWord: Double(start), endWord: Double(end))
+        }
+        let validated = try finalizeClips(candidates, words: confirmed.words, preset: preset, lines: [], options: FinalizeClipsOptions(snap: false))
+        updated.clips = validated.map { ProjectAIClip(title: $0.title, reason: $0.reason, score: $0.score,
+                                                       startWordId: confirmed.words[$0.startWord].id, endWordId: confirmed.words[$0.endWord].id) }
+        return updated
     }
 }
 

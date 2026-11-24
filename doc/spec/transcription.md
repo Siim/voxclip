@@ -897,6 +897,8 @@ Flip TalTech to `verbatim: true` once 16.4 shows a filler recall of at least 0.9
 
 ## 10. Apple SpeechTranscriber (`apple-speech`, macOS 26+)
 
+For a newly imported video in Claude mode, an installed Apple Speech locale is tried first. For automatic language, Mac can use confident local Whisper language detection before the Apple pass. If no supported language or installed assets are available, or Apple fails, the confirming engine runs alone. Whisper is the local confirmer; the explicit Scribe choice still asks before upload. Only the confirming transcript reaches the editor and captions. Windows has no Apple pass and uses its selected confirming engine directly. See [Claude mode scheduling](ai.md#1612-claude-modes-scheduling-and-timings-2026-11-07).
+
 ### 10.1 API surface used
 
 Everything below is available from macOS 26, the deployment target. Names come from the Speech framework interface in the macOS 27 SDK.

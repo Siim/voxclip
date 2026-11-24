@@ -61,12 +61,12 @@ public sealed partial class EditorViewModel
     // MARK: The automatic run
 
     /// <summary>A newly imported video: Claude mode may run on it once it is transcribed.</summary>
-    public void ArmClaudeMode()
+    public void ArmClaudeMode(ClaudeModeClock? importClock = null)
     {
         if (ClaudeMode.Phase != ClaudeModePhase.Idle || IsReadOnly) return;
         ClaudeMode.Armed = true;
         // Numbers only: the transcribe stage runs from the video's arming until its transcript is in.
-        ClaudeMode.Clock = new();
+        ClaudeMode.Clock = importClock ?? new();
         if (!HasTranscript) ClaudeMode.Clock.Begin(ClaudeModeStage.Transcribe);
         if (ClaudeModeOn) ClaudeMode.Phase = ClaudeModePhase.Waiting;
         MakeItNotify();

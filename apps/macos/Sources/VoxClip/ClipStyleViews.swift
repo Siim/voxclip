@@ -88,11 +88,22 @@ import VoxClipCore
                   selected: "\(settings.count)") { id in editor.setClaudeClipCount(Int(id) ?? settings.count) }
         optionRow("Spend", value: Self.spendLabel(settings.capUSD), options: ClipsMode.capsUSD.map { ("\($0)", Self.spendLabel($0)) },
                   selected: "\(settings.capUSD)") { id in editor.setClaudeSpendCap(Int(id) ?? settings.capUSD) }
+        transcriptionRow
         rewordingRow(style, catalog: catalog)
         let preset = catalog.preset(style.preset)
         optionRow("Style", value: Self.presetTitle(preset), options: catalog.presets.map { ($0.id.rawValue, Self.presetTitle($0)) },
                   selected: style.preset.rawValue) { id in
             if let chosen = ClipStylePresetID(rawValue: id) { editor.chooseClipPreset(chosen, collapse: false) }
+        }
+    }
+
+    private var transcriptionRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingLabelGap) {
+            label("Transcript")
+            Text(editor.transcription.claudeTranscriptionChoice.label)
+                .font(.system(size: 12)).foregroundStyle(DesignValues.color("text.secondary"))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voxclip.clipStyle.transcription")
         }
     }
 
