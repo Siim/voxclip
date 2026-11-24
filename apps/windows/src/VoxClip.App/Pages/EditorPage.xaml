@@ -141,6 +141,7 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+                    <StackPanel x:Name="HarnessAssetRows" Spacing="6"/>
                     <InfoBar x:Name="HarnessNotice" Severity="Warning" IsOpen="False"/>
                 </StackPanel>
                 <controls:TranscriptView x:Name="Transcript" Grid.Row="2"/>

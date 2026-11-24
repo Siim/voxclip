@@ -37,7 +37,7 @@ The executable finds `shared/` in its checkout or app bundle. If you relocate it
 | MCP tool | Matching CLI | What it does |
 |---|---|---|
 | `read_transcript` | `transcript --project Talk.voxclip --offset 0 --limit 200` | Returns transcript items with their zero-based indices, corrected words, cut flags and source seconds. Follow `nextOffset` until it's null. |
-| `read_clips` | `clips --project Talk.voxclip` | Lists kept and suggested clips with ids, inclusive word indices and source spans. |
+| `read_clips` | `clips --project Talk.voxclip` | Lists kept and suggested clips with ids, inclusive word indices and source spans, plus `footageSources` keys for companion recordings. |
 | `read_decisions` | `decisions --project Talk.voxclip --clip CLIP_ID` | Reads the clip's saved choices: Find Clips reason where available, opening lead-in, framing and cover controls, captions, effects, zooms and saved music ids. |
 | `read_frames` | `frames --project Talk.voxclip --time 2.1 --time 3` | Returns one to four unedited source thumbnails from a local MP4, M4V or MOV. CLI output includes JPEGs as base64. Relink missing media in VoxClip. |
 | `propose_timeline` | `propose-timeline --project Talk.voxclip < timeline.json` | Stages a proposal for one existing clip. It writes no project edits and returns separate estimates for requested paid actions. |
@@ -60,7 +60,7 @@ The [timeline schema](../shared/schemas/harness-timeline.schema.json) is also th
 }
 ```
 
-Use inclusive transcript indices from the current project. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and a span of 0.1–5 seconds. Use `zoom`, `punchIn`, `motionTitle`, `lowerThird`, `emojiPop` (bundled stickers), or `motionTemplate`. `musicTrackId` reuses a saved track; `generateMusic` instead describes a new track and returns a local estimate.
+Use inclusive transcript indices from the current project. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and use the complete [clip-plan entry schema](../shared/schemas/clip-plan-effect.schema.json), including `bRoll`, `screenshot`, `videoStack`, `illustration`, `soundEffect`, `colourLook` and `speedForPart`. Footage entries refer to a `sourceKey` returned by `read_clips`, with a source start in seconds. `musicTrackId` reuses a saved track; `generateMusic` instead describes a new track and returns a local estimate. `pricedActions` and `freeActions` describe asset requests. Keep applies local edits only; generating an illustration or music needs a separate priced click in VoxClip, and **Find sound · free** needs its own click. No tool sends an asset request.
 
 ### Motion templates
 

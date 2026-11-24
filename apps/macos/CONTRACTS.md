@@ -32,7 +32,8 @@ Package G's saved record was deleted as soon as Make Takes priced its plan, so a
 - **Windows:** opening another Rewrite over paid takes asks first, and a Restart held by paid takes has its own result (apps/windows/CONTRACTS.md). Still no saved proposal on Windows.
 - **Resolved owes:** G's five Mac owes: the record removed at `prepareTakes`, Use Whole Clip's record, the restored note's free promise, the spoken-only revert line, and the launch sweep. H's own first-round owes: Undo after Use then a relaunch (the journal and the record), R3 after Use Whole Clip, and the untested backstop (`holdRestoredVoicePrice` is tested; its one call in the live voice step is not reachable from the fixtures).
 - **Owes:**
-  - Still owed from G and earlier: D's "Discard these {c} changes?" on Rewrite Again and the missing-video close; E's `LipsyncAttemptStore.importedAssets(inProject:)` and the card's pre-quote pricing an adoptable part as new; the real-window gates (rewrite smoke in a window, scene audit). The live `useWholeClip(voice:synced:match:)` commit and the backstop's call are covered by the DEBUG smoke (W3) and the fixtures' stand-ins, not by a unit test over a clip-scoped plan.
+  - Still owed: the real-window gates (rewrite smoke in a window, scene audit). The live `useWholeClip(voice:synced:match:)` commit and the backstop's call are covered by the DEBUG smoke (W3) and the fixtures' stand-ins, not by a unit test over a clip-scoped plan.
+  - Resolved in the integration branch: paid-work wording on Rewrite Again, the missing-video/relink/transcript guards, unopened saved-record cleanup, adoptable-part pricing, and the shared lip-sync attempt reader used by retention.
 - **Next package:** `partRequests` changed meaning (one entry per part, "" for none) with no migration; an older record with fewer entries prices the voice as new plus its word checks. `restoredTakesPending` makes a restored proposal ask before closing, so a DEBUG scene or Claude mode that reopens a scope with a saved record now meets the question. `RewriteSavedProposalStore.write` throws on a folder that is a link or not the user's. A Rewrite that commits its own work and stays open uses `commitOwnEdit`, never a bare `applyVoiceLab`. `closeProject` callers that know the closing project pass `inUse:`.
 
 ### 2026-11-21 — A saved Rewrite comes back after a relaunch, and the reliability packages fit together (track/v2-rel-g, package G)
@@ -69,7 +70,7 @@ A Rewrite's proposal and a whole clip's voice, ledger and plan lived only in mem
   - With no adoptable journal for every part, `restoredVoiceNote` reads "Try Again puts it back, without voicing it again." while Try Again carries the voice's price and voices the missing parts.
   - The revert's waiting line is a VoiceOver announcement only (`editor.announce`), not a status-bar notice.
   - Nothing sweeps saved records of scopes never opened again; they go only when read.
-  - Still owed from D: Rewrite Again with the same AI asks "Discard these {c} changes?" whenever the proposal has changes; a video that goes missing, a relink candidate and re-transcription go ahead under the open Rewrite. From E: `LipsyncAttemptStore.importedAssets(inProject:)`; the whole clip's card pre-quote prices an adoptable part as new.
+  - The integration branch resolves D's paid-work and media-change guards and E's lip-sync attempt reader and adoptable-part pricing; see the status above.
   - The real-window gates (rewrite smoke, scene audit).
 - **Next package:** the record schema is unreleased, and `patchRequests` was added with no migration. `start()` tries the restore before `begin()`. `Backend.voiceKey` defaults to nil, which means no restored voice comes back, so test stubs must set it; the live key's model is `VoiceLabWordingFit.modelID`. Tests that relaunch save the document to its own file: an untitled document's Save As asks AppKit for name suggestions later, which a test process can't answer.
 
@@ -117,9 +118,9 @@ A paid ElevenLabs take lived only in memory until Use, so closing Rewrite, quitt
 - **Tests:** Media `VoiceLabTakeJournalTests`, `VoiceLabScratchSweepTests` (new), `VoiceLabAssetRetentionTests` (an imported lip sync the index names is kept as a real deletion candidate, the same bytes under another name go; the +8-day journal case); Core `VoiceLabTakeRunTests` (adoption prices the word check only; `aTakeThatFailedItsChecksIsNeverAdopted` for words, speaker and timing); App `RewriteConnectorChangeTests`, `VoiceLabStartupSweepTests`. Red without the `adoptable` filter: the failed-check tests and the shared match cases fail on both platforms. Full Core 1594 and App 1166 passed; Media 678 with one timeout under load that passed alone.
 - **Windows:** the journal twin (apps/windows/CONTRACTS.md).
 - **Owes:**
-  - A whole clip's card price (`RewriteWholeClip` pre-quote) doesn't know a part will be adopted, so it shows the full voice price.
+  - Resolved in the integration branch: the whole-clip quote accounts for adoptable parts.
   - After a relaunch nothing reopens a Rewrite: the proposal and a whole clip's voice, ledger and plan are in memory only. A journaled take comes back only when the same words are voiced again. (Package G.)
-  - `LipsyncAttemptStore.importedAssets(inProject:)`, so retention can drop its own reader of the attempt index.
+  - Resolved in the integration branch: retention uses `LipsyncAttemptStore.importedAssets(inProject:)` instead of its own reader of the attempt index.
   - A whole-clip variant of `RewriteConnectorChangeTests`.
 - **Next package:** an adopted take counts as a made take (`spent.units` 1, the dollars the word check only). `discardPaidTakes()` leaves journal entries; to forget one, call `VoiceLabTakeJournal.remove(assetID:projectID:paidRoot:)`. Whole-clip parts are adopted only when the request is identical, pace included.
 

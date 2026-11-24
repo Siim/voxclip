@@ -1798,8 +1798,13 @@ member VoxClip.App.Pages.EditorPage :: field private disposed
 member VoxClip.App.Pages.EditorPage :: field private elevenMusic
 member VoxClip.App.Pages.EditorPage :: field private frameText
 member VoxClip.App.Pages.EditorPage :: field private harnessActionVersion
+member VoxClip.App.Pages.EditorPage :: field private harnessAssetDisplay
+member VoxClip.App.Pages.EditorPage :: field private harnessAssetProject
+member VoxClip.App.Pages.EditorPage :: field private harnessAssetWorking
+member VoxClip.App.Pages.EditorPage :: field private harnessAssets
 member VoxClip.App.Pages.EditorPage :: field private harnessCheckedProject
 member VoxClip.App.Pages.EditorPage :: field private harnessDetails
+member VoxClip.App.Pages.EditorPage :: field private harnessIllustrationReady
 member VoxClip.App.Pages.EditorPage :: field private harnessMusic
 member VoxClip.App.Pages.EditorPage :: field private harnessPath
 member VoxClip.App.Pages.EditorPage :: field private harnessPending
@@ -1889,6 +1894,7 @@ member VoxClip.App.Pages.EditorPage :: method internal get_LeaveHeldByPaidWork()
 member VoxClip.App.Pages.EditorPage :: method internal get_MediaPath()
 member VoxClip.App.Pages.EditorPage :: method internal get_ShellStatus()
 member VoxClip.App.Pages.EditorPage :: method internal get_Tabs()
+member VoxClip.App.Pages.EditorPage :: method private ApplyHarnessAssetAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,System.Nullable`1<System.Decimal>)
 member VoxClip.App.Pages.EditorPage :: method private ApproveAskClaudeSendAsync(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,int,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private ApproveMakeItSendAsync(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private AskBeforeReplacingRewrite(System.Func`1<System.Threading.Tasks.Task>)
@@ -1898,6 +1904,7 @@ member VoxClip.App.Pages.EditorPage :: method private AspectLoaded(object,Micros
 member VoxClip.App.Pages.EditorPage :: method private AttachRewriteProposal(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.Pages.EditorPage :: method private AudioStatusChanged(object,VoxClip.Core.Services.Media.PreviewAudioStatus)
 member VoxClip.App.Pages.EditorPage :: method private BackClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private CheckHarnessIllustrationKeyAsync()
 member VoxClip.App.Pages.EditorPage :: method private CloseFindClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private CompositorFailed(object,VoxClip.Core.Services.Media.PreviewFailureReason)
 member VoxClip.App.Pages.EditorPage :: method private ConfigureRewriteGeneration(VoxClip.App.ViewModels.RewriteSession)
@@ -2017,6 +2024,7 @@ member VoxClip.App.Pages.EditorPage :: method private ShellJobAvailable(VoxClip.
 member VoxClip.App.Pages.EditorPage :: method private ShellRequest(VoxClip.App.ViewModels.ShellJob,string)
 member VoxClip.App.Pages.EditorPage :: method private ShortcutsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private ShowAskClaudePanel()
+member VoxClip.App.Pages.EditorPage :: method private ShowHarnessAssets()
 member VoxClip.App.Pages.EditorPage :: method private ShowHarnessDetails()
 member VoxClip.App.Pages.EditorPage :: method private ShowHarnessMusic()
 member VoxClip.App.Pages.EditorPage :: method private ShowMakeItPanel()
@@ -3647,6 +3655,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field public ToneRowId
 member VoxClip.App.ViewModels.EditorViewModel :: method internal AcceptsVoiceLab(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceReference,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal Announce(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ApplyAskAssetAsync(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal ApplyHarnessAssetAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,VoxClip.Core.Domain.Shared.Project,System.Nullable`1<System.Decimal>,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal AskAssetAction(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginLeaving()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginUndoGroup(string)
@@ -3658,6 +3667,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal DismissHarnessP
 member VoxClip.App.ViewModels.EditorViewModel :: method internal EndUndoGroup()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ExportStatus(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItFrameSource(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItPostable(string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItScreenRows(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,bool)

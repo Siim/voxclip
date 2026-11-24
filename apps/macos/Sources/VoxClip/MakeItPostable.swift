@@ -1410,21 +1410,22 @@ extension EditorModel {
         guard let shared = app.shared, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else {
             throw LLMError.noConnector
         }
-        let connector: any LLMConnector = if let cardPlanPath { CardPlanConnector(app: app, provider: provider, path: cardPlanPath) } else { app.connector(provider.id) }
+        let connector: any LLMConnector = cardPlanConnector.map { $0 as any LLMConnector } ?? app.connector(provider.id)
         let model = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
         guard let lease = llmRuns.acquire() else { throw VoxClipError.providerError("Another AI request on this project is still running. Try again when it finishes.", provider: provider.id) }
         defer { llmRuns.release(lease) }
         let words = request.transcript.words.filter { $0.kind == .word }.count
-        if cardPlanPath == nil {
+        if let cardPlanConnector {
+            guard cardPlanConnector.isCurrent else { throw CancellationError() }
+        } else {
             guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips, wordCount: words,
                                                           confirmation: sendConfirmation, verb: "Make it postable") else { throw CancellationError() }
         }
         let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
         let service = ClipAutopilotService(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
         // Claude Code runs one process per connector: two more lanes plan a series' clips three at once.
-        let lanes: [any LLMConnector] = if let cardPlanPath {
-            (0..<2).map { _ in CardPlanConnector(app: app, provider: provider, path: cardPlanPath) }
-        } else if provider.id == ConnectorID.claudeCode.rawValue { [app.connector(provider.id), app.connector(provider.id)] } else { [] }
+        let lanes: [any LLMConnector] = cardPlanConnector == nil && provider.id == ConnectorID.claudeCode.rawValue
+            ? [app.connector(provider.id), app.connector(provider.id)] : []
         return try await service.plan(request, connector: connector, model: model, lanes: lanes, frames: frames, progress: progress).series
     }
 }

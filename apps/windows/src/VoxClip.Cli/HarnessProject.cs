@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -7,6 +8,7 @@ using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Frames;
+using VoxClip.Media.Pipeline;
 
 namespace VoxClip.Cli;
 
@@ -57,17 +59,28 @@ internal sealed class HarnessProject
                 var timeline = HarnessTimeline.Read(arguments);
                 var shared = SharedResources.ResolveRoot();
                 var proposal = new HarnessProposal(timeline, project);
-                var candidate = proposal.Applying(project, shared);
-                object[] pricedActions = [];
+                var (candidate, assets) = proposal.Evaluate(project, shared);
+                var pricedActions = new List<object>();
+                var freeActions = new List<object>();
+                const string approval = "In VoxClip only; the app confirms the price for the open clip.";
                 if (timeline.GenerateMusic is { } prompt)
                 {
                     var price = proposal.EstimatedMusicPrice(candidate, shared) ??
                         throw new HarnessException("No music estimate is available. Nothing was sent.");
-                    pricedActions = [new { kind = "generateMusic", prompt, price, approval = "In VoxClip only; the app confirms the price for the open clip." }];
+                    pricedActions.Add(new { kind = "generateMusic", prompt, price, approval });
+                }
+                foreach (var asset in assets)
+                {
+                    if (asset.Kind == "illustration")
+                    {
+                        var quote = ClipIllustrationQuote.Load(shared).UsdPerImage.ToString(CultureInfo.InvariantCulture);
+                        pricedActions.Add(new { kind = "generateIllustration", prompt = asset.Text, price = "$" + quote, approval });
+                    }
+                    else freeActions.Add(new { kind = "findSound", query = asset.Text });
                 }
                 var wire = proposal.ToJson();
                 await StageAsync(wire, ct).ConfigureAwait(false);
-                return new(new { proposal = wire, pricedActions });
+                return new(new { proposal = wire, pricedActions, freeActions });
             default: throw new ArgumentOutOfRangeException(nameof(tool));
         }
     }
@@ -104,7 +117,11 @@ internal sealed class HarnessProject
             clip.Id, clip.Title, clip.Selected, startWord = indices.GetValueOrDefault(clip.StartWordId), endWord = indices.GetValueOrDefault(clip.EndWordId),
             sourceSpan = ClipControlsProject.SourceSpan(clip.Id, project) is { } span ? new TimeRange(span.Start, span.End) : (TimeRange?)null
         }).ToArray();
-        return new(new { projectId = project.Id, clips });
+        var footageSources = (project.Media.AdditionalSources ?? []).Where(source => source.Video is not null).Select(source => new
+        {
+            sourceKey = source.FootageKey, duration = source.DurationSeconds, name = Path.GetFileName(source.AbsolutePath)
+        });
+        return new(new { projectId = project.Id, clips, footageSources });
     }
 
     private static HarnessResult Decisions(Project project, string? clipId)

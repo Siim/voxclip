@@ -10,7 +10,6 @@ public enum HarnessError: LocalizedError {
 
 public struct HarnessTimeline: Codable, Sendable, Equatable {
     package static let keys: Set<String> = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"]
-    private static let supportedEffects: Set<ClipPlanEffect.Kind> = [.zoom, .punchIn, .motionTitle, .lowerThird, .emojiPop, .motionTemplate]
     public let clipId: String
     public let reason: String
     public let cuts: [ClipAutopilotPlan.Cut]?
@@ -29,8 +28,7 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
               line(timeline.reason, max: 240), timeline.title.map({ line($0, max: EditingLimits.maxClipTitleScalars) }) != false,
               timeline.generateMusic.map({ line($0, max: 500) }) != false,
               timeline.generateMusic == nil || timeline.musicTrackId == nil,
-              timeline.effects.map({ (1...ClipPlanEffect.maximumEntries).contains($0.count)
-                  && $0.allSatisfy { supportedEffects.contains($0.kind) } }) != false,
+              timeline.effects.map({ (1...ClipPlanEffect.maximumEntries).contains($0.count) }) != false,
               timeline.cuts.map({ (1...30).contains($0.count) }) != false,
               (timeline.cuts ?? []).allSatisfy({ line($0.reason, max: 240) }),
               timeline.title != nil || timeline.captionStyle != nil || timeline.musicTrackId != nil || timeline.generateMusic != nil
@@ -69,6 +67,10 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
     }
 
     public func applying(to project: Project, shared: SharedResources) throws -> Project {
+        try evaluate(project, shared: shared).project
+    }
+
+    public func evaluate(_ project: Project, shared: SharedResources) throws -> (project: Project, assets: [ClipPlanAsset]) {
         guard version == 1, projectId == project.id, baseRevision == (try Self.revision(of: project, timeline: timeline)) else {
             throw HarnessError.invalid("The project changed. Ask for a new timeline proposal.")
         }
@@ -80,6 +82,7 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
         let words = transcript.words
         let scope = start...end
         var next = project
+        var assets: [ClipPlanAsset] = []
         var cutIDs = Set<String>()
         for cut in timeline.cuts ?? [] {
             guard scope.contains(cut.startWord), scope.contains(cut.endWord), cut.startWord <= cut.endWord else {
@@ -120,8 +123,9 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
             for (index, effect) in effects.enumerated() {
                 let effectID = "harness-\(id.uuidString.lowercased())-\(index)"
                 guard let operation = effect.operation(id: effectID, clipID: clip.id, scope: scope, words: words,
-                                                       cut: allCuts, tightenedAfter: tightened, stickers: stickers) else {
-                    throw HarnessError.invalid("Effect \(index + 1) is not supported on those words. Use a kept span of 0.1–5 seconds.")
+                                                       cut: allCuts, tightenedAfter: tightened, stickers: stickers,
+                                                       sources: next.media.footageDurations) else {
+                    throw HarnessError.invalid("Effect \(index + 1) doesn’t fit those kept words or its selected footage.")
                 }
                 switch operation.action {
                 case .motion(let cue):
@@ -130,23 +134,27 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
                     }
                     next = changed
                 case .effect(let overlay): next = try ClipEffects.adding([overlay], to: next)
+                case .asset(let asset): assets.append(asset)
+                case .footage(let entry):
+                    guard next.media.setFootage(entry) else {
+                        throw HarnessError.invalid("Effect \(index + 1) overlaps or exceeds available footage.")
+                    }
+                    next.schemaVersion = max(4, next.schemaVersion)
                 default: throw HarnessError.invalid("Unsupported effect.")
                 }
             }
         }
         _ = try JSONProjectStore.encode(next)
-        return next
+        return (next, assets)
     }
 
     public func estimatedMusicPrice(in project: Project, shared: SharedResources) throws -> String? {
-        guard timeline.generateMusic != nil, let transcript = project.transcript,
-              let clip = project.edits.clips.first(where: { $0.id == timeline.clipId }) else { return nil }
-        let state = try EditState(transcript: transcript, edits: project.edits)
-        let segments = try buildSegments(state, activeClip: clip)
-        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
-        let edit = try buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: rate, pauseKeepSeconds: state.pauseKeepSeconds)
-        let speed = ClipControlsProject.controls(for: clip.id, in: project)?.speed ?? 1
-        let seconds = MusicPricing.lengthSeconds(forClip: Double(edit.outputSamples) / rate / speed)
+        guard timeline.generateMusic != nil, project.transcript != nil else { return nil }
+        let clipID = timeline.clipId
+        let edit = try RenderCallerInputs.timeline(project: project, clipID: clipID)
+        let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
+        let timing = ClipSpeedTiming(speed: speed, timeline: edit, effects: ClipEffects.rendered(in: project, clipID: clipID))
+        let seconds = MusicPricing.lengthSeconds(forClip: timing.rendered(edit.duration))
         let price = try MusicPricing.estimate(seconds: seconds, catalog: VoiceLabPriceCatalog.load(shared: shared))
         return MusicPricing.label(price)
     }
@@ -162,14 +170,18 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
             let motion: [MotionCue]
             let effects: [ClipEffect]
             let reuseMusic: [ProjectMusic]?
+            let footageSources: [MediaReference]?
+            let footage: [ClipFootage]?
         }
         var edits = project.edits
         edits.activeClipId = nil
         edits.cutWordIds.sort()
         edits.cutPauseIds.sort()
+        let usesFootage = timeline.effects?.contains { [.bRoll, .screenshot, .videoStack].contains($0.kind) } == true
         let input = Inputs(sourceKey: project.media.source.contentKey, transcript: project.transcript, edits: edits,
                            captions: project.captions, clipStyle: project.clipStyle, controls: project.clipControls,
-                           motion: project.motionCues, effects: project.clipEffects, reuseMusic: timeline.musicTrackId == nil ? nil : project.music)
+                           motion: project.motionCues, effects: project.clipEffects, reuseMusic: timeline.musicTrackId == nil ? nil : project.music,
+                           footageSources: usesFootage ? project.media.additionalSources : nil, footage: usesFootage ? project.media.footage : nil)
         let bytes = try ProjectJSON.encoder().encode(input)
         return SourceContentKey.sha256(bytes)
     }

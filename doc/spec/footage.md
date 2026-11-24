@@ -4,7 +4,7 @@ On macOS, Home offers a removable volume containing `DCIM`. Open or drop a folde
 
 When macOS asks for removable-volume access, VoxClip explains that it reads recordings for import and leaves the originals on the card unchanged.
 
-The priced card action uses local transcription in two lanes and requires Claude Code signed in to the Claude plan. It sends words, recording labels, and selected stills for Find Clips and planning. Found clips are ranked together, with duplicate takes grouped. Make it postable uses the same voice and lip-sync authorization and a single fixed cap across the card. Stopping keeps saved projects and completed work. The copy-only path needs no connector.
+**Make clips from {n} new · up to ${cap}** uses local transcription in two lanes, then the selected AI connector for Find Clips, ranking and planning. It states which AI receives words, recording names and selected still frames. First-use consent and metered AI sends use the normal inline approval; the card cap does not cover API-key AI charges. The single voice and lip-sync cap for the card is captured from the Clips spend-cap setting when the card starts; a $0 cap sends no paid voice or lip sync. Found clips are ranked together, with duplicate takes grouped. Stopping keeps saved projects and finished work. **Copy selected without making clips** needs no connector.
 
 ## Companion video
 

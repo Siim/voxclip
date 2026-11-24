@@ -201,11 +201,12 @@ internal sealed class HarnessSession(HarnessProject project, string sharedRoot)
         effect.Remove("$schema");
         template.Remove("$id");
         template.Remove("$schema");
-        if (timeline["properties"]?["effects"]?["items"]?["allOf"] is not JsonArray constraints ||
+        if (timeline["properties"]?["effects"] is not JsonObject effects ||
+            effects["items"]?["$ref"]?.GetValue<string>() != "clip-plan-effect.schema.json" ||
             effect["properties"] is not JsonObject effectProperties)
             throw new HarnessException("The harness timeline schema is missing or invalid.");
         effectProperties["template"] = template;
-        constraints[0] = effect;
+        effects["items"] = effect;
         return timeline;
     }
 

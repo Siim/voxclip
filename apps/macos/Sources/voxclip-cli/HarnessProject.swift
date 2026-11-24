@@ -4,6 +4,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import VoxClipCore
+import VoxClipMedia
 
 struct HarnessProject {
     let url: URL
@@ -54,7 +55,11 @@ struct HarnessProject {
                             TimeRange(start: $0.lowerBound, end: $0.upperBound)
                          })])
             }
-            return .init(["projectId": .string(id), "clips": .array(clips)])
+            let sources: [JSONValue] = project.media.additionalSources.filter { $0.video != nil }.map {
+                .object(["sourceKey": .string($0.footageKey), "duration": .number($0.durationSeconds),
+                         "name": .string(URL(fileURLWithPath: $0.absolutePath).lastPathComponent)])
+            }
+            return .init(["projectId": .string(id), "clips": .array(clips), "footageSources": .array(sources)])
         case .readDecisions:
             guard case .string(let clipId) = fields["clipId"], let clip = project.edits.clips.first(where: { $0.id == clipId }) else {
                 throw HarnessError.invalid("Choose a clip id from read_clips.")
@@ -83,9 +88,12 @@ struct HarnessProject {
             let timeline = try HarnessTimeline.read(arguments)
             let shared = try SharedResources.locate()
             let proposal = try HarnessProposal(timeline: timeline, project: project)
-            let candidate = try proposal.applying(to: project, shared: shared)
-            guard candidate != project || timeline.generateMusic != nil else { throw HarnessError.invalid("The timeline doesn't change the project.") }
+            let (candidate, assets) = try proposal.evaluate(project, shared: shared)
+            guard candidate != project || timeline.generateMusic != nil || !assets.isEmpty else {
+                throw HarnessError.invalid("The timeline doesn't change the project.")
+            }
             var actions: [JSONValue] = []
+            var free: [JSONValue] = []
             if let prompt = timeline.generateMusic {
                 guard let price = try proposal.estimatedMusicPrice(in: candidate, shared: shared) else {
                     throw HarnessError.invalid("No music estimate is available. Nothing was sent.")
@@ -93,8 +101,18 @@ struct HarnessProject {
                 actions.append(.object(["kind": .string("generateMusic"), "prompt": .string(prompt), "price": .string(price),
                                         "approval": .string("In VoxClip only; the app confirms the price for the open clip.")]))
             }
+            for asset in assets {
+                if asset.kind == .illustration {
+                    let quote = try ClipIllustrationQuote.load(shared: shared)
+                    let amount = NSDecimalNumber(decimal: quote.usdPerImage).stringValue
+                    actions.append(.object(["kind": .string("generateIllustration"), "prompt": .string(asset.text),
+                        "price": .string("$\(amount)"), "approval": .string("In VoxClip only; the app confirms the price for the open clip.")]))
+                } else {
+                    free.append(.object(["kind": .string("findSound"), "query": .string(asset.text)]))
+                }
+            }
             try HarnessInbox.stage(proposal, for: url)
-            return .init(["proposal": try Self.json(proposal), "pricedActions": .array(actions)])
+            return .init(["proposal": try Self.json(proposal), "pricedActions": .array(actions), "freeActions": .array(free)])
         }
     }
 

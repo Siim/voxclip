@@ -39,6 +39,7 @@ public enum RenderCallerInputs {
     }
 
     public static func prepare(_ request: RenderRequest, project: Project, clipID: String?, dataRoot: URL,
+                               shared: SharedResources? = nil, resolveFootageURL: (URL) -> URL = { $0 },
                                reduceMotion: Bool = false,
                                isCancelled: @Sendable () -> Bool = { false }) throws -> RenderRequest {
         guard !isCancelled() else { throw CancellationError() }
@@ -51,16 +52,12 @@ public enum RenderCallerInputs {
         result.motionClipID = clipID
         result.motionCues = clipID.map { selected in project.motionCues.filter { $0.clipID == selected } } ?? []
         result.music = MusicRenderInput.resolve(project: project, clipId: clipID, dataRoot: dataRoot)
-        result.effects = ClipEffectsRenderInput.resolve(project: project, clipID: clipID, dataRoot: dataRoot, shared: try? SharedResources.locate())
-        let clipSpan = clipID.flatMap { ClipControlsProject.sourceSpan(of: $0, in: project) }
-        result.footage = project.media.footage.compactMap { entry in
-            guard entry.clipID == clipID, let clipSpan, entry.start >= clipSpan.lowerBound, entry.end <= clipSpan.upperBound,
-                  let source = project.media.additionalSources.first(where: { $0.footageKey == entry.footage.sourceKey }),
-                  source.video != nil, entry.fits(duration: source.durationSeconds) else { return nil }
-            let original = URL(fileURLWithPath: source.absolutePath)
-            let sibling = request.sourceURL.deletingLastPathComponent().appendingPathComponent(original.lastPathComponent)
-            let url = FileManager.default.fileExists(atPath: original.path) ? original : sibling
-            return ClipFootageRenderInput(entry: entry, url: url, expectedKey: source.contentKey)
+        result.effects = ClipEffectsRenderInput.resolve(project: project, clipID: clipID, dataRoot: dataRoot, shared: shared)
+        result.footage = []
+        if let clipID, let span = ClipControlsProject.sourceSpan(of: clipID, in: project) {
+            result.footage = project.media.footage.compactMap {
+                $0.renderInput(clipID: clipID, span: span, sources: project.media.additionalSources, resolveURL: resolveFootageURL)
+            }
         }
         result.clipControls = ClipControlsProject.controls(for: clipID, in: project).flatMap { $0.isDefault ? nil : $0 }
         result.reduceMotion = request.forPreview && reduceMotion
@@ -93,7 +90,7 @@ public enum RenderCallerInputs {
                 scope: scope, expectedRevision: document.revision, isCancelled: isCancelled)
             try prepared.verifyRenderedTimeline(request.timeline)
             result.contextDemo = prepared
-            result.contextDemoRoot = dataRoot.standardizedFileURL.resolvingSymlinksInPath()
+            result.contextDemoRoot = dataRoot.standardizedFileURL
         }
         guard !isCancelled() else { throw CancellationError() }
         return result

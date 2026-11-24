@@ -137,7 +137,7 @@ Both Swift build invocations use two jobs to bound compiler resource use on the 
 | `./bundle.sh --upload-only` | Verify existing `dist/` artifacts, then attach them to draft `v<version>`, creating it if missing; no build or notarization |
 | `./bundle.sh --upload-only --dry-run` | Perform local and read-only remote validation; print draft creation/upload commands without executing them |
 | `./bundle.sh --release` or `-r` | Build, sign, notarize, staple and package, then create/update the draft |
-| `./bundle.sh --release --no-upload --allow-dirty` | Untagged/dirty local test release; Apple submissions still happen, GitHub uploads are permanently forbidden for these artifacts |
+| `./bundle.sh --release --no-upload --allow-dirty` | Untagged/dirty local test release; produces `VoxClip-macOS-<version>-<9-character-commit>.dmg`. Apple submissions still happen; GitHub uploads are permanently forbidden for these artifacts |
 | `./bundle.sh --universal` | Reserved and rejected; v1 ships arm64 only |
 
 Usage errors exit **2**: unknown options, conflicting modes (`profile` included), `--no-upload` without `--release`, `--dry-run` without `--upload-only`, or `--allow-dirty` in any combination except `--release --no-upload`. Operational failures exit 1, including nonzero signing, stapler and Gatekeeper statuses, normalized by `set -Eeo pipefail` and `trap 'exit 1' ERR`. `--help` exits 0.
@@ -336,7 +336,7 @@ It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel
 
 ### 4.0.1 Editable timeline import check
 
-Once per release, export a clip with two retained ranges, a hook title, captions and background music. Validate the `.fcpxml` against a locally obtained Apple FCPXML 1.10 DTD (`xmllint --noout --dtdvalid <DTD> <timeline.fcpxml>`). Import it in Final Cut Pro and DaVinci Resolve, relink the source if prompted, and confirm the cuts, aspect, editable text and separate voice and music. Record both editor versions and the result in the release verification record. A DTD pass alone does not count as an import pass.
+Once per release, on a Mac with Final Cut Pro, get the locally installed Apple FCPXML 1.10 DTD and run the opt-in check from the repo root: `VOXCLIP_FCPXML_DTD=/absolute/path/to/FCPXMLv1_10.dtd VOXCLIP_SHARED_DIR="$PWD/shared" swift test --package-path apps/macos --jobs 2 --filter FCPXMLTests`. Hosted CI does not have that DTD. Export a clip with two retained ranges, a part-speed change, a title, captions, a kept Rewrite or revoice, and music. Validate the output with `xmllint --noout --dtdvalid <DTD> <timeline.fcpxml>`. Open it with its companion media in Final Cut Pro and DaVinci Resolve; verify cuts and speed boundaries, aspect, editable text, and separate rendered voice and music. Record both editor versions and the DTD and import results in the release verification record. A DTD pass alone does not count as an import pass.
 
 ### 4.1 Launch page go-live — user's approval required
 

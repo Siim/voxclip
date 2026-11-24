@@ -2288,6 +2288,12 @@ Windows also preserves `colorAdjustments` when opening, saving or editing a Mac 
 
 ---
 
+### 6.10 Harness proposal assets
+
+Keeping a timeline proposal applies its local edits without sending requests. On Mac, asset rows read **Proposed illustration** or **Proposed sound effect**; Windows shows the prompt or query inline. **Find sound · free**, **Place saved illustration** or **Generate illustration · up to $X** is a separate click beside **Dismiss**. If pricing or a key is missing, keep **Generate illustration** disabled and show **Illustration pricing isn't available.** or **Add a fal.ai key in Settings to generate an illustration.** While checking, show **Checking for a fal.ai key…**. A changed project disables the action with **The edit changed. Ask for a new timeline proposal.** See [harness.md](harness.md) for the proposal and music review contracts.
+
+---
+
 ## 7. Home
 
 **macOS v2 export state.** The Explorer’s Exports section (§3.4) owns the trailing 11 pt `exclamationmark.triangle` in `status.warning` for Edited since export and Export failed. Exported has no glyph; a target with no ledger record has no Exports row. Clip rows have no export warning glyph. Export state remains in help and VoiceOver, and failed exports retain Retry in the Exports context menu (and Retry export in the clip context menu).
@@ -2398,6 +2404,12 @@ Opening a video makes it playable at once. On Mac v2, Transcribe is part of the 
 
 ---
 
+### 7.2 Card import (Mac)
+
+The primary reads **✦ Make clips from {n} new · up to ${cap}**. The offer reads “{connector} receives your transcript, recording names and selected still frames. Metered AI sends ask first. Voice and lip sync stay within the ${cap} card cap.” With no connector, keep the primary disabled and show **Choose an AI connector in Settings › AI.** Under **Pick recordings**, **Copy selected without making clips** needs no connector. First-use consent and metered requests are inline during import. The cap comes from the Clips spend-cap setting and stays fixed for the card. See [the footage spec](spec/footage.md).
+
+---
+
 ## 8. Export and share
 
 macOS: Export is a job in the right panel, below the existing reframed viewer (v3 f14). The header reads **Export · Clip 1** (or the captured full-edit/batch target) and keeps the panel switcher. The title-row **Export Video…** / **Export Clip…**, File > Export… (⌘E) and Explorer Export/Retry open that job with their requested target. There is no Export window or sheet. Windows retains its `ContentDialog` until its inline-actions lane migrates it. Existing export capability reasons still apply: keep at least one word, resolve missing/unreadable video, and leave demo projects before exporting.
@@ -2415,11 +2427,13 @@ Setup uses the Captions job's flat spacing, 16 pt inset, 24 pt property rows, 12
 - **AI speech:** when an export includes AI voice, the read-aloud notice remains “This video contains AI-modified speech. It will show AI MODIFIED.” The mandatory burned-in video label and provenance are unchanged. The post line is optional, separately controlled below.
 - Footer: **0:38 · about 24 MB · H.264**, estimated from target edited duration and the resolved video/audio bitrates. The primary reads **Export Clip 1**, **Export 4 Clips** or **Export Full Edit**; after failure it reads **Try again**.
 
-On Mac, **Save editable timeline (.fcpxml)** is a separate action in the scrollable Export setup. It uses the same scope and destination but does not render an MP4 or add a finished video to export history. It explains that the timeline links to original media, and shows a reason when the edit needs a rendered video instead (publishing.md §2.4).
+On Mac, **Save editable timeline (.fcpxml)** is a separate action in the scrollable Export setup. It uses the same scope and destination but does not render an MP4 or add a finished video to export history. It is disabled with **Checking the editable timeline…** while the document and any voice or picture companions are being prepared. Unsupported edits show the reason while the button is still disabled. When ready: **Keep the timeline and any companion media together. It isn’t a video to share.** See publishing.md §2.4.
 
 While running, inline progress reads “Rendering 1 of 2 · 42% · about 1 min left” and exposes **Cancel**. The status bar continues showing its export progress. Switching panel or tab leaves the editor-owned export task running. Errors appear inline, and Retry in the Explorer opens setup for the failed target and folder. A successful target still records the export ledger (§6.2).
 
 After export the result is **Exported · file name · Show in Finder · Done**. **Done** returns to the previous available panel job, falling back to Captions. A new Rewrite session or turn brings Rewrite forward while Export remains available in the switcher. Sharing is optional: **Share to X or LinkedIn…** starts collapsed, and its open/closed state is remembered in `ui.export.shareExpanded`. Done never prompts about sharing.
+
+An **Export self-check** warning says what to do next. **Centre captions and re-export** moves captions into the middle of that shape and exports that clip again without replacing the original file. Word and timing warnings jump to the marked time with **Listen**; sound and title warnings say what to adjust.
 
 For a finished clip batch, **Posting help** offers **Ask Claude for a posting plan** with its billing path on the button. It says that clip names, lengths and excerpts of edited words go to Claude and nothing is posted. When Claude answers, show the ordered clips, suggested times and an X / LinkedIn / VoxConvo picker with **Copy post text**. A saved plan is shown without another paid click (publishing.md §2.5).
 

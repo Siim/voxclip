@@ -42,6 +42,14 @@ import VoxClipMedia
             case .copying, .finding, .ranking: progress
             case .making, .done: results
             }
+            if card.running {
+                ConnectorConfirmationView(confirmation: card.rankingConfirmation, compact: false)
+                ForEach(card.rows) { recording in
+                    if let editor = recording.model {
+                        ConnectorConfirmationView(confirmation: editor.sendConfirmation, compact: false)
+                    }
+                }
+            }
             if let notice = card.notice { InlineNotice(text: notice).padding(.top, 8) }
         }
         .accessibilityIdentifier("voxclip.home.cardImport")
@@ -49,7 +57,8 @@ import VoxClipMedia
     }
 
     private var offer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let cap = shell.app.settings.clipsAutopilot.capUSD
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 heading(offerTitle)
                 Spacer()
@@ -58,13 +67,15 @@ import VoxClipMedia
             if card.scanRunning { ProgressView().controlSize(.small) }
             Text(offerDetail).font(VCType.callout.font()).foregroundStyle(.secondary)
             HStack(spacing: 8) {
-                Button("✦ Make clips from \(card.selected.count) new · up to $\(CardImport.cap)") { card.start(shell.app) }
+                Button("✦ Make clips from \(card.selected.count) new · up to $\(cap)") { card.start(shell.app) }
                     .buttonStyle(.borderedProminent).disabled(card.blocked(shell.app) != nil)
                 Button(card.picking ? "Done picking" : "Pick recordings") { card.picking.toggle() }
                     .buttonStyle(.borderless).disabled(card.newFiles.isEmpty)
             }
             if let reason = card.blocked(shell.app), !card.scanRunning { small(reason) }
-            small("Claude Code receives your transcript, recording names and selected still frames on your Claude plan. Voice and lip sync stay within the $\(CardImport.cap) cap.")
+            if let provider = card.provider(shell.app) {
+                small("\(provider.label) receives your transcript, recording names and selected still frames. Metered AI sends ask first. Voice and lip sync stay within the $\(cap) card cap.")
+            }
             if card.picking {
                 ForEach(card.newFiles) { file in selection(file) }
                 Button("Copy selected without making clips") { card.start(shell.app, copyOnly: true) }
@@ -146,7 +157,9 @@ import VoxClipMedia
     private var finished: some View {
         VStack(alignment: .leading, spacing: 6) {
             heading(card.budget == nil ? "\(card.copied) recordings copied" : "\(card.ready.count) clips ready from \(card.name)")
-            small(card.budget == nil ? "Each recording is saved as a project." : "From \(card.copied) recordings in \(durationLabel(card.elapsed ?? 0)) · \(card.spent) of $\(CardImport.cap) · \(card.merged) retakes merged")
+            if let budget = card.budget {
+                small("From \(card.copied) recordings in \(durationLabel(card.elapsed ?? 0)) · \(card.spent) of $\(budget.cap) · \(card.merged) retakes merged")
+            } else { small("Each recording is saved as a project.") }
             if card.budget != nil {
                 HStack(spacing: 8) {
                     Button("Export All · 9:16") { card.export(.portrait) }.buttonStyle(.borderedProminent).disabled(card.ready.isEmpty || card.exporting)
@@ -249,7 +262,7 @@ import VoxClipMedia
         HStack {
             small(card.budget == nil ? "Saved on this Mac" : card.stage == .copying || card.stage == .finding ? "✦ Claude does it all · \(card.transcribed) of \(card.rows.count) transcribed" : "✦ Claude does it all · \(card.ready.count) ready")
             Spacer()
-            if card.budget != nil { small("\(card.spent) / $\(CardImport.cap)") }
+            if let budget = card.budget { small("\(card.spent) / $\(budget.cap)") }
             if card.running { Button("Stop") { card.stop() }.buttonStyle(.borderless) }
             else { Button("Dismiss") { card.dismiss() }.buttonStyle(.borderless).disabled(card.exporting) }
         }

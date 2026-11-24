@@ -28,6 +28,14 @@ public struct ClipFootage: Codable, Sendable, Equatable, Identifiable {
         (kind == .screenshot || footage.start + (end - start) <= duration)
     }
 
+    func renderInput(clipID: String, span: ClosedRange<Double>, sources: [MediaReference],
+                     resolveURL: (URL) -> URL) -> ClipFootageRenderInput? {
+        guard self.clipID == clipID, start >= span.lowerBound, end <= span.upperBound,
+              let source = sources.first(where: { $0.footageKey == footage.sourceKey }),
+              source.video != nil, fits(duration: source.durationSeconds) else { return nil }
+        return ClipFootageRenderInput(entry: self, url: resolveURL(URL(fileURLWithPath: source.absolutePath)), expectedKey: source.contentKey)
+    }
+
     static func extendingPlanSchema(_ schema: JSONValue) -> JSONValue {
         guard var root = schema.aiObject, var properties = root["properties"]?.aiObject,
               var effects = properties["effects"]?.aiObject, var items = effects["items"]?.aiObject,

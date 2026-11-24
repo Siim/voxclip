@@ -35,7 +35,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
     private let http: any LipsyncHTTPClient
     private let logger: any Redacting
     private let spend: VoiceLabSpendLedger?
-    private let cleanupNotice: FalLipsyncCleanupNotice?
+    private let onCleanupDenial: (@Sendable (String) async -> Void)?
     private let now: @Sendable () -> Date
     private let monotonic: @Sendable () -> Duration
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -62,9 +62,9 @@ public actor FalLipsyncProvider: LipsyncProvider {
     public init(keys: any KeyProvider, prices: VoiceLabPriceCatalog? = nil,
                 logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path),
                 spend: VoiceLabSpendLedger = VoiceLabSpendLedger(locations: DataLocations()),
-                cleanupNotice: FalLipsyncCleanupNotice? = nil) {
+                onCleanupDenial: (@Sendable (String) async -> Void)? = nil) {
         self.keys = keys; self.prices = prices; self.logger = logger; self.spend = spend
-        self.cleanupNotice = cleanupNotice
+        self.onCleanupDenial = onCleanupDenial
         self.http = URLSessionLipsyncHTTPClient(); self.now = { Date() }
         self.monotonic = VoiceLabQuoteClock.continuousSource(); self.sleep = { try await Task.sleep(for: $0) }
         self.queue = .shared
@@ -75,9 +75,9 @@ public actor FalLipsyncProvider: LipsyncProvider {
                  logger: any Redacting, spend: VoiceLabSpendLedger? = nil,
                  now: @escaping @Sendable () -> Date, monotonic: @escaping @Sendable () -> Duration,
                  sleep: @escaping @Sendable (Duration) async throws -> Void, queue: LipsyncProviderQueue? = nil,
-                 cleanupNotice: FalLipsyncCleanupNotice? = nil) {
+                 onCleanupDenial: (@Sendable (String) async -> Void)? = nil) {
         self.keys = keys; self.prices = prices; self.http = http; self.logger = logger; self.spend = spend
-        self.cleanupNotice = cleanupNotice
+        self.onCleanupDenial = onCleanupDenial
         self.now = now; self.monotonic = monotonic; self.sleep = sleep
         self.queue = queue ?? LipsyncProviderQueue(clock: monotonic)
     }
@@ -511,7 +511,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
         }
         guard response.status == 200 else {
             if finishedResult, response.status == 401 || response.status == 403 {
-                await cleanupNotice?.recordDenial(forFingerprint: VoiceLabFingerprint.bytes(Data(key.utf8)))
+                await onCleanupDenial?(VoiceLabFingerprint.bytes(Data(key.utf8)))
             }
             await log("cleanup-unconfirmed status=\(response.status)")
             return nil

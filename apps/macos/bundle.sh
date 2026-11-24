@@ -129,6 +129,9 @@ if [ "$MODE" = upload-only ]; then
 fi
 if [ "$MODE" = release ]; then
     release_preflight
+    if [ "$ALLOW_DIRTY" = true ]; then
+        DMG="$DIST/VoxClip-macOS-$VERSION-${BUILD_COMMIT:0:9}.dmg"
+    fi
 fi
 [ "$(uname -m)" = arm64 ] || die "Build on Apple silicon; v1 ships arm64 only."
 # Debug and profile builds are ad-hoc signed; every other build mode needs the Developer ID.

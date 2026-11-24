@@ -12,6 +12,44 @@ namespace VoxClip.Ui.Tests;
 public sealed class HarnessReviewTests
 {
     [Fact]
+    public async Task KeepingAnIllustrationDoesNotSendAndOnlyItsQuotedClickCanGenerate()
+    {
+        using var review = new ReviewProject();
+        var sends = 0;
+        review.Editor.AskClaudeServices = new AskClaudeServices
+        {
+            Ask = (_, _) => throw new InvalidOperationException("The harness must not ask the connector."),
+            Available = () => true,
+            CostLine = () => "Fixture only",
+            Assets = new(0.03m, _ => Task.FromResult<string?>("fixture"), (_, _) => null,
+                (_, _, _) => throw new InvalidOperationException("No sound was requested."), (_, _, _, _) =>
+                {
+                    sends++;
+                    return Task.FromResult(JsonSerializer.SerializeToElement(new
+                    {
+                        id = "fixture-illustration", clipId = "clip-2f1c", kind = "illustration", start = 1.0, end = 1.2,
+                        imageFile = $"{review.Editor.Project.Id}/illustration-{new string('f', 64)}.png"
+                    }));
+                })
+        };
+        review.Stage("""
+            {"clipId":"clip-2f1c","reason":"Show the scene.","effects":[{"kind":"illustration","startWord":9,"endWord":9,
+                "prompt":"A lighthouse","reason":"Show the place."}]}
+            """);
+        var pending = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
+        Assert.Null(review.Editor.KeepHarnessProposal(pending, review.Path, FixtureLoader.SharedRoot, out var assets));
+        Assert.False(review.Editor.CanUndo);
+        Assert.Equal(0, sends);
+        var asset = Assert.Single(assets);
+        var snapshot = review.Editor.Project;
+        Assert.False(await review.Editor.ApplyHarnessAssetAsync(asset, snapshot, 0.01m, TestContext.Current.CancellationToken));
+        Assert.Equal(0, sends);
+        Assert.True(await review.Editor.ApplyHarnessAssetAsync(asset, snapshot, 0.03m, TestContext.Current.CancellationToken));
+        Assert.Equal(1, sends);
+        Assert.True(review.Editor.CanUndo);
+    }
+
+    [Fact]
     public void KeepingThePendingTimelineIsOneUndoableEditAndDoesNotGenerateMusic()
     {
         using var review = new ReviewProject();

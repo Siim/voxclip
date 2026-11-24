@@ -6,7 +6,7 @@ enum UserMessages {
     /// The line for an error nothing more specific describes. The Rewrite never shows it (`RewriteSession.refusal`).
     static let generic = "The operation could not finish. Your video and edits are still here."
     static func message(_ error: any Error, context: String = "", model: String = "the selected model", installHint: String? = nil, signInHint: String? = nil, connectorID: String? = nil) -> String {
-        if error is CancellationError || error as? VoxClipError == .cancelled || error as? LLMError == .cancelled { return "" }
+        if FailureDiagnostic.isCancellation(error) { return "" }
         if error as? VoiceLabProjectError == .unsupportedRendering {
             return "This build cannot preview or export generated voice segments yet. Your video and edits are still here."
         }
