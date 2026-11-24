@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac, Rewrite keeps paid work if the video goes missing, waits before changing media or transcripts, and shows reuse prices before you click.
+- On Windows, revoicing a whole clip in your selected voice no longer rejects or retries a paid take just because it sounds different. Source voice, word and audio checks still apply.
 - On Mac, import new recordings from a card or folder, find the best moments across the shoot, add footage from another recording, and review local checks after export.
 - On Windows, Claude Code and Codex can read a saved VoxClip project and stage a timeline proposal without changing the project or spending money.
 - Claude can add credited sound effects, illustrations within your spend cap, colour looks and speed changes on individual beats. Ask Claude can make the same edits.
