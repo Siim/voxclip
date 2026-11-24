@@ -2577,7 +2577,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal Create(VoxC
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal Decode(System.ReadOnlySpan`1<byte>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal Encode(VoxClip.Media.VoiceLab.VoiceLabTakeJournalEntry)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal List(string,string)
-member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal Match(VoxClip.Media.VoiceLab.VoiceLabTakeJournalKey,string,string,System.Collections.Generic.IReadOnlySet`1<string>)
+member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal Match(VoxClip.Media.VoiceLab.VoiceLabTakeJournalKey,string,string,System.Collections.Generic.IReadOnlySet`1<string>,bool)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal Remove(string,string,string)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal Settle(string,string,System.Collections.Generic.IReadOnlySet`1<string>,System.DateTimeOffset)
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournal :: method internal UpdateChecks(string,VoxClip.Media.VoiceLab.VoiceLabTakeJournalChecks,string,string)
@@ -2641,6 +2641,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeJournalClaims :: method internal Relea
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalClaims :: method private .cctor()
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalEntry :: field internal CurrentSchema
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalEntry :: method internal get_Adoptable()
+member VoxClip.Media.VoiceLab.VoiceLabTakeJournalEntry :: method internal get_AdoptableForSelectedVoice()
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalEntry :: method internal get_AssetId()
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalEntry :: method internal get_Checks()
 member VoxClip.Media.VoiceLab.VoiceLabTakeJournalEntry :: method internal get_Key()

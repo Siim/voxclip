@@ -13370,6 +13370,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Options(i
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Snapshot()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_AudioTags()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_ChecksGeneratedSpeaker()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_CleanAudioOn()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_ContentKey()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_CutWordIds()
@@ -13394,6 +13395,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Windo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_AudioTags(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_ChecksGeneratedSpeaker(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_CleanAudioOn(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_ContentKey(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_CutWordIds(System.Collections.Generic.IReadOnlySet`1<string>)
@@ -13457,6 +13459,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public ToStri
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_Failures()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_JoinSeams()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_LufsJumpLu()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_OutputSpeakerCheckSkipped()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_Passed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_PeakDbfs()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_SpeakerScore()
@@ -13469,6 +13472,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public op_Ine
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_Failures(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_JoinSeams(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisorySeam>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_LufsJumpLu(System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_OutputSpeakerCheckSkipped(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_PeakDbfs(System.Nullable`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_SpeakerScore(System.Nullable`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_SpeakerUnmeasured(bool)
@@ -13618,6 +13622,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public ToSt
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public get_Complete()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public get_Evidence()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public get_PerTake()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public get_SelectedVoice()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public get_Waiting()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck)
@@ -13632,6 +13637,17 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck :: metho
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public .ctor()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+ShortSpeechCheck :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+ShortSpeechCheck)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+ShortSpeechCheck :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+ShortSpeechCheck :: method protected get_EqualityContract()
@@ -19251,6 +19267,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+PerTakeCheck
+type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+SelectedVoiceCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+ShortSpeechCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+WaitingCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabText
