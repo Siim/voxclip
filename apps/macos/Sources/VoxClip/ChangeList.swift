@@ -185,6 +185,19 @@ extension RewriteSession {
             case .choose, .used: break
             }
         }
+        if let replacement = wholeClipReplacement, wholeClip?.phase != .used {
+            let undo = undoRevoiceAction(replacement)
+            let getPrice = showsVoiceLab && generation == nil && !wholeClipVoiceHunks.isEmpty
+                ? PanelAction(id: "makeTakes", title: "Get Price") { [weak self] in self?.makeTakes() }
+                : nil
+            if let card = wholeClipCard() {
+                return ProposalContent(set: set, headline: headline, cards: [card, .changes(set)],
+                    footer: PanelFooter(primary: undo), askAgain: askAgain)
+            }
+            let line = getPrice == nil ? RewriteReplacement.undoCopy : "The earlier revoice stays in your clip until you use the new one."
+            return ProposalContent(set: set, headline: headline, cards: [.text(line), .changes(set)],
+                footer: PanelFooter(link: getPrice == nil ? nil : undo, primary: getPrice ?? undo), askAgain: askAgain)
+        }
         guard !items.isEmpty else {
             return ProposalContent(set: set, headline: headline,
                                    cards: [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],

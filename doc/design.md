@@ -1576,6 +1576,7 @@ The current connectors return one answer, so nothing streams: R1 waits until the
     - "Only the changed phrases": "Your recording stays. 6 phrases in your voice, joined to it."
     - "The whole clip in one voice, with lip sync": "All 0:31 said again in siim · DJI 0011 (matched to this video), fitted to the clip's length, then lip synced. No seams." and what is sent: "Sends the clip's new words to ElevenLabs (≈ {voice}), and its 0:31 of video with the new audio to fal.ai lipsync-2 (≈ {lip sync}), with your keys. Exports say “Voice and lip movement generated with AI.”"
     The primary acts on the selected option: **Revoice Whole Clip · ≈ $x** (the click approves one take and one word check per part, then lip sync) or **Voice Only the Changed Phrases** (the card goes and Rewrite goes on as before). Whole-clip revoice uses the selected authorized voice without a second speaker check or a retry reserve.
+    When Rewrite can replace a used whole-clip revoice, it disables “Only the changed phrases” and says “Rewrite starts from your recording’s words. The earlier revoice stays until you use the new one.” When the new plan cannot replace the earlier revoice together, show “This part was already revoiced. Undo that revoice to rewrite it.” with a free **[Undo]**, before showing a price.
   - **Running.** "Revoicing the whole clip 0:42" and the step list, each line with its price on the right ("free" for Script and Fit):
     - ✓ Script · 74 words, your edits applied
     - ✓ Voice · 0:30.6 in siim · DJI 0011 · one take

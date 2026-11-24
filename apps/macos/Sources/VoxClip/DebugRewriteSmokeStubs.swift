@@ -12,6 +12,7 @@ import VoxClipCore
 enum RewriteSmokeReply: Sendable {
     /// A Rewrite reply: the new passage and optional next actions.
     case passage(String, nextActions: [RewriteNextAction] = [])
+    case patch(line: String, text: String)
     /// The request fails as a provider error would.
     case failure
     /// Waits until `RewriteSmokeConnector.release()` before answering with `then`.
@@ -55,7 +56,7 @@ actor RewriteSmokeConnector: LLMConnector {
         records.append(RewriteSmokeRequestRecord(tag: request.tag, feedback: feedback,
             slots: request.instruction.contains("TIME IN THE VIDEO") && request.system.contains("picture keeps running")))
         switch request.tag {
-        case "voice-rewrite":
+        case "voice-rewrite", "patch-rewrite":
             guard !rewrites.isEmpty else { throw LLMError.invalidOutput(reason: "The smoke script has no reply.") }
             let reply = rewrites.count > 1 ? rewrites.removeFirst() : rewrites[0]
             return try await answer(reply, model: model)
@@ -87,6 +88,9 @@ actor RewriteSmokeConnector: LLMConnector {
             var object: [String: Any] = ["rewrite": text, "audioTags": []]
             object["nextActions"] = actions.map { ["label": $0.label, "instruction": $0.instruction, "ordinals": $0.ordinals] }
             let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            return RawCompletion(text: String(decoding: data, as: UTF8.self), model: model, stop: .complete)
+        case .patch(let line, let text):
+            let data = try JSONSerialization.data(withJSONObject: ["edits": [["line": line, "text": text, "reason": "Clarify the opening."]]])
             return RawCompletion(text: String(decoding: data, as: UTF8.self), model: model, stop: .complete)
         case .failure:
             throw LLMError.invalidOutput(reason: "Scripted provider failure.")

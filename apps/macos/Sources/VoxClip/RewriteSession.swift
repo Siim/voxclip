@@ -348,7 +348,7 @@ struct RewriteChange: Equatable, Sendable {
         }
     }
     /// The positions a clip spans in the take, nil for an unknown clip.
-    private static func clipRange(_ id: String, in project: Project) -> ClosedRange<Int>? {
+    static func clipRange(_ id: String, in project: Project) -> ClosedRange<Int>? {
         let words = project.transcript?.words ?? []
         guard let clip = project.edits.clips.first(where: { $0.id == id }),
               let lower = words.firstIndex(where: { $0.id == clip.startWordId }),
@@ -466,6 +466,7 @@ struct RewriteChange: Equatable, Sendable {
         // Paid work saved before VoxClip quit or crashed comes back first, with its proposal and no AI call.
         if restoreSavedProposal() { return }
         if connector == nil {
+            if stopForUsedRevoice() { return }
             actionTask = Task { [weak self] in await self?.showChooser() }
         } else if let work = begin() {
             actionTask = Task { _ = await work.value }
@@ -481,7 +482,11 @@ struct RewriteChange: Equatable, Sendable {
             editor.restartRewrite(self)
             return false
         }
-        guard connector != nil else { await showChooser(); return false }
+        guard connector != nil else {
+            reread()
+            if !stopForUsedRevoice() { await showChooser() }
+            return false
+        }
         guard let work = begin() else { return false }
         return await work.value
     }
@@ -508,6 +513,7 @@ struct RewriteChange: Equatable, Sendable {
         reread()
         changes = []; review = nil; setAside = nil; problem = ""
         clearProposal()
+        if stopForUsedRevoice() { runs.release(lease); return nil }
         isProposing = true
         let expected = revision
         beginRun()
@@ -597,7 +603,8 @@ struct RewriteChange: Equatable, Sendable {
     /// The request a run sends, made off the main actor: placing a selection and planning a clip or Full take read the
     /// whole take (impl-plan §3.1). The quote is the service's.
     func prepareSend(_ connector: RewriteConnector, feedback: String? = nil) async throws -> PreparedSend {
-        let project = project, rewriteScope = rewriteScope, envelope = envelope
+        let project = wholeClipReplacement?.removing(from: project) ?? project
+        let rewriteScope = rewriteScope, envelope = envelope
         let language = project.transcript?.language ?? "en"
         let asked = RewriteSuggestions.suggestion(for: instruction).instruction
         let feedback = feedback ?? shorterFeedback
@@ -672,7 +679,8 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// What the review reads now.
     var reviewInputs: RewriteReview.Inputs {
-        RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel,
+        RewriteReview.Inputs(transcript: transcript, project: wholeClipReplacement?.removing(from: project) ?? project,
+            scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel,
             voiceCalibration: voiceCalibration)
     }
     private func receive(_ checked: Checked) {
@@ -865,7 +873,7 @@ struct RewriteChange: Equatable, Sendable {
     }
     #endif
     /// Takes the session's proposal out of the transcript.
-    private func clearProposal() {
+    func clearProposal() {
         if ownProposal != nil { editor.proposal = nil }
     }
     /// Shows what the run replaced again, with the transcript's proposal and its reviews, or closes a first run.
@@ -1468,15 +1476,16 @@ struct RewriteChange: Equatable, Sendable {
         let clipID: String? = if case .clip(let id) = scope { id } else { nil }
         return project.voiceTakeIdentity(scope: rewriteScope, enclosingClipID: clipID)
     }
-    enum ChangedReason { case scope, ai }
+    enum ChangedReason { case scope, ai, revoiceUndone }
     /// R3: "Clip 1 changed", why nothing was applied, Close, and Rewrite Again with the send line.
     func showChanged(reason: ChangedReason = .scope) {
         let words = task.words
-        let headline = reason == .ai ? "AI changed" : words.changed
+        let headline = reason == .revoiceUndone ? "Revoice undone" : reason == .ai ? "AI changed" : words.changed
         let change = reason == .ai ? "You changed the AI" : "You edited \(words.name)"
         // Paid work is named with what keeps it, never beside "no takes were paid for" (design.md R3).
         let paid = paidWorkKept
-        let body = "\(change), so these changes may no longer fit. " + (hasPaidWork
+        let body = reason == .revoiceUndone ? "The earlier revoice is off. Rewrite again to change the recording’s words." :
+            "\(change), so these changes may no longer fit. " + (hasPaidWork
             ? "Nothing was applied. \(paid.kept) until you close this" + (reason == .ai ? "." : "; Undo brings \(paid.pronoun) back.")
             : "Nothing was applied, and no takes were paid for.")
         // Rewrite Again discards the set-aside proposal and its takes, so it asks first as ⇧⌘R does.
