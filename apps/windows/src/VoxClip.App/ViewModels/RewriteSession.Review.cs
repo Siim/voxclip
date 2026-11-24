@@ -26,9 +26,9 @@ internal sealed record RewritePaidReviewQuestion(string Question, string Cancel,
 
 internal sealed partial class RewriteSession
 {
-    internal bool HasPaidTakes => generationWindows.Any(window => window.HasPaidTakes);
+    internal bool HasPaidTakes => RestoredTakesPending > 0 || generationWindows.Any(window => window.HasPaidTakes);
     /// <summary>The paid takes a change of the review discards; 0 while the first ones are still being made.</summary>
-    internal int PaidTakeCount => generationWindows.Sum(window => window.PaidTakeCount);
+    internal int PaidTakeCount => Math.Max(RestoredTakesPending, generationWindows.Sum(window => window.PaidTakeCount));
     /// <summary>Closing Rewrite (the panel's X, Esc) asked first because it holds paid takes (Mac <c>confirmDiscardPaidWork(.close)</c>,
     /// design.md R2 "Closing Rewrite"): the question shows inline with Keep Working, the default, and Discard and Close.</summary>
     internal bool CloseAsked { get; private set; }
@@ -94,6 +94,7 @@ internal sealed partial class RewriteSession
         await StopCandidatesAsync();
         if (!ReviewIsCurrent || expected.Identity != ReviewIdentity) return false;
         RetireGenerationWindows();
+        ForgetSavedProposal();
         generatedReview = null;
         var applied = await expected.Apply();
         ReconcileGenerationWindows();

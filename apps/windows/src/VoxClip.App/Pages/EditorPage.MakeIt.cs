@@ -279,6 +279,7 @@ public sealed partial class EditorPage
         var envelope = !demo && media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
         if (disposed || ViewModel.IsLeaving) return null;
         var session = new RewriteSession(ViewModel, request.First, request.Last, envelope, null, prices: VoiceLabPrices.Load(), forClipId: request.ClipId);
+        if (!demo) session.ConfigureSavedProposal(Path.Combine(App.Services.Data.Root, "VoiceLab"), restore: false);
         ConfigureRewriteGeneration(session);
         return session;
     }

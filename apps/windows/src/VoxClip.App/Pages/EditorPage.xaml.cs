@@ -622,20 +622,25 @@ if (insertion ||
         var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
         if (!CurrentOpening()) return;
         var selectedConnector = entry is null ? null : App.Services.Connector(entry.Id);
-        if (entry is not null) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
         var connector = entry is null ? null : new RewriteConnector(selectedConnector!,
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
         var connectorWireId = App.Services.Get("llm.connector", "");
         if (!CurrentOpening()) return;
-        rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
+        var session = new RewriteSession(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
             prices: VoiceLabPrices.Load(),
             connectorIsCurrent: () => App.Services.Get("llm.connector", "") == connectorWireId &&
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model),
             scope: ViewModel.HasSelection ? null : project.Edits.ActiveClipId is { } scopeClip ? RewriteScope.Clip(scopeClip) : RewriteScope.FullTake);
-        if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite);
-        ShowRewriteSession(rewrite, instruction);
-        await rewrite.SetInstructionAsync(instruction ?? "");
+        var restored = !demo && session.ConfigureSavedProposal(Path.Combine(App.Services.Data.Root, "VoiceLab"));
+        if (entry is not null && (!restored || entry.Cli)) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
+        if (!CurrentOpening() || !session.IsOpen) { session.Dispose(); return; }
+        rewrite = session;
+        if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(session);
+        var prompt = restored && (string.IsNullOrWhiteSpace(instruction) || instruction == ViewModel.RewriteStripItems.FirstOrDefault()?.Instruction)
+            ? session.Instruction : instruction ?? "";
+        ShowRewriteSession(session, prompt);
+        await session.SetInstructionAsync(prompt);
     }
     /// <summary>Another Rewrite would replace the open one while it holds paid takes not used or discarded yet (Mac
     /// <c>askBeforeReplacing</c>, design.md R2 "Closing Rewrite"): nothing is retired unasked. The open one's panel comes forward and
@@ -740,6 +745,7 @@ if (insertion ||
             ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log) == region;
         var backend = new RewriteGenerationBackend(App.Services.Data, App.Services.Keys, App.Services.Log,
             VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi, App.Services.LocalTiming);
+        backend.Runner.PaidAudioSaved = (request, record, usd) => OnUi(() => session.PaidTakeSaved(request, record, usd));
         IVoiceLabTakeRunner runner = backend.Runner;
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
         var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? "", VoiceLabSourceAudio.RewriteSourceAsync);

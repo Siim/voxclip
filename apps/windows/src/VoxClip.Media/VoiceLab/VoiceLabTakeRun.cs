@@ -58,6 +58,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     public int? PhraseId { get; set; }
     /// <summary>The free on-device fallback of timing recovery (voice-lab §8.5); null leaves only the take's Scribe word check.</summary>
     public VoiceLabLocalTiming? LocalTiming { get; set; }
+    /// <summary>Reports the durable paid take before timing recovery or word checks start.</summary>
+    public Func<Guid, string, decimal?, Task>? PaidAudioSaved { get; set; }
     public VoiceLabTakeRun(ElevenLabsVoiceLab client, VoiceConsentStore store, VoiceSpeakerCheck speaker,
         VoiceLabTakeStorage storage, VoiceLabDispatchGate inputGate, Func<CancellationToken, Task<bool>> inputsAreCurrent)
         : this(client, store, storage, inputGate, inputsAreCurrent, ProductionChecks(store, speaker)) { }
@@ -588,6 +590,11 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         lock (sync) { paidAssets[requestId] = paid; journalAssets.Add(paid.File); }
         VoiceLabTakeJournalClaims.Claim(VoiceLabTakeJournalClaims.Key(paid.File, storage.PaidRoot), claimOwner);
         if (!journaled) client.Note("voicelab take journal unwritten");
+        else if (PaidAudioSaved is { } saved)
+        {
+            try { await saved(result.Receipt.ActionId, value.Record.RecordId, estimate).ConfigureAwait(false); }
+            catch (Exception error) when (error is not OutOfMemoryException) { client.Note("voicelab rewrite checkpoint unwritten"); }
+        }
         return paid;
     }
     /// <summary>The journaled take's stored PCM as the take's audio, claimed by this run for good: no synthesis, nothing charged.</summary>

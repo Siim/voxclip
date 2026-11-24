@@ -88,6 +88,12 @@ internal sealed record VoiceLabTakeJournalEntry(string Schema, string AssetFile,
 /// a crash before its close. Their assets stay.</summary>
 public static class VoiceLabTakeJournalSettlement
 {
+    /// <summary>Unused audio requests still eligible for adoption, before the take run rechecks its input and consent.</summary>
+    public static IReadOnlySet<Guid> RecoverableRequests(string projectId, string paidRoot, DateTimeOffset now) =>
+        VoiceLabTakeJournal.List(projectId, paidRoot).Where(entry => entry.Adoptable && now - entry.CreatedAt < VoiceLabTakeJournal.UnusedLifetime &&
+            File.Exists(Path.Combine(paidRoot, projectId, entry.AssetId + ".wav")))
+            .Select(entry => Guid.Parse(entry.RequestId)).ToHashSet();
+
     /// <summary>Returns how many entries went.</summary>
     public static int Settle(string projectId, string paidRoot, IEnumerable<string> referencedFiles) =>
         VoiceLabTakeJournal.Settle(projectId, paidRoot, referencedFiles.ToHashSet(StringComparer.Ordinal), DateTimeOffset.UtcNow);

@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-24 — Saved patch Rewrite proposals and Music parity (track/c19b-win-proposal-music)
+
+- Paid patch audio is journaled before timing and QA, and that write checkpoints the fitted proposal for its project and scope. A matching reopen needs no proposal call; Take Run still checks consent and prices only the word checks for adoptable audio. Use and explicit discard clear the proposal, not its assets. See `doc/spec/voice-lab.md` §3.5.
+- Settings → General selects or resets the Music folder. The timeline's M1 lane shows the bed, fades and flagged track level. Preview and export mix onto silence if the video has no source audio. See `doc/spec/music.md`.
+- Portable coverage: saved proposal storage and relaunch, shared Rewrite identity and music wire/mix cases, timeline geometry, and silent-source mixing. Native WinUI, WASAPI and MP4 playback/export still need Windows verification.
+
 ### 2026-11-21 — Opening another Rewrite asks over paid takes, and a Restart held by them says so (track/v2-rel-h, package H)
 
 Twin, in part, of the Mac entry of the same date (voice-lab §8.16 item 10; design.md R2 "Closing Rewrite"). `OpenRewriteAsync` retired the open Rewrite and its paid takes unasked, and Restart now over paid takes read the held leave as a failed save.

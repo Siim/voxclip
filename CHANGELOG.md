@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, reopen Rewrite on the same passage to get back the review for your unused paid takes without asking the AI again.
 - On Windows, choose your Music folder, see the track and its fades in the timeline, and add music to videos with no sound.
 - On Mac, you can Rewrite a clip after using a whole-clip revoice. The earlier revoice stays until you use the new one. A selection that can't replace it offers a free Undo.
 - Rewrite keeps your earlier takes on Mac and Windows, newest first, so you can play or switch back to a take you already paid for without being charged again.

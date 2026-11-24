@@ -48,6 +48,8 @@ public sealed class VoiceTakeIdentityTests
             Assert.True(sameIdentity == row["sameIdentity"]!.GetValue<bool>(), id + ": " + row["why"]!.GetValue<string>());
             var sameInputs = ProjectVoiceTakeIdentity.RewriteInputsKey(baseline, scope, enclosing) == ProjectVoiceTakeIdentity.RewriteInputsKey(changed, scope, enclosing);
             Assert.True(sameInputs == row["sameRewriteInputs"]!.GetValue<bool>(), id + " (rewrite inputs): " + row["why"]!.GetValue<string>());
+            var proposal = new VoxClip.Core.Services.VoiceLab.SavedRewriteProposalStore("", baseline.Id, scope, enclosing);
+            Assert.True((proposal.Inputs(baseline) == proposal.Inputs(changed)) == row["sameRewriteInputs"]!.GetValue<bool>(), id + " (saved Rewrite inputs)");
             Assert.NotEqual(ProjectSerialization.Serialize(baseline), ProjectSerialization.Serialize(changed));
         }
     }
@@ -93,6 +95,40 @@ public sealed class VoiceTakeIdentityTests
 /// AI connector no longer ends takes.</summary>
 public sealed class VoiceTakeIdentitySessionTests
 {
+    [Fact]
+    public void SavedReviewOpensWithoutAnAiAndExplicitDiscardRemovesIt()
+    {
+        var root = Directory.CreateTempSubdirectory("voxclip-saved-review-").FullName;
+        try
+        {
+            var editor = Editor();
+            var store = new VoxClip.Core.Services.VoiceLab.SavedRewriteProposalStore(root, editor.Project.Id, RewriteScope.Selection(10, 12), null);
+            var request = Guid.NewGuid();
+            using (var original = new RewriteSession(editor, 10, 12, Envelope(), null))
+            {
+                Assert.False(original.ConfigureSavedProposal(root));
+                original.Edit("New wording here");
+                Assert.Null(store.Load(editor.Project, DateTimeOffset.UtcNow));
+                original.PaidTakeSaved(request, "voice", .04m);
+            }
+            var checkpoint = Assert.IsType<VoxClip.Core.Services.VoiceLab.SavedRewriteProposal>(store.Load(editor.Project, DateTimeOffset.UtcNow));
+            Assert.Equal(.04m, checkpoint.PatchUsd);
+            Assert.Equal(request, Assert.Single(checkpoint.PatchRequests));
+
+            using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
+            Assert.True(session.ConfigureSavedProposal(root, _ => new HashSet<Guid> { request }));
+            Assert.Equal("New wording here", session.NewWords);
+            Assert.Equal(new[] { "New", "wording", "here" }, Assert.Single(session.Review!.Diff.Hunks).NewTokens);
+            Assert.Equal(1, session.PaidTakeCount);
+            Assert.False(session.RequestClose());
+            session.KeepWorking();
+            Assert.NotNull(store.Load(editor.Project, DateTimeOffset.UtcNow));
+            Assert.True(session.DiscardForAnotherProposal());
+            Assert.Null(store.Load(editor.Project, DateTimeOffset.UtcNow));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public void EditsOutsideTheRewriteKeepTheSessionAndItsGeneration()
     {

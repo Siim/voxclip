@@ -71,8 +71,9 @@ internal sealed partial class RewriteSession : IDisposable
     internal string Problem => proposalProblem.Length > 0 ? proposalProblem : reviewProblem;
     internal VoiceLabPreparedAction? Prepared { get; private set; }
     internal VoiceLabCostPresentationResult? Estimate { get; private set; }
-    internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? "Rewrite" :
-        Connector?.Group == "local" ? "Rewrite · No charge" : VoiceLabCostPresentation.ButtonTitle("Rewrite", null, Estimate);
+    private string ProposalTitle => HasRestoredProposal ? "Rewrite Again" : "Rewrite";
+    internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? ProposalTitle :
+        Connector?.Group == "local" ? ProposalTitle + " · No charge" : VoiceLabCostPresentation.ButtonTitle(ProposalTitle, null, Estimate);
     internal string EstimateCopy => Estimate?.Text is { Length: > 0 } text ? text : Prepared is null ? "" : "No charge.";
     internal bool CanPropose => IsOpen && !IsProposing && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly &&
         ReferenceEquals(Project, Editor.Project) && connectorIsCurrent() && contextIsCurrent() && BillingCurrent && estimateShown && Prepared is not null;
@@ -350,7 +351,8 @@ internal sealed partial class RewriteSession : IDisposable
     /// inline approval for a billed connector). Ask again cancels any rounds still running.</summary>
     internal async Task<bool> ProposeAsync(VoiceLabPreparedAction action, bool affirmative)
     {
-        if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action)) return false;
+        if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || ownsSavedProposal && HasPaidTakes) return false;
+        if (ownsSavedProposal) ForgetSavedProposal();
         StopWordingFit();
         var proposed = await SendRewriteAsync(action, affirmative);
         if (proposed && IsOpen) await BeginAutomaticWordingFitAsync();
@@ -408,6 +410,8 @@ internal sealed partial class RewriteSession : IDisposable
             ReaskProblem = ""; LastReask = null;
             ResetThreads();
             NewWords = resultText;
+            answeredInstruction = string.IsNullOrWhiteSpace(Instruction) && requestedScope is not null ? "Fix mistakes" : Instruction;
+            suppressProposalWrite = false;
             RefreshReview();
             ProposalRevision++;
             return true;
@@ -438,6 +442,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal void Edit(string text)
     {
         if (!IsOpen) return;
+        if (ownsSavedProposal && DeferPaidReviewChange(() => { Edit(text); return Task.FromResult(true); })) return;
         StopWordingFit();
         StopAutoFix();
         StopReask();
@@ -476,7 +481,9 @@ internal sealed partial class RewriteSession : IDisposable
     internal bool ApplyLocalChanges()
     {
         if (!IsOpen || LocalAction is null || !ReferenceEquals(Project, Editor.Project) || Editor.Busy || Editor.IsReadOnly || Editor.IsLeaving) return false;
-        return Editor.ApplyBatch(LocalOperations());
+        var applied = Editor.ApplyBatch(LocalOperations());
+        if (applied) ForgetSavedProposal();
+        return applied;
     }
 
     private IReadOnlyList<EditOperation> LocalOperations()
@@ -491,7 +498,12 @@ internal sealed partial class RewriteSession : IDisposable
         }
         return operations;
     }
-    internal Task<bool> ApplyTakeAsync() => ApplyReviewedWindowsAsync();
+    internal async Task<bool> ApplyTakeAsync()
+    {
+        var applied = await ApplyReviewedWindowsAsync();
+        if (applied) ForgetSavedProposal();
+        return applied;
+    }
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
@@ -606,6 +618,8 @@ internal sealed partial class RewriteSession : IDisposable
     public void Dispose()
     {
         if (!IsOpen) return;
+        PersistSavedProposal();
+        Changed -= SaveOnChanged;
         IsOpen = false;
         ResetThreads();
         StopReask();
