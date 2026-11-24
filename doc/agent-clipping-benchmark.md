@@ -93,19 +93,19 @@ published suggestions, and later clips arrive without replacing the one under re
 
 | Stage (seconds) | Before | After |
 |---|---:|---:|
-| Import setup / ingest | 0.002 (setup only) | 0.024 |
-| Media probe | Not measured separately | 0.015 |
-| Audio extraction | 0.510 | 0.728 |
-| Apple Speech draft (scripted) | — | 0.050 |
+| Import setup / ingest | 0.002 (setup only) | 0.049 |
+| Media probe | Not measured separately | 0.028 |
+| Audio extraction | 0.510 | 0.510 |
+| Apple Speech draft (scripted) | — | 0.054 |
 | Confirming transcription (scripted) | Not measured separately | 0.513 |
-| Transcription total (includes audio) | 1.041 | 1.294 |
-| Find Clips | 0.681 | 0.664 |
-| Plans, clips 1 / 2 / 3 | 0.128 / 0.189 / 0.189 | 0.122 / 0.182 / 0.182 |
-| Apply, clips 1 / 2 / 3 | 0.039 / 0.038 / 0.037 | 0.039 / 0.038 / 0.037 |
-| **Drop to first ready clip** | **1.937** | **1.630** |
+| Transcription total (includes audio) | 1.041 | 1.089 |
+| Find Clips | 0.681 | 0.668 |
+| Plans, clips 1 / 2 / 3 | 0.128 / 0.189 / 0.189 | 0.128 / 0.191 / 0.191 |
+| Apply, clips 1 / 2 / 3 | 0.039 / 0.038 / 0.037 | 0.042 / 0.040 / 0.039 |
+| **Drop to first ready clip** | **1.937** | **1.471** |
 
-These are elapsed stage durations, not additive. After the change, Find Clips starts at
-0.804 s after drop, overlapping the full 0.513 s confirmation. The baseline used the
+These are elapsed stage durations, not additive. In the merged-branch run, Find Clips starts at
+0.620 s after drop, overlapping the 0.513 s confirmation. The baseline used the
 existing per-stage clock plus a drop timestamp; its short setup measurement did not time
 the media probe. This fixture checks the workflow, not production speed or recognition
 accuracy on a long video. Windows shares the transcription-choice fixture but has no
