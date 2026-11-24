@@ -191,7 +191,8 @@ public static class VoiceLabOutputPlanner
             Append(VoiceLabOutputPieceKind.Source, position, interval.EndSample, interval.EndSample - position);
         }
         var plan = new VoiceLabOutputPlan(rate, total, pieces, [], scope);
-        plan = plan with { VideoCuts = enabled.Where(segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe?.Video.Mode == VoiceLabVideoMode.Cut)
+        plan = plan with { VideoCuts = enabled.Where(segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe?.Video is
+                { Mode: VoiceLabVideoMode.Cut or VoiceLabVideoMode.Lipsync, Cuts.Count: > 0 })
             .ToDictionary(segment => segment.Id, segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe!.Video.Cuts!) };
         if (enabled.Length == 0) return plan with { Captions = EditingEngine.CaptionCopy(segments, basePlan) };
         var captions = new List<CaptionWord>();

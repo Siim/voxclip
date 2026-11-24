@@ -4,9 +4,11 @@ using System.Security.Principal;
 
 namespace VoxClip.Core.Services.VoiceLab;
 
-internal static class VoiceConsentPrivacy
+/// <summary>Private storage for consent evidence and paid Voice Lab work.</summary>
+public static class VoiceConsentPrivacy
 {
-    internal static void CreateDirectory(string path)
+    /// <summary>Create a directory restricted to the user and, on Windows, Local System.</summary>
+    public static void CreateDirectory(string path)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -15,7 +17,8 @@ internal static class VoiceConsentPrivacy
         }
         CreateWindowsDirectory(path);
     }
-    internal static void Validate(string path, bool directory)
+    /// <summary>Refuse reparse points and non-private Windows ACLs.</summary>
+    public static void Validate(string path, bool directory)
     {
         if (!OperatingSystem.IsWindows()) return;
         ValidateWindows(path, directory);
