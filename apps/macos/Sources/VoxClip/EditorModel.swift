@@ -279,7 +279,7 @@ struct EditorRenderSnapshot {
     static let rewriteUnavailableNotice = "Rewrite isn't available right now. Nothing was sent."
     static let rewriteStoppedNotice = "Rewrite didn't start. Nothing was sent. Press Rewrite again."
     /// Ends a Rewrite still getting ready without a notice: a close, or a send of the open session, replaced it.
-    private func cancelRewriteOpen() { rewriteOpenToken = nil; rewriteOpenTask?.cancel() }
+    func cancelRewriteOpen() { rewriteOpenToken = nil; rewriteOpenTask?.cancel() }
     /// Scope changes reword the single row and bind its approval to the newly displayed words, also headlessly.
     func refreshPendingSendScope() {
         guard sendConfirmation.isPresented, openRewrite != nil else { return }

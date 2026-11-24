@@ -10,6 +10,7 @@ extension InlineTranscription {
         let cost: Double?
         let alignmentRetry: TranscriptionAlignmentRetry?
         var confirmedTranscript: Transcript?
+        var suspendedRewrite: (session: RewriteSession, proposal: TranscriptProposal?)?
         let approvedAt = Date()
         let evidence = TranscriptionEvidence()
         var cancelled = false
@@ -125,7 +126,19 @@ extension InlineTranscription {
         if succeeded { pendingAlignment = nil; phase = .hidden }
         else if cancelledNote != nil && request.alignmentRetry == nil { phase = again ? .hidden : .folded }
         else { phase = .choosing }
+        settleRewrite(request, restore: !succeeded)
         keyGuard.reset(); activeRun = nil
+    }
+
+    func settleRewrite(_ request: ApprovedRun, restore: Bool) {
+        guard let suspended = request.suspendedRewrite else { return }
+        request.suspendedRewrite = nil
+        if restore, suspended.session.isOpen, model.openRewrite == nil {
+            model.proposal = suspended.proposal
+            model.openRewrite = suspended.session
+        } else {
+            suspended.session.close()
+        }
     }
     func cancellationNote(_ request: ApprovedRun) -> String {
         if request.alignmentRetry != nil { return "Cancelled. Your saved words, media and edits are safe." }

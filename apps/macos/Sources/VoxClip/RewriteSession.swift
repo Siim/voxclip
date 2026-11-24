@@ -416,10 +416,10 @@ struct RewriteChange: Equatable, Sendable {
     // MARK: Running
 
     /// The scope's inputs still match, apart from save metadata and the active tab (impl-plan §3.3).
-    var current: Bool { isOpen && editor.capabilities.edit && inside(editor.project) == inside(project) && connectorIsCurrent() }
+    var current: Bool { voiceSpendCurrent && connectorIsCurrent() }
     /// Paid voice work's currency: `current` without the AI connector, which matters only for a proposal and asking the AI
     /// again, never for takes, a whole clip's voice or a lip sync. Plans add their own voice identity (`voiceIdentity`).
-    var voiceSpendCurrent: Bool { isOpen && editor.capabilities.edit && inside(editor.project) == inside(project) }
+    var voiceSpendCurrent: Bool { isOpen && !editor.transcription.isRunning && editor.capabilities.edit && inside(editor.project) == inside(project) }
     /// "Rewrite", or "Rewrite…" when the send asks first (design §6.3.1): an API key, or a CLI signed in with one.
     var proposalButton: String { sendAsksFirst ? "Rewrite…" : "Rewrite" }
     /// The note beside the button that sends (design.md R1's footer); empty while no AI is chosen (R0).
