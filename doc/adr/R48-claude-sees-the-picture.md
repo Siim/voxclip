@@ -238,3 +238,38 @@ The W7 set, split and reference, rerun after three Windows-side changes. The sha
 - **Constants** in the calibration block: `speakerScore` 0.85 and `eyesFromWidth` 80. The W7 maps and weights are refitted
   unchanged. `evaluation` adds `steps` (the table above, fit and held out), `eyeBands`, `speaker`, `recordingOffset` and the eyes
   counts. Setting `eyesFromWidth` to 0 turns the small-face rule off.
+
+## Windows calibration, third pass (2026-11-24)
+
+Re-ran all 5,620 pinned frames with FFmpeg 6.1.1: 3,800 frames from 24 fit people and 1,820 from 13 held-out people.
+The Mac reference is unchanged (Apple Vision on macOS 27.0.1, 26A434). The Windows runner agreed with `OnnxFrameFaces`
+on every frame. No source video or decoded frame was retained.
+
+- **Quality:** Added a face-scale term before the quality gate and remap. It rises linearly from 40 to 240 px at the
+  1,280 px analysis size and saturates beyond that. The fit gave it weight 0.1253 (`w0` 0.2355, `w1` 0.1427,
+  `w2` 0.1613, `pitch0` 0.14). It uses shot scale as a cue, not face identity; there is no per-person offset.
+- **Eyes and selected face:** Refitting on the fit people kept `eyesFromWidth` at 80 px and `speakerScore` at 0.85.
+  The selected Windows face overlapped Vision's at IoU ≥ 0.3 on all 3,760 fit and all 1,803 held-out frames where both
+  saw a face. That checks the same-face assumption on this set, not who is actively speaking in a multi-person shot.
+
+| Held-out gate | Needs | W8 rerun | Third pass | Result |
+|---|---:|---:|---:|---|
+| Eyes | ≥ 0.98 | 0.968 | 0.968 (1,494/1,543) | Fail |
+| Facing | ≥ 0.95 | 0.980 | 0.980 (1,767/1,803) | Pass |
+| Quality at 0.25 | ≥ 0.95 | 0.900 | 0.873 (1,574/1,803) | Fail |
+| Quality at 0.40 | ≥ 0.85 | 0.906 | 0.900 (1,623/1,803) | Pass |
+| Opening | ≥ 0.95 | 0.887 | 0.889 (1,276/1,436) | Fail |
+| Cover regret p90 | ≤ 0.06 | 0.455 | 0.455 | Fail |
+
+**Decision:** Keep `enabled: false` and `status: provisional`. Windows launches without automatic face-follow crop,
+cover picks or Make it postable's picture rows. Release cannot use the Debug override. `analyze-frames` returns
+`modelMissing` (exit 7) without an observation, never a synthetic “no face”.
+
+**What would still change it:** Width helped quality at 0.25 on fit (0.937 → 0.960) but hurt it on held-out people.
+The three in-station mid shots (s15, s17, s19) account for 179 of 229 misses at 0.25. A quality cue that generalizes
+across shots and people needs more evidence at those scales; a global width term is not enough. There were 260
+unknown Windows eye states on held-out frames with a Vision eye state. Eyes agree 0.983 away from the threshold,
+but only 0.851 when unknown is counted as not open. Small and borderline eye states need a more reliable measurement
+or an agreed treatment on both platforms before changing the cover rule. Even at ≥100 px, cover regret p90 is 0.069,
+so excluding wide shots would not pass the cover gate. Test any new approach against a separately held-out set with
+more mid-width shots, glasses and dim scenes, and labelled speakers in multi-person shots. Don't tune on these held-out people.

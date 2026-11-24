@@ -57,8 +57,8 @@
   },
   "calibration": {
     "status": "provisional",
-    "basis": "Provisional: the acceptance against the Mac failed (see evaluation.failed), so this calibration cannot be enabled. Fitted by tools/frames/calibrate (W7, W8) on 24 subjects of US federal public-domain NASA video and checked on 13 held-out subjects (split by subject; manifest tools/frames/calibrate/manifest.json, SHA-256 e28d44db2d066d351ff7cf9f5536fed7e049dcce9e23a3ee7dc4748095afdc10); no frames are kept. The study's fixed gates stay for minimumFaceWidth (1 fit faces narrower than the size gate), lumaLow (1 fit faces darker than the low luma gate), lumaHigh (0 fit faces brighter than the high luma gate), clippedFraction (0 fit faces more clipped than the clipping gate): a gate is fitted only from 30 faces past it. The sharpness range, eyes-open span and facing span are the study's; pitch0 and the weights are fitted. speakerScore is the fit split's lowest speaker score (0.8636) rounded down to 0.05; eyesFromWidth is the top of the highest 20 px band of fit faces, with at least 30 faces, whose eye agreement is below the fit split's overall (evaluation.eyeBands). The per-recording quality offset was fitted too and chose strength 0.0 (evaluation.recordingOffset), so none is applied.",
-    "date": "2026-11-09",
+    "basis": "Provisional: the acceptance against the Mac failed (see evaluation.failed), so this calibration cannot be enabled. Fitted by tools/frames/calibrate (third pass) on 24 subjects of US federal public-domain NASA video and checked on 13 held-out subjects (split by subject; manifest tools/frames/calibrate/manifest.json, SHA-256 e28d44db2d066d351ff7cf9f5536fed7e049dcce9e23a3ee7dc4748095afdc10); no frames are kept. The study's fixed gates stay for minimumFaceWidth (1 fit faces narrower than the size gate), lumaLow (1 fit faces darker than the low luma gate), lumaHigh (0 fit faces brighter than the high luma gate), clippedFraction (0 fit faces more clipped than the clipping gate): a gate is fitted only from 30 faces past it. The sharpness range, eyes-open span and facing span are the study's; pitch0 and the weights are fitted, including the new face-width term (linear from 40 to 240 px). speakerScore is the fit split's lowest speaker score (0.8636) rounded down to 0.05; eyesFromWidth is the top of the highest 20 px band of fit faces, with at least 30 faces, whose eye agreement is below the fit split's overall (evaluation.eyeBands). No per-recording quality offset is applied.",
+    "date": "2026-11-24",
     "reference": "Apple Vision, macOS 27.0.1 (26A434), AppleFrameVision request set with M1: VNDetectFaceRectanglesRequest revision 3, then VNDetectFaceLandmarksRequest and VNDetectFaceCaptureQualityRequest on its largest face, beside VNRecognizeTextRequest (fast) and VNDetectRectanglesRequest",
     "eyeAspect": {
       "a": 0.7446,
@@ -73,38 +73,39 @@
       "b": 0.0263
     },
     "quality": {
-      "w0": 0.2739,
-      "w1": 0.1218,
-      "w2": 0.2468,
+      "w0": 0.2355,
+      "w1": 0.1427,
+      "w2": 0.1613,
+      "widthWeight": 0.1253,
       "eyesOpen": [
         0.12,
         0.26
       ],
       "facingSpan": 0.6,
-      "pitch0": 0.11,
+      "pitch0": 0.14,
       "sharpness": [
         30,
         400
       ],
       "quantileMap": [
         [
-          0.372,
+          0.3739,
           0.2759
         ],
         [
-          0.4416,
+          0.4497,
           0.429
         ],
         [
-          0.5025,
+          0.5068,
           0.5232
         ],
         [
-          0.558,
+          0.5565,
           0.6069
         ],
         [
-          0.6088,
+          0.5956,
           0.6543
         ]
       ],
@@ -238,6 +239,10 @@
             "facesInBoth": 3760,
             "visionClosed": 414,
             "facePresence": 0.9979,
+            "speakerOverlap": {
+              "matched": 3760,
+              "of": 3760
+            },
             "eyes": 0.9481,
             "facing": 0.9638,
             "quality025": 0.937,
@@ -262,6 +267,10 @@
             "facesInBoth": 1803,
             "visionClosed": 168,
             "facePresence": 0.9989,
+            "speakerOverlap": {
+              "matched": 1653,
+              "of": 1803
+            },
             "eyes": 0.9601,
             "facing": 0.98,
             "quality025": 0.817,
@@ -288,6 +297,10 @@
             "facesInBoth": 3760,
             "visionClosed": 414,
             "facePresence": 0.9979,
+            "speakerOverlap": {
+              "matched": 3760,
+              "of": 3760
+            },
             "eyes": 0.9481,
             "facing": 0.9638,
             "quality025": 0.937,
@@ -312,6 +325,10 @@
             "facesInBoth": 1803,
             "visionClosed": 168,
             "facePresence": 0.9989,
+            "speakerOverlap": {
+              "matched": 1803,
+              "of": 1803
+            },
             "eyes": 0.9601,
             "facing": 0.98,
             "quality025": 0.9002,
@@ -338,6 +355,10 @@
             "facesInBoth": 3760,
             "visionClosed": 228,
             "facePresence": 0.9979,
+            "speakerOverlap": {
+              "matched": 3760,
+              "of": 3760
+            },
             "eyes": 0.9712,
             "facing": 0.9638,
             "quality025": 0.937,
@@ -362,6 +383,10 @@
             "facesInBoth": 1803,
             "visionClosed": 127,
             "facePresence": 0.9989,
+            "speakerOverlap": {
+              "matched": 1803,
+              "of": 1803
+            },
             "eyes": 0.9682,
             "facing": 0.98,
             "quality025": 0.9002,
@@ -381,6 +406,64 @@
             "eyesStrict": 0.8514,
             "eyesAwayFromLine": 0.9826
           }
+        },
+        "faceScale": {
+          "fit": {
+            "frames": 3800,
+            "facesInBoth": 3760,
+            "visionClosed": 228,
+            "facePresence": 0.9979,
+            "speakerOverlap": {
+              "matched": 3760,
+              "of": 3760
+            },
+            "eyes": 0.9712,
+            "facing": 0.9638,
+            "quality025": 0.9601,
+            "quality040": 0.8806,
+            "opening": 0.8792,
+            "openingScans": 3128,
+            "openingMoves": {
+              "mac": 359,
+              "windows": 308
+            },
+            "coverWindows": 133,
+            "coverRegretMedian": 0.0314,
+            "coverRegretP90": 0.4788,
+            "qualityPearson": 0.5835,
+            "qualityMae": 0.0994,
+            "eyesUnknown": 501,
+            "eyesStrict": 0.8912,
+            "eyesAwayFromLine": 0.9823
+          },
+          "validation": {
+            "frames": 1820,
+            "facesInBoth": 1803,
+            "visionClosed": 127,
+            "facePresence": 0.9989,
+            "speakerOverlap": {
+              "matched": 1803,
+              "of": 1803
+            },
+            "eyes": 0.9682,
+            "facing": 0.98,
+            "quality025": 0.873,
+            "quality040": 0.9002,
+            "opening": 0.8886,
+            "openingScans": 1436,
+            "openingMoves": {
+              "mac": 124,
+              "windows": 115
+            },
+            "coverWindows": 61,
+            "coverRegretMedian": 0.0216,
+            "coverRegretP90": 0.4554,
+            "qualityPearson": 0.6789,
+            "qualityMae": 0.1071,
+            "eyesUnknown": 260,
+            "eyesStrict": 0.8514,
+            "eyesAwayFromLine": 0.9826
+          }
         }
       },
       "fit": {
@@ -388,21 +471,25 @@
         "facesInBoth": 3760,
         "visionClosed": 228,
         "facePresence": 0.9979,
+        "speakerOverlap": {
+          "matched": 3760,
+          "of": 3760
+        },
         "eyes": 0.9712,
         "facing": 0.9638,
-        "quality025": 0.937,
-        "quality040": 0.8628,
-        "opening": 0.8699,
+        "quality025": 0.9601,
+        "quality040": 0.8806,
+        "opening": 0.8792,
         "openingScans": 3128,
         "openingMoves": {
           "mac": 359,
-          "windows": 321
+          "windows": 308
         },
         "coverWindows": 133,
-        "coverRegretMedian": 0.0308,
-        "coverRegretP90": 0.5414,
-        "qualityPearson": 0.5815,
-        "qualityMae": 0.0987,
+        "coverRegretMedian": 0.0314,
+        "coverRegretP90": 0.4788,
+        "qualityPearson": 0.5835,
+        "qualityMae": 0.0994,
         "eyesUnknown": 501,
         "eyesStrict": 0.8912,
         "eyesAwayFromLine": 0.9823
@@ -412,21 +499,25 @@
         "facesInBoth": 1803,
         "visionClosed": 127,
         "facePresence": 0.9989,
+        "speakerOverlap": {
+          "matched": 1803,
+          "of": 1803
+        },
         "eyes": 0.9682,
         "facing": 0.98,
-        "quality025": 0.9002,
-        "quality040": 0.9057,
-        "opening": 0.8872,
+        "quality025": 0.873,
+        "quality040": 0.9002,
+        "opening": 0.8886,
         "openingScans": 1436,
         "openingMoves": {
           "mac": 124,
-          "windows": 117
+          "windows": 115
         },
         "coverWindows": 61,
-        "coverRegretMedian": 0.0228,
+        "coverRegretMedian": 0.0216,
         "coverRegretP90": 0.4554,
-        "qualityPearson": 0.7168,
-        "qualityMae": 0.0974,
+        "qualityPearson": 0.6789,
+        "qualityMae": 0.1071,
         "eyesUnknown": 260,
         "eyesStrict": 0.8514,
         "eyesAwayFromLine": 0.9826
@@ -437,10 +528,14 @@
           "facesInBoth": 119,
           "visionClosed": 7,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 119,
+            "of": 119
+          },
           "eyes": 0.9664,
           "facing": 1.0,
           "quality025": 0.958,
-          "quality040": 1.0,
+          "quality040": 0.9832,
           "opening": 0.9643,
           "openingScans": 84,
           "openingMoves": {
@@ -450,8 +545,8 @@
           "coverWindows": 4,
           "coverRegretMedian": 0.0222,
           "coverRegretP90": 0.0368,
-          "qualityPearson": 0.9458,
-          "qualityMae": 0.0413,
+          "qualityPearson": 0.9473,
+          "qualityMae": 0.0517,
           "eyesUnknown": 0,
           "eyesStrict": 0.9664,
           "eyesAwayFromLine": 1.0
@@ -461,6 +556,10 @@
           "facesInBoth": 116,
           "visionClosed": 7,
           "facePresence": 0.9917,
+          "speakerOverlap": {
+            "matched": 116,
+            "of": 116
+          },
           "eyes": 0.9397,
           "facing": 1.0,
           "quality025": 0.9483,
@@ -474,8 +573,8 @@
           "coverWindows": 3,
           "coverRegretMedian": 0.0152,
           "coverRegretP90": 0.0229,
-          "qualityPearson": 0.8526,
-          "qualityMae": 0.0841,
+          "qualityPearson": 0.8709,
+          "qualityMae": 0.1255,
           "eyesUnknown": 0,
           "eyesStrict": 0.9397,
           "eyesAwayFromLine": 0.9397
@@ -485,11 +584,15 @@
           "facesInBoth": 30,
           "visionClosed": 1,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 30,
+            "of": 30
+          },
           "eyes": 0.9667,
           "facing": 1.0,
           "quality025": 1.0,
-          "quality040": 0.5,
-          "opening": 0.6667,
+          "quality040": 0.8,
+          "opening": 0.8889,
           "openingScans": 18,
           "openingMoves": {
             "mac": 1,
@@ -498,8 +601,8 @@
           "coverWindows": 1,
           "coverRegretMedian": 0.007,
           "coverRegretP90": 0.007,
-          "qualityPearson": 0.108,
-          "qualityMae": 0.2819,
+          "qualityPearson": 0.0706,
+          "qualityMae": 0.259,
           "eyesUnknown": 0,
           "eyesStrict": 0.9667,
           "eyesAwayFromLine": 0.963
@@ -509,10 +612,14 @@
           "facesInBoth": 80,
           "visionClosed": 9,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 80,
+            "of": 80
+          },
           "eyes": 1.0,
           "facing": 0.875,
           "quality025": 0.975,
-          "quality040": 0.925,
+          "quality040": 0.9125,
           "opening": 0.8393,
           "openingScans": 56,
           "openingMoves": {
@@ -522,8 +629,8 @@
           "coverWindows": 3,
           "coverRegretMedian": 0.0679,
           "coverRegretP90": 0.0721,
-          "qualityPearson": 0.6649,
-          "qualityMae": 0.0452,
+          "qualityPearson": 0.5847,
+          "qualityMae": 0.0472,
           "eyesUnknown": 0,
           "eyesStrict": 1.0,
           "eyesAwayFromLine": 1.0
@@ -533,9 +640,13 @@
           "facesInBoth": 100,
           "visionClosed": 0,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 100,
+            "of": 100
+          },
           "eyes": null,
           "facing": 0.98,
-          "quality025": 0.89,
+          "quality025": 0.77,
           "quality040": 0.71,
           "opening": 0.4688,
           "openingScans": 64,
@@ -546,8 +657,8 @@
           "coverWindows": 3,
           "coverRegretMedian": 0.469,
           "coverRegretP90": 0.5943,
-          "qualityPearson": 0.3452,
-          "qualityMae": 0.1003,
+          "qualityPearson": 0.4833,
+          "qualityMae": 0.1075,
           "eyesUnknown": 100,
           "eyesStrict": 0.15,
           "eyesAwayFromLine": null
@@ -557,10 +668,14 @@
           "facesInBoth": 140,
           "visionClosed": 0,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 140,
+            "of": 140
+          },
           "eyes": 1.0,
           "facing": 1.0,
-          "quality025": 0.6643,
-          "quality040": 0.85,
+          "quality025": 0.3643,
+          "quality040": 0.8429,
           "opening": 0.8173,
           "openingScans": 104,
           "openingMoves": {
@@ -570,8 +685,8 @@
           "coverWindows": 4,
           "coverRegretMedian": 0.3015,
           "coverRegretP90": 0.6263,
-          "qualityPearson": 0.7354,
-          "qualityMae": 0.0743,
+          "qualityPearson": 0.8113,
+          "qualityMae": 0.0838,
           "eyesUnknown": 106,
           "eyesStrict": 0.2857,
           "eyesAwayFromLine": 1.0
@@ -581,9 +696,13 @@
           "facesInBoth": 190,
           "visionClosed": 30,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 190,
+            "of": 190
+          },
           "eyes": 0.8676,
           "facing": 1.0,
-          "quality025": 0.6105,
+          "quality025": 0.6474,
           "quality040": 1.0,
           "opening": 0.7532,
           "openingScans": 154,
@@ -594,8 +713,8 @@
           "coverWindows": 6,
           "coverRegretMedian": 0.0007,
           "coverRegretP90": 0.2752,
-          "qualityPearson": 0.942,
-          "qualityMae": 0.0353,
+          "qualityPearson": 0.9414,
+          "qualityMae": 0.032,
           "eyesUnknown": 54,
           "eyesStrict": 0.7263,
           "eyesAwayFromLine": 0.9167
@@ -605,21 +724,25 @@
           "facesInBoth": 220,
           "visionClosed": 26,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 220,
+            "of": 220
+          },
           "eyes": 0.9682,
           "facing": 1.0,
           "quality025": 0.9864,
-          "quality040": 0.9273,
-          "opening": 0.9694,
+          "quality040": 0.9045,
+          "opening": 0.9643,
           "openingScans": 196,
           "openingMoves": {
             "mac": 20,
-            "windows": 15
+            "windows": 14
           },
           "coverWindows": 8,
-          "coverRegretMedian": 0.0196,
+          "coverRegretMedian": 0.0128,
           "coverRegretP90": 0.3242,
-          "qualityPearson": 0.8546,
-          "qualityMae": 0.0691,
+          "qualityPearson": 0.8826,
+          "qualityMae": 0.0483,
           "eyesUnknown": 0,
           "eyesStrict": 0.9682,
           "eyesAwayFromLine": 0.9906
@@ -629,6 +752,10 @@
           "facesInBoth": 220,
           "visionClosed": 2,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 220,
+            "of": 220
+          },
           "eyes": 0.9955,
           "facing": 1.0,
           "quality025": 0.9909,
@@ -641,9 +768,9 @@
           },
           "coverWindows": 8,
           "coverRegretMedian": 0.0132,
-          "coverRegretP90": 0.0287,
-          "qualityPearson": 0.9339,
-          "qualityMae": 0.0902,
+          "coverRegretP90": 0.0278,
+          "qualityPearson": 0.9317,
+          "qualityMae": 0.1079,
           "eyesUnknown": 0,
           "eyesStrict": 0.9955,
           "eyesAwayFromLine": 0.9954
@@ -653,21 +780,25 @@
           "facesInBoth": 215,
           "visionClosed": 27,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 215,
+            "of": 215
+          },
           "eyes": 0.9907,
           "facing": 0.9814,
-          "quality025": 0.9349,
-          "quality040": 0.8744,
-          "opening": 0.949,
+          "quality025": 0.9302,
+          "quality040": 0.8372,
+          "opening": 0.9439,
           "openingScans": 196,
           "openingMoves": {
             "mac": 29,
-            "windows": 31
+            "windows": 30
           },
           "coverWindows": 8,
-          "coverRegretMedian": 0.0379,
-          "coverRegretP90": 0.0694,
-          "qualityPearson": 0.659,
-          "qualityMae": 0.1019,
+          "coverRegretMedian": 0.033,
+          "coverRegretP90": 0.0542,
+          "qualityPearson": 0.6453,
+          "qualityMae": 0.1157,
           "eyesUnknown": 0,
           "eyesStrict": 0.9907,
           "eyesAwayFromLine": 0.9952
@@ -677,9 +808,13 @@
           "facesInBoth": 215,
           "visionClosed": 15,
           "facePresence": 0.9955,
+          "speakerOverlap": {
+            "matched": 215,
+            "of": 215
+          },
           "eyes": 0.9674,
           "facing": 0.9163,
-          "quality025": 0.9442,
+          "quality025": 0.9395,
           "quality040": 0.7721,
           "opening": 0.7907,
           "openingScans": 172,
@@ -688,10 +823,10 @@
             "windows": 14
           },
           "coverWindows": 7,
-          "coverRegretMedian": 0.0171,
-          "coverRegretP90": 0.0216,
-          "qualityPearson": 0.6553,
-          "qualityMae": 0.2057,
+          "coverRegretMedian": 0.0092,
+          "coverRegretP90": 0.0196,
+          "qualityPearson": 0.6266,
+          "qualityMae": 0.2233,
           "eyesUnknown": 0,
           "eyesStrict": 0.9674,
           "eyesAwayFromLine": 0.9904
@@ -701,10 +836,14 @@
           "facesInBoth": 49,
           "visionClosed": 2,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 49,
+            "of": 49
+          },
           "eyes": 1.0,
           "facing": 0.9592,
           "quality025": 0.9592,
-          "quality040": 1.0,
+          "quality040": 0.9592,
           "opening": 0.9737,
           "openingScans": 38,
           "openingMoves": {
@@ -714,8 +853,8 @@
           "coverWindows": 2,
           "coverRegretMedian": 0.074,
           "coverRegretP90": 0.111,
-          "qualityPearson": 0.8114,
-          "qualityMae": 0.0362,
+          "qualityPearson": 0.8404,
+          "qualityMae": 0.0634,
           "eyesUnknown": 0,
           "eyesStrict": 1.0,
           "eyesAwayFromLine": 1.0
@@ -725,6 +864,10 @@
           "facesInBoth": 109,
           "visionClosed": 1,
           "facePresence": 1.0,
+          "speakerOverlap": {
+            "matched": 109,
+            "of": 109
+          },
           "eyes": 0.9817,
           "facing": 1.0,
           "quality025": 0.9817,
@@ -738,8 +881,8 @@
           "coverWindows": 4,
           "coverRegretMedian": 0.0354,
           "coverRegretP90": 0.0699,
-          "qualityPearson": 0.5412,
-          "qualityMae": 0.172,
+          "qualityPearson": 0.5417,
+          "qualityMae": 0.2022,
           "eyesUnknown": 0,
           "eyesStrict": 0.9817,
           "eyesAwayFromLine": 0.9817
@@ -751,21 +894,25 @@
           "facesInBoth": 1387,
           "visionClosed": 97,
           "facePresence": 0.9986,
+          "speakerOverlap": {
+            "matched": 1387,
+            "of": 1387
+          },
           "eyes": 0.9776,
           "facing": 0.9755,
-          "quality025": 0.9654,
-          "quality040": 0.9135,
-          "opening": 0.9363,
+          "quality025": 0.964,
+          "quality040": 0.9063,
+          "opening": 0.9381,
           "openingScans": 1114,
           "openingMoves": {
             "mac": 83,
-            "windows": 71
+            "windows": 69
           },
           "coverWindows": 48,
-          "coverRegretMedian": 0.0222,
-          "coverRegretP90": 0.0733,
-          "qualityPearson": 0.4035,
-          "qualityMae": 0.1079,
+          "coverRegretMedian": 0.0198,
+          "coverRegretP90": 0.0695,
+          "qualityPearson": 0.3257,
+          "qualityMae": 0.1196,
           "eyesUnknown": 0,
           "eyesStrict": 0.9776,
           "eyesAwayFromLine": 0.9881
@@ -775,21 +922,25 @@
           "facesInBoth": 1803,
           "visionClosed": 127,
           "facePresence": 0.9989,
+          "speakerOverlap": {
+            "matched": 1803,
+            "of": 1803
+          },
           "eyes": 0.9682,
           "facing": 0.98,
-          "quality025": 0.9002,
-          "quality040": 0.9057,
-          "opening": 0.8872,
+          "quality025": 0.873,
+          "quality040": 0.9002,
+          "opening": 0.8886,
           "openingScans": 1436,
           "openingMoves": {
             "mac": 124,
-            "windows": 117
+            "windows": 115
           },
           "coverWindows": 61,
-          "coverRegretMedian": 0.0228,
+          "coverRegretMedian": 0.0216,
           "coverRegretP90": 0.4554,
-          "qualityPearson": 0.7168,
-          "qualityMae": 0.0974,
+          "qualityPearson": 0.6789,
+          "qualityMae": 0.1071,
           "eyesUnknown": 260,
           "eyesStrict": 0.8514,
           "eyesAwayFromLine": 0.9826
@@ -5351,14 +5502,14 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.5320557369933068,
-          "quality": 0.5677732466007167
+          "score": 0.5390905736913305,
+          "quality": 0.5775807045868081
         },
         "face": {
-          "captureQuality": 0.5677732466007167,
+          "captureQuality": 0.5775807045868081,
           "eyes": "open",
           "leftEyeAspect": 0.2923800000000003,
           "pitch": 0.0263,
@@ -5573,14 +5724,14 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 0.0,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.4272468369933068,
-          "quality": 0.3974271658574033
+          "score": 0.42343222369133054,
+          "quality": 0.3759446365058404
         },
         "face": {
-          "captureQuality": 0.3974271658574033,
+          "captureQuality": 0.3759446365058404,
           "eyes": "closed",
           "leftEyeAspect": 0.11367600000000008,
           "pitch": 0.0263,
@@ -5795,14 +5946,14 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 0.539871428571432,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.4838301675633071,
-          "quality": 0.4943215399747707
+          "score": 0.48587286233204524,
+          "quality": 0.488675720344635
         },
         "face": {
-          "captureQuality": 0.4943215399747707,
+          "captureQuality": 0.488675720344635,
           "eyes": "closed",
           "leftEyeAspect": 0.19558200000000048,
           "pitch": 0.0263,
@@ -6017,14 +6168,14 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 0.48668571428571644,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.47825583135330696,
-          "quality": 0.48569916770905613
+          "score": 0.47972149037418793,
+          "quality": 0.47852757256126977
         },
         "face": {
-          "captureQuality": 0.48569916770905613,
+          "captureQuality": 0.47852757256126977,
           "eyes": "closed",
           "leftEyeAspect": 0.2923800000000003,
           "pitch": 0.0263,
@@ -6242,11 +6393,11 @@
           "facing": 0.0,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.4272468369933068,
-          "quality": 0.3974271658574033
+          "score": 0.42343222369133054,
+          "quality": 0.3759446365058404
         },
         "face": {
-          "captureQuality": 0.3974271658574033,
+          "captureQuality": 0.3759446365058404,
           "eyes": "open",
           "leftEyeAspect": 0.3295036068541089,
           "pitch": 0.0263,
@@ -6464,11 +6615,11 @@
           "facing": 0.0,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.4272468369933068,
-          "quality": 0.3974271658574033
+          "score": 0.42343222369133054,
+          "quality": 0.3759446365058404
         },
         "face": {
-          "captureQuality": 0.3974271658574033,
+          "captureQuality": 0.3759446365058404,
           "eyes": "open",
           "leftEyeAspect": 0.3295036068541089,
           "pitch": 0.0263,
@@ -6686,11 +6837,11 @@
           "facing": 0.7091468254424232,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.5136209203321939,
-          "quality": 0.5399715501226059
+          "score": 0.5246274756819643,
+          "quality": 0.5532233342973926
         },
         "face": {
-          "captureQuality": 0.5399715501226059,
+          "captureQuality": 0.5532233342973926,
           "eyes": "open",
           "leftEyeAspect": 0.2948790460600543,
           "pitch": 0.0263,
@@ -6905,14 +7056,14 @@
         "meshPitch": 0.4636476090008061,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.16356036907028826,
+          "facing": 0.11356036907028821,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.44716848994606784,
-          "quality": 0.43761332927618374
+          "score": 0.4396372883576607,
+          "quality": 0.40867544653770255
         },
         "face": {
-          "captureQuality": 0.43761332927618374,
+          "captureQuality": 0.40867544653770255,
           "eyes": "open",
           "leftEyeAspect": 0.2687971459255609,
           "pitch": -0.39186377855782706,
@@ -7127,14 +7278,14 @@
         "meshPitch": -0.4636476090008062,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.44256036907028806,
+          "facing": 0.4925603690702881,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.4811506899460678,
-          "quality": 0.4901769292761837
+          "score": 0.49372058835766064,
+          "quality": 0.501622406712638
         },
         "face": {
-          "captureQuality": 0.4901769292761837,
+          "captureQuality": 0.501622406712638,
           "eyes": "open",
           "leftEyeAspect": 0.2687971459255609,
           "pitch": 0.44446377855782715,
@@ -7349,14 +7500,14 @@
         "meshPitch": -0.09966865249116204,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.9896814038637016,
+          "facing": 0.9603185961362984,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.5477900319839056,
-          "quality": 0.5915022644514036
+          "score": 0.5604696873599803,
+          "quality": 0.6117123575668303
         },
         "face": {
-          "captureQuality": 0.5915022644514036,
+          "captureQuality": 0.6117123575668303,
           "eyes": "open",
           "leftEyeAspect": 0.2912714075491074,
           "pitch": 0.11619115768177905,
@@ -7571,14 +7722,14 @@
         "meshPitch": 0.14603993682366953,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.614609387185916,
+          "facing": 0.590977634964554,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.5021062603525513,
-          "quality": 0.5225909642891682
+          "score": 0.5077647322007723,
+          "quality": 0.5248247099638761
         },
         "face": {
-          "captureQuality": 0.5225909642891682,
+          "captureQuality": 0.5248247099638761,
           "eyes": "open",
           "leftEyeAspect": 0.2792645579789035,
           "pitch": -0.10541341902126754,
@@ -7796,11 +7947,11 @@
           "facing": 0.4312840408959704,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.479777233174436,
-          "quality": 0.4880524690481424
+          "score": 0.4849764563271855,
+          "quality": 0.48719688591980514
         },
         "face": {
-          "captureQuality": 0.4880524690481424,
+          "captureQuality": 0.48719688591980514,
           "eyes": "open",
           "leftEyeAspect": 0.29768667807050553,
           "pitch": 0.1970046259577087,
@@ -8015,14 +8166,14 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.5320557369933068,
-          "quality": 0.5677732466007167
+          "score": 0.5390905736913305,
+          "quality": 0.5775807045868081
         },
         "face": {
-          "captureQuality": 0.5677732466007167,
+          "captureQuality": 0.5775807045868081,
           "eyes": "open",
           "pitch": 0.0263,
           "rect": {
@@ -8448,14 +8599,14 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.5320557369933068,
-          "quality": 0.5677732466007167
+          "score": 0.4761273236913305,
+          "quality": 0.4725981417114419
         },
         "face": {
-          "captureQuality": 0.5677732466007167,
+          "captureQuality": 0.4725981417114419,
           "eyes": "unknown",
           "pitch": 0.0263,
           "rect": {
@@ -8668,14 +8819,14 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 1.0,
-          "score": 0.5320557369933068,
-          "quality": 0.5677732466007167
+          "score": 0.4764405736913305,
+          "quality": 0.47311492192159954
         },
         "face": {
-          "captureQuality": 0.5677732466007167,
+          "captureQuality": 0.47311492192159954,
           "eyes": "open",
           "leftEyeAspect": 0.2923800000000003,
           "pitch": 0.0263,
@@ -8890,7 +9041,7 @@
         "meshPitch": 0.0,
         "quality": {
           "eyesOpen": 1.0,
-          "facing": 0.8605,
+          "facing": 0.8105,
           "sharp": 0.6213405064558621,
           "gate": 0.0,
           "score": 0.0,
@@ -8950,11 +9101,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.9,
+        "facing": 0.85,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.5642771120522809,
-        "quality": 0.6127569903794904
+        "score": 0.575171637658156,
+        "quality": 0.6295351822249768
       }
     },
     {
@@ -8971,11 +9122,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 0.0,
-        "facing": 0.9,
+        "facing": 0.85,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.45465711205228093,
-        "quality": 0.44919671519416854
+        "score": 0.45387663765815606,
+        "quality": 0.4358903549456795
       }
     },
     {
@@ -8992,11 +9143,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 0.5,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.504392112052281,
-        "quality": 0.5260535095274941
+        "score": 0.5085783043248226,
+        "quality": 0.5261948505430112
       }
     },
     {
@@ -9016,8 +9167,8 @@
         "facing": 0.25,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.4851071120522809,
-        "quality": 0.49629671519416857
+        "score": 0.48955163765815607,
+        "quality": 0.4947447332293923
       }
     },
     {
@@ -9037,8 +9188,8 @@
         "facing": 0.0,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.45465711205228093,
-        "quality": 0.44919671519416854
+        "score": 0.45387663765815606,
+        "quality": 0.4358903549456795
       }
     },
     {
@@ -9055,11 +9206,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.31666666666666665,
+        "facing": 0.2666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.4932271120522809,
-        "quality": 0.5088567151941685
+        "score": 0.4919299709914894,
+        "quality": 0.4986683584483064
       }
     },
     {
@@ -9076,11 +9227,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.0,
         "gate": 1.0,
-        "score": 0.37337,
-        "quality": 0.27891360632183904
+        "score": 0.44514333333333334,
+        "quality": 0.4197964951627089
       }
     },
     {
@@ -9097,11 +9248,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.0,
         "gate": 1.0,
-        "score": 0.37337,
-        "quality": 0.27891360632183904
+        "score": 0.44514333333333334,
+        "quality": 0.4197964951627089
       }
     },
     {
@@ -9118,11 +9269,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 1.0,
         "gate": 1.0,
-        "score": 0.62017,
-        "quality": 0.6643475690184049
+        "score": 0.6064433333333333,
+        "quality": 0.6635693875700627
       }
     },
     {
@@ -9139,11 +9290,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 1.0,
         "gate": 1.0,
-        "score": 0.62017,
-        "quality": 0.6643475690184049
+        "score": 0.6064433333333333,
+        "quality": 0.6635693875700627
       }
     },
     {
@@ -9160,11 +9311,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.0,
         "gate": 1.0,
-        "score": 0.37337,
-        "quality": 0.27891360632183904
+        "score": 0.44514333333333334,
+        "quality": 0.4197964951627089
       }
     },
     {
@@ -9181,7 +9332,7 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 0.0,
         "score": 0.0,
@@ -9202,11 +9353,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.5541271120522809,
-        "quality": 0.6010592662842507
+        "score": 0.4630399709914894,
+        "quality": 0.4510074477652943
       }
     },
     {
@@ -9223,7 +9374,7 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 0.0,
         "score": 0.0,
@@ -9244,11 +9395,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.5541271120522809,
-        "quality": 0.6010592662842507
+        "score": 0.5632799709914894,
+        "quality": 0.6151191975702455
       }
     },
     {
@@ -9265,7 +9416,7 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 0.0,
         "score": 0.0,
@@ -9286,11 +9437,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.5541271120522809,
-        "quality": 0.6010592662842507
+        "score": 0.5632799709914894,
+        "quality": 0.6151191975702455
       }
     },
     {
@@ -9307,7 +9458,7 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 0.0,
         "score": 0.0,
@@ -9328,11 +9479,11 @@
       "quantileMap": null,
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.5541271120522809,
-        "quality": 0.6010592662842507
+        "score": 0.5632799709914894,
+        "quality": 0.6151191975702455
       }
     },
     {
@@ -9400,11 +9551,11 @@
       ],
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.9,
+        "facing": 0.85,
         "sharp": 0.7324032092880104,
         "gate": 1.0,
-        "score": 0.5642771120522809,
-        "quality": 0.520704823257509
+        "score": 0.575171637658156,
+        "quality": 0.5326888014239717
       }
     },
     {
@@ -9430,11 +9581,11 @@
       ],
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 1.0,
         "gate": 1.0,
-        "score": 0.62017,
-        "quality": 0.582187
+        "score": 0.6064433333333333,
+        "quality": 0.5670876666666667
       }
     },
     {
@@ -9460,7 +9611,7 @@
       ],
       "expect": {
         "eyesOpen": 1.0,
-        "facing": 0.8166666666666667,
+        "facing": 0.7666666666666666,
         "sharp": 0.7324032092880104,
         "gate": 0.0,
         "score": 0.0,
