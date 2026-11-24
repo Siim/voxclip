@@ -6,6 +6,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - On Mac, you can Rewrite a clip after using a whole-clip revoice. The earlier revoice stays until you use the new one. A selection that can't replace it offers a free Undo.
 - Rewrite keeps your earlier takes on Mac and Windows, newest first, so you can play or switch back to a take you already paid for without being charged again.
+- The VoxClip launch page now shows Claude’s one-click workflow, Rewrite in your own voice, and feed-ready exports, with real clip examples and downloads for Mac and Windows.
 - Claude mode and Make it postable can add zooms, punch-ins, animated titles, lower thirds and emoji on the words where they fit, and choose a title for the exported cover.
 - In ✦ Claude does it all, Mac can start finding clips with Apple Speech while Whisper or an approved Scribe run checks the words. The clip style card shows the transcription choice on Mac and Windows, and later clips arrive without interrupting your review.
 - On Mac, AI settings warn when your fal.ai key can't delete finished lip syncs. Your result is kept on this Mac, and fal.ai's copy stays until it expires.
