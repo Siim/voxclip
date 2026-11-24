@@ -499,7 +499,7 @@ internal sealed partial class RewriteSession : IDisposable
     {
         if (!voiceLabEnabled) InvalidateWholeClip();
         // Another AI connector ends what was proposed, but paid takes stay: they never read the connector.
-        if (!contextIsCurrent() || !connectorIsCurrent() && !HasPaidTakes) Dispose();
+        if (!contextIsCurrent() || !connectorIsCurrent() && !HoldsPaidWork) Dispose();
         else if (!voiceLabEnabled && Generation is not null)
         {
             generationFactory = null;

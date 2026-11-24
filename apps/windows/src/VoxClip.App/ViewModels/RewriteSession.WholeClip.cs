@@ -32,6 +32,7 @@ internal sealed partial class RewriteSession
     internal SavedWholeClipVoice? WholeClipVoice { get; private set; }
     internal string WholeClipStatus { get; private set; } = "";
     internal bool WholeClipBusy => wholeClipWork is not null;
+    internal bool HoldsWholeClipWork => WholeClipVoice is not null || sendingWholeClip is not null;
     internal bool OffersWholeClip => Scope.ClipId is not null && (IncludedHunks.Any(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice) || WholeClipVoice is not null);
     internal bool CanRestoreWholeClip => wholeClipRestore is not null && Scope.ClipId is not null && GenerationIsCurrent;
     internal string? WholeClipScriptText => WholeClipPrice?.Selection.Recovery.Script ?? wholeClipSelection?.Recovery.Script;
@@ -40,6 +41,7 @@ internal sealed partial class RewriteSession
         : !GenerationIsCurrent ? "The Rewrite or clip changed. Open Rewrite again to continue."
         : IsGeneratingBatch || AutoFix.Work is not null || GenerationWindows.Any(window => window.IsRunning || window.IsPreparing)
             ? "Wait for the other takes to finish."
+        : WholeClipVoice is null && HasPaidTakes ? "Use or discard the paid phrase takes before revoicing the whole clip."
         : WholeClipVoice is not null && wholeClipSelection is { } saved && !WholeClipCurrent(saved) ? "The clip or voice changed. Go back to the saved voice's settings to continue."
         : WholeClipVoice is null && Generation?.VoiceId is null ? "Check the price for your voice first."
         : null;

@@ -6279,6 +6279,8 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_GenerationWi
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_GetPriceTitle()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_HasPaidTakes()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Header()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_HoldsPaidWork()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_HoldsWholeClipWork()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_IncludedHunks()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_InsertionAfter()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Instruction()

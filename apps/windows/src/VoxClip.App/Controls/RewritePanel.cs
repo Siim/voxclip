@@ -550,11 +550,14 @@ internal sealed partial class RewritePanel : Grid
     {
         if (!session.CloseAsked) return;
         closeQuestion.Children.Clear();
-        var question = RewriteSession.CloseQuestion(session.PaidTakeCount, newRewrite: replay is not null);
+        var question = session.HoldsWholeClipWork
+            ? (replay is null ? "Close Rewrite?" : "Start a new Rewrite?") + " Whole-clip work stops here. Any paid voice and lip sync stay saved."
+            : RewriteSession.CloseQuestion(session.PaidTakeCount, newRewrite: replay is not null);
         var text = Ui.Text(question);
         AutomationProperties.SetAutomationId(text, "Rewrite.CloseQuestion");
         var keep = Ui.Button("Keep Working", KeepWorking, accent: true);
-        var title = replay is null ? "Discard and Close" : "Discard and Rewrite";
+        var title = session.HoldsWholeClipWork ? replay is null ? "Close Rewrite" : "Start New Rewrite"
+            : replay is null ? "Discard and Close" : "Discard and Rewrite";
         var discard = Ui.Button(title, () =>
         {
             Close();

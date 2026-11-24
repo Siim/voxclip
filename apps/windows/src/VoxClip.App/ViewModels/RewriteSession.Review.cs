@@ -27,6 +27,7 @@ internal sealed record RewritePaidReviewQuestion(string Question, string Cancel,
 internal sealed partial class RewriteSession
 {
     internal bool HasPaidTakes => generationWindows.Any(window => window.HasPaidTakes);
+    internal bool HoldsPaidWork => HasPaidTakes || HoldsWholeClipWork;
     /// <summary>The paid takes a change of the review discards; 0 while the first ones are still being made.</summary>
     internal int PaidTakeCount => generationWindows.Sum(window => window.PaidTakeCount);
     /// <summary>Closing Rewrite (the panel's X, Esc) asked first because it holds paid takes (Mac <c>confirmDiscardPaidWork(.close)</c>,
@@ -56,7 +57,7 @@ internal sealed partial class RewriteSession
     internal bool RequestClose()
     {
         if (!IsOpen) return false;
-        if (!HasPaidTakes) return true;
+        if (!HoldsPaidWork) return true;
         CloseAsked = true;
         Changed?.Invoke(this, EventArgs.Empty);
         return false;
