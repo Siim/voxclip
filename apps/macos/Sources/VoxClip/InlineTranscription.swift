@@ -231,6 +231,17 @@ import VoxClipMedia
             startedOnImport = activeRun != nil
         }
     }
+    func startLocalForRecordingFolder() async -> Bool {
+        guard !isRunning, mediaReady, !model.transcribed else { return false }
+        revision += 1
+        phase = .choosing
+        engine = "local"
+        language = model.app.string("transcription.language", fallback: "auto")
+        await refreshChoice()
+        guard !Task.isCancelled, readiness == .ready, !paid else { return false }
+        startApprovedRun()
+        return activeRun != nil
+    }
     private func loadPriceAndKey(request: Int) async {
         let available = await model.app.providerKeyStore.hasKey(for: "elevenlabs")
         guard request == revision, !Task.isCancelled else { return }

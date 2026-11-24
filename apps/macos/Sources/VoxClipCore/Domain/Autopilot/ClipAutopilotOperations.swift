@@ -46,6 +46,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case shareText(clipID: String, text: String)
         /// An effect added to `project.clipEffects` (ai.md §18.2): censoring, an overlay, a freeze frame or a sound.
         case effect(ClipEffect)
+        case footage(ClipFootage)
         case asset(ClipPlanAsset)
         /// One stretch (source seconds) played at `rate`, pitch kept. A clip has one speed (design.md §6.9), so `apply`
         /// sets it when the stretch covers a whole clip and leaves a part of a clip pending.
@@ -167,11 +168,13 @@ public enum ClipAutopilotMapping {
         })
         let tightened = Set(plan.pauseCuts.map(\.afterWord)).union(state.pauses.filter { state.cutPauseIds.contains($0.id) }.map(\.afterIndex))
         var overlayRanges: [Range<Double>] = []
+        var footageRanges: [Range<Double>] = []
         var openingTitle = false
         for (index, entry) in (plan.effects ?? []).prefix(ClipPlanEffect.maximumEntries).enumerated() {
             let id = "\(clipID.prefix(48))-plan-fx-\(index)"
             guard let operation = entry.operation(id: id, clipID: clipID, scope: plan.startWord...plan.endWord, words: words,
-                                                  cut: cutIDs, tightenedAfter: tightened, stickers: stickers) else { continue }
+                                                  cut: cutIDs, tightenedAfter: tightened, stickers: stickers,
+                                                  sources: project.media.footageDurations) else { continue }
             switch operation.action {
             case .motion(let cue):
                 let range = cue.sourceStart..<cue.sourceEnd
@@ -183,6 +186,10 @@ public enum ClipAutopilotMapping {
                 overlayRanges.append(range)
                 let opening = (plan.startWord...plan.endWord).first(where: { !cutIDs.contains(words[$0].id) }) ?? plan.startWord
                 openingTitle = openingTitle || (overlay.kind == .title && overlay.start < words[opening].start + 2)
+            case .footage(let entry):
+                let range = entry.start..<entry.end
+                guard !footageRanges.contains(where: { $0.overlaps(range) }) else { continue }
+                footageRanges.append(range)
             default: break
             }
             operations.append(operation)
@@ -243,6 +250,8 @@ public enum ClipAutopilotMapping {
                 result = next
             case .shareText(let clipID, let text): result.share.captions[clipID] = text
             case .effect(let effect): effects.append(effect)
+            case .footage(let entry):
+                if !result.media.setFootage(entry) { pending.append(operation) }
             case .musicDucking(let clipID, let on):
                 guard var entry = MusicProject.entry(for: clipID, in: result) else { pending.append(operation); continue }
                 entry.ducking = on
