@@ -74,7 +74,7 @@ public sealed class LipsyncRunTests
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.ExecuteAsync(window, quote, video, audio, record, null, null, stopped.Token));
 
             using var stoppedAfterDone = CancellationTokenSource.CreateLinkedTokenSource(token);
-            var recovery = new QueueHandler(stopAtDownload: stoppedAfterDone);
+            var recovery = new QueueHandler(stopAtDownload: stoppedAfterDone, denyCleanup: true);
             using var wrong = new FalLipsyncProvider(new Key("another-account"), prices, recovery);
             var reopened = new LipsyncRun(wrong, store, root, ProjectId);
             Assert.Equal(LipsyncAttemptState.Accepted, reopened.State(window));
@@ -82,13 +82,15 @@ public sealed class LipsyncRunTests
             Assert.Equal(FalLipsyncError.ApprovalRequired, error.Code);
             Assert.Empty(recovery.Requests);
 
-            using var right = new FalLipsyncProvider(new Key("original-account"), prices, recovery);
+            var denied = new List<(string Fingerprint, int Status)>();
+            using var right = new FalLipsyncProvider(new Key("original-account"), prices, recovery, (fingerprint, status) => denied.Add((fingerprint, status)));
             var resume = new LipsyncRun(right, store, root, ProjectId, spend);
             var picture = await resume.ExecuteAsync(window, null, null, null, record, null, null, stoppedAfterDone.Token);
             Assert.True(stoppedAfterDone.IsCancellationRequested);
             Assert.Equal("fixture-job", picture.RequestId);
             Assert.Equal("fixture-picture", File.ReadAllText(picture.Path));
             Assert.Equal(LipsyncAttemptState.Downloaded, resume.State(window));
+            Assert.Equal((await right.AccountFingerprintAsync(token), 403), Assert.Single(denied));
             Assert.Equal(quote.Estimate.Usd, resume.AcceptedPrice(window));
             Assert.Equal([HttpMethod.Get, HttpMethod.Get, HttpMethod.Get, HttpMethod.Delete], recovery.Requests);
             Assert.Equal(picture, await resume.ExecuteAsync(window, null, null, null, record, null, null, token));
@@ -134,7 +136,7 @@ public sealed class LipsyncRunTests
         public Task<string?> GetKeyAsync(string account, CancellationToken ct) => Task.FromResult<string?>(value);
     }
 
-    private sealed class QueueHandler(CancellationTokenSource? stop = null, CancellationTokenSource? stopAtDownload = null) : HttpMessageHandler
+    private sealed class QueueHandler(CancellationTokenSource? stop = null, CancellationTokenSource? stopAtDownload = null, bool denyCleanup = false) : HttpMessageHandler
     {
         internal List<HttpMethod> Requests { get; } = [];
 
@@ -163,7 +165,8 @@ public sealed class LipsyncRunTests
                 ("DELETE", "api.fal.ai", "/v1/models/requests/fixture-job/payloads") => "",
                 _ => throw new InvalidOperationException("Unexpected request to the stand-in queue."),
             };
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(response) });
+            var status = denyCleanup && request.Method == HttpMethod.Delete ? HttpStatusCode.Forbidden : HttpStatusCode.OK;
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(response) });
         }
     }
 }

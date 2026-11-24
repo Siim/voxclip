@@ -15,6 +15,20 @@ public sealed class WindowsV4ExportHistoryTests
         Path.Combine(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!, "fixtures", name)));
 
     [Fact]
+    public void CompanionFootageInvalidatesOnlyItsClipExport()
+    {
+        var original = Fixture();
+        var clipId = original.Edits.Clips[0].Id;
+        var companion = original.Media.Source with { AbsolutePath = "/fixture/companion.mp4", RelativePath = "companion.mp4", ContentKey = new('b', 64), RecordingHash = null };
+        var entry = new ProjectFootage("angle", clipId, "videoStack", 0, 1, new(companion.FootageKey, 0));
+        var edited = original with { Media = original.Media with { AdditionalSources = [companion], Footage = [entry] } };
+        var clip = new ExportTarget.Clip(clipId);
+        var full = new ExportTarget.FullEdit();
+        Assert.NotEqual(ExportFingerprint.For(original, clip), ExportFingerprint.For(edited, clip));
+        Assert.Equal(ExportFingerprint.For(original, full), ExportFingerprint.For(edited, full));
+    }
+
+    [Fact]
     public void MacColorGradeInvalidatesOnlyItsClipExportFingerprint()
     {
         var baseline = Fixture("clip-controls/clip-controls-project.voxclip");

@@ -19,6 +19,8 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
 {
     public VoiceLabPauseProfile? PauseProfile { get; init; }
     public bool ChecksGeneratedSpeaker { get; init; } = true;
+    /// <summary>A redo may recover takes from its own run, not from the version already in use.</summary>
+    public DateTimeOffset? RecoverTakesAfter { get; init; }
     public VoiceLabEditedLayout? EditedLayout { get; init; }
     public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
     public string RequestText => VoiceLabAudioTags.RequestText(Text, AudioTags, ModelId);

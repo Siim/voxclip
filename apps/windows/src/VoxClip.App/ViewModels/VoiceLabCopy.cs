@@ -1,5 +1,18 @@
 namespace VoxClip.App.ViewModels;
 
+internal sealed class FalCleanupNotice
+{
+    internal const string Message = "This fal.ai key can't delete finished results. Your video stays on fal.ai until it expires. Use a key with the FULL preset to delete it.";
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> denied = new(StringComparer.Ordinal);
+    internal event Action? Changed;
+    internal void MarkDenied(string fingerprint)
+    {
+        if (denied.TryAdd(fingerprint, 0)) Changed?.Invoke();
+    }
+    internal bool AppliesTo(string? key) => key is { Length: > 0 } &&
+        denied.ContainsKey(VoxClip.Core.Services.VoiceLab.FalLipsyncProvider.KeyFingerprint(key));
+}
+
 internal static class VoiceLabCopy
 {
     internal const string StopLooking = "I've checked my ElevenLabs account — stop looking";

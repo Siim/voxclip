@@ -28,6 +28,7 @@ internal sealed class AppServices : IAsyncDisposable
     internal DataLocations Data { get; } = DataLocations.Resolve();
     internal ILog Log { get; }
     internal SecretStore Keys { get; }
+    internal FalCleanupNotice FalCleanup { get; } = new();
     internal IProjectStore Projects { get; } = new ProjectStore();
     /// <summary>The user's settings file. A development build outside the harness reads an unset Voice Lab switch and beta notice as
     /// on and never saves that overlay; an explicit value wins (doc/spec/voice-lab.md §5).</summary>

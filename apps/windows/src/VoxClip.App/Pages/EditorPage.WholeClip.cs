@@ -31,7 +31,7 @@ public sealed partial class EditorPage
         }
         Task<ComposeSnapshot> Snapshot(Project draft, string clipId, CancellationToken ct)
         {
-            draft = draft with { Edits = draft.Edits with { ActiveClipId = clipId } };
+            draft = draft with { Edits = draft.Edits with { ActiveClipId = WholeClipRevoice.OutputScope(clipId).ClipId } };
             return SnapshotAsync(ct, EditingEngine.FromProject(draft), draft);
         }
 
@@ -49,12 +49,14 @@ public sealed partial class EditorPage
             using var fal = new FalLipsyncProvider(services.Keys, catalog);
             var pictureRun = new WholeClipPictureRun(fal, consent, paidRoot, scratchRoot, edited.Id);
             var saved = WholeClipVoiceCheckpoint.Read(paidRoot, edited.Id, selection.Recovery.BaseKey, selection.Identity);
+            if (saved is null && selection.Kept is { } kept && selection.Intent is WholeClipIntent.RedoLipSync or WholeClipIntent.Sharper)
+                saved = SavedWholeClipVoice.FromKept(edited, kept, selection.Recovery);
             async Task<ComposeSnapshot> VoiceSnapshot(SavedWholeClipVoice voice, CancellationToken token) =>
                 await Snapshot(WholeClipRevoiceDraft.Voice(edited, clipId, voice.Voice(selection.RecordId)), clipId, token);
             if (saved is not null) session.KeepWholeClipVoice(selection, saved);
             var rendered = saved is null ? null : (await VoiceSnapshot(saved, ct)).VoiceLab?.Prepared;
             var fps = source.Video!.FrameRate;
-            if (model == WholeClipLipsync.Lipsync2 && saved is not null && rendered is not null &&
+            if (selection.Intent == WholeClipIntent.Revoice && model == WholeClipLipsync.Lipsync2 && saved is not null && rendered is not null &&
                 pictureRun.HasAttempt(selection.Identity, saved, rendered, WholeClipLipsync.Sync3, fps)) model = WholeClipLipsync.Sync3;
             var picture = await pictureRun.PriceAsync(selection.Plan, selection.Identity, saved, rendered, model, fps, ct);
             if (picture.Price > 0 && services.FrameFaces is null)
@@ -105,7 +107,11 @@ public sealed partial class EditorPage
                     services.Settings.GetVoiceLabMonthlyCap("fal") == falLimit;
                 var storeRecord = consent.Load(selection.RecordId);
                 consent.ValidateUse(storeRecord);
-                using var activeFal = new FalLipsyncProvider(services.Keys, catalog);
+                using var activeFal = new FalLipsyncProvider(services.Keys, catalog, (fingerprint, status) =>
+                {
+                    services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Warn, "voice-lab", $"lipsync provider=fal event=cleanup-unconfirmed status={status}");
+                    services.FalCleanup.MarkDenied(fingerprint);
+                });
                 if (await activeFal.AccountFingerprintAsync(token) != offer.Picture.Account)
                     throw new FalLipsyncException(FalLipsyncError.ApprovalRequired);
                 if (saved is null)
@@ -128,7 +134,8 @@ public sealed partial class EditorPage
                         throw new RewriteGenerationException("That voice or Eleven v4 is no longer available on this account.");
                     saved = await WholeClipVoiceRun.ExecuteAsync(edited, selection.Plan!, source.Path, paidRoot,
                         selection.RecordId, VoiceLabWordingFit.ModelId, offer.VoicePrice,
-                        () => backend.CreateRunner(services.LocalTiming), Authorize, action => { binding.Validate(); action(); }, selection.Recovery, progress, token);
+                        () => backend.CreateRunner(services.LocalTiming), Authorize, action => { binding.Validate(); action(); }, selection.Recovery, progress, token,
+                        selection.Intent == WholeClipIntent.RedoVoice ? selection.Kept?.CreatedAt : null);
                     session.KeepWholeClipVoice(selection, saved);
                 }
                 token.ThrowIfCancellationRequested();
@@ -172,5 +179,7 @@ public sealed partial class EditorPage
                 finally { previewChanges.Release(); }
             }
         });
+        session.WholeClipApplied = () => DispatcherQueue.TryEnqueue(() =>
+            _ = RunAsync(() => OpenRewriteAsync(false, wholeClipIntent: WholeClipIntent.Revoice), "Whole-take voice"));
     }
 }

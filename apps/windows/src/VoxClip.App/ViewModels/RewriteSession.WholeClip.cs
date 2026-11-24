@@ -6,8 +6,10 @@ using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
+internal enum WholeClipIntent { Revoice, RedoVoice, RedoLipSync, Sharper }
+
 internal sealed record WholeClipSelection(Project Edited, WholeClipRevoicePlan? Plan, WholeClipVoiceRecovery Recovery,
-    int Revision, IReadOnlyList<EditOperation> Operations)
+    int Revision, IReadOnlyList<EditOperation> Operations, WholeClipIntent Intent = WholeClipIntent.Revoice, WholeClipRevoiceRecord? Kept = null)
 {
     internal string ClipId => Recovery.ClipId;
     internal string RecordId => Recovery.RecordId;
@@ -28,16 +30,21 @@ internal sealed partial class RewriteSession
     private WholeClipSelection? wholeClipSelection;
     private WholeClipSelection? sendingWholeClip;
     internal WholeClipOffer? WholeClipPrice { get; private set; }
+    internal WholeClipIntent? SelectedWholeClipIntent { get; private set; }
     internal VoiceLabEditCommand.AcceptWholeClip? WholeClipReview { get; private set; }
     internal SavedWholeClipVoice? WholeClipVoice { get; private set; }
     internal string WholeClipStatus { get; private set; } = "";
     internal bool WholeClipBusy => wholeClipWork is not null;
     internal bool HoldsWholeClipWork => WholeClipVoice is not null || sendingWholeClip is not null;
-    internal bool OffersWholeClip => Scope.ClipId is not null;
-    internal bool CanRestoreWholeClip => wholeClipRestore is not null && Scope.ClipId is not null && GenerationIsCurrent;
+    private string WholeClipScopeId => Scope.ClipId ?? WholeClipRevoice.FullTakeId;
+    internal bool OffersWholeClip => InsertionAfter is null;
+    internal WholeClipRevoiceRecord? KeptWholeClip => Editor.Project.VoiceLab.WholeClipRevoices?.LastOrDefault(record =>
+        record.ClipId == WholeClipScopeId && record.SegmentIds.Any(id => Editor.Project.VoiceLab.Segments.Any(segment => segment.Id == id && segment.Enabled)));
+    internal bool CanRestoreWholeClip => wholeClipRestore is not null && OffersWholeClip && GenerationIsCurrent;
+    internal Action? WholeClipApplied { get; set; }
     internal string? WholeClipScriptText => WholeClipPrice?.Selection.Recovery.Script ?? wholeClipSelection?.Recovery.Script;
     internal string? WholeClipBlocked => Editor.Project.Media.Source.Video is null ? "Lip sync needs a video."
-        : WholeClipExceedsLimit() ? "Lip sync takes up to 5 min. Make a shorter clip first."
+        : WholeClipExceedsLimit() ? "Lip sync takes up to 5 min. Make a clip first."
         : !VoiceSpeakerCheck.WindowsNativeParityVerified ? "The Windows voice check isn't available yet."
         : wholeClipPrice is null || Envelope is null ? "Read the clip's audio before revoicing it."
         : !GenerationIsCurrent ? "The Rewrite or clip changed. Open Rewrite again to continue."
@@ -45,27 +52,41 @@ internal sealed partial class RewriteSession
             ? "Wait for the other takes to finish."
         : WholeClipVoice is null && HasPaidTakes ? "Finish reviewing your phrase takes before revoicing the whole clip."
         : WholeClipVoice is not null && wholeClipSelection is { } saved && !WholeClipCurrent(saved) ? "The clip or voice changed. Go back to the saved voice's settings to continue."
-        : WholeClipVoice is null && Generation?.VoiceId is null ? "Check the price for your voice first."
+        : WholeClipVoice is null && KeptWholeClip is null && Generation?.VoiceId is null ? "Choose your voice first."
         : null;
 
     private bool WholeClipExceedsLimit()
     {
-        if (Scope.ClipId is not { } id) return false;
         try
         {
             var edited = Editor.ProjectWithLocalOperations(Editor.Project, LocalOperations());
-            var duration = VoiceLabOutputPlanner.Build(edited, VoiceLabOutputScope.Clip(id)).Duration;
+            var duration = VoiceLabOutputPlanner.Build(WholeClipRevoicePlan.WithoutPrevious(edited, WholeClipScopeId), Scope).Duration;
             return LipsyncRenderWindow.UploadSeconds(duration + 2) > WholeClipRevoice.MaximumClipSeconds;
         }
         catch (VoiceLabProjectException) { return false; }
     }
     internal bool WholeClipReviewCurrent => wholeClipSelection is { } selection && WholeClipCurrent(selection) && !WholeClipBusy;
+    internal string? WholeClipUseBlocked => WholeClipBusy ? "Wait for the current voice step to finish."
+        : WholeClipReview is null ? "Make a lip-synced take first."
+        : !WholeClipReviewCurrent ? "The take or voice changed. Your paid work is saved."
+        : null;
+    internal string? WholeClipCompareBlocked => WholeClipBusy ? "Wait for the current voice step to finish."
+        : wholeClipPreview is null ? "Preview isn't available."
+        : WholeClipReviewCurrent && WholeClipReview is not null || KeptWholeClip is not null && GenerationIsCurrent ? null
+        : WholeClipUseBlocked;
+    internal string? WholeClipSharperBlocked => WholeClipBusy ? "Wait for the current voice step to finish."
+        : WholeClipBlocked ?? (KeptWholeClip is null && WholeClipReview is null ? "Make a lip-synced take first." : null);
     internal bool WholeClipCurrent(WholeClipSelection selection) => GenerationIsCurrent && revision == selection.Revision &&
-        (Generation?.VoiceId == selection.RecordId || selection.Plan is null && Generation?.VoiceId is null) &&
-        Editor.Project.Edits.ActiveClipId == selection.ClipId && WholeClipBaseKey(Editor.Project, selection.ClipId) == selection.Recovery.BaseKey;
+        (selection.Intent is WholeClipIntent.RedoLipSync or WholeClipIntent.Sharper || Generation?.VoiceId == selection.RecordId ||
+            Generation?.VoiceId is null && (selection.Plan is null || selection.Kept?.ConsentRecordId == selection.RecordId)) &&
+        Editor.Project.Edits.ActiveClipId == WholeClipRevoice.OutputScope(selection.ClipId).ClipId && WholeClipBaseKey(Editor.Project, selection.ClipId) == selection.Recovery.BaseKey &&
+        (selection.Kept is null || KeptWholeClip?.Id == selection.Kept.Id);
     internal VoiceLabDispatchBinding WholeClipBinding() => wholeClipGate.Capture();
-    private static string WholeClipBaseKey(Project project, string clipId) => System.Convert.ToHexStringLower(
-        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(ProjectVoiceTakeIdentity.IdentityKey(project, RewriteScope.Clip(clipId), clipId))));
+    private static string WholeClipHash(string value) => Convert.ToHexStringLower(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
+    private static string WholeClipBaseKey(Project project, string clipId) => WholeClipRevoice.OutputScope(clipId).ClipId is { } id
+        ? WholeClipHash(ProjectVoiceTakeIdentity.IdentityKey(project, RewriteScope.Clip(id), id))
+        : WholeClipHash(ProjectVoiceTakeIdentity.IdentityKey(project, RewriteScope.FullTake, null));
 
     internal void ConfigureWholeClip(Func<WholeClipSelection, WholeClipLipsync, CancellationToken, Task<WholeClipOffer>> price,
         Func<string, string, SavedWholeClipVoice?> restore, Action<string> validateUse, Func<Project, string, bool, CancellationToken, Task> preview)
@@ -90,27 +111,48 @@ internal sealed partial class RewriteSession
 
     internal void KeepWholeClipVoice(WholeClipSelection selection, SavedWholeClipVoice saved)
     {
+        if (wholeClipSelection?.Identity != selection.Identity) WholeClipReview = null;
         wholeClipSelection = selection;
         WholeClipVoice = saved;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    internal Task PriceWholeClipAsync(WholeClipLipsync model) => WorkWholeClipAsync(async (progress, ct) =>
+    internal void SelectWholeClipIntent(WholeClipIntent? intent)
     {
-        if (WholeClipBlocked is not null || wholeClipPrice is null || Scope.ClipId is not { } clipId || Envelope is not { } envelope) return;
+        if (WholeClipBusy || !IsOpen || !OffersWholeClip || SelectedWholeClipIntent == intent) return;
+        SelectedWholeClipIntent = intent;
+        WholeClipPrice = null;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    internal Task PriceWholeClipAsync(WholeClipIntent intent) => WorkWholeClipAsync(async (progress, ct) =>
+    {
+        if (WholeClipBlocked is not null || wholeClipPrice is null || Envelope is not { } envelope || !OffersWholeClip) return;
+        var clipId = WholeClipScopeId;
+        var kept = KeptWholeClip;
+        var model = intent == WholeClipIntent.Sharper ? WholeClipLipsync.Sync3 :
+            WholeClipLipsyncValues.FromRawValue(kept?.LipsyncModel ?? WholeClipReview?.Record.LipsyncModel) ?? WholeClipLipsync.Lipsync2;
         WholeClipPrice = null;
         progress.Report("Checking the whole-clip price…");
         var selection = wholeClipSelection;
-        if (selection is null || WholeClipVoice is null || !WholeClipCurrent(selection))
+        var basis = Editor.Project;
+        var baseKey = WholeClipBaseKey(basis, clipId);
+        if (intent is WholeClipIntent.RedoLipSync or WholeClipIntent.Sharper && kept is not null)
         {
-            if (Generation?.VoiceId is not { } recordId) return;
-            var basis = Editor.Project;
+            var identity = WholeClipHash($"picture-redo/1\n{kept.Id}\n{baseKey}\n{intent}");
+            selection = new(basis, null, new(baseKey, identity, clipId, kept.ConsentRecordId, kept.Script), revision, [], intent, kept);
+        }
+        else if (intent == WholeClipIntent.RedoVoice || selection is null || WholeClipVoice is null || !WholeClipCurrent(selection))
+        {
+            if ((Generation?.VoiceId ?? kept?.ConsentRecordId) is not { } recordId) return;
             var operations = LocalOperations();
             var edited = Editor.ProjectWithLocalOperations(basis, operations);
             var plan = WholeClipRevoicePlan.Create(edited, clipId, envelope, IncludedHunks.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice).ToArray());
             var identity = plan.Identity(recordId, edited.Media.Source.ContentKey, synthesisModel, edited.Edits.PauseThresholdSeconds);
-            selection = new(edited, plan, new(WholeClipBaseKey(basis, clipId), identity, clipId, recordId, plan.Script.Text), revision, operations);
+            if (kept is not null && intent == WholeClipIntent.RedoVoice) identity = WholeClipHash($"voice-redo/1\n{kept.Id}\n{identity}");
+            selection = new(edited, plan, new(baseKey, identity, clipId, recordId, plan.Script.Text), revision, operations, intent, kept);
         }
+        else if (intent == WholeClipIntent.Sharper) selection = selection with { Intent = intent };
         var quote = await wholeClipPrice(selection, model, ct);
         if (!WholeClipCurrent(selection)) return;
         WholeClipPrice = quote;
@@ -119,7 +161,8 @@ internal sealed partial class RewriteSession
 
     internal Task RestoreWholeClipAsync() => WorkWholeClipAsync((_, _) =>
     {
-        if (!CanRestoreWholeClip || Scope.ClipId is not { } clipId) return Task.CompletedTask;
+        if (!CanRestoreWholeClip) return Task.CompletedTask;
+        var clipId = WholeClipScopeId;
         var basis = Editor.Project;
         var saved = wholeClipRestore?.Invoke(basis.Id, WholeClipBaseKey(basis, clipId));
         if (saved?.Recovery is not { } info || info.ClipId != clipId || saved.SegmentIds.Any(id => basis.VoiceLab.Segments.Any(segment => segment.Id == id)))
@@ -132,7 +175,8 @@ internal sealed partial class RewriteSession
             WholeClipStatus = "Choose the voice the saved clip was made with. Nothing was sent.";
             return Task.CompletedTask;
         }
-        var savedEdits = ProjectVoiceTakeIdentity.RewriteInputs(saved.Draft, RewriteScope.Clip(clipId), clipId).Edits;
+        var savedScope = clipId == WholeClipRevoice.FullTakeId ? RewriteScope.FullTake : RewriteScope.Clip(clipId);
+        var savedEdits = ProjectVoiceTakeIdentity.RewriteInputs(saved.Draft, savedScope, savedScope.ClipId).Edits;
         var addedCuts = savedEdits.CutWordIds.Except(basis.Edits.CutWordIds, StringComparer.Ordinal).ToArray();
         List<EditOperation> operations = [];
         if (addedCuts.Length > 0) operations.Add(new EditOperation.SetWordCuts(addedCuts, true));
@@ -158,18 +202,29 @@ internal sealed partial class RewriteSession
 
     internal Task PlayWholeClipAsync(bool original, bool voiceOnly = false) => WorkWholeClipAsync(async (_, ct) =>
     {
-        if (wholeClipSelection is not { } selection || !WholeClipCurrent(selection) || wholeClipPreview is null) return;
-        var clipId = selection.ClipId;
+        if (wholeClipPreview is null) return;
+        var clipId = WholeClipScopeId;
+        if (original && GenerationIsCurrent)
+        {
+            await wholeClipPreview(new VoiceLabEditCommand.RestoreOriginalRecording(clipId).ApplyingTo(Editor.Project), clipId, false, ct);
+            return;
+        }
+        if (wholeClipSelection is not { } selection || !WholeClipCurrent(selection))
+        {
+            if (!voiceOnly && KeptWholeClip is not null && GenerationIsCurrent) await wholeClipPreview(Editor.Project, clipId, false, ct);
+            return;
+        }
         var edited = Editor.ProjectWithLocalOperations(Editor.Project, selection.Operations);
-        if (original) await wholeClipPreview(Editor.Project, clipId, false, ct);
-        else if (!voiceOnly && WholeClipReview is { } result) await wholeClipPreview(result.ApplyingTo(edited), clipId, false, ct);
-        else if (WholeClipVoice is { } saved)
+        if (!voiceOnly && WholeClipReview is { } result) await wholeClipPreview(result.ApplyingTo(edited), clipId, false, ct);
+        else if (!voiceOnly && KeptWholeClip is not null) await wholeClipPreview(Editor.Project, clipId, false, ct);
+        else if (voiceOnly && WholeClipVoice is { } saved)
             await wholeClipPreview(WholeClipRevoiceDraft.Voice(edited, clipId, saved.Voice(selection.RecordId)), clipId, true, ct);
     });
 
     internal void ApplyWholeClip(bool voiceOnly)
     {
-        if (!WholeClipReviewCurrent || wholeClipSelection is not { } selection || Scope.ClipId is not { } clipId) return;
+        if (!WholeClipReviewCurrent || wholeClipSelection is not { } selection) return;
+        var clipId = selection.ClipId;
         try { wholeClipValidateUse?.Invoke(selection.RecordId); }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
@@ -183,8 +238,15 @@ internal sealed partial class RewriteSession
         else if (WholeClipVoice is { } saved)
             applied = Editor.ApplyVoiceLab(new VoiceLabEditCommand.AcceptWholeClipVoice(saved.Voice(selection.RecordId), clipId), Editor.Project, selection.Operations);
         else return;
-        if (applied) Dispose();
+        if (applied) { Dispose(); WholeClipApplied?.Invoke(); }
         else { WholeClipStatus = "This take can't go into the clip as edited. Your paid work is saved."; Changed?.Invoke(this, EventArgs.Empty); }
+    }
+
+    internal void BackToMyRecording()
+    {
+        if (WholeClipBusy || KeptWholeClip is null || !GenerationIsCurrent) return;
+        if (Editor.ApplyVoiceLab(new VoiceLabEditCommand.RestoreOriginalRecording(WholeClipScopeId), Editor.Project))
+        { Dispose(); WholeClipApplied?.Invoke(); }
     }
 
     private async Task WorkWholeClipAsync(Func<IProgress<string>, CancellationToken, Task> work)
@@ -200,7 +262,7 @@ internal sealed partial class RewriteSession
         });
         Changed?.Invoke(this, EventArgs.Empty);
         try { await work(progress, token.Token); }
-        catch (OperationCanceledException) { WholeClipStatus = "Stopped. Any paid voice and lip sync are saved."; }
+        catch (OperationCanceledException) { WholeClipStatus = ""; }
         catch (FalLipsyncException error)
         {
             WholeClipStatus = error.Code switch

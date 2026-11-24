@@ -11,6 +11,7 @@ public abstract record VoiceLabEditCommand
     public sealed record AcceptAll(IReadOnlyList<VoiceLabSegment> Segments, IReadOnlyList<VoiceLabAsset> Assets, VoiceLabVoiceReference? Voice) : VoiceLabEditCommand;
     public sealed record AcceptWholeClip(AcceptAll Voice, IReadOnlyList<VoiceLabVideoAsset> Pictures, WholeClipRevoiceRecord Record) : VoiceLabEditCommand;
     public sealed record AcceptWholeClipVoice(AcceptAll Voice, string ClipId) : VoiceLabEditCommand;
+    public sealed record RestoreOriginalRecording(string ClipId) : VoiceLabEditCommand;
     public sealed record SetEnabled(string SegmentId, bool Enabled) : VoiceLabEditCommand;
     public sealed record Delete(string SegmentId) : VoiceLabEditCommand;
     public sealed record ChooseCandidate(string SegmentId, int Index) : VoiceLabEditCommand;
@@ -20,6 +21,7 @@ public abstract record VoiceLabEditCommand
         AcceptAll => "Accept Voice Lab takes",
         AcceptWholeClip => "Revoice whole clip",
         AcceptWholeClipVoice => "Revoice whole clip",
+        RestoreOriginalRecording => "Back to My Recording",
         Accept => "Accept Voice Lab take",
         SetEnabled { Enabled: true } => "Turn on Voice Lab",
         SetEnabled => "Turn off Voice Lab",
@@ -33,6 +35,7 @@ public abstract record VoiceLabEditCommand
         AcceptAll accept => ApplyAccept(project, accept, outputScope ?? VoiceLabOutputScope.Full),
         AcceptWholeClip whole => ApplyWhole(project, whole),
         AcceptWholeClipVoice whole => WholeClipRevoiceDraft.Voice(project, whole.ClipId, whole.Voice),
+        RestoreOriginalRecording original => RestoreRecording(project, original.ClipId),
         SetEnabled enabled => VoiceLabProject.SetEnabled(project, enabled.SegmentId, enabled.Enabled),
         Delete delete => VoiceLabProject.Delete(project, delete.SegmentId),
         ChooseCandidate choose => VoiceLabProject.SelectCandidate(project, choose.SegmentId, choose.Index),
@@ -48,10 +51,23 @@ public abstract record VoiceLabEditCommand
             throw LipsyncWindow.Invalid();
         project = VoiceLabProject.UpgradeToV3(WholeClipRevoicePlan.WithoutPrevious(project, record.ClipId));
         var library = project.VoiceLab with { VideoAssets = [.. project.VoiceLab.VideoAssets!, .. whole.Pictures] };
-        var accepted = ApplyAccept(project with { VoiceLab = library }, whole.Voice, VoiceLabOutputScope.Clip(record.ClipId));
+        var accepted = ApplyAccept(project with { VoiceLab = library }, whole.Voice, WholeClipRevoice.OutputScope(record.ClipId));
         accepted = accepted with { VoiceLab = accepted.VoiceLab with { WholeClipRevoices = [.. accepted.VoiceLab.WholeClipRevoices ?? [], record] } };
         VoiceLabRenderValidation.Validate(accepted);
         return accepted;
+    }
+    private static Project RestoreRecording(Project project, string clipId)
+    {
+        var records = project.VoiceLab.WholeClipRevoices;
+        if (records is null) return project;
+        var removed = records.Where(record => record.ClipId == clipId).SelectMany(record => record.SegmentIds).ToHashSet(StringComparer.Ordinal);
+        if (removed.Count == 0) return project;
+        var kept = records.Where(record => record.ClipId != clipId).ToArray();
+        return project with { VoiceLab = project.VoiceLab with
+        {
+            Segments = project.VoiceLab.Segments.Select(segment => removed.Contains(segment.Id) ? segment with { Enabled = false } : segment).ToArray(),
+            WholeClipRevoices = kept.Length == 0 ? null : kept,
+        } };
     }
     private static Project ApplyAccept(Project project, AcceptAll command, VoiceLabOutputScope scope)
     {

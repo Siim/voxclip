@@ -13,6 +13,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Music;
+using VoxClip.Core.Services.VoiceLab;
 
 namespace VoxClip.App;
 
@@ -20,6 +21,7 @@ public sealed partial class SettingsWindow : Window
 {
     private readonly CancellationTokenSource lifetime = new();
     private readonly InfoBar notice = Ui.Notice();
+    private Func<Task>? refreshFalCleanup;
     private readonly List<SettingsTextCommit> textCommits = [];
     private CancellationTokenSource? download;
     private int pageGeneration;
@@ -77,7 +79,8 @@ public sealed partial class SettingsWindow : Window
         };
         // Downloads and removals in the Transcribe dialog or the welcome tour show up on an open Local Models page.
         App.Services.ModelsChanged += ModelsChanged;
-        Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; App.Services.ModelsChanged -= ModelsChanged; };
+        App.Services.FalCleanup.Changed += FalCleanupChanged;
+        Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; App.Services.ModelsChanged -= ModelsChanged; App.Services.FalCleanup.Changed -= FalCleanupChanged; };
     }
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
@@ -210,6 +213,7 @@ public sealed partial class SettingsWindow : Window
         try { await App.Services.Keys.SaveAsync(account, secret, ct); }
         finally { keyWrites--; }
     }
+    private void FalCleanupChanged() => Root.DispatcherQueue.TryEnqueue(() => _ = refreshFalCleanup?.Invoke());
     private static async Task<bool> SaveTextAsync(string key, object value)
     {
         await App.Services.SetAsync(key, value);
@@ -405,6 +409,8 @@ public sealed partial class SettingsWindow : Window
         selected.SelectedIndex = Math.Max(0, entries.ToList().FindIndex(entry => entry.WireId == App.Services.Get("llm.connector", "")) + 1);
         selected.SelectionChanged += (_, _) => Save("llm.connector", selected.SelectedIndex == 0 ? "" : entries[selected.SelectedIndex - 1].WireId); Body.Children.Add(selected);
         await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs. No video is sent. " + VoiceLabCopy.SharedKeyFootnote, "elevenlabs-api-key", null);
+        if (generation != pageGeneration) return;
+        await ProviderRowAsync("fal.ai", "Sends the edited picture and voice for lip sync with your approval.", FalLipsyncProvider.KeyAccount, null);
         foreach (var entry in entries)
         {
             if (generation != pageGeneration) return;
@@ -425,6 +431,25 @@ public sealed partial class SettingsWindow : Window
         if (generation != pageGeneration) return;
         var status = Ui.Text(keyUnreadable ? "This saved key can't be read. Forget it, then save a new key. Your media and edits are still here." : hasKey ? "Key saved securely." : account is null ? "Check detects availability; Test sends only a connection test." : "No key saved.", "HelperText");
         panel.Children.Add(status);
+        var cleanup = account == FalLipsyncProvider.KeyAccount ? Ui.Text(FalCleanupNotice.Message, "HelperText") : null;
+        if (cleanup is not null)
+        {
+            cleanup.Visibility = Visibility.Collapsed;
+            panel.Children.Add(cleanup);
+            refreshFalCleanup = RefreshCleanupAsync;
+            await RefreshCleanupAsync();
+            if (generation != pageGeneration) return;
+        }
+        async Task RefreshCleanupAsync()
+        {
+            if (cleanup is null || generation != pageGeneration || lifetime.IsCancellationRequested) return;
+            bool show;
+            try { show = App.Services.FalCleanup.AppliesTo(await App.Services.Keys.GetKeyAsync(FalLipsyncProvider.KeyAccount, lifetime.Token)); }
+            catch (OperationCanceledException) { return; }
+            catch (Exception error) when (error is not OutOfMemoryException) { show = false; }
+            if (generation != pageGeneration) return;
+            cleanup.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        }
         var model = new TextBox { Header = "Model ID", Text = App.Services.Get("llm.model." + entry?.WireId, entry?.DefaultModel ?? "") };
         if (entry is not null && AiEffortLabel.SettingsNote(entry.Metadata) is { } effortNote) panel.Children.Add(Ui.Text(effortNote, "HelperText"));
         if (entry is not null) { panel.Children.Add(model); TrackTextField(model, async () => { if (model.Text.Trim().Length == 0) { Ui.Show(notice, "Enter a model ID.", InfoBarSeverity.Warning); return false; } return await SaveTextAsync("llm.model." + entry.WireId, model.Text.Trim()); }); }
@@ -453,6 +478,7 @@ public sealed partial class SettingsWindow : Window
                 try
                 {
                     await App.Services.Keys.SaveAsync(account, secret, lifetime.Token); status.Text = "Key saved securely."; key.PlaceholderText = "Saved for your Windows account; paste to replace";
+                    await RefreshCleanupAsync();
                     if (forget is not null) forget.Visibility = Visibility.Visible;
                 }
                 finally { keyWrites--; }
@@ -462,7 +488,7 @@ public sealed partial class SettingsWindow : Window
             {
                 if (preparing) return;
                 keyWrites++;
-                try { key.Password = ""; await App.Services.Keys.SaveAsync(account, "", lifetime.Token); status.Text = "Key forgotten."; key.PlaceholderText = "Paste an API key"; if (forget is not null) forget.Visibility = Visibility.Collapsed; }
+                try { key.Password = ""; await App.Services.Keys.SaveAsync(account, "", lifetime.Token); status.Text = "Key forgotten."; key.PlaceholderText = "Paste an API key"; if (forget is not null) forget.Visibility = Visibility.Collapsed; await RefreshCleanupAsync(); }
                 finally { keyWrites--; }
             }, "Forget key"));
             forget.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed; panel.Children.Add(forget);

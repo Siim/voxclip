@@ -90,6 +90,7 @@ public sealed class AskClaudeServices
 public sealed class AskClaudeState
 {
     internal string? AssetWorking { get; set; }
+    internal CancellationTokenSource? AssetCancellation { get; set; }
     internal bool? IllustrationReady { get; set; }
     /// <summary>The field's placeholder: it takes both kinds of request, and Claude decides.</summary>
     public const string Placeholder = "Say what to change: reword it, bleep it, blur, add a title…";

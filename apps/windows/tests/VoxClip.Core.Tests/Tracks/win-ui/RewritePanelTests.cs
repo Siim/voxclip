@@ -12,6 +12,37 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class RewritePanelTests
 {
+    [Fact]
+    public void FullTakeVoiceLetsYouSelectWholeTakeWithoutSendingAndExplainsUnavailableActions()
+    {
+        using var session = new RewriteSession(Editor(), 0, 1, Envelope(), null, scope: RewriteScope.FullTake);
+        Assert.True(session.OffersWholeClip);
+        Assert.Null(session.SelectedWholeClipIntent);
+        session.SelectWholeClipIntent(WholeClipIntent.Revoice);
+        Assert.Equal(WholeClipIntent.Revoice, session.SelectedWholeClipIntent);
+        Assert.Null(session.WholeClipPrice);
+        Assert.NotEmpty(session.WholeClipUseBlocked!);
+        Assert.NotEmpty(session.WholeClipCompareBlocked!);
+        Assert.NotEmpty(session.WholeClipSharperBlocked!);
+    }
+
+    [Fact]
+    public void FalCleanupNoticeOnlyAppliesToTheKeyDeniedAndNotifiesOnce()
+    {
+        var notice = new FalCleanupNotice();
+        var notifications = 0;
+        notice.Changed += () => notifications++;
+        const string fixtureKey = "fixture-fal-key";
+        var fingerprint = VoxClip.Core.Services.VoiceLab.FalLipsyncProvider.KeyFingerprint(fixtureKey);
+        Assert.False(notice.AppliesTo(fixtureKey));
+        notice.MarkDenied(fingerprint);
+        notice.MarkDenied(fingerprint);
+        Assert.Equal(1, notifications);
+        Assert.True(notice.AppliesTo(fixtureKey));
+        Assert.False(notice.AppliesTo("fixture-replacement-key"));
+        Assert.False(notice.AppliesTo(null));
+    }
+
     [Theory]
     [InlineData(300)]
     [InlineData(320)]

@@ -190,7 +190,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         {
             var skip = excluded.ToFrozenSet(StringComparer.Ordinal);
             var found = await Task.Run(() => VoiceLabTakeJournal.Match(key, storage.ProjectId, storage.PaidRoot, skip,
-                forSelectedVoice: !input.ChecksGeneratedSpeaker), ct).ConfigureAwait(false);
+                forSelectedVoice: !input.ChecksGeneratedSpeaker, createdAfter: input.RecoverTakesAfter), ct).ConfigureAwait(false);
             if (found is null) return null;
             if (VoiceLabTakeJournalClaims.Claim(VoiceLabTakeJournalClaims.Key(found.AssetFile, storage.PaidRoot), claimOwner)) return found;
             excluded.Add(found.AssetFile);

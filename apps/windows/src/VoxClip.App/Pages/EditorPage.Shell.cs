@@ -6,6 +6,7 @@ using VoxClip.App.Controls;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.VoiceLab;
 using Windows.System;
 
 namespace VoxClip.App.Pages;
@@ -195,6 +196,11 @@ public sealed partial class EditorPage
             Command("edit.pauses", "Tighten pauses", "Ctrl+Shift+P", () => ShellEditable && ViewModel.Summary.CanTighten, () => PausesClicked(this, new())),
             Command("edit.restore", "Restore cuts", "Ctrl+Shift+R", () => ShellEditable && ViewModel.Summary.HasEdits, () => RestoreClicked(this, new())),
             Command("job.rewrite", "Rewrite…", "Ctrl+R", () => ShellJobAvailable(ShellJob.Rewrite), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite"), "Rewrite needs an editable transcript and the current right-panel capability."),
+            Command("voice.wholeTake", "Revoice Whole Take, with Lip Sync", "", () => ShellJobAvailable(ShellJob.Rewrite),
+                () => OpenWholeTakeVoice(), "Open an editable transcript to revoice this take."),
+            Command("voice.redoWholeTake", "Redo Voice and Lip Sync", "", () => ShellJobAvailable(ShellJob.Rewrite) &&
+                WholeClipRevoice.IsRevoiced(ViewModel.Project.Edits.ActiveClipId ?? WholeClipRevoice.FullTakeId, ViewModel.Project),
+                () => OpenWholeTakeVoice(redo: true), "Use a whole-take revoice first."),
             Command("clip.makeIt", ViewModel.State?.ActiveClipId is { } makeItClip ? ViewModel.MakeItTitle(makeItClip) : "✦ Make it postable", "",
                 () => ViewModel.State?.ActiveClipId is { } clip && ViewModel.CanMakeItPostable(clip), () => MakeItPostable(ViewModel.State!.ActiveClipId!),
                 "Open a clip with words to keep, and finish the current task first."),
@@ -213,6 +219,9 @@ public sealed partial class EditorPage
             Command("project.locate", "Locate original video…", "", () => ViewModel.IsReadOnly && !demo && !ViewModel.Busy, () => _ = LocateAsync())
         ];
     }
+
+    internal void OpenWholeTakeVoice(bool redo = false) => _ = RunAsync(() =>
+        OpenRewriteAsync(false, wholeClipIntent: redo ? WholeClipIntent.RedoVoice : WholeClipIntent.Revoice), "Whole-take voice");
 
     private void TightenScope()
     {

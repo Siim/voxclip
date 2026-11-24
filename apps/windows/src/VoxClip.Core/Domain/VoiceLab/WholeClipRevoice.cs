@@ -7,7 +7,11 @@ namespace VoxClip.Core.Domain.VoiceLab;
 /// deterministic parts both apps share, as the Mac <c>WholeClipRevoice.swift</c>.</summary>
 public static partial class WholeClipRevoice
 {
-    internal const string FullTakeId = "voxclip-full-take";
+    /// <summary>The stored scope identifier for a revoice of Full Take.</summary>
+    public const string FullTakeId = "voxclip-full-take";
+    /// <summary>Resolve a stored revoice scope without creating a clip.</summary>
+    public static VoiceLabOutputScope OutputScope(string scopeId) =>
+        scopeId == FullTakeId ? VoiceLabOutputScope.Full : VoiceLabOutputScope.Clip(scopeId);
     /// <summary>The burned-in chip of an export holding a whole-clip revoice (voice-lab §11).</summary>
     public const string DisclosureChip = "Voice and lip movement generated with AI";
     /// <summary>The post text line of an export holding a whole-clip revoice (voice-lab §11).</summary>
@@ -134,9 +138,6 @@ public static class WholeClipLipsyncValues
         "fal-ai/sync-lipsync/v3" => WholeClipLipsync.Sync3,
         _ => null
     };
-    /// <summary>The model as a fal lip-sync capability.</summary>
-    public static Services.LLM.LipsyncModel LipsyncModel(this WholeClipLipsync model)
-        => new("fal", model.RawValue(), model == WholeClipLipsync.Sync3 ? Services.LLM.LipsyncTier.Best : Services.LLM.LipsyncTier.Quality, true);
 }
 
 /// <summary>A used whole-clip revoice, saved in the project (<c>voiceLab.wholeClipRevoices</c>, schema v3 and v4). Its segments are

@@ -11,6 +11,16 @@ namespace VoxClip.Media.VoiceLab;
 public sealed record SavedWholeClipVoice(Project Draft, IReadOnlyList<string> SegmentIds, decimal Spent)
 {
     public WholeClipVoiceRecovery? Recovery { get; init; }
+    public static SavedWholeClipVoice FromKept(Project project, WholeClipRevoiceRecord kept, WholeClipVoiceRecovery recovery)
+    {
+        var ids = kept.SegmentIds.ToHashSet(StringComparer.Ordinal);
+        var segments = project.VoiceLab.Segments.Select(segment => !ids.Contains(segment.Id) ? segment : segment with
+        {
+            Candidates = segment.Candidates.Select(candidate => candidate.Recipe is { Video.Mode: VoiceLabVideoMode.Lipsync } recipe
+                ? candidate with { Recipe = recipe with { Video = VoiceLabLipsync.Base(recipe.Video) } } : candidate).ToArray(),
+        }).ToArray();
+        return new(project with { VoiceLab = project.VoiceLab with { Segments = segments } }, kept.SegmentIds, 0m) { Recovery = recovery };
+    }
     public VoiceLabEditCommand.AcceptAll Voice(string recordId)
     {
         var segments = SegmentIds.Select(id => Draft.VoiceLab.Segments.Single(segment => segment.Id == id)).ToArray();
@@ -47,7 +57,8 @@ public static class WholeClipVoiceCheckpoint
             throw Invalid();
         var info = JsonSerializer.Deserialize<WholeClipVoiceRecovery>(recovery);
         if (info is null || info.BaseKey != baseKey || info.Identity != identity || info.Script.Length is < 1 or > 100_000 ||
-            !Guid.TryParseExact(info.RecordId, "D", out _) || !draft.Edits.Clips.Any(clip => clip.Id == info.ClipId)) throw Invalid();
+            !Guid.TryParseExact(info.RecordId, "D", out _) || info.ClipId != WholeClipRevoice.FullTakeId &&
+            !draft.Edits.Clips.Any(clip => clip.Id == info.ClipId)) throw Invalid();
         return new(draft, ids, spent) { Recovery = info };
     }
 

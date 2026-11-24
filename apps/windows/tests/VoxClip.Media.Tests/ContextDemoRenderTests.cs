@@ -17,6 +17,43 @@ public sealed class ContextDemoRenderTests
 {
     private const int Rate = 48_000;
 
+    [Fact]
+    public void SharedCompanionPlacementsRenderAtEditedTimeWithoutChangingTheTimeline()
+    {
+        using var vectors = System.Text.Json.JsonDocument.Parse(FixtureLoader.ReadText("fixtures/clip-effects/footage-cases.json"));
+        foreach (var row in vectors.RootElement.EnumerateArray().Where(row => row.TryGetProperty("placement", out var valid) && valid.GetBoolean()))
+        {
+            var kind = row.GetProperty("kind").GetString()!;
+            var offset = row.GetProperty("footage").GetProperty("start").GetDouble();
+            var plan = TestPlan.FromKept(Rate, 4 * Rate, [new(0, Rate), new(2 * Rate, 4 * Rate)]);
+            var snapshot = Snapshot(size: new(180, 320)) with { Plan = plan, ContextDemo = null };
+            var frames = new Frames();
+            var entry = new ProjectFootage("placement", "clip", kind, .5, 1.5, new("demo", offset));
+            snapshot = snapshot with { Footage = [new(entry, "companion.mp4", .5, 1)] };
+            var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot, openFootage: _ => frames);
+            composer.PrepareSnapshot(snapshot);
+            try
+            {
+                foreach (var preview in new[] { true, false })
+                {
+                    var output = Grey(snapshot.Output.Size);
+                    var ct = TestContext.Current.CancellationToken;
+                    composer.FinishClipFrame(output, snapshot, .49, 640, 360, default, ct, preview);
+                    Assert.Equal(((byte)90, (byte)90, (byte)90), Pixel(output, .25, .75));
+                    composer.FinishClipFrame(output, snapshot, .75, 640, 360, default, ct, preview);
+                    Assert.Equal((byte)(kind == "videoStack" ? 90 : 200), Pixel(output, .25, .25).Red);
+                    Assert.Equal((byte)200, Pixel(output, .25, .75).Red);
+                    Assert.Equal(kind == "screenshot" ? offset : offset + .5, frames.Reads[^1].SourceTime);
+                    var end = Grey(snapshot.Output.Size);
+                    composer.FinishClipFrame(end, snapshot, 1, 640, 360, default, ct, preview);
+                    Assert.Equal(((byte)90, (byte)90, (byte)90), Pixel(end, .25, .75));
+                }
+                Assert.Equal(3, snapshot.Timeline.Duration);
+            }
+            finally { composer.ReleaseSnapshot(snapshot); }
+        }
+    }
+
     private static Project Fixture() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/context-demo/v4-project.voxclip"));
 
     /// <summary>A 320 × 180 recording frame: red on the left, blue on the right, a white band along the top, and green carrying the
@@ -51,7 +88,7 @@ public sealed class ContextDemoRenderTests
         return new(pixels, width, height, width * 4);
     }
 
-    private sealed class Frames(int rotation = 0) : IContextDemoFrames
+    private sealed class Frames(int rotation = 0) : IVideoLayerFrames
     {
         internal List<(string AssetId, double SourceTime)> Reads { get; } = [];
         internal int Disposed { get; private set; }
@@ -81,7 +118,7 @@ public sealed class ContextDemoRenderTests
         return new(pixels, size.Width, size.Height, size.Width * 4);
     }
 
-    private static PixelBuffer Draw(ComposeSnapshot snapshot, double editedTime, IContextDemoFrames frames)
+    private static PixelBuffer Draw(ComposeSnapshot snapshot, double editedTime, IVideoLayerFrames frames)
     {
         var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot, _ => frames);
         composer.PrepareSnapshot(snapshot);

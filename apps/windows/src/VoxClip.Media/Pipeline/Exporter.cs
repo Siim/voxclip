@@ -100,6 +100,7 @@ public sealed partial class Exporter : IExporter
                     VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.StaleRenderContract);
         }
         var protectedPaths = new List<string> { snapshot.Media.Path };
+        protectedPaths.AddRange(snapshot.Footage.Select(layer => layer.Path));
         if (snapshot.Clip?.Effects is { } effects)
         {
             protectedPaths.AddRange(effects.SoundPaths.Values);

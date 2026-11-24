@@ -23,6 +23,8 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
     public ClipRenderInput? Clip { get; init; }
     /// <summary>The screen recordings placed over this scope (doc/spec/context-demo.md); null draws the source picture throughout.</summary>
     public VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers? ContextDemo { get; init; }
+    /// <summary>Resolved, silent companion placements on the edited clock.</summary>
+    public IReadOnlyList<FootageRenderLayer> Footage { get; init; } = [];
     /// <summary>The clip's speed timing; 1× without controls.</summary>
     public ClipSpeedTiming Speed => ClipSpeedTiming.ForEffects(Clip?.Controls?.Speed ?? 1, Timeline.MapTime, Clip?.Effects?.Effects ?? []);
     /// <summary>The rendered length in samples at the timeline rate: the edited length divided by the speed. One speed for the
@@ -35,6 +37,18 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
     /// <summary>The single timeline used for duration, source frames, and audio.</summary>
     public RenderTimeline Timeline => VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input
         ? new RenderTimeline.VoiceLab(input.Prepared.OutputPlan) : new RenderTimeline.Legacy(Plan);
+}
+
+/// <summary>A companion picture and its half-open interval on the edited timeline.</summary>
+/// <param name="Entry">The original placement on the primary source clock.</param>
+/// <param name="Path">The verified local companion file.</param>
+/// <param name="EditedStart">The inclusive start on the edited timeline.</param>
+/// <param name="EditedEnd">The exclusive end on the edited timeline.</param>
+public sealed record FootageRenderLayer(ProjectFootage Entry, string Path, double EditedStart, double EditedEnd)
+{
+    /// <summary>Companion seconds for this frame: a screenshot holds, video spans the interval.</summary>
+    public double SourceTime(double editedTime) => Entry.Kind == "screenshot" ? Entry.Footage.Start :
+        Entry.Footage.Start + (editedTime - EditedStart) / (EditedEnd - EditedStart) * (Entry.End - Entry.Start);
 }
 /// <summary>Output encoding configuration; architecture §4.1 and §6.4.</summary>
 public sealed record OutputSpec(PixelSize Size, double FrameRate, long VideoBitrate, int AudioSampleRate = 48_000,

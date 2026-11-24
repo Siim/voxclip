@@ -12,15 +12,20 @@ public sealed record WholeClipRevoicePlan(WholeClipScript Script, IReadOnlyList<
 {
     public static WholeClipRevoicePlan Create(Project project, string clipId, AudioEnvelope envelope, IReadOnlyList<VoiceLabDiffHunk> changes)
     {
-        var clip = project.Edits.Clips.Single(item => item.Id == clipId);
         var transcript = project.Transcript?.Words ?? throw LipsyncWindow.Invalid();
-        var first = transcript.ToList().FindIndex(word => word.Id == clip.StartWordId);
-        var last = transcript.ToList().FindIndex(word => word.Id == clip.EndWordId);
+        var scope = WholeClipRevoice.OutputScope(clipId);
+        var first = 0;
+        var last = transcript.Count - 1;
+        if (scope.ClipId is { } id)
+        {
+            var clip = project.Edits.Clips.Single(item => item.Id == id);
+            first = transcript.ToList().FindIndex(word => word.Id == clip.StartWordId);
+            last = transcript.ToList().FindIndex(word => word.Id == clip.EndWordId);
+        }
         if (first < 0 || last < first) throw LipsyncWindow.Invalid();
         var words = transcript.Skip(first).Take(last - first + 1).Select(word => word with
             { Text = project.Edits.Corrections.GetValueOrDefault(word.Id, word.Text) }).ToArray();
         var cuts = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
-        var scope = VoiceLabOutputScope.Clip(clipId);
         var script = WholeClipScript.Assemble(words, cuts, changes) ?? throw LipsyncWindow.Invalid();
         var clean = WithoutPrevious(project, clipId);
         var original = VoiceLabOutputPlanner.Build(clean, scope);
@@ -61,7 +66,7 @@ public sealed record WholeClipRevoicePlan(WholeClipScript Script, IReadOnlyList<
 public static class WholeClipRevoiceDraft
 {
     public static Project Voice(Project current, string clipId, VoiceLabEditCommand.AcceptAll voice) =>
-        voice.ApplyingTo(WholeClipRevoicePlan.WithoutPrevious(current, clipId), VoiceLabOutputScope.Clip(clipId));
+        voice.ApplyingTo(WholeClipRevoicePlan.WithoutPrevious(current, clipId), WholeClipRevoice.OutputScope(clipId));
 
     public static VoiceLabEditCommand.AcceptWholeClip WithPicture(VoiceLabEditCommand.AcceptAll voice, WholeClipRevoiceRecord record,
         IReadOnlyList<VoiceLabSelectedRecipe> recipes, IReadOnlyList<WholeClipLipSync> results)
@@ -76,7 +81,7 @@ public static class WholeClipRevoiceDraft
             var segment = updated[selected.SegmentId];
             var picture = selected.Recipe.Video with { Mode = VoiceLabVideoMode.Lipsync, AssetId = result.Asset.Id, Provider = "fal",
                 Model = record.LipsyncModel, RequestId = result.RequestId, WindowStartSample = result.Window.Source.StartSample,
-                WindowEndSample = result.Window.Source.EndSample, SyncMode = result.Window.Mode == Services.LLM.SyncMode.Remap ? "remap" : "cut_off" };
+                WindowEndSample = result.Window.Source.EndSample, SyncMode = result.Window.Mode == SyncMode.Remap ? "remap" : "cut_off" };
             var candidate = segment.Candidates[segment.SelectedCandidateIndex] with { Recipe = selected.Recipe with { Video = picture } };
             updated[segment.Id] = segment with { Candidates = [.. segment.Candidates, candidate], SelectedCandidateIndex = segment.Candidates.Count };
         }

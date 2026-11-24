@@ -175,7 +175,11 @@ internal static class CliOperations
         var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md).
-        snapshot = snapshot with { ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, DataLocations.Resolve().Root) };
+        snapshot = snapshot with
+        {
+            ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, DataLocations.Resolve().Root),
+            Footage = await FootageRendering.ResolveAsync(project, snapshot, new ProjectStore(), path, ct).ConfigureAwait(false),
+        };
         var target = project.Edits.ActiveClipId is { } selectedClip ? (ExportTarget)new ExportTarget.Clip(selectedClip) : new ExportTarget.FullEdit();
         var loudness = arguments.GetValue<string?>("--loudness") == "off" ? ExportLoudness.Off : ExportLoudness.Social;
         return new(project, snapshot, target, aspect, quality, captions, style, destination, loudness);

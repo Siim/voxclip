@@ -11,13 +11,14 @@ public static class WholeClipVoiceRun
 
     public static async Task<SavedWholeClipVoice> ExecuteAsync(Project project, WholeClipRevoicePlan plan,
         string path, string paidRoot, string recordId, string modelId, decimal approved, Func<VoiceLabTakeRun> createRunner,
-        Func<Guid, CancellationToken, Task> authorize, Action<Action> start, WholeClipVoiceRecovery recovery, IProgress<string>? progress, CancellationToken ct)
+        Func<Guid, CancellationToken, Task> authorize, Action<Action> start, WholeClipVoiceRecovery recovery, IProgress<string>? progress, CancellationToken ct,
+        DateTimeOffset? recoverAfter = null)
     {
         var scope = plan.Original.Scope;
         var rate = checked((int)plan.Original.SampleRate);
         var words = project.Transcript!.Words.Select(word => word with { Text = project.Edits.Corrections.GetValueOrDefault(word.Id, word.Text) }).ToArray();
         var cuts = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
-        var clean = WholeClipRevoicePlan.WithoutPrevious(project, scope.ClipId!);
+        var clean = WholeClipRevoicePlan.WithoutPrevious(project, recovery.ClipId);
         List<VoiceLabSegment> segments = [];
         Dictionary<string, VoiceLabAsset> assets = new(StringComparer.Ordinal);
         VoiceLabVoiceReference? reference = null;
@@ -32,10 +33,12 @@ public static class WholeClipVoiceRun
             var silence = VoiceLabWindowPlanner.LendableSilence(clean, scope, window);
             var source = await VoiceLabSourceAudio.RewriteSourceAsync(path, plan.Original.TotalSourceSamples, rate, window,
                 silence.Incoming, silence.Outgoing, words, ct).ConfigureAwait(false);
-            var input = new VoiceLabTakeInput(PartText(part), modelId, recordId, project.Transcript.Language ?? "en", (uint)index,
+            var seed = recoverAfter is null ? (uint)index : unchecked(Convert.ToUInt32(recovery.Identity[..8], 16) + (uint)(index * 3));
+            var input = new VoiceLabTakeInput(PartText(part), modelId, recordId, project.Transcript.Language ?? "en", seed,
                 project.Media.Source.ContentKey, source.Excerpt, source.Envelope, rate, words, cuts, window, silence.Incoming, silence.Outgoing, false, true)
             {
                 ChecksGeneratedSpeaker = false,
+                RecoverTakesAfter = recoverAfter,
                 EditedLayout = new(WholeClipRevoice.EditedCuts(plan.Original, window.StartSample, window.EndSample), project.Edits.PauseThresholdSeconds),
             };
             var runner = createRunner();
@@ -70,7 +73,7 @@ public static class WholeClipVoiceRun
         var fit = WholeClipRevoice.FitVoice(natural, plan.Original.Duration, VoiceLabTakeQuality.Tokens(plan.Script.Text).Length, 0);
         if (fit is WholeClipRevoice.Fit.Reword or WholeClipRevoice.Fit.CannotFit)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio, "The voice is longer than the edited clip. Shorten the wording or use the patch. Your paid takes are saved.");
-        var draft = WholeClipRevoiceDraft.Voice(project, scope.ClipId!, new(segments, assets.Values.ToArray(), reference));
+        var draft = WholeClipRevoiceDraft.Voice(project, recovery.ClipId, new(segments, assets.Values.ToArray(), reference));
         var saved = new SavedWholeClipVoice(draft, segments.Select(segment => segment.Id).ToArray(), spent) { Recovery = recovery };
         WholeClipVoiceCheckpoint.Keep(paidRoot, saved);
         return saved;
