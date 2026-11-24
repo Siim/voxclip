@@ -105,13 +105,12 @@ public static partial class WholeClipRevoice
     private static bool IdShape(string? value) => value is not null && VoiceLabProject.Matches(value, "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}");
 }
 
-/// <summary>The lip-sync models a whole clip may use (the user's decision, 2026-11-07): lipsync-2 by default, sync-3 as the priced
-/// upgrade on Review that re-runs only the lip sync. The raw value is the fal model id the record stores.</summary>
+/// <summary>The lip-sync models accepted in whole-clip records. New whole-clip jobs use sync-3.</summary>
 public enum WholeClipLipsync
 {
-    /// <summary><c>fal-ai/sync-lipsync/v2:lipsync-2</c>, the standard.</summary>
+    /// <summary><c>fal-ai/sync-lipsync/v2:lipsync-2</c>, kept for saved work.</summary>
     Lipsync2,
-    /// <summary><c>fal-ai/sync-lipsync/v3</c>, the upgrade.</summary>
+    /// <summary><c>fal-ai/sync-lipsync/v3</c>, the standard.</summary>
     Sync3
 }
 

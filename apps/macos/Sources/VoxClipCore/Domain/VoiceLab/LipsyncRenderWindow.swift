@@ -69,7 +69,7 @@ extension VoiceLabVideoRecipe {
         return base
     }
 
-    /// `model` is the fal model id the job ran: Rewrite's phrases use sync-3, a whole-clip revoice lipsync-2 or sync-3.
+    /// `model` is the original fal model id, including lipsync-2 for a legacy result.
     public func addingLipsync(assetID: String, requestID: String, sourceWindow: LipsyncWindow, syncMode: SyncMode,
                               model: String = WholeClipRevoice.Lipsync.sync3.rawValue) -> VoiceLabVideoRecipe {
         var recipe = self

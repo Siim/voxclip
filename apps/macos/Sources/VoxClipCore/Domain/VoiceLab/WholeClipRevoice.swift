@@ -469,8 +469,7 @@ extension WholeClipRevoice {
 // MARK: - Lip-sync model and price
 
 extension WholeClipRevoice {
-    /// The lip-sync models a whole clip may use (the user's decision, 2026-11-07): lipsync-2 by default, sync-3 as the
-    /// priced upgrade on Review that re-runs only the lip sync.
+    /// The lip-sync models accepted in whole-clip records. New whole-clip jobs use sync-3.
     public enum Lipsync: String, Codable, Sendable, CaseIterable {
         case lipsync2 = "fal-ai/sync-lipsync/v2:lipsync-2"
         case sync3 = "fal-ai/sync-lipsync/v3"
@@ -622,7 +621,7 @@ extension WholeClipRevoice {
 // MARK: - Paid steps (never paid twice)
 
 /// What a whole-clip run has paid for, keyed by what it was paid for. A step whose key matches is reused instead of paid
-/// again: Try Again after a failed or cancelled lip sync keeps the voice, and the sync-3 upgrade re-runs only the lip sync.
+/// again: Try Again after a failed or cancelled lip sync keeps the voice, and Redo Lip Sync Only reuses the saved voice.
 public struct WholeClipRevoiceLedger: Codable, Sendable, Equatable {
     /// The voice: the script, the voice record and the text-to-speech model it was said in.
     public struct VoiceKey: Codable, Sendable, Hashable {

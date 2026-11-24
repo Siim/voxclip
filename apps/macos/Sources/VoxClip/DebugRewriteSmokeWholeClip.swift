@@ -14,7 +14,7 @@ import VoxClipMedia
 // - S-revoice-whole-claude: Claude mode's quote says stitched and the price fits the cap: revoiced with no click.
 // - S-revoice-whole-over-cap: the price passes the cap: the patch goes on, the offer waits, nothing is sent.
 // - S-revoice-whole-cancel: Cancel during the lip sync keeps the clip; Try Again pays only the lip sync.
-// - S-revoice-whole-legacy-redo: A saved lipsync-2 take stays in use until its sync-3 Redo is used and Use saves sync-3.
+// - S-revoice-whole-legacy-redo: A saved lipsync-2 take stays in use until Use on its sync-3 redo.
 // - S-revoice-whole-cuts: the same clip with a cut "um" before each of its later sentences (voice-lab §8.14 item 3): the
 //   parts tile the clip, so a filler before a part's first word is absorbed and the run reaches Review and Use (WK1).
 // - S-revoice-whole-midtake: the clip opens mid-take on a word touching the one before it, with no silence (voice-lab §8.4,
@@ -165,7 +165,7 @@ extension DebugRewriteSmoke {
         },
         Definition(id: "S-revoice-whole-claude", title: "✦ Claude does it all revoices a stitched clip whole within the cap, with no click",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
-            try await harness.revoiceWholeClipAutomatically(budget: 2)
+            try await harness.revoiceWholeClipAutomatically(budget: 8)
         },
         Definition(id: "S-revoice-whole-over-cap", title: "over the cap Claude patches and offers the whole clip; nothing is sent",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in

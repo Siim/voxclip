@@ -12,7 +12,7 @@ import VoxClipMedia
         let recordID: String
         let dependencies: Set<Int>
         let isCurrent: @MainActor () -> Bool
-        /// Rewrite's phrases use sync-3; a whole-clip revoice lipsync-2 or the sync-3 upgrade (ADR-R46).
+        /// New Rewrite jobs use sync-3; recovery keeps the original model of an already paid job (ADR-R46).
         var model: WholeClipRevoice.Lipsync = .sync3
         /// False for a "Try Again · free": the earlier paid attempt's result is re-imported and nothing new is paid.
         var mayPay = true

@@ -77,10 +77,12 @@ import Testing
         let complete = requests[vector.parts.count + 1]
         #expect(complete.url?.absoluteString == "\(base)/complete\(query)" && secrets.contains("\(base)/complete\(query)"))
         #expect(complete.httpMethod == "POST" && complete.value(forHTTPHeaderField: "Authorization") == nil)
-        let body = try #require(JSONSerialization.jsonObject(with: #require(complete.httpBody)) as? [String: [[String: Any]]])
+        let completeBody = try #require(complete.httpBody)
+        let body = try #require(JSONSerialization.jsonObject(with: completeBody) as? [String: [[String: Any]]])
         #expect(body["parts"]?.compactMap { $0["partNumber"] as? Int } == vector.parts.indices.map { $0 + 1 })
         #expect(body["parts"]?.compactMap { $0["etag"] as? String } == vector.parts.indices.map { $0 == 0 ? "\"header\"" : "body-\($0 + 1)" })
-        let submit = try #require(JSONSerialization.jsonObject(with: #require(requests.last?.httpBody)) as? [String: Any])
+        let submitBody = try #require(requests.last?.httpBody)
+        let submit = try #require(JSONSerialization.jsonObject(with: submitBody) as? [String: Any])
         #expect(submit["video_url"] as? String == remote)
     }
 
