@@ -1,0 +1,6 @@
+[
+  {"kind":"motionTemplate","startWord":9,"endWord":10,"reason":"Name the topic.","template":{"name":"titleCard","text":"A faster edit"}},
+  {"kind":"motionTemplate","startWord":9,"endWord":10,"reason":"Build to the point.","template":{"name":"kineticCaption","text":"See your story take shape"}},
+  {"kind":"motionTemplate","startWord":9,"endWord":10,"reason":"Introduce the brand.","template":{"name":"logoSting","text":"VOXCLIP"}},
+  {"kind":"motionTemplate","startWord":9,"endWord":10,"reason":"Show the improvement.","template":{"name":"counter","from":-20,"to":100}}
+]

@@ -2196,6 +2196,10 @@ effect id) for the preview and the export alike, so the preview is the export.
   then `CIPixellate`) in source space before crop and motion, and draws titles (Roboto Black on a dark box), lower
   thirds (DM Sans Bold with an accent bar), emoji (the bundled PNG), arrows, circles and the progress bar on the
   output frame after motion, under the captions. Overlays fade over 0.12 s at each end.
+- **Harness motion templates.** A `motionTemplate` clip effect carries a title card, kinetic caption, logo wordmark,
+  or counter from the [shared template schema](../../shared/schemas/motion-template.schema.json). It renders in frame
+  space after grading and zoom, under normal captions, and uses progress through its anchored source interval.
+  It has no audio, asset reference or paid action. See [harness parameters](../harness.md#motion-templates).
 - **Tracking.** After the answer, a tracked censor is traced through its range (`ClipEffectVision.track`): every 0.25 s
   it detects faces (each grown by 25 %) or the salient object, picks the one nearest the previous rect (a frame with
   none keeps it), smooths the samples with a centred 3-sample average and stores them as `track`. Rendering
@@ -2217,9 +2221,9 @@ effect id) for the preview and the export alike, so the preview is the export.
 
 ### 18.6 Vectors
 
-- `shared/fixtures/clip-effects/` (`tools/fixtures/clip-effects/generate_clip_effects.py`): a v4 project with one
-  effect of each kind, and `effects-wire-cases.json` (valid and invalid entries with their schema verdicts), read by
-  both Cores and the schema tests.
+- `shared/fixtures/clip-effects/` (`tools/fixtures/clip-effects/generate_clip_effects.py`): a v4 project with toolbox
+  effects and `effects-wire-cases.json` (valid and invalid entries with their schema verdicts), read by both Cores
+  and the schema tests. Harness template vectors exercise placement and project round-trips in both Cores.
 - `shared/fixtures/ask-claude/ask-claude-cases.json` (`tools/fixtures/ask-claude/generate_ask_claude.py`): the
   invoice project, a request rendered independently of both Cores, and five replies with hand-derived operations,
   choices and repairs. It records the prompt's sha256, so a stale fixture fails.
@@ -2236,6 +2240,7 @@ renders them (design §6.8). The request and validator are a twin of the Mac's (
 (`Tracks/win-ai/AskClaudeTests`). Detections come through `IAskClaudeVision`; the native implementation uses Windows
 `FaceDetector` and `OcrEngine`, and tracking follows faces only (a "subject" track holds the box). The send runs at the
 decision effort (extra high). Zoom cues and music changes validate but stay later rows, since Windows renders neither yet.
+Windows renders saved harness templates using the same source-time poses in `EffectFrames`; proposing them still requires the Mac harness.
 
 ## 19. Claude sees the picture: frames measured on the Mac, small frames to the AI (ADR-R48)
 

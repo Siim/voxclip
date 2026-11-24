@@ -6202,6 +6202,7 @@ member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Rect()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Scale()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Sound()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Start()
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Template()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Text()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Track()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public get_Tracking()
@@ -6225,6 +6226,7 @@ member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Rect(System.N
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Scale(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Sound(VoxClip.Core.Domain.Effects.ClipEffectSound)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Start(double)
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Template(VoxClip.Core.Domain.Effects.MotionTemplate)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Text(string)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Track(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectTrackSample>)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public set_Tracking(string)
@@ -6352,6 +6354,24 @@ member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Existing(strin
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public IsHook(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Text(string)
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Timeline(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method internal Read(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method internal Read(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method private .ctor(VoxClip.Core.Domain.Effects.MotionTemplate)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method private .ctor(string,string,int,int)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method private CounterValue(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public Equals(VoxClip.Core.Domain.Effects.MotionTemplate)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public Equals(object)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public GetHashCode()
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public Presentation(double)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public ToString()
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public get_From()
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public get_Name()
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public get_Text()
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public get_To()
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public op_Equality(VoxClip.Core.Domain.Effects.MotionTemplate,VoxClip.Core.Domain.Effects.MotionTemplate)
+member VoxClip.Core.Domain.Effects.MotionTemplate :: method public op_Inequality(VoxClip.Core.Domain.Effects.MotionTemplate,VoxClip.Core.Domain.Effects.MotionTemplate)
 member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public CeilingDbtp
 member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public LoudnessToleranceLu
 member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public MatchFloor
@@ -19298,6 +19318,7 @@ type VoxClip.Core.Domain.Effects.ClipEffects
 type VoxClip.Core.Domain.Effects.ClipEffectsRenderInput
 type VoxClip.Core.Domain.Effects.ClipEffectsRendering
 type VoxClip.Core.Domain.Effects.ClipHookTitle
+type VoxClip.Core.Domain.Effects.MotionTemplate
 type VoxClip.Core.Domain.ExportChecks.ExportCheck
 type VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment
 type VoxClip.Core.Domain.ExportChecks.ExportCheckBox

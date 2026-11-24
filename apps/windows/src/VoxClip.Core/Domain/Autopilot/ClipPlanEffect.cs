@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Autopilot;
@@ -34,6 +35,7 @@ public sealed class ClipPlanEffect
     {
         "zoom" or "punchIn" => "scale",
         "motionTitle" or "lowerThird" or "emojiPop" => "text",
+        "motionTemplate" => "template",
         "soundEffect" => "query", "illustration" => "prompt", "colourLook" => "look", "speedForPart" => "rate",
         "bRoll" or "screenshot" or "videoStack" => "footage",
         _ => null
@@ -61,6 +63,7 @@ public sealed class ClipPlanEffect
             "zoom" or "punchIn" => AiJson.Number(payload) is >= 1.05 and <= ClipAutopilotMapping.MaximumZoomScale,
             "motionTitle" or "lowerThird" => Line(payload, 80) is not null,
             "emojiPop" => Line(payload, 16) is not null,
+            "motionTemplate" => MotionTemplate.Read(payload) is not null,
             "soundEffect" => Line(payload, 120) is not null,
             "illustration" => Line(payload, 500) is not null,
             "colourLook" => AiJson.String(payload) is "original" or "muted" or "warm" or "bw",
@@ -89,7 +92,7 @@ public sealed class ClipPlanEffect
 
     internal static ClipPlanEffect? ProviderEntry(JsonNode? raw)
     {
-        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key || key == "footage") return null;
+        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key || key is "footage" or "template") return null;
         var projected = new JsonObject();
         foreach (var name in new[] { "kind", "startWord", "endWord", "reason", key }) projected[name] = item[name]?.DeepClone();
         return Read(projected);
@@ -121,16 +124,24 @@ public sealed class ClipPlanEffect
         if (Kind is "soundEffect" or "illustration")
             return new(id, Kind == "soundEffect" ? ClipAutopilotDecision.Sound : ClipAutopilotDecision.Overlay,
                 new ClipAutopilotAction.Asset(id, Kind, clipId, first.Start, last.End, AiJson.String(payload)!), Reason);
-        if (Kind is not ("motionTitle" or "lowerThird" or "emojiPop")) return null;
-        var text = AiJson.String(payload)!;
-        if (Kind == "emojiPop" && !stickers.Contains(text)) return null;
-        var (kind, position, animation) = Kind switch
+        if (Kind is not ("motionTitle" or "lowerThird" or "emojiPop" or "motionTemplate")) return null;
+        var overlay = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["start"] = first.Start, ["end"] = last.End };
+        if (Kind == "motionTemplate")
         {
-            "motionTitle" => ("title", "top", "rise"), "lowerThird" => ("lowerThird", "bottom", "rise"), _ => ("sticker", "topRight", "pop")
-        };
-        var overlay = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["kind"] = kind, ["start"] = first.Start, ["end"] = last.End,
-            ["text"] = text, ["position"] = position, ["animation"] = animation };
-        if (kind == "sticker") overlay["scale"] = 1;
+            overlay["kind"] = Kind;
+            overlay["template"] = payload.DeepClone();
+        }
+        else
+        {
+            var text = AiJson.String(payload)!;
+            if (Kind == "emojiPop" && !stickers.Contains(text)) return null;
+            var (kind, position, animation) = Kind switch
+            {
+                "motionTitle" => ("title", "top", "rise"), "lowerThird" => ("lowerThird", "bottom", "rise"), _ => ("sticker", "topRight", "pop")
+            };
+            overlay["kind"] = kind; overlay["text"] = text; overlay["position"] = position; overlay["animation"] = animation;
+            if (kind == "sticker") overlay["scale"] = 1;
+        }
         using var stored = JsonDocument.Parse(overlay.ToJsonString());
         return new(id, ClipAutopilotDecision.Overlay, new ClipAutopilotAction.Effect(stored.RootElement.Clone()), Reason);
     }

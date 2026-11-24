@@ -21,7 +21,7 @@ public sealed class HarnessException(string message) : Exception(message);
 /// <summary>Validated local edit intent in the shared harness timeline format.</summary>
 public sealed class HarnessTimeline
 {
-    private static readonly HashSet<string> SupportedEffects = ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop"];
+    private static readonly HashSet<string> SupportedEffects = ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop", "motionTemplate"];
     private static readonly string[] Keys = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"];
     private static readonly string[] CutKeys = ["startWord", "endWord", "kind", "reason"];
 

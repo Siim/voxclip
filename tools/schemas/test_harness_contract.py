@@ -17,6 +17,18 @@ from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = Path(os.environ.get("VOXCLIP_CLI", ROOT / "apps/macos/.build/debug/voxclip-cli"))
+TEMPLATES = json.loads((ROOT / "shared/fixtures/clip-effects/motion-template-cases.json").read_text())
+INVALID_TEMPLATES = json.loads((ROOT / "shared/fixtures/clip-effects/motion-template-invalid-cases.json").read_text())
+
+
+def proposal_validator():
+    registry = Registry()
+    for name in ["harness-proposal", "harness-timeline", "clip-plan-effect", "motion-template"]:
+        schema = json.loads((ROOT / f"shared/schemas/{name}.schema.json").read_text())
+        registry = registry.with_resource(schema["$id"], Resource.from_contents(schema))
+        if name == "harness-proposal":
+            envelope = schema
+    return jsonschema.Draft202012Validator(envelope, registry=registry, format_checker=jsonschema.FormatChecker())
 
 
 class HarnessContract(unittest.TestCase):
@@ -86,13 +98,7 @@ class HarnessContract(unittest.TestCase):
             self.assertEqual(cli.returncode, 0, cli.stderr)
             self.assertEqual(json.loads(cli.stdout), expected["structuredContent"])
         staged = result["structuredContent"]
-        registry = Registry()
-        for name in ["harness-proposal", "harness-timeline", "clip-plan-effect"]:
-            schema = json.loads((ROOT / f"shared/schemas/{name}.schema.json").read_text())
-            registry = registry.with_resource(schema["$id"], Resource.from_contents(schema))
-            if name == "harness-proposal":
-                envelope = schema
-        jsonschema.Draft202012Validator(envelope, registry=registry, format_checker=jsonschema.FormatChecker()).validate(staged["proposal"])
+        proposal_validator().validate(staged["proposal"])
         self.assertEqual(json.loads(self.pending.read_text()), staged["proposal"])
         self.assertEqual(stat.S_IMODE(self.pending.stat().st_mode), 0o600)
         self.assertEqual(staged["proposal"]["timeline"], self.timeline)
@@ -103,6 +109,44 @@ class HarnessContract(unittest.TestCase):
         cli = self.run_cli("propose-timeline", json.dumps(self.timeline))
         self.assertEqual(cli.returncode, 0, cli.stderr)
         self.assertEqual(json.loads(cli.stdout)["proposal"]["timeline"], self.timeline)
+
+    def test_places_local_motion_templates_through_mcp_and_cli(self):
+        for effect in TEMPLATES:
+            with self.subTest(template=effect["template"]["name"]):
+                self.pending.unlink(missing_ok=True)
+                timeline = {"clipId": "clip-2f1c", "reason": "Make a showreel.", "effects": [effect]}
+                listing, result = self.replay({"method": "tools/list"}, self.call("propose_timeline", **timeline))
+                self.assertNotIn("isError", result)
+                schema = next(tool["inputSchema"] for tool in listing["tools"] if tool["name"] == "propose_timeline")
+                jsonschema.validate(timeline, schema)
+                staged = result["structuredContent"]
+                proposal_validator().validate(staged["proposal"])
+                self.assertEqual(staged["proposal"]["timeline"], timeline)
+                self.assertEqual(staged["pricedActions"], [])
+                self.assertEqual(json.loads(self.pending.read_text()), staged["proposal"])
+                self.pending.unlink()
+                cli = self.run_cli("propose-timeline", json.dumps(timeline))
+                self.assertEqual(cli.returncode, 0, cli.stderr)
+                self.assertEqual(json.loads(cli.stdout)["proposal"]["timeline"], timeline)
+                self.pending.unlink()
+                self.assertEqual(self.project.read_bytes(), self.original)
+
+    def test_rejects_unsafe_or_malformed_templates_and_cut_anchors(self):
+        timelines = [{"clipId": "clip-2f1c", "reason": "Make a showreel.", "effects": [dict(TEMPLATES[0], template=template)]}
+                     for template in INVALID_TEMPLATES]
+        cut = dict(timelines[0], effects=[TEMPLATES[0]],
+                   cuts=[{"startWord": 10, "endWord": 10, "kind": "other", "reason": "Remove the anchor."}])
+        listing, *results = self.replay({"method": "tools/list"},
+                                        *(self.call("propose_timeline", **timeline) for timeline in [*timelines, cut]))
+        schema = next(tool["inputSchema"] for tool in listing["tools"] if tool["name"] == "propose_timeline")
+        for timeline, result in zip(timelines, results, strict=False):
+            with self.subTest(timeline=timeline):
+                with self.assertRaises(jsonschema.ValidationError):
+                    jsonschema.validate(timeline, schema)
+                self.assertTrue(result["isError"])
+        self.assertTrue(results[-1]["isError"])
+        self.assertFalse(self.pending.exists())
+        self.assertEqual(self.project.read_bytes(), self.original)
 
     def test_rejects_unscoped_paid_and_consent_requests_without_writing(self):
         responses = self.replay(self.call("generate_music", prompt="music"), self.call("capture_consent"),

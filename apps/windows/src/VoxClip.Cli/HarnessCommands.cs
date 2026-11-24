@@ -196,10 +196,15 @@ internal sealed class HarnessSession(HarnessProject project, string sharedRoot)
         JsonObject Load(string file) => JsonNode.Parse(File.ReadAllText(Path.Combine(root, "schemas", file)))!.AsObject();
         var timeline = Load("harness-timeline.schema.json");
         var effect = Load("clip-plan-effect.schema.json");
+        var template = Load("motion-template.schema.json");
         effect.Remove("$id");
         effect.Remove("$schema");
-        if (timeline["properties"]?["effects"]?["items"]?["allOf"] is not JsonArray constraints)
+        template.Remove("$id");
+        template.Remove("$schema");
+        if (timeline["properties"]?["effects"]?["items"]?["allOf"] is not JsonArray constraints ||
+            effect["properties"] is not JsonObject effectProperties)
             throw new HarnessException("The harness timeline schema is missing or invalid.");
+        effectProperties["template"] = template;
         constraints[0] = effect;
         return timeline;
     }
