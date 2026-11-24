@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, Voice shows whole-take revoice and its price in Full Take and clips, even with no changed words. Find it in ⌘K or the clip menu, and redo it without replacing the version in use until you click Use.
 - On Mac, Rewrite keeps paid work if the video goes missing, waits before changing media or transcripts, and shows reuse prices before you click.
 - On Windows, reopen Rewrite on the same passage to get back the review for your unused paid takes without asking the AI again.
 - On Windows, choose your Music folder, see the track and its fades in the timeline, and add music to videos with no sound.
