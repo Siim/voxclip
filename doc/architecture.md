@@ -32,7 +32,7 @@ voxclip/
 │   │   ├── Package.resolved
 │   │   ├── bundle.sh                     build, sign, notarize, staple, DMG (release.md)
 │   │   ├── VoxClip.entitlements          camera + audio-input only
-│   │   ├── dmg-background.png            600x400, SVG source next to it
+│   │   ├── dmg-background.png            1200x800 @144 dpi (600x400 window), SVG next to it
 │   │   ├── Sources/
 │   │   │   ├── VoxClipCore/              library: pure domain + platform-neutral services
 │   │   │   ├── VoxClipMedia/             library: AVFoundation, CoreText, Speech, FoundationModels, whisper.cpp

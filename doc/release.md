@@ -120,7 +120,7 @@ Not uploaded: `RELEASES-*` (legacy Squirrel feeds), `assets.*.json` (local build
 
 `Sources/VoxClip/Info.plist` is the single source of truth for app metadata, document types, usage descriptions and the bundle version. The package embeds it into both executables with `-sectcreate`; `bundle.sh` copies it unchanged into the bundle. Inspect that file rather than maintaining a second XML template here. The speech usage description is also explained in the transcription spec; it is not unique to this document.
 
-Also: `dmg-background.png` (600×400) in `apps/macos`. From the repository root: `shared/brand/macos/AppIcon.icns`, the single `THIRD_PARTY_NOTICES.md` (fonts, Unicode data, whisper.cpp, swift-argument-parser, models' attribution, and the Windows components) and `LICENSE`.
+Also: `dmg-background.png` (1200×800 at 144 dpi for the 600×400 window) in `apps/macos`. From the repository root: `shared/brand/macos/AppIcon.icns`, the single `THIRD_PARTY_NOTICES.md` (fonts, Unicode data, whisper.cpp, swift-argument-parser, models' attribution, and the Windows components) and `LICENSE`.
 
 ### 2.3 `bundle.sh` (lives at `apps/macos/bundle.sh`)
 
