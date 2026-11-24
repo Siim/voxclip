@@ -14,6 +14,10 @@ import VoxClipCore
     var draft = ShareCaptionDraft()
     var drafts: [String: ShareCaptionDraft] = [:]
     var copied = false
+    var posting = PostingReviewState()
+    var voxConvo = VoxConvoExportState()
+    var timelineFiles: [URL] = []
+    var timelineRunning = false
     @ObservationIgnored private(set) var captionCopyTimer: Timer?
     func captionCopied() {
         captionCopyTimer?.invalidate()
@@ -54,11 +58,13 @@ import VoxClipCore
     @Bindable var model: EditorModel
     @FocusState private var captionFocused: Bool
     private var job: ExportJobState { model.exportJob }
+    private var publishOffer: VoxConvoExportOffer { VoxConvoExportOffer(model: model, targets: targets) }
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if model.exporting { running }
+                    else if !job.timelineFiles.isEmpty { timelineResult }
                     else if !model.exports.isEmpty { result }
                     else { setup }
                 }.padding(.horizontal, CaptionsPanelMetrics.inset).padding(.vertical, 12)
@@ -75,10 +81,25 @@ import VoxClipCore
     }
     private var running: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TimelineView(.periodic(from: .now, by: 1)) { context in Text(model.exportStatus(at: context.date)) }
-            ProgressView(value: Double(model.exportPercent) / 100).accessibilityLabel("Export progress")
-            Text(model.exportProgress?.phase.rawValue.capitalized ?? "Preparing…").foregroundStyle(.secondary)
+            if job.timelineRunning {
+                ProgressView("Saving editable timelines…")
+            } else if let progress = job.voxConvo.progress {
+                ProgressView(progress)
+            } else {
+                TimelineView(.periodic(from: .now, by: 1)) { context in Text(model.exportStatus(at: context.date)) }
+                ProgressView(value: Double(model.exportPercent) / 100).accessibilityLabel("Export progress")
+                Text(model.exportProgress?.phase.rawValue.capitalized ?? "Preparing…").foregroundStyle(.secondary)
+            }
             Button("Cancel") { model.exportTask?.cancel() }.accessibilityIdentifier("voxclip.export.cancel")
+                .disabled(job.voxConvo.finalPost)
+        }
+    }
+    private var timelineResult: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Editable timelines saved", systemImage: "checkmark.circle.fill").foregroundStyle(DesignValues.color("status.success"))
+            ForEach(job.timelineFiles, id: \.self) { file in Text(file.lastPathComponent).draggable(file) }
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(job.timelineFiles) }
+            if let error = model.exportError { InlineNotice(text: error) }
         }
     }
     private var result: some View {
@@ -88,6 +109,8 @@ import VoxClipCore
                 HStack { Image(systemName: "film"); Text(result.outputURL.lastPathComponent).lineLimit(1).truncationMode(.middle); Spacer(); Text(timecode(result.durationSeconds)).font(DesignValues.mono()) }.draggable(result.outputURL)
             }
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL)) }
+            VoxConvoExportReview(model: model)
+            PostingHelpReview(model: model)
             DisclosureGroup("Share to X or LinkedIn…", isExpanded: model.app.boolBinding("ui.export.shareExpanded")) { shareControls.padding(.top, 8) }
             if let error = model.exportError { InlineNotice(text: error) }
         }
@@ -155,6 +178,13 @@ import VoxClipCore
                 TextField("File name", text: Binding(get: { job.fileNamePattern }, set: { job.fileNamePattern = $0 })).accessibilityLabel("File name pattern")
             }
             Text("{project} · {clip} · {aspect} · .mp4").font(.system(size: 11)).foregroundStyle(.secondary)
+            let reason = model.timelineExportUnavailable(targets)
+            Button("Save editable timeline (.fcpxml)") { model.beginTimelineExport(targets: targets, folder: folder) }
+                .disabled(reason != nil).help(reason ?? "Open in Final Cut Pro or DaVinci Resolve")
+                .accessibilityIdentifier("voxclip.export.fcpxml")
+            Text(reason ?? "The timeline links to your original media. It isn’t a video to share.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            publishOffer
             if let disclosure = model.exportDisclosure(targets) { Label(disclosure, systemImage: "waveform").font(.system(size: 11)).accessibilityIdentifier("voxclip.export.aiNotice") }
             if let note = model.captionError { InlineNotice(text: note) }
             if let error = model.exportError { InlineNotice(text: error) }
@@ -163,16 +193,17 @@ import VoxClipCore
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            if !model.exporting && model.exports.isEmpty {
+            if !model.exporting && model.exports.isEmpty && job.timelineFiles.isEmpty {
                 Text(model.exportEstimate(targets)).font(.system(size: 11)).foregroundStyle(.secondary)
-                Button { model.beginExport(targets: targets, folder: folder) } label: { Text(model.exportPrimaryTitle(targets)).frame(maxWidth: .infinity) }
+                let title = publishOffer.approval == nil ? model.exportPrimaryTitle(targets) : "Export & post"
+                Button { model.beginExport(targets: targets, folder: folder, publish: publishOffer.approval) } label: { Text(title).frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityLabel(model.exportAccessibleName(model.exportPrimaryTitle(targets), targets: targets))
+                    .accessibilityLabel(model.exportAccessibleName(title, targets: targets))
                     .accessibilityIdentifier("voxclip.export.primary").disabled(!model.canExport || targets.isEmpty)
                 Button("Cancel") { model.finishExportJob() }
             } else if !model.exporting {
-                if model.exportError != nil { Button("Try again") { model.beginExport(targets: targets, folder: folder) } }
-                Button("Done") { model.finishExportJob() }.accessibilityIdentifier("voxclip.export.done")
+                if model.exportError != nil, job.timelineFiles.isEmpty { Button("Try again") { model.beginExport(targets: targets, folder: folder) } }
+                Button("Done") { model.finishExportJob() }.accessibilityIdentifier("voxclip.export.done").disabled(job.voxConvo.running)
             }
         }.padding(.horizontal, CaptionsPanelMetrics.inset).padding(.bottom, VCTokens.spacingGroupGap)
     }
@@ -250,11 +281,11 @@ enum ExportSelection {
         let safe = String(value.components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ ")).inverted).joined(separator: "-").trimmingCharacters(in: .whitespaces).prefix(100))
         return safe.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) } ? safe : "VoxClip-export"
     }
-    static func destination(base: String, folder: URL, writeSRT: Bool) -> URL {
-        var url = folder.appendingPathComponent(base).appendingPathExtension("mp4")
+    static func destination(base: String, folder: URL, writeSRT: Bool, fileExtension: String = "mp4") -> URL {
+        var url = folder.appendingPathComponent(base).appendingPathExtension(fileExtension)
         var suffix = 2
         while FileManager.default.fileExists(atPath: url.path) || writeSRT && FileManager.default.fileExists(atPath: url.deletingPathExtension().appendingPathExtension("srt").path) {
-            url = folder.appendingPathComponent("\(base) \(suffix)").appendingPathExtension("mp4")
+            url = folder.appendingPathComponent("\(base) \(suffix)").appendingPathExtension(fileExtension)
             suffix += 1
         }
         return url
@@ -301,12 +332,17 @@ extension EditorModel {
     /// click exports the clip style's shapes).
     /// `postTexts` (by clip id) are written beside each of that clip's videos as `<video name>.txt`. With `keepGoing`
     /// (Claude mode's Export all) a file that fails is named in `exportFileFailures` and the rest still render.
-    func beginExport(targets: [ExportTarget], folder: URL, aspects: [AspectRatio]? = nil, postTexts: [String: String] = [:], keepGoing: Bool = false) {
-        guard !exporting, !targets.isEmpty, canExport, mediaExportable else { return }
+    func beginExport(targets: [ExportTarget], folder: URL, aspects: [AspectRatio]? = nil, postTexts: [String: String] = [:], keepGoing: Bool = false,
+                     publish: VoxConvoExportState.Approval? = nil) {
+        guard !exporting, !exportJob.voxConvo.running, !targets.isEmpty, canExport, mediaExportable else { return }
         // A new render has a new disclosure snapshot. Keep an edited caption, then
         // lazily load fresh drafts (and the off-default opt-in) from its result.
         exportJob.draft.commit(model: self)
         exportJob.draft = ShareCaptionDraft(); exportJob.drafts = [:]
+        let posting = PostingReviewState()
+        exportJob.posting = posting
+        let voxConvo = VoxConvoExportState()
+        exportJob.voxConvo = voxConvo
         exportJob.shareTarget = targets.compactMap { if case .clip(let id) = $0 { return id }; return nil }.first ?? "full"
         exportJob.copied = false; exportJob.showsXTip = false
         let renderSnapshot = renderSnapshot()
@@ -379,6 +415,7 @@ extension EditorModel {
                             if after > before, after < 4 { self.announce("Rendering \(self.exportIndex) of \(total) · \(after * 25)%") }
                         } }
                         exports.append(result)
+                        posting.record(target, name: targetName, result: result, render: render, snapshot: shapedRender)
                         if let loudness = result.loudness {
                             await app.log.write(LogEntry(level: .info, category: "export", message: loudness.logLine))
                         }
@@ -397,6 +434,9 @@ extension EditorModel {
                             byteSize: (try? result.outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)))
                         attempt = nil
                         activeExportKey = nil
+                        if total == 1, let publish {
+                            voxConvo.capture(publish, target: target, fingerprint: fingerprint, result: result, render: render, snapshot: shapedRender)
+                        }
                     } catch let error where keepGoing && !Self.isExportCancellation(error) {
                         // Export all: name this file and go on with the next one.
                         if let key = activeExportKey { failedExports[key] = folder }
@@ -411,6 +451,7 @@ extension EditorModel {
                 let failures = exportFileFailures.filter { !$0.hasSuffix("the post text couldn't be saved.") }.count
                 announce((failures > 0 ? "Saved \(exports.count) of \(total) videos" : "Saved \(exports.count) video\(exports.count == 1 ? "" : "s")") + " to \(FileManager.default.displayName(atPath: folder.path))")
                 if openFolderAfter { NSWorkspace.shared.activateFileViewerSelecting(exports.map(\.outputURL)) }
+                if !Task.isCancelled, voxConvo.finished != nil { await postVoxConvo(voxConvo) }
             } catch is CancellationError {
                 if let key = activeExportKey { failedExports[key] = folder }
                 if let attempt {
