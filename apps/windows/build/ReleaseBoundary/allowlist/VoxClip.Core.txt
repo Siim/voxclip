@@ -15162,6 +15162,7 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipLipsyncValues :: method public Mode
 member VoxClip.Core.Domain.VoiceLab.WholeClipLipsyncValues :: method public Name(VoxClip.Core.Domain.VoiceLab.WholeClipLipsync)
 member VoxClip.Core.Domain.VoiceLab.WholeClipLipsyncValues :: method public RawValue(VoxClip.Core.Domain.VoiceLab.WholeClipLipsync)
 member VoxClip.Core.Domain.VoiceLab.WholeClipLipsyncValues :: method public get_All()
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field internal FullTakeId
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public DisclosureChip
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public DisclosureKind
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public DisclosureLine
