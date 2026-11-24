@@ -1979,7 +1979,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(output.segments.count == 3)
     }
 
-    @Test func retriesUseFreshSeedsAndKeepThreeSlots() async throws {
+    @Test func retriesUseFreshSeedsAndKeepEveryTake() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         await plan.prepare(); await plan.start(approved: true)
@@ -1996,27 +1996,24 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             }
         }
         #expect(ClipTakeHTTP.state.withLock { $0.seeds == [7, 8, 9, 10] })
-        #expect(plan.phrases[0].takes.count == 3)
-        #expect(plan.phrases[0].takes.map(\.number).sorted() == [1, 2, 3])
-        #expect(plan.phrases[0].takes.contains { $0.id == original })
-        #expect(held.count == 4 && held.values.filter(\.isValid).count == 3)
-        let selected = try #require(plan.phrases[0].selectedID)
-        let scratch = await plan.scratch(take: selected, phrase: 0)
-        #expect(scratch?.isValid == true)
+        #expect(plan.phrases[0].takes.map(\.number) == [1, 2, 3, 4])
+        #expect(held.count == 4 && held.values.allSatisfy(\.isValid))
+        for take in plan.phrases[0].takes.reversed() {
+            #expect(plan.select(take: take.id, phrase: 0))
+        }
+        #expect(plan.phrases[0].selectedID == original)
+        #expect(ClipTakeHTTP.state.withLock { $0.seeds == [7, 8, 9, 10] && $0.qa == 4 })
         let output = try await sourceAcceptance(plan)
         #expect(output.segments.count == 1)
     }
 
-    @Test func repeatedRetryRetiresOnlyEvictedScratchesAndDrainsConsumers() async throws {
+    @Test func closingPlanDrainsConsumersOfEarlierTakes() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         await plan.prepare(); await plan.start(approved: true)
-        let selected = try #require(plan.phrases[0].selectedID)
-        for _ in 0..<2 { await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true) }
-        #expect(plan.select(take: selected, phrase: 0))
-        let number = plan.phrases[0].nextTakeNumber
-        let evicted = try #require(plan.phrases[0].takes.first { $0.number == number })
-        let scratch = try #require(await plan.scratch(take: evicted.id, phrase: 0))
+        let first = try #require(plan.phrases[0].takes.first)
+        await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
+        let scratch = try #require(await plan.scratch(take: first.id, phrase: 0))
         let privateMixed = scratch.mixedAudioURL.deletingLastPathComponent()
         let privatePaid = scratch.fitted.snapshot.url.deletingLastPathComponent()
         let barrier = ClipTakeBarrier()
@@ -2024,34 +2021,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             #expect(FileManager.default.fileExists(atPath: privateMixed.path) && FileManager.default.fileExists(atPath: privatePaid.path))
             await barrier.pause()
         }
-        await plan.prepareAnother(phrase: 0)
-        let retry = Task { await plan.tryAnother(phrase: 0, approved: true) }
+        let second = try #require(plan.phrases[0].takes.last)
+        let latest = try #require(await plan.scratch(take: second.id, phrase: 0))
+        plan.invalidate()
         await barrier.wait()
-        #expect(!scratch.isValid && plan.generating)
+        #expect(!scratch.isValid)
         #expect(FileManager.default.fileExists(atPath: privateMixed.path) && FileManager.default.fileExists(atPath: privatePaid.path))
-        #expect(plan.phrases[0].selectedID == selected)
-        barrier.resume(); await retry.value
+        barrier.resume(); await plan.invalidation?.value
         #expect(!FileManager.default.fileExists(atPath: privateMixed.path) && !FileManager.default.fileExists(atPath: privatePaid.path))
-        #expect(await plan.scratch(take: evicted.id, phrase: 0) == nil)
-        var allIDs = Set(plan.phrases[0].takes.map(\.id)); allIDs.insert(evicted.id)
-        for _ in 0..<4 {
-            #expect(plan.select(take: selected, phrase: 0))
-            await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
-            allIDs.formUnion(plan.phrases[0].takes.map(\.id))
-            var live = 0
-            for id in allIDs {
-                if let retained = await plan.scratch(take: id, phrase: 0) { #expect(retained.isValid); live += 1 }
-            }
-            #expect(live == 3 && plan.phrases[0].takes.count == 3 && plan.phrases[0].takes.contains { $0.id == selected })
-            for take in plan.phrases[0].takes {
-                #expect(plan.select(take: take.id, phrase: 0))
-                #expect(try await sourceAcceptance(plan).segments.count == 1)
-            }
-        }
-        var survivors: [VoiceLabTakeScratch] = []
-        for take in plan.phrases[0].takes { survivors.append(try #require(await plan.scratch(take: take.id, phrase: 0))) }
-        plan.invalidate(); await plan.invalidation?.value
-        #expect(survivors.allSatisfy { !$0.isValid })
+        #expect(!latest.isValid)
         let paid = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(fixture.source.id)
         #expect(try FileManager.default.contentsOfDirectory(atPath: paid.path).contains { $0.hasSuffix(".wav") })
     }
