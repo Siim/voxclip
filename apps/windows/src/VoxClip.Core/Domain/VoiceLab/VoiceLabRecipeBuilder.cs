@@ -93,17 +93,22 @@ public static class VoiceLabRecipeBuilder
         var evidence = row.VoiceCheck.Evidence;
         var unmeasured = evidence?.Mode == VoiceLabShortSpeechMode.Unmeasured;
         var score = qa.SpeakerScore;
-        if (evidence is not null && (!evidence.Usable || evidence.RecordId != record.RecordId || evidence.ConsentMethod != record.ConsentMethod) ||
-            (unmeasured ? score is not null : score is not { } measured || !double.IsFinite(measured) || measured < record.Speaker.Threshold))
+        var selectedVoice = row.VoiceCheck is VoiceLabTakeVoiceCheck.SelectedVoiceCheck;
+        var voiceAllowed = selectedVoice ? !input.ChecksGeneratedSpeaker && score is null :
+            unmeasured ? score is null : score is { } measured && double.IsFinite(measured) && measured >= record.Speaker.Threshold;
+        if (!voiceAllowed || qa.OutputSpeakerCheckSkipped != selectedVoice ||
+            evidence is not null && (!evidence.Usable || evidence.RecordId != record.RecordId || evidence.ConsentMethod != record.ConsentMethod))
             throw Error(VoiceLabProjectErrorCode.QaRejected);
         if (row.AcceptedJoinAdvisory is { } accepted && (!row.HasJoinAdvisory || !accepted.Seams.SequenceEqual(qa.JoinSeams) || !accepted.Validates(jump, createdAt)))
             throw Error(VoiceLabProjectErrorCode.QaRejected);
         var tokens = VoiceLabTakeQuality.Tokens(input.Text).Length;
         var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? match == 1 : null, match, jump, peak,
-            score, record.Speaker.Threshold, record.Speaker.Model, !unmeasured, evidence, JoinAdvisory: row.AcceptedJoinAdvisory);
+            score, selectedVoice ? null : record.Speaker.Threshold, selectedVoice ? null : record.Speaker.Model,
+            selectedVoice ? null : !unmeasured, evidence, JoinAdvisory: row.AcceptedJoinAdvisory, OutputSpeakerCheckSkipped: selectedVoice ? true : null);
         var provenance = new VoiceLabProvenance(receipt.Provider, receipt.Endpoint.TrimStart('/'), input.ModelId, record.VoiceId, record.RecordId,
             receipt.ActionId.ToString("D"), row.Seed, createdAt) { Region = receipt.Region.ToString().ToLowerInvariant(), Pace = receipt.Pace };
-        var usd = quote.Synthesis.Estimate.Usd is { } synthesis && quote.Qa.Estimate.Usd is { } transcription ? (double?)(synthesis + transcription) : null;
+        var synthesisEstimate = quote.AdoptedAsset is null ? quote.Synthesis.Estimate.Usd : 0;
+        var usd = synthesisEstimate is { } synthesis && quote.Qa.Estimate.Usd is { } transcription ? (double?)(synthesis + transcription) : null;
         return Assemble(row, take, input, published, asset, videoChoice, face, Array.AsReadOnly(published.Words.ToArray()), checkedQa, provenance,
             new(quote.Synthesis.Token.ToString("D"), usd), record.RecordId, record.Attestations.AcceptedAt);
     }
