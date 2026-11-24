@@ -284,6 +284,7 @@ The fixture is a small synthetic recording: 160×90 H.264 with 24 kHz LPCM audio
 It drives the real Rewrite session through these scenarios using only clicks a user could make:
 
 - S1: happy path.
+- S-older-takes: make two rounds, then play both takes and pick the earlier one without sending a paid request.
 - S2: two nearby changes refused as too close.
 - S3: takes too long for the slot.
 - S4: "Claude Code" heard as "cloud code".
