@@ -506,12 +506,12 @@ extension UTType {
     }
     @MainActor func updateLocation(_ url: URL?) { fileURL = url }
     @MainActor func adoptOpenedLocation(_ url: URL?) { fileURL = url }
-    /// Harness sessions never autosave a never-saved project into the user's Autosave
-    /// Information folder. One a check gave an autosave location still autosaves there.
+    /// Harness sessions and test processes never autosave a never-saved project into the user's Autosave
+    /// Information folder. On macOS 27 that write also requests smart names, which can abort the test host.
     /// A test process also skips the timed autosave of a document whose folder a finished test already deleted: it
     /// can only fail, and its error would come up as an app-modal alert (see `presentError`).
     override public func autosave(withImplicitCancellability autosavingIsImplicitlyCancellable: Bool, completionHandler: @escaping (Error?) -> Void) {
-        if AppModel.isTestSession, fileURL == nil, autosavedContentsFileURL == nil { completionHandler(nil); return }
+        if TestProcess.isRunning || AppModel.isTestSession, fileURL == nil, autosavedContentsFileURL == nil { completionHandler(nil); return }
         if TestProcess.isRunning, let folder = fileURL?.deletingLastPathComponent(), !FileManager.default.fileExists(atPath: folder.path) {
             completionHandler(nil); return
         }
