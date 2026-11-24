@@ -292,7 +292,8 @@ public struct ExportJob: Sendable, Equatable {
 public struct ExportCover: Sendable, Equatable {
     /// Seconds into the exported video.
     public var seconds: Double
-    public init(seconds: Double) { self.seconds = seconds }
+    public let title: String?
+    public init(seconds: Double, title: String? = nil) { self.seconds = seconds; self.title = title }
 
     /// The JPEG beside `video`: its base name with `-cover.jpg`.
     public static func url(for video: URL) -> URL {
@@ -303,10 +304,10 @@ public struct ExportCover: Sendable, Equatable {
     /// The cover of `clipID` in a render of it: the clip's `coverSeconds` (a source second) at its place in the render, its
     /// speed applied, kept inside the video. Nil when the clip has no cover.
     public static func forClip(_ clipID: String?, in project: Project, render: RenderRequest) -> ExportCover? {
-        guard let clipID, let source = ClipControlsProject.controls(for: clipID, in: project)?.coverSeconds else { return nil }
+        guard let clipID, let controls = ClipControlsProject.controls(for: clipID, in: project), let source = controls.coverSeconds else { return nil }
         let rendered = render.speedTiming.rendered(render.timeline.mapTime(source))
         let last = max(0, render.renderedDuration - 1 / max(1, render.output.fps))
-        return ExportCover(seconds: min(max(0, rendered), last))
+        return ExportCover(seconds: min(max(0, rendered), last), title: controls.coverTitle)
     }
 }
 

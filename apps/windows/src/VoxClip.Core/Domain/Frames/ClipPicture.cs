@@ -191,16 +191,20 @@ public static class ClipPicture
     /// <param name="Named">The reply named this candidate; false when the local best was taken.</param>
     /// <param name="Reason">Claude's reason; null when it named none or fell back.</param>
     /// <param name="Previous">The cover it replaced (the row's Undo).</param>
-    public sealed record Cover(ClipAutopilotFrames.CoverCandidate Candidate, bool Named, string? Reason, double? Previous);
+    /// <param name="Title">Optional title for the selected cover.</param>
+    /// <param name="PreviousTitle">The title it replaced.</param>
+    public sealed record Cover(ClipAutopilotFrames.CoverCandidate Candidate, bool Named, string? Reason, double? Previous,
+        string? Title = null, string? PreviousTitle = null);
 
     /// <summary>The reply's pick among the cover candidates, or the best measured one when it named none. Null without candidates.</summary>
     public static (Project Project, Cover Cover)? CoverOf(Project project, string clipId, ClipAutopilotFrames frames, ClipAutopilotPlan plan)
     {
         var named = plan.Frames?.CoverChoice is { } choice ? frames.CoverCandidateFor(choice.Id) : null;
         if ((named ?? frames.Cover.FirstOrDefault()) is not { } candidate || ClipControlsProject.Controls(clipId, project) is not { } controls) return null;
-        if (SettingControls(clipId, project, current => current with { CoverSeconds = candidate.Time }) is not { } next) return null;
+        var title = named is not null && plan.Frames?.CoverChoice is { Fallback: false, Title: { } text } ? ClipHookTitle.Text(text) : null;
+        if (SettingControls(clipId, project, current => current with { CoverSeconds = candidate.Time, CoverTitle = title }) is not { } next) return null;
         var reason = named is null ? null : plan.Frames?.CoverChoice is { Fallback: false, Reason.Length: > 0 } picked ? picked.Reason : null;
-        return (next, new(candidate, named is not null, reason, controls.CoverSeconds));
+        return (next, new(candidate, named is not null, reason, controls.CoverSeconds, title, controls.CoverTitle));
     }
 
     // MARK: All four

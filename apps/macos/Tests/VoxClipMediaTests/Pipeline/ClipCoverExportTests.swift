@@ -11,6 +11,20 @@ import Testing
 /// without adding a stream; `--cover off` writes neither; the 9:16 and 1:1 crops centre on the stored face and 16:9
 /// ignores it.
 extension HeavyMediaTests {
+@Test func aCoverTitleChangesOnlyTheCoverPixels() throws {
+    let context = try #require(CGContext(data: nil, width: 640, height: 360, bitsPerComponent: 8, bytesPerRow: 0,
+                                        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    context.setFillColor(CGColor(gray: 1, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
+    let videoFrame = try #require(context.makeImage())
+    let before = rgba(videoFrame)
+    let cover = AVExporter.coverTitle("Ship every week", on: videoFrame)
+    #expect(cover.width == videoFrame.width && cover.height == videoFrame.height)
+    #expect(rgba(cover) != before)
+    #expect(rgba(videoFrame) == before)
+    #expect(rgba(AVExporter.coverTitle(nil, on: videoFrame)) == before)
+}
+
 @Test(.timeLimit(.minutes(3)))
 func clipCoverIsWrittenBesideTheExportAndEmbedded() async throws {
     let directory = try cliDirectory()

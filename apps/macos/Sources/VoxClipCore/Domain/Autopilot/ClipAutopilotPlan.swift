@@ -208,7 +208,10 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
             public var reason: String
             /// True when the reply named no listed candidate and the local best (`C1`) was taken.
             public var fallback: Bool
-            public init(id: String, reason: String, fallback: Bool = false) { self.id = id; self.reason = reason; self.fallback = fallback }
+            public var title: String?
+            public init(id: String, reason: String, fallback: Bool = false, title: String? = nil) {
+                self.id = id; self.reason = reason; self.fallback = fallback; self.title = title
+            }
         }
         /// One decision per blur candidate the reply named, in candidate order.
         public var blur: [Blur]
@@ -249,6 +252,7 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     public var music: [Music]
     public var musicPick: Int?
     public var zooms: [Zoom]
+    public var effects: [ClipPlanEffect]?
     /// Short X/LinkedIn post text.
     public var postText: String
     /// 1...10.
@@ -272,12 +276,13 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
                 cuts: [Cut] = [], pauseCuts: [PauseCut] = [], corrections: [Correction] = [], rewrites: [Rewrite] = [], captions: Captions,
                 look: Look = .original, speed: Speed? = nil, music: [Music] = [], musicPick: Int? = nil, zooms: [Zoom] = [], postText: String,
                 score: Int, verdict: Verdict, scoreReason: String = "", lengthReason: String = "", seconds: Double = 0,
-                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = [], tone: Tone? = nil, frames: FrameChoices? = nil) {
+                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = [], tone: Tone? = nil, frames: FrameChoices? = nil,
+                effects: [ClipPlanEffect]? = nil) {
         self.version = version; self.startWord = startWord; self.endWord = endWord; self.title = title; self.hook = hook
         self.cuts = cuts; self.pauseCuts = pauseCuts; self.corrections = corrections; self.rewrites = rewrites; self.captions = captions
         self.look = look; self.speed = speed; self.music = music; self.musicPick = musicPick; self.zooms = zooms; self.postText = postText
         self.score = score; self.verdict = verdict; self.scoreReason = scoreReason; self.lengthReason = lengthReason; self.seconds = seconds
-        self.questions = questions; self.repairs = repairs; self.flags = flags; self.tone = tone; self.frames = frames
+        self.questions = questions; self.repairs = repairs; self.flags = flags; self.tone = tone; self.frames = frames; self.effects = effects
     }
 
     public init(from decoder: any Decoder) throws {
@@ -303,12 +308,13 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
                   repairs: try values.decodeIfPresent([Repair].self, forKey: .repairs) ?? [],
                   flags: try values.decodeIfPresent([Flag].self, forKey: .flags) ?? [],
                   tone: try values.decodeIfPresent(Tone.self, forKey: .tone),
-                  frames: try values.decodeIfPresent(FrameChoices.self, forKey: .frames))
+                  frames: try values.decodeIfPresent(FrameChoices.self, forKey: .frames),
+                  effects: try values.decodeIfPresent([ClipPlanEffect].self, forKey: .effects))
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, startWord, endWord, title, hook, cuts, pauseCuts, corrections, rewrites, captions, look, speed, music, musicPick, zooms,
-             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags, tone, frames
+             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags, tone, frames, effects
     }
 
     /// The picked music, when there is one.

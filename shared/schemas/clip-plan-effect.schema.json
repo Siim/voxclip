@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/clip-plan-effect.schema.json",
+  "title": "VoxClip clip-plan effect",
+  "description": "One reasoned effect anchored to inclusive transcript item indices. Project replay checks the anchors, the clip, and its kept words. Entries describe intent only and cannot authorize a purchase or fetch an asset.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "startWord", "endWord", "reason"],
+  "properties": {
+    "kind": {"enum": ["zoom", "punchIn", "motionTitle", "lowerThird", "emojiPop", "soundEffect", "illustration", "colourLook", "speedForPart"]},
+    "startWord": {"type": "integer", "minimum": 0},
+    "endWord": {"type": "integer", "minimum": 0},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 240},
+    "scale": {"type": "number", "minimum": 1.05, "maximum": 1.35},
+    "text": {"type": "string", "minLength": 1, "maxLength": 80},
+    "query": {"type": "string", "minLength": 1, "maxLength": 120},
+    "prompt": {"type": "string", "minLength": 1, "maxLength": 500},
+    "look": {"enum": ["original", "muted", "warm", "bw"]},
+    "rate": {"type": "number", "minimum": 0.5, "maximum": 2}
+  },
+  "allOf": [
+    {"if": {"properties": {"kind": {"enum": ["zoom", "punchIn"]}}}, "then": {"required": ["scale"], "maxProperties": 5}},
+    {"if": {"properties": {"kind": {"enum": ["motionTitle", "lowerThird", "emojiPop"]}}}, "then": {"required": ["text"], "maxProperties": 5}},
+    {"if": {"properties": {"kind": {"const": "emojiPop"}}}, "then": {"properties": {"text": {"maxLength": 16}}}},
+    {"if": {"properties": {"kind": {"const": "soundEffect"}}}, "then": {"required": ["query"], "maxProperties": 5}},
+    {"if": {"properties": {"kind": {"const": "illustration"}}}, "then": {"required": ["prompt"], "maxProperties": 5}},
+    {"if": {"properties": {"kind": {"const": "colourLook"}}}, "then": {"required": ["look"], "maxProperties": 5}},
+    {"if": {"properties": {"kind": {"const": "speedForPart"}}}, "then": {"required": ["rate"], "maxProperties": 5}}
+  ]
+}

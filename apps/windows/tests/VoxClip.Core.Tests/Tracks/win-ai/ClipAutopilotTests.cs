@@ -66,6 +66,22 @@ public sealed class ClipAutopilotTests
     internal static JsonObject Case(JsonObject fixture, string id) => fixture["cases"]!.AsArray().Single(item => item!["id"]!.GetValue<string>() == id)!.AsObject();
     internal static JsonObject Reply(string id) => Case(Validation(), id)["reply"]!.DeepClone().AsObject();
 
+    [Fact]
+    public void PlannerKeepsOnlySupportedEffectsOnKeptWords()
+    {
+        var reply = Reply("valid-clip");
+        reply["effects"] = JsonNode.Parse("""
+            [{"kind":"motionTitle","startWord":3,"endWord":4,"text":"Coffee first","scale":0,"reason":"Name the subject."},
+             {"kind":"punchIn","startWord":0,"endWord":2,"text":"","scale":1.2,"reason":"Crosses a cut."},
+             {"kind":"illustration","startWord":3,"endWord":4,"prompt":"Cup of coffee","reason":"Show the subject."}]
+            """);
+        var plan = Assert.IsType<ClipAutopilotPlan>(ClipAutopilotValidator.Plan(reply, Context(new(0, 29))));
+        var effect = Assert.Single(plan.Effects!);
+        Assert.Equal("motionTitle", effect.Kind);
+        Assert.Equal("Name the subject.", effect.Reason);
+        Assert.Equal(["effects[1]", "effects[2]"], plan.Repairs.Where(repair => repair.Field.StartsWith("effects[", StringComparison.Ordinal)).Select(repair => repair.Field));
+    }
+
     /// <summary>A version 1 vector reply with the later fields every send must carry, set to change nothing.</summary>
     internal static JsonObject Sendable(JsonObject reply)
     {
@@ -101,7 +117,7 @@ public sealed class ClipAutopilotTests
     public void PromptFileFillsItsLimitsAndEveryFixturePinsIt()
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
-        Assert.Equal(10, prompt.PromptVersion);
+        Assert.Equal(11, prompt.PromptVersion);
         foreach (var system in new[] { prompt.System, prompt.MomentsSystem })
         {
             Assert.DoesNotContain("{", system, StringComparison.Ordinal);
@@ -119,7 +135,7 @@ public sealed class ClipAutopilotTests
         Assert.Equal(new ClipAutopilotFont("Roboto", 900), prompt.Defaults.Font);
         Assert.Equal(TimeSpan.FromSeconds(1200), prompt.MinimumTimeout);
         var required = prompt.Schema["required"]!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
-        Assert.Equal(prompt.Schema["properties"]!.AsObject().Count, required.Length);
+        Assert.Equal(["effects"], prompt.Schema["properties"]!.AsObject().Select(item => item.Key).Except(required).ToArray());
         Assert.Contains("tone", required);
         Assert.Contains("toneSummary", required);
         Assert.Equal(Sha("prompts/clip-autopilot.json"), prompt.Sha256);
@@ -595,7 +611,7 @@ public sealed class ClipAutopilotTests
         var stub = Stub("not json", Sendable(Reply("overlaps")).ToJsonString());
         var result = await Service().PlanAsync(new(Transcript(), Edits(), new ClipAutopilotMode.Clip(new(0, 29))), stub, "fixture", ct: TestContext.Current.CancellationToken);
         Assert.Equal((1, 2), (result.Plan!.Rewrites.Count, result.Plan.Cuts.Count));
-        Assert.Equal((10, 64), (result.PromptVersion, result.PromptSha256.Length));
+        Assert.Equal((11, 64), (result.PromptVersion, result.PromptSha256.Length));
         Assert.Equal(2, stub.Requests.Count);
         Assert.All(stub.Requests, request => Assert.Equal((Effort.XHigh, LlmFeature.ClipAutopilot), (request.Effort!.Value, request.Feature)));
         Assert.Contains("Your previous reply was not valid JSON", stub.Requests[1].Instruction, StringComparison.Ordinal);

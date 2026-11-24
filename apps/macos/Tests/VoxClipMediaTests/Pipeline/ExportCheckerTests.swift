@@ -49,15 +49,47 @@ func checkerProject(source: URL) async throws -> Project {
 /// The export self-check on real exported files (ADR-R49), with a stub engine in place of the local model.
 extension HeavyMediaTests {
     /// The clip exported through the export command's own path, and the render it ran (`CLIWorkflow.prepare`).
-    private func exported(_ directory: URL, extra: [String] = []) async throws -> (url: URL, prepared: CLIWorkflow.PreparedExport) {
+    private func exported(_ directory: URL, extra: [String] = [], automaticLooks: Bool = false) async throws -> (url: URL, prepared: CLIWorkflow.PreparedExport) {
         let source = try await NativeMediaFixtures.shared.file("speech-bursts.mov")
         let projectURL = directory.appendingPathComponent("check.voxclip")
-        try await JSONProjectStore().save(try await checkerProject(source: source), to: projectURL)
+        var project = try await checkerProject(source: source)
+        if automaticLooks {
+            let effects = try JSONDecoder().decode([ClipPlanEffect].self, from: Data("""
+                [{"kind":"motionTitle","startWord":0,"endWord":1,"text":"Ship every week","reason":"Introduce the point."},
+                 {"kind":"punchIn","startWord":3,"endWord":4,"scale":1.2,"reason":"Land the reveal."},
+                 {"kind":"lowerThird","startWord":5,"endWord":6,"text":"Ada · Editor","reason":"Identify the speaker."},
+                 {"kind":"emojiPop","startWord":7,"endWord":8,"text":"🔥","reason":"Punctuate the result."}]
+                """.utf8))
+            let captions = ClipAutopilotPlan.Captions(styleId: "vox-highlight", font: .init(family: "Roboto", weight: 900),
+                                                        textCase: .asSaid, wordsPerCaption: 3)
+            let plan = ClipAutopilotPlan(startWord: 0, endWord: 8, title: "Ship every week", hook: "", captions: captions,
+                                        postText: "", score: 8, verdict: .post, effects: effects)
+            let operations = try ClipAutopilotMapping.operations(for: plan, clipID: "clip-1", project: project, fonts: [:], stickers: ["🔥"])
+            project = try ClipAutopilotMapping.apply(operations, to: project).project
+        }
+        try await JSONProjectStore().save(project, to: projectURL)
         let output = directory.appendingPathComponent("clip.mp4")
         let arguments = ["--open", projectURL.path, "--export", output.path, "--clip", "clip-1", "--aspect", "16:9", "--style", "off", "--quiet"] + extra
         _ = try await CLIWorkflow.export(try Export.parse(arguments), input: projectURL.path)
         let prepared = try await CLIWorkflow.prepare(try Export.parse(arguments), input: projectURL.path, checkingOutputs: false)
         return (output, prepared)
+    }
+
+    @Test(.timeLimit(.minutes(2)))
+    func anExportWithPlannedLooksPassesTheSelfCheck() async throws {
+        let directory = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (url, prepared) = try await exported(directory, automaticLooks: true)
+        let render = prepared.render
+        #expect(render.effects?.effects.map(\.animation) == [.rise, .rise, .pop])
+        #expect(render.motionCues.count == 1)
+        #expect(ExportChecker.titleBoxes(render: render).count == 1)
+        let edit = try ExportCheckExpectation.edit(render: render, state: prepared.state)
+        let (_, hearing) = StubHearing.hearing(edit.words.map { ExportCheckInput.Heard(text: $0.text, start: $0.start, end: $0.end) })
+        let checked = try await ExportChecker(hearing: hearing, scratch: directory).check(export: url, render: render, edit: edit, loudness: .social)
+        #expect(checked.report[.sync]?.status == .ok)
+        #expect(checked.report[.words]?.status == .ok)
+        #expect(checked.report[.captions]?.status == .ok)
     }
 
     @Test(.timeLimit(.minutes(2)))

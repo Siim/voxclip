@@ -2005,6 +2005,25 @@ still pass the ordinary free-send checks: it must never repeat a paid or unappro
 continues the run normally. The retry policy belongs to the editor's Claude-mode find-ended/continue pair, not to the
 individual connectors or manual Find Clips.
 
+### 16.14 Automatic looks and motion
+
+The xhigh clip planner used by Make it postable and Claude mode can return `effects`. The canonical entry in
+`shared/schemas/clip-plan-effect.schema.json` has a `kind`, inclusive `startWord` and `endWord` transcript indices,
+a short `reason`, and exactly one kind-specific payload. The provider reply uses a flat object and is projected to
+this shape after parsing. Older replies can omit the list. Ask Claude uses the same placement mapper; its
+`target: "planEffect"` distinguishes word-anchored zooms and lower thirds from their legacy forms.
+
+Both Cores replay `shared/fixtures/clip-effects/clip-plan-effect-cases.json`. Only spoken, kept spans of 0.1–5 s
+inside the clip map to operations; a span crossing a cut or tightened pause is dropped. Zoom eases in and out,
+punch-in cuts directly to the closer frame, titles and lower thirds rise, and bundled emoji pop. Video effects
+reuse the source-time motion and v4 clip-effect entries; absent `animation` preserves old rendering. Sound effects,
+generated illustrations, timed colour looks and speed for part of a clip are reserved in the schema but are not
+offered to the planner or executed. No asset is fetched and no paid work is introduced by these effects.
+
+`frames.cover.title` is optional, validated only for a listed candidate, saved as `clipControls.coverTitle` and
+restored with the cover on undo. It is added only to the cover JPEG and embedded artwork, never the video stream.
+The planner defaults to Roboto Black without changing the caption style catalog; a creator's fixed font wins.
+
 ## 17. Caption pick (`captionPick`)
 
 When the clip style's captions are Auto (design.md §6.6), one request asks the connector to choose a caption style

@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 
@@ -19,6 +20,22 @@ public static partial class ClipAutopilotValidator
         internal readonly List<ClipAutopilotPlan.Repair> Repairs = [];
         internal void Drop(string field, string detail) => Repairs.Add(new(field, true, detail));
         internal void Repair(string field, string detail) => Repairs.Add(new(field, false, detail));
+    }
+
+    private static IReadOnlyList<ClipPlanEffect>? Effects(JsonNode? value, WordSpan span, ClipAutopilotContext context,
+        IReadOnlySet<string> cut, IReadOnlySet<int> tightenedAfter, Log log)
+    {
+        if (value is null) return null;
+        var entries = AiJson.Array(value);
+        if (entries.Count > ClipPlanEffect.MaximumEntries) log.Drop("effects", "too many effects");
+        var accepted = new List<ClipPlanEffect>();
+        for (var index = 0; index < Math.Min(entries.Count, ClipPlanEffect.MaximumEntries); index++)
+        {
+            if (ClipPlanEffect.ProviderEntry(entries[index]) is { } entry && entry.Operation("validate", "clip", span, context.Words, cut,
+                    tightenedAfter, context.Prompt.Stickers) is not null) accepted.Add(entry);
+            else log.Drop($"effects[{N(index)}]", "invalid effect or not on a kept phrase");
+        }
+        return accepted;
     }
 
     private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
@@ -52,7 +69,10 @@ public static partial class ClipAutopilotValidator
         var verdict = Verdict(AiJson.Get(value, "verdict"), score, "verdict", log);
         var cutIds = corrected.CutWordIds.Concat(cuts.SelectMany(cut => new WordSpan(cut.StartWord, cut.EndWord).Indices.Select(index => corrected.Words[index].Id)))
             .ToHashSet(StringComparer.Ordinal);
-        var seconds = ClipAutopilotMapping.EditedSeconds(span, corrected.Words, cutIds, corrected.Pauses, pauseCuts.Select(pause => pause.AfterWord).ToHashSet(),
+        var tightened = pauseCuts.Select(pause => pause.AfterWord).ToHashSet();
+        var tightenedAfter = tightened.Concat(corrected.Pauses.Where(pause => corrected.CutPauseIds.Contains(pause.Id)).Select(pause => pause.AfterIndex)).ToHashSet();
+        var effects = Effects(AiJson.Get(value, "effects"), span, corrected, cutIds, tightenedAfter, log);
+        var seconds = ClipAutopilotMapping.EditedSeconds(span, corrected.Words, cutIds, corrected.Pauses, tightened,
             corrected.CutPauseIds, corrected.PauseKeepSeconds) / (speed?.Rate ?? 1);
         var lengthReason = Text(AiJson.Get(value, "lengthReason"), limits.MaxReasonScalars, "lengthReason", log);
         var tone = Tone(value, corrected, log);
@@ -65,7 +85,7 @@ public static partial class ClipAutopilotValidator
         {
             StartWord = span.Start, EndWord = span.End, Title = title.Length == 0 ? fallbackTitle : title, Hook = hook, Cuts = cuts, PauseCuts = pauseCuts,
             Corrections = corrections, Rewrites = rewrites, CaptionChoice = captions, ClipLookChoice = look, SpeedChoice = speed, MusicChoices = music,
-            MusicPick = pick, Zooms = zooms, PostText = postText, Score = score, Verdict = verdict, ScoreReason = scoreReason, LengthReason = lengthReason,
+            MusicPick = pick, Zooms = zooms, Effects = effects, PostText = postText, Score = score, Verdict = verdict, ScoreReason = scoreReason, LengthReason = lengthReason,
             Seconds = seconds, Questions = questions, Repairs = log.Repairs.ToArray(), Flags = Flags(seconds, lengthReason, limits), ToneChoice = tone,
             Frames = frames
         };
@@ -99,7 +119,8 @@ public static partial class ClipAutopilotValidator
         var cover = AiJson.Get(reply, "cover");
         var named = (AiJson.String(AiJson.Get(cover, "id")) ?? "").Trim().ToUpperInvariant();
         if (listed.CoverCandidateFor(named) is not null)
-            return new(choices, new(named, Text(AiJson.Get(cover, "reason"), limit, "frames.cover.reason", log)));
+            return new(choices, new(named, Text(AiJson.Get(cover, "reason"), limit, "frames.cover.reason", log),
+                Title: ClipHookTitle.Text(AiJson.String(AiJson.Get(cover, "title")) ?? "")));
         if (reply is not null) log.Repair("frames.cover", named.Length == 0 ? $"no cover named; {best.Id}, the best measured" : $"“{named}” is not a candidate; {best.Id}");
         return new(choices, new(best.Id, "", true));
     }

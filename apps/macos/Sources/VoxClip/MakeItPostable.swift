@@ -142,7 +142,7 @@ enum MakeItInverse {
     /// The clip's crop before "9:16 follows your face".
     case reframe(clipID: String, previous: ReframeSettings?)
     /// The clip's cover before "Cover frame chosen".
-    case cover(clipID: String, previous: Double?)
+    case cover(clipID: String, previous: Double?, previousTitle: String?)
 }
 
 /// Where a decision's Change goes.
@@ -653,7 +653,8 @@ extension EditorModel {
     /// the music. Every step stops early once the run is cancelled, keeping what is done.
     private func apply(_ plan: ClipAutopilotPlan, run: MakeItRun, services: MakeItServices) async {
         guard let shared = app.shared, let fonts = try? ClipAutopilotFonts.load(shared: shared),
-              let operations = try? ClipAutopilotMapping.operations(for: plan, clipID: run.clipID, project: project, fonts: fonts) else {
+              let stickers = try? AskClaudePrompt.load(shared: shared).stickers,
+              let operations = try? ClipAutopilotMapping.operations(for: plan, clipID: run.clipID, project: project, fonts: fonts, stickers: stickers) else {
             run.phase = .failed("This plan no longer fits the clip. Nothing was changed."); return
         }
         let style = makeItStyle
@@ -805,8 +806,15 @@ extension EditorModel {
                               detail: Self.makeItHookDetail, play: clipPlay(clipID, in: project), undoable: true, change: .hook))
         case .rewrite, .music:
             return nil
-        case .effect, .stretch, .translateCaptions, .musicDucking:
-            // Ask Claude's toolbox (ai.md §18): the planner doesn't plan these, so a run applies nothing for them.
+        case .effect(let effect):
+            let previous = project.clipEffects.first { $0.id == effect.id }
+            guard let changed = try? ClipEffects.adding([effect], to: project) else { return (nil, nil) }
+            project = changed
+            let name = effect.kind == .title ? "Motion title" : effect.kind == .lowerThird ? "Lower third" : "Emoji pop"
+            return (.effect(id: effect.id, previous: previous),
+                    MakeItRow(id: operation.id, text: "\(name): \(effect.text ?? "")", detail: operation.reason,
+                              play: max(0, effect.start - 0.5), undoable: true))
+        case .stretch, .translateCaptions, .musicDucking:
             return (nil, nil)
         }
     }
@@ -1082,8 +1090,8 @@ extension EditorModel {
             guard let next = ClipPicture.settingControls(clipID, in: project, { $0.reframe = previous }) else { return false }
             if next != project { replace(next, name: name) }
             return true
-        case .cover(let clipID, let previous):
-            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.coverSeconds = previous }) else { return false }
+        case .cover(let clipID, let previous, let previousTitle):
+            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.coverSeconds = previous; $0.coverTitle = previousTitle }) else { return false }
             if next != project { replace(next, name: name) }
             return true
         }
