@@ -715,7 +715,8 @@ Voice Lab (only when you turn it on; each provider action requires your approval
 @MainActor func openMovie(_ url: URL, app: AppModel) {
     Task { await app.shell.importVideo(url) }
 }
-@MainActor func importedDocument(_ url: URL, app: AppModel) async throws -> VoxClipDocument {
+@MainActor func importedDocument(_ url: URL, app: AppModel, clock: ClaudeModeClock = ClaudeModeClock()) async throws -> VoxClipDocument {
+    clock.begin(.ingest)
     await app.start()
     var project = try await VoxClipDocument(importing: url).project
     project.captions.styleId = app.string("captions.defaultStyleId", fallback: "vox-highlight")
@@ -723,6 +724,7 @@ Voice Lab (only when you turn it on; each provider action requires your approval
     let breath = app.string("editing.pauseBreath", fallback: "natural")
     project.edits.pauseKeepSeconds = breath == "tight" ? 0.05 : breath == "relaxed" ? 0.3 : 0.15
     let document = VoxClipDocument(project: project)
+    document.importClock = clock
     document.setMediaResolved(true)
     return document
 }

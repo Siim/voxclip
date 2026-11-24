@@ -9,6 +9,7 @@ extension InlineTranscription {
         let plan: TranscriptionPlan
         let cost: Double?
         let alignmentRetry: TranscriptionAlignmentRetry?
+        var confirmedTranscript: Transcript?
         let approvedAt = Date()
         let evidence = TranscriptionEvidence()
         var cancelled = false
@@ -43,6 +44,8 @@ extension InlineTranscription {
         #endif
         defer { lease.release() }
         var succeeded = false
+        var draftFind: Task<Void, Never>?
+        defer { if !succeeded { draftFind?.cancel() } }
         do {
             try validate(request)
             let result: TranscriptionResult
@@ -52,25 +55,32 @@ extension InlineTranscription {
                 result = TranscriptionResult(transcript: try await retry.finish(), fromCache: true)
             } else {
                 model.progress = "Reading video…"; model.progressStage = .readingVideo
-                #if DEBUG
-                if let requestRunOverride { result = try await requestRunOverride(request) }
-                else if let runOverride { result = TranscriptionResult(transcript: try await runOverride(request.plan)) }
-                else { result = try await transcribe(request) }
-                #else
-                result = try await transcribe(request)
-                #endif
+                let clock = model.claudeModeWaitsForTranscript ? model.claudeMode.clock : nil
+                let audio = try await loadRunAudio(request, clock: clock)
+                let engine = await adapter(for: request.plan)
+                if confirmsClaudeTranscript, request.plan.engine != .appleSpeech {
+                    if let draft = try await appleDraft(request, audio: audio, confirmation: engine, clock: clock) {
+                        draftFind = model.findClipsOnDraft(draft, request: request)
+                    }
+                }
+                clock?.begin(.confirm)
+                defer { clock?.end(.confirm) }
+                result = try await recognize(request.plan, using: engine, request: request, audio: audio)
             }
             if result.fromCache { request.evidence.recordCacheHit() }
             try validate(request)
             let transcript = result.transcript
-            model.replaceTranscript(transcript)
+            request.confirmedTranscript = transcript
+            let foundOnDraft = draftFind != nil && draftFind == model.findTask
+            model.replaceTranscript(transcript, preserveFind: foundOnDraft)
             // A video of the owner teaches their voice's guard, on this Mac and free (ADR-R41).
             model.app.voiceLabSession.learnFromTranscribed(model.project, media: model.sourceURL)
             // On drop: a free transcription goes straight on to Find Clips when the AI is free too (design.md §6.7); in
             // Claude mode a newly opened video goes on after any transcription, then Claude makes its clips (§6.6).
             if (startedOnImport && request.cost == nil) || model.claudeModeWaitsForTranscript {
                 startedOnImport = false
-                model.claudeModeTranscribed(started: model.findClipsIfFree())
+                if foundOnDraft { model.claudeMode.clock?.end(.transcribe) }
+                else { model.claudeModeTranscribed(started: model.findClipsIfFree()) }
             }
             completedAt = Date()
             completion = "Transcribed \(request.cost == nil ? "on this Mac" : "with ElevenLabs") · \(transcript.words.count) words"
@@ -125,21 +135,71 @@ extension InlineTranscription {
         }
         return request.cost != nil ? "Cancelled. Nothing has been sent and nothing is billed. Your video is still here." : "Cancelled. Your video is still here."
     }
-    private func transcribe(_ request: ApprovedRun) async throws -> TranscriptionResult {
-        let engine = await adapter(for: request.plan)
+    private func loadRunAudio(_ request: ApprovedRun, clock: ClaudeModeClock?) async throws -> AudioExtractionResult? {
+        #if DEBUG
+        if !runOverrideUsesAudio, requestRunOverride != nil || runOverride != nil { return nil }
+        #endif
         try validate(request)
         model.progress = "Extracting audio…"; model.progressStage = .extractingAudio; runStage = 1
         let source = request.project.media.source
+        clock?.begin(.audio)
+        defer { clock?.end(.audio) }
         let audio = try await CacheStore(locations: model.app.locations).extractAudio(sourceURL: URL(fileURLWithPath: source.absolutePath), contentKey: source.contentKey, durationSeconds: source.durationSeconds, using: AVAudioExtractor()) { _ in }
         try validate(request)
-        runStage = 2
+        return audio
+    }
+
+    private func appleDraft(_ request: ApprovedRun, audio: AudioExtractionResult?, confirmation: any Transcriber,
+                            clock: ClaudeModeClock?) async throws -> Transcript? {
+        var language = request.plan.language
+        if language == .auto, let audio, let whisper = confirmation as? WhisperCppTranscriber {
+            let probe = TranscriptionRequest(plan: request.plan, audio: audio.audio, contentKey: request.project.media.source.contentKey)
+            if let detected = try? await whisper.detectLanguage(probe), detected.probability >= 0.5 {
+                language = .forced(detected.language)
+            }
+        }
+        try validate(request)
+        guard case .forced = language else { appleDraftAvailability = .unavailable; return nil }
+        clock?.begin(.draft)
+        defer { clock?.end(.draft) }
+        let plan = TranscriptionPlan(engine: .appleSpeech, language: language)
+        let engine = await adapter(for: plan)
+        guard await status(for: plan, using: engine) == .ready else { appleDraftAvailability = .unavailable; return nil }
+        try validate(request)
+        do {
+            let draft = try await recognize(plan, using: engine, request: request, audio: audio)
+            try validate(request)
+            appleDraftAvailability = .ready
+            return draft.transcript
+        } catch {
+            try validate(request)
+            appleDraftAvailability = .unavailable
+            return nil
+        }
+    }
+
+    private func recognize(_ plan: TranscriptionPlan, using engine: any Transcriber, request: ApprovedRun,
+                           audio: AudioExtractionResult?) async throws -> TranscriptionResult {
+        try validate(request)
+        let draft = plan.engine == .appleSpeech && request.plan.engine != .appleSpeech
+        #if DEBUG
+        if let requestRunOverride, !draft { return try await requestRunOverride(request) }
+        if let runOverride { return TranscriptionResult(transcript: try await runOverride(plan)) }
+        #endif
+        guard let audio else { throw VoxClipError.transcriptionFailed("Audio is unavailable") }
         let service = TranscriptionService(locations: model.app.locations)
+        let transcription = TranscriptionRequest(plan: plan, audio: audio.audio, contentKey: request.project.media.source.contentKey)
+        if draft {
+            return try await service.transcribeResult(transcription, using: engine, envelope: audio.envelope,
+                                                      validate: { try await self.validate(request) })
+        }
+        runStage = 2
         let stream = await service.progress()
         try validate(request)
         let watch = watchProgress(stream, request: request)
         request.watch = watch
         do {
-            let result = try await service.transcribeResult(TranscriptionRequest(plan: request.plan, audio: audio.audio, contentKey: source.contentKey), using: engine, envelope: audio.envelope,
+            let result = try await service.transcribeResult(transcription, using: engine, envelope: audio.envelope,
                 evidence: request.evidence, validate: { try await self.validate(request) })
             watch.cancel(); await watch.value; request.watch = nil
             return result
@@ -208,9 +268,10 @@ extension EditorModel {
         if retrying { retryFindClips() } else { findClips() }
         return findTask != previous
     }
-    func replaceTranscript(_ transcript: Transcript) {
+    func replaceTranscript(_ transcript: Transcript, preserveFind: Bool = false) {
         claudeMode.cancelFindContinuation()
-        findTask?.cancel(); sendConfirmation.cancel(); closeRewrite(returnFocus: false)
+        if !preserveFind { findTask?.cancel(); sendConfirmation.cancel() }
+        closeRewrite(returnFocus: false)
         fallbackNote = nil; focusedSuggestion = nil; proposal = nil
         selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil; correctionText = ""
         var next = project

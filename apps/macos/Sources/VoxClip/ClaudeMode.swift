@@ -104,6 +104,23 @@ extension EditorModel {
         clipStyleState.reopened = false
         announce(mode == .claude ? "Claude does it all, for every new video." : "You pick the clips. Claude suggests them.")
         if mode == .claude {
+            if claudeMode.armed, project.transcript?.engine.id == .appleSpeech {
+                claudeMode.armed = false
+                claudeMode.phase = .idle
+                return
+            }
+            if claudeModeWaitsForTranscript, !transcribed, transcription.engine == "apple", transcription.phase != .hidden {
+                let previous = workTask
+                transcription.close()
+                claudeMode.phase = .waiting
+                _ = claudeModeChecksConnector()
+                Task { [weak self] in
+                    await previous?.value
+                    guard let self, claudeModeWaitsForTranscript, !isLeaving, transcription.phase == .hidden else { return }
+                    await transcription.open(automatic: true)
+                }
+                return
+            }
             claudeModeContinue()
         } else if claudeMode.afterFind != nil {
             claudeMode.cancelFindContinuation()
@@ -135,7 +152,9 @@ extension EditorModel {
     func armClaudeMode() {
         guard claudeMode.phase == .idle, !document.isVersion else { return }
         claudeMode.armed = true
-        claudeMode.clock = ClaudeModeClock()
+        claudeMode.clock = document.importClock ?? ClaudeModeClock()
+        claudeMode.clock?.end(.ingest)
+        document.importClock = nil
         claudeMode.clock?.begin(.transcribe)
         guard claudeModeOn else { return }
         claudeMode.phase = .waiting

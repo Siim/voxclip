@@ -524,7 +524,7 @@ extension EditorModel {
         _ = setScope(run.clipID)
         await llmRuns.sharing { await finish(run, plan: plan, services: services) }
         endUndoGroup()
-        if let clock, let started { clock.record(.apply, clip: clip, since: started) }
+        if run.phase == .ready, let clock, let started { clock.record(.apply, clip: clip, since: started) }
         return run.phase == .stopped
     }
 
