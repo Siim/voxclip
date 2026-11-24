@@ -2,7 +2,8 @@
 
 The wire fixtures are synthetic metadata only. `effects-project.voxclip` is the context-demo v4
 fixture without its demo and motion fields, plus one effect of every kind (bleep, mute, blur, pixelate, title, lower
-third, sticker, arrow, circle, progress bar, freeze and a bundled sound). `effects-wire-cases.json`
+third, sticker, arrow, circle, progress bar, freeze, a bundled sound, timed colour and speed, and illustration).
+`effects-wire-cases.json`
 (`voxclip-clip-effects-wire-cases/1`) applies JSON-pointer replacements and removals to it.
 
 Regenerate with `python3 tools/fixtures/clip-effects/generate_clip_effects.py` (check_drift.py runs it and the schema
