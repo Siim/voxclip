@@ -843,6 +843,8 @@ struct EditorRenderSnapshot {
         sendConfirmation.cancel()
         discardRewrite(returnFocus: false)
         previewRevision &+= 1
+        claudeMode.armed = false
+        claudeMode.cancelFindContinuation()
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); waveformTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
         cacheLeaseEnded = true
@@ -864,6 +866,7 @@ struct EditorRenderSnapshot {
         app.openProjectKeys[previousProjectID] = nil
         // The project stays open while its video is checked again, even if it is missing (architecture §8.2).
         holdCacheEntry()
+        claudeMode.cancelFindContinuation()
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); updateTask?.cancel()
         preview.pause(); isPlaying = false; previewStop = nil
         history = nil
@@ -1827,9 +1830,19 @@ extension EditorModel {
                   let lease = self.llmRuns.acquire() else { return }
             let runs = self.llmRuns
             let connector = self.app.connector(provider.id)
+            if claudeMode.findNeedsAction || claudeMode.afterFind != nil {
+                claudeMode.cancelFindContinuation()
+                if claudeMode.armed, claudeModeOn { claudeMode.phase = .waiting }
+            }
+            claudeMode.findNeedsAction = false
             self.findTask?.cancel(); self.showAISetup = false
             self.findTask = Task { [self] in
-                defer { self.finding = false; runs.release(lease) }
+                var outcome = ClaudeModeFindOutcome.cancelled
+                defer {
+                    finding = false
+                    runs.release(lease)
+                    claudeModeFindEnded(outcome)
+                }
                 do {
                     // The route comes first (design §6.2: the consent, then "while it runs"); only the lease is held. A
                     // declined send leaves the sidebar, the last error and the fallback note as they were and announces
@@ -1837,7 +1850,10 @@ extension EditorModel {
                     guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
                         wordCount: transcript.words.filter { $0.kind == .word }.count, rewrite: selectedPreset == .hooks ? DirectorScope(kind: .fullTake, wordCount: transcript.words.filter { $0.kind == .word }.count) : nil, confirmation: sendConfirmation, verb: selectedPreset == .hooks ? "Hook" : nil, isCurrent: { [self] in
                             !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
-                        }) else { return }
+                        }) else {
+                            if !Task.isCancelled, project == snapshot, rewriteConnectorSignature == selectedSignature { outcome = .needsApproval }
+                            return
+                        }
                     finding = true; clipError = nil; fallbackNote = nil
                     onNeedsSidebar?()
                     announce("Finding clips")
@@ -1849,7 +1865,8 @@ extension EditorModel {
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
                     guard project.transcript == transcript else { return }
-                    guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; claudeModeFindEnded(); return }
+                    outcome = .finished
+                    guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
                     var next = project
                     next.ai.results.append(result)
                     let ranges = result.clips.enumerated().map { position, clip in ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId, title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position) }
@@ -1869,13 +1886,13 @@ extension EditorModel {
                     let codexFallback = provider.id == "codex" ? app.codexFallbackMessage(for: selectedModel) : nil
                     fallbackNote = usedFallback ? codexFallback ?? "Answered by \(result.model) because \(selectedModel) was busy." : nil
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
-                    // Claude mode on a newly opened video goes straight on (ClaudeMode.swift).
-                    claudeModeFindEnded()
-                } catch is CancellationError { claudeModeFindEnded() } catch LLMError.cancelled { claudeModeFindEnded() } catch VoxClipError.cancelled { claudeModeFindEnded() } catch {
+                } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
+                    guard !Task.isCancelled else { return }
                     let message = await app.safeError(error, context: .llm, messageContext: "ai:\(provider.label)")
+                    guard !Task.isCancelled else { return }
                     // A connector that is not ready fails in the route, before the run revealed the sidebar.
                     if !message.isEmpty { clipError = message; fallbackNote = nil; onNeedsSidebar?() }
-                    claudeModeFindEnded()
+                    outcome = .failed(error, connectorSignature: selectedSignature)
                 }
             }
         }
