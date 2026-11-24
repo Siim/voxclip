@@ -41,7 +41,11 @@ def generated():
                'title': 'Synthetic pop', 'creator': 'Synthetic artist', 'license': 'by',
                'attribution': '"Synthetic pop" by Synthetic artist is licensed under CC BY 4.0.', 'sourceUrl': 'https://example.com/sound/1'}
     mute = {'id': 'fx-mute-1', 'clipId': None, 'kind': 'mute', 'start': 0.7, 'end': 1.0, 'wordIds': ['w2']}
-    project['clipEffects'] = [bleep, blur, pixelate, title, lower, sticker, arrow, circle, progress, freeze, sound, mute]
+    colour = {'id': 'fx-colour-1', 'clipId': 'clip-main', 'kind': 'colourLook', 'start': 1.0, 'end': 1.5, 'look': 'warm'}
+    speed = {'id': 'fx-speed-1', 'clipId': 'clip-main', 'kind': 'speedForPart', 'start': 1.0, 'end': 1.5, 'rate': 1.5}
+    image = {'id': 'fx-illustration-1', 'clipId': 'clip-main', 'kind': 'illustration', 'start': 4.5, 'end': 5.4,
+             'imageFile': f'{pid}/illustration-{"a" * 64}.png'}
+    project['clipEffects'] = [bleep, blur, pixelate, title, lower, sticker, arrow, circle, progress, freeze, sound, mute, colour, speed, image]
 
     def set_value(path, value):
         return {'path': path, 'value': value}
@@ -116,6 +120,10 @@ def generated():
     reject('duplicate-identity', [set_value('/clipEffects/1/id', 'fx-bleep-1')], True)
     reject('other-project-sound-folder', [set_value('/clipEffects/10/sound', {**library, 'file': '00000000-0000-0000-0000-000000000001/sfx-pop.wav'}),
                                           set_value('/clipEffects/10/end', 3.1)], True)
+    reject('unknown-colour-look', [set_value('/clipEffects/12/look', 'sepia')])
+    reject('speed-outside-limits', [set_value('/clipEffects/13/rate', 2.1)])
+    reject('speed-without-clip', [set_value('/clipEffects/13/clipId', None)])
+    reject('other-project-illustration-folder', [set_value('/clipEffects/14/imageFile', f'00000000-0000-0000-0000-000000000001/illustration-{"a" * 64}.png')], True)
     for version in (1, 2, 3):
         reject(f'v{version}-effects', [set_value('/schemaVersion', version)])
     reject('future-project', [set_value('/schemaVersion', 5)])

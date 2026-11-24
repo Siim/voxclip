@@ -16,6 +16,6 @@ The only priced intent in this version is an Eleven Music brief. The CLI compute
 
 A saved project gives agents stable anchors, with no socket or app-session credentials. Unsaved edits are intentionally invisible to the agent and can make an otherwise valid proposal stale. One pending sidecar prevents concurrent agents overwriting each other's work. The user's agent may send read results to its own model; VoxClip doesn't make that decision for it. A new sidecar format leaves existing `.voxclip` versions unchanged except when Keep adopts an existing v4 feature such as motion or effects.
 
-A generic project patch or CLI proxy would offer more operations, but it would expose unrelated state and paid commands. An embedded scripting engine would let agents bypass timeline validation and the shared renderer. Neither is part of this surface. Windows and new named motion templates are follow-ups.
+A generic project patch or CLI proxy would offer more operations, but it would expose unrelated state and paid commands. An embedded scripting engine would let agents bypass timeline validation and the shared renderer. Neither is part of this surface. The Windows CLI serves the same contract; Windows editor review and new named motion templates are follow-ups.
 
 The contract replays the MCP wire and CLI against a fixture with the subprocess network denied, rejects paid, consent and arbitrary-project calls, and validates both the proposal envelope and the materialized project against their shared schemas.

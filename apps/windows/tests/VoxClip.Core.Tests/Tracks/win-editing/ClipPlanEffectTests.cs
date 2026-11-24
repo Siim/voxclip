@@ -34,6 +34,13 @@ public sealed class ClipPlanEffectTests
             Assert.Equal((double)expected["end"]!, motion.Cue.SourceEnd);
             Assert.Equal(expected["scales"]!.AsArray().Select(scale => (double)scale!), motion.Cue.Keyframes.Select(frame => frame.Scale));
         }
+        else if (expected["asset"] is { } asset)
+        {
+            var request = Assert.IsType<ClipAutopilotAction.Asset>(operation.Action);
+            Assert.Equal((double)expected["start"]!, request.Start);
+            Assert.Equal((double)expected["end"]!, request.End);
+            Assert.Equal((string)asset!, request.Text);
+        }
         else
         {
             var stored = Assert.IsType<ClipAutopilotAction.Effect>(operation.Action).Value;
@@ -42,8 +49,10 @@ public sealed class ClipPlanEffectTests
             Assert.Equal((double)expected["start"]!, overlay.Start);
             Assert.Equal((double)expected["end"]!, overlay.End);
             Assert.Equal((string)expected["overlayKind"]!, overlay.Kind);
-            Assert.Equal((string)expected["position"]!, overlay.Position);
-            Assert.Equal((string)expected["animation"]!, overlay.Animation);
+            Assert.Equal((string?)expected["position"], overlay.Position);
+            Assert.Equal((string?)expected["animation"], overlay.Animation);
+            Assert.Equal((string?)expected["look"], stored.TryGetProperty("look", out var look) ? look.GetString() : null);
+            Assert.Equal((double?)expected["rate"], stored.TryGetProperty("rate", out var rate) ? rate.GetDouble() : null);
         }
     }
 }

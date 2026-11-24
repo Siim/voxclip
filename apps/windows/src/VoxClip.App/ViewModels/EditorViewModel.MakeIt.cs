@@ -90,6 +90,13 @@ public sealed partial class EditorViewModel
     /// anything: rewording is off, or no voice can be made.</summary>
     public decimal? MakeItCap(string clipId)
     {
+        var voice = MakeItVoiceCap(clipId);
+        var illustration = MakeIt.Services?.Assets?.Price;
+        return voice is null && illustration is null ? null : (voice ?? 0) + (illustration ?? 0);
+    }
+
+    private decimal? MakeItVoiceCap(string clipId)
+    {
         if (MakeIt.Services is not { SharedRoot: { } root, Prices: { } prices } services || !MakeItStyle.Rewrites || !services.VoiceAvailable()) return null;
         if (ClipSpan(clipId) is not { } span) return null;
         try
@@ -447,6 +454,15 @@ public sealed partial class EditorViewModel
         run.Hook = ClipHookTitle.Text(plan.Hook) ?? "";
         run.Seconds = MakeItRenderedSeconds(run.ClipId);
         MakeItNotify();
+        if (services.Assets is { } assets)
+        {
+            foreach (var operation in operations)
+            {
+                if (MakeItStopped(run)) break;
+                if (operation.Action is ClipAutopilotAction.Asset asset)
+                    rows.Add(await MakeItAssetAsync(operation, asset, assets, run));
+            }
+        }
         // Rewrites, in the creator's voice, each through Rewrite's own takes.
         var rewrites = operations.Where(operation => operation.Decision == ClipAutopilotDecision.Rewrite).ToArray();
         if (rewrites.Length > 0 && !MakeItStopped(run))
@@ -622,8 +638,9 @@ public sealed partial class EditorViewModel
                 System.Text.Json.JsonElement? previous = next.ClipEffects.FirstOrDefault(item => item.GetProperty("id").GetString() == overlay.Id);
                 if (previous?.ValueKind == System.Text.Json.JsonValueKind.Undefined) previous = null;
                 next = ClipEffects.Adding([value], next);
-                var name = overlay.Kind switch { "title" => "Motion title", "lowerThird" => "Lower third", _ => "Emoji pop" };
-                return (new MakeItInverse.Effect(overlay.Id, previous), new(operation.Id, $"{name}: {overlay.Text}")
+                var name = overlay.Kind switch { "title" => "Motion title", "lowerThird" => "Lower third", "colourLook" => "Colour look", "speedForPart" => "Speed for this beat", _ => "Emoji pop" };
+                var text = overlay.Text ?? overlay.Look ?? (overlay.Rate is { } rate ? $"{rate:0.##}×" : null);
+                return (new MakeItInverse.Effect(overlay.Id, previous), new(operation.Id, text is null ? name : $"{name}: {text}")
                     { Detail = operation.Reason, Play = Math.Max(0, overlay.Start - 0.5), Undoable = true });
             }
             default:
@@ -680,6 +697,9 @@ public sealed partial class EditorViewModel
     {
         if (Clips.FirstOrDefault(clip => clip.Id == clipId) is not { } row) return 0;
         var speed = ClipControlsProject.Controls(clipId, project)?.Speed ?? 1;
+        var effects = ClipEffects.Rendered(project, clipId);
+        if (effects.Any(effect => effect.Kind == "speedForPart") && ClipHookTitle.Timeline(project, clipId) is { } timeline)
+            return ClipSpeedTiming.ForEffects(speed, timeline.MapTime, effects).Rendered(timeline.Duration);
         return speed > 0 ? row.DurationSeconds / speed : row.DurationSeconds;
     }
 

@@ -37,12 +37,14 @@ literal "--fps"
 literal "--instruction"
 literal "--json"
 literal "--language"
+literal "--limit"
 literal "--loudness"
 literal "--model"
 literal "--no-cache"
 literal "--no-check"
 literal "--no-dtw"
 literal "--no-snap"
+literal "--offset"
 literal "--open"
 literal "--out"
 literal "--out-dir"
@@ -59,6 +61,7 @@ literal "--srt"
 literal "--style"
 literal "--tighten-pauses"
 literal "--tiles"
+literal "--time"
 literal "--timings"
 literal "--transcript"
 literal "--transcription-model"
@@ -70,6 +73,11 @@ literal "VOXCLIP_ELEVENLABS_API_KEY"
 literal "VOXCLIP_GEMINI_API_KEY"
 literal "VOXCLIP_OPENAI_API_KEY"
 literal "VOXCLIP_XAI_API_KEY"
+literal "propose_timeline"
+literal "read_clips"
+literal "read_decisions"
+literal "read_frames"
+literal "read_transcript"
 literal "voxclip_test"
 member Program :: method public .ctor()
 member VoxClip.Cli.AiMergeAdapter :: method internal ClipResult(VoxClip.Core.Domain.Clips.AiResult)
@@ -322,6 +330,83 @@ member VoxClip.Cli.FixtureCaptions :: method public op_Inequality(VoxClip.Cli.Fi
 member VoxClip.Cli.FixtureCaptions :: method public set_Overrides(System.Text.Json.JsonElement)
 member VoxClip.Cli.FixtureCaptions :: method public set_Position(System.Nullable`1<VoxClip.Core.Domain.Shared.CaptionPosition>)
 member VoxClip.Cli.FixtureCaptions :: method public set_PositionByAspect(System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Core.Domain.Shared.CaptionPosition>)
+member VoxClip.Cli.HarnessCommands :: method internal IsHarness(string)
+member VoxClip.Cli.HarnessCommands :: method internal Register(System.CommandLine.Command)
+member VoxClip.Cli.HarnessCommands :: method internal WriteAsync(object,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessCommands :: method internal get_JsonOptions()
+member VoxClip.Cli.HarnessCommands :: method private ReadTimelineAsync(System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessFrame :: method private .ctor(VoxClip.Cli.HarnessFrame)
+member VoxClip.Cli.HarnessFrame :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Cli.HarnessFrame :: method private get_EqualityContract()
+member VoxClip.Cli.HarnessFrame :: method public .ctor(double,double,string)
+member VoxClip.Cli.HarnessFrame :: method public Deconstruct(double&,double&,string&)
+member VoxClip.Cli.HarnessFrame :: method public Equals(VoxClip.Cli.HarnessFrame)
+member VoxClip.Cli.HarnessFrame :: method public Equals(object)
+member VoxClip.Cli.HarnessFrame :: method public GetHashCode()
+member VoxClip.Cli.HarnessFrame :: method public ToString()
+member VoxClip.Cli.HarnessFrame :: method public get_Actual()
+member VoxClip.Cli.HarnessFrame :: method public get_Jpeg()
+member VoxClip.Cli.HarnessFrame :: method public get_Requested()
+member VoxClip.Cli.HarnessFrame :: method public op_Equality(VoxClip.Cli.HarnessFrame,VoxClip.Cli.HarnessFrame)
+member VoxClip.Cli.HarnessFrame :: method public op_Inequality(VoxClip.Cli.HarnessFrame,VoxClip.Cli.HarnessFrame)
+member VoxClip.Cli.HarnessFrame :: method public set_Actual(double)
+member VoxClip.Cli.HarnessFrame :: method public set_Jpeg(string)
+member VoxClip.Cli.HarnessFrame :: method public set_Requested(double)
+member VoxClip.Cli.HarnessProject :: field private Empty
+member VoxClip.Cli.HarnessProject :: field private PathComparison
+member VoxClip.Cli.HarnessProject :: field private id
+member VoxClip.Cli.HarnessProject :: field private path
+member VoxClip.Cli.HarnessProject :: method internal CallAsync(VoxClip.Cli.HarnessTool,System.Text.Json.JsonElement,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessProject :: method internal OpenAsync(string,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessProject :: method private .cctor()
+member VoxClip.Cli.HarnessProject :: method private .ctor(string,string)
+member VoxClip.Cli.HarnessProject :: method private CanonicalPath(string,bool,int)
+member VoxClip.Cli.HarnessProject :: method private Clips(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Cli.HarnessProject :: method private Decisions(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Cli.HarnessProject :: method private FramesAsync(VoxClip.Core.Domain.Shared.Project,System.Text.Json.JsonElement,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessProject :: method private Integer(System.Text.Json.JsonElement,string,long,long,long)
+member VoxClip.Cli.HarnessProject :: method private Link(string,string)
+member VoxClip.Cli.HarnessProject :: method private ReadAsync(string,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessProject :: method private ResolveSourceAsync(VoxClip.Core.Domain.Shared.MediaReference,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessProject :: method private StageAsync(System.Text.Json.Nodes.JsonObject,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessProject :: method private Transcript(VoxClip.Core.Domain.Shared.Project,long,int)
+member VoxClip.Cli.HarnessResult :: method internal get_CliOutput()
+member VoxClip.Cli.HarnessResult :: method private .ctor(VoxClip.Cli.HarnessResult)
+member VoxClip.Cli.HarnessResult :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Cli.HarnessResult :: method private get_EqualityContract()
+member VoxClip.Cli.HarnessResult :: method public .ctor(object,System.Collections.Generic.IReadOnlyList`1<VoxClip.Cli.HarnessFrame>)
+member VoxClip.Cli.HarnessResult :: method public Deconstruct(object&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Cli.HarnessFrame>&)
+member VoxClip.Cli.HarnessResult :: method public Equals(VoxClip.Cli.HarnessResult)
+member VoxClip.Cli.HarnessResult :: method public Equals(object)
+member VoxClip.Cli.HarnessResult :: method public GetHashCode()
+member VoxClip.Cli.HarnessResult :: method public ToString()
+member VoxClip.Cli.HarnessResult :: method public get_Fields()
+member VoxClip.Cli.HarnessResult :: method public get_Frames()
+member VoxClip.Cli.HarnessResult :: method public op_Equality(VoxClip.Cli.HarnessResult,VoxClip.Cli.HarnessResult)
+member VoxClip.Cli.HarnessResult :: method public op_Inequality(VoxClip.Cli.HarnessResult,VoxClip.Cli.HarnessResult)
+member VoxClip.Cli.HarnessResult :: method public set_Fields(object)
+member VoxClip.Cli.HarnessResult :: method public set_Frames(System.Collections.Generic.IReadOnlyList`1<VoxClip.Cli.HarnessFrame>)
+member VoxClip.Cli.HarnessSession :: field private Tools
+member VoxClip.Cli.HarnessSession :: field private Versions
+member VoxClip.Cli.HarnessSession :: field private definitions
+member VoxClip.Cli.HarnessSession :: field private initialized
+member VoxClip.Cli.HarnessSession :: method internal RunAsync(System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessSession :: method private .cctor()
+member VoxClip.Cli.HarnessSession :: method private Definition(string,VoxClip.Cli.HarnessTool,string)
+member VoxClip.Cli.HarnessSession :: method private Error(System.Nullable`1<System.Text.Json.JsonElement>,int,string)
+member VoxClip.Cli.HarnessSession :: method private ObjectSchema(object,string[])
+member VoxClip.Cli.HarnessSession :: method private ReceiveAsync(System.ReadOnlyMemory`1<byte>,System.Threading.CancellationToken)
+member VoxClip.Cli.HarnessSession :: method private Reply(System.Text.Json.JsonElement,object)
+member VoxClip.Cli.HarnessSession :: method private String(System.Text.Json.JsonElement,string)
+member VoxClip.Cli.HarnessSession :: method private Text(string)
+member VoxClip.Cli.HarnessSession :: method private TimelineSchema(string)
+member VoxClip.Cli.HarnessSession :: method public .ctor(VoxClip.Cli.HarnessProject,string)
+member VoxClip.Cli.HarnessTool :: field public ProposeTimeline
+member VoxClip.Cli.HarnessTool :: field public ReadClips
+member VoxClip.Cli.HarnessTool :: field public ReadDecisions
+member VoxClip.Cli.HarnessTool :: field public ReadFrames
+member VoxClip.Cli.HarnessTool :: field public ReadTranscript
+member VoxClip.Cli.HarnessTool :: field public value__
 member VoxClip.Cli.MergeApi :: method internal Construct`1(object[])
 member VoxClip.Cli.MergeApi :: method internal Invoke`1(System.Reflection.MethodBase,object,object[])
 member VoxClip.Cli.NoFrameText :: method internal get_Instance()
@@ -400,6 +485,12 @@ type VoxClip.Cli.EnvironmentKeyProvider
 type VoxClip.Cli.ExportInputReader
 type VoxClip.Cli.ExportPreparer
 type VoxClip.Cli.FixtureCaptions
+type VoxClip.Cli.HarnessCommands
+type VoxClip.Cli.HarnessFrame
+type VoxClip.Cli.HarnessProject
+type VoxClip.Cli.HarnessResult
+type VoxClip.Cli.HarnessSession
+type VoxClip.Cli.HarnessTool
 type VoxClip.Cli.MergeApi
 type VoxClip.Cli.NoFrameText
 type VoxClip.Cli.PreparedExport

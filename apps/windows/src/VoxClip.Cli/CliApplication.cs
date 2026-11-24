@@ -69,7 +69,7 @@ internal static class CliApplication
                         "Review the Windows component terms with `voxclip-cli --runtime-terms`, then run `voxclip-cli --accept-runtime-terms <SHA-256>`.", 7);
             }
             runtimeAgreementWork = false;
-            normalWorkAuthorized = !informationalAction;
+            normalWorkAuthorized = !informationalAction && !HarnessCommands.IsHarness(result.CommandResult.Command.Name);
             // The App's launch check before any work: the shared root and its share-text rules.
             if (!informationalAction) SharePostText.Preflight();
             return await result.InvokeAsync(new InvocationConfiguration { EnableDefaultExceptionHandler = false, ProcessTerminationTimeout = null }, ct).ConfigureAwait(false);
@@ -80,6 +80,7 @@ internal static class CliApplication
         catch (UnauthorizedAccessException) when (runtimeAgreementWork)
         { return FailRun("runtimeTermsUnavailable", "Could not read or save the Windows component terms. Check the installed files and user data permissions.", 7); }
         catch (OperationCanceledException) { return FailRun("cancelled", string.Empty, 6); }
+        catch (HarnessException exception) { return FailRun("projectUnreadable", exception.Message, 3); }
         catch (CliUsageException exception) { return FailRun("usageError", exception.Message, 2); }
         catch (CliInputException exception) { return FailRun(exception.Failure.WireCode, FailureMessage(exception.Failure), 3); }
         catch (Exception exception) when (AiMergeAdapter.IsGate(exception))
@@ -134,6 +135,7 @@ internal static class CliApplication
         root.Options.Add(Quiet);
         root.Options.Add(RuntimeTerms);
         root.Options.Add(AcceptRuntimeTerms);
+        HarnessCommands.Register(root);
         Add(root, "--open", "Project or media path.");
         Add(root, "--export", "Destination MP4 path.");
         Add(root, "--style", "Caption style id, or off.");

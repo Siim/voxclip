@@ -367,6 +367,30 @@
       "wordIds": [
         "w2"
       ]
+    },
+    {
+      "id": "fx-colour-1",
+      "clipId": "clip-main",
+      "kind": "colourLook",
+      "start": 1.0,
+      "end": 1.5,
+      "look": "warm"
+    },
+    {
+      "id": "fx-speed-1",
+      "clipId": "clip-main",
+      "kind": "speedForPart",
+      "start": 1.0,
+      "end": 1.5,
+      "rate": 1.5
+    },
+    {
+      "id": "fx-illustration-1",
+      "clipId": "clip-main",
+      "kind": "illustration",
+      "start": 4.5,
+      "end": 5.4,
+      "imageFile": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/illustration-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
     }
   ]
 }

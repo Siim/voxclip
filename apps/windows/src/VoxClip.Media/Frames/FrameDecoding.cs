@@ -34,12 +34,19 @@ public interface IFrameReader : IDisposable
 public sealed class FfmpegFrameDecoder : IFrameDecoding
 {
     /// <inheritdoc/>
-    public IFrameReader Open(string source, int maximumEdge, double tolerance, CancellationToken ct)
+    public IFrameReader Open(string source, int maximumEdge, double tolerance, CancellationToken ct) =>
+        Open(source, maximumEdge, tolerance, localQuickTime: false, ct);
+
+    /// <summary>Decode a local MP4, MOV or M4V without following any external media references.</summary>
+    public static IFrameReader OpenLocalQuickTime(string source, int maximumEdge, CancellationToken ct) =>
+        Open(source, maximumEdge, 0, localQuickTime: true, ct);
+
+    private static IFrameReader Open(string source, int maximumEdge, double tolerance, bool localQuickTime, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrEmpty(source);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumEdge, 1);
         FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
-        return new Reader(source, maximumEdge, tolerance);
+        return new Reader(source, maximumEdge, tolerance, localQuickTime);
     }
 
     /// <summary>The size of a picture of <paramref name="width"/> × <paramref name="height"/> with its long side at most
@@ -59,9 +66,9 @@ public sealed class FfmpegFrameDecoder : IFrameDecoding
         private readonly int rotation;
         private readonly PixelSize output;
 
-        internal Reader(string source, int maximumEdge, double tolerance)
+        internal Reader(string source, int maximumEdge, double tolerance, bool localQuickTime)
         {
-            decoder = new VideoDecoder(source, hardware: false);
+            decoder = new VideoDecoder(source, hardware: false, localQuickTime);
             this.tolerance = double.IsFinite(tolerance) ? Math.Max(0, tolerance) : 0;
             rotation = decoder.RotationDegrees;
             var quarter = rotation is 90 or 270;

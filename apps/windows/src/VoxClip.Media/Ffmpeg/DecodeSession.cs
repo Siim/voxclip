@@ -22,9 +22,9 @@ internal sealed unsafe class DecodeSession : IDisposable
     internal double Origin => Format->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : Format->start_time / (double)ffmpeg.AV_TIME_BASE;
     internal double Timestamp => Native.Seconds(Frame->best_effort_timestamp, Stream->time_base) - Origin;
 
-    internal DecodeSession(string path, AVMediaType type, bool hardware = false)
+    internal DecodeSession(string path, AVMediaType type, bool hardware = false, bool localQuickTime = false)
     {
-        input = NativeHandle.Own(Native.Open(path), NativeKind.Input);
+        input = NativeHandle.Own(Native.Open(path, localQuickTime), NativeKind.Input);
         try
         {
             Index = Native.Stream(Format, type);
