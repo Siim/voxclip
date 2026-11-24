@@ -117,7 +117,6 @@ internal sealed partial class RewriteSession
         AutoFix.Reset();
         AutoFix.Armed = true;
         AutoFix.Allowance = Math.Min(AutoFixAllowance(batch.Estimate.Usd), AutoFixCeiling ?? decimal.MaxValue);
-        foreach (var window in generationWindows) window.KeepEveryTake();
     }
 
     /// <summary>Counts <paramref name="usd"/> against the allowance. Past it the step waits for Keep fixing and its round is given back.</summary>
@@ -308,7 +307,7 @@ internal sealed partial class RewriteSession
     {
         ApplyPendingExpressions();
         SettleTakesThatFitNoDuration();
-        if (!AutoFix.Running || AutoFix.Work is not null || !IsOpen || !GenerationIsCurrent || IsGeneratingBatch || applyingBatch ||
+        if (!AutoFix.Running || AutoFix.Work is not null || !IsOpen || !GenerationIsCurrent || WholeClipBusy || IsGeneratingBatch || applyingBatch ||
             MeasuredWording is { Preparing: true } || PendingPaidReviewChange is not null ||
             generationWindows.Any(window => window.IsRunning || window.IsPreparing)) return;
         // A spending limit ends the fixes the same way Stop does. An account failure on a phrase's takes shows its cause and its
@@ -482,7 +481,6 @@ internal sealed partial class RewriteSession
         var voice = previous.VoiceId;
         if (!ReviewSurroundingSentence(phrase.Ordinals[0]) || SentenceReview is not { } review || !AcceptSurroundingSentence(review)) return;
         if (generationWindows.ElementAtOrDefault(index) is not { } window) return;
-        window.KeepEveryTake();
         await window.DiscoverAsync();
         if (voice is not null) await window.ChooseVoiceAsync(voice);
         await window.PendingUpdate;

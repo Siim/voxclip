@@ -123,6 +123,11 @@ jobs:
         working-directory: apps/macos
         run: swift build --jobs 2
 
+      - name: Replay the project harness contract offline
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 3
+        run: '"${{ steps.py.outputs.python-path }}" tools/schemas/test_harness_contract.py'
+
       # Whole-module Release compile errors show here within minutes; E2E, plan parity and caption parity
       # use this binary. A failed build is rebuilt once with -debug-cycles, which names the declarations
       # behind a compiler request cycle ("<unknown>:0: error: circular reference").

@@ -343,7 +343,8 @@ public sealed class PreviewEngine : IPreviewEngine
     /// <summary>The shared compositor, told about this preview's failures; another composer composes as given.</summary>
     private void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot local, double edited, CancellationToken ct)
     {
-        if (composer is FrameComposer concrete) concrete.Compose(decoded, output, local, edited, true, failures, ct);
+        var synced = voiceSession?.Lipsync?.Read(edited, ct);
+        if (composer is FrameComposer concrete) concrete.Compose(synced ?? decoded, output, local, edited, true, failures, ct, renderedVoicePicture: synced is not null);
         else composer.Compose(decoded, output, local, edited, true, ct);
     }
 

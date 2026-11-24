@@ -1,0 +1,20 @@
+{
+  "name": "Cut & keep",
+  "kept": [[1, 3], [5, 7]],
+  "title": "A < B & C",
+  "caption": "Editable captions",
+  "expected": {
+    "/fcpxml/@version": ["1.10"],
+    "//project/@name": ["Cut & keep"],
+    "//sequence/@duration": ["4s"],
+    "//spine/asset-clip/@offset": ["0s", "2s"],
+    "//spine/asset-clip/@start": ["1s", "5s"],
+    "//spine/asset-clip/@srcEnable": ["video", "video"],
+    "//asset-clip/audio[@role='dialogue']/@start": ["1s", "5s"],
+    "//asset-clip/audio[@role='music']/@start": ["1s", "0s", "1s", "0s"],
+    "//title[@role='titles.title']/text/text-style": ["A < B & C", "A < B & C"],
+    "//title[@role='titles.title']/@duration": ["1s", "1s"],
+    "//title[@role='titles.caption']/@offset": ["5/2s", "5s"],
+    "//title[@role='titles.caption']/text/text-style": ["Editable captions", "Editable captions"]
+  }
+}

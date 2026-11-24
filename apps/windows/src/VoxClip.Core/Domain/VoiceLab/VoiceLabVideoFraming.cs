@@ -46,6 +46,7 @@ public sealed class VoiceLabVideoFraming
             if (piece.Kind == VoiceLabOutputPieceKind.Synth)
             {
                 var video = videoFor(piece) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.StaleRenderContract);
+                if (video.Mode == VoiceLabVideoMode.Lipsync) video = VoiceLabLipsync.Base(video);
                 if (video.SourceStartSample != piece.SourceStartSample || video.SourceEndSample != piece.SourceEndSample || video.OutputSamples != outputCount)
                     throw new VoiceLabProjectException(VoiceLabProjectErrorCode.StaleRenderContract);
                 switch (video.Mode)

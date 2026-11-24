@@ -279,7 +279,7 @@ public sealed partial class EditorPage
             return new(new MakeItRewriteResult.Unavailable("Turn on Voice Lab and make your voice to voice rewrites. Nothing was sent."));
         if (!App.Services.Get("voiceLab.providerConsent.elevenlabs", false))
             return new(new MakeItRewriteResult.NeedsYou("Allow ElevenLabs in Rewrite to voice this fix. Nothing was sent."));
-        if (rewrite is { IsOpen: true, HasPaidTakes: true })
+        if (rewrite is { IsOpen: true, HoldsPaidWork: true })
             return new(new MakeItRewriteResult.NeedsYou("Finish the open Rewrite first; its paid takes are kept."));
         var driver = new MakeItRewriteDriver(ViewModel, request, OpenMakeItRewriteAsync, ReadMakeItVoiceCapAsync, session => makeItSessions[(request.First, request.Last)] = session);
         return await driver.RunAsync(ct);

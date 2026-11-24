@@ -283,7 +283,9 @@ The fixture is a small synthetic recording: 160×90 H.264 with 24 kHz LPCM audio
 
 It drives the real Rewrite session through these scenarios using only clicks a user could make:
 
+- S-rewrite-used-revoice and S-rewrite-used-revoice-partial: use a lip-synced clip and open Rewrite again. The whole clip can be replaced in one undo step; a partial selection offers a free Undo before sending. Both run at realistic and exact lengths.
 - S1: happy path.
+- S-older-takes: make two rounds, then play both takes and pick the earlier one without sending a paid request.
 - S2: two nearby changes refused as too close.
 - S3: takes too long for the slot.
 - S4: "Claude Code" heard as "cloud code".
@@ -330,6 +332,10 @@ After every step it checks these invariants; I5 is checked at the end of every s
 It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel for each failing step. It exits non-zero on any failure not named in `--known-failing`. The same run is `MacUIIntegrationTests/rewriteSmoke`, which asserts every invariant with no known failures. Hand over a build only when the smoke is clean, or when every remaining failure is named and the user has been told.
 
 ---
+
+### 4.0.1 Editable timeline import check
+
+Once per release, export a clip with two retained ranges, a hook title, captions and background music. Validate the `.fcpxml` against a locally obtained Apple FCPXML 1.10 DTD (`xmllint --noout --dtdvalid <DTD> <timeline.fcpxml>`). Import it in Final Cut Pro and DaVinci Resolve, relink the source if prompted, and confirm the cuts, aspect, editable text and separate voice and music. Record both editor versions and the result in the release verification record. A DTD pass alone does not count as an import pass.
 
 ### 4.1 Launch page go-live — user's approval required
 

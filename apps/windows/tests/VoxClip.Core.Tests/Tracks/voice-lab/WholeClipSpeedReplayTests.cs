@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -10,6 +11,21 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 /// retime range, the sped edited cut recipe and its even mapping. Mac <c>WholeClipSpeedReplayTests</c>.</summary>
 public sealed class WholeClipSpeedReplayTests
 {
+    [Fact]
+    public void WholeClipFitsToTheEditedPictureBeforeGrowingSilence()
+    {
+        const int rate = 48_000;
+        var window = new VoiceLabWindow("first", "last", [], [], 0, 6, 0, 6 * rate,
+            new(VoiceLabSeamKind.None, 0, 0, 0), new(VoiceLabSeamKind.None, 6, 6 * rate, 0));
+        var take = new VoiceLabFitTake(4 * rate, rate, 0, 4, [new("speech", 0, 4, true)], new AudioEnvelope(rate, 0.01, new float[400]));
+        var fit = VoiceLabNaturalPacing.Layout(window, 0, 0, take, rate, true, [], [new(rate, 105_600)], 0.3);
+
+        Assert.Equal(192_000, fit.Plan.OutputFrames);
+        Assert.InRange(fit.Plan.PictureSpeed!.Value, 1.1999, 1.2);
+        Assert.Equal(57_600, fit.Plan.VideoCuts.Sum(cut => cut.EndSample - cut.StartSample));
+        Assert.Empty(fit.Plan.Edits);
+    }
+
     private static readonly JsonObject Cases = JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/whole-clip-speed-cases.json"))!.AsObject();
     private static JsonArray Rows(string name) => Cases[name]!.AsArray();
     private static List<VoiceLabVideoCut> Cuts(JsonNode? node) =>

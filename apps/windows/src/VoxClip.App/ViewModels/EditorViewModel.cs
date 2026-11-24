@@ -352,13 +352,15 @@ public sealed partial class EditorViewModel : ObservableObject
         try
         {
             if (applyingVoiceLab || isLeaving || IsReadOnly || Busy || state is null) return false;
-            if (localOperations is { Count: > 0 } && command is not (VoiceLabEditCommand.Accept or VoiceLabEditCommand.AcceptAll)) return false;
+            if (localOperations is { Count: > 0 } && command is not (VoiceLabEditCommand.Accept or VoiceLabEditCommand.AcceptAll or
+                VoiceLabEditCommand.AcceptWholeClip or VoiceLabEditCommand.AcceptWholeClipVoice)) return false;
             var snapshot = expectedProject ?? project;
             if (!ReferenceEquals(snapshot, project)) return false;
             applyingVoiceLab = true;
             try
             {
-                var acceptedAssets = command switch { VoiceLabEditCommand.Accept accept => accept.Assets, VoiceLabEditCommand.AcceptAll accept => accept.Assets, _ => [] };
+                var acceptedAssets = command switch { VoiceLabEditCommand.Accept accept => accept.Assets, VoiceLabEditCommand.AcceptAll accept => accept.Assets,
+                    VoiceLabEditCommand.AcceptWholeClip whole => whole.Voice.Assets, VoiceLabEditCommand.AcceptWholeClipVoice whole => whole.Voice.Assets, _ => [] };
                 foreach (var asset in acceptedAssets)
                         if (undo.Concat(redo).SelectMany(entry => entry.Project.VoiceLab.Assets ?? [])
                             .Any(retained => retained.Id == asset.Id && retained != asset))

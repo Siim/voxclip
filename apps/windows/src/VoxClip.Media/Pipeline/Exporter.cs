@@ -19,7 +19,7 @@ namespace VoxClip.Media.Pipeline;
 internal unsafe delegate void ExportFrameObserver(long index, PixelBuffer decoded, PixelBuffer composed, AVFrame* nv12);
 
 /// <summary>Sequential CFR H.264/AAC MP4 exporter; architecture §6.4.</summary>
-public sealed class Exporter : IExporter
+public sealed partial class Exporter : IExporter
 {
     private readonly IFrameComposer composer;
     private readonly IEncoderProbe encoders;
@@ -244,8 +244,11 @@ public sealed class Exporter : IExporter
                     ct.ThrowIfCancellationRequested();
                     var editedTime = EditedTime(snapshot, index, fps);
                     var sourceTime = cursor.Source(editedTime);
-                    var decoded = decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
-                    composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);
+                    var synced = voiceSession?.Lipsync?.Read(editedTime, ct);
+                    var decoded = synced ?? decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
+                    if (synced is not null && composer is FrameComposer sharedComposer)
+                        sharedComposer.Compose(decoded, bgra, snapshot, editedTime, false, null, ct, renderedVoicePicture: true);
+                    else composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);
                     if (index == coverFrame) coverJpeg = CoverImage(bgra, snapshot.Clip?.Controls?.CoverTitle);
                     Native.Check(ffmpeg.av_frame_make_writable(nv12), "Reuse export video frame", VoxClipErrorCode.ExportFailed);
                     using (var memory = bgra.Pixels.Pin())

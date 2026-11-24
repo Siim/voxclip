@@ -94,7 +94,7 @@ internal sealed partial class RewritePanel
             if (session.MeasuredGeneration is { } window)
             {
                 var title = window.IsPreparing || window.Quote is null ? "Make Take" : window.GenerationButtonTitle("Make Take");
-                var make = new Button { Content = title, IsEnabled = window.CanExecute && session.GenerationIsCurrent && approval is null };
+                var make = new Button { Content = title, IsEnabled = window.CanExecute && session.GenerationIsCurrent && !session.WholeClipBusy && approval is null };
                 AutomationProperties.SetAutomationId(make, "Rewrite.MeasuredMakeTake");
                 SetName(make, "Make a new take with the reworded text. " + title);
                 make.Click += async (_, _) => await session.MakeMeasuredTakeAsync((copy, token) =>

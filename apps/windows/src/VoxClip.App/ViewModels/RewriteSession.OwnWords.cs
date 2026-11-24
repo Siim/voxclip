@@ -116,7 +116,6 @@ internal sealed partial class RewriteSession
         // The quote follows the words a take would voice; every earlier take stays listed.
         if (CurrentWording(index) != before && !window.IsRunning)
         {
-            window.KeepEveryTake();
             await window.InputsChangedAsync(preserveReview: true);
             Changed?.Invoke(this, EventArgs.Empty);
         }
@@ -137,7 +136,6 @@ internal sealed partial class RewriteSession
     {
         if (generationWindows.ElementAtOrDefault(index) is not { } window || !GenerationIsCurrent || window.IsRunning ||
             Wording(index) != PhraseWording.OwnWords || OwnWordsText(index) is not { } text || OwnWordsQuoted(index, text)) return;
-        window.KeepEveryTake();
         await window.InputsChangedAsync(preserveReview: true);
         if (window.Quote is { } quote && OwnWordsQuoted(index, text)) window.MarkEstimateShown(quote);
         Changed?.Invoke(this, EventArgs.Empty);
@@ -154,7 +152,6 @@ internal sealed partial class RewriteSession
     internal async Task MakeOwnWordsTakeAsync(int index, Func<string, CancellationToken, Task<bool>> confirm)
     {
         if (OwnWordsTakeTitle(index) is null || generationWindows[index] is not { Quote: { } quote } window || OwnWordsText(index) is not { } text) return;
-        window.KeepEveryTake();
         await window.GenerateAsync(confirm, quote, autoplay: false);
         // The click asked for these words: their best passing take is used, never an earlier take of the suggestion.
         if (window.Ranked(window.Rows.Where(row => row.Selectable && !row.RequiresJoinAdvisoryAcceptance && window.InputFor(row.Id)?.Text == text))

@@ -34,6 +34,7 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case captionPick
     /// Ask Claude on a selection, clip or time range (AI §18, design.md §6.8): toolbox operations for one instruction.
     case askClaude
+    case postingHelp
     case test
 }
 
@@ -247,7 +248,8 @@ public actor LLMRunner {
     let log: any Redacting
     private var active = false
     public init(keys: any KeyProvider, catalog: LLMCatalog, log: any Redacting) { self.keys = keys; self.catalog = catalog; self.log = log }
-    public func run(_ request: LLMRequest, on connector: any LLMConnector, model: String) async throws -> LLMResult {
+    public func run(_ request: LLMRequest, on connector: any LLMConnector, model: String,
+                    captureOnce: (@Sendable (RawCompletion) async throws -> Void)? = nil) async throws -> LLMResult {
         guard !active else { throw LLMError.unavailable(reason: "An AI request is already running.") }
         active = true
         defer { active = false }
@@ -263,9 +265,9 @@ public actor LLMRunner {
                 catch LLMError.cancelled { throw LLMError.cancelled }
                 catch { throw LLMError.missingKey }
             }
-            do { return try await validated(request, connector: connector, model: model, fallback: false) }
+            do { return try await validated(request, connector: connector, model: model, fallback: false, captureOnce: captureOnce) }
             catch let failure as LLMError {
-                guard permitsFallback(failure, id: connector.id),
+                guard captureOnce == nil, permitsFallback(failure, id: connector.id),
                       let fallback = catalog.fallback(for: connector.id, model: model) else { throw failure }
                 if connector.id == .codex {
                     guard await !connector.hasSessionModelFallback(for: model) else { throw failure }
@@ -328,11 +330,13 @@ public actor LLMRunner {
         }
     }
 
-    private func validated(_ request: LLMRequest, connector: any LLMConnector, model: String, fallback: Bool) async throws -> LLMResult {
+    private func validated(_ request: LLMRequest, connector: any LLMConnector, model: String, fallback: Bool,
+                           captureOnce: (@Sendable (RawCompletion) async throws -> Void)? = nil) async throws -> LLMResult {
         var current = request
         for correction in 0...1 {
             try Task.checkCancellation()
             let raw = try await connector.send(current, model: model)
+            try await captureOnce?(raw)
             try Task.checkCancellation()
             do {
                 let parsed = try CanonicalResponseParser.validate(raw, schema: request.schema,
@@ -340,7 +344,7 @@ public actor LLMRunner {
                 let redirected = connector.id == .codex && raw.model != model
                 return LLMResult(object: parsed.object, droppedItems: parsed.droppedItems, model: raw.model, usedFallback: fallback || redirected || nativeFallback(connector: connector.id, requested: model, actual: raw.model), usage: raw.usage, requestID: raw.requestID)
             } catch LLMError.invalidOutput(let reason) {
-                guard correction == 0 else { throw LLMError.invalidOutput(reason: reason) }
+                guard captureOnce == nil, correction == 0 else { throw LLMError.invalidOutput(reason: reason) }
                 current.instruction += "\n\nYour previous reply was not valid JSON for the required schema (\(reason)). Reply with only the JSON object."
             }
         }

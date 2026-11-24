@@ -133,11 +133,11 @@ public sealed class FrameComposer : IFrameComposer
     /// left out of the frame; a missing disclosure, context-demo frame or other failure still fails the frame, marked with its reason. An
     /// export (<paramref name="forPreview"/> false) fails exactly as before.</summary>
     internal unsafe void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview,
-        PreviewFrameFailures? failures, CancellationToken ct)
+        PreviewFrameFailures? failures, CancellationToken ct, bool pictureOnly = false, bool renderedVoicePicture = false)
     {
         ct.ThrowIfCancellationRequested();
         Validate(decoded); Validate(output);
-        var rotation = snapshot.Media.Video?.RotationDegrees ?? 0;
+        var rotation = renderedVoicePicture ? 0 : snapshot.Media.Video?.RotationDegrees ?? 0;
         var controls = snapshot.Clip?.Controls;
         byte[]? oriented = null;
         byte[]? turned = null;
@@ -162,7 +162,7 @@ public sealed class FrameComposer : IFrameComposer
             var crop = ExportPresets.CenterCrop(new(decoded.Width, decoded.Height), new(output.Width, output.Height), snapshot.Output.PreserveSource);
             // "9:16 follows your face" (ADR-R48 part 2): the 9:16 and 1:1 crops centre on the clip's measured face.
             crop = ClipFaceCrop.Centered(crop, decoded.Width, decoded.Height, controls, (double)output.Width / output.Height);
-            crop = VideoCrop(snapshot, crop, decoded.Width, decoded.Height, editedTime);
+            if (!renderedVoicePicture) crop = VideoCrop(snapshot, crop, decoded.Width, decoded.Height, editedTime);
             var left = (int)Math.Floor(crop.X);
             var top = (int)Math.Floor(crop.Y);
             var widthCrop = Math.Clamp((int)Math.Round(crop.Width), 1, decoded.Width - left);
@@ -186,8 +186,11 @@ public sealed class FrameComposer : IFrameComposer
             Native.Check(ffmpeg.sws_scale((SwsContext*)scaling.Handle!.Pointer, source, sourceStride, 0, heightCrop, target, targetStride), "Crop and scale video");
             try { DrawContextDemo(output, snapshot, editedTime, forPreview, ct); }
             catch (Exception exception) { PreviewFrameFailures.Failed(failures, forPreview, PreviewFailureReason.DemoFrame, exception); throw; }
-            FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview, failures);
-            DrawOverlays(output, snapshot, editedTime, forPreview, failures, ct);
+            if (!pictureOnly)
+            {
+                FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview, failures);
+                DrawOverlays(output, snapshot, editedTime, forPreview, failures, ct);
+            }
         }
         finally
         {

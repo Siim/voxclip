@@ -345,8 +345,8 @@ internal sealed class RenderedAudioReader : IDisposable
 
     /// <summary>The edited voice alone for the edited WAV (Mac withoutClipControls + withoutAudio): 1×, no clip levels, bleeps and
     /// mutes silent, no tones or sounds.</summary>
-    internal static RenderedAudioReader OpenEditedVoice(ComposeSnapshot snapshot, int rate, VoiceLabRenderSession? session, CancellationToken ct)
-        => Open(EditedVoiceSnapshot(snapshot), rate, 0, session, false, ct, null);
+    internal static RenderedAudioReader OpenEditedVoice(ComposeSnapshot snapshot, int rate, VoiceLabRenderSession? session, CancellationToken ct, double start = 0)
+        => Open(EditedVoiceSnapshot(snapshot), rate, start, session, false, ct, null);
 
     /// <summary>The snapshot the edited WAV reads: no controls, no sounds, bleeps and mutes kept.</summary>
     internal static ComposeSnapshot EditedVoiceSnapshot(ComposeSnapshot snapshot) => snapshot with { Clip = snapshot.Clip?.ForEditedAudio };
