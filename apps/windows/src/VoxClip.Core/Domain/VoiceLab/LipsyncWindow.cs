@@ -1,7 +1,8 @@
-using VoxClip.Core.Services.LLM;
 #pragma warning disable CS1591
 
 namespace VoxClip.Core.Domain.VoiceLab;
+
+public enum SyncMode { CutOff, Remap }
 
 public sealed record LipsyncWindow(long StartSample, long EndSample, IReadOnlyList<int> PhraseIds)
 {

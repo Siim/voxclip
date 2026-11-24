@@ -70,7 +70,7 @@ public static class LipsyncMedia
     public static async Task<LipsyncUpload> PrepareAsync(ComposeSnapshot snapshot, LipsyncRenderWindow window, string scratchRoot, CancellationToken ct)
     {
         if (snapshot.VoiceLab is not { } input || !Supports(snapshot.Media)) throw InvalidMedia();
-        snapshot = input.CaptureSnapshot(snapshot) with { Clip = null, ContextDemo = null, Captions = null };
+        snapshot = input.CaptureSnapshot(snapshot) with { Clip = null, ContextDemo = null, Captions = null, Footage = [] };
         var rate = input.Prepared.OutputPlan.SampleRate;
         var needed = window.Seconds(rate);
         var frameRate = snapshot.Media.Video!.FrameRate;

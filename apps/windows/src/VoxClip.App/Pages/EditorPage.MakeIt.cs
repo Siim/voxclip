@@ -66,7 +66,7 @@ public sealed partial class EditorPage
         return new(quote?.UsdPerImage, ct => App.Services.Keys.GetKeyAsync("fal-api-key", ct),
             (asset, project) => quote is null ? null : client.SavedIllustration(asset, project, root, quote),
             (asset, project, ct) => client.SoundAsync(asset, project, root, ct),
-            (asset, project, key) => client.IllustrationAsync(asset, project, root, quote!, key));
+            (asset, project, key, ct) => client.IllustrationAsync(asset, project, root, quote!, key, ct));
     }
 
     /// <summary>"✦ Claude does it all" (design §6.7): the remembered choice in Settings, Find Clips started by Claude when it needs

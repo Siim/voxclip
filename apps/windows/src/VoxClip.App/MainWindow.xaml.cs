@@ -13,6 +13,7 @@ using Windows.System;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.App;
 
 /// <summary>Native title bar, Explorer, document tabs and full-window status routing.</summary>
@@ -711,6 +712,21 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void ClipMenuOpening(object? sender, object args)
     {
         if (sender is not MenuFlyout menu || menu.Items.OfType<MenuFlyoutSubItem>().FirstOrDefault() is not { Tag: string id } tones) return;
+        foreach (var old in menu.Items.OfType<MenuFlyoutItem>().Where(item => item.Tag is WholeClipIntent).ToArray()) menu.Items.Remove(old);
+        if (editor is { } page && page.ViewModel.Project.Edits.Clips.Any(clip => clip.Id == id))
+        {
+            var canVoice = RowEdits(id) && page.ViewModel.HasTranscript;
+            AddVoice("Revoice Whole Clip, with Lip Sync", WholeClipIntent.Revoice, canVoice, "Open an editable transcript to revoice this take.");
+            AddVoice("Redo Voice and Lip Sync", WholeClipIntent.RedoVoice, canVoice && WholeClipRevoice.IsRevoiced(id, page.ViewModel.Project),
+                canVoice ? "Use a whole-take revoice first." : "Open an editable transcript to revoice this take.");
+        }
+        void AddVoice(string title, WholeClipIntent intent, bool enabled, string reason)
+        {
+            var action = new MenuFlyoutItem { Text = title, Tag = intent, IsEnabled = enabled };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(action, enabled ? "" : reason);
+            action.Click += (_, _) => { ShowScope(id); editor?.OpenWholeTakeVoice(redo: intent == WholeClipIntent.RedoVoice); };
+            menu.Items.Insert(menu.Items.IndexOf(tones) + 1, action);
+        }
         tones.Items.Clear();
         if (editor?.ViewModel is not { ShowsToneStrip: true } model || !RowEdits(id)) { tones.IsEnabled = false; return; }
         tones.IsEnabled = true;

@@ -192,9 +192,9 @@ internal static class VoiceLabTakeJournal
     /// <summary>The newest adoptable entry over <paramref name="key"/> (no check failed it) whose asset is still there with its frame
     /// count and SHA-256, leaving out the asset files in <paramref name="claimed"/> (already taken by a live run); null when none.</summary>
     internal static VoiceLabTakeJournalEntry? Match(VoiceLabTakeJournalKey key, string projectId, string paidRoot, IReadOnlySet<string>? claimed = null,
-        bool forSelectedVoice = false) =>
+        bool forSelectedVoice = false, DateTimeOffset? createdAfter = null) =>
         List(projectId, paidRoot).Where(entry => entry.Key == key && (forSelectedVoice ? entry.AdoptableForSelectedVoice : entry.Adoptable) &&
-            entry.SampleRate == 24000 && claimed?.Contains(entry.AssetFile) != true)
+            entry.SampleRate == 24000 && claimed?.Contains(entry.AssetFile) != true && (createdAfter is null || entry.CreatedAt > createdAfter))
             .OrderByDescending(entry => entry.CreatedAt).ThenByDescending(entry => entry.AssetFile, StringComparer.Ordinal)
             .FirstOrDefault(entry => TryPcm(entry, projectId, paidRoot) is not null);
 

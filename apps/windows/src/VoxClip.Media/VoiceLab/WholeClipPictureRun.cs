@@ -102,7 +102,7 @@ public sealed class WholeClipPictureRun(FalLipsyncProvider provider, VoiceConsen
         var recipes = Recipes(rendered, saved);
         var speed = recipes.Sum(item => (item.Recipe.Video.RetimeFactor ?? 1) * item.Recipe.Video.OutputSamples) /
             recipes.Sum(item => item.Recipe.Video.OutputSamples);
-        var match = new WholeClipRevoiceRecord(Guid.NewGuid().ToString("D"), rendered.OutputPlan.Scope.ClipId!, saved.SegmentIds, script,
+        var match = new WholeClipRevoiceRecord(Guid.NewGuid().ToString("D"), rendered.OutputPlan.Scope.ClipId ?? WholeClipRevoice.FullTakeId, saved.SegmentIds, script,
             record.RecordId, speed, model.RawValue(), (double)(saved.Spent + picturePaid), null, DateTimeOffset.UtcNow);
         return WholeClipRevoiceDraft.WithPicture(saved.Voice(record.RecordId), match, recipes, pictures);
     }

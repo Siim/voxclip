@@ -285,7 +285,11 @@ public sealed partial class EditorPage : Page
         var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = voice?.CaptureSnapshot(snapshot) ?? snapshot;
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md, design §6.9).
-        return snapshot with { ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, App.Services.Data.Root) };
+        return snapshot with
+        {
+            ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, App.Services.Data.Root),
+            Footage = await FootageRendering.ResolveAsync(project, snapshot, App.Services.Projects, owner.ProjectPath ?? source.Path, ct),
+        };
     }
     private void PositionChanged(PreviewPosition position)
     {
@@ -599,12 +603,15 @@ public sealed partial class EditorPage : Page
     {
         await RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
     }
-    private async Task OpenRewriteAsync(bool insertion, string? instruction = null)
+    private async Task OpenRewriteAsync(bool insertion, string? instruction = null, WholeClipIntent? wholeClipIntent = null)
     {
 if (insertion ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
 !ViewModel.HasTranscript) return;
-        if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction))) return;
+        if (wholeClipIntent is { } existingIntent && rewrite is { IsOpen: true } existing && rewritePanel is { } existingPanel &&
+            existing.Scope.ClipId == ViewModel.Project.Edits.ActiveClipId && existing.GenerationIsCurrent && rightContent.RevealRewrite(existingPanel))
+        { SetViewerVisible(true); existingPanel.FocusWholeClip(existingIntent); return; }
+        if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction, wholeClipIntent))) return;
         RetireRewrite();
         var opening = ++rewriteOpenRevision;
         ViewModel.CaptionDrag.Cancel();
@@ -632,7 +639,7 @@ if (insertion ||
             prices: VoiceLabPrices.Load(),
             connectorIsCurrent: () => App.Services.Get("llm.connector", "") == connectorWireId &&
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model),
-            scope: ViewModel.HasSelection ? null : project.Edits.ActiveClipId is { } scopeClip ? RewriteScope.Clip(scopeClip) : RewriteScope.FullTake);
+            scope: ViewModel.HasSelection && wholeClipIntent is null ? null : project.Edits.ActiveClipId is { } scopeClip ? RewriteScope.Clip(scopeClip) : RewriteScope.FullTake);
         var restored = !demo && session.ConfigureSavedProposal(Path.Combine(App.Services.Data.Root, "VoiceLab"));
         if (entry is not null && (!restored || entry.Cli)) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
         if (!CurrentOpening() || !session.IsOpen) { session.Dispose(); return; }
@@ -642,6 +649,7 @@ if (insertion ||
             ? session.Instruction : instruction ?? "";
         ShowRewriteSession(session, prompt);
         await session.SetInstructionAsync(prompt);
+        if (wholeClipIntent is { } intent && ReferenceEquals(rewrite, session)) rewritePanel?.FocusWholeClip(intent);
     }
     /// <summary>Another Rewrite would replace the open one while it holds paid takes not used or discarded yet (Mac
     /// <c>askBeforeReplacing</c>, design.md R2 "Closing Rewrite"): nothing is retired unasked. The open one's panel comes forward and

@@ -1,3 +1,5 @@
+using VoxClip.Core.Domain.VoiceLab;
+
 namespace VoxClip.Core.Services.LLM;
 
 /// <summary>Future paid-action estimate, no provider calls in M1; Voice Lab §3.1.</summary>
@@ -14,14 +16,6 @@ public enum LipsyncTier
 }
 /// <summary>Future model capability; Voice Lab §9.1.</summary>
 public sealed record LipsyncModel(string Provider, string Id, LipsyncTier Tier, bool SupportsRemap);
-/// <summary>Future duration behavior; Voice Lab §9.1.</summary>
-public enum SyncMode
-{
-    /// <summary>Cut to matching duration.</summary>
-    CutOff,
-    /// <summary>Remap output.</summary>
-    Remap
-}
 /// <summary>Future provider options; Voice Lab §9.1.</summary>
 public sealed record LipsyncOptions(SyncMode SyncMode, uint? Seed);
 /// <summary>Future remote job identity, not part of schema-v1 projects; Voice Lab §9.1.</summary>

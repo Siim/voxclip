@@ -12,6 +12,37 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class RewritePanelTests
 {
+    [Fact]
+    public void FullTakeVoiceLetsYouSelectWholeTakeWithoutSendingAndExplainsUnavailableActions()
+    {
+        using var session = new RewriteSession(Editor(), 0, 1, Envelope(), null, scope: RewriteScope.FullTake);
+        Assert.True(session.OffersWholeClip);
+        Assert.Null(session.SelectedWholeClipIntent);
+        session.SelectWholeClipIntent(WholeClipIntent.Revoice);
+        Assert.Equal(WholeClipIntent.Revoice, session.SelectedWholeClipIntent);
+        Assert.Null(session.WholeClipPrice);
+        Assert.NotEmpty(session.WholeClipUseBlocked!);
+        Assert.NotEmpty(session.WholeClipCompareBlocked!);
+        Assert.NotEmpty(session.WholeClipSharperBlocked!);
+    }
+
+    [Fact]
+    public void FalCleanupNoticeOnlyAppliesToTheKeyDeniedAndNotifiesOnce()
+    {
+        var notice = new FalCleanupNotice();
+        var notifications = 0;
+        notice.Changed += () => notifications++;
+        const string fixtureKey = "fixture-fal-key";
+        var fingerprint = VoxClip.Core.Services.VoiceLab.FalLipsyncProvider.KeyFingerprint(fixtureKey);
+        Assert.False(notice.AppliesTo(fixtureKey));
+        notice.MarkDenied(fingerprint);
+        notice.MarkDenied(fingerprint);
+        Assert.Equal(1, notifications);
+        Assert.True(notice.AppliesTo(fixtureKey));
+        Assert.False(notice.AppliesTo("fixture-replacement-key"));
+        Assert.False(notice.AppliesTo(null));
+    }
+
     [Theory]
     [InlineData(300)]
     [InlineData(320)]
@@ -448,7 +479,7 @@ public sealed class RewritePanelTests
         Assert.Equal("Close Rewrite and discard 2 paid takes?", RewriteSession.CloseQuestion(2));
         var page = AppSource("Pages", "EditorPage.xaml.cs");
         var opening = page[page.IndexOf("private async Task OpenRewriteAsync", StringComparison.Ordinal)..page.IndexOf("private bool AskBeforeReplacingRewrite", StringComparison.Ordinal)];
-        var ask = opening.IndexOf("if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction))) return;", StringComparison.Ordinal);
+        var ask = opening.IndexOf("if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction, wholeClipIntent))) return;", StringComparison.Ordinal);
         Assert.True(ask > 0 && ask < opening.IndexOf("RetireRewrite();", StringComparison.Ordinal), "the open Rewrite asks before anything is retired");
         var guard = page[page.IndexOf("private bool AskBeforeReplacingRewrite", StringComparison.Ordinal)..page.IndexOf("private void ShowRewriteSession", StringComparison.Ordinal)];
         Assert.Contains("rewrite is not { IsOpen: true, HoldsPaidWork: true } open", guard);

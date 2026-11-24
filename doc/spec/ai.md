@@ -2030,6 +2030,8 @@ skip generation if the remaining cap cannot cover it. Ask Claude shows the free 
 illustration action inline. An illustration is written to the project's asset folder before placement, even if the
 run was stopped while the provider finished; the same prompt can reuse it without another charge.
 
+On Windows, the temporary video-only MP4 prepared for lip sync does not carry sound-effect credits. It is a picture input, not the final composed MP4, whose comment still carries the credits for the sound effects it mixes.
+
 `frames.cover.title` is optional, validated only for a listed candidate, saved as `clipControls.coverTitle` and
 restored with the cover on undo. It is added only to the cover JPEG and embedded artwork, never the video stream.
 The planner defaults to Roboto Black without changing the caption style catalog; a creator's fixed font wins.

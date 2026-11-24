@@ -9,6 +9,12 @@ using VoxClip.Core.Services.LLM;
 
 namespace VoxClip.Core.Services.VoiceLab;
 
+public static class FalLipsyncModels
+{
+    public static LipsyncModel LipsyncModel(this WholeClipLipsync model) =>
+        new("fal", model.RawValue(), model == WholeClipLipsync.Sync3 ? LipsyncTier.Best : LipsyncTier.Quality, true);
+}
+
 public enum FalLipsyncError { InvalidInput, ApprovalRequired, MissingKey, Busy, UnsafeUrl, InvalidResponse, TooLarge, Http, SubmissionUnconfirmed, RemoteFailed }
 
 public sealed class FalLipsyncException(FalLipsyncError code, int? status = null) : Exception(
@@ -43,16 +49,18 @@ public sealed class FalLipsyncProvider : ILipsyncProvider, IDisposable
     private readonly HttpClient http;
     private readonly IKeyProvider keys;
     private readonly VoiceLabPriceCatalog prices;
+    private readonly Action<string, int>? cleanupDenied;
     private readonly Guid owner = Guid.NewGuid();
     private int submitting;
 
-    public FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices)
-        : this(keys, prices, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { }
+    public FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices, Action<string, int>? cleanupDenied = null)
+        : this(keys, prices, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }, cleanupDenied) { }
 
-    internal FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices, HttpMessageHandler handler)
+    internal FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices, HttpMessageHandler handler, Action<string, int>? cleanupDenied = null)
     {
         this.keys = keys;
         this.prices = prices;
+        this.cleanupDenied = cleanupDenied;
         http = new(handler) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
@@ -209,9 +217,12 @@ public sealed class FalLipsyncProvider : ILipsyncProvider, IDisposable
     public async Task CleanupAsync(LipsyncJob job, string? account, CancellationToken ct)
     {
         var id = Canonical(job).RemoteId;
-        using var request = Request(HttpMethod.Delete, new($"https://api.fal.ai/v1/models/requests/{id}/payloads"), await BoundKeyAsync(account, ct).ConfigureAwait(false));
+        var key = await BoundKeyAsync(account, ct).ConfigureAwait(false);
+        using var request = Request(HttpMethod.Delete, new($"https://api.fal.ai/v1/models/requests/{id}/payloads"), key);
         using var deadline = Deadline(ct);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+            cleanupDenied?.Invoke(KeyFingerprint(key), (int)response.StatusCode);
         if (response.StatusCode != HttpStatusCode.NotFound) Check(response);
     }
 
@@ -334,6 +345,7 @@ public sealed class FalLipsyncProvider : ILipsyncProvider, IDisposable
     private async Task<string> KeyAsync(CancellationToken ct) => (await keys.GetKeyAsync(KeyAccount, ct).ConfigureAwait(false))?.Trim() is { Length: > 0 } key &&
         key.All(character => character is >= '!' and <= '~') ? key : throw new FalLipsyncException(FalLipsyncError.MissingKey);
     private static byte[] Hash(string key) => SHA256.HashData(Encoding.UTF8.GetBytes(key));
+    public static string KeyFingerprint(string key) => Convert.ToHexStringLower(Hash(key.Trim()));
     private static HttpRequestMessage Request(HttpMethod method, Uri uri, string? key = null)
     {
         var request = new HttpRequestMessage(method, uri);
