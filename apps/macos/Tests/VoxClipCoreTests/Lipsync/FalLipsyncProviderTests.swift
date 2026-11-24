@@ -345,6 +345,37 @@ struct FalLipsyncProviderTests {
         #expect(requests.count == 2 && requests.allSatisfy { $0.url?.host == "queue.fal.run" })
     }
 
+    @Test(arguments: [403, 401]) @MainActor
+    func finishedResultSurvivesDeniedCleanupAndOnlyThatKeyGetsTheNotice(_ status: Int) async throws {
+        let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let keys = LipsyncFixtureKeys(), notice = FalLipsyncCleanupNotice()
+        let key = try #require(try await keys.key(for: "fal"))
+        let fingerprint = VoiceLabFingerprint.bytes(Data(key.utf8))
+        let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt()), .json(200, Fixtures.completed), .json(200, Fixtures.output),
+                                      .json(status, "{}"), .json(status, "{}")])
+        let provider = try Fixtures.provider(http, keys: keys, cleanupNotice: notice)
+        let quote = try await Fixtures.quote(provider)
+        let approval = try await Fixtures.approval(provider, quote: quote, root: root)
+        let job = try await provider.submit(quote, approval: approval)
+        #expect(try await provider.poll(job) == .done(Fixtures.result))
+        let billing = await provider.status(quoteID: quote.id)?.billing
+        #expect(!notice.applies(toFingerprint: fingerprint))
+
+        await provider.cleanup(job)
+        #expect(await http.requests.last?.httpMethod == "DELETE")
+        #expect(notice.applies(toFingerprint: fingerprint))
+        #expect(await provider.status(quoteID: quote.id)?.cleanup == .failed)
+        #expect(await provider.status(quoteID: quote.id)?.billing == billing)
+        #expect(try await provider.poll(job) == .done(Fixtures.result))
+
+        await provider.cleanup(job)
+        await keys.replace()
+        let replacement = try #require(try await keys.key(for: "fal"))
+        #expect(!notice.applies(toFingerprint: VoiceLabFingerprint.bytes(Data(replacement.utf8))))
+        #expect(!notice.applies(toFingerprint: nil))
+        #expect(notice.applies(toFingerprint: fingerprint))
+    }
+
     @Test func providerErrorsAreFixedCopyAndCleanupFailureIsNotHidden() async throws {
         let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let http = LipsyncFixtureHTTP([.json(200, Fixtures.receipt()), .json(200, #"{"status":"COMPLETED","error":"private URL and provider detail","error_type":"bad_input"}"#),

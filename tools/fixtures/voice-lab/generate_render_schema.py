@@ -64,6 +64,7 @@ d['voiceLabJoinAdvisory'] = obj({'seams': {'type': 'array', 'minItems': 1, 'maxI
 d['voiceLabRenderQA'] = obj({'transcriptTokens': nullable(integer), 'transcriptExact': nullable({'type': 'boolean'}), 'transcriptMatch': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}),
                               'lufsJumpLu': num, 'peakDbfs': num, 'speakerScore': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}),
                               'speakerThreshold': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}), 'speakerModel': nullable(string), 'speakerPassed': nullable({'type': 'boolean'}),
+                              'outputSpeakerCheckSkipped': {'const': True},
                               'joinAdvisory': {'$ref': '#/$defs/voiceLabJoinAdvisory'},
                               'shortSpeech': obj({'mode': {'enum': ['pooled', 'unmeasured']}, 'recordId': string,
                                                   'consentMethod': {'enum': ['recordedStatement', 'projectAttestation']},

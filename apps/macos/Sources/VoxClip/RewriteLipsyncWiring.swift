@@ -86,7 +86,8 @@ extension RewriteSession {
             if let smoke { return try await smoke(request, window, recordID, model, mayPay, checkpoint, progress) }
             #endif
             try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
+            let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations),
+                                              cleanupNotice: app.falLipsyncCleanupNotice)
             #if DEBUG
             await provider.setDiagnostic(LipsyncDiagnostic())
             #endif

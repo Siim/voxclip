@@ -117,6 +117,52 @@ import VoxClipCore
     }
 
     @MainActor @Test(.timeLimit(.minutes(2)))
+    func aProcessedPreviewShowsPictureWhenTheAudioStartsFirst() async throws {
+        let source = try await NativeMediaFixtures.shared.file("bars-tone.mov")
+        let root = try LipsyncImportFixture.directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let processedSource = try await Self.delayedVideo(source, by: CMTime(value: 1, timescale: 2), in: root)
+        let controller = PreviewPlayerController()
+        let layer = AVPlayerLayer(player: controller.player)
+        let failures = Failures(controller)
+        defer { controller.close(); failures.stop() }
+        try await controller.load(Self.request(source, speed: nil, cuts: false))
+        try #require(await Self.waitForPicture(layer))
+        try await controller.update(Self.captioned(Self.request(processedSource, speed: 1.1, cuts: false)))
+        let pictureReady = await Self.waitForPicture(layer)
+        #expect(layer.player?.currentItem?.status == .readyToPlay)
+        #expect(pictureReady, "preview: display stalled, layer reattached")
+        #expect(failures.events.isEmpty, "preview: compositor reason=\(failures.events.map { $0.1?.rawValue })")
+    }
+
+    @MainActor static func waitForPicture(_ layer: AVPlayerLayer) async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(4)
+        while !layer.isReadyForDisplay, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+        return layer.isReadyForDisplay
+    }
+
+    static func delayedVideo(_ source: URL, by delay: CMTime, in directory: URL) async throws -> URL {
+        let asset = AVURLAsset(url: source)
+        let video = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let audio = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let duration = try await asset.load(.duration)
+        let composition = AVMutableComposition()
+        let picture = try #require(composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid))
+        let sound = try #require(composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid))
+        try picture.insertTimeRange(.init(start: .zero, duration: duration - delay), of: video, at: delay)
+        try sound.insertTimeRange(.init(start: .zero, duration: duration), of: audio, at: .zero)
+        let url = directory.appendingPathComponent("delayed-picture.mov")
+        let exporter = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
+        try await exporter.export(to: url, as: .mov)
+        let stored = try #require(try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first)
+        let firstEdit = try #require(try await stored.load(.segments).first)
+        try #require(firstEdit.isEmpty && firstEdit.timeMapping.target.duration == delay)
+        return url
+    }
+
+    @MainActor @Test(.timeLimit(.minutes(2)))
     func captionLayoutFailureInPreviewKeepsThePictureAndSaysWhy() async throws {
         let source = try await NativeMediaFixtures.shared.file("bars-tone.mov")
         let controller = PreviewPlayerController(builder: CompositionBuilder(captionDrawHook: Self.failingDraw))

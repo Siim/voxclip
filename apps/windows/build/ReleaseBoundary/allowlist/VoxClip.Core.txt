@@ -564,6 +564,7 @@ attribute VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction :: property Token 
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabProvenance :: property Pace @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabProvenance :: property Region @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: property JoinAdvisory @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: property OutputSpeakerCheckSkipped @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: property ShortSpeech @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabRenderRecipe :: property EdgeGain @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabRetentionJson @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.VoiceLab.VoiceLabRetentionDocument")
@@ -9509,6 +9510,10 @@ member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: field public Sente
 member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: method public EndsSentence(string)
 member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: method public Split(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.Transcript.TranscriptPostProcessor :: method public Process(VoxClip.Core.Domain.Transcript.RawTranscript,double,VoxClip.Core.Domain.Transcript.AudioEnvelope,string,System.DateTimeOffset)
+member VoxClip.Core.Domain.Transcript.TranscriptionAlignmentRetry :: field private finish
+member VoxClip.Core.Domain.Transcript.TranscriptionAlignmentRetry :: method internal .ctor(string,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Transcript.Transcript>>)
+member VoxClip.Core.Domain.Transcript.TranscriptionAlignmentRetry :: method public FinishAsync(System.Threading.CancellationToken)
+member VoxClip.Core.Domain.Transcript.TranscriptionAlignmentRetry :: method public get_ProviderRequestId()
 member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method private .ctor(VoxClip.Core.Domain.Transcript.TranscriptionEvidence)
 member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method private get_EqualityContract()
@@ -9589,12 +9594,14 @@ member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public Equa
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public Equals(object)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public GetHashCode()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public ToString()
+member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_AlignmentReady()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_Audio()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_ContentKey()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_Observe()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_Plan()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public op_Equality(VoxClip.Core.Domain.Transcript.TranscriptionRequest,VoxClip.Core.Domain.Transcript.TranscriptionRequest)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public op_Inequality(VoxClip.Core.Domain.Transcript.TranscriptionRequest,VoxClip.Core.Domain.Transcript.TranscriptionRequest)
+member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_AlignmentReady(System.Action`1<VoxClip.Core.Domain.Transcript.TranscriptionAlignmentRetry>)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_Audio(VoxClip.Core.Domain.Transcript.ExtractedAudio)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_ContentKey(string)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_Observe(System.Action`1<VoxClip.Core.Domain.Transcript.TranscriptionEvidence>)
@@ -12624,14 +12631,15 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract+SeamPiece :: method p
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method private get_EqualityContract()
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public .ctor(System.Nullable`1<int>,System.Nullable`1<bool>,System.Nullable`1<double>,double,double,System.Nullable`1<double>,System.Nullable`1<double>,string,System.Nullable`1<bool>,VoxClip.Core.Domain.VoiceLab.VoiceLabShortSpeechEvidence,VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisory)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public Deconstruct(System.Nullable`1<int>&,System.Nullable`1<bool>&,System.Nullable`1<double>&,double&,double&,System.Nullable`1<double>&,System.Nullable`1<double>&,string&,System.Nullable`1<bool>&,VoxClip.Core.Domain.VoiceLab.VoiceLabShortSpeechEvidence&,VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisory&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public .ctor(System.Nullable`1<int>,System.Nullable`1<bool>,System.Nullable`1<double>,double,double,System.Nullable`1<double>,System.Nullable`1<double>,string,System.Nullable`1<bool>,VoxClip.Core.Domain.VoiceLab.VoiceLabShortSpeechEvidence,VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisory,System.Nullable`1<bool>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public Deconstruct(System.Nullable`1<int>&,System.Nullable`1<bool>&,System.Nullable`1<double>&,double&,double&,System.Nullable`1<double>&,System.Nullable`1<double>&,string&,System.Nullable`1<bool>&,VoxClip.Core.Domain.VoiceLab.VoiceLabShortSpeechEvidence&,VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisory&,System.Nullable`1<bool>&)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public GetHashCode()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public get_JoinAdvisory()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public get_LufsJumpLu()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public get_OutputSpeakerCheckSkipped()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public get_PeakDbfs()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public get_ShortSpeech()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public get_SpeakerModel()
@@ -12645,6 +12653,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public op_Equalit
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa,VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public set_JoinAdvisory(VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisory)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public set_LufsJumpLu(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public set_OutputSpeakerCheckSkipped(System.Nullable`1<bool>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public set_PeakDbfs(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public set_ShortSpeech(VoxClip.Core.Domain.VoiceLab.VoiceLabShortSpeechEvidence)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa :: method public set_SpeakerModel(string)
@@ -17598,6 +17607,7 @@ member VoxClip.Core.Services.Speech.TranscriptionService :: method internal Requ
 member VoxClip.Core.Services.Speech.TranscriptionService :: method internal SetAsideUnreadableCache(string)
 member VoxClip.Core.Services.Speech.TranscriptionService :: method internal get_Queues()
 member VoxClip.Core.Services.Speech.TranscriptionService :: method private .cctor()
+member VoxClip.Core.Services.Speech.TranscriptionService :: method private AlignAsync(VoxClip.Core.Domain.Transcript.RawTranscript,VoxClip.Core.Domain.Transcript.TranscriptionRequest,VoxClip.Core.Domain.Transcript.AudioEnvelope,bool,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Speech.TranscriptionService :: method private Canonical(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Speech.TranscriptionService :: method private PreflightCacheAsync(string,double,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Speech.TranscriptionService :: method private ReadCacheAsync(string,byte[],VoxClip.Core.Services.Speech.ITranscriber,VoxClip.Core.Domain.Transcript.TranscriptionPlan,System.Threading.CancellationToken)
@@ -18956,6 +18966,7 @@ type VoxClip.Core.Domain.Transcript.TranscriptEngine
 type VoxClip.Core.Domain.Transcript.TranscriptJsonContext
 type VoxClip.Core.Domain.Transcript.TranscriptParagraphs
 type VoxClip.Core.Domain.Transcript.TranscriptPostProcessor
+type VoxClip.Core.Domain.Transcript.TranscriptionAlignmentRetry
 type VoxClip.Core.Domain.Transcript.TranscriptionEvidence
 type VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind
 type VoxClip.Core.Domain.Transcript.TranscriptionOptions
