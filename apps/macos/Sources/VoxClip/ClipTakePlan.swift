@@ -3,6 +3,35 @@ import Observation
 import VoxClipCore
 import VoxClipMedia
 
+@MainActor @Observable final class RewriteWordCheckFailures {
+    private struct Key: Hashable {
+        let firstWord: String
+        let lastWord: String
+        let text: String
+        let voice: String
+
+        init(_ input: VoiceLabTakeInput) {
+            firstWord = input.window.firstWordId
+            lastWord = input.window.lastWordId
+            text = input.text
+            voice = input.recordID
+        }
+    }
+
+    private var failedTakes: [Key: Set<UUID>] = [:]
+
+    func record(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput) {
+        guard row.qa?.failures.contains(.transcript) == true, let receipt = row.receipt else { return }
+        let key = Key(input)
+        guard failedTakes[key, default: []].count < 2 else { return }
+        failedTakes[key, default: []].insert(receipt.requestID)
+    }
+
+    func stops(_ input: VoiceLabTakeInput) -> Bool {
+        failedTakes[Key(input), default: []].count >= 2
+    }
+}
+
 @MainActor private final class ClipTakeVoicePool {
     let session = VoiceLabVoiceCheckSession()
     var value = VoiceLabShortTakePool()
@@ -310,6 +339,7 @@ import VoxClipMedia
     /// What the later parts of the held run add to `batch`'s estimate.
     private var laterEstimates: [CostEstimate] { laterParts.map(\.priced.estimate) }
     private var lastVoicePrices: [Int: CostEstimate] = [:]
+    private let wordCheckFailures: RewriteWordCheckFailures
     /// "Pricing phrase 12 of 34…" while a price is prepared, nil otherwise.
     private(set) var preparationStep: String?
     @ObservationIgnored private var progress: VoiceLabTakeBatchProgress?
@@ -517,7 +547,8 @@ import VoxClipMedia
          makeInput: @escaping @MainActor (Phrase) async throws -> VoiceLabTakeInput,
          readCap: @escaping @MainActor () async throws -> VoiceLabMonthlyCap? = { nil },
          isCurrent: @escaping @MainActor () -> Bool = { true }, audition: VoiceLabAudition = VoiceLabAudition(),
-         acceptedChargesChanged: @escaping @MainActor () async -> Void = {}) throws {
+         acceptedChargesChanged: @escaping @MainActor () async -> Void = {},
+         wordCheckFailures: RewriteWordCheckFailures = RewriteWordCheckFailures()) throws {
         var final = project
         for id in hunks.filter({ $0.kind == .cut }).flatMap(\.sourceWordIds) where !final.edits.cutWordIds.contains(id) {
             final.edits.cutWordIds.append(id)
@@ -525,6 +556,7 @@ import VoxClipMedia
         self.project = final; self.scope = scope; self.makeInput = makeInput; self.readCap = readCap; self.isCurrent = isCurrent
         self.audition = audition
         self.acceptedChargesChanged = acceptedChargesChanged
+        self.wordCheckFailures = wordCheckFailures
         phrases = try Self.preparePlan(project: project, scope: scope, envelope: envelope, hunks: hunks)
     }
 
@@ -735,6 +767,12 @@ import VoxClipMedia
     var unfinishedVoiceParts: [Int] {
         phrases.map(\.id).filter { automaticTake(phrase: $0) == nil }
     }
+
+    func stoppedForRepeatedWords(phrase index: Int) -> Bool {
+        inputs.indices.contains(index) && wordCheckFailures.stops(inputs[index])
+    }
+
+    static let repeatedWordCheckCopy = "The word check failed twice for these words with this voice."
 
     /// The whole clip's parts (RewriteWholeClip.swift): paid takes that arrived while the plan was not current were made
     /// from the plan's own inputs, so once it is current again (an Undo) they are the parts' takes like any other, chosen
@@ -987,6 +1025,7 @@ import VoxClipMedia
                     indices = indices.filter { phrases[$0].blocked == nil }
                     preparationStep = nil
                 }
+                indices.removeAll { stoppedForRepeatedWords(phrase: $0) }
                 // Every phrase settled as blocked: the inputs serve Say it myself, and there is nothing to price.
                 if indices.isEmpty {
                     if revision == version { preparing = false; preparationStep = nil }
@@ -1298,6 +1337,7 @@ import VoxClipMedia
     private func receive(_ rows: [VoiceLabTakeRow], phrase: Int, batch: VoiceLabTakeBatch, version: Int) async {
         for row in rows {
             if takeInputs[row.id] == nil, inputs.indices.contains(phrase) { takeInputs[row.id] = inputs[phrase] }
+            if let input = takeInputs[row.id] { wordCheckFailures.record(row, input: input) }
             let newIDs = row.acceptedRequestIDs.subtracting(sent)
             if !newIDs.isEmpty {
                 charges.append(batch.estimate(of: newIDs)); sent.formUnion(newIDs)

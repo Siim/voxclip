@@ -50,6 +50,19 @@ extension DebugRewriteSmoke {
         return fixture
     }
 
+    private static func wholeClipWrongWordsFixture() -> Fixture {
+        var fixture = wholeClipFixture()
+        let lastSentence = "That is the whole idea, and it only takes a few minutes from start to finish."
+        func shortGaps(_ text: String) -> String {
+            text.replacingOccurrences(of: ". ", with: "! ").replacingOccurrences(of: "friends!", with: "friends.")
+        }
+        fixture.script = shortGaps(fixture.script)
+        let reply = replace(Array(wholeClipChanges.prefix(1))).replacingOccurrences(of: " " + lastSentence, with: "")
+        fixture.rewrites = [.passage(shortGaps(reply))]
+        fixture.voice.exactFit = false
+        return fixture
+    }
+
     /// The whole-clip clip with a cut "um" right before each later sentence, touching its first word: a part that starts
     /// there would have its seam beside the cut if the parts didn't tile the clip.
     private static func wholeClipCutsFixture() -> Fixture {
@@ -129,6 +142,10 @@ extension DebugRewriteSmoke {
         Definition(id: "S-revoice-whole-retry", title: "the picture's preparation fails once: Fit stops with its reason and no lip sync; a retry starts clean and reaches Review",
                    requiresCompletion: false, fixture: wholeClipShortFixture()) { harness in
             try await harness.retryWholeClipAfterAPictureFailure()
+        },
+        Definition(id: "S-revoice-whole-same-failure", title: "the same part says the wrong words twice: verified parts stay and the stop offers only free next steps",
+                   requiresCompletion: false, fixture: wholeClipWrongWordsFixture()) { harness in
+            try await harness.stopWholeClipAfterTwoWordFailures()
         },
         Definition(id: "S-revoice-whole-fal-short", title: "the whole clip's lip sync through the real run: fal.ai's result comes back 5 frames short with its own audio, is cut back to the voice, and Use puts it in",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -730,6 +747,45 @@ extension DebugRewriteSmoke.Harness {
                 && speechRequests == speech && lipsync.calls == [.lipsync2, .sync3] && whole.synced?.model == .sync3,
             "[\(upgrade?.title ?? "none")] · \(phaseText(whole)) · \(speechRequests - speech) new speech requests · lip sync \(lipsync.calls.map(\.name))")])
         try await useAndCheck(session, whole, model: .sync3)
+    }
+
+    func stopWholeClipAfterTwoWordFailures() async throws {
+        let lipsync = installWholeClipStandIn()
+        let (session, whole) = try await openWholeClip()
+        let prepared = editor?.wholeClipPrepared
+        editor?.wholeClipPrepared = { plan in
+            prepared?(plan)
+            RewriteSmokeHTTP.script.withLock { voice in
+                voice.misheardScript = plan.phrases.last?.text
+                if !voice.exactFit { voice.seconds = voice.fitting.mapValues { $0 * 0.98 } }
+            }
+        }
+        guard let primary = session.wholeClipPrimary()?.title else { throw DebugRewriteSmoke.Failure.setup("no revoice quote") }
+        try await runWholeClip(session, whole, title: primary)
+        let parts = session.wholeClipPlan?.phrases.count ?? 0
+        let firstScripts = RewriteSmokeHTTP.script.withLock { $0.synthesisScripts }
+        let firstPrice = whole.quote?.wholeUSD
+        let retryPrice = whole.retryUSD
+        let retry = session.wholeClipStoppedActions().first
+        makeItAppend([wholeClipCheck("WQ1", parts > 1 && whole.failure?.part == parts && firstScripts.count == parts
+            && retryPrice.map { price in firstPrice.map { price < $0 } ?? false } == true
+            && retry?.id == "wholeClipRetry" && retry?.priced == true,
+            "\(phaseText(whole)) · \(firstScripts.count) takes for \(parts) parts · retry \(String(describing: retryPrice)) of \(String(describing: firstPrice))")])
+        try await act("click [\(retry?.title ?? "Try Again")]", clicked: "wholeClipRetry") {
+            retry?.perform()
+            await whole.waitForRun()
+        }
+        let scripts = RewriteSmokeHTTP.script.withLock { $0.synthesisScripts }
+        let reason = phaseText(whole)
+        let actions = session.wholeClipStoppedActions()
+        let visible = steps.last?.snapshot.controls.filter { $0.id.hasPrefix("wholeClip") }.map(\.title).sorted()
+        makeItAppend([wholeClipCheck("WQ2", firstScripts.last.map { scripts == firstScripts + [$0] } == true
+            && lipsync.calls.isEmpty && reason.contains("Part \(parts)") && reason.contains("twice") && reason.contains("kept")
+            && actions.map(\.title) == ["Voice Only the Changed Phrases", "Edit the Words"]
+            && visible == actions.map(\.title).sorted()
+            && !actions.contains(where: \.priced) && whole.retryUSD == nil && session.wholeClipPrimary(retry: true) == nil,
+            "\(reason) · \(scripts.count - firstScripts.count) new takes · [\(actions.map(\.title).joined(separator: "] ["))]")])
+        ended = whole.isStopped
     }
 }
 #endif
