@@ -2098,10 +2098,10 @@ The creator selects words, a clip or a time range, types what they want, and get
 The toolbox extends the planner's operations (`ClipAutopilotOperation`, §16) additively: `Decision` gains `bleep`,
 `blur`, `overlay`, `freeze`, `sound`, `stretch`, `translate` and `duck`; `Action` gains `effect(ClipEffect)`,
 `stretch(clipID:start:end:rate:)`, `translateCaptions(clipID:startWord:endWord:language:text:)` and
-`musicDucking(clipID:on:)`. `ClipAutopilotMapping.apply` adds effects through `ClipEffects.adding`. A clip plays at one
-speed (design.md §6.9): a stretch that covers a whole clip, within `ClipControlsProject.wholeClipToleranceSeconds`
-(0.25 s) at each end, sets that clip's speed (`ClipControlsProject.wholeClip`, `settingSpeed`); a stretch over part of
-a clip is returned as pending, and the editor's row offers "Apply 1.25× to the whole clip". Translate applies as the
+`musicDucking(clipID:on:)`. `ClipAutopilotMapping.apply` adds effects through `ClipEffects.adding`. Use `speedForPart`
+for a kept word span and `speed` for the whole clip (design.md §6.9). A legacy `speed` reply is applied immediately
+only if it covers the clip within 0.25 s at each end. Otherwise it stays pending and offers "Apply 1.25× to the whole clip".
+Translate applies as the
 words' translated captions (`CaptionTranslations.translating`, below).
 
 | Kind | Group | Fields | Becomes |

@@ -163,7 +163,7 @@ import VoxClipCore
                 PanelButton(action: PanelAction(id: "askClaude.wholeClip.\(row.id)", title: EditorModel.wholeClipTitle(row.operation)) {
                     model.applyAskClaudeStretchToClip(row.id)
                 }, kind: .bordered)
-                note("A clip plays at one speed. Nothing changed yet.")
+                note("This would change the whole clip. Nothing changed yet.")
             case .undone: note("Undone. Use Edit \u{203A} Redo to bring it back.")
             case .applied: if state.adjusting == row.id { adjuster(row) }
             }

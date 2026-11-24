@@ -146,7 +146,7 @@ public sealed class AskClaudeAppTests
         Assert.StartsWith("Voice it · about $", run.Rows[3].Price, StringComparison.Ordinal);
         // A speed on Full Take words that no clip holds: a clip plays at one speed, so the row says why and changes nothing.
         Assert.Null(EditorViewModel.StretchClip(run.Rows[4].Operation, editor.Project));
-        Assert.Equal((AskClaudeRowStatus.Later, "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."), (run.Rows[4].Status, run.Rows[4].Reason));
+        Assert.Equal((AskClaudeRowStatus.Later, "Ask on a clip to change its speed. Nothing changed."), (run.Rows[4].Status, run.Rows[4].Reason));
         Assert.Equal(["bleep", "title", "sound"], Kinds(editor));
         Assert.Equal(3, run.AppliedCount);
         Assert.Equal("“word2 word3 word4 word5”", run.Label);

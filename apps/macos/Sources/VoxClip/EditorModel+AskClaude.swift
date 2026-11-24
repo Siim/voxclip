@@ -325,7 +325,7 @@ extension EditorModel {
 
     static func laterReason(_ operation: ClipAutopilotOperation) -> String {
         switch operation.action {
-        case .stretch: return "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."
+        case .stretch: return "Ask on a clip to change its speed. Nothing changed."
         case .musicDucking: return "This clip has no music to duck."
         case .motion: return "This cue overlaps existing motion or no longer fits the clip. Nothing changed."
         default: return "Not available yet. Nothing changed."

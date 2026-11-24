@@ -276,7 +276,7 @@ internal sealed class AskClaudePanel : InlineEditorJob
                 var whole = Ui.Button(EditorViewModel.WholeClipTitle(row.Operation), () => Editor.ApplyAskClaudeStretchToClip(row.Id));
                 AutomationProperties.SetAutomationId(whole, "AskClaude.WholeClip." + row.Id);
                 panel.Children.Add(whole);
-                panel.Children.Add(Secondary("A clip plays at one speed. Nothing changed yet."));
+                panel.Children.Add(Secondary("This would change the whole clip. Nothing changed yet."));
                 break;
             case AskClaudeRowStatus.Undone: panel.Children.Add(Secondary("Undone. Press Ctrl+Y (Redo) to bring it back.")); break;
             case AskClaudeRowStatus.Applied when Editor.AskClaude.Adjusting == row.Id && Editor.AskClaudeEffect(row.Id) is { } effect:

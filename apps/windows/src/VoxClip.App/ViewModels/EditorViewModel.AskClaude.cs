@@ -407,7 +407,7 @@ public sealed partial class EditorViewModel
     /// <summary>Why a later row changed nothing.</summary>
     public static string AskClaudeLaterReason(ClipAutopilotOperation operation) => operation.Action switch
     {
-        ClipAutopilotAction.Stretch => "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed.",
+        ClipAutopilotAction.Stretch => "Ask on a clip to change its speed. Nothing changed.",
         ClipAutopilotAction.MusicDucking => "This clip has no music to duck.",
         _ => "Not available yet. Nothing changed."
     };
