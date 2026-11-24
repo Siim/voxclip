@@ -174,6 +174,8 @@ Before launching A7, run a read-only account-handle check for its retained route
 
 ### 3.5 Desktop flow
 
+Mac implements the device flow and publishing client below. Tests use `shared/fixtures/device-flow/voxconvo-stand-in.py` on loopback, with no real account, media, or credentials. Production access is disabled by default: leave the Mac bundle key `VoxConvoDevicePublishingEnabled` unset until the scoped-session enforcement (A10), the approved upload and GraphQL routes, and the browser approval page (W1/W6) are deployed and verified together. Windows Accounts, DPAPI storage, and Export integration are not implemented here.
+
 #### 3.5.1 Connect (Settings → Accounts → VoxConvo → Connect)
 
 ```text
@@ -241,9 +243,9 @@ Shown in the Export sheet as "Also post to VoxConvo @handle" when connected. The
 Rules:
 
 - The upload timeout is `max(180 s, bytes / 500)`. Progress shows "Uploading 63%" → "Processing" → "Posted · Open".
-- The button disables on press. Steps 1–2 may be retried automatically (no post exists yet). **Step 3 is never retried automatically.** On failure: "Saved to {folder}. Posting to VoxConvo failed: {reason}." [Try again]. "Try again" reuses the rendered file, and reuses the completed job's `s3Url` if it is less than 24 hours old, so only step 3 repeats.
+- The button disables on press. The client does not automatically retry an upload or the final post. On failure: "Saved to {folder}. Posting to VoxConvo failed: {reason}." **Try posting again** checks the file and the account, then reuses the completed job's `s3Url` if it is less than 24 hours old and belongs to the current session. If the server did not confirm a post, check the profile before retrying to avoid a duplicate.
 - Any edit after the render invalidates the cached render for posting.
-- `wordTimestamps` are the caption words on the final clip's timeline after cuts (the same words the SRT uses).
+- `wordTimestamps` are the caption words on the final clip's timeline after cuts and playback speed (the same word track the SRT uses, before cue grouping). When captions are off, use the edited, censored transcript. The burned-in AI disclosure is unchanged; adding its line to the post is optional and off by default. Include any music credit.
 - Against a server without A4/A5, steps 1–3 still work (`style: none`, `words: []`), but a pass-through MP4 is stored as `video/webm`. Ship A4 before the desktop M2 release.
 
 ### 3.6 Hardening (v1.1): `createClipPost`

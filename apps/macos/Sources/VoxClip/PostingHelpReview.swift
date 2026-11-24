@@ -11,18 +11,7 @@ import VoxClipCore
 
     func record(_ target: ExportTarget, name: String, result: ExportResult, render: RenderRequest, snapshot: EditorRenderSnapshot) {
         guard case .clip(let id) = target, !clips.contains(where: { $0.id == id }) else { return }
-        let effects = render.effects?.effects ?? []
-        let words: [CaptionWord]
-        if render.clipControls?.muteSource == true {
-            words = []
-        } else if let voice = render.voiceLab?.prepared.outputPlan {
-            words = ClipEffects.maskingBleeps(voice, effects: effects).captions
-        } else if let state = snapshot.state, let clip = snapshot.project.edits.clips.first(where: { $0.id == id }),
-                  let segments = try? buildSegments(state, activeClip: clip) {
-            words = captionCopy(ClipEffects.maskingBleeps(segments, effects: effects), plan: render.plan)
-        } else {
-            words = []
-        }
+        let words = snapshot.exportedWords(target: target, render: render)
         music[id] = render.music?.entry
         clips.append(PostingClip(id: id, title: name, words: words.map(\.text).joined(separator: " "), duration: result.durationSeconds))
     }

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Mac adds VoxConvo account and export controls for direct posting, disabled until VoxConvo's device sign-in is ready.
 - On Mac, ask Claude for a suggested order, posting times, and drafts with hashtags for X, LinkedIn, and VoxConvo after exporting clips.
 - On Mac, Export and the CLI can save editable FCPXML timelines with cuts, text titles, captions, and separate voice and music.
 - The VoxClip launch page now shows Claude’s one-click workflow, Rewrite in your own voice, and feed-ready exports, with real clip examples and downloads for Mac and Windows.
