@@ -660,7 +660,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
-    @ObservationIgnored var cardPlanPath: String?
+    @ObservationIgnored var cardPlanConnector: CardPlanConnector?
     @ObservationIgnored var onCardProjectChange: ((Project) -> Void)?
     @ObservationIgnored private var initialised = false
     /// This editor's lease on its project's cache entry, from `start` to `close` (architecture §8.2). Every editor holds
@@ -1875,7 +1875,7 @@ extension EditorModel {
                   self.rewriteConnectorSignature == selectedSignature,
                   let lease = self.llmRuns.acquire() else { return }
             let runs = self.llmRuns
-            let connector: any LLMConnector = if let cardPlanPath { CardPlanConnector(app: app, provider: provider, path: cardPlanPath) } else { app.connector(provider.id) }
+            let connector: any LLMConnector = cardPlanConnector.map { $0 as any LLMConnector } ?? app.connector(provider.id)
             if claudeMode.findNeedsAction || claudeMode.afterFind != nil {
                 claudeMode.cancelFindContinuation()
                 if claudeMode.armed, claudeModeOn { claudeMode.phase = .waiting }
@@ -1894,7 +1894,7 @@ extension EditorModel {
                     // The route comes first (design §6.2: the consent, then "while it runs"); only the lease is held. A
                     // declined send leaves the sidebar, the last error and the fallback note as they were and announces
                     // nothing, and no "Finding clips…" row shows behind a sheet.
-                    let authorized = if cardPlanPath != nil { true } else { try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
+                    let authorized = if let cardPlanConnector { cardPlanConnector.isCurrent } else { try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
                         wordCount: transcript.words.filter { $0.kind == .word }.count, rewrite: selectedPreset == .hooks ? DirectorScope(kind: .fullTake, wordCount: transcript.words.filter { $0.kind == .word }.count) : nil, confirmation: sendConfirmation, verb: selectedPreset == .hooks ? "Hook" : nil, isCurrent: { [self] in
                             let current = project == snapshot || (draft?.request.confirmedTranscript != nil && project.transcript == draft?.request.confirmedTranscript)
                             return !isLeaving && current && rewriteConnectorSignature == selectedSignature && (draft == nil || canSearchClaudeDraft(provider))

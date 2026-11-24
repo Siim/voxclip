@@ -20,10 +20,21 @@ import VoxClipCore
         let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.appendingPathComponent("Data").path]))
         app.voiceRecoveryForTests = { }
         #expect(app.set("update.autoCheck", .bool(false)))
+        #expect(app.set("llm.connector", .string("codex")))
+        #expect(app.set(ClipsMode.capKey, .number(1)))
+        await app.start()
         let importer = CardImport(library: library)
         importer.offer(card.deletingLastPathComponent())
         for _ in 0..<200 where importer.scanRunning { try await Task.sleep(for: .milliseconds(25)) }
         #expect(importer.selected.count == 2)
+        #expect(importer.blocked(app) == nil)
+        let batch = CardImport(library: library)
+        batch.offer(card.deletingLastPathComponent())
+        for _ in 0..<200 where batch.scanRunning { try await Task.sleep(for: .milliseconds(25)) }
+        batch.start(app)
+        #expect(batch.budget?.cap == 1)
+        batch.stop()
+        for _ in 0..<200 where batch.running { try await Task.sleep(for: .milliseconds(25)) }
         importer.start(app, copyOnly: true)
         for _ in 0..<400 where importer.running { try await Task.sleep(for: .milliseconds(25)) }
         #expect(importer.stage == .done)

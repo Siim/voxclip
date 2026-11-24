@@ -111,6 +111,10 @@ the media probe. This fixture checks the workflow, not production speed or recog
 accuracy on a long video. Windows shares the transcription-choice fixture but has no
 Apple Speech draft; native Windows drop-to-ready was not measured.
 
+The offline **drop-to-post** pass extends this fixture through Review clips and Export all. Run it with
+`VOXCLIP_DATA_DIR=<empty-data-dir> VOXCLIP_SHARED_DIR="$PWD/shared" swift test --package-path apps/macos --jobs 2 --filter ClaudeModeDropTests`.
+It checks incremental review, actual MP4 exports and sidecar post text, then records time to first Ready, user moves to a post-ready export, voice stand-in requests made versus approved under $0 and $1 caps, and each clip's self-check verdict. It does not contact a provider, make a real voice, or publish. The passage-voice fixture approves no fal.ai calls.
+
 ## Side by side
 
 | | Agent (Codex/Opus, no app) | VoxClip today |
