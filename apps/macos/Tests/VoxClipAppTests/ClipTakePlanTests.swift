@@ -3600,7 +3600,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.spent.units > 0 && ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
-    @Test func explicitLowerScoreSelectionSurvivesFailedBetterRetryStopAndEviction() async throws {
+    @Test func explicitLowerScoreSelectionSurvivesFailedBetterRetryAndStopWithEveryTakeKept() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         ClipTakeHTTP.state.withLock { $0.amplitudeVariance = 0.8 }
@@ -3616,7 +3616,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         ClipTakeHTTP.state.withLock { $0.failQA = false; $0.amplitudeVariance = 0 }
         fixture.beforeProgress = { #expect(plan.phrases[0].selectedID == selected.id) }
         await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
-        #expect(plan.phrases[0].selectedID == selected.id && plan.phrases[0].takes.count == 3)
+        // Every paid take stays (#11): a fourth take no longer evicts one, and the explicit pick holds.
+        #expect(plan.phrases[0].selectedID == selected.id && plan.phrases[0].takes.count == 4)
         let barrier = ClipTakeBarrier()
         fixture.beforeProgress = { #expect(plan.phrases[0].selectedID == selected.id); await barrier.pause() }
         await plan.prepareAnother(phrase: 0)
