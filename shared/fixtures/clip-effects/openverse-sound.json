@@ -1,0 +1,10 @@
+{
+  "page_count": 1,
+  "results": [
+    { "id": "restricted", "category": "sound_effect", "title": "NC sound", "license": "by-nc", "duration": 120, "url": "https://audio.example.test/restricted.wav", "foreign_landing_url": "https://audio.example.test/credits/restricted" },
+    { "id": "missing-credit", "category": "sound_effect", "title": "Missing credit", "license": "by", "duration": 120, "url": "https://audio.example.test/missing.wav", "foreign_landing_url": "https://audio.example.test/credits/missing" },
+    { "id": "long", "category": "sound_effect", "title": "Long sound", "license": "cc0", "duration": 3000, "url": "https://audio.example.test/long.wav", "foreign_landing_url": "https://audio.example.test/credits/long" },
+    { "id": "credited-pop", "category": "sound_effect", "title": "Pop", "creator": "Fixture creator", "attribution": "Pop by Fixture creator (CC BY 4.0)", "license": "by", "duration": 120, "url": "https://audio.example.test/pop.wav", "foreign_landing_url": "https://audio.example.test/credits/pop" },
+    { "id": "public-domain", "category": "sound_effect", "title": "Public domain sound", "license": "pdm", "duration": 120, "url": "https://audio.example.test/public.wav", "foreign_landing_url": "https://audio.example.test/credits/public" }
+  ]
+}

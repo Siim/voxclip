@@ -38,6 +38,9 @@ public static class ClipEffects
         "progress" => ["position"],
         "freeze" => [],
         "sound" => ["sound", "gainDb"],
+        "colourLook" => ["look"],
+        "speedForPart" => ["rate"],
+        "illustration" => ["imageFile"],
         _ => null
     };
 
@@ -85,9 +88,9 @@ public static class ClipEffects
                 Require(track.ValueKind == JsonValueKind.Array);
                 foreach (var sample in track.EnumerateArray()) Rect(sample, true);
             }
-            foreach (var key in new[] { "text", "position" })
+            foreach (var key in new[] { "text", "position", "look", "imageFile" })
                 if (entry.TryGetProperty(key, out var text)) Require(text.ValueKind == JsonValueKind.String);
-            foreach (var key in new[] { "scale", "gainDb" })
+            foreach (var key in new[] { "scale", "gainDb", "rate" })
                 if (entry.TryGetProperty(key, out var number)) Number(number);
             if (entry.TryGetProperty("sound", out var sound))
             {
@@ -135,6 +138,14 @@ public static class ClipEffects
         var clip = effect.GetProperty("clipId");
         Require(clip.ValueKind == JsonValueKind.Null || Matches(clip.GetString(), Identifier));
         Require(start >= 0 && end > start && end - start <= 600 + 1e-9);
+        if (kind is "colourLook" or "speedForPart" or "illustration") Require(clip.ValueKind == JsonValueKind.String);
+        if (kind == "colourLook") Require(effect.GetProperty("look").GetString() is "original" or "muted" or "warm" or "bw");
+        if (kind == "speedForPart") Require(effect.GetProperty("rate").GetDouble() is >= 0.5 and <= 2);
+        if (kind == "illustration")
+        {
+            var image = effect.GetProperty("imageFile").GetString();
+            Require(Matches(image, @"[0-9a-f-]{36}/illustration-[0-9a-f]{64}\.png") && image!.StartsWith(projectId + "/", StringComparison.Ordinal));
+        }
         if (effect.TryGetProperty("wordIds", out var words))
         {
             var ids = words.EnumerateArray().Select(word => word.GetString()!).ToArray();

@@ -3,6 +3,7 @@ import Foundation
 public struct ClipPlanEffect: Codable, Sendable, Equatable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
         case zoom, punchIn, motionTitle, lowerThird, emojiPop, motionTemplate, soundEffect, illustration, colourLook, speedForPart
+        case bRoll, screenshot, videoStack
 
         var payloadKey: String {
             switch self {
@@ -13,13 +14,7 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
             case .illustration: "prompt"
             case .colourLook: "look"
             case .speedForPart: "rate"
-            }
-        }
-
-        public var canPlace: Bool {
-            switch self {
-            case .zoom, .punchIn, .motionTitle, .lowerThird, .emojiPop, .motionTemplate: true
-            case .soundEffect, .illustration, .colourLook, .speedForPart: false
+            case .bRoll, .screenshot, .videoStack: "footage"
             }
         }
     }
@@ -36,6 +31,7 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
     public let look: ClipLook?
     public let rate: Double?
     public let template: MotionTemplate?
+    public let footage: ClipFootage.Selection?
 
     private init(kind: Kind, startWord: Int, endWord: Int, reason: String, value: JSONValue, template: MotionTemplate?) {
         self.kind = kind; self.startWord = startWord; self.endWord = endWord; self.reason = reason
@@ -43,6 +39,7 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
         query = value[ai: "query"].aiString; prompt = value[ai: "prompt"].aiString
         look = value[ai: "look"].aiString.flatMap(ClipLook.init(rawValue:)); rate = value[ai: "rate"].aiDouble
         self.template = template
+        footage = ClipFootage.Selection.read(value[ai: "footage"])
     }
 
     public init(from decoder: any Decoder) throws {
@@ -69,12 +66,13 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
         case .illustration: line(payload, limit: 500) != nil
         case .colourLook: payload.aiString.flatMap(ClipLook.init(rawValue:)) != nil
         case .speedForPart: payload.aiDouble.map { (0.5...2).contains($0) } == true
+        case .bRoll, .screenshot, .videoStack: ClipFootage.Selection.read(payload) != nil
         }
         return valid ? Self(kind: kind, startWord: start, endWord: end, reason: reason, value: value, template: template) : nil
     }
 
     static func providerEntry(_ value: JSONValue) -> Self? {
-        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)), kind.canPlace, kind != .motionTemplate else { return nil }
+        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)), kind != .motionTemplate else { return nil }
         let keys = ["kind", "startWord", "endWord", "reason", kind.payloadKey]
         return read(.object(Dictionary(uniqueKeysWithValues: keys.map { ($0, value[ai: $0]) })))
     }
@@ -87,13 +85,14 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
     }
 
     public func operation(id: String, clipID: String, scope: ClosedRange<Int>, anchor: (Int) -> Range<Double>?,
-                          isCut: (Int) -> Bool = { _ in false }, stickers: Set<String>) -> ClipAutopilotOperation? {
-        guard kind.canPlace, scope.contains(startWord), scope.contains(endWord),
+                          isCut: (Int) -> Bool = { _ in false }, stickers: Set<String>,
+                          sources: [String: Double] = [:]) -> ClipAutopilotOperation? {
+        guard scope.contains(startWord), scope.contains(endWord),
               let first = anchor(startWord), let last = anchor(endWord),
               !(startWord...endWord).contains(where: isCut) else { return nil }
         let duration = last.upperBound - first.lowerBound
         guard first.lowerBound.isFinite, last.upperBound.isFinite, first.lowerBound >= 0,
-              (0.1...5).contains(duration) else { return nil }
+              (0.1...(footage == nil ? 5 : 60)).contains(duration) else { return nil }
         switch kind {
         case .zoom, .punchIn:
             guard let scale else { return nil }
@@ -115,18 +114,41 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
             let effect = ClipEffect(id: id, clipId: clipID, kind: .motionTemplate, start: first.lowerBound, end: last.upperBound,
                                     template: template)
             return .init(id: id, decision: .overlay, action: .effect(effect), reason: reason)
-        case .soundEffect, .illustration, .colourLook, .speedForPart: return nil
+        case .bRoll, .screenshot, .videoStack:
+            guard let footage, let kind = ClipFootage.Kind(rawValue: kind.rawValue), let length = sources[footage.sourceKey] else { return nil }
+            let entry = ClipFootage(id: id, clipID: clipID, kind: kind, start: first.lowerBound, end: last.upperBound, footage: footage)
+            guard entry.fits(duration: length) else { return nil }
+            return .init(id: id, decision: .overlay, action: .footage(entry), reason: reason)
+        case .colourLook, .speedForPart:
+            let effect = ClipEffect(id: id, clipId: clipID, kind: kind == .colourLook ? .colourLook : .speedForPart,
+                                    start: first.lowerBound, end: last.upperBound, look: look, rate: rate)
+            return .init(id: id, decision: kind == .colourLook ? .look : .stretch, action: .effect(effect), reason: reason)
+        case .soundEffect, .illustration:
+            guard let text = query ?? prompt else { return nil }
+            let asset = ClipPlanAsset(id: id, kind: kind == .soundEffect ? .sound : .illustration, clipID: clipID,
+                                     start: first.lowerBound, end: last.upperBound, text: text)
+            return .init(id: id, decision: kind == .soundEffect ? .sound : .overlay, action: .asset(asset), reason: reason)
         }
     }
 
     func operation(id: String, clipID: String, scope: ClosedRange<Int>, words: [TimedWord], cut: Set<String>,
-                   tightenedAfter: Set<Int>, stickers: Set<String>) -> ClipAutopilotOperation? {
+                   tightenedAfter: Set<Int>, stickers: Set<String>, sources: [String: Double] = [:]) -> ClipAutopilotOperation? {
         guard startWord <= endWord, startWord >= 0, endWord < words.count,
               !tightenedAfter.contains(where: { startWord <= $0 && $0 < endWord }) else { return nil }
         return operation(id: id, clipID: clipID, scope: scope, anchor: { index in
             let word = words[index]
             guard word.kind == .word, word.start.isFinite, word.end.isFinite, word.end > word.start else { return nil }
             return word.start..<word.end
-        }, isCut: { cut.contains(words[$0].id) }, stickers: stickers)
+        }, isCut: { cut.contains(words[$0].id) }, stickers: stickers, sources: sources)
     }
+}
+
+public struct ClipPlanAsset: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable { case sound, illustration }
+    public let id: String
+    public let kind: Kind
+    public let clipID: String
+    public let start: Double
+    public let end: Double
+    public let text: String
 }

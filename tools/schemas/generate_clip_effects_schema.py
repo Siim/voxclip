@@ -7,22 +7,24 @@ a project without effects saves byte-identically and older v4 readers that do no
 1-3 must not carry it; adding a first effect promotes a project to 4.
 
 Each effect writes `id clipId kind start end` plus exactly the keys its kind uses (ClipEffect.kindKeys in Swift and C#).
-Idempotent: running it twice leaves the same bytes. Run from anywhere; it rewrites the schema in place.
+It also registers the named motion template in the shared clip-plan schema. Run from anywhere; both updates are idempotent.
 """
 import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PATH = ROOT / 'shared/schemas/project.schema.json'
+PLAN_PATH = PATH.with_name('clip-plan-effect.schema.json')
 
 IDENTIFIER = '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'
-KINDS = ['bleep', 'mute', 'blur', 'pixelate', 'title', 'lowerThird', 'sticker', 'arrow', 'circle', 'progress', 'freeze', 'sound', 'motionTemplate']
+KINDS = ['bleep', 'mute', 'blur', 'pixelate', 'title', 'lowerThird', 'sticker', 'arrow', 'circle', 'progress', 'freeze', 'sound',
+         'colourLook', 'speedForPart', 'illustration', 'motionTemplate']
 KIND_KEYS = {
     'bleep': ['wordIds'], 'mute': ['wordIds'],
     'blur': ['rect', 'tracking', 'track'], 'pixelate': ['rect', 'tracking', 'track'],
     'title': ['text', 'position'], 'lowerThird': ['text', 'position'], 'sticker': ['text', 'position', 'scale'],
     'arrow': ['rect'], 'circle': ['rect'], 'progress': ['position'], 'freeze': [], 'sound': ['sound', 'gainDb'],
-    'motionTemplate': ['template']}
+    'colourLook': ['look'], 'speedForPart': ['rate'], 'illustration': ['imageFile'], 'motionTemplate': ['template']}
 COMMON = ['id', 'clipId', 'kind', 'start', 'end']
 POSITIONS = ['top', 'center', 'bottom', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight']
 
@@ -83,7 +85,10 @@ def definitions():
         'scale': {'type': 'number', 'minimum': 0.5, 'maximum': 3},
         'sound': {'oneOf': [{'$ref': '#/$defs/clipEffectBundledSound'}, {'$ref': '#/$defs/clipEffectLibrarySound'}]},
         'gainDb': {'type': 'number', 'minimum': -30, 'maximum': 6, 'description': 'Relative to the voice.'},
-        'animation': {'enum': ['rise', 'pop'], 'description': 'Optional entrance on title, lowerThird or sticker.'}}
+        'animation': {'enum': ['rise', 'pop'], 'description': 'Optional entrance on title, lowerThird or sticker.'},
+        'look': {'enum': ['original', 'muted', 'warm', 'bw']},
+        'rate': {'type': 'number', 'minimum': 0.5, 'maximum': 2},
+        'imageFile': {'type': 'string', 'pattern': '^[0-9a-f-]{36}/illustration-[0-9a-f]{64}\\.png$'}}
     entry = {'description': 'One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes '
                             'id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the '
                             'clip and words exist, a freeze is at most 5 s, a sound spans its own length, a sticker is at '
@@ -94,7 +99,9 @@ def definitions():
          'then': {'required': COMMON + KIND_KEYS[kind],
                   'propertyNames': {'enum': COMMON + KIND_KEYS[kind] + (['animation'] if kind in ('title', 'lowerThird', 'sticker') else [])},
                   **({'properties': {'animation': {'const': 'pop' if kind == 'sticker' else 'rise'}}}
-                     if kind in ('title', 'lowerThird', 'sticker') else {})}}
+                     if kind in ('title', 'lowerThird', 'sticker') else {}),
+                  **({'properties': {'clipId': {'type': 'string'}}}
+                     if kind in ('colourLook', 'speedForPart', 'illustration') else {})}}
         for kind in KINDS]
     template = json.loads(PATH.with_name('motion-template.schema.json').read_text())
     del template['$id'], template['$schema']
@@ -102,8 +109,35 @@ def definitions():
             'clipEffectLibrarySound': library, 'clipEffect': entry, 'motionTemplate': template}
 
 
+def update_plan_schema():
+    schema = json.loads(PLAN_PATH.read_text())
+    fields = schema['properties']
+    kinds = fields['kind']['enum']
+    if 'motionTemplate' not in kinds:
+        kinds.insert(kinds.index('emojiPop') + 1, 'motionTemplate')
+    fields['template'] = {'$ref': 'motion-template.schema.json'}
+    rule = {'if': {'properties': {'kind': {'const': 'motionTemplate'}}},
+            'then': {'required': ['template'], 'maxProperties': 5}}
+    if rule not in schema['allOf']:
+        schema['allOf'].append(rule)
+    PLAN_PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
+
+
 def main():
     schema = json.loads(PATH.read_text())
+    media = schema['properties']['media']['properties']
+    media['additionalSources'] = {'type': 'array', 'minItems': 1, 'items': {'$ref': '#/$defs/mediaReference'}}
+    media['footage'] = {'type': 'array', 'minItems': 1, 'items': {'$ref': '#/$defs/clipFootage'}}
+    schema['$defs']['mediaReference']['properties']['recordingHash'] = {'type': 'string', 'pattern': '^[0-9a-f]{64}$'}
+    schema['$defs']['clipFootage'] = {
+        'type': 'object', 'additionalProperties': False,
+        'required': ['id', 'clipID', 'kind', 'start', 'end', 'footage'],
+        'properties': {'id': {'type': 'string'}, 'clipID': {'type': 'string'},
+                       'kind': {'enum': ['bRoll', 'screenshot', 'videoStack']},
+                       'start': {'type': 'number', 'minimum': 0}, 'end': {'type': 'number', 'minimum': 0},
+                       'footage': {'type': 'object', 'additionalProperties': False, 'required': ['sourceKey', 'start'],
+                                   'properties': {'sourceKey': {'type': 'string', 'pattern': '^[0-9a-f]{64}$'},
+                                                  'start': {'type': 'number', 'minimum': 0}}}}}
     for name, value in definitions().items():
         schema['$defs'][name] = value
     schema['properties']['clipEffects'] = {
@@ -112,12 +146,20 @@ def main():
     for rule in schema['allOf']:
         excluded = rule.get('then', {}).get('not', {}).get('anyOf')
         if excluded is not None and {'required': ['contextDemo']} in excluded:
+            for key in ('additionalSources', 'footage'):
+                exclusion = {'properties': {'media': {'required': [key]}}}
+                if exclusion not in excluded:
+                    excluded.append(exclusion)
+            exclusion = {'properties': {'media': {'properties': {'source': {'required': ['recordingHash']}}}}}
+            if exclusion not in excluded:
+                excluded.append(exclusion)
             if {'required': ['clipEffects']} not in excluded:
                 excluded.append({'required': ['clipEffects']})
             break
     else:
         raise SystemExit('project.schema.json has no v1-3 exclusion rule for v4 root fields')
     PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
+    update_plan_schema()
 
 
 if __name__ == '__main__':

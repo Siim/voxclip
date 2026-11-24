@@ -19,6 +19,7 @@ internal sealed class EffectFrames : IDisposable
     private readonly string? sharedRoot;
     private readonly ConcurrentDictionary<string, Overlay?> overlays = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, EffectTextFont?> fonts = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Lazy<SKImage?>> illustrations = new(StringComparer.Ordinal);
 
     internal EffectFrames(ClipEffectsRenderInput input, string? sharedRoot)
     {
@@ -32,6 +33,23 @@ internal sealed class EffectFrames : IDisposable
     internal bool HasPicture => Picture.Count > 0;
 
     internal sealed record Overlay(SKImage Image, SKRectI Box);
+
+    internal unsafe void DrawIllustration(PixelBuffer frame, double time)
+    {
+        var effect = Picture.LastOrDefault(effect => effect.Kind == "illustration" && effect.Start <= time && time < effect.End);
+        if (effect is null || !Input.Images.TryGetValue(effect.Id, out var path)) return;
+        var image = illustrations.GetOrAdd(path, key => new(() => File.Exists(key) ? SKImage.FromEncodedData(key) : null)).Value;
+        if (image is null) return;
+        using var pin = frame.Pixels.Pin();
+        using var surface = SKSurface.Create(new SKImageInfo(frame.Width, frame.Height, SKColorType.Bgra8888, SKAlphaType.Premul), (IntPtr)pin.Pointer, frame.Stride);
+        if (surface is null) return;
+        var scale = Math.Max(frame.Width / (float)image.Width, frame.Height / (float)image.Height);
+        var width = image.Width * scale;
+        var height = image.Height * scale;
+        surface.Canvas.DrawImage(image, SKRect.Create((frame.Width - width) / 2, (frame.Height - height) / 2, width, height),
+            new SKSamplingOptions(SKCubicResampler.Mitchell));
+        surface.Canvas.Flush();
+    }
 
     /// <summary>Blurs, pixelates and points at regions of <paramref name="frame"/>, the output frame filled from <paramref name="crop"/>
     /// of the oriented source picture (<paramref name="sourceWidth"/> × <paramref name="sourceHeight"/>, after the controls' flip and
@@ -402,5 +420,7 @@ internal sealed class EffectFrames : IDisposable
         overlays.Clear();
         foreach (var font in fonts.Values) font?.Dispose();
         fonts.Clear();
+        foreach (var image in illustrations.Values) if (image.IsValueCreated) image.Value?.Dispose();
+        illustrations.Clear();
     }
 }

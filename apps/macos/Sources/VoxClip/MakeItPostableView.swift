@@ -21,6 +21,7 @@ import VoxClipCore
                         MakeItIllustrationReview(model: model, run: run)
                     }
                     if !model.makeItPostCopy(run).isEmpty, !run.running { postText }
+                    ForEach(model.exportJob.checks[run.clipID] ?? []) { review in ExportSelfCheckRows(review: review) }
                     if !model.makeIt.series.isEmpty { MakeItSeriesList(model: model) }
                 }
                 .padding(.horizontal, VCTokens.spacingCardPadding)

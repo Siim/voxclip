@@ -47,6 +47,7 @@ public final class OpenverseMusicClient: Sendable {
     private struct PageKey: Hashable {
         let query: String
         let page: Int
+        let sound: Bool
     }
 
     private struct State {
@@ -62,10 +63,10 @@ public final class OpenverseMusicClient: Sendable {
         self.http = http; self.clock = clock
     }
 
-    public static func searchURL(query: String, pageSize: Int = OpenverseMusicClient.pageSize, page: Int = 1) -> URL {
+    public static func searchURL(query: String, pageSize: Int = OpenverseMusicClient.pageSize, page: Int = 1, sound: Bool = false) -> URL {
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "license", value: "cc0,by,pdm"),
-                                 URLQueryItem(name: "category", value: "music"), URLQueryItem(name: "page_size", value: String(pageSize))]
+                                 URLQueryItem(name: "category", value: sound ? "sound_effect" : "music"), URLQueryItem(name: "page_size", value: String(pageSize))]
         if page > 1 { components.queryItems?.append(URLQueryItem(name: "page", value: String(page))) }
         return components.url!
     }
@@ -75,11 +76,11 @@ public final class OpenverseMusicClient: Sendable {
         try await searchPage(query, keywords: keywords, clipSeconds: clipSeconds).candidates
     }
 
-    public func searchPage(_ query: String, keywords: Set<String> = [], clipSeconds: Double = 0, page: Int = 1) async throws -> MusicCatalogPage {
+    public func searchPage(_ query: String, keywords: Set<String> = [], clipSeconds: Double = 0, page: Int = 1, sound: Bool = false) async throws -> MusicCatalogPage {
         let page = max(1, page)
-        let key = PageKey(query: query.lowercased(), page: page)
+        let key = PageKey(query: query.lowercased(), page: page, sound: sound)
         func rankedPage(_ result: MusicCatalogPage) -> MusicCatalogPage {
-            MusicCatalogPage(candidates: Self.ranked(result.candidates, keywords: keywords, clipSeconds: clipSeconds), nextPage: result.nextPage)
+            MusicCatalogPage(candidates: sound ? result.candidates : Self.ranked(result.candidates, keywords: keywords, clipSeconds: clipSeconds), nextPage: result.nextPage)
         }
         let cached: MusicCatalogPage? = try state.withLock { state in
             if let found = state.cache[key] { return found }
@@ -89,7 +90,7 @@ public final class OpenverseMusicClient: Sendable {
             return nil
         }
         if let cached { return rankedPage(cached) }
-        var request = URLRequest(url: Self.searchURL(query: query, page: page))
+        var request = URLRequest(url: Self.searchURL(query: query, page: page, sound: sound))
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await http.send(request)
         if response.statusCode == 429 {
@@ -104,7 +105,7 @@ public final class OpenverseMusicClient: Sendable {
         guard (200..<300).contains(response.statusCode) else {
             throw VoxClipError.providerError("The free music library replied \(response.statusCode)", provider: "openverse", status: response.statusCode)
         }
-        let result = try Self.parsePage(data, page: page)
+        let result = try Self.parsePage(data, page: page, sound: sound)
         state.withLock { state in
             state.cache[key] = result
             state.backoff = Self.minimumBackoff
@@ -124,15 +125,15 @@ public final class OpenverseMusicClient: Sendable {
         try parsePage(data, page: 1).candidates
     }
 
-    static func parsePage(_ data: Data, page: Int) throws -> MusicCatalogPage {
+    static func parsePage(_ data: Data, page: Int, sound: Bool = false) throws -> MusicCatalogPage {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any], let results = root["results"] as? [[String: Any]] else {
             throw VoxClipError.providerError("The free music library sent an unreadable reply", provider: "openverse")
         }
         let pageCount = root["page_count"] as? Int ?? 0
-        return MusicCatalogPage(candidates: results.compactMap(candidate), nextPage: pageCount > page ? page + 1 : nil)
+        return MusicCatalogPage(candidates: results.compactMap { candidate($0, sound: sound) }, nextPage: pageCount > page ? page + 1 : nil)
     }
 
-    static func candidate(_ row: [String: Any]) -> MusicCandidate? {
+    static func candidate(_ row: [String: Any], sound: Bool = false) -> MusicCandidate? {
         guard let id = row["id"] as? String, !id.isEmpty, id.count <= 64,
               let licenseText = (row["license"] as? String)?.lowercased(), allowedLicenses.contains(licenseText),
               let license = MusicLicense(rawValue: licenseText),
@@ -141,9 +142,12 @@ public final class OpenverseMusicClient: Sendable {
               let landing = row["foreign_landing_url"] as? String, landing.hasPrefix("https://"), landing.count <= 2_048,
               !landing.contains(where: \.isWhitespace), URL(string: landing)?.host != nil,
               let fileExtension = fileExtension(row["filetype"] as? String, url: file) else { return nil }
-        if let category = row["category"] as? String, category != "music" { return nil }
+        let category = row["category"] as? String
+        if sound ? category != "sound_effect" : (category != nil && category != "music") { return nil }
         let duration = (row["duration"] as? NSNumber).map { $0.doubleValue / 1_000 }
-        if let duration, !duration.isFinite || duration < 10 || duration > ProjectMusic.maximumDuration { return nil }
+        if sound {
+            guard let duration, duration > 0 && duration <= ClipEffect.maximumSoundSeconds else { return nil }
+        } else if let duration, !duration.isFinite || duration < 10 || duration > ProjectMusic.maximumDuration { return nil }
         let title = clipped(row["title"] as? String, 200) ?? "Untitled"
         let creator = clipped(row["creator"] as? String, 200)
         let attribution = clipped(row["attribution"] as? String, 1_000)

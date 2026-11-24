@@ -139,18 +139,18 @@ public sealed class VoiceLabRenderContractTests
     [Fact]
     public void SelectedVoiceRoundTripsWithoutAFalseSpeakerMeasurement()
     {
-        var project = Fixture();
+        var project = Fixture("selected-voice-render-v3");
         var segment = project.VoiceLab.Segments[0];
         var selected = segment.Candidates[segment.SelectedCandidateIndex];
         var recipe = selected.Recipe!;
-        var qa = recipe.Qa with { SpeakerScore = null, SpeakerThreshold = null, SpeakerModel = null,
-            SpeakerPassed = null, OutputSpeakerCheckSkipped = true };
+        var qa = recipe.Qa;
+        Assert.True(qa.OutputSpeakerCheckSkipped);
         Project Build(VoiceLabRenderQa evidence) => Replace(project, segment with {
             Qa = segment.Qa with { SpeakerScore = evidence.SpeakerScore },
             Candidates = segment.Candidates.Select((candidate, index) => index == segment.SelectedCandidateIndex
                 ? selected with { Recipe = recipe with { Qa = evidence } } : candidate).ToArray()
         });
-        var reopened = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(Build(qa)));
+        var reopened = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project));
         VoiceLabRenderContract.Prepare(reopened, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
         Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabProject.Validate(Build(qa with { OutputSpeakerCheckSkipped = null })));
         Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabProject.Validate(Build(qa with { SpeakerPassed = true })));

@@ -249,6 +249,7 @@ public struct RenderRequest: Sendable, Equatable {
     public var music: MusicRenderInput?
     /// The effects drawn on the picture and mixed into the audio (ai.md §18.5); nil keeps the render exactly as before.
     public var effects: ClipEffectsRenderInput?
+    public var footage: [ClipFootageRenderInput] = []
     /// The clip's speed, frame, look, volume, fades, mute, flip and rotation (design.md §6.9); nil, or the defaults, render
     /// exactly as before.
     public var clipControls: ProjectClipControls?

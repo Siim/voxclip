@@ -46,7 +46,7 @@ class ClipEffectsSchemaTests(unittest.TestCase):
         for index, vector in enumerate(self.templates()):
             effect = {"id": f"template-{index}", "clipId": None, "kind": vector["kind"],
                       "start": 1, "end": 2, "template": vector["template"]}
-            self.validator.validate(dict(self.project, clipEffects=[effect]))
+            self.validator.validate(dict(self.project, clipEffects=[*self.project['clipEffects'], effect]))
 
     @staticmethod
     def templates():
@@ -67,8 +67,26 @@ class ClipEffectsSchemaTests(unittest.TestCase):
         templates = self.templates()
         for template in templates:
             validator.validate(template)
+        footage = json.loads((ROOT / "shared/fixtures/clip-effects/footage-cases.json").read_text())
+        for vector in footage:
+            with self.subTest(kind=vector["kind"], reason=vector["reason"]):
+                entry = {key: value for key, value in vector.items() if key not in {"duration", "placement", "invalid"}}
+                self.assertEqual(not vector.get("invalid", False), validator.is_valid(entry))
         self.assertEqual(set(plan["properties"]["kind"]["enum"]),
-                         {vector["entry"]["kind"] for vector in vectors} | {template["kind"] for template in templates})
+                         {vector["entry"]["kind"] for vector in vectors} | {vector["kind"] for vector in footage}
+                         | {template["kind"] for template in templates})
+
+    def test_companion_media_is_version_four_only(self):
+        vectors = json.loads((ROOT / "shared/fixtures/clip-effects/footage-project-cases.json").read_text())
+        media = {"source": {**self.project["media"]["source"], "recordingHash": vectors["recordingHash"]},
+                 "additionalSources": [vectors["companion"]], "footage": vectors["valid"]}
+        self.validator.validate({**self.project, "media": media})
+        legacy = {key: value for key, value in self.project.items() if key != "clipEffects"}
+        legacy["schemaVersion"] = 3
+        self.validator.validate(legacy)
+        for fields in ({"source": media["source"]}, {"additionalSources": media["additionalSources"]}, {"footage": media["footage"]}):
+            with self.subTest(fields=list(fields)):
+                self.assertFalse(self.validator.is_valid({**legacy, "media": {**legacy["media"], **fields}}))
 
     def test_library_sounds_never_accept_noncommercial_no_derivatives_or_share_alike(self):
         licenses = self.schema["$defs"]["clipEffectLibrarySound"]["properties"]["license"]["enum"]
@@ -76,11 +94,13 @@ class ClipEffectsSchemaTests(unittest.TestCase):
 
     def test_generators_are_idempotent(self):
         schema = (ROOT / "shared/schemas/project.schema.json").read_bytes()
+        plan = (ROOT / "shared/schemas/clip-plan-effect.schema.json").read_bytes()
         fixtures = [(ROOT / "shared/fixtures/clip-effects" / name).read_bytes() for name in NAMES]
         subprocess.run([sys.executable, str(ROOT / "tools/schemas/generate_music_schema.py")], check=True)
         subprocess.run([sys.executable, str(ROOT / "tools/schemas/generate_clip_effects_schema.py")], check=True)
         subprocess.run([sys.executable, str(GENERATOR)], check=True)
         self.assertEqual(schema, (ROOT / "shared/schemas/project.schema.json").read_bytes())
+        self.assertEqual(plan, (ROOT / "shared/schemas/clip-plan-effect.schema.json").read_bytes())
         self.assertEqual(fixtures, [(ROOT / "shared/fixtures/clip-effects" / name).read_bytes() for name in NAMES])
 
 

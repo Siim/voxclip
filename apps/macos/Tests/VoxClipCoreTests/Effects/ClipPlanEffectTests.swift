@@ -3,12 +3,28 @@ import Testing
 @testable import VoxClipCore
 
 @Suite(.offlineFixtures) struct ClipPlanEffectTests {
+    @Test func sharedFootageEntriesAreRecognised() throws {
+        let vectors = try JSONDecoder().decode([JSONValue].self, from: FixtureLoader.data("fixtures/clip-effects/footage-cases.json"))
+        for raw in vectors {
+            let fields = try #require(raw.aiObject)
+            let entry = ClipPlanEffect.read(.object(fields.filter { !["duration", "placement", "invalid"].contains($0.key) }))
+            #expect((entry == nil) == (fields["invalid"] == .bool(true)))
+            let operation = entry?.operation(id: "extra", clipID: "clip", scope: 0...1,
+                anchor: { Double($0) / 2..<(Double($0) / 2 + 0.5) }, stickers: [],
+                sources: ["demo": fields["duration"]?.aiDouble ?? 0])
+            #expect((operation != nil) == (fields["placement"] == .bool(true)))
+            if let entry { #expect(try JSONDecoder().decode(ClipPlanEffect.self, from: JSONEncoder().encode(entry)) == entry) }
+        }
+    }
+
     private struct Vectors: Decodable {
         struct Word: Decodable { let start: Double; let end: Double }
         struct Vector: Decodable {
             struct Placement: Decodable {
                 let start: Double; let end: Double; let scales: [Double]?
                 let overlayKind: String?; let position: String?; let animation: String?
+                let look: String?; let rate: Double?
+                let asset: String?
             }
             let id: String; let entry: JSONValue; let placement: Placement?; let cutWords: [Int]?; let invalid: Bool?
         }
@@ -36,7 +52,12 @@ import Testing
                 #expect(effect.start == expected.start && effect.end == expected.end)
                 #expect(effect.kind.rawValue == expected.overlayKind && effect.position?.rawValue == expected.position)
                 #expect(effect.animation?.rawValue == expected.animation)
-                #expect(try JSONDecoder().decode(ClipEffect.self, from: JSONEncoder().encode(effect)) == effect)
+                let data = try JSONEncoder().encode(effect)
+                #expect(try JSONDecoder().decode(ClipEffect.self, from: data) == effect)
+                let stored = try JSONDecoder().decode(JSONValue.self, from: data)
+                #expect(stored[ai: "look"].aiString == expected.look && stored[ai: "rate"].aiDouble == expected.rate)
+            case .asset(let asset):
+                #expect(asset.start == expected.start && asset.end == expected.end && asset.text == expected.asset)
             default: Issue.record("unexpected operation for \(vector.id)")
             }
         }

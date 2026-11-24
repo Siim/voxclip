@@ -76,10 +76,9 @@ public sealed class ClipAutopilotTests
              {"kind":"illustration","startWord":3,"endWord":4,"prompt":"Cup of coffee","reason":"Show the subject."}]
             """);
         var plan = Assert.IsType<ClipAutopilotPlan>(ClipAutopilotValidator.Plan(reply, Context(new(0, 29))));
-        var effect = Assert.Single(plan.Effects!);
-        Assert.Equal("motionTitle", effect.Kind);
-        Assert.Equal("Name the subject.", effect.Reason);
-        Assert.Equal(["effects[1]", "effects[2]"], plan.Repairs.Where(repair => repair.Field.StartsWith("effects[", StringComparison.Ordinal)).Select(repair => repair.Field));
+        Assert.Equal(["motionTitle", "illustration"], plan.Effects!.Select(effect => effect.Kind));
+        Assert.Equal("Name the subject.", plan.Effects![0].Reason);
+        Assert.Equal(["effects[1]"], plan.Repairs.Where(repair => repair.Field.StartsWith("effects[", StringComparison.Ordinal)).Select(repair => repair.Field));
     }
 
     /// <summary>A version 1 vector reply with the later fields every send must carry, set to change nothing.</summary>

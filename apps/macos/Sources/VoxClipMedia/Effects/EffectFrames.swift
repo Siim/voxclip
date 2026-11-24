@@ -22,6 +22,20 @@ public final class EffectFrames: Sendable {
     /// The accent of pointers and the progress bar: VoxClip yellow.
     static let accent = CGColor(srgbRed: 1, green: 0.82, blue: 0.04, alpha: 1)
 
+    func illustration(at time: Double, output: CGSize) -> CIImage? {
+        guard let effect = input.effects.last(where: { $0.kind == .illustration && $0.start <= time && time < $0.end }),
+              let url = input.imageURLs[effect.id] else { return nil }
+        let key = "illustration|\(url.path)"
+        let image = cache.withLock { images -> CIImage? in
+            if let existing = images[key] { return existing }
+            guard let loaded = CIImage(contentsOf: url), !loaded.extent.isEmpty else { return nil }
+            images[key] = loaded
+            return loaded
+        }
+        guard let image else { return nil }
+        return CompositionFrameGeometry.fill(image, crop: FrameCompositor.centerCrop(source: image.extent, output: output), output: output)
+    }
+
     // MARK: Picture space
 
     /// Blurs, pixelates and points at regions of `image`, the output-sized frame filled from `crop` of the source picture

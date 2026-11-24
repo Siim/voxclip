@@ -316,6 +316,9 @@ internal sealed class RenderedAudioReader : IDisposable
     private readonly int rate;
     private readonly (double Start, double End)[] silenced;
     private readonly WsolaStretcher? stretcher;
+    private readonly (long InputEnd, long OutputEnd, double Rate)[] sections = [];
+    private WsolaStretcher? sectionStretch;
+    private int sectionIndex;
     private readonly ProjectClipControls? gain;
     private readonly EffectAudio.Track effects;
     private readonly MusicBed? music;
@@ -369,13 +372,20 @@ internal sealed class RenderedAudioReader : IDisposable
         renderedStart = speed.Rendered(startEdited);
         renderedDuration = snapshot.RenderedDuration;
         renderedFirstFrame = (long)Math.Round(renderedStart * rate, MidpointRounding.AwayFromZero);
-        if (speed.Speed != 1)
+        if (speed.Spans.Count > 0)
+        {
+            long Frames(double seconds) => (long)Math.Round(seconds * rate, MidpointRounding.AwayFromZero);
+            TotalFrames = Math.Max(0, Frames(renderedDuration) - renderedFirstFrame);
+            sections = speed.Segments(startEdited, snapshot.Timeline.Duration).Select(span =>
+                (Frames(span.End - startEdited), Frames(speed.Rendered(span.End)) - renderedFirstFrame, span.Rate)).ToArray();
+        }
+        else if (speed.Speed != 1)
         {
             stretcher = new(Silenced, speed.Speed, rate);
             TotalFrames = Math.Max(0, (long)Math.Round(renderedDuration * rate, MidpointRounding.AwayFromZero) - renderedFirstFrame);
         }
         else TotalFrames = editedFrames;
-        passthrough = stretcher is null && gain is null && silenced.Length == 0 && effects.IsEmpty && music is null;
+        passthrough = sections.Length == 0 && stretcher is null && gain is null && silenced.Length == 0 && effects.IsEmpty && music is null;
     }
 
     internal int Read(Span<float> target, int frames, CancellationToken ct)
@@ -389,7 +399,8 @@ internal sealed class RenderedAudioReader : IDisposable
             return count;
         }
         var voice = target[..(frames * 2)];
-        if (stretcher is not null) stretcher.Read(voice, frames, ct);
+        if (sections.Length > 0) ReadSections(voice, frames, ct);
+        else if (stretcher is not null) stretcher.Read(voice, frames, ct);
         else
         {
             var count = Silenced(voice, frames, ct);
@@ -406,6 +417,35 @@ internal sealed class RenderedAudioReader : IDisposable
         music?.Mix(voice, renderedFirstFrame + produced, frames);
         produced += frames;
         return frames;
+    }
+
+    private void ReadSections(Span<float> target, int frames, CancellationToken ct)
+    {
+        var writeOffset = 0;
+        Span<float> discard = stackalloc float[2048];
+        while (writeOffset < frames && sectionIndex < sections.Length)
+        {
+            var section = sections[sectionIndex];
+            var count = (int)Math.Min(frames - writeOffset, section.OutputEnd - (produced + writeOffset));
+            if (count > 0)
+            {
+                var output = target.Slice(writeOffset * 2, count * 2);
+                if (section.Rate == 1) output[(ReadSectionSource(output, count, ct) * 2)..].Clear();
+                else (sectionStretch ??= new(ReadSectionSource, section.Rate, rate)).Read(output, count, ct);
+                writeOffset += count;
+            }
+            if (produced + writeOffset < section.OutputEnd) break;
+            while (ReadSectionSource(discard, discard.Length / 2, ct) > 0) { }
+            sectionStretch = null;
+            sectionIndex++;
+        }
+        target[(writeOffset * 2)..].Clear();
+    }
+
+    private int ReadSectionSource(Span<float> target, int frames, CancellationToken ct)
+    {
+        var count = (int)Math.Min(frames, sections[sectionIndex].InputEnd - editedRead);
+        return count > 0 ? Silenced(target, count, ct) : 0;
     }
 
     /// <summary>The edited voice with bleeps and mutes silenced on the edited clock.</summary>

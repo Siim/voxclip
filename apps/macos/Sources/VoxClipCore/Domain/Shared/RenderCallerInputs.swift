@@ -52,6 +52,16 @@ public enum RenderCallerInputs {
         result.motionCues = clipID.map { selected in project.motionCues.filter { $0.clipID == selected } } ?? []
         result.music = MusicRenderInput.resolve(project: project, clipId: clipID, dataRoot: dataRoot)
         result.effects = ClipEffectsRenderInput.resolve(project: project, clipID: clipID, dataRoot: dataRoot, shared: try? SharedResources.locate())
+        let clipSpan = clipID.flatMap { ClipControlsProject.sourceSpan(of: $0, in: project) }
+        result.footage = project.media.footage.compactMap { entry in
+            guard entry.clipID == clipID, let clipSpan, entry.start >= clipSpan.lowerBound, entry.end <= clipSpan.upperBound,
+                  let source = project.media.additionalSources.first(where: { $0.footageKey == entry.footage.sourceKey }),
+                  source.video != nil, entry.fits(duration: source.durationSeconds) else { return nil }
+            let original = URL(fileURLWithPath: source.absolutePath)
+            let sibling = request.sourceURL.deletingLastPathComponent().appendingPathComponent(original.lastPathComponent)
+            let url = FileManager.default.fileExists(atPath: original.path) ? original : sibling
+            return ClipFootageRenderInput(entry: entry, url: url, expectedKey: source.contentKey)
+        }
         result.clipControls = ClipControlsProject.controls(for: clipID, in: project).flatMap { $0.isDefault ? nil : $0 }
         result.reduceMotion = request.forPreview && reduceMotion
         result.contextDemo = nil

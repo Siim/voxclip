@@ -17,6 +17,15 @@ private final class Calls: Sendable {
     func record(_ call: String) { value.withLock { $0.append(call) } }
 }
 
+private struct RefusingAssetHTTP: MusicHTTP {
+    let calls: Calls
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        calls.record("asset request")
+        throw URLError(.unsupportedURL)
+    }
+}
+
 /// ✦ Make it postable (doc/design.md §6.7) on a demo editor with its own data folder: the planner, the voice and the
 /// music sources are stubs, so nothing is sent, paid or read from the keychain.
 @Suite("Make it postable", .serialized, .offlineFixtures)
@@ -105,6 +114,18 @@ private final class Calls: Sendable {
     }
 
     private func step(_ undo: UndoManager, _ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
+
+    @Test func anIllustrationOverTheCapDoesNotDispatch() async throws {
+        let fixture = try fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let run = MakeItRun(clipID: "clip-main", cap: 0)
+        let asset = ClipPlanAsset(id: "fixture-illustration", kind: .illustration, clipID: run.clipID, start: 1, end: 2, text: "a paper boat")
+        let operation = ClipAutopilotOperation(id: "fixture-illustration", decision: .overlay, action: .asset(asset), reason: "Show the example.")
+        let row = await fixture.editor.makeItAssetStep(asset, operation: operation, run: run, client: ClipPlanAssets(http: RefusingAssetHTTP(calls: fixture.calls)))
+        #expect(row.text.contains("over the spend cap"))
+        #expect(fixture.calls.all.isEmpty)
+        #expect(fixture.editor.project.clipEffects == fixture.original.clipEffects)
+    }
 
     private func run(_ fixture: Fixture, clip: String = "clip-main") async throws -> MakeItRun {
         await fixture.editor.makeIt.refreshVoiceReady(fixture.editor)

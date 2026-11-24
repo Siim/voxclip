@@ -1926,6 +1926,7 @@ member VoxClip.App.Pages.EditorPage :: method private OpenMakeItRewriteAsync(Vox
 member VoxClip.App.Pages.EditorPage :: method private OpenRewriteAsync(bool,string)
 member VoxClip.App.Pages.EditorPage :: method private OpenShellJobAsync(VoxClip.App.ViewModels.ShellJob,string,Microsoft.UI.Xaml.FrameworkElement)
 member VoxClip.App.Pages.EditorPage :: method private PausesClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private PlanAssets(string)
 member VoxClip.App.Pages.EditorPage :: method private PlayClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private PlayFromHereAsync()
 member VoxClip.App.Pages.EditorPage :: method private PlayFromHereClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -2805,6 +2806,7 @@ member VoxClip.App.ViewModels.AskClaudeRow :: method public set_Reason(string)
 member VoxClip.App.ViewModels.AskClaudeRow :: method public set_Status(VoxClip.App.ViewModels.AskClaudeRowStatus)
 member VoxClip.App.ViewModels.AskClaudeRow :: method public set_WholeClipId(string)
 member VoxClip.App.ViewModels.AskClaudeRowStatus :: field public Applied
+member VoxClip.App.ViewModels.AskClaudeRowStatus :: field public Asset
 member VoxClip.App.ViewModels.AskClaudeRowStatus :: field public Later
 member VoxClip.App.ViewModels.AskClaudeRowStatus :: field public Paid
 member VoxClip.App.ViewModels.AskClaudeRowStatus :: field public Undone
@@ -2822,6 +2824,8 @@ member VoxClip.App.ViewModels.AskClaudeRun :: method public get_Summary()
 member VoxClip.App.ViewModels.AskClaudeRun :: method public set_Base(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.AskClaudeRun :: method public set_Repairs(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.App.ViewModels.AskClaudeRun :: method public set_Summary(string)
+member VoxClip.App.ViewModels.AskClaudeServices :: method internal get_Assets()
+member VoxClip.App.ViewModels.AskClaudeServices :: method internal set_Assets(VoxClip.App.ViewModels.PlanAssetServices)
 member VoxClip.App.ViewModels.AskClaudeServices :: method public .ctor()
 member VoxClip.App.ViewModels.AskClaudeServices :: method public get_Ask()
 member VoxClip.App.ViewModels.AskClaudeServices :: method public get_Available()
@@ -2834,8 +2838,12 @@ member VoxClip.App.ViewModels.AskClaudeServices :: method public set_CostLine(Sy
 member VoxClip.App.ViewModels.AskClaudeServices :: method public set_Prices(VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
 member VoxClip.App.ViewModels.AskClaudeServices :: method public set_Vision(VoxClip.Core.Domain.Autopilot.IAskClaudeVision)
 member VoxClip.App.ViewModels.AskClaudeState :: field public Placeholder
+member VoxClip.App.ViewModels.AskClaudeState :: method internal get_AssetWorking()
 member VoxClip.App.ViewModels.AskClaudeState :: method internal get_Cancellation()
+member VoxClip.App.ViewModels.AskClaudeState :: method internal get_IllustrationReady()
+member VoxClip.App.ViewModels.AskClaudeState :: method internal set_AssetWorking(string)
 member VoxClip.App.ViewModels.AskClaudeState :: method internal set_Cancellation(System.Threading.CancellationTokenSource)
+member VoxClip.App.ViewModels.AskClaudeState :: method internal set_IllustrationReady(System.Nullable`1<bool>)
 member VoxClip.App.ViewModels.AskClaudeState :: method private .cctor()
 member VoxClip.App.ViewModels.AskClaudeState :: method public .ctor()
 member VoxClip.App.ViewModels.AskClaudeState :: method public get_Adjusting()
@@ -3583,6 +3591,8 @@ member VoxClip.App.ViewModels.EditorViewModel :: field public ShorterInstruction
 member VoxClip.App.ViewModels.EditorViewModel :: field public ToneRowId
 member VoxClip.App.ViewModels.EditorViewModel :: method internal AcceptsVoiceLab(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceReference,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal Announce(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal ApplyAskAssetAsync(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal AskAssetAction(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginLeaving()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginUndoGroup(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearSelection()
@@ -3625,10 +3635,12 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyPlannedAsyn
 member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyVoiceLabCore(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRateSample>>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private AskClaudeEffectEntry(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private AskClaudeNotify()
+member VoxClip.App.ViewModels.EditorViewModel :: method private AssetPrice(System.Decimal)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Block(VoxClip.App.ViewModels.ClaudeModeBlocker)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Cancelled(System.Exception)
 member VoxClip.App.ViewModels.EditorViewModel :: method private CaptionStyleName(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private CaptureHistory(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private CheckAskIllustrationAsync(VoxClip.App.ViewModels.AskClaudeRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Clamp(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClaudeModeContinueAsync(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClipPlay(string,VoxClip.Core.Domain.Shared.Project)
@@ -3642,6 +3654,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private Followed(VoxClip
 member VoxClip.App.ViewModels.EditorViewModel :: method private IndexOfSpeechStart(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method private InitializeState()
 member VoxClip.App.ViewModels.EditorViewModel :: method private LanguageName(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItAssetAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,VoxClip.App.ViewModels.PlanAssetServices,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItChoosePicture(string,VoxClip.App.ViewModels.MakeItRow,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItCoverLabel(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItCoverOptions(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.App.ViewModels.MakeItRun,double)
@@ -3656,6 +3669,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItShownReque
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItStep(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,string,VoxClip.Core.Domain.Shared.Project&,VoxClip.App.ViewModels.MakeItStyle)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItStopped(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItToneRow(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.MakeItRow>)
+member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItVoiceCap(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MoveCaptionSettings(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MoveHistory(System.Collections.Generic.Stack`1<VoxClip.App.ViewModels.EditorViewModel+History>,System.Collections.Generic.Stack`1<VoxClip.App.ViewModels.EditorViewModel+History>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MusicStepAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotMusicCue,VoxClip.App.ViewModels.MakeItRun)
@@ -4866,6 +4880,8 @@ member VoxClip.App.ViewModels.MakeItRun :: method public get_Running()
 member VoxClip.App.ViewModels.MakeItRun :: method public get_Seconds()
 member VoxClip.App.ViewModels.MakeItRun :: method public get_Spent()
 member VoxClip.App.ViewModels.MakeItRun :: method public get_VoiceSpent()
+member VoxClip.App.ViewModels.MakeItServices :: method internal get_Assets()
+member VoxClip.App.ViewModels.MakeItServices :: method internal set_Assets(VoxClip.App.ViewModels.PlanAssetServices)
 member VoxClip.App.ViewModels.MakeItServices :: method private .ctor(VoxClip.App.ViewModels.MakeItServices)
 member VoxClip.App.ViewModels.MakeItServices :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.MakeItServices :: method private get_EqualityContract()
@@ -5067,6 +5083,28 @@ member VoxClip.App.ViewModels.PhraseWordingCopy :: field internal MicrophoneFoot
 member VoxClip.App.ViewModels.PhraseWordingCopy :: field internal OwnWordsFooter
 member VoxClip.App.ViewModels.PhraseWordingCopy :: method internal ShortTitle(VoxClip.App.ViewModels.PhraseWording)
 member VoxClip.App.ViewModels.PhraseWordingCopy :: method internal Title(VoxClip.App.ViewModels.PhraseWording)
+member VoxClip.App.ViewModels.PlanAssetServices :: method internal CollectAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,System.Func`2<System.Decimal,bool>,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.PlanAssetServices :: method private .ctor(VoxClip.App.ViewModels.PlanAssetServices)
+member VoxClip.App.ViewModels.PlanAssetServices :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.PlanAssetServices :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public .ctor(System.Nullable`1<System.Decimal>,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<string>>,System.Func`3<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,System.Nullable`1<System.Text.Json.JsonElement>>,System.Func`4<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Nullable`1<System.Text.Json.JsonElement>>>,System.Func`4<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,System.Threading.Tasks.Task`1<System.Text.Json.JsonElement>>)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public Deconstruct(System.Nullable`1<System.Decimal>&,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<string>>&,System.Func`3<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,System.Nullable`1<System.Text.Json.JsonElement>>&,System.Func`4<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Nullable`1<System.Text.Json.JsonElement>>>&,System.Func`4<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,System.Threading.Tasks.Task`1<System.Text.Json.JsonElement>>&)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public Equals(VoxClip.App.ViewModels.PlanAssetServices)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public Equals(object)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public GetHashCode()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public ToString()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public get_Illustrate()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public get_Key()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public get_Price()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public get_Saved()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public get_Sound()
+member VoxClip.App.ViewModels.PlanAssetServices :: method public op_Equality(VoxClip.App.ViewModels.PlanAssetServices,VoxClip.App.ViewModels.PlanAssetServices)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public op_Inequality(VoxClip.App.ViewModels.PlanAssetServices,VoxClip.App.ViewModels.PlanAssetServices)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public set_Illustrate(System.Func`4<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,System.Threading.Tasks.Task`1<System.Text.Json.JsonElement>>)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public set_Key(System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<string>>)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public set_Price(System.Nullable`1<System.Decimal>)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public set_Saved(System.Func`3<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,System.Nullable`1<System.Text.Json.JsonElement>>)
+member VoxClip.App.ViewModels.PlanAssetServices :: method public set_Sound(System.Func`4<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Nullable`1<System.Text.Json.JsonElement>>>)
 member VoxClip.App.ViewModels.PlaybackPresentation :: method internal Hint(bool)
 member VoxClip.App.ViewModels.PlaybackPresentation :: method internal Name(bool)
 member VoxClip.App.ViewModels.PlaybackToggle :: field private refresh
@@ -8902,6 +8940,7 @@ type VoxClip.App.ViewModels.PhraseMicrophoneAccess
 type VoxClip.App.ViewModels.PhraseMicrophoneCopy
 type VoxClip.App.ViewModels.PhraseWording
 type VoxClip.App.ViewModels.PhraseWordingCopy
+type VoxClip.App.ViewModels.PlanAssetServices
 type VoxClip.App.ViewModels.PlaybackPresentation
 type VoxClip.App.ViewModels.PlaybackToggle
 type VoxClip.App.ViewModels.PlayerDisplayWatch

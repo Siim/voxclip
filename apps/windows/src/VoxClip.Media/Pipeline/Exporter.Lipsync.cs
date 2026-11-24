@@ -26,7 +26,7 @@ public sealed partial class Exporter
         var size = output.Size;
         using var decoder = new VideoDecoder(input, hardware: false);
         using var video = new EncoderSession(encoder, output);
-        using var mux = CreateMux(path, video, null, out var stream, out _);
+        using var mux = CreateMux(path, video, null, credits: null, out var stream, out _);
         var format = (AVFormatContext*)mux.Pointer;
         using var handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame);
         var nv12 = (AVFrame*)handle.Pointer;

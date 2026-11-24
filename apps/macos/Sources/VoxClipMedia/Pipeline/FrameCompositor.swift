@@ -135,9 +135,12 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     crop: Self.centerCrop(source: captured.extent, output: size), output: size)
             }
             let sourceTime = instruction.request.timeline.sourceTime(editedTime)
+            if let illustration = instruction.effects?.illustration(at: sourceTime, output: size) { image = illustration }
             // The look grades the picture before any Ask Claude effect: censors cover graded pixels, and pointers, titles
             // and stickers keep their own colours. A colour transform per pixel, so it commutes with the motion crop.
-            if let controls { image = ClipPicture.grade(image, controls: controls) }
+            let timedLook = instruction.request.effects?.look(at: sourceTime)
+            if let controls { image = ClipPicture.grade(image, controls: controls, override: timedLook) }
+            else if let timedLook { image = ClipPicture.look(image, timedLook) }
             if let effects = instruction.effects {
                 image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
                                         controls: controls)
@@ -149,6 +152,15 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 let motionCrop = CompositionFrameGeometry.crop(in: CGRect(origin: .zero, size: size),
                     scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)
                 image = CompositionFrameGeometry.fill(image, crop: motionCrop, output: size)
+            }
+            if let layer = instruction.footage {
+                let companion = layer.still.map { CIImage(cgImage: $0) } ?? layer.trackID.flatMap { id in
+                    request.sourceFrame(byTrackID: id).map { CIImage(cvPixelBuffer: $0).oriented(layer.orientation) }
+                }
+                guard let companion else {
+                    fail(request, instruction, .sourceFrame, VoxClipError.decodeFailed("Missing companion video frame")); return
+                }
+                image = Self.withFootage(companion, camera: image, kind: layer.kind, output: size)
             }
             if let effects = instruction.effects {
                 let timeline = instruction.request.timeline
@@ -163,6 +175,17 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             CVBufferSetAttachment(output, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
             drawCaptions(request, instruction: instruction, into: output, generation: current)
         }
+    }
+
+    static func withFootage(_ footage: CIImage, camera: CIImage, kind: ClipFootage.Kind, output: CGSize) -> CIImage {
+        func fit(_ input: CIImage, to size: CGSize) -> CIImage {
+            CompositionFrameGeometry.fill(input, crop: centerCrop(source: input.extent, output: size), output: size)
+        }
+        if kind != .videoStack { return fit(footage, to: output) }
+        let half = CGSize(width: output.width, height: floor(output.height / 2))
+        let lower = fit(footage, to: half)
+        let upper = fit(camera, to: half).transformed(by: .init(translationX: 0, y: half.height))
+        return upper.composited(over: lower).cropped(to: .init(origin: .zero, size: output))
     }
 
     private func drawCaptions(_ request: AVAsynchronousVideoCompositionRequest, instruction: RenderInstruction,
@@ -286,7 +309,9 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     public let enablePostProcessing = false
     public let containsTweening = true
     public var requiredSourceTrackIDs: [NSValue]? {
-        Array(Set([sourceTrackID] + (demoLayer.map { [$0.trackID] } ?? []) + lipsyncLayers.map(\.trackID))).map { NSNumber(value: $0) }
+        var ids = [sourceTrackID] + (demoLayer.map { [$0.trackID] } ?? []) + lipsyncLayers.map(\.trackID)
+        if let track = footage?.trackID { ids.append(track) }
+        return Array(Set(ids)).map { NSNumber(value: $0) }
     }
     public let passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
     let orientation: CGImagePropertyOrientation
@@ -306,6 +331,7 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     let previewFailures: PreviewFrameFailures?
     /// Tests only: replaces the caption layout's draw, to force a failure.
     let captionDrawHook: CaptionLayoutDraw?
+    let footage: FootageLayer?
 
     public convenience init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest) {
         self.init(timeRange: timeRange, sourceTrackID: sourceTrackID, request: request, orientation: .up, rasterizer: nil)
@@ -316,7 +342,7 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
          demoLayer: CompositionDemoLayer? = nil, contextDemoLease: ContextDemoCompositionLease? = nil,
          videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5,
          lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil, effects: EffectFrames? = nil,
-         previewFailures: PreviewFrameFailures? = nil, captionDrawHook: CaptionLayoutDraw? = nil) {
+         previewFailures: PreviewFrameFailures? = nil, captionDrawHook: CaptionLayoutDraw? = nil, footage: FootageLayer? = nil) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
         self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
         self.disclosure = disclosure; self.demoLayer = demoLayer; self.contextDemoLease = contextDemoLease
@@ -326,6 +352,7 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
         self.effects = effects
         self.previewFailures = previewFailures
         self.captionDrawHook = captionDrawHook
+        self.footage = footage
         super.init()
     }
 

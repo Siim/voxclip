@@ -57,6 +57,33 @@ import Testing
         #expect(try cases().format == "voxclip-clip-effects-wire-cases/1")
     }
 
+    @Test func companionRecordingsRoundTripAndBadPlacementsAreRejected() throws {
+        let vectors = try #require(JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/clip-effects/footage-project-cases.json")).aiObject)
+        var document = try #require(JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/clip-effects/effects-project.voxclip")).aiObject)
+        var media = try #require(document["media"]?.aiObject)
+        var source = try #require(media["source"]?.aiObject)
+        source["recordingHash"] = try #require(vectors["recordingHash"])
+        let companion = try #require(vectors["companion"])
+        let placements = try #require(vectors["valid"]?.aiArray)
+        media["source"] = .object(source)
+        media["additionalSources"] = .array([companion])
+        media["footage"] = .array(placements)
+        func data(_ fields: [String: JSONValue]) throws -> Data {
+            document["media"] = .object(fields)
+            return try JSONEncoder().encode(JSONValue.object(document))
+        }
+        let project = try JSONProjectStore.decode(data(media))
+        let encoded = try JSONProjectStore.encode(project)
+        #expect(try JSONDecoder().decode(JSONValue.self, from: encoded).aiObject?["media"] == .object(media))
+        for invalid in try #require(vectors["invalid"]?.aiArray) {
+            media["footage"] = .array(placements + [invalid])
+            #expect(throws: (any Error).self) { try JSONProjectStore.decode(data(media)) }
+        }
+        media["footage"] = .array(placements)
+        media["additionalSources"] = .array([companion, companion])
+        #expect(throws: (any Error).self) { try JSONProjectStore.decode(data(media)) }
+    }
+
     @Test func validCorpusRoundTripsAtV4AndWritesOnlyEachKindsKeys() throws {
         for item in try cases().valid {
             let input = try data(item)
@@ -119,7 +146,7 @@ import Testing
         let project = try fixture()
         let full = ClipEffects.rendered(in: project, clipID: nil).map(\.id)
         #expect(full == ["fx-bleep-1", "fx-blur-1", "fx-pixelate-1", "fx-mute-1"])
-        #expect(ClipEffects.rendered(in: project, clipID: "clip-main").count == 12)
+        #expect(ClipEffects.rendered(in: project, clipID: "clip-main").count == 15)
     }
 
     @Test func bleepedWordsAreMaskedInCaptionsAndPunctuationStays() {

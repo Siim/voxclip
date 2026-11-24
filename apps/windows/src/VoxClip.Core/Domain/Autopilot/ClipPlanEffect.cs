@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
@@ -36,6 +37,7 @@ public sealed class ClipPlanEffect
         "motionTitle" or "lowerThird" or "emojiPop" => "text",
         "motionTemplate" => "template",
         "soundEffect" => "query", "illustration" => "prompt", "colourLook" => "look", "speedForPart" => "rate",
+        "bRoll" or "screenshot" or "videoStack" => "footage",
         _ => null
     };
 
@@ -66,26 +68,41 @@ public sealed class ClipPlanEffect
             "illustration" => Line(payload, 500) is not null,
             "colourLook" => AiJson.String(payload) is "original" or "muted" or "warm" or "bw",
             "speedForPart" => AiJson.Number(payload) is >= 0.5 and <= 2,
+            "bRoll" or "screenshot" or "videoStack" => Footage(payload) is not null,
             _ => false
         };
         return valid ? new(kind, start, end, reason, key, payload) : null;
     }
 
+    private static FootageSelection? Footage(JsonNode value) => value is JsonObject { Count: 2 } fields &&
+        AiJson.String(fields["sourceKey"]) is { } key && Regex.IsMatch(key, @"\A[A-Za-z0-9_-]{1,128}\z") &&
+        AiJson.Number(fields["start"]) is { } start && double.IsFinite(start) && start >= 0 ? new(key, start) : null;
+
+    /// <summary>Resolves a companion effect only if its kept anchors and selected recording fit.</summary>
+    public ProjectFootage? FootagePlacement(string id, string clipId, WordSpan scope,
+        Func<int, (double Start, double End)?> anchor, Func<int, bool> isCut, IReadOnlyDictionary<string, double> sources)
+    {
+        if (Kind is not ("bRoll" or "screenshot" or "videoStack") || Footage(payload) is not { } selection ||
+            !sources.TryGetValue(selection.SourceKey, out var length) || StartWord < scope.Start || EndWord > scope.End ||
+            anchor(StartWord) is not { } first || anchor(EndWord) is not { } last ||
+            last.End - first.Start is not (>= 0.1 and <= 60) || Enumerable.Range(StartWord, EndWord - StartWord + 1).Any(isCut)) return null;
+        var placement = new ProjectFootage(id, clipId, Kind, first.Start, last.End, selection);
+        return placement.Fits(length) ? placement : null;
+    }
+
     internal static ClipPlanEffect? ProviderEntry(JsonNode? raw)
     {
-        if (raw is not JsonObject item || AiJson.String(item["kind"]) is not ("zoom" or "punchIn" or "motionTitle" or "lowerThird" or "emojiPop") ||
-            PayloadKey(AiJson.String(item["kind"])) is not { } key) return null;
+        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key || key is "footage" or "template") return null;
         var projected = new JsonObject();
         foreach (var name in new[] { "kind", "startWord", "endWord", "reason", key }) projected[name] = item[name]?.DeepClone();
         return Read(projected);
     }
 
-    /// <summary>Resolves kept words to a local, reviewable render operation; reserved entries never run.</summary>
+    /// <summary>Resolves kept words to a reviewable render operation or asset request.</summary>
     public ClipAutopilotOperation? Operation(string id, string clipId, WordSpan scope,
         Func<int, (double Start, double End)?> anchor, Func<int, bool> isCut, IReadOnlySet<string> stickers)
     {
-        if (Kind is not ("zoom" or "punchIn" or "motionTitle" or "lowerThird" or "emojiPop" or "motionTemplate") ||
-            StartWord < scope.Start || EndWord > scope.End || anchor(StartWord) is not { } first || anchor(EndWord) is not { } last ||
+        if (StartWord < scope.Start || EndWord > scope.End || anchor(StartWord) is not { } first || anchor(EndWord) is not { } last ||
             Enumerable.Range(StartWord, EndWord - StartWord + 1).Any(isCut) ||
             !double.IsFinite(first.Start) || !double.IsFinite(last.End) || first.Start < 0 || last.End - first.Start is not (>= 0.1 and <= 5)) return null;
 
@@ -96,6 +113,18 @@ public sealed class ClipPlanEffect
             MotionKeyframe[] frames = Kind == "zoom" ? [Frame(0), Frame(0.28, scale), Frame(0.7, scale), Frame(1)] : [Frame(0, scale), Frame(1, scale)];
             return new(id, ClipAutopilotDecision.Zoom, new ClipAutopilotAction.Motion(new(id, clipId, first.Start, last.End, frames)), Reason);
         }
+        if (Kind is "colourLook" or "speedForPart")
+        {
+            var timed = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["kind"] = Kind, ["start"] = first.Start,
+                ["end"] = last.End, [payloadKey] = payload.DeepClone() };
+            using var document = JsonDocument.Parse(timed.ToJsonString());
+            return new(id, Kind == "colourLook" ? ClipAutopilotDecision.Look : ClipAutopilotDecision.Stretch,
+                new ClipAutopilotAction.Effect(document.RootElement.Clone()), Reason);
+        }
+        if (Kind is "soundEffect" or "illustration")
+            return new(id, Kind == "soundEffect" ? ClipAutopilotDecision.Sound : ClipAutopilotDecision.Overlay,
+                new ClipAutopilotAction.Asset(id, Kind, clipId, first.Start, last.End, AiJson.String(payload)!), Reason);
+        if (Kind is not ("motionTitle" or "lowerThird" or "emojiPop" or "motionTemplate")) return null;
         var overlay = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["start"] = first.Start, ["end"] = last.End };
         if (Kind == "motionTemplate")
         {
