@@ -120,10 +120,12 @@ public sealed class VoiceTakeIdentitySessionTests
             Assert.Equal("New wording here", session.NewWords);
             Assert.Equal(new[] { "New", "wording", "here" }, Assert.Single(session.Review!.Diff.Hunks).NewTokens);
             Assert.Equal(1, session.PaidTakeCount);
+            Assert.True(session.HoldsPaidWork);
             Assert.False(session.RequestClose());
             session.KeepWorking();
             Assert.NotNull(store.Load(editor.Project, DateTimeOffset.UtcNow));
             Assert.True(session.DiscardForAnotherProposal());
+            Assert.False(session.HoldsPaidWork);
             Assert.Null(store.Load(editor.Project, DateTimeOffset.UtcNow));
         }
         finally { Directory.Delete(root, true); }
