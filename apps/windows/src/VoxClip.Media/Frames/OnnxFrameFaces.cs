@@ -20,9 +20,6 @@ namespace VoxClip.Media.Frames;
 /// <see cref="ObjectDisposedException"/>.</remarks>
 public sealed class OnnxFrameFaces : IFrameFaces, IDisposable
 {
-    /// <summary>Set to <c>1</c>, it lets tests and developers (the W7 calibration run) use the bundled faces while the catalogue is
-    /// still switched off. Shipping builds never set it, so faces stay unavailable until the catalogue is enabled.</summary>
-    public const string OverrideVariable = "VOXCLIP_FRAME_FACES";
     /// <summary>ONNX Runtime's intra-op threads per session, as the speaker check uses.</summary>
     public const int IntraOpThreads = 2;
     /// <summary>The detector's input name.</summary>
@@ -55,18 +52,22 @@ public sealed class OnnxFrameFaces : IFrameFaces, IDisposable
     public static string BundledDirectory(string? executableDirectory = null) =>
         Path.Combine(executableDirectory ?? AppContext.BaseDirectory, "models", "frames");
 
-    /// <summary>Whether <see cref="OverrideVariable"/> is set to <c>1</c>.</summary>
-    public static bool Overridden() => Environment.GetEnvironmentVariable(OverrideVariable) == "1";
-
     /// <summary>The face source this PC has, or null when faces are unavailable: the catalogue is off (and not
-    /// <paramref name="overridden"/>, by default <see cref="Overridden"/>), the catalogue or a file is missing or not the catalogued
+    /// overridden in Debug), the catalogue or a file is missing or not the catalogued
     /// bytes, or ONNX Runtime can't load them. Never throws for those; the caller hides what needs faces.</summary>
-    public static OnnxFrameFaces? Installed(FrameModelCatalog? catalog = null, string? directory = null, bool? overridden = null)
+    public static OnnxFrameFaces? Installed(FrameModelCatalog? catalog = null, string? directory = null)
     {
         try
         {
             catalog ??= new FrameModelCatalog();
-            if (!catalog.Enabled && !(overridden ?? Overridden())) return null;
+            if (!catalog.Enabled)
+            {
+#if DEBUG
+                if (Environment.GetEnvironmentVariable("VOXCLIP_FRAME_FACES") != "1") return null;
+#else
+                return null;
+#endif
+            }
             return Load(catalog.Entry, directory ?? BundledDirectory());
         }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or OnnxRuntimeException

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
@@ -123,23 +124,26 @@ public sealed class OnnxFrameFacesTests
         var directory = FrameFixtures.TempRoot("models");
         try
         {
-            var catalog = new FrameModelCatalog();
+            var json = JsonNode.Parse(FixtureLoader.ReadText("catalog/frame-models.json"))!;
+            json["enabled"] = true;
+            json["models"]![0]!["calibration"]!["status"] = "calibrated";
+            var catalog = new FrameModelCatalog(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json));
             foreach (var file in catalog.Entry.Files)
                 File.Copy(Path.Combine(OnnxFrameFaces.BundledDirectory(), file.Name), Path.Combine(directory, file.Name));
-            using (var verified = OnnxFrameFaces.Installed(catalog, directory, overridden: true)) Assert.NotNull(verified);
+            using (var verified = OnnxFrameFaces.Installed(catalog, directory)) Assert.NotNull(verified);
 
             var mesh = Path.Combine(directory, catalog.Entry.Landmarks.Name);
             var bytes = File.ReadAllBytes(mesh);
             bytes[bytes.Length / 2] ^= 1;
             File.WriteAllBytes(mesh, bytes);
-            Assert.Null(OnnxFrameFaces.Installed(catalog, directory, overridden: true));
+            Assert.Null(OnnxFrameFaces.Installed(catalog, directory));
             Assert.Throws<InvalidDataException>(() => OnnxFrameFaces.Load(catalog.Entry, directory));
 
             File.Delete(mesh);
-            Assert.Null(OnnxFrameFaces.Installed(catalog, directory, overridden: true));
-            Assert.Null(OnnxFrameFaces.Installed(catalog, Path.Combine(directory, "absent"), overridden: true));
+            Assert.Null(OnnxFrameFaces.Installed(catalog, directory));
+            Assert.Null(OnnxFrameFaces.Installed(catalog, Path.Combine(directory, "absent")));
             Assert.Throws<FrameFacesUnavailableException>(() =>
-                new FrameAnalyzer(OnnxFrameFaces.Installed(catalog, directory, overridden: true), () => throw new InvalidOperationException(),
+                new FrameAnalyzer(OnnxFrameFaces.Installed(catalog, directory), () => throw new InvalidOperationException(),
                     new StubFrameDecoder(), null));
         }
         finally
@@ -149,15 +153,35 @@ public sealed class OnnxFrameFacesTests
     }
 
     [Fact]
-    public void TheDisabledCatalogueGivesNoFacesWithoutTheOverride()
+    public void TheDisabledCatalogueMakesFacesUnavailable()
     {
+#if DEBUG
+        Assert.SkipWhen(Environment.GetEnvironmentVariable("VOXCLIP_FRAME_FACES") == "1", "The Debug override is active.");
+#endif
         var catalog = new FrameModelCatalog();
         Assert.False(catalog.Enabled);
-        Assert.Null(OnnxFrameFaces.Installed(catalog, OnnxFrameFaces.BundledDirectory(), overridden: false));
-        using var overridden = OnnxFrameFaces.Installed(catalog, OnnxFrameFaces.BundledDirectory(), overridden: true);
-        Assert.NotNull(overridden);
-        Assert.Equal(Environment.GetEnvironmentVariable(OnnxFrameFaces.OverrideVariable) == "1", OnnxFrameFaces.Overridden());
-        Assert.Equal("VOXCLIP_FRAME_FACES", OnnxFrameFaces.OverrideVariable);
+        Assert.Null(OnnxFrameFaces.Installed(catalog));
+    }
+
+    [Fact]
+    public void ReleaseDoesNotLoadProvisionalModelsFromTheDeveloperEnvironment()
+    {
+#if DEBUG
+        Assert.Skip("The developer override is available in Debug.");
+#else
+        const string variable = "VOXCLIP_FRAME_FACES";
+        var previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, "1");
+            using var faces = OnnxFrameFaces.Installed();
+            Assert.Null(faces);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+#endif
     }
 
     [Fact]
