@@ -10,7 +10,9 @@
 
 - The Windows CLI pins one local saved project by canonical path and id. The five allowlisted handlers share the same reads and proposal validation between MCP and the CLI. Frame reads verify the saved source identity and decode only local MP4/MOV/M4V with external references disabled.
 - A schema-valid timeline materializes through the existing Core edit and validation rules, but the CLI writes only one atomically published proposal sidecar. It never replaces a pending proposal. An Eleven Music brief returns a catalog estimate only; no tool can call providers, spend or capture voice consent.
-- The shared replay can run against the .NET CLI on macOS with the subprocess network denied. It covers named compositor templates as local timeline effects; Keep/Undo in the Windows editor remains a follow-up.
+- The editor reads the sidecar beside the same canonical project path and shows it inline above the transcript. Keep rechecks the live edit revision and exact pending proposal, then adopts free changes as one editor undo step. The card's Undo only dismisses the sidecar. Stale proposals can be dismissed, but can't be kept; a dismissed or replaced sidecar can't be consumed again. Tab selection isn't part of the revision.
+- Keeping a music brief offers a separate priced action for the proposed clip. Checking the price is local; only **Generate music · $…** sends the brief. The existing Music flow persists the returned audio before editing the project.
+- The shared replay against the .NET CLI covers all four local compositor templates over both CLI and MCP with subprocess network denied. Portable editor tests cover Keep/Undo and stale rejection. App type-check covers the C# wiring; verify the card layout, focus, blocked reasons and paid-button interaction on Windows.
 
 ### 2026-11-24 — Whole-clip revoice and lip sync (issue #19, first item)
 

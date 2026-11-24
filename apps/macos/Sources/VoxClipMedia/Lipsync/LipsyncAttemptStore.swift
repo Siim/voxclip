@@ -103,6 +103,26 @@ public enum LipsyncAttemptStore {
         }
     }
 
+    public static func importedAssets(inProject projectID: String, paidRoot: URL) -> Set<String> {
+        (try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts in
+            importedAssets(in: attempts, projectID: projectID)
+        }) ?? []
+    }
+
+    static func importedAssets(inProject directory: Int32, projectID: String) -> Set<String> {
+        let attempts = openat(directory, folder, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard attempts >= 0 else { return [] }
+        defer { close(attempts) }
+        return importedAssets(in: attempts, projectID: projectID)
+    }
+
+    private static func importedAssets(in attempts: Int32, projectID: String) -> Set<String> {
+        let names = (try? VoiceLabAssetRecovery.names(attempts)) ?? []
+        return Set(names.lazy.filter { $0.hasSuffix(".json") && !$0.hasPrefix(".") }.compactMap {
+            read(attempts, $0, projectID: projectID)?.importedAsset?.file
+        })
+    }
+
     /// The attempt for a window prepared again: the exact input hashes, else the same audio (the WAV is byte-identical)
     /// with the same model, lengths and a matching picture fingerprint (the H.264 upload is not).
     static func find(_ prepared: PreparedLipsyncWindow, model: String, projectID: String, paidRoot: URL) -> LipsyncAttempt? {

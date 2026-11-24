@@ -17138,6 +17138,7 @@ member VoxClip.Core.Services.Music.MusicSuggestionService :: field private quote
 member VoxClip.Core.Services.Music.MusicSuggestionService :: method private Note(VoxClip.Core.Domain.Shared.VoxClipException)
 member VoxClip.Core.Services.Music.MusicSuggestionService :: method public .ctor(VoxClip.Core.Services.Music.OpenverseMusicClient,VoxClip.Core.Services.Music.ElevenMusicClient,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<string>)
 member VoxClip.Core.Services.Music.MusicSuggestionService :: method public CandidatesAsync(VoxClip.Core.Domain.Music.MusicBrief,double,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Music.MusicSuggestionService :: method public PriceGenerationAsync(VoxClip.Core.Domain.Music.MusicBrief,double,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Music.MusicSuggestionService :: method public Quote(VoxClip.Core.Domain.Music.MusicCandidate)
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private Allowed
 member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private MaximumBackoff
@@ -17496,7 +17497,16 @@ member VoxClip.Core.Services.Project.DataLocations :: method public set_Root(str
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Secrets(string)
 member VoxClip.Core.Services.Project.DataLocations :: method public set_Settings(string)
 member VoxClip.Core.Services.Project.HarnessException :: method public .ctor(string)
+member VoxClip.Core.Services.Project.HarnessInbox :: method private IsLocalWindowsPath(string)
+member VoxClip.Core.Services.Project.HarnessInbox :: method private ReadSidecar(string)
+member VoxClip.Core.Services.Project.HarnessInbox :: method private Resolve(string,bool,int)
+member VoxClip.Core.Services.Project.HarnessInbox :: method public CanonicalLocalPath(string,bool)
+member VoxClip.Core.Services.Project.HarnessInbox :: method public Dismiss(VoxClip.Core.Services.Project.HarnessProposal,string)
+member VoxClip.Core.Services.Project.HarnessInbox :: method public Read(string)
+member VoxClip.Core.Services.Project.HarnessProposal :: field private timeline
 member VoxClip.Core.Services.Project.HarnessProposal :: field public MaximumBytes
+member VoxClip.Core.Services.Project.HarnessProposal :: method internal Read(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.HarnessProposal :: method private .ctor(System.Guid,string,string,VoxClip.Core.Services.Project.HarnessTimeline)
 member VoxClip.Core.Services.Project.HarnessProposal :: method private Revision(VoxClip.Core.Domain.Shared.Project,bool)
 member VoxClip.Core.Services.Project.HarnessProposal :: method private WriteCanonical(System.Text.Json.Nodes.JsonNode,System.Text.Json.Utf8JsonWriter)
 member VoxClip.Core.Services.Project.HarnessProposal :: method private get_BaseRevision()
@@ -17505,7 +17515,9 @@ member VoxClip.Core.Services.Project.HarnessProposal :: method private get_Proje
 member VoxClip.Core.Services.Project.HarnessProposal :: method public .ctor(VoxClip.Core.Services.Project.HarnessTimeline,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public Applying(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public EstimatedMusicPrice(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public Matches(VoxClip.Core.Services.Project.HarnessProposal)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public ToJson()
+member VoxClip.Core.Services.Project.HarnessProposal :: method public get_Timeline()
 member VoxClip.Core.Services.Project.HarnessTimeline :: field private CutKeys
 member VoxClip.Core.Services.Project.HarnessTimeline :: field private Keys
 member VoxClip.Core.Services.Project.HarnessTimeline :: field private SupportedEffects
@@ -20059,6 +20071,7 @@ type VoxClip.Core.Services.Project.CacheKeyRegistry
 type VoxClip.Core.Services.Project.CacheTimestampConverter
 type VoxClip.Core.Services.Project.DataLocations
 type VoxClip.Core.Services.Project.HarnessException
+type VoxClip.Core.Services.Project.HarnessInbox
 type VoxClip.Core.Services.Project.HarnessProposal
 type VoxClip.Core.Services.Project.HarnessTimeline
 type VoxClip.Core.Services.Project.IProjectStore

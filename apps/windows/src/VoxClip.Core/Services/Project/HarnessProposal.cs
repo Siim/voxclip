@@ -118,15 +118,45 @@ public sealed class HarnessTimeline
 }
 
 /// <summary>A versioned sidecar proposal pinned to a project and its editable revision.</summary>
-/// <param name="timeline">Validated proposed changes.</param>
-/// <param name="project">The saved base snapshot.</param>
-public sealed class HarnessProposal(HarnessTimeline timeline, Domain.Shared.Project project)
+public sealed class HarnessProposal
 {
     /// <summary>Byte limit for one request or sidecar.</summary>
     public const int MaximumBytes = 128 * 1024;
-    private Guid Id { get; } = Guid.NewGuid();
-    private string ProjectId { get; } = project.Id;
-    private string BaseRevision { get; } = Revision(project, timeline.MusicTrackId is not null);
+    private readonly HarnessTimeline timeline;
+    private Guid Id { get; }
+    private string ProjectId { get; }
+    private string BaseRevision { get; }
+
+    /// <summary>Pin validated proposed changes to the saved base snapshot.</summary>
+    public HarnessProposal(HarnessTimeline timeline, Domain.Shared.Project project)
+        : this(Guid.NewGuid(), project.Id, Revision(project, timeline.MusicTrackId is not null), timeline) { }
+
+    private HarnessProposal(Guid id, string projectId, string baseRevision, HarnessTimeline timeline)
+    {
+        Id = id;
+        ProjectId = projectId;
+        BaseRevision = baseRevision;
+        this.timeline = timeline;
+    }
+
+    /// <summary>The validated intent shown in the review, with the agent's original reasons.</summary>
+    public JsonElement Timeline => timeline.Wire;
+
+    internal static HarnessProposal Read(JsonElement wire)
+    {
+        HarnessTimeline.RequireObject(wire, ["version", "id", "projectId", "baseRevision", "timeline"]);
+        if (!wire.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.Number || version.GetDouble() != 1 ||
+            !wire.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String || !Guid.TryParseExact(id.GetString(), "D", out var proposalId) ||
+            !wire.TryGetProperty("projectId", out var project) || project.ValueKind != JsonValueKind.String || project.GetString() is not { Length: > 0 } projectId ||
+            !wire.TryGetProperty("baseRevision", out var revision) || revision.ValueKind != JsonValueKind.String || revision.GetString() is not { Length: 64 } digest ||
+            digest.Any(character => character is not (>= '0' and <= '9' or >= 'a' and <= 'f')) || !wire.TryGetProperty("timeline", out var changes))
+            throw new HarnessException("This timeline proposal can't be read.");
+        return new(proposalId, projectId, digest, HarnessTimeline.Read(changes));
+    }
+
+    /// <summary>Whether this is the same staged proposal, including all of its content.</summary>
+    public bool Matches(HarnessProposal? other) => other is not null && Id == other.Id && ProjectId == other.ProjectId &&
+        BaseRevision == other.BaseRevision && JsonElement.DeepEquals(timeline.Wire, other.timeline.Wire);
 
     /// <summary>The shared proposal envelope, with no applied edits or approval.</summary>
     public JsonObject ToJson() => new()
@@ -203,8 +233,11 @@ public sealed class HarnessProposal(HarnessTimeline timeline, Domain.Shared.Proj
                 };
             }
         }
-        if (timeline.GenerateMusic is null && BaseRevision == Revision(next, reuseMusic))
-            throw new HarnessException("The timeline doesn't change the project.");
+        if (BaseRevision == Revision(next, reuseMusic))
+        {
+            if (timeline.GenerateMusic is null) throw new HarnessException("The timeline doesn't change the project.");
+            next = snapshot;
+        }
         _ = ProjectSerialization.Serialize(next);
         return next;
     }

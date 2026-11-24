@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### Rewrite reliability follow-up (issue #10)
+
+- Rewrite Again sends untouched wording directly unless it would set aside paid work. Missing media closes Rewrite and keeps paid recovery records. Relink and re-transcription wait for an open Rewrite's paid-work decision before changing its inputs. Re-transcription suspends an unpaid review and restores it if no replacement transcript arrives.
+- The whole-clip card previews journal adoption without claiming parts. Adoptable parts cost their word checks, and a higher dispatch quote waits for another click. An exact indexed lip-sync result is free, including after reopening. Its click cannot submit a replacement job.
+- Startup sweeps old or corrupt saved proposals without reopening their scopes or following symlinks. The offscreen W3 check requires the saved proposal before Use Whole Clip and its removal afterward. The real-window gates remain with the lead.
+
 ### Whole-clip Rewrite interrupted after lip-sync acceptance
 
 `apps/macos/scripts/rewrite-smoke.sh --crash-recovery` starts an isolated debug process, kills it on the first status poll after the fake fal.ai submission, and reopens its project in a second process. Before Try Again, the journal’s saved voice plays locally with no word check or synthesis. The retry is priced for word checks alone and the lip-sync run has no permission to pay. Recover the original request through `IN_PROGRESS` to Review; Use must save the revoiced clip. `aPendingQuoteNeedsItsOwnRecoverableProviderReceipt` checks that a quote alone, a different quote/model, or an expired remote receipt does not prove that this job is recoverable.

@@ -648,7 +648,7 @@ Behaviour:
 | `voxclip-cli llm-test --connector <id> [--model <id>] --json` | Run the connector Test (AI spec section 10.2); exit 0 on pass |
 | `voxclip-cli encoders --json` | Windows: run the encoder probe; macOS: report VideoToolbox H.264 availability |
 | `voxclip-cli check --project <project> --clip <n\|id> <export.mp4> [--aspect …] [--style …] [--loudness social\|off] [--json]` | macOS and Windows: the export self-check (ADR-R49). It checks the words heard against the clip's edit, the tracks' and phrases' sync, the loudness and the caption and title boxes against the safe-zone bands. Transcription is local only. `--json` adds a `check` object with `passed`, `engine`, `model`, `seconds` and one result per check (`status`, `reason`, `items`). Exit 8 when any check warns |
-| `voxclip-cli mcp --project <project>` | macOS: stdio server bound to one saved project. Matching `transcript`, `clips`, `decisions`, `frames` and `propose-timeline` commands always use JSON. Only the Mac editor can keep a timeline or approve a priced action. See [harness setup](harness.md) and [ADR-R52](adr/R52-project-harness-mcp.md). |
+| `voxclip-cli mcp --project <project>` | Mac and Windows: stdio server bound to one saved project. Matching `transcript`, `clips`, `decisions`, `frames` and `propose-timeline` commands always use JSON. Keep a timeline or approve a priced action in the editor, not through the server. See [harness setup](harness.md) and [ADR-R52](adr/R52-project-harness-mcp.md). |
 | `voxclip-cli --version` / `voxclip-cli version [--json]` | Read the linked plist/assembly version (`unknown` when absent); print the version alone, `VoxClip <version> (<platform>-<arch>)`, or a JSON envelope with `result` and `version` |
 
 ### 9.3 Output and exit codes

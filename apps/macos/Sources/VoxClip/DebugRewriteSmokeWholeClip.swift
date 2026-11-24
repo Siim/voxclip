@@ -111,6 +111,10 @@ extension DebugRewriteSmoke {
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
             try await harness.revoiceWholeClip()
         },
+        Definition(id: "S-revoice-whole-adopt", title: "a new Rewrite prices the journaled parts for their word checks only",
+                   requiresCompletion: false, fixture: wholeClipFixture()) { harness in
+            try await harness.quoteAdoptableWholeClip()
+        },
         Definition(id: "S-rewrite-used-revoice", title: "open Rewrite on the same clip after using its lip-synced revoice",
                    requiresCompletion: false, fixture: usedRevoiceFixture()) { harness in
             try await harness.rewriteUsedRevoice()
@@ -222,11 +226,12 @@ extension DebugRewriteSmoke.Harness {
     }
 
     /// Opens the Rewrite and shows the card, priced.
-    private func openWholeClip() async throws -> (RewriteSession, WholeClipRevoiceSession) {
+    private func openWholeClip(required: Bool = false) async throws -> (RewriteSession, WholeClipRevoiceSession) {
         try await start()
         guard let session else { throw DebugRewriteSmoke.Failure.setup("no Rewrite") }
         session.showProposal()
         guard let whole = session.wholeClip else {
+            if required { throw DebugRewriteSmoke.Failure.setup("no whole-clip card to price") }
             throw DebugRewriteSmoke.Failure.missing("the How should it sound? card", session.task.cards.map(\.id).joined(separator: ", "))
         }
         await whole.refreshQuote()
@@ -312,6 +317,8 @@ extension DebugRewriteSmoke.Harness {
                              fullTake: Bool = false, afterUse: (() -> Void)? = nil) async throws {
         guard let editor else { return }
         let steps = editor.undoSteps
+        let savedURL = session.savedProposalURL
+        let wasSaved = savedURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         try await act("click [Use Whole Clip]", clicked: "wholeClipUse") {
             await session.useWholeClip().value
         }
@@ -323,6 +330,9 @@ extension DebugRewriteSmoke.Harness {
         let reopenedSame = reopened?.voiceLab.wholeClipRevoices == project.voiceLab.wholeClipRevoices
         // Use is Rewrite's own commit: the panel stays on the proposal with the used card, never R3's "Nothing was applied".
         let panel = usedPanel(session)
+        let savedRecordGone = savedURL.map { !FileManager.default.fileExists(atPath: $0.path) } ?? false
+        makeItAppend([wholeClipCheck("W3-record", wasSaved && savedRecordGone,
+            "saved Rewrite before Use: \(wasSaved) · removed after Use: \(savedRecordGone)")])
         makeItAppend([wholeClipCheck("W3", whole.phase == .used && panel == "proposal" && editor.undoSteps == steps + 1 && record?.lipsyncModel == model.rawValue
                 && record.map { $0.segmentIds.allSatisfy { id in project.voiceLab.segments.contains { $0.id == id } } } == true
                 && reopened?.voiceLab.wholeClipRevoices == project.voiceLab.wholeClipRevoices && stage
@@ -495,6 +505,44 @@ extension DebugRewriteSmoke.Harness {
         let restored = editor.project.voiceLab.wholeClipRevoices == [record] && editor.project.voiceLab.segments == prior.segments
         makeItAppend([wholeClipCheck("WU3", restored && revoice.phase == .review,
             "earlier revoice restored \(restored) · new paid work back on \(phaseText(revoice))")])
+    }
+
+    func quoteAdoptableWholeClip() async throws {
+        _ = installWholeClipStandIn()
+        let (first, whole) = try await openWholeClip(required: true)
+        guard let editor, let voicePrice = whole.quote?.voiceUSD, voicePrice > 0 else {
+            throw DebugRewriteSmoke.Failure.setup("no first voice price")
+        }
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        try await runWholeClip(first, whole, title: try checkChoose(first, whole))
+        guard whole.phase == .review, let plan = first.wholeClipPlan else {
+            throw DebugRewriteSmoke.Failure.setup("no paid parts to adopt")
+        }
+        try await act("click [Use Whole Clip]", clicked: "wholeClipUse") {
+            undo.beginUndoGrouping()
+            await first.useWholeClip().value
+            undo.endUndoGrouping()
+        }
+        guard whole.phase == .used, editor.closeRewrite(returnFocus: false) else {
+            throw DebugRewriteSmoke.Failure.setup("the used Rewrite didn't close")
+        }
+        await plan.invalidation?.value
+        undo.undo()
+        let next = RewriteSession(editor: editor, scope: first.rewriteScope, envelope: first.envelope,
+                                  connector: first.connector, prices: first.prices, consent: { true })
+        editor.rewrite = next
+        await adopt(next)
+        let (again, card) = try await openWholeClip(required: true)
+        let reads = speechRequests
+        let offer = again.wholeClipPrimary()
+        let quoted = card.quote
+        let expectedChecks = first.prices.flatMap(RewriteSession.wordCheckUSD).map { $0 * Decimal(plan.phrases.count) }
+        let checkOnly = quoted?.voiceUSD == 0 && expectedChecks != nil && quoted?.wordChecksUSD == expectedChecks
+        makeItAppend([wholeClipCheck("WA1", checkOnly && offer?.priced == true && quoted?.wholeUSD != whole.quote?.wholeUSD,
+            "new card \(offer?.title ?? "none") · voice \(String(describing: quoted?.voiceUSD)) · checks \(String(describing: quoted?.wordChecksUSD)) (expected \(String(describing: expectedChecks)))")])
+        try await runWholeClip(again, card, title: offer?.title ?? "Revoice Whole Clip")
+        makeItAppend([wholeClipCheck("WA2", card.phase == .review && speechRequests == reads,
+            "\(phaseText(card)) · new speech requests \(speechRequests - reads)")])
     }
 
     func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false, tightened: Bool = false, short: Bool = false,

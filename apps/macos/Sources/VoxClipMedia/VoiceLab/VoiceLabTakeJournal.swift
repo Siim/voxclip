@@ -208,6 +208,19 @@ public enum VoiceLabTakeJournal {
         return candidates.first { (try? pcm(of: $0, projectID: projectID, paidRoot: paidRoot)) != nil }
     }
 
+    package static func previewAdoptions(_ keys: [VoiceLabTakeJournalKey], projectID: String, paidRoot: URL) -> Set<Int> {
+        var excluded = VoiceLabTakeJournalClaims.shared.claimed(under: paidRoot, except: nil)
+        var matched = Set<Int>()
+        for (index, key) in keys.enumerated() {
+            guard !Task.isCancelled else { return [] }
+            if let entry = match(key, projectID: projectID, paidRoot: paidRoot, excluding: excluded, forSelectedVoice: true) {
+                excluded.insert(entry.assetFile)
+                matched.insert(index)
+            }
+        }
+        return matched
+    }
+
     /// Drops the entry of `assetID`; its asset stays.
     public static func remove(assetID: String, projectID: String, paidRoot: URL) {
         _ = try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { takes in
@@ -383,7 +396,7 @@ final class VoiceLabTakeJournalClaims: Sendable {
         owners.withLock { owners in owners = owners.filter { $0.value != owner } }
     }
     /// The asset files under `paidRoot` that runs other than `owner` hold.
-    func claimed(under paidRoot: URL, except owner: UUID) -> Set<String> {
+    func claimed(under paidRoot: URL, except owner: UUID?) -> Set<String> {
         let prefix = paidRoot.standardizedFileURL.path + "/"
         return owners.withLock { owners in
             Set(owners.compactMap { $0.value != owner && $0.key.hasPrefix(prefix) ? String($0.key.dropFirst(prefix.count)) : nil })

@@ -360,7 +360,6 @@ member VoxClip.Cli.HarnessProject :: method internal CallAsync(VoxClip.Cli.Harne
 member VoxClip.Cli.HarnessProject :: method internal OpenAsync(string,System.Threading.CancellationToken)
 member VoxClip.Cli.HarnessProject :: method private .cctor()
 member VoxClip.Cli.HarnessProject :: method private .ctor(string,string)
-member VoxClip.Cli.HarnessProject :: method private CanonicalPath(string,bool,int)
 member VoxClip.Cli.HarnessProject :: method private Clips(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Cli.HarnessProject :: method private Decisions(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Cli.HarnessProject :: method private FramesAsync(VoxClip.Core.Domain.Shared.Project,System.Text.Json.JsonElement,System.Threading.CancellationToken)

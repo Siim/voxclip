@@ -193,6 +193,27 @@ public sealed class MusicSourcesTests
         finally { Directory.Delete(folder, true); }
     }
 
+    [Fact]
+    public async Task PricingOnlyTheProposedMusicDoesNotSearchOrGenerate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var library = new Http();
+        var generator = new Http();
+        var eleven = new ElevenMusicClient(new Keys("test-key"), VoiceLabPrices.Load(FixtureLoader.SharedRoot), null, ElevenLabsRegion.Default, generator);
+        var service = new MusicSuggestionService(new OpenverseMusicClient(library), eleven, _ => Task.FromResult(true),
+            () => throw new InvalidOperationException("Pricing does not read local tracks."));
+
+        var (candidate, note) = await service.PriceGenerationAsync(new("", Prompt: "A warm instrumental"), 42, ct);
+
+        Assert.Null(note);
+        var generated = Assert.IsType<MusicCandidate>(candidate);
+        Assert.Equal("A warm instrumental", generated.Prompt);
+        Assert.Equal("$0.11", MusicPricing.Label(Assert.IsType<CostEstimate>(generated.Estimate)));
+        Assert.NotNull(service.Quote(generated));
+        Assert.Empty(library.Sent);
+        Assert.Empty(generator.Sent);
+    }
+
     private sealed class FailingHttp : IMusicHttp
     {
         public Task<MusicHttpReply> SendAsync(HttpRequestMessage request, CancellationToken ct) => throw new VoxClipException(VoxClipErrorCode.Offline, "You're offline.");

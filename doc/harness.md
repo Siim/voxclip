@@ -79,14 +79,12 @@ Add a `motionTemplate` to `effects` with a `template` object, for example:
 
 Text must be a single nonempty line with no leading or trailing whitespace. The template starts and ends with the selected words, not the file's start or the render clock. VoxClip draws it locally in the same compositor for preview and export. Templates can't fetch assets, invoke providers, or authorize a charge. Keeping a template uses the same Keep/Undo review as other edits.
 
-## Review in VoxClip on macOS
+## Review in VoxClip on Mac or Windows
 
 - Save edits before asking the agent to propose. The server reads the saved file, not unsaved edits in the editor.
-- The open project shows **Timeline proposal** above its transcript. Expand **Proposed changes** to see what the agent wants to do. **Keep** applies the free changes as one edit; **Undo** dismisses the proposal without changing the project. After Keep, ⌘Z undoes the edit as usual.
-- Keeping the timeline doesn't send anything. If it includes music generation, open the proposed clip and use the separate **Generate music · $…** button after VoxClip confirms the price. That click sends the brief to Eleven Music. The estimate returned to the agent isn't approval. Voice consent stays in the app's existing flows and can't be requested or recorded through these tools.
+- The open project shows **Timeline proposal** above its transcript. Expand **Proposed changes** to see what the agent wants to do. **Keep** applies the free changes as one edit; **Undo** dismisses the proposal without changing the project. After Keep, ⌘Z on Mac or Ctrl+Z on Windows undoes the edit as usual.
+- Keeping the timeline doesn't send anything. If it includes music generation, open the proposed clip and use **Get price** if needed. The separate **Generate music · $…** button sends the brief to Eleven Music. The estimate returned to the agent isn't approval. Voice consent stays in the app's existing flows and can't be requested or recorded through these tools.
 - There's one pending proposal per saved project. Finish reviewing it before staging another. If the app says the project changed, dismiss the old proposal, save, and have the agent read the current project again. If an externally edited proposal can't be read, remove only the neighboring `Talk.voxclip.proposal.json` file; leave `Talk.voxclip` in place.
-
-The Windows CLI validates and stages the same proposal format, but the Windows editor does not yet offer Keep/Undo for it. Staging makes no edits and doesn't start a paid action. To dismiss a pending proposal on Windows, remove only the neighboring `.voxclip.proposal.json` file.
 
 ## Run the offline contract replay
 
@@ -98,4 +96,4 @@ VOXCLIP_CLI="$PWD/apps/windows/src/VoxClip.Cli/bin/Release/net10.0/voxclip-cli.d
   python3 tools/schemas/test_harness_contract.py
 ```
 
-The Windows CLI's JPEG case needs the project's pinned LGPL FFmpeg 9 libraries built for the test host, beside the DLL. If those libraries aren't available, the remaining cases can be run individually with `python3 tools/schemas/test_harness_contract.py HarnessContract.test_replays_reads_and_stages_schema_valid_proposal` and the same `VOXCLIP_CLI` setting. See [ADR-R52](adr/R52-project-harness-mcp.md) for the tool and spending boundary.
+The Windows CLI's JPEG case needs the project's pinned LGPL FFmpeg 9 libraries built for the test host, beside the DLL. If those libraries aren't available, run individual cases such as `HarnessContract.test_replays_reads_and_stages_schema_valid_proposal` and `HarnessContract.test_places_local_motion_templates_through_mcp_and_cli` with the same `VOXCLIP_CLI` setting. See [ADR-R52](adr/R52-project-harness-mcp.md) for the tool and spending boundary.

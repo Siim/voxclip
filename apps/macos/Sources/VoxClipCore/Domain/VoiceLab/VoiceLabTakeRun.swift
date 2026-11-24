@@ -79,12 +79,17 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         return input
     }
     public func options(take: Int) -> VoiceLabSpeechOptions {
+        let context = Self.speechContext(items: items, cutWordIDs: cutWordIDs, window: window, sourceSampleRate: sourceSampleRate)
+        return VoiceLabSpeechOptions(seed: seed &+ UInt32(truncatingIfNeeded: take), previousText: context.previous, nextText: context.next, pace: pace)
+    }
+    package static func speechContext(items: [TimedWord], cutWordIDs: Set<String>, window: VoiceLabWindow,
+                                      sourceSampleRate: Int) -> (previous: String, next: String) {
         let kept = items.filter { $0.kind == .word && !cutWordIDs.contains($0.id) }
         // Before and after the window on the source grid (§10.1).
         let grid = VoiceLabSampleGrid(rate: Double(sourceSampleRate))
         let previous = kept.filter { grid.sample($0.end) <= Double(window.startSample) }.map(\.text).joined(separator: " ")
         let next = kept.filter { grid.sample($0.start) >= Double(window.endSample) }.map(\.text).joined(separator: " ")
-        return VoiceLabSpeechOptions(seed: seed &+ UInt32(truncatingIfNeeded: take), previousText: previous, nextText: next, pace: pace)
+        return (previous, next)
     }
     public func replacingPace(_ value: Double?) -> VoiceLabTakeInput {
         var input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,

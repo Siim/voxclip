@@ -45,27 +45,6 @@ public enum VoiceLabAssetRetention {
     public static func references(in project: Project) -> Set<String> {
         Set((project.voiceLab.assets ?? []).map(\.file) + (project.voiceLab.videoAssets ?? []).map(\.file))
     }
-    /// The imported lip-sync results the attempt index points at (`LipsyncAttempt.importedAsset`, voice-lab §9.4), which
-    /// would otherwise be paid for again: paid work no project uses yet, so never a deletion candidate.
-    private static func importedLipsyncAssets(project directory: Int32, projectId: String) -> Set<String> {
-        let attempts = openat(directory, "lipsync-attempts", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard attempts >= 0 else { return [] }
-        defer { close(attempts) }
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-        var files = Set<String>()
-        for name in (try? VoiceLabAssetRecovery.names(attempts)) ?? [] where name.hasSuffix(".json") && !name.hasPrefix(".") {
-            let descriptor = openat(attempts, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-            guard descriptor >= 0 else { continue }
-            var info = stat()
-            guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(), (1...65_536).contains(info.st_size),
-                  let data = try? readData(descriptor, count: Int(info.st_size)) else { close(descriptor); continue }
-            close(descriptor)
-            guard let asset = (try? decoder.decode(LipsyncAttempt.self, from: data))?.importedAsset,
-                  (try? VoiceLabAssetNaming.videoFile(projectId: projectId, assetId: asset.id)) == asset.file else { continue }
-            files.insert(asset.file)
-        }
-        return files
-    }
     /// Drops the take journal's entries that are done: the project as it closes uses the asset (`inUse`: after Use, and not
     /// undone), the asset is gone, or, when deletion is allowed, the entry is older than `VoiceLabTakeJournal.unusedLifetime`,
     /// after which its asset follows the ordinary rules. Returns the asset files of the entries that stay (voice-lab §3 "Paid
@@ -121,7 +100,7 @@ public enum VoiceLabAssetRetention {
         // (so no take run or lip-sync import) holds beside it, and only new files can gain such a reference meanwhile.
         let paid = settleTakeJournal(project: directory, projectId: projectId, inUse: inUse ?? references,
                                      present: Set(names.map { "\(projectId)/\($0)" }), now: now, allowDeletion: allowDeletion)
-            .union(importedLipsyncAssets(project: directory, projectId: projectId))
+            .union(LipsyncAttemptStore.importedAssets(inProject: directory, projectID: projectId))
         let backward = ledger.unreferenced.values.contains { now < $0.discovered || now < $0.lastObservedAt }
         var eligible: [String] = []
         for name in names {
