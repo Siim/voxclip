@@ -450,7 +450,7 @@
       "wire": "codex-exec",
       "images": { "supported": true, "maxPerRequest": 24, "wire": "--image <file>… from the private io folder", "verified": { "date": "2026-11-07", "version": "0.164.0", "how": "codex exec --help; no send" } },
       "enabled": true,
-      "verified": { "date": "2026-10-25", "version": "0.163.0-alpha.10.2", "os": "macOS 27.0.1", "installedVia": "CLI bundled in the ChatGPT desktop app (not searched by VoxClip)", "standaloneVerified": false, "note": "Re-verify on a standalone Codex release before 0.1.0 (doc/spec/ai.md section 14 item 5)." },
+      "verified": { "date": "2026-10-25", "version": "0.163.0-alpha.10.2", "os": "macOS 27.0.1", "installedVia": "CLI bundled in the ChatGPT desktop app", "standaloneVerified": false, "note": "Re-verify on a standalone Codex release before 0.1.0 (doc/spec/ai.md section 14 item 5)." },
       "cli": {
         "executable": "codex",
         "searchPaths": {
@@ -459,7 +459,9 @@
             "/usr/local/bin/codex",
             "~/.local/bin/codex",
             "~/.npm-global/bin/codex",
-            "~/.bun/bin/codex"
+            "~/.bun/bin/codex",
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+            "~/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
           ],
           "windows": [
             "%APPDATA%\\npm\\codex.cmd",
@@ -523,7 +525,7 @@
         "limitMarkers": ["usage limit", "rate limit", "429"],
         "networkErrorMarkers": ["ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH", "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed", "error sending request for url", "dns error", "failed to lookup address information", "No route to host", "Network is unreachable", "os error 61", "os error 65", "tcp connect error"],
         "overloadMarkers": ["overloaded"],
-        "modelErrorMarkers": ["model_not_found", "does not exist", "not supported"],
+        "modelErrorMarkers": ["model_not_found", "modelNotFound", "model not found", "does not exist", "not supported"],
         "signInHint": "Open Terminal and run codex login.",
         "installHint": "Install Codex (developers.openai.com/codex), then run codex login."
       },
@@ -532,6 +534,8 @@
       "fallbackOrder": ["gpt-5.6-terra", "gpt-5.6-luna"],
       "models": [
         { "id": "default", "name": "CLI default", "tier": null, "omitFlag": true },
+        { "id": "gpt-6.2-sol", "name": "GPT-6.2 Sol", "tier": "best" },
+        { "id": "gpt-6.2-astra", "name": "GPT-6.2 Astra", "tier": "best" },
         { "id": "gpt-6.1-sol", "name": "GPT-6.1-Sol", "tier": "best", "cliDefault": true },
         { "id": "gpt-6-astra", "name": "GPT-6-Astra", "tier": "best" },
         { "id": "gpt-6-sol", "name": "GPT-6-Sol", "tier": "best" },

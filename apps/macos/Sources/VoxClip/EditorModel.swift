@@ -343,7 +343,7 @@ struct EditorRenderSnapshot {
         let signature = rewriteConnectorSignature
         let provider = app.providers.first { $0.id == app.string("llm.connector") }
         let connector: RewriteConnector? = provider.map { (provider: ProviderChoice) -> RewriteConnector in
-            RewriteConnector(connector: app.connector(provider.id), model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""),
+            RewriteConnector(connector: app.connector(provider.id), model: app.effectiveModel(for: provider),
                 name: provider.shortName, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
         }
         let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
@@ -1882,7 +1882,8 @@ extension EditorModel {
                     // The first new suggestion in transcript order is focused, not selected
                     // (design §6.2): the scope, playhead, Export and status summary stay.
                     focusedSuggestion = added.min { (index($0.startWordId) ?? .max) < (index($1.startWordId) ?? .max) }?.id
-                    fallbackNote = usedFallback ? "Answered by \(result.model) because \(selectedModel) was busy." : nil
+                    let codexFallback = provider.id == "codex" ? app.codexFallbackMessage(for: selectedModel) : nil
+                    fallbackNote = usedFallback ? codexFallback ?? "Answered by \(result.model) because \(selectedModel) was busy." : nil
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
                 } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
                     guard !Task.isCancelled else { return }

@@ -57,7 +57,7 @@ struct StatusBarContent: Equatable {
             content.items[.spend] = StatusItem(kind: .spend, lead: .symbol("waveform"), parts: [StatusText(string: combined)], spoken: combined, help: "Estimated daily transcription and monthly Voice Lab spend, from separate local ledgers; not a provider invoice.")
         }
         let task = editor.statusTask(now: now)
-        content.items[.task] = task?.item ?? editor.statusReadOnly ?? editor.statusRewriteNotice
+        content.items[.task] = task?.item ?? editor.statusReadOnly ?? editor.statusRewriteNotice ?? app.statusCodexFallback
         content.taskSince = task?.since
         content.items[.summary] = editor.statusSummary
         content.items[.frame] = editor.statusFrame
@@ -68,6 +68,12 @@ struct StatusBarContent: Equatable {
 }
 
 extension AppModel {
+    var statusCodexFallback: StatusItem? {
+        guard string("llm.connector") == "codex", let provider = providers.first(where: { $0.id == "codex" }),
+              let message = codexFallbackMessage(for: savedModel(for: provider)) else { return nil }
+        return StatusItem(kind: .task, lead: .symbol("exclamationmark.triangle"), parts: [StatusText(string: message)], spoken: message)
+    }
+
     /// The chosen AI's short name and model with its status dot, then its billing once this session detected it
     /// (impl-plan item 14: never a stored claim); nothing with no AI chosen. The billing reads "No extra cost on your
     /// plan" for a CLI on its plan (C8), "No extra cost" for a model on this Mac or a local server, "Billed to your
