@@ -32,6 +32,7 @@ public static class ClipEffects
         "bleep" or "mute" => ["wordIds"],
         "blur" or "pixelate" => ["rect", "tracking", "track"],
         "title" or "lowerThird" => ["text", "position"],
+        "motionTemplate" => ["template"],
         "sticker" => ["text", "position", "scale"],
         "arrow" or "circle" => ["rect"],
         "progress" => ["position"],
@@ -74,6 +75,7 @@ public static class ClipEffects
             Require(entry.GetProperty("id").ValueKind == JsonValueKind.String);
             Require(entry.GetProperty("clipId").ValueKind is JsonValueKind.String or JsonValueKind.Null);
             Number(entry.GetProperty("start")); Number(entry.GetProperty("end"));
+            if (kind == "motionTemplate") Require(MotionTemplate.Read(entry.GetProperty("template")) is not null);
             if (entry.TryGetProperty("wordIds", out var words))
             {
                 Require(words.ValueKind == JsonValueKind.Array);

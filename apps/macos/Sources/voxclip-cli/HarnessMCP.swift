@@ -47,11 +47,17 @@ enum HarnessTool: String, CaseIterable {
                 try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("schemas/" + file)))
             }
             var timeline = try load("harness-timeline.schema.json")
-            if case .object(var effect) = try load("clip-plan-effect.schema.json"), case .object(var root) = timeline,
+            if case .object(var effect) = try load("clip-plan-effect.schema.json"),
+               case .object(var effectProperties) = effect["properties"],
+               case .object(var template) = try load("motion-template.schema.json"), case .object(var root) = timeline,
                case .object(var properties) = root["properties"], case .object(var effects) = properties["effects"],
                case .object(var items) = effects["items"], case .array(var constraints) = items["allOf"], constraints.count == 2 {
                 effect["$id"] = nil
                 effect["$schema"] = nil
+                template["$id"] = nil
+                template["$schema"] = nil
+                effectProperties["template"] = .object(template)
+                effect["properties"] = .object(effectProperties)
                 constraints[0] = .object(effect)
                 items["allOf"] = .array(constraints)
                 effects["items"] = .object(items)

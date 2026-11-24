@@ -2,13 +2,14 @@ import Foundation
 
 public struct ClipPlanEffect: Codable, Sendable, Equatable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
-        case zoom, punchIn, motionTitle, lowerThird, emojiPop, soundEffect, illustration, colourLook, speedForPart
+        case zoom, punchIn, motionTitle, lowerThird, emojiPop, motionTemplate, soundEffect, illustration, colourLook, speedForPart
         case bRoll, screenshot, videoStack
 
         var payloadKey: String {
             switch self {
             case .zoom, .punchIn: "scale"
             case .motionTitle, .lowerThird, .emojiPop: "text"
+            case .motionTemplate: "template"
             case .soundEffect: "query"
             case .illustration: "prompt"
             case .colourLook: "look"
@@ -29,13 +30,15 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
     public let prompt: String?
     public let look: ClipLook?
     public let rate: Double?
+    public let template: MotionTemplate?
     public let footage: ClipFootage.Selection?
 
-    private init(kind: Kind, startWord: Int, endWord: Int, reason: String, value: JSONValue) {
+    private init(kind: Kind, startWord: Int, endWord: Int, reason: String, value: JSONValue, template: MotionTemplate?) {
         self.kind = kind; self.startWord = startWord; self.endWord = endWord; self.reason = reason
         scale = value[ai: "scale"].aiDouble; text = value[ai: "text"].aiString
         query = value[ai: "query"].aiString; prompt = value[ai: "prompt"].aiString
         look = value[ai: "look"].aiString.flatMap(ClipLook.init(rawValue:)); rate = value[ai: "rate"].aiDouble
+        self.template = template
         footage = ClipFootage.Selection.read(value[ai: "footage"])
     }
 
@@ -53,21 +56,23 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
               let start = value[ai: "startWord"].aiInt, let end = value[ai: "endWord"].aiInt, start >= 0, end >= start,
               let reason = line(value[ai: "reason"], limit: 240) else { return nil }
         let payload = value[ai: kind.payloadKey]
+        let template = kind == .motionTemplate ? MotionTemplate.read(payload) : nil
         let valid = switch kind {
         case .zoom, .punchIn: payload.aiDouble.map { (1.05...MotionCue.maximumScale).contains($0) } == true
         case .motionTitle, .lowerThird: line(payload, limit: ClipEffect.maximumTitleScalars) != nil
         case .emojiPop: line(payload, limit: ClipEffect.maximumStickerScalars) != nil
+        case .motionTemplate: template != nil
         case .soundEffect: line(payload, limit: 120) != nil
         case .illustration: line(payload, limit: 500) != nil
         case .colourLook: payload.aiString.flatMap(ClipLook.init(rawValue:)) != nil
         case .speedForPart: payload.aiDouble.map { (0.5...2).contains($0) } == true
         case .bRoll, .screenshot, .videoStack: ClipFootage.Selection.read(payload) != nil
         }
-        return valid ? Self(kind: kind, startWord: start, endWord: end, reason: reason, value: value) : nil
+        return valid ? Self(kind: kind, startWord: start, endWord: end, reason: reason, value: value, template: template) : nil
     }
 
     static func providerEntry(_ value: JSONValue) -> Self? {
-        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)) else { return nil }
+        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)), kind != .motionTemplate else { return nil }
         let keys = ["kind", "startWord", "endWord", "reason", kind.payloadKey]
         return read(.object(Dictionary(uniqueKeysWithValues: keys.map { ($0, value[ai: $0]) })))
     }
@@ -103,6 +108,11 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
             let effect = ClipEffect(id: id, clipId: clipID, kind: overlay, start: first.lowerBound, end: last.upperBound,
                                     text: text, position: position, scale: kind == .emojiPop ? 1 : nil,
                                     animation: kind == .emojiPop ? .pop : .rise)
+            return .init(id: id, decision: .overlay, action: .effect(effect), reason: reason)
+        case .motionTemplate:
+            guard let template else { return nil }
+            let effect = ClipEffect(id: id, clipId: clipID, kind: .motionTemplate, start: first.lowerBound, end: last.upperBound,
+                                    template: template)
             return .init(id: id, decision: .overlay, action: .effect(effect), reason: reason)
         case .bRoll, .screenshot, .videoStack:
             guard let footage, let kind = ClipFootage.Kind(rawValue: kind.rawValue), let length = sources[footage.sourceKey] else { return nil }

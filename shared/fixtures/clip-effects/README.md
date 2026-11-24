@@ -1,7 +1,7 @@
 # Clip-effects project wire fixtures
 
 The wire fixtures are synthetic metadata only. `effects-project.voxclip` is the context-demo v4
-fixture without its demo and motion fields, plus one effect of every kind (bleep, mute, blur, pixelate, title, lower
+fixture without its demo and motion fields, plus one toolbox effect of each kind (bleep, mute, blur, pixelate, title, lower
 third, sticker, arrow, circle, progress bar, freeze, a bundled sound, timed colour and speed, and illustration).
 `effects-wire-cases.json`
 (`voxclip-clip-effects-wire-cases/1`) applies JSON-pointer replacements and removals to it.
@@ -18,6 +18,11 @@ rules are in doc/spec/ai.md section 18.2.
 shared `clip-plan-effect.schema.json`. Both Core suites replay the same vectors and check source spans,
 framing keyframes, overlay templates, deferred asset requests, and refusal of invalid operations. Update expectations
 by hand only when the documented placement contract changes; the values describe intended behaviour.
+
+`motion-template-cases.json` contains hand-authored harness effects at words 9–10 of `projects/clip-from-long-take.voxclip`
+(source seconds 5.9–6.24). The Mac and Windows harnesses replay those anchors; both frame compositors render each
+placed template. `motion-template-invalid-cases.json` holds payloads neither platform may accept.
+Update these by hand only when the documented template contract changes.
 
 `footage-cases.json` is hand-authored using the same convention. Both Core suites check companion source keys,
 source-time bounds (including a still near the end), and the `bRoll`, `screenshot`, and `videoStack` vocabulary.

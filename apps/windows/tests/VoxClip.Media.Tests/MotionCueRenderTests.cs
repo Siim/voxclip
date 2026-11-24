@@ -1,6 +1,10 @@
+using System.Text.Json.Nodes;
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Pipeline;
 using VoxClip.Tests.Support;
@@ -69,6 +73,33 @@ public sealed class MotionCueRenderTests(ITestOutputHelper output)
         long total = 0;
         for (var index = 0; index < left.Pixels.Length; index++) total += Math.Abs(left.Pixels.Span[index] - right.Pixels.Span[index]);
         return total / (double)left.Pixels.Length;
+    }
+
+    [Fact]
+    public void HarnessMotionTemplatesDrawDeterministicallyInTheFrameComposer()
+    {
+        const string clipId = "clip-2f1c";
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip"));
+        var words = project.Transcript!.Words;
+        var entries = JsonNode.Parse(FixtureLoader.ReadText("fixtures/clip-effects/motion-template-cases.json"))!.AsArray();
+        var frame = ClipRenderMediaTests.SyntheticFrame();
+        foreach (var raw in entries)
+        {
+            var plan = ClipPlanEffect.Read(raw)!;
+            var pending = plan.Operation("harness-test", clipId, new(9, 10), index => (words[index].Start, words[index].End),
+                index => project.Edits.CutWordIds.Contains(words[index].Id), new HashSet<string>());
+            var overlay = Assert.IsType<ClipAutopilotAction.Effect>(pending?.Action);
+            var placed = ClipEffects.Rendered(ClipEffects.Adding([overlay.Value], project), clipId);
+            var clip = new ClipRenderInput(null, null) { Effects = new(placed, new Dictionary<string, string>()) };
+            var before = Finish(frame, clip, 5.8);
+            var sample = Finish(frame, clip, 6.04);
+            var preview = Finish(frame, clip, 6.04, forPreview: true);
+            Assert.True(before.Pixels.Span.SequenceEqual(frame.Pixels.Span));
+            Assert.False(sample.Pixels.Span.SequenceEqual(frame.Pixels.Span), raw!.ToJsonString());
+            Assert.True(sample.Pixels.Span.SequenceEqual(preview.Pixels.Span));
+            Assert.False(sample.Pixels.Span.SequenceEqual(Finish(frame, clip, 6.1).Pixels.Span));
+            Assert.True(Finish(frame, clip, 6.3).Pixels.Span.SequenceEqual(frame.Pixels.Span));
+        }
     }
 
     [Fact]

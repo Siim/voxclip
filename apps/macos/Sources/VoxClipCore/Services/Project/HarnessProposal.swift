@@ -10,7 +10,7 @@ public enum HarnessError: LocalizedError {
 
 public struct HarnessTimeline: Codable, Sendable, Equatable {
     package static let keys: Set<String> = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"]
-    private static let supportedEffects: Set<ClipPlanEffect.Kind> = [.zoom, .punchIn, .motionTitle, .lowerThird, .emojiPop]
+    private static let supportedEffects: Set<ClipPlanEffect.Kind> = [.zoom, .punchIn, .motionTitle, .lowerThird, .emojiPop, .motionTemplate]
     public let clipId: String
     public let reason: String
     public let cuts: [ClipAutopilotPlan.Cut]?
