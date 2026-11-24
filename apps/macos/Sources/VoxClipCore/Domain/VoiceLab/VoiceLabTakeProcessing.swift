@@ -37,7 +37,14 @@ public enum VoiceLabTakeProcessing {
         let tokens = VoiceLabTakeQuality.tokens(input.text)
         guard !tokens.isEmpty else { throw VoiceLabError.invalidInput }
         guard keepsBridgeWords(input.text, bridge: try bridgeWords(input)) else { throw VoiceLabError.invalidInput }
-        let level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
+        let level: Double
+        do {
+            level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
+        } catch VoiceLabAudioMathError.noVoicedAudio where input.editedLayout != nil {
+            guard let samples = input.source.samples(range),
+                  let inside = try VoiceLabLoudness.voicedRmsDb(Array(samples), sampleRate: rate) else { throw VoiceLabAudioMathError.noVoicedAudio }
+            level = inside
+        }
         var tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
             sourceSampleRate: Double(rate), totalSamples: Int64(total),
             excludeDigitalSilence: VoiceLabRoomToneSelection.excludeDigitalSilence(items: input.items, envelope: input.sourceEnvelope,

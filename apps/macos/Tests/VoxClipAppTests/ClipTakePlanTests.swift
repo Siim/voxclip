@@ -974,8 +974,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 importedAt: Date(), estimate: estimate)
             return ImportedLipsyncResult(asset: asset, url: root.appendingPathComponent(asset.file), provenance: provenance)
         }, changed: {})
-        let whole = WholeClipRevoiceSession()
-        rewrite.configureWholeClip(whole)
+        let whole = (restoring ? rewrite.wholeClip : nil) ?? WholeClipRevoiceSession()
+        if whole.backend == nil { rewrite.configureWholeClip(whole) }
         var backend = try #require(whole.backend)
         backend.script = { script }
         backend.videoSeconds = { 4 }
@@ -999,7 +999,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         backend.report = { _ in }
         backend.hasKey = { true }
         whole.backend = backend
-        if restoring { rewrite.restoreWholeClip(into: whole) }
+        if restoring, whole.restoredVoiceKey == nil { rewrite.restoreWholeClip(into: whole) }
         rewrite.wholeClip = whole
         return whole
     }
@@ -1042,7 +1042,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         defer { reopened.close() }
         again.takePlan = nil
         again.start()
-        try #require(again.ownProposal != nil && again.restoredProposal?.wholeClip != nil, "the proposal and its whole clip are back")
+        try #require(again.ownProposal != nil && again.wholeClip?.restoredVoiceKey != nil, "the proposal and its whole clip are back")
         var restoredMayPay: [Bool] = []
         var adopted: [Int?] = []
         let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id,
@@ -1077,7 +1077,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         defer { reopened.close() }
         again.takePlan = nil
         again.start()
-        try #require(again.restoredProposal?.wholeClip != nil)
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
         var mayPay: [Bool] = []
         var chosen: String? = "another-voice"
         let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: nil) { mayPay.append($0) }
@@ -1124,7 +1124,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         defer { reopened.close() }
         again.takePlan = nil
         again.start()
-        try #require(again.restoredProposal?.wholeClip != nil)
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
         var mayPay: [Bool] = []
         let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id) { mayPay.append($0) }
         await back.refreshQuote()
@@ -1303,7 +1303,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         defer { reopened.close() }
         again.takePlan = nil
         again.start()
-        try #require(again.restoredProposal?.wholeClip != nil, "the undone whole clip is offered back")
+        try #require(again.wholeClip?.restoredVoiceKey != nil, "the undone whole clip is offered back")
         var mayPay: [Bool] = []
         let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id) { mayPay.append($0) }
         await back.refreshQuote()
@@ -1373,7 +1373,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         VoiceLabTakeJournal.remove(assetID: second.asset.id, projectID: fixture.source.id, paidRoot: paidRoot)
         again.takePlan = nil
         again.start()
-        try #require(again.restoredProposal?.wholeClip != nil)
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
         var mayPay: [Bool] = []
         let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id) { mayPay.append($0) }
         await back.refreshQuote()
@@ -1411,7 +1411,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         defer { reopened.close() }
         again.takePlan = nil
         again.start()
-        try #require(again.restoredProposal?.wholeClip != nil)
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
         var mayPay: [Bool] = []
         var adopted: [Int?] = []
         let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id,

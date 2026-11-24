@@ -525,6 +525,28 @@ import VoxClipMedia
         launch { await $0.performUpgrade(voice: voice, picture: picture, kept: kept, entries: entries, before: before, price: upgradePrice) }
     }
 
+    func redoLipPrice(_ model: Lipsync) -> Decimal? {
+        guard phase == .used, !running, !submissionUnconfirmed, let voice, let picture else { return nil }
+        if ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)) { return 0 }
+        return (try? backend?.lipsyncPrice(model)) ?? nil
+    }
+
+    @ObservationIgnored private(set) var redoLipApproval: Decimal?
+
+    func redoLipSync(_ model: Lipsync, approved: Decimal) {
+        guard let price = redoLipPrice(model), price <= approved, let voice, let picture else { return }
+        if price == 0, synced?.model == model {
+            phase = .review
+            return
+        }
+        redoLipApproval = approved
+        phase = .running; started = Date(); progress = nil; failure = nil; upgradeNote = nil; currentStep = .lipsync
+        launch {
+            await $0.performLipsyncOnly(voice: voice, picture: picture, model: model)
+            $0.redoLipApproval = nil
+        }
+    }
+
     /// I Checked fal.ai · Sharper Lip Sync Again (fal.ai may charge twice): the upgrade's submit answer was lost, and the
     /// user checked fal.ai's request history. Only this click starts it again.
     func upgradeAfterCheckingFal() {

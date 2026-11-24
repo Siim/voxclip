@@ -27,7 +27,14 @@ public static class VoiceLabTakeProcessing
             window.End > total / (double)rate || SourceFrames(window.Start, rate) != window.StartSample || SourceFrames(window.End, rate) != window.EndSample)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         if (!KeepsBridgeWords(input.Text, BridgeWords(input))) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample);
+        double level;
+        try { level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample); }
+        catch (VoiceLabAudioMathException error) when (error.Code == VoiceLabAudioMathErrorCode.NoVoicedAudio && input.EditedLayout is not null)
+        {
+            if (input.Source.Samples(window.StartSample, window.EndSample) is not { } samples ||
+                VoiceLabLoudness.VoicedRmsDb(samples.Span, rate) is not { } inside) throw;
+            level = inside;
+        }
         var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, rate, total,
             VoiceLabRoomToneSelection.ExcludeDigitalSilence(input.Items, input.SourceEnvelope, rate, total, window, input.HardJoinSmoothing));
         if (input.HardJoinSmoothing && (window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard) && tone is not null)

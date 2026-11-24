@@ -5,6 +5,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac, VoxClip asks for Screen Recording and Accessibility when you need them, links to the right settings, and explains why card import needs access. On Windows, Rewrite links to microphone privacy settings when access is blocked.
+- On Mac, Voice shows whole-take revoice and its price in Full Take and clips, even with no changed words. Find it in ⌘K or the clip menu, and redo it without replacing the version in use until you click Use.
+- VoxClip builds from source on Xcode 26 with companion footage enabled.
 - Windows keeps automatic face-follow crop, cover picks, and Make it postable’s picture rows off until face analysis matches the Mac.
 - On Windows, review agent timeline proposals above the transcript. Keep makes one undoable edit; Undo dismisses the proposal. Music still needs a separate priced click.
 - Claude Code and Codex can propose title cards, kinetic captions, logo stings and counters on Mac and Windows. VoxClip renders them locally after you choose Keep.

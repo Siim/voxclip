@@ -45,7 +45,11 @@ import AppKit
     }
     static func matching(_ query: String, in items: [CommandPaletteItem]) -> [CommandPaletteItem] {
         let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
-        return items.filter { item in words.allSatisfy { (item.path + " " + item.title + " " + item.shortcut).localizedStandardContains($0) } }
+        return items.filter { item in
+            let aliases = (65...67).contains(item.menuItem.tag) ? " revoice voice lip sync" : ""
+            let text = item.path + " " + item.title + " " + item.shortcut + aliases
+            return words.allSatisfy { text.localizedStandardContains($0) }
+        }
     }
     @discardableResult static func run(_ item: CommandPaletteItem) -> Bool {
         guard enabled(item.menuItem), let action = item.menuItem.action else { return false }

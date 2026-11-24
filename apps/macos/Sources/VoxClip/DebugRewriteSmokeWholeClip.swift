@@ -107,6 +107,14 @@ extension DebugRewriteSmoke {
     }
 
     static var wholeClipScenarios: [Definition] { [
+        Definition(id: "S-voice-full-take", title: "find Voice on Full Take without a rewrite, Use, and redo from the same panel",
+                   requiresCompletion: false, fixture: wholeClipShortFixture()) { harness in
+            try await harness.voiceFullTake()
+        },
+        Definition(id: "S-voice-too-long", title: "Voice shows why a take over five minutes can’t be lip-synced",
+                   requiresCompletion: false, fixture: wholeClipFixture()) { harness in
+            try await harness.voiceFullTake(tooLong: true)
+        },
         Definition(id: "S-revoice-whole", title: "a heavily rewritten clip: How should it sound? → Revoice Whole Clip → Review → Use, one undo step, saved",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
             try await harness.revoiceWholeClip()
@@ -239,6 +247,93 @@ extension DebugRewriteSmoke.Harness {
         return (session, whole)
     }
 
+    fileprivate func voiceFullTake(tooLong: Bool = false) async throws {
+        guard let editor, let session else { throw DebugRewriteSmoke.Failure.setup("no project") }
+        if tooLong {
+            var longTake = editor.project
+            longTake.media.source.durationSeconds *= 20
+            longTake.transcript?.durationSeconds = longTake.media.source.durationSeconds
+            if let words = longTake.transcript?.words {
+                longTake.transcript?.words = words.map { word in
+                    var stretched = word
+                    stretched.start *= 20
+                    stretched.end *= 20
+                    return stretched
+                }
+            }
+            editor.replace(longTake, name: "Long take")
+        }
+        let lipsync = installWholeClipStandIn()
+        let before = speechRequests
+        let aiBefore = await connector?.sendCount
+        _ = editor.setScope(nil)
+        editor.openWholeClipVoice()
+        guard let voice = editor.openRewrite, voice !== session, let whole = voice.wholeClip else {
+            throw DebugRewriteSmoke.Failure.missing("Full Take Voice panel", "no whole-clip card")
+        }
+        await adopt(voice)
+        await whole.refreshQuote()
+        try await observe("open Voice on Full Take")
+        let aiAfter = await connector?.sendCount
+        makeItAppend([wholeClipCheck("VF-find", voice.task.cards.first == .wholeClip && voice.changedPhrasesUnavailable == "There are no changed phrases."
+            && speechRequests == before && lipsync.calls.isEmpty && aiAfter == aiBefore, "Voice opens at the top and opens without sending")])
+        if tooLong {
+            let reason = "Lip sync takes up to 5 min. Make a clip first."
+            let seen = steps.last?.snapshot.texts.contains { $0.contains(reason) } ?? false
+            makeItAppend([wholeClipCheck("VF-limit", voice.wholeClipUnavailable == reason && seen && voice.wholeClipPrimary()?.priced != true,
+                                         voice.wholeClipUnavailable ?? "no disabled reason")])
+            return
+        }
+        guard let primary = voice.wholeClipPrimary(), primary.title.hasPrefix("Revoice Whole Take · "), primary.priced else {
+            throw DebugRewriteSmoke.Failure.missing("priced Revoice Whole Take", voice.wholeClipPrimary()?.title ?? "no action")
+        }
+        let edited = RewriteSession.corrected(editor.project).filter { $0.kind == .word && !editor.cutWordIDs.contains($0.id) }
+        makeItAppend([wholeClipCheck("VF-script", whole.script?.words == edited.count, "voices the kept Full Take words")])
+        try await runWholeClip(voice, whole, title: primary.title)
+        guard whole.phase == .review else { throw DebugRewriteSmoke.Failure.setup(phaseText(whole)) }
+        try await act("click Use Whole Clip", clicked: "wholeClipUse") { await voice.useWholeClip().value }
+        guard let record = voice.usedWholeClip, record.clipId == WholeClipRevoice.fullTakeID,
+              let redo = voice.wholeClipPrimary(), redo.title == "Redo Voice and Lip Sync · free" else {
+            throw DebugRewriteSmoke.Failure.missing("used Voice panel with Redo", phaseText(whole))
+        }
+        let usedSpeech = speechRequests
+        try await act("click Redo Voice and Lip Sync", clicked: redo.id) {
+            redo.perform()
+            for _ in 0..<600 where voice.wholeClip === whole && whole.phase == .used {
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            await voice.wholeClip?.waitForRun()
+        }
+        guard let candidate = voice.wholeClip, candidate.phase == .review else {
+            throw DebugRewriteSmoke.Failure.setup("redo did not reach review: " + (voice.wholeClip.map(phaseText) ?? "no card"))
+        }
+        let kept = voice.usedWholeClip == record
+        try await act("Use the redone take", clicked: "wholeClipUse") { await voice.useWholeClip().value }
+        makeItAppend([wholeClipCheck("VF-redo", kept && candidate.phase == .used && voice.usedWholeClip?.id != record.id
+            && speechRequests == usedSpeech && lipsync.calls == [.lipsync2], "the earlier version stays until Use; neither provider is charged again")])
+        guard let current = voice.usedWholeClip, let lip = voice.wholeClipLipRedo(.standard), !lip.priced else {
+            throw DebugRewriteSmoke.Failure.missing("free lip-sync redo", phaseText(candidate))
+        }
+        try await act("click Redo Lip Sync Only", clicked: lip.id) { lip.perform() }
+        makeItAppend([wholeClipCheck("VF-lip", candidate.phase == .review && voice.usedWholeClip == current
+            && speechRequests == usedSpeech && lipsync.calls == [.lipsync2], "same-model redo reuses the saved result")])
+        try await act("Use the saved lip sync", clicked: "wholeClipUse") { await voice.useWholeClip().value }
+        guard let saved = voice.usedWholeClip, let sharper = voice.wholeClipLipRedo(.sync3), sharper.priced else {
+            throw DebugRewriteSmoke.Failure.missing("priced Sharper Lip Sync", phaseText(candidate))
+        }
+        try await act("click Sharper Lip Sync", clicked: sharper.id) {
+            sharper.perform()
+            await candidate.waitForRun()
+        }
+        makeItAppend([wholeClipCheck("VF-sharper", candidate.phase == .review && voice.usedWholeClip == saved
+            && speechRequests == usedSpeech && lipsync.calls == [.lipsync2, .sync3], "sync-3 keeps the voice and leaves the earlier version in use")])
+        try await act("Use Sharper Lip Sync", clicked: "wholeClipUse") { await voice.useWholeClip().value }
+        let paid = editor.project.voiceLab.assets
+        voice.backToMyRecording()
+        makeItAppend([wholeClipCheck("VF-original", voice.usedWholeClip == nil && editor.project.voiceLab.assets == paid,
+                                     "Back to My Recording retains the paid assets")])
+    }
+
     private func wholeClipCheck(_ invariant: String, _ passed: Bool, _ detail: String) -> DebugRewriteSmoke.Check {
         DebugRewriteSmoke.Check(invariant: invariant, passed: passed, detail: detail)
     }
@@ -264,7 +359,7 @@ extension DebugRewriteSmoke.Harness {
         return "\(session.task.state)"
     }
 
-    /// W1: the card, its callout and chip, and both prices from the tables.
+    /// W1: the card, its callout, and both prices from the tables.
     private func checkChoose(_ session: RewriteSession, _ whole: WholeClipRevoiceSession) throws -> String {
         guard let shared = app.shared, let quote = whole.quote, let script = whole.script, let project = editor?.project else {
             throw DebugRewriteSmoke.Failure.setup("no quote")
@@ -280,14 +375,13 @@ extension DebugRewriteSmoke.Harness {
                                            let check = RewriteSession.wordCheckUSD(catalog) {
             voice + check * Decimal(script.parts.count) + lipsync
         } else { nil }
-        let chip = session.wholeClipChipAction()?.title ?? ""
         let primary = session.wholeClipPrimary()?.title ?? ""
         let price = quote.wholeUSD.map(VoiceLabCostPresentation.format) ?? "none"
         makeItAppend([
             wholeClipCheck("W1", session.task.cards.contains(.wholeClip) && whole.phase == .choose && quote.reason != nil
-                    && quote.wholeUSD == expectedMaximum && quote.patchUSD != nil && chip == "Revoice the Whole Clip · " + price
-                    && primary == "Revoice Whole Clip · " + price,
-                "card \(session.task.cards.contains(.wholeClip)) · reason \(quote.reason.map(WholeClipRevoice.callout) ?? "none") · whole \(price) (tables \(expectedMaximum.map(VoiceLabCostPresentation.format) ?? "none")) · patch \(quote.patchUSD.map(VoiceLabCostPresentation.format) ?? "none") · [\(chip)] [\(primary)]"),
+                    && quote.wholeUSD == expectedMaximum && quote.patchUSD != nil
+                    && primary == "Revoice Whole Take · " + price,
+                "card \(session.task.cards.contains(.wholeClip)) · reason \(quote.reason.map(WholeClipRevoice.callout) ?? "none") · whole \(price) (tables \(expectedMaximum.map(VoiceLabCostPresentation.format) ?? "none")) · patch \(quote.patchUSD.map(VoiceLabCostPresentation.format) ?? "none") · [\(primary)]"),
         ])
         return primary
     }

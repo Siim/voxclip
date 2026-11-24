@@ -29,6 +29,17 @@ public sealed class VoiceLabSourceExcerptTests
     private static VoiceLabSourceExcerpt.Region Region(float[] whole, int start, int end) => new(start, whole.AsSpan(start, end - start));
 
     [Fact]
+    public void WholeRecordingUsesItsOwnSpeechWhenThereIsNoNeighbourhood()
+    {
+        var whole = Source();
+        var input = Input(VoiceLabSourceExcerpt.Whole(whole), VoiceLabTakeProcessing.Envelope(whole, Rate));
+        var window = input.Window with { Start = 0, End = 30, StartSample = 0, EndSample = whole.Length };
+        Assert.Throws<VoiceLabAudioMathException>(() => VoiceLabTakeProcessing.Preflight(input with { Window = window }));
+        var preflight = VoiceLabTakeProcessing.Preflight(input with { Window = window, EditedLayout = new([], 0.5) });
+        Assert.Equal(VoiceLabLoudness.VoicedRmsDb(whole, Rate), preflight.SourceLevel);
+    }
+
+    [Fact]
     public void PreflightReadsTheSameLevelAndRoomToneFromRegions()
     {
         var whole = Source();

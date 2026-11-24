@@ -155,6 +155,7 @@ internal sealed partial class RewritePanel : Grid
         changeSummary.TextWrapping = TextWrapping.NoWrap;
         Grid.SetColumn(changeSummary, 1);
         newHeader.Children.Add(changeSummary);
+        body.Children.Add(wholeClipBody);
         body.Children.Add(newHeader);
         BuildWordingFit();
         BuildNextSteps();
@@ -163,7 +164,6 @@ internal sealed partial class RewritePanel : Grid
         body.Children.Add(nextSteps);
         BuildGeneration();
         body.Children.Add(generationBody);
-        body.Children.Add(wholeClipBody);
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         AutomationProperties.SetAutomationId(scroll, "Rewrite.Scroll");
         Children.Add(scroll);

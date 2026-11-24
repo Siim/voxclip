@@ -6620,6 +6620,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private UndecidedDuration
 member VoxClip.App.ViewModels.RewriteSession :: method private UseAnchorForVideosAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method private VideoVoiceLabChanged(object,System.EventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private WholeClipBaseKey(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.App.ViewModels.RewriteSession :: method private WholeClipExceedsLimit()
 member VoxClip.App.ViewModels.RewriteSession :: method private WidenToSentenceAsync(int)
 member VoxClip.App.ViewModels.RewriteSession :: method private WorkWholeClipAsync(System.Func`3<System.IProgress`1<string>,System.Threading.CancellationToken,System.Threading.Tasks.Task>)
 member VoxClip.App.ViewModels.RewriteSession :: method private get_BillingCurrent()

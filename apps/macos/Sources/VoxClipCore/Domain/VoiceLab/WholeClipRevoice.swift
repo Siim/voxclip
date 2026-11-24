@@ -37,6 +37,8 @@ public enum WholeClipRevoice {
 // MARK: - The switch rule
 
 extension WholeClipRevoice {
+    public static let fullTakeID = "voxclip-full-take"
+
     /// What the rule reads from a Rewrite of one clip.
     public struct RuleInputs: Equatable, Sendable {
         /// The clip's spoken words (transcript `word` items in its span, after its cuts).
@@ -570,7 +572,7 @@ extension WholeClipRevoice {
         var ids = Set<String>(), used = Set<String>()
         for record in records {
             guard idShape(record.id), ids.insert(record.id).inserted, idShape(record.clipId),
-                  project.edits.clips.contains(where: { $0.id == record.clipId }),
+                  record.clipId == fullTakeID || project.edits.clips.contains(where: { $0.id == record.clipId }),
                   !record.segmentIds.isEmpty, !record.script.isEmpty, record.script.unicodeScalars.count <= 20_000,
                   !record.consentRecordId.isEmpty,
                   Lipsync(rawValue: record.lipsyncModel) != nil,
@@ -595,7 +597,7 @@ extension WholeClipRevoice {
         guard var records = project.voiceLab.wholeClipRevoices else { return }
         let clips = Set(project.edits.clips.map(\.id))
         let tts = Set(project.voiceLab.segments.filter { $0.kind == .tts }.map(\.id))
-        records.removeAll { !clips.contains($0.clipId) || $0.segmentIds.isEmpty || !$0.segmentIds.allSatisfy(tts.contains) }
+        records.removeAll { ($0.clipId != fullTakeID && !clips.contains($0.clipId)) || $0.segmentIds.isEmpty || !$0.segmentIds.allSatisfy(tts.contains) }
         project.voiceLab.wholeClipRevoices = records.isEmpty ? nil : records
     }
 

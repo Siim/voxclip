@@ -730,7 +730,8 @@ import VoxClipCore
         /// Each run drops the session's takes generation (`RewriteSession.invalidate`); Make Takes would find the voices
         /// again with the live client (`discoverVoices`). The scripted one stands in for it once a proposal shows.
         func ensureGeneration() async {
-            guard let session, session.isOpen, session.ownProposal != nil, !session.isProposing, let store, let prices,
+            guard let session, session.isOpen, session.ownProposal != nil || session.voicePanelAsEdited,
+                  !session.isProposing, let store, let prices,
                   session.generationIsCurrent(region: .default) else { return }
             if session.generation == nil {
                 session.configureGeneration(client: .rewriteSmoke(prices: prices, spend: VoiceLabSpendLedger(locations: app.locations)),
@@ -1159,7 +1160,9 @@ import VoxClipCore
             let open = snapshot.state != "closed"
             if open {
                 let acting = snapshot.controls.filter { $0.acts && $0.enabled }
-                checks.append(Check(invariant: "I1", passed: !acting.isEmpty || snapshot.resolverRunning,
+                let explainsUnavailable = session?.voicePanelAsEdited == true && session?.changedPhrasesUnavailable != nil
+                    && session?.wholeClipUnavailable.map(snapshot.texts.contains) == true
+                checks.append(Check(invariant: "I1", passed: !acting.isEmpty || snapshot.resolverRunning || explainsUnavailable,
                     detail: acting.isEmpty ? (snapshot.resolverRunning ? "resolver running" : DebugRewriteSmoke.summary(snapshot))
                         : "acts: " + acting.map(\.title).prefix(4).joined(separator: ", ")))
                 let disabled = snapshot.controls.filter { !$0.enabled && DebugRewriteSmoke.allowedDisabled[$0.title] == nil }
@@ -1234,7 +1237,15 @@ import VoxClipCore
                 case .stopped:
                     let first = session.wholeClipStoppedActions().first
                     return Check(invariant: "I10", passed: first != nil, detail: first.map { "card [\($0.title)]" } ?? "no step forward on the stopped card")
-                case .choose, .used: break
+                case .choose, .used:
+                    if snapshot.cards.contains("wholeClip"), let action = session.wholeClipPrimary(),
+                       snapshot.controls.contains(where: { $0.id == action.id && $0.enabled && $0.acts }) {
+                        return Check(invariant: "I10", passed: true, detail: "Voice card [\(action.title)]")
+                    }
+                    if session.voicePanelAsEdited, let reason = session.wholeClipUnavailable,
+                       session.changedPhrasesUnavailable != nil, snapshot.texts.contains(where: { $0.contains(reason) }) {
+                        return Check(invariant: "I10", passed: true, detail: reason)
+                    }
                 }
             }
             let plan = session.takePlan

@@ -369,6 +369,7 @@ import VoxClipCore
         case 44: if let id = selectedClipID { editor.removeClip(id) }
         case 45: if let id = selectedClipID { editor.presentExport(clipIDs: [id]) }
         case 62: if let id = makeItClipID(editor) { editor.makeItPostable(id) }
+        case 65, 66, 67: editor.openWholeClipVoice(whole: item.tag != 67, clipID: editor.project.edits.activeClipId)
         case 46: editor.seek(source: max(0, editor.sourceTime - 3))
         case 47: editor.seek(source: min(editor.sourceDuration, editor.sourceTime + 3))
         case 48: editor.copySelection()
@@ -504,6 +505,18 @@ import VoxClipCore
                 guard let id = makeItClipID(editor) else { return false }
                 item.title = editor.makeItTitle(clipID: id).replacingOccurrences(of: "✦ Make it postable", with: "Make It Postable")
                 return editor.canMakeItPostable(id)
+            case 65, 66, 67:
+                let id = editor.project.edits.activeClipId
+                let scope = id.map(RewriteScope.clip) ?? .fullTake
+                let session = editor.rewrite.flatMap { $0.rewriteScope == scope ? $0 : nil }
+                let title: String = switch item.tag {
+                case 65: "Revoice Whole Take, with Lip Sync"
+                case 66: "Redo Voice and Lip Sync"
+                default: "Voice Only the Changed Phrases"
+                }
+                let price = item.tag == 67 ? session?.wholeClip?.quote?.patchUSD : session?.wholeClip?.quote?.wholeUSD
+                item.title = title + (price.map { " · " + VoiceLabCostPresentation.format($0) } ?? "")
+                return item.tag != 66 || WholeClipRevoice.isRevoiced(clipId: id ?? WholeClipRevoice.fullTakeID, in: editor.project)
             case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: commandEvent, responder: NSApp.keyWindow?.firstResponder)
             case 47: return editor.mediaResolved
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
@@ -646,6 +659,9 @@ import VoxClipCore
         command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Make It Postable", 62)
+        command(clip, "Revoice Whole Take, with Lip Sync", 65)
+        command(clip, "Redo Voice and Lip Sync", 66)
+        command(clip, "Voice Only the Changed Phrases", 67)
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
         // The clip bar's Keep ⇧⌘↩ on a suggestion's tab (impl-plan §3.2, V3b), a hidden alternate.

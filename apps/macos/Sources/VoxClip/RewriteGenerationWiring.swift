@@ -21,7 +21,7 @@ extension RewriteSession {
             showProposal()
         }
     }
-    func discoverVoices() async {
+    func discoverVoices(resume: (@MainActor () -> Void)? = nil) async {
         guard current, editor.app.voiceLabRewriteEnabled, generation == nil else { return }
         reportGenerationProblem(nil)
         let app = editor.app
@@ -32,7 +32,7 @@ extension RewriteSession {
                     guard let self, current, task.confirm?.confirm.id == "allowVoiceProvider" else { return }
                     task.dismissConfirm()
                     app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
-                    makeTakes()
+                    if let resume { resume() } else { makeTakes() }
                 }))
             return
         }

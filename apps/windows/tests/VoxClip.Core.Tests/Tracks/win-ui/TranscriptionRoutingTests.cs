@@ -187,11 +187,13 @@ public sealed class TranscriptionRoutingTests
         var start = dialog.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal);
         Assert.True(start >= 0);
         var run = dialog[start..];
-        Ordered(run, "var route = local ? await Route(null) : null;", "if (route is { Plan: null, Detector: null }) { ShowRoute(route); return; }",
-            "if (!local)", "ExtractAudioAsync", "App.Services.DetectLanguageAsync", "service.TranscribeAsync");
+        Ordered(run, "var route = retry is null && local ? await Route(null) : null;",
+            "if (route is { Plan: null, Detector: null }) { ShowRoute(route); return; }", "if (retry is null && !local)",
+            "if (retry is not null)", "var aligned = await retry.FinishAsync(token);", "model.SetTranscript(aligned);", "return;",
+            "ExtractAudioAsync", "App.Services.DetectLanguageAsync", "service.TranscribeAsync");
         // The local engine runs only its routed plan and never falls through to ElevenLabs.
         Ordered(run, "var plan = local ? route?.Plan ?? throw new InvalidOperationException(", ": new TranscriptionPlan(TranscriptEngine.Elevenlabs,",
-            "var request = new TranscriptionRequest(plan,", "service.TranscribeAsync(request,");
+            "var request = new TranscriptionRequest(plan, audio.Audio, source.ContentKey)", "service.TranscribeAsync(request,");
         Assert.DoesNotContain("route?.Plan ?? new TranscriptionPlan(TranscriptEngine.Elevenlabs", run);
         var settings = System.Xml.Linq.XDocument.Load(Path.Combine(AppRoot, "SettingsWindow.xaml"));
         Assert.Contains(settings.Descendants().Select(element => (string?)element.Attribute("Tag")), tag => tag == SettingsSections.LocalModels);
@@ -316,7 +318,7 @@ public sealed class TranscriptionRoutingTests
             "engine.SelectedIndex == 0, language.Text, (models.SelectedItem as ComboBoxItem)?.Tag as string))",
             "await RunTranscriptionAsync();");
         Ordered(dialog, "var authorizedCloud = allowCloud.IsChecked == true;",
-            "if (!local)", "if (!authorizedCloud || approvedPrice is null) return;",
+            "if (retry is null && !local)", "if (!authorizedCloud || approvedPrice is null) return;",
             "await App.Services.SetAsync(\"transcription.cloudConsent.elevenlabs\", true, token);");
         Assert.Contains("keySaved && allowCloud.IsChecked == true && price is not null", dialog);
     }
