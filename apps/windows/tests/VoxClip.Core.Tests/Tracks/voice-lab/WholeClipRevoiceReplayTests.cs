@@ -4,6 +4,7 @@ using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Tests.Support;
 using Xunit;
 

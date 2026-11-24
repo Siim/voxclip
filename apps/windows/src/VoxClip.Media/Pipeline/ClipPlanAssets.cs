@@ -60,13 +60,13 @@ public sealed class ClipPlanAssets(IMusicHttp http)
     }
 
     /// <summary>Dispatch one approved illustration and save its bytes before returning the placement.</summary>
-    public async Task<JsonElement> IllustrationAsync(ClipAutopilotAction.Asset request, string projectId, string root, ClipIllustrationQuote quote, string key)
+    public async Task<JsonElement> IllustrationAsync(ClipAutopilotAction.Asset request, string projectId, string root, ClipIllustrationQuote quote, string key, CancellationToken ct)
     {
         using var call = new HttpRequestMessage(HttpMethod.Post, quote.Endpoint);
         call.Headers.Authorization = new("Key", key);
         call.Content = JsonContent.Create(new { prompt = request.Text, image_size = new { width = quote.Size, height = quote.Size },
             num_images = 1, enable_safety_checker = true, output_format = "png", sync_mode = true });
-        var reply = await http.SendAsync(call, CancellationToken.None).ConfigureAwait(false);
+        var reply = await http.SendAsync(call, ct).ConfigureAwait(false);
         if (reply.Status is < 200 or >= 300 || reply.Body.Length > 16 * 1024 * 1024)
             throw new VoxClipException(VoxClipErrorCode.ProviderError, "Illustration generation did not finish.");
         using var json = JsonDocument.Parse(reply.Body);

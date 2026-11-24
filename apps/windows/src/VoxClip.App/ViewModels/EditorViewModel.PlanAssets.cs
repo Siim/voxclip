@@ -10,7 +10,7 @@ internal sealed record PlanAssetServices(
     Func<CancellationToken, Task<string?>> Key,
     Func<ClipAutopilotAction.Asset, string, JsonElement?> Saved,
     Func<ClipAutopilotAction.Asset, string, CancellationToken, Task<JsonElement?>> Sound,
-    Func<ClipAutopilotAction.Asset, string, string, Task<JsonElement>> Illustrate)
+    Func<ClipAutopilotAction.Asset, string, string, CancellationToken, Task<JsonElement>> Illustrate)
 {
     internal async Task<JsonElement?> CollectAsync(ClipAutopilotAction.Asset asset, string project, Func<decimal, bool> approve, CancellationToken ct)
     {
@@ -20,7 +20,7 @@ internal sealed record PlanAssetServices(
         if (Saved(asset, project) is { } saved) return saved;
         if (Price is not { } price || await Key(ct) is not { Length: > 0 } key) return null;
         ct.ThrowIfCancellationRequested();
-        return approve(price) ? await Illustrate(asset, project, key) : null;
+        return approve(price) ? await Illustrate(asset, project, key, ct) : null;
     }
 }
 
@@ -98,11 +98,13 @@ public sealed partial class EditorViewModel
             AskAssetAction(asset).Blocked is not null || isLeaving || IsReadOnly) return;
         var snapshot = project;
         AskClaude.AssetWorking = id;
+        using var cancellation = new CancellationTokenSource();
+        AskClaude.AssetCancellation = cancellation;
         AskClaudeNotify();
         bool Current() => !isLeaving && ReferenceEquals(snapshot, project) && ReferenceEquals(run, AskClaude.Run);
         try
         {
-            var effect = await assets.CollectAsync(asset, snapshot.Id, _ => Current(), CancellationToken.None);
+            var effect = await assets.CollectAsync(asset, snapshot.Id, _ => Current(), cancellation.Token);
             if (effect is { } value && Current() && ReplaceProject(ClipEffects.Adding([value], project), "Ask Claude"))
             {
                 row.Status = AskClaudeRowStatus.Applied;
@@ -111,7 +113,8 @@ public sealed partial class EditorViewModel
             else row.Detail = effect is not null ? "Saved, but the clip changed. Ask again to place it." :
                 asset.Kind == "soundEffect" ? "No licensed sound fit this beat." : "No illustration was returned.";
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception) { row.Detail = "Couldn't prepare the asset. Nothing was placed."; }
-        finally { AskClaude.AssetWorking = null; AskClaudeNotify(); }
+        finally { AskClaude.AssetCancellation = null; AskClaude.AssetWorking = null; AskClaudeNotify(); }
     }
 }

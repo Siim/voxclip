@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
-using VoxClip.Core.Services.Project;
 using ProjectDocument = VoxClip.Core.Domain.Shared.Project;
 
 namespace VoxClip.Core.Services.VoiceLab;
@@ -74,8 +73,19 @@ public sealed class SavedRewriteProposalStore(string paidRoot, string projectId,
         if (Links(folder) || IsLink(path)) throw new IOException("The Rewrite folder or record is a link.");
         VoiceConsentPrivacy.CreateDirectory(folder);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        AtomicFile.WriteAsync(path, Encode(record with { SavedAt = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds()) }), CancellationToken.None,
-            unixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite).GetAwaiter().GetResult();
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, Options = FileOptions.WriteThrough };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        try
+        {
+            using (var stream = new FileStream(temporary, options))
+            {
+                stream.Write(Encoding.UTF8.GetBytes(Encode(record with { SavedAt = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds()) })));
+                stream.Flush(true);
+            }
+            File.Move(temporary, path, true);
+        }
+        finally { File.Delete(temporary); }
         lastShape = shape;
     }
 

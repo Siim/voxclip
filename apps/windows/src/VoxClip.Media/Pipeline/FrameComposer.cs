@@ -25,15 +25,19 @@ public sealed class FrameComposer : IFrameComposer
     private readonly Dictionary<ComposeSnapshot, VoiceLabDisclosureOverlay> disclosures = new(ReferenceEqualityComparer.Instance);
     private readonly ConditionalWeakTable<ClipEffectsRenderInput, EffectFrames> effectFrames = new();
     // Screen recordings by their layers' identity (data folder, project, assets): snapshots that only change captions share one copy.
-    private readonly Dictionary<string, (IContextDemoFrames Frames, int Count)> demos = new(StringComparer.Ordinal);
-    private readonly Func<ContextDemoRenderLayers, IContextDemoFrames> openDemo;
+    private readonly Dictionary<string, (IVideoLayerFrames Frames, int Count)> demos = new(StringComparer.Ordinal);
+    private readonly Func<ContextDemoRenderLayers, IVideoLayerFrames> openDemo;
+    private readonly Dictionary<ComposeSnapshot, IVideoLayerFrames> footage = new(ReferenceEqualityComparer.Instance);
+    private readonly Func<IReadOnlyList<FootageRenderLayer>, IVideoLayerFrames> openFootage;
     /// <summary>Use the platform caption rasterizer for every frame.</summary>
     public FrameComposer() : this(SharedResources.ResolveRoot()) { }
     private FrameComposer(string sharedRoot) : this(new SkiaCaptionRasterizer(sharedRoot), sharedRoot) { }
-    internal FrameComposer(ICaptionRasterizer rasterizer, string? sharedRoot = null, Func<ContextDemoRenderLayers, IContextDemoFrames>? openDemo = null)
+    internal FrameComposer(ICaptionRasterizer rasterizer, string? sharedRoot = null, Func<ContextDemoRenderLayers, IVideoLayerFrames>? openDemo = null,
+        Func<IReadOnlyList<FootageRenderLayer>, IVideoLayerFrames>? openFootage = null)
     {
         this.rasterizer = rasterizer; this.sharedRoot = sharedRoot;
         this.openDemo = openDemo ?? (layers => ContextDemoFrames.Open(layers, CancellationToken.None));
+        this.openFootage = openFootage ?? (layers => new FootageFrames(layers));
     }
 
     private static string? DemoKey(ComposeSnapshot? snapshot) => snapshot?.ContextDemo is { } layers
@@ -52,8 +56,13 @@ public sealed class FrameComposer : IFrameComposer
                 else demos[key] = (openDemo(snapshot.ContextDemo!), 1);
             }
         }
-        try { PrepareDisclosureOverlay(snapshot); }
-        catch { ReleaseDemo(snapshot); throw; }
+        try
+        {
+            if (snapshot.Footage.Count > 0)
+                lock (footage) footage.Add(snapshot, openFootage(snapshot.Footage));
+            PrepareDisclosureOverlay(snapshot);
+        }
+        catch { ReleaseSnapshot(snapshot); throw; }
     }
 
     private void ReleaseDemo(ComposeSnapshot? snapshot)
@@ -106,6 +115,8 @@ public sealed class FrameComposer : IFrameComposer
     {
         if (snapshot is null) return;
         ReleaseDemo(snapshot);
+        lock (footage)
+            if (footage.Remove(snapshot, out var frames)) frames.Dispose();
         lock (disclosures)
             if (disclosures.Remove(snapshot, out var overlay)) overlay.Dispose();
     }
@@ -116,12 +127,31 @@ public sealed class FrameComposer : IFrameComposer
     internal void DrawContextDemo(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, CancellationToken ct)
     {
         if (snapshot.ContextDemo?.At(editedTime) is not { } layer) return;
-        IContextDemoFrames frames;
+        IVideoLayerFrames frames;
         lock (demos)
             frames = demos.TryGetValue(DemoKey(snapshot)!, out var shared) ? shared.Frames
                 : throw new InvalidOperationException("Prepare the context demo before composing frames.");
         var (frame, rotation) = frames.Read(layer.AssetId, layer.SourceTime, ct);
         ContextDemoPicture.Fill(frame, rotation, output, forPreview, ct);
+    }
+
+    private void DrawFootage(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, CancellationToken ct)
+    {
+        if (snapshot.Footage.FirstOrDefault(layer => layer.EditedStart <= editedTime && editedTime < layer.EditedEnd) is not { } layer) return;
+        (PixelBuffer Frame, int Rotation) companion;
+        lock (footage) companion = footage[snapshot].Read(layer.Path, layer.SourceTime(editedTime), ct);
+        if (layer.Entry.Kind != "videoStack" || output.Height < 2)
+        {
+            ContextDemoPicture.Fill(companion.Frame, companion.Rotation, output, forPreview, ct);
+            return;
+        }
+        var bottomHeight = output.Height / 2;
+        var topHeight = output.Height - bottomHeight;
+        var topLength = topHeight * output.Stride;
+        var top = new PixelBuffer(output.Pixels[..topLength], output.Width, topHeight, output.Stride);
+        var bottom = new PixelBuffer(output.Pixels[topLength..], output.Width, bottomHeight, output.Stride);
+        ContextDemoPicture.Fill(output, 0, top, forPreview, ct);
+        ContextDemoPicture.Fill(companion.Frame, companion.Rotation, bottom, forPreview, ct);
     }
 
     /// <inheritdoc />
@@ -240,18 +270,21 @@ public sealed class FrameComposer : IFrameComposer
     internal void FinishClipFrame(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, int pictureWidth, int pictureHeight, RectD crop,
         CancellationToken ct, bool forPreview = false, PreviewFrameFailures? failures = null)
     {
-        if (snapshot.Clip is not { } clip) return;
+        var clip = snapshot.Clip;
+        if (clip is null && snapshot.Footage.Count == 0) return;
         var timeline = snapshot.Timeline;
         var sourceTime = timeline.SourceTime(editedTime);
-        var frames = clip.Effects is { } input ? effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot)) : null;
+        var frames = clip?.Effects is { } input ? effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot)) : null;
         frames?.DrawIllustration(output, sourceTime);
-        var timedLook = clip.Effects?.Effects.LastOrDefault(effect => effect.Kind == "colourLook" && effect.Start <= sourceTime && sourceTime < effect.End)?.Look;
+        var timedLook = clip?.Effects?.Effects.LastOrDefault(effect => effect.Kind == "colourLook" && effect.Start <= sourceTime && sourceTime < effect.End)?.Look;
         var look = timedLook switch { "warm" => ClipLook.Warm, "muted" => ClipLook.Muted, "bw" => ClipLook.Bw,
-            "original" => ClipLook.Original, _ => clip.Controls?.Look ?? ClipLook.Original };
-        if (look != ClipLook.Original || clip.Controls?.ColorAdjustments is not null) ClipPicture.Grade(output, look, clip.Controls?.ColorAdjustments, ct);
-        if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip.Effects!.PictureTime(sourceTime), clip.Controls, ct);
-        if (clip.Motion.Count > 0 && !(forPreview && clip.ReduceMotionInPreview))
+            "original" => ClipLook.Original, _ => clip?.Controls?.Look ?? ClipLook.Original };
+        if (look != ClipLook.Original || clip?.Controls?.ColorAdjustments is not null) ClipPicture.Grade(output, look, clip?.Controls?.ColorAdjustments, ct);
+        if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip!.Effects!.PictureTime(sourceTime), clip.Controls, ct);
+        if (clip is { Motion.Count: > 0 } && !(forPreview && clip.ReduceMotionInPreview))
             ClipPicture.Motion(output, VoxClip.Core.Domain.ContextDemo.MotionCueRendering.Transform(clip.Motion, sourceTime), forPreview, ct);
+        try { DrawFootage(output, snapshot, editedTime, forPreview, ct); }
+        catch (Exception exception) { PreviewFrameFailures.Failed(failures, forPreview, PreviewFailureReason.SourceFrame, exception); throw; }
         if (frames is { HasPicture: true })
             frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct,
                 forPreview && failures is not null ? () => failures.Report(PreviewFailureReason.Title) : null);

@@ -156,6 +156,7 @@ public sealed partial class EditorViewModel
     public void CloseAskClaude()
     {
         AskClaude.Cancellation?.Cancel();
+        AskClaude.AssetCancellation?.Cancel();
         AskClaude.Selection = null;
         AskClaude.Run = null;
         AskClaude.Adjusting = null;

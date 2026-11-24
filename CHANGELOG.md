@@ -7,6 +7,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - On Mac, editable timelines keep speed changes and put kept Rewrite or revoiced audio on its own lane; unsupported edits explain why before Save.
 - Harness proposals use the full clip-plan vocabulary on Mac and Windows, with separate priced clicks for generated assets.
 - On Mac, make clips from a card with your chosen connector and spend cap, and centre captions and re-export from the export self-check.
+- On Windows, Full Take and clip Rewrite show the whole-take voice controls and why actions are unavailable; denied fal.ai cleanup has an inline notice, and preview and export draw companion cutaways, stills and stacks.
 - On Mac, VoxClip asks for Screen Recording and Accessibility when you need them, links to the right settings, and explains why card import needs access. On Windows, Rewrite links to microphone privacy settings when access is blocked.
 - On Mac, Voice shows whole-take revoice and its price in Full Take and clips, even with no changed words. Find it in ⌘K or the clip menu, and redo it without replacing the version in use until you click Use.
 - VoxClip builds from source on Xcode 26 with companion footage enabled.
