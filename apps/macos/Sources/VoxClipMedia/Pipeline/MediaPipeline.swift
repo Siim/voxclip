@@ -127,7 +127,12 @@ public struct CompositionBuilder: Sendable {
         let videoSpans = try CompositionVideoSpan.build(request)
         let asset = AVURLAsset(url: request.sourceURL)
         guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first else { throw VoxClipError.decodeFailed("No video track") }
-        let (transform, videoRange, nominalRate) = try await sourceVideo.load(.preferredTransform, .timeRange, .nominalFrameRate)
+        let (transform, trackRange, nominalRate, edits) = try await sourceVideo.load(.preferredTransform, .timeRange, .nominalFrameRate, .segments)
+        let firstPicture = edits.first { !$0.isEmpty }?.timeMapping.target ?? trackRange
+        let videoRange = CMTimeRange(start: max(trackRange.start, firstPicture.start), end: trackRange.end)
+        guard videoRange.isValid, !videoRange.isEmpty else { throw VoxClipError.decodeFailed("No source video frames") }
+        let sourceFrameDuration = CMTime(seconds: 1 / max(1, Double(nominalRate)), preferredTimescale: 600_000)
+        let firstFrame = CMTimeRange(start: videoRange.start, duration: min(sourceFrameDuration, firstPicture.end - videoRange.start))
         // A lip-sync result's conform reads only its picture: fal.ai's resampled audio is never used (voice-lab §9.3).
         let sourceAudio = includesSourceAudio ? try await MediaSupport.audioTrack(in: asset) : nil
         let composition = AVMutableComposition()
@@ -139,8 +144,13 @@ public struct CompositionBuilder: Sendable {
             let range = span.source
             let cursor = span.output.start
             let scaled = range.duration != span.output.duration
-            guard (!scaled && span.zoom == 1) || (range.start >= videoRange.start && range.end <= videoRange.end) else {
+            guard (!scaled && span.zoom == 1) || (range.start >= trackRange.start && range.end <= trackRange.end) else {
                 throw VoxClipError.decodeFailed("Retimed source video does not cover its replacement window")
+            }
+            if range.start < videoRange.start {
+                let leadDuration = min(range.end, videoRange.start) - range.start
+                try video.insertTimeRange(firstFrame, of: sourceVideo, at: cursor)
+                video.scaleTimeRange(CMTimeRange(start: cursor, duration: firstFrame.duration), toDuration: leadDuration)
             }
             let overlap = CMTimeRangeGetIntersection(range, otherRange: videoRange)
             if overlap.isValid, !overlap.isEmpty {
@@ -149,7 +159,7 @@ public struct CompositionBuilder: Sendable {
             if range.end > videoRange.end {
                 let tailStart = max(range.start, videoRange.end)
                 let tailDuration = range.end - tailStart
-                let frameDuration = min(videoRange.duration, CMTime(seconds: 1 / max(1, Double(nominalRate)), preferredTimescale: 600000))
+                let frameDuration = min(videoRange.duration, sourceFrameDuration)
                 let lastFrame = CMTimeRange(start: videoRange.end - frameDuration, duration: frameDuration)
                 let insertion = cursor + tailStart - range.start
                 try video.insertTimeRange(lastFrame, of: sourceVideo, at: insertion)

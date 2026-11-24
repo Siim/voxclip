@@ -134,7 +134,19 @@ extension AppModel {
     @State private var refreshed: [LLMModel] = []
     @State private var refreshing = false
     @State private var result: String?
+    @State private var falKey: (revision: Int, fingerprint: String)?
+
+    private var falKeyLookupRevision: Int? {
+        app.falLipsyncCleanupNotice.hasDeniedKeys ? app.connectorReadinessRevision : nil
+    }
+
+    private var showsFalCleanupNotice: Bool {
+        guard let falKey, falKey.revision == app.connectorReadinessRevision else { return false }
+        return app.falLipsyncCleanupNotice.applies(toFingerprint: falKey.fingerprint)
+    }
+
     var body: some View {
+        let falKeyRevision = falKeyLookupRevision
         Form {
             Section("Providers & Keys") {
                 ConnectorConfirmationView(confirmation: app.settingsSendConfirmation, compact: false)
@@ -173,6 +185,11 @@ extension AppModel {
             }
             Section("Your API keys") {
                 ForEach(app.providers.filter { $0.group == "apiKey" }) { provider in ProviderKeyRow(provider: provider.id, label: provider.label, app: app) }
+                if showsFalCleanupNotice {
+                    Text("This fal.ai key can't delete finished results. Your video stays on fal.ai until it expires. Use a key with the FULL preset to delete it.")
+                        .font(.caption).foregroundStyle(DesignValues.color("status.warning"))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Section("Installed CLI (your own sign-in)") {
                 ForEach(app.providers.filter { $0.group == "cli" && !($0.id == "codex" && app.string("llm.connector") == "codex") }) {
@@ -180,6 +197,13 @@ extension AppModel {
                 }
             }
         }.formStyle(.grouped).onDisappear { app.settingsSendConfirmation.cancel() }
+            .task(id: falKeyRevision) { await refreshFalKey(revision: falKeyRevision) }
+    }
+    private func refreshFalKey(revision: Int?) async {
+        guard let revision else { return }
+        let key = try? await app.secrets.key(for: "fal")
+        guard !Task.isCancelled, revision == app.connectorReadinessRevision else { return }
+        falKey = key.map { (revision, VoiceLabFingerprint.bytes(Data($0.utf8))) }
     }
     private func localPrivacy(_ provider: ProviderChoice) -> String {
         if let host = app.localServerHost(provider) { return "Transcripts are sent to \(host)." }

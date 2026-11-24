@@ -35,6 +35,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
     private let http: any LipsyncHTTPClient
     private let logger: any Redacting
     private let spend: VoiceLabSpendLedger?
+    private let cleanupNotice: FalLipsyncCleanupNotice?
     private let now: @Sendable () -> Date
     private let monotonic: @Sendable () -> Duration
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -60,8 +61,10 @@ public actor FalLipsyncProvider: LipsyncProvider {
 
     public init(keys: any KeyProvider, prices: VoiceLabPriceCatalog? = nil,
                 logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path),
-                spend: VoiceLabSpendLedger = VoiceLabSpendLedger(locations: DataLocations())) {
+                spend: VoiceLabSpendLedger = VoiceLabSpendLedger(locations: DataLocations()),
+                cleanupNotice: FalLipsyncCleanupNotice? = nil) {
         self.keys = keys; self.prices = prices; self.logger = logger; self.spend = spend
+        self.cleanupNotice = cleanupNotice
         self.http = URLSessionLipsyncHTTPClient(); self.now = { Date() }
         self.monotonic = VoiceLabQuoteClock.continuousSource(); self.sleep = { try await Task.sleep(for: $0) }
         self.queue = .shared
@@ -71,8 +74,10 @@ public actor FalLipsyncProvider: LipsyncProvider {
     package init(keys: any KeyProvider, prices: VoiceLabPriceCatalog, http: any LipsyncHTTPClient,
                  logger: any Redacting, spend: VoiceLabSpendLedger? = nil,
                  now: @escaping @Sendable () -> Date, monotonic: @escaping @Sendable () -> Duration,
-                 sleep: @escaping @Sendable (Duration) async throws -> Void, queue: LipsyncProviderQueue? = nil) {
+                 sleep: @escaping @Sendable (Duration) async throws -> Void, queue: LipsyncProviderQueue? = nil,
+                 cleanupNotice: FalLipsyncCleanupNotice? = nil) {
         self.keys = keys; self.prices = prices; self.http = http; self.logger = logger; self.spend = spend
+        self.cleanupNotice = cleanupNotice
         self.now = now; self.monotonic = monotonic; self.sleep = sleep
         self.queue = queue ?? LipsyncProviderQueue(clock: monotonic)
     }
@@ -474,7 +479,8 @@ public actor FalLipsyncProvider: LipsyncProvider {
             await untrack(job)
             return
         }
-        if let status = await deletePayloads(requestID: job.remoteID, key: key) {
+        let finishedResult = if case .done = current.terminal { true } else { false }
+        if let status = await deletePayloads(requestID: job.remoteID, key: key, finishedResult: finishedResult) {
             entries[job.remoteID]?.cleanup = .completed
             await diagnostic?.record(.init(stage: .cleanup, requestID: job.remoteID, status: status, seconds: elapsed(current)))
             entries[job.remoteID]?.result = nil
@@ -491,7 +497,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
     /// `exception` is null on success. Only output files go; fal.ai never deletes a request's input files this way (they
     /// expire with the upload's one-hour lifecycle). The key needs `models:requests:write` and `assets:write` (fal.ai's
     /// FULL preset). Returns the confirmed status, or nil after logging why not (the HTTP status, never a URL or key).
-    private func deletePayloads(requestID: String, key: String) async -> Int? {
+    private func deletePayloads(requestID: String, key: String, finishedResult: Bool) async -> Int? {
         guard UUID(uuidString: requestID) != nil else { return nil }
         let url = URL(string: "https://api.fal.ai/v1/models/requests/\(requestID)/payloads")!
         let response: LipsyncHTTPResponse
@@ -504,6 +510,9 @@ public actor FalLipsyncProvider: LipsyncProvider {
             return nil
         }
         guard response.status == 200 else {
+            if finishedResult, response.status == 401 || response.status == 403 {
+                await cleanupNotice?.recordDenial(forFingerprint: VoiceLabFingerprint.bytes(Data(key.utf8)))
+            }
             await log("cleanup-unconfirmed status=\(response.status)")
             return nil
         }
@@ -522,7 +531,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
             await log("cleanup-unconfirmed reason=key")
             return false
         }
-        return await deletePayloads(requestID: requestID, key: key) != nil
+        return await deletePayloads(requestID: requestID, key: key, finishedResult: true) != nil
     }
 
     /// Fetches an earlier paid request's result again by its request ID, for free, and downloads its video to `file`. It asks
