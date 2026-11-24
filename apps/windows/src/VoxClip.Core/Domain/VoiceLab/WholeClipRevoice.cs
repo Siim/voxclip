@@ -7,6 +7,7 @@ namespace VoxClip.Core.Domain.VoiceLab;
 /// deterministic parts both apps share, as the Mac <c>WholeClipRevoice.swift</c>.</summary>
 public static partial class WholeClipRevoice
 {
+    internal const string FullTakeId = "voxclip-full-take";
     /// <summary>The burned-in chip of an export holding a whole-clip revoice (voice-lab §11).</summary>
     public const string DisclosureChip = "Voice and lip movement generated with AI";
     /// <summary>The post text line of an export holding a whole-clip revoice (voice-lab §11).</summary>
@@ -36,7 +37,7 @@ public static partial class WholeClipRevoice
         foreach (var record in records)
         {
             if (record is null || !IdShape(record.Id) || !ids.Add(record.Id) || !IdShape(record.ClipId) ||
-                !project.Edits.Clips.Any(clip => clip.Id == record.ClipId) ||
+                (record.ClipId != FullTakeId && !project.Edits.Clips.Any(clip => clip.Id == record.ClipId)) ||
                 record.SegmentIds is not { Count: > 0 } || string.IsNullOrEmpty(record.Script) ||
                 record.Script.EnumerateRunes().Count() > MaximumScriptScalars || string.IsNullOrEmpty(record.ConsentRecordId) ||
                 WholeClipLipsyncValues.FromRawValue(record.LipsyncModel) is null ||
@@ -66,7 +67,7 @@ public static partial class WholeClipRevoice
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var tts = project.VoiceLab.Segments.Where(segment => segment.Kind == VoiceLabSegmentKind.Tts).Select(segment => segment.Id)
             .ToHashSet(StringComparer.Ordinal);
-        var kept = records.Where(record => record is not null && clips.Contains(record.ClipId) && record.SegmentIds is { Count: > 0 } ids &&
+        var kept = records.Where(record => record is not null && (record.ClipId == FullTakeId || clips.Contains(record.ClipId)) && record.SegmentIds is { Count: > 0 } ids &&
             ids.All(id => id is not null && tts.Contains(id))).ToArray();
         if (kept.Length == records.Count) return project;
         return project with { VoiceLab = project.VoiceLab with { WholeClipRevoices = kept.Length == 0 ? null : kept } };

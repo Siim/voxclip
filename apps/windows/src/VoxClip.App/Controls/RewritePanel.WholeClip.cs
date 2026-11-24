@@ -60,8 +60,7 @@ internal sealed partial class RewritePanel
         wholeClipPrice.IsEnabled = !busy && blocked is null && offer is null;
         wholeClipRestore.Visibility = session.CanRestoreWholeClip && !saved ? Visibility.Visible : Visibility.Collapsed;
         wholeClipRestore.IsEnabled = !busy;
-        wholeClipLine.Text = busy || string.IsNullOrEmpty(session.WholeClipStatus) ? blocked ?? session.WholeClipStatus : session.WholeClipStatus;
-        if (busy) wholeClipLine.Text = session.WholeClipStatus;
+        wholeClipLine.Text = busy ? session.WholeClipStatus : blocked ?? session.WholeClipStatus;
         wholeClipScript.Text = session.WholeClipScriptText ?? "";
         wholeClipScriptView.Visibility = wholeClipScript.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         wholeClipTransfer.Text = offer?.Disclosure ?? "";
@@ -71,7 +70,7 @@ internal sealed partial class RewritePanel
         if (offer is not null)
         {
             var total = offer.VoicePrice + offer.Picture.Price;
-            var action = !saved ? "Revoice whole clip" : offer.Model == WholeClipLipsync.Sync3 ? "Sharper lip sync" : "Continue lip sync";
+            var action = !saved ? "Revoice Whole Take" : offer.Model == WholeClipLipsync.Sync3 ? "Sharper Lip Sync" : "Continue Lip Sync";
             var title = total == 0 ? "Recover lip sync · No new charge" : $"{action} · {VoiceLabCostPresentation.Format(total)}";
             wholeClipApprove.Content = title;
             SetName(wholeClipApprove, title);

@@ -33,18 +33,32 @@ internal sealed partial class RewriteSession
     internal string WholeClipStatus { get; private set; } = "";
     internal bool WholeClipBusy => wholeClipWork is not null;
     internal bool HoldsWholeClipWork => WholeClipVoice is not null || sendingWholeClip is not null;
-    internal bool OffersWholeClip => Scope.ClipId is not null && (IncludedHunks.Any(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice) || WholeClipVoice is not null);
+    internal bool OffersWholeClip => Scope.ClipId is not null;
     internal bool CanRestoreWholeClip => wholeClipRestore is not null && Scope.ClipId is not null && GenerationIsCurrent;
     internal string? WholeClipScriptText => WholeClipPrice?.Selection.Recovery.Script ?? wholeClipSelection?.Recovery.Script;
-    internal string? WholeClipBlocked => !VoiceSpeakerCheck.WindowsNativeParityVerified ? "The Windows voice check isn't available yet."
+    internal string? WholeClipBlocked => Editor.Project.Media.Source.Video is null ? "Lip sync needs a video."
+        : WholeClipExceedsLimit() ? "Lip sync takes up to 5 min. Make a shorter clip first."
+        : !VoiceSpeakerCheck.WindowsNativeParityVerified ? "The Windows voice check isn't available yet."
         : wholeClipPrice is null || Envelope is null ? "Read the clip's audio before revoicing it."
         : !GenerationIsCurrent ? "The Rewrite or clip changed. Open Rewrite again to continue."
         : IsGeneratingBatch || AutoFix.Work is not null || GenerationWindows.Any(window => window.IsRunning || window.IsPreparing)
             ? "Wait for the other takes to finish."
-        : WholeClipVoice is null && HasPaidTakes ? "Use or discard the paid phrase takes before revoicing the whole clip."
+        : WholeClipVoice is null && HasPaidTakes ? "Finish reviewing your phrase takes before revoicing the whole clip."
         : WholeClipVoice is not null && wholeClipSelection is { } saved && !WholeClipCurrent(saved) ? "The clip or voice changed. Go back to the saved voice's settings to continue."
         : WholeClipVoice is null && Generation?.VoiceId is null ? "Check the price for your voice first."
         : null;
+
+    private bool WholeClipExceedsLimit()
+    {
+        if (Scope.ClipId is not { } id) return false;
+        try
+        {
+            var edited = Editor.ProjectWithLocalOperations(Editor.Project, LocalOperations());
+            var duration = VoiceLabOutputPlanner.Build(edited, VoiceLabOutputScope.Clip(id)).Duration;
+            return LipsyncRenderWindow.UploadSeconds(duration + 2) > WholeClipRevoice.MaximumClipSeconds;
+        }
+        catch (VoiceLabProjectException) { return false; }
+    }
     internal bool WholeClipReviewCurrent => wholeClipSelection is { } selection && WholeClipCurrent(selection) && !WholeClipBusy;
     internal bool WholeClipCurrent(WholeClipSelection selection) => GenerationIsCurrent && revision == selection.Revision &&
         (Generation?.VoiceId == selection.RecordId || selection.Plan is null && Generation?.VoiceId is null) &&
