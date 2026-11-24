@@ -88,7 +88,7 @@ extension EditorRenderSnapshot {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Toggle(toggleTitle, isOn: Binding(get: { approval != nil }, set: select))
+            Toggle(toggleTitle, isOn: Binding(get: { approval != nil }, set: { select($0) }))
                 .disabled(!VoxConvoConnection.available || handle == nil || targets.count != 1)
             if !VoxConvoConnection.available {
                 Text(VoxConvoConnection.unavailableReason).foregroundStyle(.secondary)
