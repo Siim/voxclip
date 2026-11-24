@@ -309,7 +309,9 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     public let enablePostProcessing = false
     public let containsTweening = true
     public var requiredSourceTrackIDs: [NSValue]? {
-        var ids = [sourceTrackID] + (demoLayer.map { [$0.trackID] } ?? []) + lipsyncLayers.map(\.trackID)
+        var ids: [CMPersistentTrackID] = [sourceTrackID]
+        if let demoLayer { ids.append(demoLayer.trackID) }
+        ids.append(contentsOf: lipsyncLayers.map(\.trackID))
         if let track = footage?.trackID { ids.append(track) }
         return Array(Set(ids)).map { NSNumber(value: $0) }
     }

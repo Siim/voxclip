@@ -296,12 +296,15 @@ public struct CompositionBuilder: Sendable {
         let captionRasterizer = needsRasterizer ? try sharedRasterizer.get() : nil
         let effects = request.effects.flatMap { $0.picture.isEmpty ? nil : EffectFrames(input: $0) }
         let framingSpans = videoSpans.filter { $0.zoom > 1 }
-        let boundaries = ([CMTime.zero, duration] + framingSpans.flatMap { [$0.output.start, $0.output.end] } +
-            demoLayers.flatMap { [$0.output.start, $0.output.end] } +
-            lipsyncLayers.flatMap { [$0.output.start, $0.output.end] } +
-            footageLayers.flatMap { [$0.output.start, $0.output.end] }).sorted().reduce(into: [CMTime]()) { result, time in
-                if result.last != time { result.append(time) }
-            }
+        var boundaryTimes: [CMTime] = [.zero, duration]
+        boundaryTimes.append(contentsOf: framingSpans.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.append(contentsOf: demoLayers.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.append(contentsOf: lipsyncLayers.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.append(contentsOf: footageLayers.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.sort()
+        let boundaries: [CMTime] = boundaryTimes.reduce(into: []) { result, time in
+            if result.last != time { result.append(time) }
+        }
         var spanIndex = 0, layerIndex = 0
         // Edited boundaries onto the rendered timeline: identical at 1×, divided by the clip's speed otherwise.
         let timing = request.speedTiming
@@ -310,7 +313,9 @@ public struct CompositionBuilder: Sendable {
         func rendered(_ time: CMTime) -> CMTime {
             guard !timing.isIdentity else { return time }
             if time == duration { return CMTime(value: samples, timescale: timescale) }
-            return CMTime(value: min(samples, Int64((timing.rendered(time.seconds) * request.timeline.sampleRate).rounded())), timescale: timescale)
+            let samplePosition: Double = timing.rendered(time.seconds) * request.timeline.sampleRate
+            let sample: Int64 = Int64(samplePosition.rounded())
+            return CMTime(value: min(samples, sample), timescale: timescale)
         }
         let instructions = zip(boundaries, boundaries.dropFirst()).compactMap { start, end -> RenderInstruction? in
             while spanIndex < framingSpans.count && framingSpans[spanIndex].output.end <= start { spanIndex += 1 }

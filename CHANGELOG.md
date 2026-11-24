@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- VoxClip builds from source on Xcode 26 with companion footage enabled.
 - Windows keeps automatic face-follow crop, cover picks, and Make it postable’s picture rows off until face analysis matches the Mac.
 - On Windows, review agent timeline proposals above the transcript. Keep makes one undoable edit; Undo dismisses the proposal. Music still needs a separate priced click.
 - Claude Code and Codex can propose title cards, kinetic captions, logo stings and counters on Mac and Windows. VoxClip renders them locally after you choose Keep.

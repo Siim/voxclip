@@ -67,7 +67,10 @@ public enum MotionTemplate: Codable, Equatable, Sendable {
             return (text, scale, 0)
         case .counter(let from, let to):
             let fraction = min(1, progress / 0.68)
-            let value = Int((Double(from) + (Double(to) - Double(from)) * fraction).rounded())
+            let start: Double = Double(from)
+            let delta: Double = Double(to) - start
+            let interpolated: Double = start + delta * fraction
+            let value = Int(interpolated.rounded())
             return (String(value), 1, 0)
         }
     }
