@@ -131,7 +131,7 @@ Revoice Whole Clip compared the raw project, so after an autosave Try Again loop
 - **The rule:**
   - Currency: `wholeClipInputsCurrency()` is `voiceSpendCurrent && wholeClipIdentity(editor.project) == identity` (`voiceTakeIdentity` over the clip, captured at plan time) and the chosen voice. The guard is split into named stops: `voiceMissing`, `unavailable`, `locked`, `rewriteChanged` (readiness stops, which wait for their cause through `Backend.voiceReadiness` and `waitsForReadiness`), and a plain `Failure.stale` that lets go of the retired plan's voice so Try Again makes a fresh one.
   - A paid voice whose inputs changed stops with `Stop.voiceInputsChanged(clip:usd:voiceSwitched:)`; Undo, or that voice again, brings Try Again back (`inputsRestored`); Start Over prices the clip first (`startOver(approved:)`) and runs only within the clicked price.
-  - Lip sync survives Try Again, Fit and the sync-3 upgrade: the plan's applied entries are put back through `RewriteLipsyncSession.restore(_:matching:)` with the whole-clip offer; Use restores first or stops with `lipsyncMissing`.
+  - Lip sync survives Try Again and Fit: the plan's applied entries are put back through `RewriteLipsyncSession.restore(_:matching:)` with the whole-clip offer; Use restores first or stops with `lipsyncMissing`.
   - Before paying: `LipsyncWindowPreparation.preflight`, then a free reword when the calibrated estimate runs past the clip by more than 8% (`scriptTooLong` when none comes back), then the fal.ai key in the Voice step. It runs for every first voice of a script; only parts already paid for it skip it (`Backend.partlyVoiced`).
   - A manual run voices a shorter wording after a paid voice only by its own click (`shorterWordingReady`, Voice the Shorter Wording); an automatic one only within budget − spent − the lip sync still due. Shorter Wording · free needs an AI (`canAskShorterWording`, `Backend.canReword`).
   - Use the Voice Without Lip Sync · free (`useVoiceOnly`, `putInWholeClipVoiceOnly`): ordinary Voice Lab segments over the matched picture, no `WholeClipRevoiceRecord`, no project-format change; only the user's click.
@@ -1381,7 +1381,7 @@ Brief: /tmp/clipper-planning/briefs/v2/opus-speed.md. Spec: ai.md §11.3, §11.4
 
 ### 2026-11-07 — Revoice the whole clip: one AI voice for the clip, fitted and lip synced, asked once per clip; Claude mode switches within its cap (track/v2-revoice-whole)
 
-The user asked for a way to generate a whole clip's voice with AI and lip sync the video, because many patched phrases sound stitched. Their decisions (2026-11-07): lipsync-2 by default with a priced sync-3 upgrade on Review, and Claude mode switching automatically within its spend cap. Spec: ADR-R46, voice-lab §8.14 (new) and §9.2, design.md R2 "How should it sound?" and §6.7, ai.md §16.11. Approved mockup: /tmp/clipper-planning/briefs/v2/mockup-revoice-whole-clip.html.
+The user asked for a way to generate a whole clip's voice with AI and lip sync the video, because many patched phrases sound stitched. Claude mode switches automatically within its spend cap. New runs and Redo use sync-3; the old lipsync-2 default and upgrade were superseded on 2026-11-25. Spec: ADR-R46, voice-lab §8.14 (new) and §9.2, design.md R2 "How should it sound?" and §6.7, ai.md §16.11. Approved mockup: /tmp/clipper-planning/briefs/v2/mockup-revoice-whole-clip.html.
 
 - **Core.**
   - `WholeClipRevoice`:
@@ -1399,7 +1399,7 @@ The user asked for a way to generate a whole clip's voice with AI and lip sync t
   - `LipsyncRun.execute(model:)`.
   - `VoiceLabDisclosureOverlay.chipText`: "Voice and lip movement generated with AI" for `revoice`.
 - **App.**
-  - **`WholeClipRevoiceSession`.** Choose, Running (Script, Voice, Fit and Lip sync, each with its price or "free"), Review, Used and Stopped. It has Cancel, `upgrade` (sync-3, only the lip sync again), `use`, `discard` and `undoUse`, and an automatic run applies on its own. Its `Backend` closures are what tests stub.
+  - **`WholeClipRevoiceSession`.** Choose, Running (Script, Voice, Fit and Lip sync, each with its price or "free"), Review, Used and Stopped. It has Cancel, Redo Lip Sync Only over the saved voice, `use`, `discard` and `undoUse`, and an automatic run applies on its own. Its `Backend` closures are what tests stub.
   - **`WholeClipRevoiceCard`.** The `PanelCard.wholeClip` in the Rewrite panel, after the video-voice card. Every control is a `PanelButton`; priced ones carry their price, and nothing is disabled or a pop-up.
   - **`RewriteWholeClip.swift`, the live backend:**
     - **Voice:** a `ClipTakePlan` over the script's parts, built through the extracted `takeInputMaker`, which `prepareTakes` now shares. The patch's unpaid plan lets go of its quotes first.
@@ -1413,9 +1413,9 @@ The user asked for a way to generate a whole clip's voice with AI and lip sync t
 - **Deleted.** None; the per-phrase lip sync is unchanged.
 - **Tests (stubs only).**
   - **Core** `WholeClipRevoiceTests` (16): both thresholds at their edges, autoChoice within and over the cap and with no price, script assembly, parts and hunks, fit edges and the reword, prices from the tables, the record's save, reopen and refusals, the disclosure line, and the ledger.
-  - **App** `WholeClipRevoiceSessionTests` (8): the run order and copy, the reword round, can't fit, Cancel and failure keeping the clip, Try Again and the upgrade never paying twice, Undo, and the automatic apply.
+  - **App** `WholeClipRevoiceSessionTests` (8): the run order and copy, the reword round, can't fit, Cancel and failure keeping the clip, Try Again never paying twice, Undo, and the automatic apply.
   - **App** `ClaudeModeTests` (+3): revoiced within the cap and no patch; over the cap, patched with the offer, and its click approves exactly the price; not stitched, patched with no offer.
-  - **Smoke** (`rewrite-smoke.sh`): S-revoice-whole (W1–W5), S-revoice-whole-claude (WC1), S-revoice-whole-over-cap (WC2), S-revoice-whole-cancel (WX1–2) and S-revoice-whole-upgrade (WU1). The voice runs through the real take path on the scripted ElevenLabs. fal.ai is the one stand-in, after the real Match video.
+  - **Smoke** (`rewrite-smoke.sh`): S-revoice-whole (W1–W5), S-revoice-whole-claude (WC1), S-revoice-whole-over-cap (WC2), S-revoice-whole-cancel (WX1–2) and S-revoice-whole-legacy-redo (WU1). The voice runs through the real take path on the scripted ElevenLabs. fal.ai is the one stand-in, after the real Match video.
 - **Deviations and what the next package must know.**
   - **One take, not "3 parts".** Placement joins touching windows (`VoiceLabWindowPlanner.placeAll`), so a contiguous clip's parts are voiced as one window and one take. The step reads "one take", and the record has one segment per window.
   - **Per-window retime.** The picture is matched per window through Match video (each within 0.80–1.25×). It is not one retime of the clip; the ±8% gate is on the total.

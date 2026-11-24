@@ -504,7 +504,7 @@ struct RewriteLipsyncSessionTests {
         await session.waitForRun()
         guard case .failed(let reason, _, let mayBill) = session.states[0] else { Issue.record("not failed"); return }
         #expect(!mayBill && session.freeRetries.isEmpty)
-        #expect(reason == "Stopped before submitting a lip-sync job. The media didn't pass the lip-sync file checks.")
+        #expect(reason == "Stopped before submitting a lip-sync job. The media didn't pass the lip-sync file checks. fal.ai didn't charge for this lip sync.")
     }
 
     @Test func anExplicitlyFreeOfferStaysFreeEvenWithoutAPhraseMarker() async throws {

@@ -119,7 +119,7 @@ public enum WholeClipLipsync
 public static class WholeClipLipsyncValues
 {
     /// <summary>The standard model.</summary>
-    public const WholeClipLipsync Standard = WholeClipLipsync.Lipsync2;
+    public const WholeClipLipsync Standard = WholeClipLipsync.Sync3;
     /// <summary>Every model, in the Mac's <c>allCases</c> order.</summary>
     public static IReadOnlyList<WholeClipLipsync> All { get; } = [WholeClipLipsync.Lipsync2, WholeClipLipsync.Sync3];
 

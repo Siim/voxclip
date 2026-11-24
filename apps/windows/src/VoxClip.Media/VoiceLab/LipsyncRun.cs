@@ -39,7 +39,8 @@ public sealed class LipsyncRun(FalLipsyncProvider provider, VoiceConsentStore co
         provider.QuoteAsync(window.Model, window.Seconds, window.FrameRate, window.Mode, ct);
 
     public async Task<SavedLipsyncPicture> ExecuteAsync(LipsyncRunWindow window, FalLipsyncQuote? approved, string? videoPath,
-        string? audioPath, VoiceConsentRecord record, VoiceLabDispatchBinding? binding, IProgress<LipsyncState>? progress, CancellationToken ct)
+        string? audioPath, VoiceConsentRecord record, VoiceLabDispatchBinding? binding, IProgress<LipsyncState>? progress, CancellationToken ct,
+        Action<int, int>? uploadProgress = null)
     {
         ct.ThrowIfCancellationRequested();
         using var attempt = journal.Open(window);
@@ -66,9 +67,9 @@ public sealed class LipsyncRun(FalLipsyncProvider provider, VoiceConsentStore co
                     {
                         attempt.Accept(accepted.RemoteId, account, price);
                         if (spend is not null) await spend.RecordAsync(approved.Estimate, started, CancellationToken.None).ConfigureAwait(false);
-                    }).ConfigureAwait(false);
+                    }, uploadProgress: uploadProgress).ConfigureAwait(false);
             }
-            catch (FalLipsyncException error) when (error is { Code: FalLipsyncError.Http, Status: >= 400 and < 500 and not 408 })
+            catch (FalLipsyncException error) when (error is { UploadStage: null, Code: FalLipsyncError.Http, Status: >= 400 and < 500 and not 408 })
             {
                 attempt.Refused();
                 throw;

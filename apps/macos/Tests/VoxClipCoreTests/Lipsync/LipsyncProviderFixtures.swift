@@ -34,6 +34,7 @@ actor LipsyncFixtureBarrier {
 actor LipsyncFixtureHTTP: LipsyncHTTPClient {
     enum Reply: Sendable {
         case json(Int, String)
+        case etag(String)
         case held(String, LipsyncFixtureBarrier)
         case network
         /// An answer with a `Retry-After` of the given seconds.
@@ -50,6 +51,7 @@ actor LipsyncFixtureHTTP: LipsyncHTTPClient {
         guard !replies.isEmpty else { Issue.record("Unexpected fixture request"); throw LipsyncError.network }
         switch replies.removeFirst() {
         case .json(let status, let body): return .init(status: status, body: Data(body.utf8))
+        case .etag(let etag): return .init(status: 200, body: Data(), contentType: nil, etag: etag)
         case .held(let body, let barrier): await barrier.block(); return .init(status: 200, body: Data(body.utf8))
         case .network: throw LipsyncError.network
         case .retry(let status, let body, let seconds): return .init(status: status, body: Data(body.utf8), retryAfter: seconds)

@@ -630,7 +630,8 @@ import VoxClipMedia
             if unsent.queueRefused, case LipsyncError.http(let status) = unsent.error, let declined = declined(status) {
                 return "The lip-sync request was declined. " + declined
             }
-            return (unsent.queueRefused ? "The lip-sync request was declined. " : "Stopped before submitting a lip-sync job. ") + reason(unsent.error)
+            if unsent.queueRefused { return "The lip-sync request was declined. " + reason(unsent.error) }
+            return "Stopped before submitting a lip-sync job. " + reason(unsent.error) + " fal.ai didn't charge for this lip sync."
         }
         if let check = error as? LipsyncResultCheck { return check.copy }
         if let failed = error as? LipsyncRecoveryFailed {

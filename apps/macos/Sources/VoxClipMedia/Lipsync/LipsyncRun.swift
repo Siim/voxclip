@@ -86,7 +86,8 @@ public struct LipsyncRun: Sendable {
         do {
             (quote, approval) = try await provider.prepareApprovedUpload(video: prepared.video, audio: prepared.audio,
                 options: LipsyncOptions(syncMode: window.syncMode), fps: prepared.fps, consentStore: consentStore,
-                recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true, model: chosen)
+                recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true, model: chosen,
+                onUploadProgress: { await onProgress($0) })
         } catch { throw LipsyncNotSubmitted.wrap(error) }
         let job: LipsyncJob
         await beforeSubmit?(quote)

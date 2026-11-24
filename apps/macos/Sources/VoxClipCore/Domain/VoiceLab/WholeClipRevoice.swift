@@ -474,7 +474,7 @@ extension WholeClipRevoice {
     public enum Lipsync: String, Codable, Sendable, CaseIterable {
         case lipsync2 = "fal-ai/sync-lipsync/v2:lipsync-2"
         case sync3 = "fal-ai/sync-lipsync/v3"
-        public static let standard = Lipsync.lipsync2
+        public static let standard = Lipsync.sync3
         public var endpoint: String { String(rawValue.split(separator: ":", maxSplits: 1)[0]) }
         public var model: String? { rawValue.split(separator: ":", maxSplits: 1).dropFirst().first.map(String.init) }
         /// "lipsync-2", "sync-3".

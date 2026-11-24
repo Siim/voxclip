@@ -129,12 +129,12 @@ extension RewriteSession {
         return nil
     }
 
-    func wholeClipLipRedo(_ model: WholeClipRevoice.Lipsync) -> PanelAction? {
+    func wholeClipLipRedo() -> PanelAction? {
+        let model = WholeClipRevoice.Lipsync.standard
         guard wholeClipLipRedoBlocker == nil, let record = usedWholeClip, let previous = wholeClip,
               let source = try? wholeClipPictureRedoSource(record), let price = try? source.estimate(model).usd else { return nil }
-        let title = model == .sync3 ? "Sharper Lip Sync · sync-3" : "Redo Lip Sync Only"
-        return PanelAction(id: model == .sync3 ? "wholeClipSharperRedo" : "wholeClipLipRedo",
-                           title: title + " · " + VoiceLabCostPresentation.format(price), priced: price > 0) { [weak self, weak previous] in
+        return PanelAction(id: "wholeClipLipRedo",
+                           title: "Redo Lip Sync Only · " + VoiceLabCostPresentation.format(price), priced: price > 0) { [weak self, weak previous] in
             guard let self, let previous, wholeClip === previous, usedWholeClip == record, wholeClipLipRedoBlocker == nil,
                   let source = try? wholeClipPictureRedoSource(record), let amount = try? source.estimate(model).usd, amount <= price,
                   let script = try? previous.backend?.script() else { return }
@@ -214,24 +214,6 @@ extension RewriteSession {
     func changeFewerWordsAction() -> PanelAction? {
         guard let advice = voiceBudget else { return nil }
         return budgetSteps(advice, freeChanges: 0).chips.first { $0.action.id == "changeFewerWords" }?.action
-    }
-
-    /// Review's upgrade: "Sharper Lip Sync · sync-3 · ≈ $X", re-running only the lip sync over the paid voice. After a lost
-    /// submit answer it is the user's own "I Checked fal.ai" button, which may charge twice.
-    func wholeClipUpgradeAction() -> PanelAction? {
-        guard let session = wholeClip, session.phase == .review, let usd = session.upgradeUSD, !session.automatic else { return nil }
-        let price = session.upgradeKept ? "free" : VoiceLabCostPresentation.format(usd)
-        if session.submissionUnconfirmed {
-            return PanelAction(id: "wholeClipUpgradeCheckedFal", title: "I Checked fal.ai · Sharper Lip Sync Again · \(price) (fal.ai may charge twice)",
-                               priced: true) { [weak self, weak session] in
-                session?.upgradeAfterCheckingFal()
-                self?.watchWholeClip()
-            }
-        }
-        return PanelAction(id: "wholeClipUpgrade", title: "Sharper Lip Sync · sync-3 · " + price, priced: !session.upgradeKept) { [weak self, weak session] in
-            session?.upgrade()
-            self?.watchWholeClip()
-        }
     }
 
     /// The stopped card's actions, the first one primary. Every one can succeed (design.md, Stopped):
@@ -1151,7 +1133,7 @@ extension RewriteSession {
     }
 
     /// The Lip sync step: every part's picture matched to its take, then one lip sync over the merged window. A lip sync of
-    /// this model already on the parts is the result, with nothing sent. Another model's (the sync-3 upgrade over lipsync-2)
+    /// this model already on the parts is the result, with nothing sent. A different saved model
     /// is set aside while it runs and put back if the new one fails or is cancelled, so the paid one is never lost.
     private func wholeClipLipsync(_ voice: WholeClipRevoiceSession.Voice, factor: Double, model: WholeClipRevoice.Lipsync,
                                   progress: @escaping @MainActor (Double?) -> Void) async throws -> WholeClipRevoiceSession.Synced {

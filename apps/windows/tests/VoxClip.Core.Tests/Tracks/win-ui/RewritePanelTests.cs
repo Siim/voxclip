@@ -23,7 +23,7 @@ public sealed class RewritePanelTests
         Assert.Null(session.WholeClipPrice);
         Assert.NotEmpty(session.WholeClipUseBlocked!);
         Assert.NotEmpty(session.WholeClipCompareBlocked!);
-        Assert.NotEmpty(session.WholeClipSharperBlocked!);
+        Assert.Equal(new[] { WholeClipIntent.Revoice, WholeClipIntent.RedoVoice, WholeClipIntent.RedoLipSync }, Enum.GetValues<WholeClipIntent>());
     }
 
     [Fact]

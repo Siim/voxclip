@@ -420,9 +420,10 @@ extension RewriteSession {
         let accepted = saved.pending.flatMap { $0.acceptedUSD(projectID: project.id, root: root) }
         var lipPrices = Dictionary(saved.lipsyncs.map { ($0.key, $0.usd) }, uniquingKeysWith: +)
         if let pending = saved.pending, let accepted { lipPrices[pending.key] = accepted }
-        if let model = saved.pictureRedoModel {
+        if let previousModel = saved.pictureRedoModel {
             guard let record = usedWholeClip, let source = try? wholeClipPictureRedoSource(record) else { return }
             let uncertain = saved.submissionUnconfirmed == true || (saved.pending != nil && accepted == nil)
+            let model = lipPrices.keys.contains { $0.model == previousModel } ? previousModel : .standard
             restoredProposal?.wholeClip = nil
             holdPictureRedo(session, source: source, script: saved.script, model: model)
             session.restorePictureRedo(paid: lipPrices, billed: saved.billed, pending: saved.pending, uncertain: uncertain)
