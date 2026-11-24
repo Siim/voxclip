@@ -1987,6 +1987,19 @@ connector now runs one process per connector instance, not one per process, so t
 
 The stub benchmark (`CLIAutopilotTests`, virtual time, 4.6 s per call plus time in proportion to output tokens: Find Clips 77 s, plans of 74, 91 and 61 s) gives the first postable clip at 139.0 s after Find Clips starts, against 169.4 s when every clip waited for the slowest plan; with local transcription (53 s) 192 s against 222 s. With effort fixed at extra high, the critical path is Find Clips plus the quickest plan.
 
+### 16.13 Find Clips failures in Claude mode
+
+After the Find Clips task releases the project's AI lease, Claude mode continues if it has suggestions. An unavailable
+model, sign-in failure, exhausted quota, missing approval or other non-transient failure stops the automatic run on the
+inline blocker. A successful search with no matches also stops. The model error names the rejected model and opens the
+AI settings to pick another model or refresh the list.
+
+Only a network failure or timeout permits another automatic Find Clips attempt. Wait 2, 8 and 30 seconds before the
+three retries, for at most four attempts; if the last one fails, show its reason and **Find Clips Again**. A retry must
+still pass the ordinary free-send checks: it must never repeat a paid or unapproved send. A retry that finds clips
+continues the run normally. The retry policy belongs to the editor's Claude-mode find-ended/continue pair, not to the
+individual connectors or manual Find Clips.
+
 ## 17. Caption pick (`captionPick`)
 
 When the clip style's captions are Auto (design.md §6.6), one request asks the connector to choose a caption style
