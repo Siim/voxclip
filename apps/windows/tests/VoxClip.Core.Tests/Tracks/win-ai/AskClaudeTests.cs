@@ -40,6 +40,23 @@ public sealed class AskClaudeTests
     private static string? Text(JsonNode? node, string key) => node?[key]?.GetValue<string>();
 
     [Fact]
+    public void WordAnchoredEffectsRespectTightenedPauses()
+    {
+        var project = Project();
+        project = project with { Edits = project.Edits with { PauseThresholdSeconds = 0.4 } };
+        var reply = JsonNode.Parse("""
+            {"summary":"Add a title","ops":[{"kind":"motionTitle","startWord":6,"endWord":7,"text":"The result","reason":"Name the result."}]}
+            """);
+        var scope = AskClaudeScope.Resolve(new(new AskClaudeSelection.Scope.Words(6, 7), "clip-main"), project);
+        var prompt = Prompt();
+        Assert.Single(new AskClaudeValidator(prompt, scope, project, []).Answer(reply).Operations);
+        project = project with { Edits = project.Edits with { CutPauseIds = ["pause-after-w7"] } };
+        var answer = new AskClaudeValidator(prompt, scope, project, []).Answer(reply);
+        Assert.Empty(answer.Operations);
+        Assert.Single(answer.Repairs);
+    }
+
+    [Fact]
     public void TheFixtureIsCurrentForThePromptFile()
     {
         var bytes = File.ReadAllBytes(Path.Combine(Root, AskClaudePrompt.Path));

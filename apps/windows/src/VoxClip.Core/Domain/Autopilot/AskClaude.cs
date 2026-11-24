@@ -323,6 +323,9 @@ public sealed partial class AskClaudeValidator(AskClaudePrompt prompt, AskClaude
         var effectIds = project.ClipEffects.Select(effect => effect.GetProperty("id").GetString()!).ToHashSet(StringComparer.Ordinal);
         var planEffectIds = effectIds.Concat(project.MotionCues.Select(cue => cue.Id)).ToHashSet(StringComparer.Ordinal);
         var cutSoFar = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
+        var cutPauseIds = project.Edits.CutPauseIds.ToHashSet(StringComparer.Ordinal);
+        IReadOnlySet<int> tightenedAfter = cutPauseIds.Count == 0 ? new HashSet<int>() : EditingAlgorithms.DetectPauses(Words, project.Edits.PauseThresholdSeconds)
+            .Where(pause => cutPauseIds.Contains(pause.Id)).Select(pause => pause.AfterIndex).ToHashSet();
         var corrected = new HashSet<string>(StringComparer.Ordinal);
         var raw = AiJson.Array(AiJson.Get(reply, "ops"));
         if (raw.Count > prompt.MaxOps) repairs.Add($"Kept the first {prompt.MaxOps} of {raw.Count} changes.");
@@ -346,11 +349,10 @@ public sealed partial class AskClaudeValidator(AskClaudePrompt prompt, AskClaude
                 var serial = 1;
                 while (planEffectIds.Contains("ask-fx-" + AskClaudePrompt.Int(serial))) serial++;
                 var effectId = "ask-fx-" + AskClaudePrompt.Int(serial);
-                var words = project.Transcript?.Words ?? [];
                 if (ClipPlanEffect.ProviderEntry(item) is not { } entry || scope.Words is not { } selected ||
                     (scope.ClipId ?? ClipContaining()) is not { } clip ||
                     entry.Operation(effectId, clip, new(selected.Start, Math.Min(selected.End, selected.Start + prompt.MaxSelectionWords - 1)),
-                        words, cutSoFar, new HashSet<int>(), prompt.Stickers) is not { } operation)
+                        Words, cutSoFar, tightenedAfter, prompt.Stickers) is not { } operation)
                 {
                     Drop("needs a kept phrase in a clip and a supported effect");
                     continue;

@@ -26,6 +26,21 @@ import Testing
     }
     private static func close(_ a: Double?, _ b: Double?) -> Bool { guard let a, let b else { return a == nil && b == nil }; return abs(a - b) < 1e-6 }
 
+    @Test func wordAnchoredEffectsRespectTightenedPauses() throws {
+        var project = try Self.project()
+        project.edits.pauseThresholdSeconds = 0.4
+        let reply = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            {"summary":"Add a title","ops":[{"kind":"motionTitle","startWord":6,"endWord":7,"text":"The result","reason":"Name the result."}]}
+            """.utf8))
+        let selection = AskClaudeSelection(scope: .words(6...7), clipID: "clip-main")
+        let prompt = try Self.prompt()
+        let scope = try AskClaudeScope.resolve(selection, in: project)
+        #expect(AskClaudeValidator(prompt: prompt, scope: scope, project: project, detections: []).answer(reply).operations.count == 1)
+        project.edits.cutPauseIds = ["pause-after-w7"]
+        let answer = AskClaudeValidator(prompt: prompt, scope: scope, project: project, detections: []).answer(reply)
+        #expect(answer.operations.isEmpty && answer.repairs.count == 1)
+    }
+
     @Test("The fixture is current for the prompt file")
     func fixtureIsCurrent() throws {
         let sha = SHA256.hash(data: try FixtureLoader.data("prompts/ask-claude.json")).map { String(format: "%02x", $0) }.joined()

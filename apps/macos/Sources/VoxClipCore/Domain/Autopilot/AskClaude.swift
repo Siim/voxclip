@@ -243,6 +243,10 @@ public struct AskClaudeValidator: Sendable {
         var effectIDs = Set(project.clipEffects.map(\.id))
         var planEffectIDs = effectIDs.union(project.motionCues.map(\.id))
         var cutSoFar = Set(project.edits.cutWordIds)
+        let transcriptWords = project.transcript?.words ?? []
+        let cutPauseIDs = Set(project.edits.cutPauseIds)
+        let pauses = cutPauseIDs.isEmpty ? [] : (try? detectPauses(transcriptWords, thresholdSeconds: project.edits.pauseThresholdSeconds)) ?? []
+        let tightenedAfter = Set(pauses.filter { cutPauseIDs.contains($0.id) }.map(\.afterIndex))
         var corrected = Set<String>()
         let raw = object[ai: "ops"].aiArray
         if raw.count > prompt.maxOps { answer.repairs.append("Kept the first \(prompt.maxOps) of \(raw.count) changes.") }
@@ -259,15 +263,14 @@ public struct AskClaudeValidator: Sendable {
             func drop(_ why: String) { answer.repairs.append("Left out \(kind.isEmpty ? "a change" : kind): \(why).") }
             let wordAnchored = item[ai: "target"].aiString == "planEffect"
             if ["punchIn", "motionTitle", "emojiPop"].contains(kind) || (wordAnchored && ["zoom", "lowerThird"].contains(kind)) {
-                let words = project.transcript?.words ?? []
                 let listed = scope.words.map { $0.lowerBound...min($0.upperBound, $0.lowerBound + prompt.maxSelectionWords - 1) }
                 let clip = scope.clipID ?? clipContaining(scope)
                 var serial = 1
                 while planEffectIDs.contains("ask-fx-\(serial)") { serial += 1 }
                 let effectID = "ask-fx-\(serial)"
                 guard let entry = ClipPlanEffect.providerEntry(item), let listed, let clip,
-                      let operation = entry.operation(id: effectID, clipID: clip, scope: listed, words: words, cut: cutSoFar,
-                                                      tightenedAfter: [], stickers: prompt.stickers) else {
+                      let operation = entry.operation(id: effectID, clipID: clip, scope: listed, words: transcriptWords, cut: cutSoFar,
+                                                      tightenedAfter: tightenedAfter, stickers: prompt.stickers) else {
                     drop("needs a kept phrase in a clip and a supported effect"); continue
                 }
                 planEffectIDs.insert(effectID)
