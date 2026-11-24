@@ -258,9 +258,9 @@ member VoxClip.Media.Audio.RenderedAudioReader :: method internal OpenVoiceForMu
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal Read(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal get_TotalFrames()
 member VoxClip.Media.Audio.RenderedAudioReader :: method private Open(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,bool,System.Threading.CancellationToken,VoxClip.Media.Audio.MusicBed)
-member VoxClip.Media.Audio.RenderedAudioReader :: method private ReadSilence(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method private ReadSectionSource(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method private ReadSections(System.Span`1<float>,int,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RenderedAudioReader :: method private ReadSilence(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method private Silenced(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method public Dispose()
 member VoxClip.Media.Audio.SharedWasapiOutput :: field private player
