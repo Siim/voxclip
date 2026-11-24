@@ -122,7 +122,7 @@
       "kind": "speed",
       "group": "Timing",
       "fields": "start, end, rate",
-      "use": "Plays that stretch faster or slower: rate 0.5 to 2, never 1. The voice keeps its pitch."
+      "use": "Set the entire clip's speed (rate 0.5 to 2, never 1). For just a kept phrase use speedForPart. The voice keeps its pitch."
     },
     {
       "kind": "freeze",
@@ -159,6 +159,30 @@
       "group": "Overlays",
       "fields": "startWord, endWord, text, reason",
       "use": "Pop one of the sticker emoji on a kept phrase in a clip."
+    },
+    {
+      "kind": "soundEffect",
+      "group": "Timing",
+      "fields": "startWord, endWord, query, reason",
+      "use": "Search Openverse for a brief sound accent on kept words in a clip. Use a short, generic audio query, never personal details."
+    },
+    {
+      "kind": "illustration",
+      "group": "Overlays",
+      "fields": "startWord, endWord, prompt, reason",
+      "use": "Suggest one generated cutaway for kept words in a clip. Use a standalone picture prompt without personal details or quoted speech. Generation requires a priced click."
+    },
+    {
+      "kind": "colourLook",
+      "group": "Overlays",
+      "fields": "startWord, endWord, look, reason",
+      "use": "Grade the picture over kept words in a clip only. Use original, muted, warm or bw."
+    },
+    {
+      "kind": "speedForPart",
+      "group": "Timing",
+      "fields": "startWord, endWord, rate, reason",
+      "use": "Play kept words in a clip at 0.5 to 2 times the normal pace, keeping the voice's pitch."
     },
     {
       "kind": "correction",
@@ -266,6 +290,9 @@
               "scale",
               "sound",
               "language",
+              "query",
+              "prompt",
+              "look",
               "choice",
               "reason"
             ],
@@ -321,6 +348,9 @@
               "language": {
                 "type": "string"
               },
+              "query": {"type": "string"},
+              "prompt": {"type": "string"},
+              "look": {"type": "string"},
               "choice": {
                 "type": "string"
               },
