@@ -1786,6 +1786,18 @@ member VoxClip.App.Pages.EditorPage :: field private demo
 member VoxClip.App.Pages.EditorPage :: field private disposed
 member VoxClip.App.Pages.EditorPage :: field private elevenMusic
 member VoxClip.App.Pages.EditorPage :: field private frameText
+member VoxClip.App.Pages.EditorPage :: field private harnessActionVersion
+member VoxClip.App.Pages.EditorPage :: field private harnessCheckedProject
+member VoxClip.App.Pages.EditorPage :: field private harnessDetails
+member VoxClip.App.Pages.EditorPage :: field private harnessMusic
+member VoxClip.App.Pages.EditorPage :: field private harnessPath
+member VoxClip.App.Pages.EditorPage :: field private harnessPending
+member VoxClip.App.Pages.EditorPage :: field private harnessPriceIssue
+member VoxClip.App.Pages.EditorPage :: field private harnessPricing
+member VoxClip.App.Pages.EditorPage :: field private harnessQuote
+member VoxClip.App.Pages.EditorPage :: field private harnessReadIssue
+member VoxClip.App.Pages.EditorPage :: field private harnessSubmitted
+member VoxClip.App.Pages.EditorPage :: field private harnessTimer
 member VoxClip.App.Pages.EditorPage :: field private leave
 member VoxClip.App.Pages.EditorPage :: field private lifetime
 member VoxClip.App.Pages.EditorPage :: field private loadedSnapshot
@@ -1810,6 +1822,7 @@ member VoxClip.App.Pages.EditorPage :: field private previewSpeed
 member VoxClip.App.Pages.EditorPage :: field private previewStage
 member VoxClip.App.Pages.EditorPage :: field private previewStop
 member VoxClip.App.Pages.EditorPage :: field private projectWrites
+member VoxClip.App.Pages.EditorPage :: field private readingHarness
 member VoxClip.App.Pages.EditorPage :: field private ready
 member VoxClip.App.Pages.EditorPage :: field private relinkBanner
 member VoxClip.App.Pages.EditorPage :: field private retiredRewriteWork
@@ -1898,6 +1911,13 @@ member VoxClip.App.Pages.EditorPage :: method private FitViewer(double)
 member VoxClip.App.Pages.EditorPage :: method private ForwardClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private FrameAi(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationKind)
 member VoxClip.App.Pages.EditorPage :: method private HandleShellAskKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private HarnessFileError(System.Exception)
+member VoxClip.App.Pages.EditorPage :: method private HarnessGenerateMusicClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private HarnessKeepClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private HarnessMusicClipExists(VoxClip.App.ViewModels.HarnessMusicAction)
+member VoxClip.App.Pages.EditorPage :: method private HarnessMusicDismissClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private HarnessMusicNextClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private HarnessUndoClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private Hook(VoxClip.Core.Services.Media.IPreviewEngine)
 member VoxClip.App.Pages.EditorPage :: method private HookClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private InitializeAskClaude()
@@ -1910,6 +1930,7 @@ member VoxClip.App.Pages.EditorPage :: method private InitializeShell()
 member VoxClip.App.Pages.EditorPage :: method private InstallAccelerators()
 member VoxClip.App.Pages.EditorPage :: method private IntegratedJobAvailable(VoxClip.App.ViewModels.ShellJobRequest)
 member VoxClip.App.Pages.EditorPage :: method private IntegratedStatus()
+member VoxClip.App.Pages.EditorPage :: method private IsHarnessPath(string)
 member VoxClip.App.Pages.EditorPage :: method private LedgerChanged(object,System.EventArgs)
 member VoxClip.App.Pages.EditorPage :: method private LoadWaveformAsync(VoxClip.Core.Domain.Shared.MediaInfo,string,System.Threading.CancellationTokenSource,System.Threading.Tasks.Task)
 member VoxClip.App.Pages.EditorPage :: method private LocateClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1950,6 +1971,7 @@ member VoxClip.App.Pages.EditorPage :: method private ReadMakeItVoiceCapAsync(Sy
 member VoxClip.App.Pages.EditorPage :: method private RediscoverRewriteAsync(VoxClip.App.ViewModels.RewriteSession,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteGeneration>)
 member VoxClip.App.Pages.EditorPage :: method private RedoClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RefreshAiStatusAsync()
+member VoxClip.App.Pages.EditorPage :: method private RefreshHarnessAsync()
 member VoxClip.App.Pages.EditorPage :: method private ReloadPreviewAsync()
 member VoxClip.App.Pages.EditorPage :: method private ReloadPreviewClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RememberRightWidth()
@@ -1958,6 +1980,7 @@ member VoxClip.App.Pages.EditorPage :: method private RequestWaveform()
 member VoxClip.App.Pages.EditorPage :: method private RestoreClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RestoreSelectionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RetireRewrite()
+member VoxClip.App.Pages.EditorPage :: method private ReviewHarness(bool)
 member VoxClip.App.Pages.EditorPage :: method private RewriteAsAsync(VoxClip.App.ViewModels.RewriteAsRequest)
 member VoxClip.App.Pages.EditorPage :: method private RewriteClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RightPaneSizeChanged(object,Microsoft.UI.Xaml.SizeChangedEventArgs)
@@ -1982,6 +2005,8 @@ member VoxClip.App.Pages.EditorPage :: method private ShellJobAvailable(VoxClip.
 member VoxClip.App.Pages.EditorPage :: method private ShellRequest(VoxClip.App.ViewModels.ShellJob,string)
 member VoxClip.App.Pages.EditorPage :: method private ShortcutsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private ShowAskClaudePanel()
+member VoxClip.App.Pages.EditorPage :: method private ShowHarnessDetails()
+member VoxClip.App.Pages.EditorPage :: method private ShowHarnessMusic()
 member VoxClip.App.Pages.EditorPage :: method private ShowMakeItPanel()
 member VoxClip.App.Pages.EditorPage :: method private ShowPreviewStage()
 member VoxClip.App.Pages.EditorPage :: method private ShowProjectClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1994,6 +2019,7 @@ member VoxClip.App.Pages.EditorPage :: method private SourceTransportAsync(Syste
 member VoxClip.App.Pages.EditorPage :: method private SplitterDragged(object,Microsoft.UI.Xaml.Input.ManipulationCompletedRoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private SplitterKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private SplitterKeyUp(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private StartHarnessReview()
 member VoxClip.App.Pages.EditorPage :: method private StoredRightWidth()
 member VoxClip.App.Pages.EditorPage :: method private TightenClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private TightenScope()
@@ -2009,6 +2035,7 @@ member VoxClip.App.Pages.EditorPage :: method private Unhook(VoxClip.Core.Servic
 member VoxClip.App.Pages.EditorPage :: method private UpdateAiTag()
 member VoxClip.App.Pages.EditorPage :: method private UpdateExport()
 member VoxClip.App.Pages.EditorPage :: method private UpdateFindClips()
+member VoxClip.App.Pages.EditorPage :: method private UpdateHarnessButtons()
 member VoxClip.App.Pages.EditorPage :: method private UpdateMakeItCommand()
 member VoxClip.App.Pages.EditorPage :: method private UpdatePreviewAsync()
 member VoxClip.App.Pages.EditorPage :: method private UpdateRewriteCommand()
@@ -2016,6 +2043,8 @@ member VoxClip.App.Pages.EditorPage :: method private UpdateTimelineHeight()
 member VoxClip.App.Pages.EditorPage :: method private UpdateToneButton()
 member VoxClip.App.Pages.EditorPage :: method private ViewerClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private WorkflowStatusChanged(object,System.EventArgs)
+member VoxClip.App.Pages.EditorPage :: method private get_CurrentHarnessQuote()
+member VoxClip.App.Pages.EditorPage :: method private get_HarnessBlock()
 member VoxClip.App.Pages.EditorPage :: method private get_ShellEditable()
 member VoxClip.App.Pages.EditorPage :: method private get_ShellReady()
 member VoxClip.App.Pages.EditorPage :: method private set_FindClips(VoxClip.App.Controls.FindClipsJob)
@@ -3607,8 +3636,11 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginUndoGroup(
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearSelection()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal CompleteCaptionDrag(VoxClip.Core.Domain.Shared.CaptionPosition)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ContainsAiSpeech(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal DescribeHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal DismissHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal EndUndoGroup()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ExportStatus(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItFrameSource(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItPostable(string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItScreenRows(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,bool)
@@ -3618,6 +3650,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionPosi
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PresentedWord(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PreviewCutRange()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ProjectWithLocalOperations(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal ReadHarnessProposal(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ReplaceProject(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RequireLegacyRendering(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ResumeEditing()
@@ -3631,6 +3664,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal TakeBackMakeIt(
 member VoxClip.App.ViewModels.EditorViewModel :: method internal VoiceLabAssetReferences(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Shared.Project>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal add_ExportStatesChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_CaptionDrag()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_HarnessKeepBlocked()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_IsScopeChange()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_LlmRuns()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RewriteSelectionRevision()
@@ -3654,7 +3688,9 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private Clamp(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClaudeModeContinueAsync(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClipPlay(string,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClipSpan(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private DescribeCut(System.Text.Json.JsonElement)
 member VoxClip.App.ViewModels.EditorViewModel :: method private DirtyIdentity(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.EditorViewModel :: method private EffectLabel(System.Text.Json.JsonElement)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Element(System.Text.Json.Nodes.JsonObject)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Fail(VoxClip.App.ViewModels.MakeItRun,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private FinishAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItServices)
@@ -4121,6 +4157,46 @@ member VoxClip.App.ViewModels.FrameTimeSummary :: method public set_P50Milliseco
 member VoxClip.App.ViewModels.FrameTimeSummary :: method public set_P95Milliseconds(double)
 member VoxClip.App.ViewModels.FrameTimeSummary :: method public set_ShareOver16Point7(double)
 member VoxClip.App.ViewModels.FrameTimeSummary :: method public set_ShareOver33(double)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method private .ctor(VoxClip.App.ViewModels.HarnessMusicAction)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public .ctor(string,string,string)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public Deconstruct(string&,string&,string&)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public Equals(VoxClip.App.ViewModels.HarnessMusicAction)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public Equals(object)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public GetHashCode()
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public ToString()
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public get_ClipId()
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public get_Prompt()
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public get_SourceKey()
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public op_Equality(VoxClip.App.ViewModels.HarnessMusicAction,VoxClip.App.ViewModels.HarnessMusicAction)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public op_Inequality(VoxClip.App.ViewModels.HarnessMusicAction,VoxClip.App.ViewModels.HarnessMusicAction)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public set_ClipId(string)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public set_Prompt(string)
+member VoxClip.App.ViewModels.HarnessMusicAction :: method public set_SourceKey(string)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method private .ctor(VoxClip.App.ViewModels.HarnessReviewDetails)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public .ctor(string,string,System.Collections.Generic.IReadOnlyList`1<string>,string,string,string)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public Deconstruct(string&,string&,System.Collections.Generic.IReadOnlyList`1<string>&,string&,string&,string&)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public Equals(VoxClip.App.ViewModels.HarnessReviewDetails)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public Equals(object)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public GetHashCode()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public ToString()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public get_Blocked()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public get_Changes()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public get_ClipTitle()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public get_MusicEstimate()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public get_MusicPrompt()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public get_Reason()
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public op_Equality(VoxClip.App.ViewModels.HarnessReviewDetails,VoxClip.App.ViewModels.HarnessReviewDetails)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public op_Inequality(VoxClip.App.ViewModels.HarnessReviewDetails,VoxClip.App.ViewModels.HarnessReviewDetails)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public set_Blocked(string)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public set_Changes(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public set_ClipTitle(string)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public set_MusicEstimate(string)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public set_MusicPrompt(string)
+member VoxClip.App.ViewModels.HarnessReviewDetails :: method public set_Reason(string)
 member VoxClip.App.ViewModels.HomeViewModel :: field private query
 member VoxClip.App.ViewModels.HomeViewModel :: field private sort
 member VoxClip.App.ViewModels.HomeViewModel :: method public .ctor()
@@ -8906,6 +8982,8 @@ type VoxClip.App.ViewModels.ExportScopeKind
 type VoxClip.App.ViewModels.ExportSelection
 type VoxClip.App.ViewModels.FocusCycle
 type VoxClip.App.ViewModels.FrameTimeSummary
+type VoxClip.App.ViewModels.HarnessMusicAction
+type VoxClip.App.ViewModels.HarnessReviewDetails
 type VoxClip.App.ViewModels.HomeViewModel
 type VoxClip.App.ViewModels.IMusicAudition
 type VoxClip.App.ViewModels.IPhraseCuePlayer
