@@ -135,6 +135,8 @@ public sealed class TimelineTests
         Assert.Equal(geometry.VideoTop + video + 1, geometry.AudioTop);
         Assert.Equal(geometry.AudioTop + audio + 1, geometry.CaptionTop);
         Assert.Equal(geometry.CaptionTop + caption + 1, geometry.EffectsTop);
+        Assert.Equal(geometry.EffectsTop + effects + 1, geometry.MusicTop);
+        Assert.True(geometry.Height > geometry.MusicTop + geometry.MusicHeight);
         var audioOnly = TimelineLayout.Tracks(size, false, false, false);
         Assert.Equal(0, audioOnly.VideoHeight); Assert.Equal(47, audioOnly.AudioTop);
         Assert.Equal(0, audioOnly.CaptionHeight); Assert.Equal(0, audioOnly.EffectsHeight);

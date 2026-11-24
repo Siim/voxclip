@@ -83,10 +83,8 @@ public sealed class Exporter : IExporter
             throw new VoxClipException(VoxClipErrorCode.EverythingCut, "Keep at least one word before exporting.");
         if (!double.IsFinite(snapshot.Timeline.SampleRate) || snapshot.Timeline.SampleRate <= 0 || snapshot.Media.Video is null)
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, "Export stopped: this export requires a video and a valid edit plan. Your edits are saved.");
-        // The music bed needs an audio stream to ride on and its file; both are checked before anything is written.
         if (snapshot.Clip?.Music is { } music)
         {
-            if (snapshot.Media.Audio is null) throw new VoxClipException(VoxClipErrorCode.ExportFailed, MusicBed.NoAudioMessage);
             if (!File.Exists(music.AssetPath))
                 throw new VoxClipException(VoxClipErrorCode.ExportFailed, $"Export stopped: the music file {Path.GetFileName(music.AssetPath)} is missing. Your edits are saved.");
         }
@@ -208,9 +206,9 @@ public sealed class Exporter : IExporter
             });
             reporter("preparing", 0);
             // Staged once: the export's reader and the loudness pre-pass mix the same bed.
-            var music = snapshot.Media.Audio is null ? null : MusicBed.Stage(snapshot, 48_000, voiceSession, ct);
+            var music = MusicBed.Stage(snapshot, 48_000, voiceSession, ct);
             using (var video = new EncoderSession(encoderName, output))
-            using (var audio = snapshot.Media.Audio is null ? null : new EncoderSession("aac", output, true))
+            using (var audio = HasOutputAudio(snapshot) ? new EncoderSession("aac", output, true) : null)
             using (var mux = CreateMux(partial, video, audio, out var videoStream, out var audioStream))
             using (var decoder = new VideoDecoder(snapshot.Media.Path))
             using (var nv12Handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame))
@@ -372,7 +370,9 @@ public sealed class Exporter : IExporter
 
     /// <summary>The video frames and 48 kHz audio samples an export writes: the rendered length (edited ÷ the clip's speed).</summary>
     internal static (long Frames, long Samples) RenderedCounts(ComposeSnapshot snapshot, double fps)
-        => (Native.Round(snapshot.RenderedDuration * fps), snapshot.Media.Audio is null ? 0 : Native.Round(snapshot.RenderedDuration * 48_000));
+        => (Native.Round(snapshot.RenderedDuration * fps), HasOutputAudio(snapshot) ? Native.Round(snapshot.RenderedDuration * 48_000) : 0);
+
+    private static bool HasOutputAudio(ComposeSnapshot snapshot) => snapshot.Media.Audio is not null || snapshot.Clip?.Music is not null;
 
     /// <summary>The edited time export frame <paramref name="index"/> shows: its rendered time × the clip's speed.</summary>
     internal static double EditedTime(ComposeSnapshot snapshot, long index, double fps) => snapshot.Speed.Edited(index / fps);

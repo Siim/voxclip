@@ -140,8 +140,10 @@ public sealed class TimelineView : UserControl
     private bool waveformUnavailable;
     private bool overviewDragging;
     private double overviewGrab;
-    private readonly TextBlock[] headerNames = Enumerable.Range(0, 4).Select(_ => new TextBlock { FontSize = 11 }).ToArray();
-    private readonly TextBlock[] headerIds = Enumerable.Range(0, 4).Select(_ => new TextBlock { FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }).ToArray();
+    private readonly TextBlock[] headerNames = Enumerable.Range(0, 5).Select(_ => new TextBlock { FontSize = 11 }).ToArray();
+    private readonly TextBlock[] headerIds = Enumerable.Range(0, 5).Select(_ => new TextBlock { FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }).ToArray();
+    private readonly Polygon musicRamp = new();
+    private readonly TextBlock musicLabel = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly LinkedList<(TimelineMediaTile Tile, TimelineMediaGeometry<PathGeometry> Geometry)> geometryCache = new();
     private readonly Microsoft.UI.Xaml.Shapes.Path cueBackgrounds = new();
     private readonly double[] overviewBadgeLeft = new double[TimelineRetainedPool<object>.Badges];
@@ -285,6 +287,7 @@ public sealed class TimelineView : UserControl
         canvas.Children.Add(rulerTicks); canvas.Children.Add(rulerLabels); canvas.Children.Add(trimBrackets); canvas.Children.Add(selectionBar); canvas.Children.Add(fxHint); canvas.Children.Add(scrollThumb);
         canvas.Children.Add(askRange);
         foreach (var block in effectBlocks) canvas.Children.Add(block);
+        canvas.Children.Add(musicRamp); canvas.Children.Add(musicLabel);
         captions.RenderTransform = captionTransform; rulerTicks.RenderTransform = rulerTransform;
         var bracketGeometry = new PathGeometry();
         for (var index = 0; index < bracketFigures.Length; index++)
@@ -697,14 +700,14 @@ public sealed class TimelineView : UserControl
         handles.Clip = new RectangleGeometry { Rect = new(0, 0, width, metrics.Height) };
         canvas.Background = Brush("VcTimelineLaneBrush");
         leftDim.Fill = rightDim.Fill = Brush("VcTimelineScopeDimBrush");
-        leftDim.Height = rightDim.Height = metrics.EffectsTop + metrics.EffectsHeight - metrics.VideoTop;
+        leftDim.Height = rightDim.Height = metrics.MusicTop + metrics.MusicHeight - metrics.VideoTop;
         Canvas.SetTop(leftDim, metrics.VideoTop); Canvas.SetTop(rightDim, metrics.VideoTop);
         slider.Margin = new(0, TimelineLayout.OverviewHeight, 0, 0);
         slider.Height = metrics.Height - TimelineLayout.OverviewHeight;
-        playhead.Height = metrics.EffectsTop + metrics.EffectsHeight - TimelineLayout.OverviewHeight - 11;
+        playhead.Height = metrics.MusicTop + metrics.MusicHeight - TimelineLayout.OverviewHeight - 11;
         Canvas.SetTop(playhead, TimelineLayout.OverviewHeight + 11); Canvas.SetTop(head, TimelineLayout.OverviewHeight + 11);
         geometryBand.Height = 30; Canvas.SetTop(geometryBand, metrics.VideoTop);
-        viewportTransform.ScaleY = (metrics.EffectsTop + metrics.EffectsHeight - metrics.VideoTop) / 30;
+        viewportTransform.ScaleY = (metrics.MusicTop + metrics.MusicHeight - metrics.VideoTop) / 30;
         Canvas.SetTop(audioDrawing, metrics.AudioTop); audioTransform.ScaleY = metrics.AudioHeight / 30;
         Canvas.SetTop(videoDrawing, metrics.VideoTop); videoTransform.ScaleY = metrics.VideoHeight / 30;
         videoDrawing.Visibility = filmstrip.Visibility = videoName.Visibility = metrics.VideoHeight > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -745,7 +748,7 @@ public sealed class TimelineView : UserControl
             path.Fill = Brush(index == 8 ? "VcTintDefaultBrush" : "VcAiTintBrush");
             path.Opacity = index == 8 ? .07 : .1;
         }
-        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawEffects(width);
+        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawEffects(width); DrawMusic(width);
         selectionLength.Text = model.HasSelection ? string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"{Math.Max(0, ToDisplay(model.Words[model.SelectionEnd].End) - ToDisplay(model.Words[model.SelectionStart].Start)):0.0} s selected") : "";
         updatingControls = true;
@@ -770,16 +773,59 @@ public sealed class TimelineView : UserControl
     }
     private void DrawHeaders()
     {
-        string[] ids = ["V1", "A1", "CC", "FX"];
-        string[] names = ["Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", model?.CaptionStyleId == "off" ? "Captions off" : "Captions", "Effects"];
-        double[] tops = [metrics.VideoTop, metrics.AudioTop, metrics.CaptionTop, metrics.EffectsTop];
-        for (var index = 0; index < 4; index++)
+        string[] ids = ["V1", "A1", "CC", "FX", "M1"];
+        string[] names = ["Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", model?.CaptionStyleId == "off" ? "Captions off" : "Captions", "Effects", "Music"];
+        double[] tops = [metrics.VideoTop, metrics.AudioTop, metrics.CaptionTop, metrics.EffectsTop, metrics.MusicTop];
+        for (var index = 0; index < ids.Length; index++)
         {
             headerIds[index].Text = ids[index]; headerNames[index].Text = names[index];
             Canvas.SetTop(headerIds[index], tops[index] + 4); Canvas.SetTop(headerNames[index], tops[index] + 4);
             headerIds[index].Foreground = Brush("VcTextSecondaryBrush"); headerNames[index].Foreground = Brush("VcTextTertiaryBrush");
             headerIds[index].Visibility = headerNames[index].Visibility = index == 0 && metrics.VideoHeight == 0 ? Visibility.Collapsed : Visibility.Visible;
         }
+    }
+
+    private void DrawMusic(double width)
+    {
+        Canvas.SetTop(musicLabel, metrics.MusicTop + (metrics.MusicHeight - 15) / 2);
+        if (model?.Music.Current is not { } entry)
+        {
+            musicRamp.Visibility = Visibility.Collapsed;
+            musicLabel.Visibility = Visibility.Visible;
+            musicLabel.Text = "Choose background music";
+            musicLabel.Foreground = Brush("VcTextTertiaryBrush");
+            musicLabel.Width = Math.Max(0, width - 10);
+            Canvas.SetLeft(musicLabel, 10);
+            AutomationProperties.SetName(headerNames[4], "Music: none");
+            return;
+        }
+        var bounds = ClipBounds();
+        var start = bounds is { } clip ? ToDisplay(clip.Start) : 0;
+        var end = bounds is { } clipEnd ? ToDisplay(clipEnd.End) : AxisDuration;
+        var left = rendered.X(start, width);
+        var right = rendered.X(end, width);
+        var visibleLeft = Math.Max(0, left);
+        var visibleRight = Math.Min(width, right);
+        var level = $"{entry.GainDb:0.#} dB".Replace('-', '−');
+        AutomationProperties.SetName(headerNames[4], $"Music: {entry.Title}, {level}");
+        musicRamp.Visibility = visibleRight > visibleLeft ? Visibility.Visible : Visibility.Collapsed;
+        musicLabel.Visibility = visibleRight - visibleLeft > 60 ? Visibility.Visible : Visibility.Collapsed;
+        if (visibleRight <= visibleLeft) return;
+        var top = metrics.MusicTop + 2;
+        var bottom = metrics.MusicTop + metrics.MusicHeight - 2;
+        var fadeIn = Math.Min((right - left) / 2, entry.FadeInSeconds * width / rendered.Duration);
+        var fadeOut = Math.Min((right - left) / 2, entry.FadeOutSeconds * width / rendered.Duration);
+        double RampTop(double x) => x < left + fadeIn && fadeIn > 0 ? bottom - (bottom - top) * (x - left) / fadeIn
+            : x > right - fadeOut && fadeOut > 0 ? bottom - (bottom - top) * (right - x) / fadeOut : top;
+        var inEnd = Math.Clamp(left + fadeIn, visibleLeft, visibleRight);
+        var outStart = Math.Clamp(right - fadeOut, visibleLeft, visibleRight);
+        musicRamp.Points = [new(visibleLeft, bottom), new(visibleLeft, RampTop(visibleLeft)), new(inEnd, RampTop(inEnd)),
+            new(outStart, RampTop(outStart)), new(visibleRight, RampTop(visibleRight)), new(visibleRight, bottom)];
+        musicRamp.Fill = Brush("VcTimelineCueBrush");
+        musicLabel.Text = $"♪ {entry.Title} · {level}" + (entry.Ducking ? " · dips under voice" : "");
+        musicLabel.Foreground = Brush("VcTimelineCueTextBrush");
+        musicLabel.Width = visibleRight - visibleLeft - 8;
+        Canvas.SetLeft(musicLabel, visibleLeft + 4);
     }
     private void DrawOverview(double width)
     {

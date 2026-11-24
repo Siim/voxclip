@@ -436,6 +436,7 @@ public sealed partial class EditorPage : Page
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
         captions?.RefreshSamples();
+        if (ViewModel.Music.Services is not null) ViewModel.Music.LoadFolder();
         var next = App.Services.Get("editing.pauseBreath", "natural");
         if (next == pauseBreath) return;
         pauseBreath = next;

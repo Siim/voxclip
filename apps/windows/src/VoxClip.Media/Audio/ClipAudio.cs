@@ -351,9 +351,23 @@ internal sealed class RenderedAudioReader : IDisposable
     private static RenderedAudioReader Open(ComposeSnapshot snapshot, int rate, double startEdited, VoiceLabRenderSession? session, bool effectsTrack,
         CancellationToken ct, MusicBed? music)
     {
+        if (snapshot.Media.Audio is null)
+        {
+            var timeline = snapshot.Timeline;
+            var start = Math.Clamp(Native.Round(startEdited * timeline.SampleRate), 0, timeline.OutputSamples);
+            var frames = Native.Round((timeline.OutputSamples - start) * rate / timeline.SampleRate);
+            return new(snapshot, rate, startEdited, ReadSilence, null, frames, effectsTrack, music);
+        }
         var reader = new EditedAudioReader(snapshot, rate, startEdited, session, ct);
         try { return new(snapshot, rate, startEdited, reader.Read, reader, reader.TotalFrames, effectsTrack, music); }
         catch { reader.Dispose(); throw; }
+    }
+
+    private static int ReadSilence(Span<float> target, int frames, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        target[..(frames * 2)].Clear();
+        return frames;
     }
 
     internal RenderedAudioReader(ComposeSnapshot snapshot, int rate, double startEdited, StereoRead edited, IDisposable? owner, long editedFrames,
