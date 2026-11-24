@@ -30,16 +30,18 @@ public abstract record VoiceLabTakeVoiceCheck
 {
     private VoiceLabTakeVoiceCheck() { }
     public sealed record PerTakeCheck : VoiceLabTakeVoiceCheck;
+    public sealed record SelectedVoiceCheck : VoiceLabTakeVoiceCheck;
     public sealed record WaitingCheck : VoiceLabTakeVoiceCheck;
     public sealed record ShortSpeechCheck(VoiceLabShortSpeechEvidence Pool) : VoiceLabTakeVoiceCheck;
     public static VoiceLabTakeVoiceCheck PerTake { get; } = new PerTakeCheck();
+    public static VoiceLabTakeVoiceCheck SelectedVoice { get; } = new SelectedVoiceCheck();
     public static VoiceLabTakeVoiceCheck Waiting { get; } = new WaitingCheck();
     public static VoiceLabTakeVoiceCheck ShortSpeech(VoiceLabShortSpeechEvidence evidence) => new ShortSpeechCheck(evidence);
     public VoiceLabShortSpeechEvidence? Evidence => this is ShortSpeechCheck check ? check.Pool : null;
     /// <summary>A waiting take can't be chosen; an unmeasured one only for an own clone.</summary>
     public bool Complete => this switch
     {
-        PerTakeCheck => true,
+        PerTakeCheck or SelectedVoiceCheck => true,
         ShortSpeechCheck check => check.Pool.Usable,
         _ => false
     };

@@ -1575,7 +1575,7 @@ The current connectors return one answer, so nothing streams: R1 waits until the
   - **Choose.** "Voice · Clip 7 · 0:31 · 74 words". When the patch would sound stitched (ADR-R46's rule), a note sits above it: "These changes re-voice 58 words, a lot for a 74-word clip. Long stretches in your voice can sound stitched." The note carries the chips [Revoice the Whole Clip · ≈ $x] and [Change fewer words]. Below it, "How should it sound?" has two options, each with its price from the tables:
     - "Only the changed phrases": "Your recording stays. 6 phrases in your voice, joined to it."
     - "The whole clip in one voice, with lip sync": "All 0:31 said again in siim · DJI 0011 (matched to this video), fitted to the clip's length, then lip synced. No seams." and what is sent: "Sends the clip's new words to ElevenLabs (≈ {voice}), and its 0:31 of video with the new audio to fal.ai lipsync-2 (≈ {lip sync}), with your keys. Exports say “Voice and lip movement generated with AI.”"
-    The primary acts on the selected option: **Revoice Whole Clip · ≈ $x** (the click approves one take and one word check per part, then lip sync) or **Voice Only the Changed Phrases** (the card goes and Rewrite goes on as before). Whole-clip revoice uses the selected authorized voice without a second speaker check or a retry reserve.
+    The primary acts on the selected option: **Revoice Whole Clip · ≈ $x** (the click approves one take and one word check per part, then lip sync, with no retry reserve) or **Voice Only the Changed Phrases** (the card goes and Rewrite goes on as before). Both use the selected authorized voice without a second speaker check. They still check the source speech before using the voice and verify the generated words and joins.
     When Rewrite can replace a used whole-clip revoice, it disables “Only the changed phrases” and says “Rewrite starts from your recording’s words. The earlier revoice stays until you use the new one.” When the new plan cannot replace the earlier revoice together, show “This part was already revoiced. Undo that revoice to rewrite it.” with a free **[Undo]**, before showing a price.
   - **Running.** "Revoicing the whole clip 0:42" and the step list, each line with its price on the right ("free" for Script and Fit):
     - ✓ Script · 74 words, your edits applied
@@ -1812,7 +1812,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 **T2. Generating.**
 
 - Headline: a spinner and "Making takes… phrase {i} of {z}", with **Stop**.
-- Rows fill as takes arrive. The first run makes one take per phrase. Short takes say “waiting for the voice check” until the completed run or Stop finishes the pooled check; waiting rows cannot be selected.
+- Rows fill as takes arrive. The first Mac run makes one take per phrase. Under ADR-R51, a take in the selected voice is ready as soon as the words, acoustics and fit pass, without waiting for a pooled voice check. For runs that request the old output check, short takes say “waiting for the voice check” until the completed run or Stop finishes the pool; waiting rows cannot be selected.
 - Mac rows retain every failed take and the engine's status, including “Phrase 2 of 3…” and “Take N stopped.” Stop cancels and drains price preparation or generation, retains completed takes, and never starts a replacement quote. A stopped phrase is retried independently; finished phrases are not regenerated.
 - Announce "Phrase {i} fits."
 

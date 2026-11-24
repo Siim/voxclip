@@ -285,6 +285,7 @@ It drives the real Rewrite session through these scenarios using only clicks a u
 
 - S-rewrite-used-revoice and S-rewrite-used-revoice-partial: use a lip-synced clip and open Rewrite again. The whole clip can be replaced in one undo step; a partial selection offers a free Undo before sending. Both run at realistic and exact lengths.
 - S1: happy path.
+- S-phrase-selected-voice: a phrase whose generated voice would fail the old speaker comparison applies after one synthesis and one word check.
 - S-older-takes: make two rounds, then play both takes and pick the earlier one without sending a paid request.
 - S2: two nearby changes refused as too close.
 - S3: takes too long for the slot.
