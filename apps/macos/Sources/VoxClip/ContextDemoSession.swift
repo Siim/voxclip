@@ -4,7 +4,6 @@ import VoxClipCore
 import VoxClipMedia
 
 @MainActor protocol ContextDemoRecording: AnyObject {
-    func checkAvailability()
     func unavailableReason(for kind: ContextDemoTargetKind) -> String?
     func targets() async throws -> [ContextDemoCaptureTarget]
     func prepare(target: ContextDemoTarget, window: ContextDemoCaptureTarget?, duration: Double,
@@ -23,6 +22,8 @@ import VoxClipMedia
 }
 
 extension ContextDemoRecording {
+    func unavailableReason(for kind: ContextDemoTargetKind) -> String? { nil }
+
     func prepare(desktopPlan: ContextDemoDesktopPlan, document: ContextDemoDocument) async throws -> ContextDemoCaptureRequest {
         throw ContextDemoDesktopError.unsupportedAction
     }
@@ -49,6 +50,37 @@ enum ContextDemoUIError: Error {
         case choosing, preparing, ready, recording, result, placed, stale, failed, closed
     }
 
+    private enum PermissionStep {
+        case refreshWindows, inspectWindow, review, start
+    }
+
+    struct PermissionNotice {
+        let permission: ContextDemoPermission
+        let url: URL
+
+        var title: String {
+            switch permission {
+            case .screenRecording: "Open Screen Recording Settings"
+            case .accessibility: "Open Accessibility Settings"
+            }
+        }
+
+        var reason: String {
+            switch permission {
+            case .screenRecording:
+                "Allow VoxClip in Screen & System Audio Recording to capture a window. If macOS asks you to quit and reopen VoxClip, reopen this project and start the step again."
+            case .accessibility:
+                "Allow VoxClip in Accessibility to inspect this window and use reviewed app actions. You can still record the window without app actions."
+            }
+        }
+    }
+
+    private struct PendingPermission {
+        let step: PermissionStep
+        let notice: PermissionNotice
+        let editor: ContextDemoEditorSnapshot
+    }
+
     private(set) var phase = Phase.choosing
     var illustrationReviewRequest: IllustrativeCutawayReviewRequest?
     private(set) var targetKind = ContextDemoTargetKind.webPage
@@ -71,8 +103,10 @@ enum ContextDemoUIError: Error {
     private(set) var editedStart: Double = 0
     private(set) var message: String?
     private(set) var loadingWindows = false
+    private var pendingPermission: PendingPermission?
     @ObservationIgnored private weak var model: EditorModel?
     @ObservationIgnored private let backend: any ContextDemoRecording
+    @ObservationIgnored private let permissions: any ContextDemoPermissions
     @ObservationIgnored private var operation: Task<Void, Never>?
     @ObservationIgnored private var windowOperation: Task<Void, Never>?
     @ObservationIgnored private var generation = UUID()
@@ -83,15 +117,21 @@ enum ContextDemoUIError: Error {
     @ObservationIgnored private var securityScopedProjectURL: URL?
     @ObservationIgnored private var draftPlacementID = UUID().uuidString
 
-    init(model: EditorModel, backend: (any ContextDemoRecording)? = nil,
+    convenience init(model: EditorModel) {
+        let desktopReview = ContextDemoDesktopReviewSession()
+        let recorder = ContextDemoLocalRecorder(capture: ContextDemoCaptureService(assetRoot: model.app.locations.root),
+            desktopReview: desktopReview)
+        self.init(model: model, backend: recorder, permissions: ContextDemoSystemPermissions.shared, desktopReview: desktopReview)
+    }
+
+    init(model: EditorModel, backend: any ContextDemoRecording, permissions: any ContextDemoPermissions,
          projectLaunch: ContextDemoProjectLaunchSession? = nil,
          desktopReview: ContextDemoDesktopReviewSession? = nil) {
         self.model = model
         self.projectLaunch = projectLaunch ?? ContextDemoProjectLaunchSession()
-        let desktopReview = desktopReview ?? ContextDemoDesktopReviewSession()
-        self.desktopReview = desktopReview
-        self.backend = backend ?? ContextDemoLocalRecorder(capture: ContextDemoCaptureService(assetRoot: model.app.locations.root),
-            desktopReview: desktopReview)
+        self.desktopReview = desktopReview ?? ContextDemoDesktopReviewSession()
+        self.backend = backend
+        self.permissions = permissions
         self.document = model.contextDemoDocument
     }
 
@@ -101,8 +141,9 @@ enum ContextDemoUIError: Error {
         guard let model else { return "The source project is no longer open." }
         return model.contextDemoUnavailableReason ?? backend.unavailableReason(for: targetKind)
     }
+    var showsReview: Bool { phase == .choosing || phase == .stale || phase == .failed }
     var canReview: Bool {
-        (phase == .choosing || phase == .stale || phase == .failed) && !projectLaunch.busy && !desktopReview.isDraining && unavailableReason == nil && captureSeconds.isFinite
+        showsReview && pendingPermission?.step != .review && !projectLaunch.busy && !desktopReview.isDraining && unavailableReason == nil && captureSeconds.isFinite
             && (1...30).contains(captureSeconds) && (try? target()) != nil
     }
     var inputReason: String? {
@@ -110,9 +151,18 @@ enum ContextDemoUIError: Error {
         catch { return Self.message(for: error) }
     }
     var canStart: Bool {
-        phase == .ready && !projectLaunch.busy && !desktopReview.isDraining && request != nil && unavailableReason == nil && isCurrent
+        phase == .ready && pendingPermission?.step != .start && !projectLaunch.busy && !desktopReview.isDraining && request != nil && unavailableReason == nil && isCurrent
             && (!desktopReview.usesActions || desktopCurrent(generation: generation) != nil)
     }
+    var canRefreshWindows: Bool {
+        !busy && !loadingWindows && phase != .closed && targetKind != .webPage && pendingPermission?.step != .refreshWindows
+    }
+    var canInspectDesktopWindow: Bool {
+        !busy && !desktopReview.isDraining && phase != .closed && targetKind != .webPage && selectedWindow != nil
+            && pendingPermission?.step != .inspectWindow
+    }
+    var permissionNotice: PermissionNotice? { pendingPermission?.notice }
+    var waitingForDesktopInspection: Bool { pendingPermission?.step == .inspectWindow }
     var isCurrent: Bool {
         guard let model, let snapshot else { return false }
         return model.contextDemoIsCurrent(snapshot)
@@ -222,22 +272,40 @@ enum ContextDemoUIError: Error {
         self.editedStart = editedStart.isFinite ? (editedStart * rate).rounded() / rate : editedStart
     }
 
-    func checkCaptureAccess() {
-        guard !busy, phase != .closed else { return }
-        backend.checkAvailability()
-        message = backend.unavailableReason(for: targetKind)
-            ?? "Screen Recording access is available. Review the webpage capture, or refresh and choose an exact app window. Nothing has started."
+    func becameActive() {
+        guard let pending = pendingPermission else { return }
+        guard let model, model.contextDemoIsCurrent(pending.editor), phase != .closed else {
+            pendingPermission = nil
+            return
+        }
+        guard permissions.status(for: pending.notice.permission) == .granted else { return }
+        pendingPermission = nil
+        switch pending.step {
+        case .refreshWindows: refreshWindows()
+        case .inspectWindow: inspectDesktopWindow()
+        case .review: review()
+        case .start: start()
+        }
     }
 
-    func checkDesktopAccess() {
-        guard !busy, !desktopReview.isDraining, phase != .closed, targetKind != .webPage else { return }
-        invalidateReview()
-        desktopReview.checkAccess()
+    private func requirePermissions(_ required: [ContextDemoPermission], for step: PermissionStep) -> Bool {
+        guard let model else { return false }
+        for permission in required {
+            var status = permissions.status(for: permission)
+            if status == .notAsked { status = permissions.request(permission) }
+            guard status == .granted else {
+                let notice = PermissionNotice(permission: permission, url: permissions.settingsURL(for: permission))
+                pendingPermission = PendingPermission(step: step, notice: notice, editor: model.contextDemoSnapshot())
+                return false
+            }
+        }
+        pendingPermission = nil
+        return true
     }
 
     func inspectDesktopWindow() {
-        guard !busy, !desktopReview.isDraining, phase != .closed, targetKind != .webPage,
-              let window = selectedWindow, desktopReview.canInspect else { return }
+        guard canInspectDesktopWindow, let window = selectedWindow,
+              requirePermissions([.accessibility], for: .inspectWindow) else { return }
         invalidateReview()
         desktopReview.inspect(window: window)
         if desktopReview.snapshot != nil { desktopInspectionSnapshot = model?.contextDemoSnapshot() }
@@ -266,8 +334,9 @@ enum ContextDemoUIError: Error {
     }
 
     func refreshWindows() {
-        guard !busy, !loadingWindows, phase != .closed else { return }
+        guard canRefreshWindows else { return }
         guard let reason = backend.unavailableReason(for: .desktopApp) else {
+            guard requirePermissions([.screenRecording], for: .refreshWindows) else { return }
             let token = UUID()
             windowGeneration = token
             loadingWindows = true
@@ -305,6 +374,8 @@ enum ContextDemoUIError: Error {
                 return
             }
         }
+        let required: [ContextDemoPermission] = desktopReview.usesActions ? [.screenRecording, .accessibility] : [.screenRecording]
+        guard requirePermissions(required, for: .review) else { return }
         invalidateReview(preservingDesktopInspection: true)
         do {
             let target = try target()
@@ -357,8 +428,10 @@ enum ContextDemoUIError: Error {
 
     func start() {
         guard canStart, let request else { return }
-        let token = generation
         let desktopActions = desktopReview.usesActions
+        let required: [ContextDemoPermission] = desktopActions ? [.screenRecording, .accessibility] : [.screenRecording]
+        guard requirePermissions(required, for: .start) else { return }
+        let token = generation
         phase = .recording
         message = nil
         operation = Task { [weak self, backend] in
@@ -418,6 +491,7 @@ enum ContextDemoUIError: Error {
 
     func cancel() {
         guard phase != .closed else { return }
+        pendingPermission = nil
         projectLaunch.stop()
         desktopReview.invalidateInspection()
         desktopInspectionSnapshot = nil
@@ -437,6 +511,7 @@ enum ContextDemoUIError: Error {
 
     func followEditor() {
         guard phase != .closed, let model else { return }
+        if let pendingPermission, !model.contextDemoIsCurrent(pendingPermission.editor) { self.pendingPermission = nil }
         if let desktopInspectionSnapshot, !model.contextDemoIsCurrent(desktopInspectionSnapshot) {
             desktopReview.invalidateInspection()
             self.desktopInspectionSnapshot = nil
@@ -568,6 +643,7 @@ enum ContextDemoUIError: Error {
     }
 
     private func invalidateReview(preservingDesktopInspection: Bool = false) {
+        pendingPermission = nil
         if !preservingDesktopInspection {
             desktopReview.invalidateInspection()
             desktopInspectionSnapshot = nil
@@ -608,7 +684,7 @@ enum ContextDemoUIError: Error {
         case let error as ContextDemoCaptureError:
             switch error {
             case .permissionRequired, .permissionDenied:
-                "Screen Recording access is not granted to VoxClip. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording, then refresh. No permission request was made."
+                "VoxClip couldn’t use Screen Recording access. Your media and edits are safe."
             case .targetUnavailable, .ambiguousTarget:
                 "The selected window is unavailable or ambiguous. Refresh the window list and review the exact app window again."
             case .staleReview:
@@ -707,23 +783,12 @@ enum ContextDemoUIError: Error {
     private var reviewedPageScripts = false
     private var browser: ContextDemoBrowserSession?
     private var webCapture: ContextDemoWebCaptureLifetime?
-    private var checkedAvailability: ContextDemoCaptureAvailability?
 
     init(capture: ContextDemoCaptureService = ContextDemoCaptureService(),
          desktopReview: ContextDemoDesktopReviewSession? = nil) {
         self.capture = capture
         self.desktopReview = desktopReview ?? ContextDemoDesktopReviewSession()
     }
-
-    func unavailableReason(for kind: ContextDemoTargetKind) -> String? {
-        guard let checkedAvailability else {
-            return "Screen Recording access has not been checked. Choose Check Screen Recording Access. This checks the current grant without showing a permission prompt or starting a recording."
-        }
-        if checkedAvailability != .available { return ContextDemoSession.message(for: ContextDemoCaptureError.permissionRequired) }
-        return nil
-    }
-
-    func checkAvailability() { checkedAvailability = capture.availability() }
 
     func targets() async throws -> [ContextDemoCaptureTarget] { try await capture.targets() }
 

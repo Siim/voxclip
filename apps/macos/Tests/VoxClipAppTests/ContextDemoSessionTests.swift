@@ -16,7 +16,6 @@ import Testing
     var discarded: [ContextDemoAsset] = []
     var finishes = 0
     var cancels = 0
-    var accessChecks = 0
     var currentness: (@MainActor () -> Bool)?
     var preparationRelease: TestContinuation<Void>?
     var recordingRelease: TestContinuation<Void>?
@@ -24,7 +23,6 @@ import Testing
     private var captureIndex = 0
 
     func unavailableReason(for kind: ContextDemoTargetKind) -> String? { reason }
-    func checkAvailability() { accessChecks += 1; reason = nil }
     func targets() async throws -> [ContextDemoCaptureTarget] { [] }
     func prepare(target: ContextDemoTarget, window: ContextDemoCaptureTarget?, duration: Double,
                  document: ContextDemoDocument) async throws -> ContextDemoCaptureRequest {
@@ -62,7 +60,7 @@ import Testing
 @MainActor
 @Suite("Context demo session and undo", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 struct ContextDemoSessionTests {
-    private func open() async throws -> (EditorModel, ContextDemoSession, ContextDemoRecordingProbe, UndoManager) {
+    private func open(permissions: ContextDemoPermissionProbe = ContextDemoPermissionProbe()) async throws -> (EditorModel, ContextDemoSession, ContextDemoRecordingProbe, UndoManager) {
         _ = NSApplication.shared
         let app = AppModel()
         let shared = try SharedResources.locate()
@@ -75,7 +73,7 @@ struct ContextDemoSessionTests {
         undo.groupsByEvent = false
         model.undoManager = undo
         let backend = ContextDemoRecordingProbe()
-        let session = ContextDemoSession(model: model, backend: backend)
+        let session = ContextDemoSession(model: model, backend: backend, permissions: permissions)
         session.setURL("https://example.test/demo")
         model.contextDemoSession = session
         return (model, session, backend, undo)
@@ -152,15 +150,61 @@ struct ContextDemoSessionTests {
         #expect(!session.canReview && !session.canStart && backend.prepared.isEmpty && backend.started.isEmpty)
     }
 
-    @Test func firstUseChecksAccessOnlyAfterTheExplicitClickAndDoesNotRecord() async throws {
-        let (model, session, backend, undo) = try await open()
+    @Test func reviewRequestsScreenRecordingOnceThenResumesOnActivation() async throws {
+        let permissions = ContextDemoPermissionProbe()
+        permissions.states[.screenRecording] = .notAsked
+        let (model, session, backend, undo) = try await open(permissions: permissions)
         defer { model.close() }
-        backend.reason = "Screen Recording access has not been checked."
-        #expect(!session.canReview && backend.accessChecks == 0)
-        session.checkCaptureAccess()
-        #expect(backend.accessChecks == 1 && session.canReview)
+        session.becameActive()
+        #expect(session.canReview && permissions.requests.isEmpty)
+        session.review()
+        session.review()
+        session.becameActive()
+        #expect(permissions.requests == [.screenRecording] && !session.canReview)
+        #expect(session.permissionNotice?.title == "Open Screen Recording Settings")
+        #expect(session.permissionNotice?.url == permissions.settingsURL(for: .screenRecording))
+        #expect(session.permissionNotice?.reason.contains("quit and reopen") == true)
         #expect(backend.prepared.isEmpty && backend.started.isEmpty && !undo.canUndo)
-        #expect(session.message?.contains("Nothing has started") == true)
+
+        permissions.states[.screenRecording] = .granted
+        session.becameActive()
+        session.becameActive()
+        try await eventually { session.phase == .ready }
+        #expect(session.permissionNotice == nil && backend.prepared.count == 1 && backend.started.isEmpty)
+    }
+
+    @Test func changedSourceDoesNotResumePermissionBlockedReview() async throws {
+        let permissions = ContextDemoPermissionProbe()
+        permissions.states[.screenRecording] = .denied
+        let (model, session, backend, _) = try await open(permissions: permissions)
+        defer { model.close() }
+        session.review()
+        #expect(session.permissionNotice != nil && permissions.requests.isEmpty)
+
+        session.setURL("https://example.test/another-page")
+        permissions.states[.screenRecording] = .granted
+        session.becameActive()
+        #expect(session.phase == .choosing && session.permissionNotice == nil)
+        #expect(backend.prepared.isEmpty && backend.started.isEmpty)
+    }
+
+    @Test func explicitlyStartedRecordingResumesAfterAccessIsRestored() async throws {
+        let permissions = ContextDemoPermissionProbe()
+        let (model, session, backend, _) = try await open(permissions: permissions)
+        defer { model.close() }
+        session.review()
+        try await eventually { session.phase == .ready }
+        let reviewed = try #require(session.request)
+
+        permissions.states[.screenRecording] = .denied
+        session.start()
+        #expect(session.phase == .ready && !session.canStart && backend.started.isEmpty)
+        #expect(session.permissionNotice?.title == "Open Screen Recording Settings" && permissions.requests.isEmpty)
+
+        permissions.states[.screenRecording] = .granted
+        session.becameActive()
+        try await eventually { session.phase == .result }
+        #expect(backend.started == [reviewed])
     }
 
     @Test func sourceKindURLAndDurationChangesInvalidateTheReviewedStart() async throws {

@@ -36,7 +36,7 @@ private final class ContextDemoRecordingDelegate: NSObject, SCRecordingOutputDel
     private var activeTarget: ContextDemoCaptureTarget?
 
     func availability() -> ContextDemoCaptureAvailability {
-        CGPreflightScreenCaptureAccess() ? .available : .screenRecordingPermissionRequired
+        ContextDemoSystemPermissions.shared.status(for: .screenRecording) == .granted ? .available : .screenRecordingPermissionRequired
     }
 
     func windows() async throws -> [ContextDemoCaptureTarget] {

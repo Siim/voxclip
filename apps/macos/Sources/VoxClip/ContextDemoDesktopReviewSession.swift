@@ -17,7 +17,6 @@ import VoxClipMedia
 extension ContextDemoAccessibilityService: ContextDemoDesktopReviewServing {}
 
 @MainActor @Observable final class ContextDemoDesktopReviewSession {
-    private(set) var availability: ContextDemoAccessibilityAvailability?
     private(set) var snapshot: ContextDemoDesktopSnapshot?
     private(set) var actions: [ContextDemoDesktopAction] = []
     private(set) var plan: ContextDemoDesktopPlan?
@@ -34,20 +33,10 @@ extension ContextDemoAccessibilityService: ContextDemoDesktopReviewServing {}
     }
 
     var usesActions: Bool { !actions.isEmpty }
-    var canInspect: Bool { availability == .available && !isDraining }
-
-    func checkAccess() {
-        guard !isDraining else { return }
-        invalidateInspection()
-        availability = service.availability()
-        message = availability == .available
-            ? "Accessibility access is available. Choose Inspect Selected Window to read only stable control identifiers and capabilities. Nothing has run."
-            : "Accessibility access is not granted. Enable VoxClip in System Settings → Privacy & Security → Accessibility, then explicitly check again. No prompt or Settings window was opened. Manual window recording remains available."
-    }
-
     func inspect(window: ContextDemoCaptureTarget) {
-        guard canInspect else {
-            message = ContextDemoDesktopError.accessCheckRequired.errorDescription
+        guard !isDraining else { return }
+        guard service.availability() == .available else {
+            message = ContextDemoDesktopError.permissionRequired.errorDescription
             return
         }
         invalidateInspection()

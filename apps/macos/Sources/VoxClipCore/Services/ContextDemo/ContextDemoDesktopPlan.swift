@@ -9,8 +9,8 @@ public enum ContextDemoDesktopError: Error, LocalizedError, Sendable, Equatable 
     public var errorDescription: String? {
         let reason: String
         switch self {
-        case .accessCheckRequired: reason = "Choose Check Accessibility Access before inspecting the selected app."
-        case .permissionRequired: reason = "Accessibility access is not granted. No permission prompt was opened."
+        case .accessCheckRequired: reason = "Check Accessibility access before inspecting the selected window."
+        case .permissionRequired: reason = "VoxClip needs Accessibility access to inspect this window. You can still record the window without app actions."
         case .invalidPlan: reason = "Review a bounded demonstration for the exact selected desktop window."
         case .targetUnavailable: reason = "The exact selected app process or window is no longer available."
         case .unsupportedWindow: reason = "This app does not expose an exact accessible window identity. Automatic demonstration is unavailable; no other window will be used."

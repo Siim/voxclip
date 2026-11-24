@@ -2,6 +2,8 @@
 
 On macOS, Home offers a removable volume containing `DCIM`. Open or drop a folder to use the same importer. Planning never deletes or edits the originals. The importer scans for supported video, identifies recordings by full SHA-256, and copies new selected recordings to `Movies/VoxClip/<name> <date>`. It saves a normal `.voxclip` project beside each copy, with the other selected recordings available as companion media. The full `recordingHash` does not replace the existing sampled `contentKey` used for relinking and caches.
 
+When macOS asks for removable-volume access, VoxClip explains that it reads recordings for import and leaves the originals on the card unchanged.
+
 The priced card action uses local transcription in two lanes and requires Claude Code signed in to the Claude plan. It sends words, recording labels, and selected stills for Find Clips and planning. Found clips are ranked together, with duplicate takes grouped. Make it postable uses the same voice and lip-sync authorization and a single fixed cap across the card. Stopping keeps saved projects and completed work. The copy-only path needs no connector.
 
 ## Companion video

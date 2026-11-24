@@ -408,7 +408,7 @@ private actor RewriteFailureRunner: ProcessRunner {
         var voiceDiscards = 0
         switch job {
         case .demo:
-            let demo = ContextDemoSession(model: editor, backend: demoBackend)
+            let demo = ContextDemoSession(model: editor, backend: demoBackend, permissions: ContextDemoPermissionProbe())
             demo.setURL("https://example.test/demo")
             editor.contextDemoSession = demo
             shell.choosePanelJob(.demo, for: editor)

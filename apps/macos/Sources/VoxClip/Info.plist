@@ -14,6 +14,7 @@
     <key>NSAccentColorName</key><string>AccentColor</string>
     <key>NSCameraUsageDescription</key><string>VoxClip uses the camera when you choose to record a video.</string>
     <key>NSMicrophoneUsageDescription</key><string>VoxClip uses the microphone when you choose to record audio, your own-voice consent statement, a Voice Lab training read-aloud or a Rewrite phrase you say yourself.</string>
+    <key>NSRemovableVolumesUsageDescription</key><string>VoxClip reads recordings from your camera card so you can import them. It leaves the originals on the card unchanged.</string>
     <key>NSLocalNetworkUsageDescription</key><string>VoxClip reaches your local network only when an AI or speech service you set up runs there, such as LM Studio, Ollama or a proxy your Claude Code or Codex uses.</string>
     <key>NSSpeechRecognitionUsageDescription</key><string>VoxClip recognizes speech on this Mac to transcribe your videos so you can edit them by their words, and to check the words you record for a Rewrite phrase.</string>
     <key>CFBundleDocumentTypes</key><array><dict>

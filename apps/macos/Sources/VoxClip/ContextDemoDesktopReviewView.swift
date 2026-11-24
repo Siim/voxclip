@@ -14,19 +14,19 @@ import VoxClipCore
         VStack(alignment: .leading, spacing: 8) {
             Text("Optional reviewed app actions").font(VCType.body.font(.semibold))
                 .accessibilityAddTraits(.isHeader)
-            Text("Manual recording remains available without app actions. Checking access and inspecting never run an action. Only Start Recording approves the exact reviewed plan; this is not an autonomous AI agent.")
+            Text("You can record without app actions. Inspecting a window never runs an action. Only Start Recording approves the exact reviewed plan.")
                 .foregroundStyle(DesignValues.color("text.secondary"))
             Text(ContextDemoDesktopPlan.reviewWarning)
                 .foregroundStyle(DesignValues.color("text.secondary"))
             Text("No passwords, forms, global keyboard events, coordinates or command fallback. Some apps cannot expose an exact accessible window; VoxClip will refuse rather than choose another window.")
                 .foregroundStyle(DesignValues.color("text.secondary"))
-            Button("Check Accessibility Access", action: session.checkDesktopAccess)
-                .accessibilityHint("Checks only the existing Accessibility grant without requesting permission or opening Settings.")
-                .accessibilityIdentifier("voxclip.demo.desktop.checkAccess")
             Button("Inspect Selected Window", action: session.inspectDesktopWindow)
-                .disabled(session.selectedWindow == nil || !review.canInspect)
+                .disabled(!session.canInspectDesktopWindow)
                 .accessibilityHint("Reads only stable control identifiers and capabilities from the exact chosen window. Does not read field values or perform actions.")
                 .accessibilityIdentifier("voxclip.demo.desktop.inspect")
+            if session.waitingForDesktopInspection, let notice = session.permissionNotice {
+                ContextDemoPermissionRow(notice: notice)
+            }
             if let snapshot = review.snapshot {
                 Text("Window \(snapshot.identity.window.windowID) · process \(snapshot.identity.window.processID) · \(snapshot.identity.window.bundleID)")
                     .textSelection(.enabled)
