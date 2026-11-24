@@ -147,7 +147,9 @@ public static class VoiceLabRecipeBuilder
         }
         var zoomCover = mode == VoiceLabVideoMode.ZoomCover;
         var video = new VoiceLabVideoRecipe(mode, plan.WindowStartSample, plan.WindowEndSample, output,
-            zoomCover ? factor : null, zoomCover ? VoiceLabVideoDurationOptions.MatchZoom : mode == VoiceLabVideoMode.Cut ? VoiceLabNaturalPacing.CUT_PUNCH_IN : null,
+            zoomCover ? factor : mode == VoiceLabVideoMode.Cut ? plan.PictureSpeed : null,
+            zoomCover ? VoiceLabVideoDurationOptions.MatchZoom : mode == VoiceLabVideoMode.Cut
+                ? plan.EditedTimeline ? VoiceLabNaturalPacing.EDITED_CUT_ZOOM : VoiceLabNaturalPacing.CUT_PUNCH_IN : null,
             face?.FaceX, face?.FaceY, null, null, null, null, null, null, null) { Cuts = mode == VoiceLabVideoMode.Cut ? options.Cuts : null };
         var recipe = new VoiceLabRenderRecipe(published.Audio, words, published.OutDuration, row.Seed,
             Array.AsReadOnly(published.Chunks.ToArray()), take.RoomTone, new(Seam(input.Window.LeftSeam, true), Seam(input.Window.RightSeam, false)),

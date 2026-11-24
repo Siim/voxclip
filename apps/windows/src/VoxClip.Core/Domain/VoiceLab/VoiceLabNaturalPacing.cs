@@ -89,6 +89,37 @@ public static class VoiceLabNaturalPacing
             new VoiceLabFitResult.ChangedDuration(plan, changed.NaturalOut, changed.ResidualSeconds) : new VoiceLabFitResult.Exact(plan);
     }
 
+    public static VoiceLabFitResult Layout(VoiceLabWindow window, double? incoming, double? outgoing, VoiceLabFitTake take,
+        int rate, bool smooth, IReadOnlyList<VoiceLabAudioTag> tags, IReadOnlyList<VoiceLabVideoCut> cuts, double pauseThreshold,
+        double maximumSpeed = WholeClipRevoice.MaximumPictureSpeed)
+    {
+        var span = window.EndSample - window.StartSample;
+        var edited = span - cuts.Sum(cut => Math.Max(0, cut.EndSample - cut.StartSample));
+        if (edited <= 0 || rate <= 0) throw LipsyncWindow.Invalid();
+        var bound = WholeClipRevoice.LayoutPauseBound(pauseThreshold);
+        var profile = new VoiceLabPauseProfile(new([VoiceLabPatchConstants.PAUSE_FLOOR_PHRASE]),
+            new([VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT, bound, bound, bound]));
+        var speed = Math.Min(maximumSpeed, WholeClipRevoice.PictureSpeed(take.TrimEnd - take.TrimStart, edited / (double)rate));
+        var target = speed > 1 ? Math.Max(1, (long)Math.Floor(edited / speed)) : edited;
+        var fitted = VoiceLabFitPlanner.Plan(window, incoming, outgoing, take, take.Words.Select(word => word.Text).ToArray(), rate, smooth,
+            profile, tags, targetSamples: target, tailPadSeconds: bound);
+        var plan = fitted.Plan with { EditedTimeline = true };
+        var windowSamples = plan.WindowEndSample - plan.WindowStartSample;
+        var windowFrames = Math.Round(windowSamples * (double)take.AssetSampleRate / rate, MidpointRounding.AwayFromZero);
+        var residual = (plan.OutputFrames - windowFrames) / take.AssetSampleRate;
+        var duration = plan.WindowEnd - plan.WindowStart + residual;
+        var output = (long)Math.Round(duration * rate, MidpointRounding.AwayFromZero);
+        if (output <= 0) throw LipsyncWindow.Invalid();
+        var kept = speed > 1 ? Math.Min(windowSamples, (long)Math.Floor(output * speed)) : output;
+        if (windowSamples == kept && plan.OutputFrames == windowFrames) return new VoiceLabFitResult.Exact(plan);
+        var layout = WholeClipRevoice.LayoutCuts(cuts, plan.WindowStartSample, plan.WindowEndSample, windowSamples - kept) ?? [];
+        if (kept > output && layout.Count == 0) return Layout(window, incoming, outgoing, take, rate, smooth, tags, cuts, pauseThreshold, 1);
+        plan = plan with { VideoCuts = layout, PictureSpeed = kept > output ? kept / (double)output : null };
+        var natural = fitted is VoiceLabFitResult.ChangedDuration changed ? changed.NaturalOut :
+            (plan.TrimEndFrame - plan.TrimStartFrame) / (double)take.AssetSampleRate;
+        return new VoiceLabFitResult.ChangedDuration(plan, natural, residual);
+    }
+
     public static IReadOnlyList<VoiceLabVideoCut> Cuts(long windowStartSample, long windowEndSample, long outputSamples,
         int sampleRate, AudioEnvelope envelope, IReadOnlyList<TimedWord> items)
     {
