@@ -87,7 +87,9 @@ extension RewriteSession {
             #endif
             try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations),
-                                              cleanupNotice: app.falLipsyncCleanupNotice)
+                                              onCleanupDenial: { [notice = app.falLipsyncCleanupNotice] fingerprint in
+                                                  await notice.recordDenial(forFingerprint: fingerprint)
+                                              })
             #if DEBUG
             await provider.setDiagnostic(LipsyncDiagnostic())
             #endif

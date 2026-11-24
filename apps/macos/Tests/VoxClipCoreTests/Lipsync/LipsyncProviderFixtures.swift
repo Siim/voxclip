@@ -123,11 +123,11 @@ enum LipsyncProviderFixtures {
     static func provider(_ http: any LipsyncHTTPClient, clock: LipsyncFixtureClock = LipsyncFixtureClock(),
                          keys: LipsyncFixtureKeys = LipsyncFixtureKeys(), spend: VoiceLabSpendLedger? = nil,
                          logger: (any Redacting)? = nil, queue: LipsyncProviderQueue? = nil,
-                         cleanupNotice: FalLipsyncCleanupNotice? = nil) throws -> FalLipsyncProvider {
+                         onCleanupDenial: (@Sendable (String) async -> Void)? = nil) throws -> FalLipsyncProvider {
         let prices = try VoiceLabPriceCatalog.load(shared: SharedResources(root: FixtureLoader.sharedRoot()))
         return FalLipsyncProvider(keys: keys, prices: prices, http: http, logger: logger ?? RedactingLogger(homeDirectory: "/synthetic-home"),
                                  spend: spend, now: { clock.now() }, monotonic: { clock.uptime() }, sleep: { clock.sleep($0) }, queue: queue,
-                                 cleanupNotice: cleanupNotice)
+                                 onCleanupDenial: onCleanupDenial)
     }
 
     /// One account slot shared by every provider a test makes over `clock` (the app's `.shared`, in a test).

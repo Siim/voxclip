@@ -3,6 +3,15 @@ import Testing
 @testable import VoxClipCore
 
 @Suite(.offlineFixtures) struct ClipPlanEffectTests {
+    @Test func rejectsSharedMalformedMotionTemplates() throws {
+        let templates = try JSONDecoder().decode([JSONValue].self,
+            from: FixtureLoader.data("fixtures/clip-effects/motion-template-invalid-cases.json"))
+        for template in templates {
+            #expect(ClipPlanEffect.read(.object(["kind": .string("motionTemplate"), "startWord": .number(9),
+                "endWord": .number(10), "reason": .string("Try a malformed template."), "template": template])) == nil)
+        }
+    }
+
     @Test func sharedFootageEntriesAreRecognised() throws {
         let vectors = try JSONDecoder().decode([JSONValue].self, from: FixtureLoader.data("fixtures/clip-effects/footage-cases.json"))
         for raw in vectors {

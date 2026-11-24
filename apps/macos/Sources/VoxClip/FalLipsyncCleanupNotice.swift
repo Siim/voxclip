@@ -1,13 +1,11 @@
 import Observation
 
-@MainActor @Observable public final class FalLipsyncCleanupNotice {
+@MainActor @Observable final class FalLipsyncCleanupNotice {
     private var deniedFingerprints: Set<String> = []
 
-    public init() {}
+    var hasDeniedKeys: Bool { !deniedFingerprints.isEmpty }
 
-    package var hasDeniedKeys: Bool { !deniedFingerprints.isEmpty }
-
-    package func applies(toFingerprint fingerprint: String?) -> Bool {
+    func applies(toFingerprint fingerprint: String?) -> Bool {
         guard let fingerprint else { return false }
         return deniedFingerprints.contains(fingerprint)
     }
