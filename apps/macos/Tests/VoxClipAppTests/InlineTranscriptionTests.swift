@@ -463,6 +463,7 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
             throw CancellationError()
         }
         flow.activate()
+        #expect(flow.isRunning && model.openRewrite == nil && model.proposal == nil)
         if !fails { flow.cancel() }
         await model.workTask?.value
         #expect(model.project == before)

@@ -198,12 +198,14 @@ enum RewriteSavedProposalStore {
         guard let projects = try? manager.contentsOfDirectory(at: paidRoot, includingPropertiesForKeys: nil) else { return 0 }
         var removed = 0
         for project in projects {
-            let folder = project.appendingPathComponent(folderName, isDirectory: true)
             var info = stat()
-            guard lstat(folder.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+            guard lstat(project.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid() else { continue }
+            let folder = project.appendingPathComponent(folderName, isDirectory: true)
+            guard lstat(folder.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(),
                   let names = try? manager.contentsOfDirectory(atPath: folder.path) else { continue }
             for name in names {
                 let file = folder.appendingPathComponent(name)
+                guard lstat(file.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid() else { continue }
                 if name.hasPrefix("."), name.hasSuffix(".partial") {
                     let modified = (try? manager.attributesOfItem(atPath: file.path)[.modificationDate] as? Date) ?? now
                     if now.timeIntervalSince(modified) >= 60 * 60, (try? manager.removeItem(at: file)) != nil { removed += 1 }

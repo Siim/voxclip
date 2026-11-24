@@ -97,6 +97,14 @@ extension RewriteSession {
         }, changed: { [weak self] in
             await app.refreshMonthlySpend()
             self?.showProposal()
+        }, indexedWindows: { offer in
+            var available = Set<Int>()
+            for (index, window) in offer.windows.enumerated() {
+                guard offer.isCurrent(), !Task.isCancelled else { return [] }
+                if await LipsyncRun.hasIndexedResult(request: offer.request, window: window, model: offer.model.lipsyncModel,
+                                                     paidRoot: paid, scratchRoot: scratch) { available.insert(index) }
+            }
+            return available
         }, report: { line in
             // An offer failure's kind or a result set aside: never a URL, key or file name.
             let entry = LogEntry(level: .warn, category: "rewrite", message: line)

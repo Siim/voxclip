@@ -10,6 +10,7 @@ extension InlineTranscription {
         let cost: Double?
         let alignmentRetry: TranscriptionAlignmentRetry?
         var confirmedTranscript: Transcript?
+        var suspendedRewrite: (session: RewriteSession, proposal: TranscriptProposal?)?
         let approvedAt = Date()
         let evidence = TranscriptionEvidence()
         var cancelled = false
@@ -125,7 +126,19 @@ extension InlineTranscription {
         if succeeded { pendingAlignment = nil; phase = .hidden }
         else if cancelledNote != nil && request.alignmentRetry == nil { phase = again ? .hidden : .folded }
         else { phase = .choosing }
+        settleRewrite(request, restore: !succeeded)
         keyGuard.reset(); activeRun = nil
+    }
+
+    func settleRewrite(_ request: ApprovedRun, restore: Bool) {
+        guard let suspended = request.suspendedRewrite else { return }
+        request.suspendedRewrite = nil
+        if restore, suspended.session.isOpen, model.openRewrite == nil {
+            model.proposal = suspended.proposal
+            model.openRewrite = suspended.session
+        } else {
+            suspended.session.close()
+        }
     }
     func cancellationNote(_ request: ApprovedRun) -> String {
         if request.alignmentRetry != nil { return "Cancelled. Your saved words, media and edits are safe." }
@@ -269,9 +282,13 @@ extension EditorModel {
         return findTask != previous
     }
     func replaceTranscript(_ transcript: Transcript, preserveFind: Bool = false) {
+        let source = project.media.source, previous = project.transcript
+        guard closeRewrite(returnFocus: false, onDiscard: { [weak self] in
+            guard let self, project.media.source == source, project.transcript == previous else { return }
+            replaceTranscript(transcript, preserveFind: preserveFind)
+        }) else { return }
         claudeMode.cancelFindContinuation()
         if !preserveFind { findTask?.cancel(); sendConfirmation.cancel() }
-        closeRewrite(returnFocus: false)
         fallbackNote = nil; focusedSuggestion = nil; proposal = nil
         selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil; correctionText = ""
         var next = project

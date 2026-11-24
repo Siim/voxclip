@@ -874,6 +874,22 @@ private final class WorkThreads: Sendable {
 
     // MARK: Ask again (V15)
 
+    @Test func rewriteAgainAfterAScopeEditDoesNotAskAboutAnUntouchedReply() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        let (editor, undo) = try editor(app)
+        defer { editor.close() }
+        let session = try await rewrite(editor)
+        step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
+        try #require(session.task.state == .changed && session.proposalCount == 1)
+
+        session.task.footer.primary?.perform()
+        #expect(session.task.confirm == nil)
+        await editor.rewriteOpenTask?.value
+        await session.actionTask?.value
+        #expect(await stub.requests.count == 2)
+    }
+
     /// R2's Ask again sends the scope again with the Ask field's text and replaces the proposal (design.md §6.3.1).
     @Test func askAgainSendsTheFieldsTextAgain() async throws {
         let stub = ScopeStub()

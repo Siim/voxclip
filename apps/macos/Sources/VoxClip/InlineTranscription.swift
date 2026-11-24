@@ -444,6 +444,7 @@ import VoxClipMedia
         downloadBaseline = nil
         pendingAlignment = nil
         activeRun?.cancelled = true
+        if let activeRun { settleRewrite(activeRun, restore: false) }
         activeRun?.watch?.cancel(); activeRun = nil
         revision += 1; choiceTask?.cancel(); installTask?.cancel(); model.workTask?.cancel()
         if let installing { model.app.modelLibrary.cancelTranscriptionDownload(modelID: installing.id) }
@@ -457,20 +458,28 @@ import VoxClipMedia
         let retry = pendingAlignment?.retry
         guard mediaReady, phase == .choosing, !isRunning, !paid || paidApproval || retry != nil,
               retry == nil || canStart, !confirmsClaudeTranscript || engine != "apple" else { return }
+        let turn = revision, currentProject = model.project
+        if model.openRewrite?.hasUnusedPaidWork == true {
+            guard model.closeRewrite(returnFocus: false, onDiscard: { [weak self] in
+                guard let self, revision == turn, model.project == currentProject else { return }
+                startApprovedRun(paidApproval: paidApproval)
+            }) else { return }
+        }
         let plan = makePlan(), cost = paid && retry == nil ? estimate : nil
         if confirmsClaudeTranscript { claudeConfirmationEngine = plan.engine }
         let baseline = pendingAlignment?.project ?? downloadBaseline ?? model.project
         downloadBaseline = nil
         if remember && retry == nil { model.app.set("transcription.language", .string(language)) }
         model.findTask?.cancel(); model.sendConfirmation.cancel()
-        model.rewriteOpenTask?.cancel()
-        // Stop new AI work while retaining the review until replacement actually succeeds.
-        model.openRewrite?.sending?.cancel()
-        model.openRewrite?.actionTask?.cancel()
-        model.openRewrite?.takesTask?.cancel()
         phase = .running; error = nil; cancelledNote = nil; progress = nil; uploadStarted = false; runStage = 0; pendingCost = cost
         revision += 1
         let request = ApprovedRun(revision: revision, project: baseline, plan: plan, cost: cost, alignmentRetry: retry)
+        model.cancelRewriteOpen()
+        if let rewrite = model.openRewrite {
+            rewrite.sending?.cancel(); rewrite.actionTask?.cancel(); rewrite.takesTask?.cancel()
+            request.suspendedRewrite = (rewrite, model.proposal)
+            model.openRewrite = nil; model.proposal = nil
+        }
         activeRun = request
         model.workTask = Task { [weak self, model] in
             guard let self else { return }

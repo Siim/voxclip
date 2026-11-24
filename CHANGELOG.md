@@ -6,6 +6,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - On Windows, review agent timeline proposals above the transcript. Keep makes one undoable edit; Undo dismisses the proposal. Music still needs a separate priced click.
 - Claude Code and Codex can propose title cards, kinetic captions, logo stings and counters on Mac and Windows. VoxClip renders them locally after you choose Keep.
+- On Mac, Rewrite keeps paid work if the video goes missing, waits before changing media or transcripts, and shows reuse prices before you click.
 - On Windows, reopen Rewrite on the same passage to get back the review for your unused paid takes without asking the AI again.
 - On Windows, choose your Music folder, see the track and its fades in the timeline, and add music to videos with no sound.
 - Claude Code and Codex can propose title cards, kinetic captions, logo stings and counters on Mac and Windows. On Mac, VoxClip renders them locally after you choose Keep.

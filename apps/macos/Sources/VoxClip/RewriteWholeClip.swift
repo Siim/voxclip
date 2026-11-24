@@ -241,6 +241,7 @@ extension RewriteSession {
         guard let session = wholeClip, let clip = wholeClipID, !session.running, !session.submissionUnconfirmed,
               session.repeatedWordCheckPart == nil else { return }
         if let approved {
+            guard !session.quoting, !session.needsRequote else { return }
             let price = session.isStopped ? session.retryUSD : session.quote?.wholeUSD
             guard let price, price <= approved else { return }
         }
@@ -388,7 +389,7 @@ extension RewriteSession {
             return script
         }, quote: { [weak self] script, model in
             guard let self else { throw CancellationError() }
-            return try wholeClipQuote(script, model: model)
+            return try await wholeClipQuote(script, model: model)
         }, voice: { [weak self] script, progress in
             guard let self else { throw CancellationError() }
             return try await wholeClipVoice(script, progress: progress)
@@ -512,7 +513,7 @@ extension RewriteSession {
         return try? VoiceLabPhraseTiming.estimate(text: script.text, rate: max(rate, VoiceLabLengthBudget.providerRateFloor))
     }
 
-    private func wholeClipQuote(_ script: WholeClipScript, model: WholeClipRevoice.Lipsync) throws -> WholeClipRevoiceSession.Quote {
+    private func wholeClipQuote(_ script: WholeClipScript, model: WholeClipRevoice.Lipsync) async throws -> WholeClipRevoiceSession.Quote {
         guard let catalog = wholeClipCatalog, let id = wholeClipID, let first = script.sentences.first, let last = script.sentences.last else {
             throw VoxClipError.sharedResourcesMissing
         }
@@ -531,7 +532,8 @@ extension RewriteSession {
         let price = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
                                                videoSeconds: LipsyncLimits.uploadSeconds(seconds), lipsync: model, catalog: catalog)
         guard let wordCheckUSD = Self.wordCheckUSD(catalog) else { throw VoxClipError.sharedResourcesMissing }
-        let wordChecksUSD = wordCheckUSD * Decimal(script.parts.count)
+        let journalPrice = try await wholeClipJournalPrice(script, final: final, catalog: catalog)
+        let wordChecksUSD = wordCheckUSD * Decimal(journalPrice?.parts ?? script.parts.count)
         let patchCharacters = wholeClipVoiceHunks.reduce(0) { $0 + $1.newTokens.joined(separator: " ").unicodeScalars.count }
         let patch = wholeClipReplacement != nil ? nil : takePlan?.estimate?.usd ?? (try? VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
                                                                              units: Double(max(1, patchCharacters)), catalog: catalog))?.usd
@@ -542,9 +544,41 @@ extension RewriteSession {
         let matched = selected != nil && selected?.id == preferredVoiceForVideo && selected?.id != anchor?.id
         return .init(clipNumber: editor.clipNumber(id) ?? 1, clipSeconds: editor.makeItRenderedSeconds(id), spokenWords: inputs.spokenWords,
                      reason: WholeClipRevoice.reason(inputs), patchUSD: patch, phrases: includedVoice.count,
-                     voiceUSD: price.voice.usd, lipsyncUSD: price.lipsync.usd,
+                     voiceUSD: journalPrice?.usd ?? price.voice.usd, lipsyncUSD: price.lipsync.usd,
                      voiceName: selected.map { VoiceLabSession.rebuildName($0.voiceName) } ?? "your voice",
-                     voiceNote: matched ? "matched to this video" : "", wordChecksUSD: wordChecksUSD)
+                     voiceNote: matched ? "matched to this video" : "", wordChecksUSD: wordChecksUSD,
+                     pricesJournaledVoice: journalPrice != nil)
+    }
+
+    private func wholeClipJournalPrice(_ script: WholeClipScript, final: Project, catalog: VoiceLabPriceCatalog) async throws
+        -> (usd: Decimal, parts: Int)? {
+        guard let recordID = generation?.selectedVoiceID, let envelope, let audio = final.media.source.audio else { return nil }
+        let locations = editor.app.locations
+        let paidRoot = locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        let projectID = final.id
+        guard let record = try? await VoiceConsentStore(locations: locations).load(recordID),
+              let phrases = try? ClipTakePlan.preparePlan(project: final, scope: scope, envelope: envelope,
+                                                         hunks: wholeClipHunks(script, project: final)) else { return nil }
+        let items = Self.corrected(final), cuts = Set(final.edits.cutWordIds)
+        let model = VoiceLabWordingFit.modelID
+        let keys = phrases.map { phrase in
+            let context = VoiceLabTakeInput.speechContext(items: items, cutWordIDs: cuts, window: phrase.window, sourceSampleRate: audio.sampleRate)
+            let text = VoiceLabAudioTags.requestText(words: phrase.text, tags: phrase.audioTags, modelID: model)
+            return VoiceLabTakeJournalKey(recordID: recordID, voiceID: record.voiceId, modelID: model,
+                language: final.transcript?.language ?? "en", requestText: text, previousText: context.previous, nextText: context.next, pace: nil)
+        }
+        let adopted = await Task.detached(priority: .utility) {
+            VoiceLabTakeJournal.previewAdoptions(keys, projectID: projectID, paidRoot: paidRoot)
+        }.value
+        guard !adopted.isEmpty else { return nil }
+        var usd: Decimal = 0
+        for index in keys.indices where !adopted.contains(index) {
+            let price = try VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: model,
+                                                     units: Double(keys[index].requestText.unicodeScalars.count), catalog: catalog)
+            guard let partUSD = price.usd else { return nil }
+            usd += partUSD
+        }
+        return (usd, keys.count)
     }
 
     private func retireWholeClipVoicePlan() {
@@ -763,6 +797,11 @@ extension RewriteSession {
             throw Session.Stop.noVoice(plan.problem.isEmpty ? "The voice couldn't be priced. Nothing was sent." : plan.problem)
         }
         if restored != nil { try holdRestoredVoicePrice(plan, approved: restoredApproval) }
+        else if let wholeClip, wholeClip.quotedScript == script, let approved = wholeClip.journalVoiceApproval {
+            guard let fresh = plan.estimate?.usd, fresh <= approved else {
+                throw Session.Stop.noVoice("The price for the voice changed. Nothing new was sent. Review the new price before retrying.")
+            }
+        }
         progress("\(plan.phrases.count == 1 ? "one take" : "\(plan.phrases.count) parts, one take")")
         await plan.start(approved: true, quoteID: approval)
         return try finishWholeClipVoice(plan, script: script, recordID: recordID)
@@ -956,7 +995,8 @@ extension RewriteSession {
         }
         let offer: RewriteLipsyncSession.Offer
         do {
-            var prepared = try await plan.makeWholeClipLipsyncOffer(model: model)
+            let fresh = try await plan.makeWholeClipLipsyncOffer(model: model)
+            var prepared = await plan.lipsync.priceIndexed(fresh)
             // A kept result (Try Again · free) or one already paid for is put back for free; nothing new is paid.
             if wholeClip?.lipsyncKept == true || wholeClip?.lipsyncMayPay == false { prepared.mayPay = false }
             offer = prepared

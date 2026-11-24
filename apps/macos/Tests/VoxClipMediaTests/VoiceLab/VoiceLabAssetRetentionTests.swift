@@ -201,12 +201,7 @@ import VoxClipCore
         let (quote, job) = try await LipsyncImportFixture.submit(root: root, provider: provider, model: provider.models[0], seconds: 4, fps: 30)
         let result = try await LipsyncResultImporter().importResult(provider: provider, job: job, quote: quote, projectID: project,
                                                                    paidRoot: root, sourceWidth: 1_920, sourceHeight: 1_080)
-        let attempts = root.appendingPathComponent(project).appendingPathComponent("lipsync-attempts")
-        let indexed = try FileManager.default.contentsOfDirectory(atPath: attempts.path).filter { $0.hasSuffix(".json") }.compactMap { name in
-            let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-            return try? decoder.decode(LipsyncAttempt.self, from: Data(contentsOf: attempts.appendingPathComponent(name))).importedAsset
-        }
-        #expect(indexed == [result.asset])
+        #expect(LipsyncAttemptStore.importedAssets(inProject: project, paidRoot: root) == [result.asset.file])
         let control = result.url.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString.lowercased()).mp4")
         try FileManager.default.copyItem(at: result.url, to: control)
         try own(result.url); try own(control)
