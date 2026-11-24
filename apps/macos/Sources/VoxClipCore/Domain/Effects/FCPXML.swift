@@ -24,43 +24,91 @@ public enum FCPXML {
     }
 
     private struct Cut {
-        let start: Int64
-        let sourceSeconds: Double
+        let picture: String
+        let source: Range<Double>
         let output: Range<Int64>
+        let retimed: Bool
+        let edited: Range<Double>
+        let speed: Double
+    }
+
+    public struct PictureSpan: Sendable {
+        public let assetID: String
+        public let source: Range<Double>
+        public let edited: Range<Double>
+
+        public init(assetID: String = "picture", source: Range<Double>, edited: Range<Double>) {
+            self.assetID = assetID; self.source = source; self.edited = edited
+        }
+    }
+
+    public struct Media: Sendable {
+        public let url: URL
+        public let probe: MediaProbeResult
+        public init(url: URL, probe: MediaProbeResult) { self.url = url; self.probe = probe }
+    }
+
+    public static func unsupportedReason(effects: [ClipEffect]) -> String? {
+        if effects.contains(where: { $0.kind.isCensor }) {
+            return "This edit hides part of the recording. Export it as a video to keep it hidden."
+        }
+        if effects.contains(where: { $0.kind == .freeze }) {
+            return "This edit holds a picture still. Use video export to keep the freeze frame."
+        }
+        if effects.contains(where: { ![.title, .lowerThird, .speedForPart].contains($0.kind) }) {
+            return "This edit has effects an editable timeline can't carry. Use video export to keep them."
+        }
+        return nil
     }
 
     public static func unsupportedReason(_ render: RenderRequest) -> String? {
-        unsupportedReason(changesTiming: render.voiceLab?.prepared.outputPlan.requiresSyntheticRendering == true
-            || (render.clipControls?.speed ?? 1) != 1, effects: render.effects?.effects ?? [])
-    }
-
-    public static func unsupportedReason(changesTiming: Bool, effects: [ClipEffect]) -> String? {
-        if changesTiming {
-            return "This edit changes the timing. Export it as a video instead."
-        }
-        if effects.contains(where: { $0.kind.isCensor }) {
-            return "This edit hides part of the recording. Export it as a video to keep it hidden."
+        if let reason = unsupportedReason(effects: render.effects?.effects ?? []) { return reason }
+        if !render.footage.isEmpty || render.contextDemo != nil {
+            return "This edit uses additional footage. Use video export to keep its placement."
         }
         return nil
     }
 
     public static func document(name: String, render: RenderRequest, source: MediaProbeResult,
-                                musicAudio: MediaAudio? = nil) throws -> Data {
+                                musicAudio: MediaAudio? = nil, renderedVoice: Media? = nil,
+                                pictureSpans: [PictureSpan]? = nil, replacementPictures: [String: Media] = [:]) throws -> Data {
         if let reason = unsupportedReason(render) { throw VoxClipError.exportFailed(reason) }
-        guard let video = source.video, let size = source.orientedSize ?? source.video.map({ PixelSize(width: $0.width, height: $0.height) }),
-              (1...1000).contains(video.frameRate), (0.01...1000).contains(render.output.fps),
+        guard (0.01...1000).contains(render.output.fps),
               (1...1_000_000).contains(render.plan.sampleRate), (0...1_000_000).contains(source.durationSeconds) else {
             throw VoxClipError.exportFailed("The original video format is unavailable for FCPXML.")
         }
-        let pictureGrid = FrameGrid(video.frameRate), grid = FrameGrid(render.output.fps)
-        let cuts = try cuts(render.plan, source: pictureGrid, sequence: grid)
-        guard let last = cuts.last else { throw VoxClipError.everythingCut }
+        let synthetic = render.voiceLab?.prepared.outputPlan.requiresSyntheticRendering == true
+        guard !synthetic || (pictureSpans != nil && renderedVoice?.probe.audio != nil) else {
+            throw VoxClipError.exportFailed("The rendered voice is unavailable for the editable timeline.")
+        }
+        let grid = FrameGrid(render.output.fps)
+        let timing = render.speedTiming
         let root = element("fcpxml", ["version": "1.10"])
         let resources = append("resources", to: root)
         format("sequence-format", size: render.output.size, grid: grid, in: resources)
-        format("source-format", size: size, grid: pictureGrid, in: resources)
-        asset("picture", url: render.sourceURL, duration: seconds(source.durationSeconds), audio: source.audio,
-              videoFormat: "source-format", in: resources)
+        let pictures = replacementPictures.merging(["picture": Media(url: render.sourceURL, probe: source)]) { _, original in original }
+        var pictureGrids: [String: FrameGrid] = [:]
+        for (id, media) in pictures.sorted(by: { $0.key < $1.key }) {
+            guard let video = media.probe.video, (1...1000).contains(video.frameRate),
+                  (0...1_000_000).contains(media.probe.durationSeconds) else {
+                throw VoxClipError.exportFailed("A picture source is unavailable for the editable timeline.")
+            }
+            let pictureGrid = FrameGrid(video.frameRate)
+            pictureGrids[id] = pictureGrid
+            let formatID = "\(id)-format"
+            format(formatID, size: media.probe.orientedSize ?? PixelSize(width: video.width, height: video.height), grid: pictureGrid, in: resources)
+            asset(id, url: media.url, duration: seconds(media.probe.durationSeconds), audio: id == "picture" ? source.audio : nil,
+                  videoFormat: formatID, in: resources)
+        }
+        let cuts = try cuts(pictureSpans ?? legacySpans(render.plan), timing: timing, pictures: pictures, grids: pictureGrids, sequence: grid)
+        guard let last = cuts.last else { throw VoxClipError.everythingCut }
+        if let renderedVoice {
+            guard let voiceAudio = renderedVoice.probe.audio, (0.001...1_000_000).contains(renderedVoice.probe.durationSeconds),
+                  renderedVoice.probe.durationSeconds + grid.seconds(1) >= last.edited.upperBound else {
+                throw VoxClipError.exportFailed("The rendered voice does not cover the editable timeline.")
+            }
+            asset("rendered-voice", url: renderedVoice.url, duration: seconds(renderedVoice.probe.durationSeconds), audio: voiceAudio, in: resources)
+        }
         if let music = render.music {
             let duration = music.entry.asset.durationSeconds
             guard let musicAudio, (0.001...1_800).contains(duration), music.entry.startOffsetSeconds.isFinite else {
@@ -79,32 +127,50 @@ public enum FCPXML {
         let spine = append("spine", to: sequence)
         var titleIndex = 0
         for cut in cuts {
-            let start = pictureGrid.seconds(cut.start)
+            guard let picture = pictures[cut.picture] else { throw VoxClipError.exportFailed("A picture source is missing.") }
             let durationFrames = cut.output.upperBound - cut.output.lowerBound
             let duration = grid.seconds(durationFrames)
-            let clip = append("asset-clip", ["name": render.sourceURL.lastPathComponent, "ref": "picture",
-                "offset": grid.time(cut.output.lowerBound), "start": pictureGrid.time(cut.start),
-                "duration": grid.time(durationFrames), "srcEnable": "video"], to: spine)
-            append("adjust-conform", ["type": "fill"], to: clip)
-            if source.audio != nil, render.clipControls?.muteSource != true {
-                audio("Voice", ref: "picture", role: "dialogue", lane: "-1", offset: start,
-                    start: start, duration: duration, gain: render.clipControls?.gainDb ?? 0, in: clip)
+            let wrapped = cut.retimed
+            let parent = wrapped ? append("gap", ["offset": grid.time(cut.output.lowerBound), "start": "0s",
+                "duration": grid.time(durationFrames)], to: spine) : spine
+            var attributes = ["name": picture.url.lastPathComponent, "ref": cut.picture,
+                "offset": wrapped ? "0s" : grid.time(cut.output.lowerBound), "start": seconds(cut.source.lowerBound),
+                "duration": grid.time(durationFrames), "srcEnable": "video"]
+            if wrapped { attributes["lane"] = "1" }
+            let videoClip = append("asset-clip", attributes, to: parent)
+            if cut.retimed { timeMap(cut.source, duration: duration, in: videoClip) }
+            append("adjust-conform", ["type": "fill"], to: videoClip)
+            let clip = wrapped ? parent : videoClip
+            let start = wrapped ? 0 : cut.source.lowerBound
+            if render.clipControls?.muteSource != true {
+                if let renderedVoice {
+                    let available = min(duration, (renderedVoice.probe.durationSeconds - cut.edited.lowerBound) / cut.speed)
+                    if available > 0 {
+                        audio("Rendered voice", ref: "rendered-voice", role: "dialogue", lane: "-1", offset: start,
+                              start: cut.edited.lowerBound, duration: available, gain: render.clipControls?.gainDb ?? 0,
+                              mapping: cut.speed == 1 ? nil : cut.edited, in: clip)
+                    }
+                } else if source.audio != nil {
+                    audio("Voice", ref: "picture", role: "dialogue", lane: "-1", offset: start,
+                          start: cut.source.lowerBound, duration: duration, gain: render.clipControls?.gainDb ?? 0,
+                          mapping: cut.retimed ? cut.source : nil, in: clip)
+                }
             }
             if let music = render.music {
                 addMusic(music.entry, parentStart: start, outputStart: grid.seconds(cut.output.lowerBound), duration: duration, in: clip)
             }
-            let outputStart = grid.seconds(cut.output.lowerBound)
             for (index, effect) in effects.enumerated() {
                 guard let text = effect.text, !text.isEmpty, effect.start.isFinite, effect.end.isFinite else { continue }
                 let position = position(effect.position ?? (effect.kind == .lowerThird ? .bottom : .top))
-                addTitle(text, role: "title", lane: index + 2, position: position, size: 64,
-                    start: outputStart + effect.start - cut.sourceSeconds, end: outputStart + effect.end - cut.sourceSeconds,
-                    cut: cut, source: pictureGrid, sequence: grid, index: &titleIndex, in: clip)
+                addTitle(text, role: "title", lane: index + 3, position: position, size: 64,
+                    start: timing.rendered(render.timeline.mapTime(effect.start)), end: timing.rendered(render.timeline.mapTime(effect.end)),
+                    cut: cut, parentStart: start, sequence: grid, index: &titleIndex, in: clip)
             }
             for page in render.captions.pages {
                 let text = page.words.map(\.text).joined(separator: " ")
-                addTitle(text, role: "caption", lane: 1, position: "0 -37", size: page.fontPx,
-                    start: page.start, end: page.end, cut: cut, source: pictureGrid, sequence: grid, index: &titleIndex, in: clip)
+                addTitle(text, role: "caption", lane: wrapped ? 2 : 1, position: "0 -37", size: page.fontPx,
+                    start: timing.rendered(page.start), end: timing.rendered(page.end), cut: cut, parentStart: start,
+                    sequence: grid, index: &titleIndex, in: clip)
             }
         }
         let xml = XMLDocument(rootElement: root)
@@ -113,19 +179,49 @@ public enum FCPXML {
         return xml.xmlData(options: [.nodePrettyPrint, .nodeCompactEmptyElement])
     }
 
-    private static func cuts(_ plan: EditPlan, source: FrameGrid, sequence: FrameGrid) throws -> [Cut] {
+    private static func legacySpans(_ plan: EditPlan) throws -> [PictureSpan] {
         var outputSamples: Int64 = 0
-        var result: [Cut] = []
-        for kept in plan.kept {
+        return try plan.kept.compactMap { kept in
             guard kept.startSample >= 0, kept.endSample >= kept.startSample, kept.endSample <= plan.totalSamples,
                   Double(kept.endSample) / plan.sampleRate <= 1_000_000 else {
                 throw VoxClipError.exportFailed("The cut plan has invalid timing.")
             }
-            let start = Double(kept.startSample) / plan.sampleRate
-            let lower = sequence.frame(Double(outputSamples) / plan.sampleRate)
+            guard kept.count > 0 else { return nil }
+            let lower = Double(outputSamples) / plan.sampleRate
             outputSamples += kept.count
-            let upper = sequence.frame(Double(outputSamples) / plan.sampleRate)
-            if upper > lower { result.append(Cut(start: source.frame(start), sourceSeconds: start, output: lower..<upper)) }
+            return PictureSpan(source: (Double(kept.startSample) / plan.sampleRate)..<(Double(kept.endSample) / plan.sampleRate),
+                               edited: lower..<(Double(outputSamples) / plan.sampleRate))
+        }
+    }
+
+    private static func cuts(_ spans: [PictureSpan], timing: ClipSpeedTiming, pictures: [String: Media],
+                             grids: [String: FrameGrid], sequence: FrameGrid) throws -> [Cut] {
+        var result: [Cut] = []
+        let speed = timing.segments(through: spans.last?.edited.upperBound ?? 0)
+        var previous = 0.0
+        for span in spans {
+            guard let grid = grids[span.assetID], let media = pictures[span.assetID],
+                  (0...media.probe.durationSeconds + grid.seconds(1)).contains(span.source.upperBound),
+                  span.source.lowerBound >= 0, !span.source.isEmpty, !span.edited.isEmpty,
+                  abs(span.edited.lowerBound - previous) < 0.000_001, (0...1_000_000).contains(span.edited.upperBound) else {
+                throw VoxClipError.exportFailed("The picture cuts have invalid timing.")
+            }
+            previous = span.edited.upperBound
+            let sourceRate = (span.source.upperBound - span.source.lowerBound) / (span.edited.upperBound - span.edited.lowerBound)
+            func sourceTime(_ time: Double) -> Double { span.source.lowerBound + (time - span.edited.lowerBound) * sourceRate }
+            for segment in speed where segment.end > span.edited.lowerBound && segment.start < span.edited.upperBound {
+                let lower = max(segment.start, span.edited.lowerBound), upper = min(segment.end, span.edited.upperBound)
+                let startFrame = sequence.frame(timing.rendered(lower)), endFrame = sequence.frame(timing.rendered(upper))
+                guard endFrame > startFrame else { continue }
+                let sourceStart = grid.seconds(grid.frame(sourceTime(lower)))
+                let sourceEnd = grid.seconds(grid.frame(sourceTime(upper)))
+                let retimed = abs(sourceRate * segment.rate - 1) > 0.000_001
+                guard !retimed || sourceEnd > sourceStart else {
+                    throw VoxClipError.exportFailed("A speed change is shorter than a source frame. Use video export to keep it.")
+                }
+                result.append(Cut(picture: span.assetID, source: sourceStart..<max(sourceStart, sourceEnd),
+                                  output: startFrame..<endFrame, retimed: retimed, edited: lower..<upper, speed: segment.rate))
+            }
         }
         return result
     }
@@ -147,10 +243,17 @@ public enum FCPXML {
     }
 
     private static func audio(_ name: String, ref: String, role: String, lane: String, offset: Double,
-                              start: Double, duration: Double, gain: Double, in parent: XMLElement) {
+                              start: Double, duration: Double, gain: Double, mapping: Range<Double>? = nil, in parent: XMLElement) {
         let item = append("audio", ["name": name, "ref": ref, "role": role, "lane": lane,
             "offset": seconds(offset), "start": seconds(start), "duration": seconds(duration)], to: parent)
+        if let mapping { timeMap(mapping, duration: duration, in: item) }
         if gain.isFinite, gain != 0 { append("adjust-volume", ["amount": "\(gain)dB"], to: item) }
+    }
+
+    private static func timeMap(_ source: Range<Double>, duration: Double, in parent: XMLElement) {
+        let map = append("timeMap", ["preservesPitch": "1"], to: parent)
+        append("timept", ["time": seconds(source.lowerBound), "value": seconds(source.lowerBound), "interp": "linear"], to: map)
+        append("timept", ["time": seconds(source.lowerBound + duration), "value": seconds(source.upperBound), "interp": "linear"], to: map)
     }
 
     private static func addMusic(_ entry: ProjectMusic, parentStart: Double, outputStart: Double, duration: Double, in parent: XMLElement) {
@@ -168,14 +271,14 @@ public enum FCPXML {
     }
 
     private static func addTitle(_ text: String, role: String, lane: Int, position: String, size: Double, start: Double,
-                                 end: Double, cut: Cut, source: FrameGrid, sequence: FrameGrid, index: inout Int, in parent: XMLElement) {
+                                 end: Double, cut: Cut, parentStart: Double, sequence: FrameGrid, index: inout Int, in parent: XMLElement) {
         guard !text.isEmpty, start.isFinite, end.isFinite,
               end > sequence.seconds(cut.output.lowerBound), start < sequence.seconds(cut.output.upperBound) else { return }
         let lower = sequence.frame(max(start, sequence.seconds(cut.output.lowerBound)))
         let upper = sequence.frame(min(end, sequence.seconds(cut.output.upperBound)))
         guard upper > lower else { return }
         index += 1
-        let offset = source.seconds(cut.start) + sequence.seconds(lower - cut.output.lowerBound)
+        let offset = parentStart + sequence.seconds(lower - cut.output.lowerBound)
         let title = append("title", ["name": role == "caption" ? "Caption" : "Title", "ref": "basic-title",
             "role": "titles.\(role)", "lane": String(lane), "offset": seconds(offset), "start": "0s",
             "duration": sequence.time(upper - lower)], to: parent)

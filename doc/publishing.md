@@ -110,9 +110,9 @@ Advisory notices (never blocking), shown under the share row:
 
 In Export, **Save editable timeline (.fcpxml)** writes one FCPXML 1.10 document per target to the chosen folder. It is not a rendered video and does not add a finished video to export history. The CLI uses the same prepared plan: `voxclip-cli export --format fcpxml --open project.voxclip --clip <id> --export clip.fcpxml`.
 
-The spine links to the original media with frame-aligned cuts. Titles and lower thirds use editable Basic Title text, and caption pages become text titles on their own lane. A title crossing a cut is split at the cut. Source voice and the referenced, trimmed or looped music occupy separate Dialogue and Music roles. Bring the original and music media along if you move the timeline, and relink them in the receiving editor when needed. Do not treat the timeline as a redacted copy of the media.
+The spine links to the original media with frame-aligned cuts and explicit time maps for whole-clip and part-clip speed changes. Titles and lower thirds use editable Basic Title text, and caption pages become text titles on their own lane. A title crossing a cut is split at the cut. Dialogue and the referenced, trimmed or looped music stay on separate lanes. For a kept Rewrite or revoice, Dialogue links to the rendered voice file rather than the source audio; lip-synced picture sections link to their own companion files. Keep those companion files beside the timeline, and bring original media and music along when moving it. Do not treat the timeline as a redacted copy of the media.
 
-This is an editing hand-off, not a recreation of the MP4 look. Animated styling, other visual treatments, context overlays, SFX, fades and ducking are not carried over. Timing-changing edits and censorship effects require MP4 export rather than silently sending an uncensored or mistimed timeline. Windows hand-off and CapCut draft output are not implemented.
+VoxClip checks the media, timing and destination before enabling Save. Freezes, censorship, additional footage and unsupported clip effects require video export rather than silently dropping them. This is an editing hand-off, not a recreation of the MP4 look: use the MP4 for the final motion styling, grade, fades and ducking. Windows hand-off is not implemented. CapCut is skipped because its draft format is private and writing it would require reverse-engineering.
 
 ### 2.5 Posting help (Mac)
 
@@ -376,7 +376,7 @@ The cover's time is a source second; the export maps it through the clip's cuts 
 
 ## 8. Export self-check (ADR-R49)
 
-Every export can be checked on the Mac or on Windows, in seconds, before it is posted: `voxclip-cli check --project <project> --clip <n> <export.mp4> --json`, and by default after each clip `voxclip-cli autopilot` exports (`--no-check` skips it). The review rows that show it in the app wait for the mockup's approval.
+Every export can be checked on the Mac or on Windows, in seconds, before it is posted: `voxclip-cli check --project <project> --clip <n> <export.mp4> --json`, and by default after each clip `voxclip-cli autopilot` exports (`--no-check` skips it). On Mac, the inline review can centre captions and re-export the affected clip and aspect in one click. Warnings that require judgement say what to listen for or adjust; the original export stays on disk.
 
 **What it measures**, from the exported file:
 

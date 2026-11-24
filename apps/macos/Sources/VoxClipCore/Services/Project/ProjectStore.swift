@@ -126,6 +126,11 @@ public actor JSONProjectStore: ProjectStore {
         throw VoxClipError.mediaMissing(URL(fileURLWithPath: source.absolutePath).lastPathComponent)
     }
 
+    public static func footageURL(_ original: URL, beside primary: URL) -> URL {
+        if FileManager.default.fileExists(atPath: original.path) { return original }
+        return primary.deletingLastPathComponent().appendingPathComponent(original.lastPathComponent)
+    }
+
     public func relink(_ project: Project, to sourceURL: URL, probe: MediaProbeResult, confirmedDifferent: Bool = false) async throws -> Project {
         let key = try Self.contentKey(for: sourceURL)
         let attributes = try FileManager.default.attributesOfItem(atPath: sourceURL.path)

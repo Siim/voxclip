@@ -20,6 +20,7 @@ import VoxClipMedia
     var voxConvo = VoxConvoExportState()
     var timelineFiles: [URL] = []
     var timelineRunning = false
+    var timelinePreparation: TimelineHandOffPreparation?
     @ObservationIgnored private(set) var captionCopyTimer: Timer?
     func captionCopied() {
         captionCopyTimer?.invalidate()
@@ -112,7 +113,9 @@ import VoxClipMedia
             }
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL)) }
             ForEach(model.exportClipIDs, id: \.self) { id in
-                ForEach(job.checks[id] ?? []) { review in ExportSelfCheckRows(review: review) }
+                ForEach(job.checks[id] ?? []) { review in
+                    ExportSelfCheckRows(review: review, centreCaptions: model.exportCaptionFix(review, clipID: id))
+                }
             }
             VoxConvoExportReview(model: model)
             PostingHelpReview(model: model)
@@ -183,17 +186,24 @@ import VoxClipMedia
                 TextField("File name", text: Binding(get: { job.fileNamePattern }, set: { job.fileNamePattern = $0 })).accessibilityLabel("File name pattern")
             }
             Text("{project} · {clip} · {aspect} · .mp4").font(.system(size: 11)).foregroundStyle(.secondary)
-            let reason = model.timelineExportUnavailable(targets)
-            Button("Save editable timeline (.fcpxml)") { model.beginTimelineExport(targets: targets, folder: folder) }
-                .disabled(reason != nil).help(reason ?? "Open in Final Cut Pro or DaVinci Resolve")
-                .accessibilityIdentifier("voxclip.export.fcpxml")
-            Text(reason ?? "The timeline links to your original media. It isn’t a video to share.")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+            timelineHandOff
             publishOffer
             if let disclosure = model.exportDisclosure(targets) { Label(disclosure, systemImage: "waveform").font(.system(size: 11)).accessibilityIdentifier("voxclip.export.aiNotice") }
             if let note = model.captionError { InlineNotice(text: note) }
             if let error = model.exportError { InlineNotice(text: error) }
         }
+    }
+    private var timelineHandOff: some View {
+        let selection = model.timelineHandOffSelection(targets, folder: folder)
+        let reason = model.timelineExportUnavailable(selection)
+        return VStack(alignment: .leading, spacing: 4) {
+            Button("Save editable timeline (.fcpxml)") { model.beginTimelineExport(selection) }
+                .disabled(reason != nil).help(reason ?? "Open in Final Cut Pro or DaVinci Resolve")
+                .accessibilityIdentifier("voxclip.export.fcpxml")
+            Text(reason ?? "Keep the timeline and any companion media together. It isn’t a video to share.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }.task(id: selection) { await model.prepareTimelineExport(selection) }
+            .onDisappear { job.timelinePreparation = nil }
     }
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -286,10 +296,10 @@ enum ExportSelection {
         let safe = String(value.components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ ")).inverted).joined(separator: "-").trimmingCharacters(in: .whitespaces).prefix(100))
         return safe.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) } ? safe : "VoxClip-export"
     }
-    static func destination(base: String, folder: URL, writeSRT: Bool, fileExtension: String = "mp4") -> URL {
+    static func destination(base: String, folder: URL, writeSRT: Bool, fileExtension: String = "mp4", reserved: Set<String> = []) -> URL {
         var url = folder.appendingPathComponent(base).appendingPathExtension(fileExtension)
         var suffix = 2
-        while FileManager.default.fileExists(atPath: url.path) || writeSRT && FileManager.default.fileExists(atPath: url.deletingPathExtension().appendingPathExtension("srt").path) {
+        while reserved.contains(url.lastPathComponent.lowercased()) || FileManager.default.fileExists(atPath: url.path) || writeSRT && FileManager.default.fileExists(atPath: url.deletingPathExtension().appendingPathExtension("srt").path) {
             url = folder.appendingPathComponent("\(base) \(suffix)").appendingPathExtension(fileExtension)
             suffix += 1
         }
@@ -502,14 +512,31 @@ extension EditorModel {
         } catch is CancellationError { return }
         catch { await app.logFailure(error, context: .export) }
         guard !Task.isCancelled else { return }
-        let row = ClipExportReview(url: url, aspect: job.aspect, report: report)
+        let row = ClipExportReview(url: url, aspect: job.aspect, report: report,
+            captionPosition: Self.exportCaptionPosition(project, aspect: job.aspect))
         exportJob.checks[clipID, default: []].removeAll { $0.aspect == job.aspect }
         exportJob.checks[clipID, default: []].append(row)
     }
+
+    private static func exportCaptionPosition(_ project: Project, aspect: AspectRatio) -> CaptionPosition? {
+        project.captions.positionByAspect[aspect.rawValue] ?? project.captions.position
+    }
+
+    func exportCaptionFix(_ review: ClipExportReview, clipID: String) -> (() -> Void)? {
+        let centre = CaptionPosition(x: 0.5, y: 0.5)
+        guard canExport, mediaExportable, capabilities.edit, !exporting,
+              project.edits.clips.contains(where: { $0.id == clipID }),
+              review.captionPosition != centre, review.captionPosition == Self.exportCaptionPosition(project, aspect: review.aspect) else { return nil }
+        return { [weak self] in
+            guard let self, !exporting, review.captionPosition == Self.exportCaptionPosition(project, aspect: review.aspect) else { return }
+            var revised = project
+            CaptionFineTuning.position(&revised.captions, aspect: review.aspect, point: centre)
+            replace(revised, name: "Centre captions")
+            beginExport(targets: [.clip(clipID)], folder: review.url.deletingLastPathComponent(), aspects: [review.aspect])
+        }
+    }
     nonisolated static func isExportCancellation(_ error: any Error) -> Bool {
-        if error is CancellationError { return true }
-        if case VoxClipError.cancelled = error { return true }
-        return false
+        FailureDiagnostic.isCancellation(error)
     }
     func exportStatus(at now: Date) -> String {
         let total = max(1, exportTotal ?? exportClipIDs.count)

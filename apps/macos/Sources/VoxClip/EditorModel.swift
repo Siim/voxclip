@@ -1715,7 +1715,8 @@ struct EditorRenderSnapshot {
         if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
         let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
             output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
-        return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root,
+        return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root.resolvingSymlinksInPath(),
+            shared: app.shared, resolveFootageURL: { JSONProjectStore.footageURL($0, beside: request.sourceURL) },
             reduceMotion: snapshot.reduceMotion, isCancelled: { Task.isCancelled })
     }
     func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,

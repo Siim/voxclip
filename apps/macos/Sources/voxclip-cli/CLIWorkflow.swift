@@ -101,7 +101,8 @@ enum CLIWorkflow {
         try RenderCallerInputs.prepare(RenderRequest(sourceURL: source, plan: plan, style: style,
             placement: project.captions.positionByAspect[project.export.aspect.rawValue] ?? project.captions.position,
             output: output, voiceLab: voiceLab), project: project, clipID: project.edits.activeClipId,
-            dataRoot: dataRoot, isCancelled: { Task.isCancelled })
+            dataRoot: dataRoot.resolvingSymlinksInPath(), shared: try? SharedResources.locate(),
+            resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, isCancelled: { Task.isCancelled })
     }
 
     static func style(_ id: String) throws -> CaptionStyle? {
@@ -303,7 +304,8 @@ enum CLIWorkflow {
         try Task.checkCancellation()
         if options.format == "fcpxml", let output = options.output {
             let name = activeClip?.title ?? project.title ?? render.sourceURL.deletingPathExtension().lastPathComponent
-            let url = try await FCPXMLExporter.write(name: name, render: render, to: URL(fileURLWithPath: output), replacing: true)
+            let url = try await FCPXMLExporter.write(name: name, render: render, to: URL(fileURLWithPath: output), replacing: true,
+                cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch", isDirectory: true))
             return success("export", fields: ["format": .string("fcpxml"), "output": .string(url.path),
                 "captionStyle": .string(styleID), "aspect": .string(aspect.rawValue)])
         }
