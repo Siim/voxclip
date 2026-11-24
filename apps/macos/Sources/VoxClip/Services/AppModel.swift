@@ -160,6 +160,13 @@ extension ProviderChoice {
     var providerStatus: [String: String] = [:]
     var knownCLIAuthMethods: [String: String] = [:]
     var detectedConnectorStatus: [String: ConnectorStatus] = [:]
+    var codexDraftModel: String?
+    private(set) var codexLiveModels: [LLMModel]?
+    private(set) var codexModelListWarning: String?
+    private(set) var codexModelsRefreshing = false
+    private(set) var codexFallbacks: [String: String] = [:]
+    @ObservationIgnored private var codexConnector: (path: String, cli: CLIConnector)?
+    @ObservationIgnored private var codexRefreshID: UUID?
     func consentCopy(_ provider: ProviderChoice, action: ConnectorConsentAction, wordCount: Int) -> String {
         provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")],
                              serverHost: localServerHost(provider))
@@ -181,6 +188,57 @@ extension ProviderChoice {
         }
         detectedConnectorStatus[provider.id] = result
         return result
+    }
+
+    func savedModel(for provider: ProviderChoice) -> String {
+        string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
+    }
+
+    func effectiveModel(for provider: ProviderChoice) -> String {
+        let saved = savedModel(for: provider)
+        return provider.id == "codex" ? codexFallbacks[saved] ?? saved : saved
+    }
+
+    func codexFallbackMessage(for model: String) -> String? {
+        guard let fallback = codexFallbacks[model] else { return nil }
+        return "Using \(fallback) this session. Codex doesn't offer \(model)."
+    }
+
+    func modelChoices(for provider: ProviderChoice, refreshed: [LLMModel] = []) -> [ProviderChoice.Model] {
+        let live = provider.id == "codex" ? codexLiveModels ?? [] : refreshed
+        let known = Set(provider.models.map(\.id))
+        return provider.models + live.filter { !known.contains($0.id) }.map {
+            ProviderChoice.Model(id: $0.id, name: $0.name, tier: $0.tier)
+        }
+    }
+
+    func modelUnavailable(_ model: String, for provider: ProviderChoice) -> Bool {
+        guard provider.id == "codex", let codexLiveModels,
+              provider.models.contains(where: { $0.id == model }) else { return false }
+        return !codexLiveModels.contains { $0.id == model }
+    }
+
+    func chooseModel(_ model: String, for provider: ProviderChoice) {
+        guard !modelUnavailable(model, for: provider) else { return }
+        if provider.id == "codex" { codexDraftModel = model == savedModel(for: provider) ? nil : model }
+        else { set("llm.model.\(provider.id)", .string(model)) }
+    }
+
+    func refreshCodexModels(force: Bool = false) async {
+        guard !(Self.isTestSession || TestProcess.isRunning) || connectorOverride != nil else { return }
+        guard !codexModelsRefreshing, let cli = connector("codex") as? CLIConnector else { return }
+        let path = string("llm.cliPath.codex")
+        let refreshID = UUID()
+        codexRefreshID = refreshID
+        codexModelsRefreshing = true
+        defer { if codexRefreshID == refreshID { codexModelsRefreshing = false } }
+        if !force, codexLiveModels != nil, await cli.hasLiveModels { return }
+        guard let models = try? await cli.models(refresh: true) else { return }
+        let isLive = await cli.hasLiveModels
+        let warning = await cli.refreshWarning
+        guard !Task.isCancelled, codexRefreshID == refreshID, path == string("llm.cliPath.codex") else { return }
+        codexLiveModels = isLive ? models : nil
+        codexModelListWarning = warning
     }
     /// Each open project's content key by project id. The cache leases of open projects are held per editor
     /// (`EditorModel.holdCacheEntry`), not here, because two windows can show the same project id.
@@ -393,6 +451,16 @@ extension ProviderChoice {
         // A lower cache limit is enforced at once, in the background (architecture §8.2).
         let lowersCacheLimit = if key == "cache.limitGB", case .number(let limit) = value { limit < number(key, fallback: 5) } else { false }
         settings.values[key] = value
+        if key == "llm.cliPath.codex" {
+            codexConnector = nil
+            detectedConnectorStatus["codex"] = nil
+            codexRefreshID = nil
+            codexModelsRefreshing = false
+            codexLiveModels = nil
+            codexModelListWarning = nil
+            codexFallbacks = [:]
+            codexDraftModel = nil
+        }
         if lowersCacheLimit { requestCacheEviction() }
         if key.hasPrefix("llm.baseUrl."), LocalServerAddress.remoteHost(string(key)) != serverHost {
             let consent = "llm.cloudConsent.\(key.dropFirst("llm.baseUrl.".count))"
@@ -585,8 +653,23 @@ extension ProviderChoice {
         let provider = providers.first { $0.id == id }
         let base = string("llm.baseUrl.\(id)", fallback: provider?.baseUrl ?? "")
         let path = string("llm.cliPath.\(id)")
+        if selected == .codex {
+            if let codexConnector, codexConnector.path == path { return codexConnector.cli }
+            let cli = CLIConnector(id: selected, catalog: catalog, log: log,
+                executable: path.isEmpty ? nil : URL(fileURLWithPath: (path as NSString).expandingTildeInPath),
+                onModelFallback: { [weak self] missing, replacement in
+                    await self?.recordCodexFallback(from: missing, to: replacement, path: path)
+                })
+            codexConnector = (path, cli)
+            return cli
+        }
         return StubLLMConnector(id: selected, keys: secrets, catalog: catalog, log: log,
             baseURL: base.isEmpty ? nil : URL(string: base), cliPath: path.isEmpty ? nil : path)
+    }
+
+    private func recordCodexFallback(from missing: String, to replacement: String, path: String) {
+        guard path == string("llm.cliPath.codex") else { return }
+        codexFallbacks[missing] = replacement
     }
     func revealLogs() { try? FileManager.default.createDirectory(at: locations.logs, withIntermediateDirectories: true); NSWorkspace.shared.open(locations.logs) }
     func diagnostics() async -> String {
