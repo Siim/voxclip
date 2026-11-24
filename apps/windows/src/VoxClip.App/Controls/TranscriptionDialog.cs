@@ -515,10 +515,9 @@ internal sealed class TranscriptionDialog : InlineEditorJob
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 if (exception is VoxClip.Core.Domain.Shared.VoxClipException { Code: VoxClip.Core.Domain.Shared.VoxClipErrorCode.KeyRejected or VoxClip.Core.Domain.Shared.VoxClipErrorCode.KeyPermissionMissing }) keySaved = false;
-                App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Error, "transcribe",
-                    $"dialog failed type={exception.GetType().Name} hresult={exception.HResult}");
                 if (!closed && version == inputRevision && baseline.IsCurrent && (retry ?? retainedWords) is { } saved)
                 {
+                    UiError.WriteFailure(exception, "Transcription");
                     OfferAlignmentRetry(saved);
                     Ui.Show(notice, "Couldn't finish aligning the words. ElevenLabs' words are saved. Your media and edits are safe.", InfoBarSeverity.Error);
                     Ui.Announce(notice, notice.Message, "transcription");

@@ -6,6 +6,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - On Mac, recordings whose audio starts before the picture keep a visible preview after processing and when switching to an imported lip-sync result.
 
+- On Mac and Windows, diagnostics identify which action failed and what kind of error occurred, without recording error messages or personal data.
 - ✦ Claude does it all stops when Find Clips needs your help, including when the selected model isn't available. It retries temporary connection problems up to three times, then shows what to do next.
 - On Mac, VoxClip picks the newest compatible Codex CLI, offers to update an older pinned copy, and only saves a new Codex model after Test Connection passes. GPT-6.2 Sol and Astra are in the Mac and Windows catalogs.
 - If word alignment fails after ElevenLabs returns a transcript, VoxClip keeps the words and offers a free Retry without uploading the audio again.

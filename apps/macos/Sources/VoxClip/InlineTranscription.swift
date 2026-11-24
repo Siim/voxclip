@@ -262,7 +262,7 @@ import VoxClipMedia
             }
             keyGuard.reset()
         } catch {
-            let message = await model.app.safeError(error)
+            let message = await model.app.safeError(error, context: .transcribe)
             guard request == revision, !Task.isCancelled, selection == [engine, language, modelID], phase == .choosing else { return }
             self.error = message
         }

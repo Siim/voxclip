@@ -581,23 +581,27 @@ internal sealed partial class RewriteSession : IDisposable
     }
     /// <summary>A change that only inserts words has no source words to replace (Mac, ADR-R42): the video has no time for them.</summary>
     internal const string InsertionCopy = "This adds words where you said nothing, and the video has no time for them, so it stays as recorded. Your edits are saved.";
-    internal static string Refusal(Exception exception) => exception switch
+    internal static string Refusal(Exception exception)
     {
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } =>
-            $"This change is too close to the {(start ? "start" : "end")} of the take to blend in. Re-record this sentence instead.",
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } =>
-            InsertionCopy,
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.RoomToneUnavailable } =>
-            "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.",
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.NoVoicedAudio } or
-            VoiceLabAudioMathException { Code: VoiceLabAudioMathErrorCode.NoVoicedAudio } =>
-            "There isn't enough timed speech to estimate this change. Your edits are saved.",
-        RewriteGenerationException problem => problem.Message,
-        VoiceLabSourceAudioException source => source.Message + " Your edits are saved.",
-        VoiceLabGeometryException => "This change can't be placed in this take. Your edits are saved.",
-        VoiceLabLengthBudgetException => "There isn't enough timed speech to estimate this change. Your edits are saved.",
-        _ => UiError.Message(exception, "Rewrite")
-    };
+        UiError.WriteFailure(exception, "Rewrite");
+        return exception switch
+        {
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } =>
+                $"This change is too close to the {(start ? "start" : "end")} of the take to blend in. Re-record this sentence instead.",
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } =>
+                InsertionCopy,
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.RoomToneUnavailable } =>
+                "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.",
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.NoVoicedAudio } or
+                VoiceLabAudioMathException { Code: VoiceLabAudioMathErrorCode.NoVoicedAudio } =>
+                "There isn't enough timed speech to estimate this change. Your edits are saved.",
+            RewriteGenerationException problem => problem.Message,
+            VoiceLabSourceAudioException source => source.Message + " Your edits are saved.",
+            VoiceLabGeometryException => "This change can't be placed in this take. Your edits are saved.",
+            VoiceLabLengthBudgetException => "There isn't enough timed speech to estimate this change. Your edits are saved.",
+            _ => UiError.Describe(exception, "Rewrite")
+        };
+    }
 
     public void Dispose()
     {

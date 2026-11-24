@@ -206,7 +206,7 @@ extension EditorModel {
                 let count = result.style.captionPicks.count
                 announce(count == 1 ? "Picked a caption style for 1 clip" : "Picked caption styles for \(count) clips")
             } catch is CancellationError {} catch LLMError.cancelled {} catch {
-                let message = await app.safeError(error, context: "ai:\(provider.label)")
+                let message = await app.safeError(error, context: .clipStyle, messageContext: "ai:\(provider.label)")
                 if !message.isEmpty { state.error = message }
             }
         }

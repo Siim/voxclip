@@ -354,11 +354,11 @@ enum LipSyncAvailability {
             SecureField(saved ? "Saved in Keychain; paste to replace" : "API key", text: $value).accessibilityLabel("\(label) API key")
             HStack {
                 Button("Save key") {
-                    Task { do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true; message = "Saved in the Keychain." } catch { message = await app.safeError(error) } }
+                    Task { do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true; message = "Saved in the Keychain." } catch { message = await app.safeError(error, context: .settings) } }
                 }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if saved {
                     Button("Forget key") {
-                        Task { do { try await app.saveProviderKey("", for: provider); value = ""; saved = false; message = nil } catch { message = await app.safeError(error) } }
+                        Task { do { try await app.saveProviderKey("", for: provider); value = ""; saved = false; message = nil } catch { message = await app.safeError(error, context: .settings) } }
                     }
                 }
             }

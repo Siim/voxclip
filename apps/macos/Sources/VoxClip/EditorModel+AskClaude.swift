@@ -207,7 +207,7 @@ extension EditorModel {
                 guard project == snapshot else { state.error = "The project changed while Claude worked. Ask again."; return }
                 applyAskClaude(answer, instruction: instruction, selection: selection)
             } catch is CancellationError {} catch LLMError.cancelled {} catch {
-                let message = await app.safeError(error, context: "ai:\(provider.label)")
+                let message = await app.safeError(error, context: .askClaude, messageContext: "ai:\(provider.label)")
                 if !message.isEmpty { state.error = message }
             }
         }
