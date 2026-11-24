@@ -807,6 +807,8 @@ Core defines `Log` with levels `error`, `warn`, `info`, `debug` and a category s
 
 Logging must never crash or block startup: file sink failures are swallowed after one system-log message. Writes go through a background queue (macOS) or channel (Windows). Help → "Reveal Logs" opens the folder in Finder / Explorer. Help → "Copy Diagnostics" copies version, OS, architecture, GPU and cached encoder (Windows), and the last 200 redacted log lines.
 
+On Windows, user-facing failures use a fixed action category, such as `project-open`, `rewrite`, `export`, or `settings`, separate from the copy shown in the app. Each diagnostic includes the exception type and its named case where available, or an HRESULT. Rewrite can add a fixed stage. Cancellation does not write a failure. The diagnostic never takes the displayed message, paths, provider replies or personal data, and still goes through the redactor.
+
 ### 11.2 Redaction (Core `Redactor`, pure, fixture-tested)
 
 This is the only redactor definition: the AI spec, the transcription spec, Voice Lab and the LLM catalogue refer to it, and the replacement text is `[REDACTED]` (URL userinfo uses `***`). Every message passes through `Redactor.redact(_:)` before it reaches any sink. In order:

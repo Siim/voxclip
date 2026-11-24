@@ -1,5 +1,6 @@
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Logging;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Media.VoiceLab;
 using VoxClip.Media.Pipeline;
@@ -8,20 +9,91 @@ namespace VoxClip.App.ViewModels;
 
 public static class UiError
 {
+    internal static ILog? FailureLog { get; set; }
+
     public static string ExportMessage(Exception exception, string destination)
     {
+        var message = DescribeExport(exception, destination);
+        if (message.Length != 0) WriteFailure(exception, "Export");
+        return message;
+    }
+
+    private static string DescribeExport(Exception exception, string destination)
+    {
         if (exception is OperationCanceledException or VoiceLabProjectException or VoiceLabAssetException or VoiceLabTempoException or LlmException)
-            return Message(exception, "Export");
+            return Describe(exception, "Export");
         if (exception is VoxClipException known and not MediaException)
         {
             if (known.Code != VoxClipErrorCode.ExportFailed || known.Message.StartsWith("Export stopped: ", StringComparison.Ordinal) && known.Message.EndsWith(". Your edits are saved.", StringComparison.Ordinal))
-                return Message(exception, "Export");
+                return Describe(exception, "Export");
         }
         return ExportErrors.Map(exception, destination).Message;
     }
-    public static string Message(Exception exception, string action)
+    public static string Message(Exception exception, string action) => Message(exception, action, FailureLog);
+
+    internal static string Message(Exception exception, string action, ILog? log)
     {
-        if (exception is OperationCanceledException) return "";
+        var message = Describe(exception, action);
+        if (message.Length != 0) WriteFailure(exception, action, log);
+        return message;
+    }
+
+    internal static void WriteFailure(Exception exception, string action, ILog? log = null)
+    {
+        if (IsCancellation(exception)) return;
+        var category = action switch
+        {
+            "Open project" or "Recent projects" => "project-open",
+            "Save project" or "Close project" => "project-save",
+            "Import video" or "Open video" => "import",
+            "Locate media" or "Relink media" => "relink",
+            "Export" => "export",
+            "Share" => "share",
+            "Rewrite" => "rewrite",
+            "Settings" or "Save settings" or "Save key" or "Connection test" or "AI status" or "Voice Lab keys" or "Welcome tour" => "settings",
+            "Transcribe" or "Transcription" => "transcribe",
+            "Local models" or "Model download" => "models",
+            "Preview" or "Preview label position" or "Audition" => "preview",
+            "Preview card" => "preview-card",
+            "Waveform" => "waveform",
+            "Find clips" => "llm",
+            "Ask Claude" => "ask-claude",
+            "Make it postable" => "make-it",
+            "Voice Lab" or "Each video" => "voice-lab",
+            "Captions" => "captions",
+            "Editing" or "Timeline" or "Undo" or "Hook" => "editing",
+            "Music" => "music",
+            "Update" => "update",
+            "Startup" => "startup",
+            _ => "ui"
+        };
+        (log ?? FailureLog)?.Write(LogLevel.Error, category, FailureKind(exception));
+    }
+
+    internal static bool IsCancellation(Exception exception) => exception is OperationCanceledException
+        or VoxClipException { Code: VoxClipErrorCode.Cancelled }
+        or VoiceLabException { Kind: VoiceLabErrorKind.Cancelled }
+        or LlmException { Error.Kind: LlmErrorKind.Cancelled };
+
+    internal static string FailureKind(Exception exception) => "type=" + exception.GetType().Name + (exception switch
+    {
+        VoxClipException known => " case=" + known.WireCode,
+        LlmException llm => " case=" + llm.Error.Kind,
+        VoiceLabProjectException project => " case=" + project.Code,
+        VoiceLabGeometryException geometry => " case=" + geometry.Code,
+        VoiceLabWordDiffException diff => " case=" + diff.Code,
+        VoiceLabLengthBudgetException budget => " case=" + budget.Code,
+        VoiceLabAudioMathException audio => " case=" + audio.Code,
+        VoiceLabSourceAudioException source => " case=" + source.Code,
+        VoiceLabException voiceLab => " case=" + voiceLab.Kind,
+        VoiceConsentException consent => " case=" + consent.Kind,
+        VoiceLabAssetException asset => " case=" + asset.Code,
+        _ => $" hresult=0x{exception.HResult:X8}"
+    });
+
+    internal static string Describe(Exception exception, string action)
+    {
+        if (IsCancellation(exception)) return "";
         if (exception is VoiceLabException provider)
             return provider.Kind switch
             {
