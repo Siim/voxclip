@@ -140,7 +140,7 @@ internal sealed class MakeItPanel : InlineEditorJob
                 _ => run.Lines.LastOrDefault() ?? "waiting"
             };
             var item = new Microsoft.UI.Xaml.Controls.Primitives.ToggleButton { Content = $"{title} · {state}", IsChecked = id == shown.ClipId, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
-            item.Click += (_, _) => { Editor.MakeIt.ShownClipId = id; Render(); };
+            item.Click += (_, _) => { Editor.MakeIt.ShownClipId = id; Editor.SetScope(id); Render(); };
             body.Children.Add(item);
         }
     }

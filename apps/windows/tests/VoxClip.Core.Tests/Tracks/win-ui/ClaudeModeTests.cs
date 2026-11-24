@@ -189,6 +189,43 @@ public sealed class ClaudeModeTests
     }
 
     [Fact]
+    public async Task LaterPlansDoNotInterruptReviewOfTheFirstReadyClip()
+    {
+        var (editor, claude, stub) = Video();
+        var firstPlan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var laterPlans = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        editor.MakeIt.Services = stub.Services() with
+        {
+            Plan = async (request, progress, _, cancellation) =>
+            {
+                var series = stub.Series(request);
+                progress.Report(new ClipAutopilotProgress.Ready(0, series.Plans.Count, series.Plans[0]));
+                firstPlan.SetResult();
+                await laterPlans.Task.WaitAsync(cancellation);
+                return series;
+            }
+        };
+        await editor.ClaudeModeContinueAsync();
+        claude.Gate.SetResult();
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(5));
+            await firstPlan.Task.WaitAsync(deadline.Token);
+            while (editor.ClaudeModeReady.Count == 0) await Task.Delay(10, deadline.Token);
+            var reviewing = Assert.Single(editor.ClaudeModeReady).ClipId;
+            editor.ReviewClaudeMode();
+            laterPlans.SetResult();
+            await editor.ClaudeMode.WaitAsync();
+            await editor.ClaudeMode.WaitAsync();
+            Assert.Equal(3, editor.ClaudeModeReady.Count);
+            Assert.Equal(reviewing, editor.MakeIt.Shown?.ClipId);
+            Assert.Equal(reviewing, editor.Project.Edits.ActiveClipId);
+        }
+        finally { laterPlans.TrySetResult(); }
+    }
+
+    [Fact]
     public async Task AReopenedOrReadOnlyProjectNeverStarts()
     {
         var reopened = RewriteAutoFixTests.Editor();

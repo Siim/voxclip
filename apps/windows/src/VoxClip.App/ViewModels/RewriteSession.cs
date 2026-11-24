@@ -203,13 +203,13 @@ internal sealed partial class RewriteSession : IDisposable
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
         int? insertionAfter = null, VoiceLabPriceCatalog? prices = null,
         Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null, Func<string, bool>? speakerCalibrated = null,
-        RewriteScope? scope = null)
+        RewriteScope? scope = null, string? forClipId = null)
     {
         Editor = editor;
         Project = editor.Project;
         Transcript = editor.Words.Select(word => word.Kind == WordKind.Word ? word with { Text = editor.DisplayText(word) } : word).ToArray();
         Source = insertionAfter is null ? Transcript.Skip(first).Take(last - first + 1).ToArray() : [];
-        Scope = Project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
+        Scope = (forClipId ?? Project.Edits.ActiveClipId) is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
         Envelope = envelope;
         Connector = connector;
         InsertionAfter = insertionAfter;
