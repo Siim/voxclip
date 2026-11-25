@@ -4441,7 +4441,7 @@ member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public Size(Vox
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public UnmapAnchor(VoxClip.Core.Domain.Clips.ProjectClipControls,double,double)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public UnmapRect(VoxClip.Core.Domain.Clips.ProjectClipControls,VoxClip.Core.Domain.Effects.ClipEffectRect)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public VideoBitrate(VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Shared.ExportAspect,VoxClip.Core.Domain.Shared.ExportQuality,double,VoxClip.Core.Domain.Clips.ProjectClipControls)
-member VoxClip.Core.Domain.Clips.ClipFaceCrop :: method public Centered(VoxClip.Core.Domain.Shared.RectD,double,double,VoxClip.Core.Domain.Clips.ProjectClipControls,double)
+member VoxClip.Core.Domain.Clips.ClipFaceCrop :: method public Centered(VoxClip.Core.Domain.Shared.RectD,double,double,VoxClip.Core.Domain.Clips.ProjectClipControls,double,VoxClip.Core.Domain.Shared.ReframeSettings)
 member VoxClip.Core.Domain.Clips.ClipLook :: field public Bw
 member VoxClip.Core.Domain.Clips.ClipLook :: field public Muted
 member VoxClip.Core.Domain.Clips.ClipLook :: field public Original
@@ -4493,6 +4493,7 @@ member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Edited(double)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Equals(VoxClip.Core.Domain.Clips.ClipSpeedTiming)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Equals(object)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public ForEffects(double,System.Func`2<double,double>,System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Effects.ClipEffect>)
+member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public ForEffects(double,System.Func`2<double,double>,System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Effects.ClipEffect>,System.Func`2<double,double>)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public GetHashCode()
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public Rendered(double)
 member VoxClip.Core.Domain.Clips.ClipSpeedTiming :: method public RenderedSamples(long)
@@ -5854,6 +5855,7 @@ member VoxClip.Core.Domain.Editing.EditPlan :: field private outputSamples
 member VoxClip.Core.Domain.Editing.EditPlan :: field private sampleRate
 member VoxClip.Core.Domain.Editing.EditPlan :: field private sourceIndex
 member VoxClip.Core.Domain.Editing.EditPlan :: field private totalSamples
+member VoxClip.Core.Domain.Editing.EditPlan :: method internal MapTime(double,bool)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private .ctor(VoxClip.Core.Domain.Editing.EditPlan)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private BuildGainParts(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private NormalizeJoins(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Join>)
@@ -7202,7 +7204,6 @@ member VoxClip.Core.Domain.Frames.FrameBlurSpans+Open :: method public set_Last(
 member VoxClip.Core.Domain.Frames.FrameBlurSpans+Open :: method public set_LastRect(VoxClip.Core.Domain.Effects.ClipEffectRect)
 member VoxClip.Core.Domain.Frames.FrameBlurSpans+Open :: method public set_Union(VoxClip.Core.Domain.Effects.ClipEffectRect)
 member VoxClip.Core.Domain.Frames.FrameClip :: method private .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,int,int,int[])
-member VoxClip.Core.Domain.Frames.FrameClip :: method private IndexOf(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,string)
 member VoxClip.Core.Domain.Frames.FrameClip :: method public Make(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,int,int,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Frames.FrameClip :: method public Make(VoxClip.Core.Domain.Transcript.Transcript,VoxClip.Core.Domain.Editing.ClipRange,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Frames.FrameClip :: method public get_End()
@@ -8432,6 +8433,7 @@ member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public Deconstruct(V
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public Equals(VoxClip.Core.Domain.Shared.ClipRenderInput)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public Equals(object)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public GetHashCode()
+member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public PartReframeAt(double)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public Resolve(VoxClip.Core.Domain.Shared.Project,string,string,string)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public ToString()
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public get_Controls()
@@ -8439,6 +8441,7 @@ member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public get_Effects()
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public get_ForEditedAudio()
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public get_Motion()
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public get_Music()
+member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public get_PartReframes()
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public get_ReduceMotionInPreview()
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public op_Equality(VoxClip.Core.Domain.Shared.ClipRenderInput,VoxClip.Core.Domain.Shared.ClipRenderInput)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public op_Inequality(VoxClip.Core.Domain.Shared.ClipRenderInput,VoxClip.Core.Domain.Shared.ClipRenderInput)
@@ -8446,6 +8449,7 @@ member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public set_Controls(
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public set_Effects(VoxClip.Core.Domain.Effects.ClipEffectsRenderInput)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public set_Motion(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ContextDemo.MotionCue>)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public set_Music(VoxClip.Core.Domain.Music.MusicRenderInput)
+member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public set_PartReframes(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Shared.ReframeSettings>>)
 member VoxClip.Core.Domain.Shared.ClipRenderInput :: method public set_ReduceMotionInPreview(bool)
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method private .ctor(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method private PrintMembers(System.Text.StringBuilder)
@@ -10025,6 +10029,7 @@ member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public GetHash
 member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public Jobs(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe>)
 member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public OutputSample(long,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public Project(VoxClip.Core.Domain.VoiceLab.LipsyncWindow,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
+member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public SavedOutputRange(long,long,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,bool)
 member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public Seconds(double)
 member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.LipsyncRenderWindow :: method public UploadSeconds(double)
@@ -10290,6 +10295,7 @@ member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method protected get_Equal
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method public Equals(VoxClip.Core.Domain.VoiceLab.RenderTimeline)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method public MapEndTime(double)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method public MapTime(double)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method public SourceTime(double)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method public ToString()
@@ -12537,6 +12543,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPieceKind :: field public Synt
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPieceKind :: field public value__
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: field private pieces
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: field private sourceIndex
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method internal MapTime(double,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private get_EqualityContract()
