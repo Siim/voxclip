@@ -96,7 +96,7 @@ private actor SettingsDebounceClock {
         #expect(untouched.schemaVersion == 5)
         #expect(try JSONProjectStore.encode(untouched) == original)
 
-        let title = ClipEffect(id: "timeline-title", clipId: "story", kind: .title, start: 0, end: 1, text: "Opening", position: .top)
+        let title = ClipEffect(id: "timeline-title", clipId: "story", kind: .title, start: 0.3, end: 1, text: "Opening", position: .top)
         story = try ClipEffects.adding([title], to: story)
         let withTitle = try JSONProjectStore.encode(story)
         var document = try #require(JSONSerialization.jsonObject(with: withTitle) as? [String: Any])
