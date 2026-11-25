@@ -1,7 +1,9 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.VoiceLab;
@@ -211,7 +213,23 @@ internal static class EffectAudio
                 throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VoxClip's bundled sound effects are missing. Reinstall VoxClip. Your edits are saved.");
             var start = (long)Math.Round(Map(effect.Start) * rate, MidpointRounding.AwayFromZero);
             if (start >= outputFrames) continue;
-            var samples = Decode(path, effect.Sound?.DurationSeconds ?? ClipEffect.MaximumSoundSeconds, rate);
+            var assetLength = effect.Sound?.DurationSeconds ?? ClipEffect.MaximumSoundSeconds;
+            var length = effect.End - effect.Start;
+            var edited = effect.MediaOffsetSeconds.HasValue || effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue ||
+                effect.GainPoints is not null || Math.Abs(length - assetLength) >= 1e-6;
+            var samples = edited ? Decode(path, length, rate, effect.MediaOffsetSeconds ?? 0) : Decode(path, assetLength, rate);
+            if (edited)
+            {
+                var frames = Math.Min(samples.Length / 2, (int)Math.Round(length * rate, MidpointRounding.AwayFromZero));
+                if (frames < samples.Length / 2) Array.Resize(ref samples, frames * 2);
+                var shape = new ItemShape(effect.FadeInSeconds, effect.FadeOutSeconds, effect.GainPoints);
+                for (var frame = 0; frame < frames; frame++)
+                {
+                    var gain = (float)MusicMix.ItemGain(frame / (double)rate, shape, length);
+                    samples[frame * 2] *= gain;
+                    samples[frame * 2 + 1] *= gain;
+                }
+            }
             sounds.Add(new(start, samples, (float)Math.Pow(10, (effect.GainDb ?? 0) / 20)));
         }
         return new(tones, sounds.ToArray());
@@ -255,7 +273,9 @@ internal static class EffectAudio
 
     /// <summary>A sound file as interleaved stereo floats at <paramref name="rate"/>, at most <paramref name="seconds"/> long. WAV is
     /// read directly (the bundled sounds); other formats go through FFmpeg.</summary>
-    internal static float[] Decode(string path, double seconds, int rate)
+    internal static float[] Decode(string path, double seconds, int rate) => Decode(path, seconds, rate, 0);
+
+    private static float[] Decode(string path, double seconds, int rate, double offset)
     {
         if (!File.Exists(path))
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, $"Export stopped: the sound effect {Path.GetFileName(path)} is missing. Your edits are saved.");
@@ -265,12 +285,13 @@ internal static class EffectAudio
         {
             var wave = VoiceLabWavePcm.Parse(File.ReadAllBytes(path));
             sourceRate = wave.Rate;
-            var frames = (int)Math.Min(wave.Frames, Math.Ceiling(seconds * sourceRate));
+            var first = Math.Min(wave.Frames, (int)Math.Round(offset * sourceRate, MidpointRounding.AwayFromZero));
+            var frames = (int)Math.Min(wave.Frames - first, Math.Ceiling(seconds * sourceRate));
             stereo = new float[frames * 2];
             for (var frame = 0; frame < frames; frame++)
             {
-                stereo[frame * 2] = (float)wave.Sample(frame, 0);
-                stereo[frame * 2 + 1] = (float)wave.Sample(frame, Math.Min(1, wave.Channels - 1));
+                stereo[frame * 2] = (float)wave.Sample(first + frame, 0);
+                stereo[frame * 2 + 1] = (float)wave.Sample(first + frame, Math.Min(1, wave.Channels - 1));
             }
         }
         else
@@ -280,6 +301,7 @@ internal static class EffectAudio
             sourceRate = decoder.SampleRate;
             var frames = (int)Math.Ceiling(seconds * sourceRate);
             stereo = new float[frames * 2];
+            if (offset > 0) decoder.Seek((long)Math.Round(offset * sourceRate, MidpointRounding.AwayFromZero));
             decoder.Read(stereo, frames, CancellationToken.None);
         }
         return sourceRate == rate ? stereo : Resample(stereo, sourceRate, rate);

@@ -1,3 +1,4 @@
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Music;
@@ -136,7 +137,10 @@ public static class MusicMix
 
     /// <summary>Per-frame ducking in dB, linear in dB: it reaches <see cref="DuckDb"/> by each speech onset (the attack starts
     /// 150 ms early, since the whole clip is known) and recovers over 400 ms after speech ends. All zeros without ducking.</summary>
-    public static double[] DuckingGainsDb(IReadOnlyList<bool> activity, bool ducking = true)
+    public static double[] DuckingGainsDb(IReadOnlyList<bool> activity, bool ducking = true) => DuckingGainsDb(activity, ducking, DuckDb);
+
+    /// <summary>The same attack and release with a custom depth.</summary>
+    public static double[] DuckingGainsDb(IReadOnlyList<bool> activity, bool ducking, double depthDb)
     {
         var count = activity.Count;
         if (!ducking || !activity.Contains(true)) return new double[count];
@@ -151,8 +155,8 @@ public static class MusicMix
         var gains = new double[count];
         for (var index = 0; index < count; index++)
         {
-            var before = DuckDb * Math.Max(0, 1 - untilNext[index] / attack);
-            var after = DuckDb * Math.Max(0, 1 - sinceLast[index] / release);
+            var before = depthDb * Math.Max(0, 1 - untilNext[index] / attack);
+            var after = depthDb * Math.Max(0, 1 - sinceLast[index] / release);
             gains[index] = Math.Min(before, after);
         }
         return gains;
@@ -177,6 +181,27 @@ public static class MusicMix
         if (fadeIn > 0) factor = Math.Min(factor, Math.Max(0, seconds / fadeIn));
         if (fadeOut > 0) factor = Math.Min(factor, Math.Max(0, (duration - seconds) / fadeOut));
         return Math.Min(1, factor);
+    }
+
+    /// <summary>Item-local relative gain, interpolated in dB and then multiplied by the linear fades.</summary>
+    public static double ItemGain(double seconds, ItemShape shape, double length)
+    {
+        var fade = FadeFactor(seconds, length, shape.FadeInSeconds ?? 0, shape.FadeOutSeconds ?? 0);
+        if (fade == 0 || shape.GainPoints is not { Count: > 0 } points) return fade;
+        if (seconds <= points[0].T) return fade * Math.Pow(10, points[0].Db / 20);
+        if (seconds >= points[^1].T) return fade * Math.Pow(10, points[^1].Db / 20);
+        var lower = 0;
+        var upper = points.Count - 1;
+        while (upper - lower > 1)
+        {
+            var middle = (lower + upper) / 2;
+            if (seconds < points[middle].T) upper = middle;
+            else lower = middle;
+        }
+        var first = points[lower];
+        var second = points[upper];
+        var db = first.Db + (second.Db - first.Db) * (seconds - first.T) / (second.T - first.T);
+        return fade * Math.Pow(10, db / 20);
     }
 
     /// <summary>One stretch of the source track placed in the bed. Neighbours overlap by FadeIn/FadeOut frames.</summary>

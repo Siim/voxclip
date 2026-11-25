@@ -9,6 +9,7 @@ using VoxClip.Cli;
 using VoxClip.Media.Audio;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
+using VoxClip.Media.VoiceLab;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -294,6 +295,35 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         var inside = ((int)(0.42 * Rate), (int)(0.78 * Rate));
         Assert.True(Amplitude(mixed, inside.Item1, inside.Item2, 441) < 0.005);
         Assert.Equal(0.25, Amplitude(mixed, inside.Item1, inside.Item2, 1_000), 2);
+    }
+
+    [Fact]
+    public void SlippedSoundPlaysAcrossACutAtItsOwnLengthWithFadesAndEnvelope()
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-sound-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "sound.wav");
+            var pcm = new short[Rate];
+            pcm.AsSpan(0, Rate / 2).Fill(4096);
+            pcm.AsSpan(Rate / 2).Fill(16384);
+            File.WriteAllBytes(path, new VoiceLabWavePcm(Rate, 1, 16, false, System.Runtime.InteropServices.MemoryMarshal.AsBytes(pcm.AsSpan()).ToArray()).Bytes());
+            var effect = new ClipEffect("sound", null, "sound", .75, 1.25)
+            {
+                Sound = new("library", null, "sound.wav", 1), MediaOffsetSeconds = .5, FadeInSeconds = .25,
+                FadeOutSeconds = .25, GainPoints = [new(0, -12), new(.25, 0)]
+            };
+            var plan = TestPlan.FromKept(Rate, 3 * Rate, [new(0, Rate / 2), new(Rate, 3 * Rate)]);
+            var snapshot = Snapshot(new(Controls(2), new([effect], new Dictionary<string, string> { [effect.Id] = path })), 3 * Rate) with { Plan = plan };
+            using var reader = Reader(snapshot, frames: plan.OutputSamples, amplitude: 0);
+            var samples = Left(reader);
+            Assert.Equal(0, samples[(int)(.25 * Rate)]);
+            Assert.Equal(.125297, samples[(int)(.375 * Rate)], 6);
+            Assert.Equal(.5f, samples[Rate / 2]);
+            Assert.Equal(.25f, samples[(int)(.625 * Rate)]);
+            Assert.Equal(0, samples[(int)(.75 * Rate)]);
+        }
+        finally { directory.Delete(recursive: true); }
     }
 
     [Fact]
