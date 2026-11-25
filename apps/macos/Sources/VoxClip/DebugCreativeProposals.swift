@@ -6,8 +6,10 @@ import VoxClipCore
 @MainActor enum DebugCreativeProposals {
     static let suggestedID = "proposal-scene-story"
 
-    static func suggestedStory(in project: Project) throws -> Project {
-        guard let words = project.transcript?.words, words.count > 38 else { throw CocoaError(.coderInvalidValue) }
+    static func suggestedStory(from base: Project) throws -> Project {
+        var next = try DebugExplorer.fiveQuestions(from: base)
+        next.id = base.id
+        guard let words = next.transcript?.words, words.count > 38 else { throw CocoaError(.coderInvalidValue) }
         let sourceRanges = [29...38, 9...28, 0...8]
         let ranges = sourceRanges.map { ClipWordRange(startWordId: words[$0.lowerBound].id, endWordId: words[$0.upperBound].id) }
         let story = ProjectAIClip(title: "The steps that led to SuperScribe", reason: "The outcome first, then the steps that led to it.",
@@ -20,7 +22,6 @@ import VoxClipCore
         }
         let clip = ClipRange(id: suggestedID, startWordId: story.startWordId, endWordId: story.endWordId, title: story.title,
             origin: .ai, aiResultId: resultID, aiClipIndex: 0, selected: false, parts: parts, kind: .story)
-        var next = project
         next.ai.results.append(result)
         try next.applyEditing(.addAIClips(resultId: resultID, clips: [clip]))
         return next
@@ -31,7 +32,7 @@ import VoxClipCore
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let original = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         let shell = WorkspaceShell(app: app)
-        let project = try suggestedStory(in: original)
+        let project = try suggestedStory(from: original)
         await shell.attachForTesting(VoxClipDocument(project: project, demo: true))
         guard let editor = shell.editor, let clip = editor.suggestedClips.first(where: { $0.id == suggestedID }) else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }

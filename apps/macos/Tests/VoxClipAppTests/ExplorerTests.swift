@@ -7,12 +7,13 @@ import Testing
 
 @Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
-    private func open(demo: Bool = true) async throws -> (WorkspaceShell, EditorModel) {
+    private func open(demo: Bool = true, story: Bool = false) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
-        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: base), demo: demo), selection: .fullTake)
+        let project = try story ? DebugCreativeProposals.suggestedStory(from: base) : DebugExplorer.fiveQuestions(from: base)
+        await shell.attachForTesting(VoxClipDocument(project: project, demo: demo), selection: .fullTake)
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
         editor.refresh()
@@ -23,11 +24,8 @@ import Testing
     }
 
     @Test func suggestedStoryShowsItsOwnPartsAndSeparatesMissingMaterialFromTheReason() async throws {
-        let (_, editor) = try await open()
+        let (_, editor) = try await open(story: true)
         defer { editor.close() }
-        let next = try DebugCreativeProposals.suggestedStory(in: editor.project)
-        editor.document.replaceProject(next)
-        editor.refresh()
         let clip = try #require(editor.suggestedClips.first { $0.id == DebugCreativeProposals.suggestedID })
         let details = try #require(editor.suggestedCardDetails(clip))
         #expect(details.badge == "Story · 3 parts")
