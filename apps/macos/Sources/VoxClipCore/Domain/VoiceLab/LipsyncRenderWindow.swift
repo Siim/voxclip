@@ -58,6 +58,21 @@ public struct LipsyncRenderWindow: Sendable, Equatable {
     public static func outputSample(_ sample: Int64, plan: VoiceLabOutputPlan) -> Int64 {
         Int64((plan.mapTime(Double(sample) / plan.sampleRate) * plan.sampleRate).rounded())
     }
+
+    /// A saved replacement can only use a window contained in the part that owns its voice piece.
+    public static func savedOutputRange(start: Int64, end: Int64, piece: VoiceLabOutputPiece, plan: VoiceLabOutputPlan) -> Range<Int64>? {
+        if !plan.partSeams.isEmpty {
+            let first = plan.partSeams.last { $0 <= piece.outputStartSample } ?? 0
+            let last = plan.partSeams.first { $0 > piece.outputStartSample } ?? plan.outputSamples
+            guard let head = plan.pieces.first(where: { $0.outputStartSample == first }),
+                  let tail = plan.pieces.last(where: { $0.outputEndSample == last }),
+                  head.sourceStartSample <= start, end <= tail.sourceEndSample else { return nil }
+        }
+        let lower = outputSample(start, plan: plan)
+        let upper = Int64((plan.mapTime(Double(end) / plan.sampleRate, end: true) * plan.sampleRate).rounded())
+        guard lower < upper, lower <= piece.outputStartSample, piece.outputEndSample <= upper else { return nil }
+        return lower..<upper
+    }
 }
 
 extension VoiceLabVideoRecipe {

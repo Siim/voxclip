@@ -28,10 +28,12 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
     {
         if (RequiresSyntheticRendering) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.UnsupportedRendering);
     }
-    public double MapTime(double source)
+    public double MapTime(double source) => MapTime(source, false);
+    internal double MapTime(double source, bool end)
     {
         var sample = (long)Math.Clamp(EditingMath.Round(double.IsFinite(source) ? source * SampleRate : 0), 0, TotalSourceSamples);
-        var index = EditingPlanner.FindSource(sourceIndex, sample, piece => piece.SourceStartSample);
+        var probe = end && PartSeams.Count > 0 && sample > 0 ? sample - 1 : sample;
+        var index = EditingPlanner.FindSource(sourceIndex, probe, piece => piece.SourceStartSample);
         if (index < 0) return 0;
         var piece = sourceIndex[index];
         if (sample <= piece.SourceEndSample)

@@ -17,7 +17,7 @@ struct FootageLayer: Sendable {
             try Task.checkCancellation()
             let entry = input.entry
             func time(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: 600_000) }
-            let output = CMTimeRange(start: time(timeline.mapTime(entry.start)), end: time(timeline.mapTime(entry.end)))
+            let output = CMTimeRange(start: time(timeline.mapTime(entry.start)), end: time(timeline.mapEndTime(entry.end)))
             guard output.isValid, output.duration > .zero else { continue }
             if let key = input.expectedKey, (try? JSONProjectStore.contentKey(for: input.url)) != key {
                 throw VoxClipError.mediaMissing("Companion recording")

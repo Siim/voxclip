@@ -163,7 +163,7 @@ public enum FCPXML {
                 guard let text = effect.text, !text.isEmpty, effect.start.isFinite, effect.end.isFinite else { continue }
                 let position = position(effect.position ?? (effect.kind == .lowerThird ? .bottom : .top))
                 addTitle(text, role: "title", lane: index + 3, position: position, size: 64,
-                    start: timing.rendered(render.timeline.mapTime(effect.start)), end: timing.rendered(render.timeline.mapTime(effect.end)),
+                    start: timing.rendered(render.timeline.mapTime(effect.start)), end: timing.rendered(render.timeline.mapEndTime(effect.end)),
                     cut: cut, parentStart: start, sequence: grid, index: &titleIndex, in: clip)
             }
             for page in render.captions.pages {

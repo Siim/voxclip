@@ -91,7 +91,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             let editedTime = instruction.request.speedTiming.edited(request.compositionTime.seconds)
             var image = ClipPicture.orient(CIImage(cvPixelBuffer: source).oriented(instruction.orientation), controls: controls)
             let sourceExtent = image.extent
-            let aspectCrop = Self.aspectCrop(source: image.extent, output: size, controls: controls)
+            let aspectCrop = Self.aspectCrop(source: image.extent, output: size, controls: controls, part: instruction.partReframe)
             var crop = aspectCrop
             if instruction.videoZoom > 1 {
                 let anchor = controls?.mapAnchor(x: instruction.videoAnchorX, y: instruction.videoAnchorY)
@@ -119,7 +119,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 }
                 let captured = ClipPicture.orient(CIImage(cvPixelBuffer: frame).oriented(layer.orientation), controls: controls)
                 let replacement = CompositionFrameGeometry.fill(captured,
-                    crop: Self.aspectCrop(source: captured.extent, output: size, controls: controls), output: size)
+                    crop: Self.aspectCrop(source: captured.extent, output: size, controls: controls, part: instruction.partReframe), output: size)
                 image = replacement.applyingFilter("CIDissolveTransition", parameters: [
                     kCIInputTargetImageKey: image, kCIInputTimeKey: 1 - weight])
             }
@@ -165,7 +165,8 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             if let effects = instruction.effects {
                 let timeline = instruction.request.timeline
                 // A title, lower third or sticker that can't be drawn is left out of the frame; preview says so.
-                image = effects.frame(image, output: size, time: sourceTime, outputTime: editedTime, mapTime: { timeline.mapTime($0) },
+                image = effects.frame(image, output: size, time: sourceTime, outputTime: editedTime, mapTime: timeline.mapTime,
+                                      mapEndTime: timeline.mapEndTime,
                                       overlayFailed: { instruction.previewFailures?.report(.title) })
             }
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
@@ -282,9 +283,15 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     /// The output frame's crop of the source: centred, or for a portrait or square frame of a clip that follows the face
     /// (`ProjectClipControls.reframe`, ADR-R48), centred on the measured face, kept inside the picture. The centre is
     /// measured on the picture as filmed, so the clip's flip and quarter turns move it with the picture.
-    static func aspectCrop(source: CGRect, output: CGSize, controls: ProjectClipControls?) -> CGRect {
+    static func aspectCrop(source: CGRect, output: CGSize, controls: ProjectClipControls?, part: ReframeSettings? = nil) -> CGRect {
         let crop = centerCrop(source: source, output: output)
-        guard output.height > 0, let center = controls?.cropCenter(outputAspect: Double(output.width / output.height)) else { return crop }
+        guard output.height > 0 else { return crop }
+        let aspect = Double(output.width / output.height)
+        let center: (x: Double, y: Double)?
+        if let part, part.mode == ReframeSettings.faceMode, let x = part.centerX, let y = part.centerY, aspect <= 1 + 1e-9 {
+            center = (x, y)
+        } else { center = controls?.cropCenter(outputAspect: aspect) }
+        guard let center else { return crop }
         let mapped = controls?.mapAnchor(x: center.x, y: center.y) ?? center
         return CompositionFrameGeometry.centered(crop, in: source, x: mapped.x, y: mapped.y)
     }
@@ -327,6 +334,7 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     let videoZoom: Double
     let videoAnchorX: Double
     let videoAnchorY: Double
+    let partReframe: ReframeSettings?
     /// The render's picture effects (ai.md §18.5), shared by every instruction of one composition; nil without effects.
     let effects: EffectFrames?
     /// Where a preview item hears about failed or degraded frames; nil for exports.
@@ -342,13 +350,14 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
          orientation: CGImagePropertyOrientation, rasterizer: CoreTextCaptionRasterizer?,
          legacyRasterizer: (any CaptionRasterizer)? = nil, disclosure: VoiceLabDisclosureOverlay? = nil,
          demoLayer: CompositionDemoLayer? = nil, contextDemoLease: ContextDemoCompositionLease? = nil,
-         videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5,
+         videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5, partReframe: ReframeSettings? = nil,
          lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil, effects: EffectFrames? = nil,
          previewFailures: PreviewFrameFailures? = nil, captionDrawHook: CaptionLayoutDraw? = nil, footage: FootageLayer? = nil) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
         self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
         self.disclosure = disclosure; self.demoLayer = demoLayer; self.contextDemoLease = contextDemoLease
         self.videoZoom = videoZoom; self.videoAnchorX = videoAnchorX; self.videoAnchorY = videoAnchorY
+        self.partReframe = partReframe
         self.lipsyncLayers = lipsyncLayers
         self.colorCorrection = colorCorrection
         self.effects = effects

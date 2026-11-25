@@ -48,9 +48,11 @@ public static class ClipPicture
     public static FrameClip? OpeningClip(Project project, string clipId)
     {
         if (project.Transcript is not { } transcript || project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is not { } range) return null;
-        var first = IndexOf(transcript.Words, range.StartWordId);
-        if (first < 0 || FrameClip.Make(transcript, range, project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal)) is not { } clip) return null;
-        return clip.Kept[0] == first ? clip : null;
+        var parts = range.PlayPartIndices(transcript.Words);
+        if (parts is not { Count: > 0 }) return null;
+        var (first, last) = parts[0];
+        var clip = FrameClip.Make(transcript.Words, first, last, project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal));
+        return clip?.Kept[0] == first ? clip : null;
     }
 
     /// <summary>The start moves back (<see cref="OpeningFrame.Choose"/>, never across a word) when the first frame of

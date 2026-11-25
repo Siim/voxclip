@@ -253,6 +253,7 @@ public struct RenderRequest: Sendable, Equatable {
     /// The clip's speed, frame, look, volume, fades, mute, flip and rotation (design.md §6.9); nil, or the defaults, render
     /// exactly as before.
     public var clipControls: ProjectClipControls?
+    public var partReframes: [StoryPartReframe] = []
     public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil, voiceLab: VoiceLabRenderInput? = nil, contextDemo: ContextDemoRenderInput? = nil, contextDemoRoot: URL? = nil, motionCues: [MotionCue] = [], motionClipID: String? = nil, reduceMotion: Bool = false, sourceContentKey: String? = nil) {
         self.sourceURL = sourceURL; self.plan = plan; self.captions = captions; self.style = style; self.placement = placement; self.output = output; self.forPreview = forPreview
         self.captionLayout = captionLayout
@@ -263,6 +264,14 @@ public struct RenderRequest: Sendable, Equatable {
         self.motionClipID = motionClipID
         self.reduceMotion = reduceMotion
         self.sourceContentKey = sourceContentKey
+    }
+}
+public struct StoryPartReframe: Sendable, Equatable {
+    public let source: TimeRange
+    public let reframe: ReframeSettings
+
+    public init(source: TimeRange, reframe: ReframeSettings) {
+        self.source = source; self.reframe = reframe
     }
 }
 /// Export selection, never a rewrite of global cuts; architecture §4.9.

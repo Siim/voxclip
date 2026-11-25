@@ -4,6 +4,25 @@ import Testing
 
 /// What the export check expects to hear (ADR-R49), from the same timeline the renderer plays.
 @Suite(.offlineFixtures) struct ExportCheckExpectationTests {
+    @Test func storySeamPassesUnlessTheNextPartLosesItsFirstWord() throws {
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+        let clipID = try #require(project.edits.activeClipId)
+        let timeline = try RenderCallerInputs.timeline(project: project, clipID: clipID)
+        let edit = try ExportCheckExpectation.edit(timeline: timeline, speed: .init(speed: 1), effects: [],
+                                                   state: state(project, clipID: clipID), duration: timeline.duration)
+        let seam = try #require(edit.cuts.first)
+        let next = try #require(edit.words.firstIndex { $0.start >= seam })
+        #expect(next > 0 && next < edit.words.count - 1)
+        var input = ExportCheckInput(expected: edit.words, heard: edit.words.map { .init(text: $0.text, start: $0.start, end: $0.end) },
+            cuts: edit.cuts, video: .init(start: 0, end: edit.duration), audio: .init(start: 0, end: edit.duration),
+            frameSeconds: 1.0 / 30, loudness: nil, frame: .init(width: 320, height: 180))
+        #expect(ExportCheck.run(input).passed)
+        input.heard?.remove(at: next)
+        let result = try #require(ExportCheck.run(input)[.words])
+        #expect(result.status == .warning)
+        #expect(result.items.contains { $0.kind == .cutOff && $0.expected == edit.words[next].text })
+    }
+
     /// "So um, today we ship uh the clipper. Thanks" with a Rewrite of "we ship" as "new words" (segment vl-passage).
     private func passage() throws -> Project {
         try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))

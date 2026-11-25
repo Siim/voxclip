@@ -3,6 +3,14 @@ import Testing
 @testable import VoxClipCore
 
 @Suite(.offlineFixtures) struct StoryPlanFixtures {
+    @Test func storyOpeningStartsInPlaybackOrder() throws {
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+        let clip = try #require(project.edits.clips.first { $0.parts != nil })
+        let opening = try #require(ClipPicture.openingClip(project, clipID: clip.id))
+        #expect(opening.words[opening.first].id == clip.playParts[0].startWordId)
+        #expect(opening.words[opening.last].id == clip.playParts[0].endWordId)
+    }
+
     @Test func storyPlansReplay() throws {
         let data = try FixtureLoader.data("fixtures/story-clips/plan-vectors.json")
         let cases = FixtureValue(try JSONDecoder().decode(JSONValue.self, from: data)).array

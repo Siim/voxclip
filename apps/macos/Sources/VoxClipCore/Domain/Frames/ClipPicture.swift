@@ -38,9 +38,10 @@ public enum ClipPicture {
     /// The clip as its opening scan sees it: nil when the clip is gone or its first item is cut.
     public static func openingClip(_ project: Project, clipID: String) -> FrameClip? {
         guard let transcript = project.transcript, let range = project.edits.clips.first(where: { $0.id == clipID }),
-              let first = transcript.words.firstIndex(where: { $0.id == range.startWordId }),
-              let clip = FrameClip(transcript: transcript, clip: range, cutWordIds: Set(project.edits.cutWordIds)),
-              clip.kept.first == first else { return nil }
+              let first = range.playPartIndices(in: transcript.words)?.first,
+              let clip = FrameClip(words: transcript.words, first: first.lowerBound, last: first.upperBound,
+                                   cutWordIds: Set(project.edits.cutWordIds)),
+              clip.kept.first == first.lowerBound else { return nil }
         return clip
     }
 

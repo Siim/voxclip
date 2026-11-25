@@ -36,11 +36,11 @@ internal sealed class LipsyncVideoLayer : IDisposable
             {
                 var recipe = item.Recipe.Video;
                 var asset = project.VoiceLab.VideoAssets?.SingleOrDefault(asset => asset.Id == recipe.AssetId) ?? throw Invalid();
-                var first = LipsyncRenderWindow.OutputSample(recipe.WindowStartSample!.Value, plan);
-                var last = LipsyncRenderWindow.OutputSample(recipe.WindowEndSample!.Value, plan);
-                if (first > item.Piece.OutputStartSample || last < item.Piece.OutputEndSample ||
-                    Math.Abs((last - first) / plan.SampleRate - asset.DurationSeconds) > 1 / asset.FrameRate + 1e-6)
+                var range = LipsyncRenderWindow.SavedOutputRange(recipe.WindowStartSample!.Value, recipe.WindowEndSample!.Value, item.Piece, plan);
+                if (range is null && plan.PartSeams.Count > 0) continue;
+                if (range is not { } mapped || Math.Abs((mapped.End - mapped.Start) / plan.SampleRate - asset.DurationSeconds) > 1 / asset.FrameRate + 1e-6)
                     throw Invalid();
+                var (first, last) = mapped;
                 var handle = (long)Math.Round(0.2 * plan.SampleRate, MidpointRounding.AwayFromZero);
                 spans.Add(new(asset.Id, first, Math.Max(first, item.Piece.OutputStartSample - handle), Math.Min(last, item.Piece.OutputEndSample + handle)));
                 if (files.ContainsKey(asset.Id)) continue;

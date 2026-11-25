@@ -7,6 +7,7 @@ using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Cli;
 using VoxClip.Media.Audio;
+using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -20,6 +21,93 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
 {
     private const int Rate = 48_000;
     private static JsonElement Cases() => FixtureLoader.ReadJson("fixtures/clip-render/clip-render-cases.json").RootElement.Clone();
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "RequiresFFmpeg")]
+    public async Task StoryRenderKeepsSourceOrderAndPreviewFramingAtSeams(bool mp4)
+    {
+        await NativeTest.RequireAsync(windows: mp4);
+        var ct = TestContext.Current.CancellationToken;
+        using var document = FixtureLoader.ReadJson("fixtures/fcpxml/story.json");
+        var story = document.RootElement;
+        static long Samples(double time) => (long)Math.Round(time * Rate);
+        var kept = story.GetProperty("kept").EnumerateArray().Select(part => new MediaInterval(Samples(part[0].GetDouble()), Samples(part[1].GetDouble()))).ToArray();
+        var seams = story.GetProperty("partSeams").EnumerateArray().Select(item => Samples(item.GetDouble())).ToArray();
+        var source = NativePipelineTests.Fixture("bars-two-audio.mkv");
+        var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
+        var plan = new EditPlan(Rate, Samples(media.DurationSeconds), [], kept, kept.Sum(part => part.EndSample - part.StartSample), []) { PartSeams = seams };
+        var style = new ClipRenderInput(null, null) { PartReframes =
+            [(new(3, 3.5), ReframeSettings.Face(0.19, 0.45)), (new(.5, 1.3), ReframeSettings.Face(.31, .45)), (new(2.5, 3), ReframeSettings.Face(.81, .45))] };
+        var snapshot = new ComposeSnapshot(media, plan, null, new(new(100, 180), 30, 2_000_000)) { Clip = style };
+        var directory = Directory.CreateTempSubdirectory("voxclip-story-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, mp4 ? "story.mp4" : "story.wav");
+            if (mp4)
+                await new Exporter().ExportAsync(new(snapshot, new ExportTarget.Clip("story"), ExportAspect.Portrait, ExportQuality.Standard, path, null)
+                    { Loudness = VoxClip.Core.Domain.Loudness.ExportLoudness.Off }, null, ct);
+            else await EditedAudioReader.WriteWaveAsync(snapshot, path, ct);
+            await MediaThread.Run("vc-test-story", () =>
+            {
+                using var sourceAudio = new AudioDecoder(source, 2);
+                using var renderedAudio = new AudioDecoder(path, 2);
+                var original = new float[Samples(4) * 2];
+                Assert.True(sourceAudio.Read(original, original.Length / 2, ct) >= Samples(3.5));
+                var rendered = new float[plan.OutputSamples * 2];
+                Assert.Equal(plan.OutputSamples, renderedAudio.Read(rendered, rendered.Length / 2, ct));
+                var cursor = 0L;
+                foreach (var part in kept)
+                {
+                    var strongest = Enumerable.Range(-32, 65).Max(shift =>
+                    {
+                        var dot = 0.0; var left = 0.0; var right = 0.0;
+                        for (var index = 2400; index < 9600; index++)
+                        {
+                            var before = original[(part.StartSample + index) * 2];
+                            var after = rendered[(cursor + index + shift) * 2];
+                            dot += before * after; left += before * before; right += after * after;
+                        }
+                        return dot / Math.Sqrt(left * right);
+                    });
+                    Assert.True(strongest > .90, $"Source {part.StartSample} at output {cursor}: {strongest}");
+                    cursor += part.EndSample - part.StartSample;
+                }
+                if (!mp4)
+                    foreach (var seam in seams)
+                    {
+                        Assert.InRange(Math.Abs(rendered[(seam - 1) * 2]), 0, .001);
+                        Assert.InRange(Math.Abs(rendered[seam * 2]), 0, .001);
+                    }
+
+                var timeline = new TimelineCursor(plan);
+                using var decoder = new VideoDecoder(source, hardware: false);
+                using var exported = mp4 ? new VideoDecoder(path, hardware: false) : null;
+                var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot);
+                var centers = new List<byte[]>();
+                foreach (var time in seams.Prepend(0L).Select(sample => sample / (double)Rate))
+                {
+                    var sourceTime = timeline.Source(time);
+                    var decoded = decoder.ReadAt(sourceTime, false, ct);
+                    var pixels = new PixelBuffer(new byte[100 * 180 * 4], 100, 180, 400);
+                    var final = new PixelBuffer(new byte[100 * 180 * 4], 100, 180, 400);
+                    composer.Compose(decoded, pixels, snapshot, time, true, ct);
+                    composer.Compose(decoded, final, snapshot, time, false, ct);
+                    var pixel = pixels.Pixels.Slice(90 * 400 + 50 * 4, 3).ToArray();
+                    centers.Add(pixel);
+                    var encoded = exported?.ReadAt(time, false, ct) ?? final;
+                    var actual = encoded.Pixels.Slice(90 * encoded.Stride + 50 * 4, 3).ToArray();
+                    Assert.All(pixel.Zip(actual), pair => Assert.InRange(Math.Abs(pair.First - pair.Second), 0, 15));
+                }
+                Assert.Equal(3, centers.Select(Convert.ToHexString).Distinct().Count());
+                Assert.Equal(0, snapshot.Timeline.MapTime(3));
+                Assert.Equal(plan.Duration, snapshot.Timeline.MapEndTime(3));
+                return true;
+            }, ct);
+        }
+        finally { directory.Delete(true); }
+    }
 
     private static ProjectClipControls Controls(double speed = 1, ClipLook look = ClipLook.Original, double gain = 0, double fadeIn = 0,
         double fadeOut = 0, bool mute = false, bool flip = false, int rotation = 0)

@@ -3,6 +3,31 @@ import Testing
 import VoxClipCore
 
 @Suite struct FCPXMLTests {
+    @Test func storySpineKeepsPlaybackOrder() throws {
+        struct Story: Decodable {
+            let name: String
+            let kept: [[Double]]
+            let partSeams: [Double]
+            let expected: [String: [String]]
+        }
+        let fixture = try JSONDecoder().decode(Story.self, from: FixtureLoader.data("fixtures/fcpxml/story.json"))
+        let rate = 48_000.0
+        let plan = EditPlan(sampleRate: rate, totalSamples: 192_000, kept: fixture.kept.map {
+            MediaInterval(startSample: Int64(($0[0] * rate).rounded()), endSample: Int64(($0[1] * rate).rounded()))
+        }, partSeams: fixture.partSeams.map { Int64(($0 * rate).rounded()) })
+        let request = RenderRequest(sourceURL: URL(fileURLWithPath: "/Media/take.mov"), plan: plan,
+            output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 0))
+        let source = MediaProbeResult(durationSeconds: 4, video: .init(width: 320, height: 180, frameRate: 30),
+                                      audio: .init(sampleRate: 48_000, channels: 2), isPlayable: true)
+        let xml = try XMLDocument(data: FCPXML.document(name: fixture.name, render: request, source: source))
+        for (xpath, values) in fixture.expected.sorted(by: { $0.key < $1.key }) {
+            #expect(try xml.nodes(forXPath: xpath).compactMap(\.stringValue) == values, "\(xpath)")
+        }
+        try validateWithAppleDTD(xml)
+        #expect(request.timeline.mapTime(3) == 0)
+        #expect(request.timeline.mapEndTime(3) == plan.duration)
+    }
+
     @Test func partSpeedRetimesPictureAndDialogueWithoutRetimingMusic() throws {
         let source = MediaProbeResult(durationSeconds: 6, video: MediaVideo(width: 1920, height: 1080, frameRate: 30),
             audio: MediaAudio(sampleRate: 48_000, channels: 2), isPlayable: true)

@@ -388,7 +388,7 @@ public struct ClipSpeedTiming: Sendable, Equatable {
     public init(speed: Double, timeline: RenderTimeline, effects: [ClipEffect]) {
         self.init(speed: speed, overrides: effects.compactMap { effect in
             guard effect.kind == .speedForPart, let rate = effect.rate else { return nil }
-            return Span(start: timeline.mapTime(effect.start), end: timeline.mapTime(effect.end), rate: rate)
+            return Span(start: timeline.mapTime(effect.start), end: timeline.mapEndTime(effect.end), rate: rate)
         })
     }
 

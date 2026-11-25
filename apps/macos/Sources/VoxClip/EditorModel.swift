@@ -1512,7 +1512,8 @@ struct EditorRenderSnapshot {
     /// The source time of a scope's first kept word, where its thumbnail frame is taken.
     func firstKeptTime(_ clip: ClipRange?) -> Double? {
         let cut = Set(project.edits.cutWordIds)
-        let lower = clip.flatMap { index($0.startWordId) } ?? 0, upper = clip.flatMap { index($0.endWordId) } ?? words.count - 1
+        let opening = clip?.playParts.first
+        let lower = opening.flatMap { index($0.startWordId) } ?? 0, upper = opening.flatMap { index($0.endWordId) } ?? words.count - 1
         guard lower <= upper, upper < words.count else { return nil }
         return words[lower...upper].first { $0.kind == .word && !cut.contains($0.id) }?.start
     }

@@ -143,10 +143,12 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     /// <summary>Output duration; editing §2.7.</summary>
     public double Duration => OutputSamples / SampleRate;
     /// <summary>Source to edited time; editing §7.4.</summary>
-    public double MapTime(double source)
+    public double MapTime(double source) => MapTime(source, false);
+    internal double MapTime(double source, bool end)
     {
         var sample = EditingMath.ClampSample(double.IsFinite(source) ? source : 0, SampleRate, TotalSamples);
-        var index = EditingPlanner.FindSource(sourceIndex, sample, entry => entry.Source.StartSample);
+        var probe = end && PartSeams.Count > 0 && sample > 0 ? sample - 1 : sample;
+        var index = EditingPlanner.FindSource(sourceIndex, probe, entry => entry.Source.StartSample);
         if (index < 0) return 0;
         var entry = sourceIndex[index];
         return Math.Min(entry.OutputEnd, entry.OutputStart + sample - entry.Source.StartSample) / SampleRate;

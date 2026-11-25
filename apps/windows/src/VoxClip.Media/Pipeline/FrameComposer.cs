@@ -191,7 +191,8 @@ public sealed class FrameComposer : IFrameComposer
             }
             var crop = ExportPresets.CenterCrop(new(decoded.Width, decoded.Height), new(output.Width, output.Height), snapshot.Output.PreserveSource);
             // "9:16 follows your face" (ADR-R48 part 2): the 9:16 and 1:1 crops centre on the clip's measured face.
-            crop = ClipFaceCrop.Centered(crop, decoded.Width, decoded.Height, controls, (double)output.Width / output.Height);
+            var part = snapshot.Clip is { PartReframes.Count: > 0 } clip ? clip.PartReframeAt(snapshot.Timeline.SourceTime(editedTime)) : null;
+            crop = ClipFaceCrop.Centered(crop, decoded.Width, decoded.Height, controls, (double)output.Width / output.Height, part);
             if (!renderedVoicePicture) crop = VideoCrop(snapshot, crop, decoded.Width, decoded.Height, editedTime);
             var left = (int)Math.Floor(crop.X);
             var top = (int)Math.Floor(crop.Y);
@@ -287,7 +288,7 @@ public sealed class FrameComposer : IFrameComposer
         catch (Exception exception) { PreviewFrameFailures.Failed(failures, forPreview, PreviewFailureReason.SourceFrame, exception); throw; }
         if (frames is { HasPicture: true })
             frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct,
-                forPreview && failures is not null ? () => failures.Report(PreviewFailureReason.Title) : null);
+                forPreview && failures is not null ? () => failures.Report(PreviewFailureReason.Title) : null, timeline.MapEndTime);
     }
 
     /// <summary>The changed-duration crop for this output time: a zoomed span (Match video's 1.12× crop, a cut's 1.06×
