@@ -23,7 +23,14 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
 
     /// The input for a clip's render (nil: the full video's), or nil when nothing renders there.
     public static func resolve(project: Project, clipID: String?, dataRoot: URL, shared: SharedResources?) -> ClipEffectsRenderInput? {
-        let effects = ClipEffects.rendered(in: project, clipID: clipID)
+        var effects = ClipEffects.rendered(in: project, clipID: clipID)
+        if project.schemaVersion >= TimelineEditFields.version, let words = project.transcript?.words,
+           let clip = project.edits.clips.first(where: { $0.id == clipID }) {
+            let parts = StoryClips.times(clip, words: words)
+            effects.removeAll { effect in
+                effect.kind == .sound && !parts.contains { $0.start <= effect.start && effect.start < $0.end }
+            }
+        }
         guard !effects.isEmpty else { return nil }
         var urls: [String: URL] = [:]
         for effect in effects where effect.kind == .sound {

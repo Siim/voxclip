@@ -39,8 +39,7 @@ struct FootageLayer: Sendable {
                                     fadeIn: entry.fadeInSeconds ?? 0, fadeOut: entry.fadeOutSeconds ?? 0))
                 continue
             }
-            guard let source = try await asset.loadTracks(withMediaType: .video).first,
-                  let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            guard let source = try await asset.loadTracks(withMediaType: .video).first else {
                 throw VoxClipError.decodeFailed("A companion recording has no video track")
             }
             let (range, transform) = try await source.load(.timeRange, .preferredTransform)
@@ -52,10 +51,14 @@ struct FootageLayer: Sendable {
             }
             let placement = rendered(output.start)
             let sourceStart = max(start, range.start)
-            let length = min(range.end - sourceStart, rendered(output.end) - placement)
+            let available = rendered(output.end) - placement
+            let length = min(range.end - sourceStart, available)
             guard length > .zero else { continue }
+            guard let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw VoxClipError.decodeFailed("Cannot add companion video")
+            }
             try track.insertTimeRange(CMTimeRange(start: sourceStart, duration: length), of: source, at: placement)
-            let end = length < rendered(output.end) - placement ? time(timing.edited((placement + length).seconds)) : output.end
+            let end = length < available ? time(timing.edited((placement + length).seconds)) : output.end
             layers.append(.init(output: CMTimeRange(start: output.start, end: end), kind: entry.kind, trackID: track.trackID,
                                 orientation: MediaSupport.orientation(transform), still: nil,
                                 fadeIn: entry.fadeInSeconds ?? 0, fadeOut: entry.fadeOutSeconds ?? 0))
