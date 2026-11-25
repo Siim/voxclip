@@ -124,8 +124,7 @@ class HarnessContract(unittest.TestCase):
 
     def test_edits_use_timeline_decisions_without_spending(self):
         clip = "clip-2f1c"
-        listing, decisions = self.replay({"jsonrpc": "2.0", "id": 20, "method": "tools/list"},
-                                         self.call("read_decisions", clipId=clip))
+        listing, decisions = self.replay({"method": "tools/list"}, self.call("read_decisions", clipId=clip))
         layout = decisions["structuredContent"]["timeline"]
         speech = next(item for item in layout["items"] if item["kind"] == "clip")
         self.assertEqual(speech["lane"], "V1")
