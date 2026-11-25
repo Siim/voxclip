@@ -580,7 +580,7 @@ public enum EditCommand: Sendable, Equatable {
     /// Adds one prepared batch; callers supply ids, and the reducer deduplicates ranges. Editing §6.3.
     case addAIClips(resultId: String, clips: [ClipRange])
     case updateClip(id: String, startIndex: Int, endIndex: Int)
-    case setClipParts(id: String, parts: [ClipPart])
+    case setClipParts(id: String, parts: [ClipPart], kind: StoryClipKind? = nil)
     case makeClipOfPart(clipId: String, partId: String)
     case renameClip(id: String, title: String?)
     case setClipSelected(id: String, selected: Bool)

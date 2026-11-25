@@ -300,7 +300,13 @@ public actor ClipAutopilotService {
         let output = min(promptCap, resources.catalog.connector(connector)[ai: "maxOutputTokensCap"].aiInt ?? promptCap)
         // Extra high replies take minutes: a plan waits at least the prompt file's minimum, more when the catalog allows it.
         let timeout = max(resources.catalog.timeout(for: connector, feature: .clipAutopilot), prompt.minimumTimeout)
-        let schema = moments ? prompt.momentsSchema : prompt.schema
+        var schema = moments ? prompt.momentsSchema : prompt.schema
+        if !moments, input.creativeShapes || input.revision != nil, var form = schema.aiObject, var properties = form["properties"]?.aiObject {
+            properties["kind"] = .object(["type": .string("string"), "enum": .array([.string("stretch"), .string("story"), .string("showreel")])])
+            form["properties"] = .object(properties)
+            form["required"] = .array((form["required"]?.aiArray ?? []) + [.string("kind")])
+            schema = .object(form)
+        }
         let request = LLMRequest(feature: .clipAutopilot, system: system, cachedBlock: rendered.cachedBlock, instruction: instruction,
             schemaName: moments ? prompt.momentsSchemaName : prompt.schemaName, schema: schema,
             maxOutputTokens: output, effort: moments ? Self.momentsEffort : Self.effort, timeout: timeout,
@@ -314,6 +320,7 @@ public actor ClipAutopilotService {
         if !moments {
             context.offeredParts = moment?.moment.parts ?? input.selectedParts ?? [.init(startWord: rendered.scope.lowerBound, endWord: rendered.scope.upperBound)]
             context.kind = moment?.moment.kind ?? input.selectedKind
+            context.mayChooseShape = input.creativeShapes || input.revision != nil
             context.missingFromTake = moment?.moment.missingFromTake
             context.musicTrackIDs = Set(tracks.keys)
         }

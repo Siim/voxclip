@@ -133,11 +133,12 @@ public enum ClipAutopilotMapping {
         }
         let title = proposal.title.flatMap { $0.isEmpty ? nil : $0 }
         if let existing {
-            if parts != previous {
+            let kind: StoryClipKind? = plan.map { $0.kind == .showreel ? .showreel : .story }
+            if parts != previous || (parts.count > 1 && kind != nil && kind != existing.kind) {
                 if parts.count == 1 && existing.parts == nil {
                     add("clip", .clip, .edit(.updateClip(id: clipID, startIndex: startWord, endIndex: endWord)), proposal.reason)
                 } else {
-                    let command = EditCommand.setClipParts(id: clipID, parts: parts)
+                    let command = EditCommand.setClipParts(id: clipID, parts: parts, kind: kind)
                     var candidate = project
                     try candidate.applyEditing(command)
                     guard candidate.edits.clips.first(where: { $0.id == clipID })?.playParts.map(\.startWordId) == parts.map(\.startWordId),
@@ -349,7 +350,8 @@ public enum ClipAutopilotMapping {
     /// stretch that covers a whole clip (`ClipControlsProject.wholeClip`) as that clip's speed, and the hook as the clip's
     /// title card (`ClipHookTitle`, timed on the clip as the operations before it left it). Rewrites, music, a stretch over
     /// part of a clip come back as `pending`; translated captions are stored as `captionTranslations`. Pure: one undo step is the caller's choice.
-    public static func apply(_ operations: [ClipAutopilotOperation], to project: Project, clipCaptions: (id: String, style: ClipStyle)? = nil) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
+    public static func apply(_ operations: [ClipAutopilotOperation], to project: Project, clipCaptions: (id: String, style: ClipStyle)? = nil,
+                             savedTracks: [ProjectMusic] = []) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
         var effects: [ClipEffect] = []
@@ -369,7 +371,9 @@ public enum ClipAutopilotMapping {
                 if !result.media.setFootage(entry) { pending.append(operation) }
                 else { result.schemaVersion = max(4, result.schemaVersion) }
             case .savedMusic(let clipID, let trackID):
-                guard var track = result.music.first(where: { $0.id == trackID }) else { throw HarnessError.invalid("Choose a saved music track from this project.") }
+                guard var track = savedTracks.first(where: { $0.id == trackID }) ?? result.music.first(where: { $0.id == trackID }) else {
+                    throw HarnessError.invalid("Choose a saved music track from this project.")
+                }
                 track.clipId = clipID
                 result = try MusicProject.setting(MusicProject.unique(track, in: result), clipId: clipID, in: result)
             case .coverTitle(let clipID, let text):

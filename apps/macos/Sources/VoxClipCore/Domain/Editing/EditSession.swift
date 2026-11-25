@@ -102,14 +102,14 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
             if result.clips[index].startWordId != words[start].id { result.clips[index].leadInSeconds = nil }
             result.clips[index].startWordId = words[start].id; result.clips[index].endWordId = words[end].id
         }
-    case .setClipParts(let id, let parts):
+    case .setClipParts(let id, let parts, let kind):
         guard let index = result.clips.firstIndex(where: { $0.id == id }), let first = parts.first,
               let ranges = StoryClips.indices(parts.map { ($0.startWordId, $0.endWordId) }, words: words),
               let lower = ranges.map(\.lowerBound).min(), let upper = ranges.map(\.upperBound).max() else { return state }
         let original = result.clips[index]
         var clip = original
         clip.parts = parts.count > 1 ? parts : nil
-        clip.kind = clip.parts != nil ? original.kind ?? .story : nil
+        clip.kind = clip.parts != nil ? kind ?? original.kind ?? .story : nil
         clip.startWordId = words[lower].id; clip.endWordId = words[upper].id
         if original.playParts.first?.startWordId != first.startWordId { clip.leadInSeconds = nil }
         guard clip != original, validClip(clip) else { return state }

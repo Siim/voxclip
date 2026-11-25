@@ -54,6 +54,7 @@ extension EditorModel {
         let previous = project.clipEffects.first { $0.id == effect.id }
         replace(next, name: "Make it postable")
         run.inverses[operation.id] = .effect(id: effect.id, previous: previous)
+        if illustration, charged > 0 { run.assetPrices[operation.id] = charged }
         let detail = charged > 0 ? "\(operation.reason) · Up to \(Self.makeItDollars(charged))" : operation.reason
         return MakeItRow(id: operation.id, text: effect.sound.map { "Sound: \($0.title)" } ?? title, detail: detail,
                          play: max(0, effect.start - 0.5), undoable: true)

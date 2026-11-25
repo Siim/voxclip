@@ -9,7 +9,10 @@ public enum ClipAutopilotValidator {
         var log = Log()
         guard let parts = parts(value, context: base, isSeries: false, log: &log) else { return nil }
         let span = bounds(parts)
-        let kind = base.kind ?? (parts.count > 1 ? .story : .stretch)
+        let chosenKind = base.mayChooseShape ? value[ai: "kind"].aiString.flatMap(ClipProposal.NewClip.Kind.init(rawValue:)) : nil
+        let sourceDurations = parts.map { base.words[$0.upperBound].end - base.words[$0.lowerBound].start }
+        let showreel = (chosenKind ?? base.kind) == .showreel && (base.kind == .showreel || validShowreel(sourceDurations))
+        let kind: ClipProposal.NewClip.Kind = parts.count == 1 ? .stretch : showreel ? .showreel : .story
         let checkedValue = seamChecked(value, parts: parts, log: &log)
         // Corrections come first, so the rewrites' bridge words and every later check read the corrected words.
         let checked = corrections(checkedValue[ai: "corrections"], parts: parts, context: base, log: &log)
@@ -312,7 +315,7 @@ public enum ClipAutopilotValidator {
             guard let start = integer(item[ai: "startWord"]), let end = integer(item[ai: "endWord"]), start <= end, contains(start, end),
                   let first = (start...end).first(where: context.isListedWord), let last = (start...end).last(where: context.isListedWord),
                   !overlaps(start...end, rawParts) else { return nil }
-            if context.offeredParts != nil {
+            if context.offeredParts != nil, !(context.mayChooseShape && offered.count == 1) {
                 guard let index = offered.firstIndex(where: { $0.startWord <= start && end <= $0.endWord }), used.insert(index).inserted else { return nil }
             }
             rawParts.append(start...end)

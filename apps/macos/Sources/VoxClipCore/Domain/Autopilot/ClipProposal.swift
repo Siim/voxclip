@@ -56,6 +56,14 @@ public struct ClipProposal: Codable, Sendable, Equatable {
     }
 }
 
+extension ClipProposal.NewClip.Kind {
+    package func cardLabel(parts: Int? = nil) -> String {
+        let name = rawValue.capitalized
+        guard let parts, parts > 1 else { return name }
+        return "\(name) · \(parts) parts"
+    }
+}
+
 extension ClipAutopilotPlan {
     public func canonicalProposal(clipID: String, in project: Project) -> ClipProposal {
         let existing = project.edits.clips.first { $0.id == clipID }

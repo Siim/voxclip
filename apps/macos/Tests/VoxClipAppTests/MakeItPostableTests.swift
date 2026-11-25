@@ -334,6 +334,33 @@ private struct RefusingAssetHTTP: MusicHTTP {
         #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch eleven-1"])
     }
 
+    @Test func undoThenChangeReusesPaidMusicAndKeepsTheOriginalCap() async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [Self.generated("0.001")])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let first = try await run(fixture)
+        let track = try #require(fixture.editor.currentMusic)
+        let file = MusicRenderInput.url(for: track.asset, dataRoot: fixture.root)
+        fixture.editor.undoCreativeProposal(first)
+        #expect(fixture.editor.currentMusic == nil)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        fixture.editor.makeIt.services?.plan = { request, _, _, _ in
+            #expect(request.revision?.instruction == "Change the title")
+            #expect(request.musicTracks[track.id] == track.title)
+            var revised = try #require(request.revision?.plan)
+            revised.title = "A revised title"
+            revised.savedMusicTrackId = track.id
+            return ClipAutopilotSeries(plans: [revised])
+        }
+        fixture.editor.reviseCreativeProposal(first, instruction: "Change the title")
+        await first.task?.value
+        let revised = try #require(fixture.editor.makeIt.run(for: first.clipID))
+        #expect(revised.phase == .ready)
+        #expect(revised.plan?.title == "A revised title")
+        #expect(fixture.editor.currentMusic?.asset == track.asset)
+        #expect(revised.spent == first.spent && revised.cap == first.cap)
+        #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch eleven-1"])
+    }
+
     @Test(arguments: ["Add an ElevenLabs key in Settings to make music for this clip.", "No current estimate is available."])
     func noTrackReportsTheGeneratedSourceNote(reason: String) async throws {
         let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [], notes: [.generated: reason])
