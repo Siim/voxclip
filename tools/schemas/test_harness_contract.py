@@ -23,12 +23,24 @@ INVALID_TEMPLATES = json.loads((ROOT / "shared/fixtures/clip-effects/motion-temp
 
 def proposal_validator():
     registry = Registry()
-    for name in ["harness-proposal", "harness-timeline", "clip-plan-effect", "motion-template"]:
+    for name in ["harness-proposal", "harness-timeline", "clip-proposal", "clip-plan-effect", "motion-template"]:
         schema = json.loads((ROOT / f"shared/schemas/{name}.schema.json").read_text())
         registry = registry.with_resource(schema["$id"], Resource.from_contents(schema))
         if name == "harness-proposal":
             envelope = schema
     return jsonschema.Draft202012Validator(envelope, registry=registry, format_checker=jsonschema.FormatChecker())
+
+
+class ProposalSchema(unittest.TestCase):
+    def test_story_series_and_legacy_envelopes(self):
+        validator = proposal_validator()
+        envelope = {"id": "83a63352-80f7-4500-82ca-9405899b0be6", "projectId": "project", "baseRevision": "a" * 64}
+        story = {"newClip": {"kind": "story", "title": "Two moments"}, "reason": "Lead with the result.",
+                 "parts": [{"startWord": 9, "endWord": 12}, {"startWord": 0, "endWord": 3}]}
+        validator.validate(dict(envelope, version=2, timelines=[story, story]))
+        validator.validate(dict(envelope, version=1, timeline={"clipId": "clip", "title": "New title", "reason": "Shorter"}))
+        for timelines in ([], [story] * 7, [dict(story, clipId="clip")], [dict(story, parts=story["parts"][:1])]):
+            self.assertFalse(validator.is_valid(dict(envelope, version=2, timelines=timelines)))
 
 
 class HarnessContract(unittest.TestCase):
