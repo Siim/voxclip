@@ -166,9 +166,7 @@ import VoxClipCore
         ExpressionFlow(spacing: VCTokens.spacingChipGap) {
             cardButton(rewrite.wholeClipPrimary(), id: "wholeClipRevoice", title: "Redo Voice and Lip Sync",
                        kind: .bordered, unavailable: rewrite.wholeClipPrimaryUnavailable)
-            cardButton(rewrite.wholeClipLipRedo(.standard), id: "wholeClipLipRedo", title: "Redo Lip Sync Only",
-                       kind: .bordered, unavailable: rewrite.wholeClipLipRedoUnavailable)
-            cardButton(rewrite.wholeClipLipRedo(.sync3), id: "wholeClipSharperRedo", title: "Sharper Lip Sync · sync-3",
+            cardButton(rewrite.wholeClipLipRedo(), id: "wholeClipLipRedo", title: "Redo Lip Sync Only",
                        kind: .bordered, unavailable: rewrite.wholeClipLipRedoUnavailable)
             let back = rewrite.backToMyRecordingUnavailable
             let restore = back == nil ? PanelAction(id: "wholeClipBackToRecording", title: "Back to My Recording") {
@@ -286,12 +284,6 @@ import VoxClipCore
         if let match = session.match {
             Text(WholeClipRevoiceCardLines.matchLine(match, voice: rewrite.wholeClipAnchorName)).font(VCType.small.font())
                 .foregroundStyle(DesignValues.color("text.secondary")).fixedSize(horizontal: false, vertical: true)
-        }
-        if let note = session.upgradeNote {
-            Text(note).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true)
-        }
-        if let upgrade = rewrite.wholeClipUpgradeAction() {
-            PanelButton(action: upgrade, kind: .bordered)
         }
         HStack {
             Text(rewrite.usedWholeClip == nil ? "Undo keeps your original audio and video." : "Undo keeps the earlier version.")

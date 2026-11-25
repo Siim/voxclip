@@ -27,7 +27,6 @@ internal sealed partial class RewritePanel
     private readonly Button wholeClipCompare = new() { Content = "Compare with Your Recording" };
     private readonly Button wholeClipUse = new() { Content = "Use whole take" };
     private readonly Button wholeClipVoiceOnly = new() { Content = "Use voice without lip sync" };
-    private readonly Button wholeClipSharper = new() { Content = "Sharper Lip Sync" };
     private readonly Button wholeClipRedoVoice = new() { Content = "Redo Voice and Lip Sync" };
     private readonly Button wholeClipRedoPicture = new() { Content = "Redo Lip Sync Only" };
     private readonly Button wholeClipOriginalRestore = new() { Content = "Back to My Recording" };
@@ -40,7 +39,7 @@ internal sealed partial class RewritePanel
         wholeClipBody.Children.Add(wholeClipWholeChoice);
         wholeClipScriptView.Content = wholeClipScript;
         foreach (var element in new FrameworkElement[] { wholeClipKept, wholeClipLine, wholeClipPrice, wholeClipRedoVoice, wholeClipRedoPicture,
-            wholeClipSharper, wholeClipOriginalRestore, wholeClipRestore, wholeClipScriptView, wholeClipTransfer, wholeClipApprove,
+            wholeClipOriginalRestore, wholeClipRestore, wholeClipScriptView, wholeClipTransfer, wholeClipApprove,
             wholeClipCancel, wholeClipVoice, wholeClipOriginal, wholeClipCompare, wholeClipUse, wholeClipVoiceOnly, wholeClipReasons })
             wholeClipBody.Children.Add(element);
         wholeClipPhrasesChoice.Click += (_, _) => session.SelectWholeClipIntent(null);
@@ -57,7 +56,6 @@ internal sealed partial class RewritePanel
         wholeClipCompare.Click += async (_, _) => await session.PlayWholeClipAsync(original: false);
         wholeClipUse.Click += (_, _) => session.ApplyWholeClip(voiceOnly: false);
         wholeClipVoiceOnly.Click += (_, _) => session.ApplyWholeClip(voiceOnly: true);
-        wholeClipSharper.Click += async (_, _) => await SelectAndPriceWholeClipAsync(WholeClipIntent.Sharper);
     }
 
     private async Task SelectAndPriceWholeClipAsync(WholeClipIntent intent)
@@ -113,7 +111,6 @@ internal sealed partial class RewritePanel
             {
                 WholeClipIntent.RedoVoice => "Redo Voice and Lip Sync",
                 WholeClipIntent.RedoLipSync => "Redo Lip Sync Only",
-                WholeClipIntent.Sharper => "Sharper Lip Sync",
                 _ => offer.VoicePrice > 0 ? "Revoice Whole Take" : "Continue Lip Sync",
             };
             var title = total == 0 ? "Recover lip sync · No new charge" : $"{action} · {VoiceLabCostPresentation.Format(total)}";
@@ -127,11 +124,9 @@ internal sealed partial class RewritePanel
         wholeClipOriginal.IsEnabled = !busy && session.GenerationIsCurrent;
         var useReason = session.WholeClipUseBlocked;
         var compareReason = session.WholeClipCompareBlocked;
-        var sharperReason = session.WholeClipSharperBlocked;
         SetAvailability(wholeClipUse, useReason);
         SetAvailability(wholeClipCompare, compareReason);
-        SetAvailability(wholeClipSharper, sharperReason);
-        wholeClipReasons.Text = string.Join("\n", new[] { busy ? null : blocked, Reason(wholeClipUse, useReason), Reason(wholeClipCompare, compareReason), Reason(wholeClipSharper, sharperReason) }.OfType<string>().Distinct());
+        wholeClipReasons.Text = string.Join("\n", new[] { busy ? null : blocked, Reason(wholeClipUse, useReason), Reason(wholeClipCompare, compareReason) }.OfType<string>().Distinct());
         wholeClipReasons.Visibility = wholeClipReasons.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (IsLoaded && wholeClipLine.Text != announcedWholeClip)
         {

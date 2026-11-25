@@ -12,7 +12,7 @@ import VoxClipMedia
         let recordID: String
         let dependencies: Set<Int>
         let isCurrent: @MainActor () -> Bool
-        /// Rewrite's phrases use sync-3; a whole-clip revoice lipsync-2 or the sync-3 upgrade (ADR-R46).
+        /// New Rewrite jobs use sync-3; recovery keeps the original model of an already paid job (ADR-R46).
         var model: WholeClipRevoice.Lipsync = .sync3
         /// False for a "Try Again · free": the earlier paid attempt's result is re-imported and nothing new is paid.
         var mayPay = true
@@ -135,6 +135,7 @@ import VoxClipMedia
     @ObservationIgnored private var currentRun: Task<ImportedLipsyncResult, any Error>?
     @ObservationIgnored private var turn = UUID()
     @ObservationIgnored private var invalidated: Set<UUID> = []
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAgain = false
     @ObservationIgnored private var refreshAfterUse = false
     /// The paid results this session got back (`Reusable`), newest last.
@@ -267,14 +268,29 @@ import VoxClipMedia
     }
 
     func refresh() async {
-        guard automaticallyRefreshOffers, let backend, !usingTakes else { return }
-        guard !refreshing else { refreshAgain = true; return }
-        let revision = turn
-        refreshing = true
-        defer {
-            refreshing = false
-            if refreshAgain { refreshAgain = false; Task { await self.refresh() } }
+        guard automaticallyRefreshOffers, backend != nil, !usingTakes else { return }
+        if let refreshTask {
+            refreshAgain = true
+            await refreshTask.value
+            return
         }
+        refreshing = true
+        let task = Task {
+            repeat {
+                refreshAgain = false
+                await refreshOffers()
+            } while refreshAgain
+            refreshTask = nil
+            refreshing = false
+        }
+        refreshTask = task
+        await task.value
+    }
+
+    private func refreshOffers() async {
+        guard automaticallyRefreshOffers, let backend else { return }
+        guard !usingTakes else { refreshAfterUse = true; return }
+        let revision = turn
         keyAvailable = await backend.hasKey()
         consentAccepted = backend.hasConsent()
         do {
@@ -630,7 +646,8 @@ import VoxClipMedia
             if unsent.queueRefused, case LipsyncError.http(let status) = unsent.error, let declined = declined(status) {
                 return "The lip-sync request was declined. " + declined
             }
-            return (unsent.queueRefused ? "The lip-sync request was declined. " : "Stopped before submitting a lip-sync job. ") + reason(unsent.error)
+            if unsent.queueRefused { return "The lip-sync request was declined. " + reason(unsent.error) }
+            return "Stopped before submitting a lip-sync job. " + reason(unsent.error) + " fal.ai didn't charge for this lip sync."
         }
         if let check = error as? LipsyncResultCheck { return check.copy }
         if let failed = error as? LipsyncRecoveryFailed {

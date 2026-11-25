@@ -1,10 +1,12 @@
 using System.Net;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Logging;
 #pragma warning disable CS1591
 
 namespace VoxClip.Core.Services.VoiceLab;
@@ -15,13 +17,14 @@ public static class FalLipsyncModels
         new("fal", model.RawValue(), model == WholeClipLipsync.Sync3 ? LipsyncTier.Best : LipsyncTier.Quality, true);
 }
 
-public enum FalLipsyncError { InvalidInput, ApprovalRequired, MissingKey, Busy, UnsafeUrl, InvalidResponse, TooLarge, Http, SubmissionUnconfirmed, RemoteFailed }
+public enum FalLipsyncError { InvalidInput, ApprovalRequired, MissingKey, Busy, UnsafeUrl, InvalidResponse, TooLarge, Http, SubmissionUnconfirmed, RemoteFailed, UploadFailed }
 
 public sealed class FalLipsyncException(FalLipsyncError code, int? status = null) : Exception(
     status is { } value ? $"fal.ai lip sync: {code} (HTTP {value})." : $"fal.ai lip sync: {code}.")
 {
     public FalLipsyncError Code { get; } = code;
     public int? Status { get; } = status;
+    public string? UploadStage { get; internal set; }
 }
 
 public sealed class FalLipsyncQuote
@@ -45,22 +48,27 @@ public sealed class FalLipsyncProvider : ILipsyncProvider, IDisposable
     public const long UploadVideoBudgetBytes = 364_500_000;
     public static readonly TimeSpan JobDeadline = TimeSpan.FromMinutes(30);
     private const int MaximumJsonBytes = 1024 * 1024;
+    private const int PartBytes = 10 * 1024 * 1024;
+    private const int MultipartThreshold = 90 * 1024 * 1024;
     private const string Lifecycle = "{\"expiration_duration_seconds\":3600}";
     private readonly HttpClient http;
     private readonly IKeyProvider keys;
     private readonly VoiceLabPriceCatalog prices;
     private readonly Action<string, int>? cleanupDenied;
+    private readonly ILog? log;
     private readonly Guid owner = Guid.NewGuid();
     private int submitting;
 
-    public FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices, Action<string, int>? cleanupDenied = null)
-        : this(keys, prices, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }, cleanupDenied) { }
+    public FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices, Action<string, int>? cleanupDenied = null, ILog? log = null)
+        : this(keys, prices, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }, cleanupDenied, log) { }
 
-    internal FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices, HttpMessageHandler handler, Action<string, int>? cleanupDenied = null)
+    internal FalLipsyncProvider(IKeyProvider keys, VoiceLabPriceCatalog prices, HttpMessageHandler handler, Action<string, int>? cleanupDenied = null,
+        ILog? log = null)
     {
         this.keys = keys;
         this.prices = prices;
         this.cleanupDenied = cleanupDenied;
+        this.log = log;
         http = new(handler) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
@@ -94,7 +102,7 @@ public sealed class FalLipsyncProvider : ILipsyncProvider, IDisposable
 
     public async Task<LipsyncJob> SubmitApprovedAsync(FalLipsyncQuote quote, string videoPath, string audioPath,
         VoiceConsentStore consent, VoiceConsentRecord record, VoiceLabDispatchBinding? binding, CancellationToken ct,
-        Func<Task>? beforeSubmit = null, Func<LipsyncJob, Task>? accepted = null)
+        Func<Task>? beforeSubmit = null, Func<LipsyncJob, Task>? accepted = null, Action<int, int>? uploadProgress = null)
     {
         if (Interlocked.Exchange(ref submitting, 1) != 0) throw new FalLipsyncException(FalLipsyncError.Busy);
         try
@@ -112,7 +120,7 @@ public sealed class FalLipsyncProvider : ILipsyncProvider, IDisposable
                 throw new FalLipsyncException(FalLipsyncError.ApprovalRequired);
             await using var video = OpenUpload(videoPath, UploadVideoBudgetBytes);
             await using var audio = OpenUpload(audioPath, 64L * 1024 * 1024);
-            var videoUrl = await UploadAsync(video, "window.mp4", "video/mp4", key, consent, record, binding, ct).ConfigureAwait(false);
+            var videoUrl = await UploadAsync(video, "window.mp4", "video/mp4", key, consent, record, binding, ct, uploadProgress).ConfigureAwait(false);
             var audioUrl = await UploadAsync(audio, "mixed.wav", "audio/wav", key, consent, record, binding, ct).ConfigureAwait(false);
             var latestKey = await KeyAsync(ct).ConfigureAwait(false);
             if (!CryptographicOperations.FixedTimeEquals(quote.Account, Hash(latestKey)))
@@ -237,23 +245,122 @@ public sealed class FalLipsyncProvider : ILipsyncProvider, IDisposable
         throw new FalLipsyncException(FalLipsyncError.InvalidInput), job.RemoteId);
 
     private async Task<string> UploadAsync(FileStream file, string name, string type, string key,
-        VoiceConsentStore consent, VoiceConsentRecord record, VoiceLabDispatchBinding? binding, CancellationToken ct)
+        VoiceConsentStore consent, VoiceConsentRecord record, VoiceLabDispatchBinding? binding, CancellationToken ct,
+        Action<int, int>? progress = null)
     {
         using var deadline = Deadline(ct, TimeSpan.FromSeconds(60 + file.Length / 250_000d));
-        using var initiate = Request(HttpMethod.Post, new("https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3"), key);
-        initiate.Headers.Add("X-Fal-Object-Lifecycle", Lifecycle);
-        initiate.Content = JsonBody(writer => { writer.WriteString("file_name", name); writer.WriteString("content_type", type); });
-        using var reply = await DispatchAsync(initiate, consent, record, binding, deadline.Token).ConfigureAwait(false);
-        using var json = await ReadJsonAsync(reply, deadline.Token).ConfigureAwait(false);
-        var target = SafeUrl(ReadString(json.RootElement, "upload_url"));
-        if (!(IsMediaHost(target.Host) || target.Host == "storage.fal.ai")) throw new FalLipsyncException(FalLipsyncError.UnsafeUrl);
-        var location = MediaUrl(ReadString(json.RootElement, "file_url"));
-        using var put = Request(HttpMethod.Put, target);
-        put.Content = new StreamContent(file);
-        put.Content.Headers.ContentType = new MediaTypeHeaderValue(type);
-        using var response = await DispatchAsync(put, consent, record, binding, deadline.Token).ConfigureAwait(false);
-        Check(response);
-        return location.AbsoluteUri;
+        Task<HttpResponseMessage> Send(HttpRequestMessage request) => DispatchAsync(request, consent, record, binding, deadline.Token);
+        var stage = "upload-initiate";
+        var multipart = file.Length > MultipartThreshold;
+        try
+        {
+            var endpoint = multipart ? "initiate-multipart" : "initiate";
+            using var initiate = Request(HttpMethod.Post, new($"https://rest.fal.ai/storage/upload/{endpoint}?storage_type=fal-cdn-v3"), key);
+            initiate.Headers.Add("X-Fal-Object-Lifecycle", Lifecycle);
+            initiate.Content = JsonBody(writer => { writer.WriteString("file_name", name); writer.WriteString("content_type", type); });
+            using var reply = await Send(initiate).ConfigureAwait(false);
+            using var json = await ReadJsonAsync(reply, deadline.Token).ConfigureAwait(false);
+            var target = SafeUrl(ReadString(json.RootElement, "upload_url"));
+            if (!(IsMediaHost(target.Host) || target.Host == "storage.fal.ai")) throw new FalLipsyncException(FalLipsyncError.UnsafeUrl);
+            var location = MediaUrl(ReadString(json.RootElement, "file_url"));
+            log?.RegisterSecret(target.AbsoluteUri);
+            log?.RegisterSecret(location.AbsoluteUri);
+            if (!multipart)
+            {
+                stage = "upload";
+                using var put = Request(HttpMethod.Put, target);
+                put.Content = new StreamContent(file);
+                put.Content.Headers.ContentType = new MediaTypeHeaderValue(type);
+                using var response = await Send(put).ConfigureAwait(false);
+                Check(response);
+                return location.AbsoluteUri;
+            }
+
+            Uri PartUrl(string suffix)
+            {
+                var url = SafeUrl(target.GetLeftPart(UriPartial.Path) + "/" + suffix + target.Query);
+                if (url.Host != target.Host) throw new FalLipsyncException(FalLipsyncError.UnsafeUrl);
+                log?.RegisterSecret(url.AbsoluteUri);
+                return url;
+            }
+
+            var parts = new List<string>();
+            var count = (int)((file.Length + PartBytes - 1) / PartBytes);
+            var buffer = new byte[PartBytes];
+            for (var number = 1; number <= count; number++)
+            {
+                var suffix = number.ToString(CultureInfo.InvariantCulture);
+                stage = "upload-part " + suffix;
+                var length = (int)Math.Min(PartBytes, file.Length - file.Position);
+                await file.ReadExactlyAsync(buffer.AsMemory(0, length), deadline.Token).ConfigureAwait(false);
+                parts.Add(await UploadPartAsync(PartUrl(suffix), buffer, length, type, Send, deadline.Token).ConfigureAwait(false));
+                progress?.Invoke(number, count);
+            }
+            stage = "upload-complete";
+            using var complete = Request(HttpMethod.Post, PartUrl("complete"));
+            complete.Content = JsonBody(writer =>
+            {
+                writer.WriteStartArray("parts");
+                for (var index = 0; index < parts.Count; index++)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("partNumber", index + 1);
+                    writer.WriteString("etag", parts[index]);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            });
+            using var completed = await Send(complete).ConfigureAwait(false);
+            Check(completed);
+            return location.AbsoluteUri;
+        }
+        catch (FalLipsyncException error)
+        {
+            error.UploadStage = stage;
+            LogFailure(error.Status);
+            throw;
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException || error is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            LogFailure(null);
+            throw new FalLipsyncException(FalLipsyncError.UploadFailed) { UploadStage = stage };
+        }
+
+        void LogFailure(int? status) => log?.Write(LogLevel.Warn, "voice-lab",
+            $"lipsync provider=fal event=upload-failed stage={stage} status={status?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}");
+    }
+
+    private static async Task<string> UploadPartAsync(Uri url, byte[] buffer, int length, string type,
+        Func<HttpRequestMessage, Task<HttpResponseMessage>> send, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var put = Request(HttpMethod.Put, url);
+                put.Content = new ByteArrayContent(buffer, 0, length);
+                put.Content.Headers.ContentType = new MediaTypeHeaderValue(type);
+                using var response = await send(put).ConfigureAwait(false);
+                Check(response);
+                try
+                {
+                    using var json = await ReadJsonAsync(response, ct).ConfigureAwait(false);
+                    return ReadString(json.RootElement, "etag");
+                }
+                catch (FalLipsyncException error) when (error.Code == FalLipsyncError.InvalidResponse)
+                {
+                    if (response.Headers.TryGetValues("ETag", out var values) && values.FirstOrDefault() is { Length: > 0 } etag)
+                        return etag;
+                    throw new FalLipsyncException(FalLipsyncError.InvalidResponse, (int)response.StatusCode);
+                }
+            }
+            catch (Exception error) when (attempt < 3 && (error is HttpRequestException or IOException ||
+                error is FalLipsyncException { Code: FalLipsyncError.Http, Status: 408 or 429 or (>= 500 and <= 599) }))
+            {
+                await Task.Delay(250 * attempt, ct).ConfigureAwait(false);
+            }
+        }
     }
 
     private async Task<HttpResponseMessage> DispatchAsync(HttpRequestMessage request, VoiceConsentStore consent, VoiceConsentRecord record,

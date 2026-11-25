@@ -806,7 +806,6 @@ member VoxClip.App.Controls.RewritePanel :: field private wholeClipRedoVoice
 member VoxClip.App.Controls.RewritePanel :: field private wholeClipRestore
 member VoxClip.App.Controls.RewritePanel :: field private wholeClipScript
 member VoxClip.App.Controls.RewritePanel :: field private wholeClipScriptView
-member VoxClip.App.Controls.RewritePanel :: field private wholeClipSharper
 member VoxClip.App.Controls.RewritePanel :: field private wholeClipTransfer
 member VoxClip.App.Controls.RewritePanel :: field private wholeClipUse
 member VoxClip.App.Controls.RewritePanel :: field private wholeClipVoice
@@ -6543,7 +6542,6 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipPri
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipReview()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipReviewCurrent()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipScriptText()
-member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipSharperBlocked()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipStatus()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipUseBlocked()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_WholeClipVoice()
@@ -8808,7 +8806,6 @@ member VoxClip.App.ViewModels.VoiceTrainingSource :: field public value__
 member VoxClip.App.ViewModels.WholeClipIntent :: field public RedoLipSync
 member VoxClip.App.ViewModels.WholeClipIntent :: field public RedoVoice
 member VoxClip.App.ViewModels.WholeClipIntent :: field public Revoice
-member VoxClip.App.ViewModels.WholeClipIntent :: field public Sharper
 member VoxClip.App.ViewModels.WholeClipIntent :: field public value__
 member VoxClip.App.ViewModels.WholeClipOffer :: method private .ctor(VoxClip.App.ViewModels.WholeClipOffer)
 member VoxClip.App.ViewModels.WholeClipOffer :: method private PrintMembers(System.Text.StringBuilder)
@@ -8835,6 +8832,7 @@ member VoxClip.App.ViewModels.WholeClipOffer :: method public set_Selection(VoxC
 member VoxClip.App.ViewModels.WholeClipOffer :: method public set_VoicePrice(System.Decimal)
 member VoxClip.App.ViewModels.WholeClipSelection :: method internal get_ClipId()
 member VoxClip.App.ViewModels.WholeClipSelection :: method internal get_Identity()
+member VoxClip.App.ViewModels.WholeClipSelection :: method internal get_LegacyPictureIdentity()
 member VoxClip.App.ViewModels.WholeClipSelection :: method internal get_RecordId()
 member VoxClip.App.ViewModels.WholeClipSelection :: method private .ctor(VoxClip.App.ViewModels.WholeClipSelection)
 member VoxClip.App.ViewModels.WholeClipSelection :: method private PrintMembers(System.Text.StringBuilder)

@@ -9,7 +9,7 @@
     "minimumPartSeconds": 4.0,
     "maximumPartCharacters": 1000,
     "maximumClipSeconds": 300.0,
-    "standardLipsync": "fal-ai/sync-lipsync/v2:lipsync-2",
+    "standardLipsync": "fal-ai/sync-lipsync/v3",
     "lipsyncModels": [
       {
         "rawValue": "fal-ai/sync-lipsync/v2:lipsync-2",

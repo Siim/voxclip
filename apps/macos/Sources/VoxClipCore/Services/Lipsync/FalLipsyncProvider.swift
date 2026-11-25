@@ -765,11 +765,11 @@ extension FalLipsyncProvider {
     public func prepareApprovedUpload(video: LipsyncUploadFile, audio: LipsyncUploadFile, options: LipsyncOptions,
                                       fps: Double, consentStore: VoiceConsentStore, recordID: String,
                                       acceptsPaidJob: Bool, acceptsMediaTransfer: Bool,
-                                      model chosen: LipsyncModel? = nil) async throws -> (LipsyncQuote, LipsyncApproval) {
+                                      model chosen: LipsyncModel? = nil,
+                                      onUploadProgress: @Sendable (Double) async -> Void = { _ in }) async throws -> (LipsyncQuote, LipsyncApproval) {
         guard acceptsPaidJob, acceptsMediaTransfer, video.contentType == "video/mp4", audio.contentType == "audio/wav" else {
             throw LipsyncError.approvalRequired
         }
-        // Rewrite's phrases use sync-3; a whole-clip revoice picks lipsync-2 or sync-3 (ADR-R46). Only this provider's models.
         let model = chosen ?? rewriteModel
         guard models.contains(model) else { throw LipsyncError.invalidInput }
         try validate(model, seconds: max(video.durationSeconds, audio.durationSeconds), fps: fps)
@@ -783,7 +783,7 @@ extension FalLipsyncProvider {
             let permit = try await consentStore.dispatchPermit(record, requestID: UUID())
             defer { permit.finish() }
             let key = try await credential()
-            let uploadedVideo = try await upload(video, key: key, permit: permit)
+            let uploadedVideo = try await upload(video, key: key, permit: permit, onProgress: onUploadProgress)
             let uploadedAudio = try await upload(audio, key: key, permit: permit)
             guard try await keyFingerprint() == fingerprint else { throw LipsyncError.missingKey }
             let quote = try await quote(model: model, video: uploadedVideo, audio: uploadedAudio, options: options, fps: fps)
@@ -796,13 +796,18 @@ extension FalLipsyncProvider {
         }
     }
 
-    private func upload(_ file: LipsyncUploadFile, key: String, permit: VoiceDispatchPermit) async throws -> LipsyncSignedInput {
+    private func upload(_ file: LipsyncUploadFile, key: String, permit: VoiceDispatchPermit,
+                        onProgress: @Sendable (Double) async -> Void = { _ in }) async throws -> LipsyncSignedInput {
         try Task.checkCancellation()
         let initiatedAt = now()
+        let multipart = file.data.count > 90 * 1_024 * 1_024
         var stage = LipsyncDiagnosticEvent.Stage.uploadInitiate
         var status: Int?
+        var part: Int?
+        var bytes: Int?
         do {
-            var initiate = request(URL(string: "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3")!, method: "POST", key: key)
+            let endpoint = multipart ? "initiate-multipart" : "initiate"
+            var initiate = request(URL(string: "https://rest.fal.ai/storage/upload/\(endpoint)?storage_type=fal-cdn-v3")!, method: "POST", key: key)
             initiate.setValue("application/json", forHTTPHeaderField: "Content-Type")
             initiate.setValue("{\"expiration_duration_seconds\":3600}", forHTTPHeaderField: "X-Fal-Object-Lifecycle")
             initiate.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -813,29 +818,73 @@ extension FalLipsyncProvider {
             let body = try json(initiation)
             guard let target = (body["upload_url"] as? String).flatMap(URL.init(string:)),
                   let result = (body["file_url"] as? String).flatMap(URL.init(string:)) else { throw LipsyncError.invalidResponse }
-            let components = try LipsyncURLPolicy.components(target)
-            guard let host = components.host, LipsyncURLPolicy.resultHosts.contains(host) || host == "storage.fal.ai" else {
-                throw LipsyncError.unsafeURL
-            }
+            _ = try LipsyncURLPolicy.upload(target)
             try LipsyncURLPolicy.result(result)
             await logger.register(secret: target.absoluteString)
             await logger.register(secret: result.absoluteString)
             await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt)))
-            stage = .upload; status = nil
-            try Task.checkCancellation()
-            var upload = URLRequest(url: target)
-            upload.httpMethod = "PUT"; upload.httpBody = file.data
-            upload.setValue(file.contentType, forHTTPHeaderField: "Content-Type")
-            let response = try await http.send(upload, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
-            status = response.status
-            guard (200...299).contains(response.status) else { throw LipsyncError.http(response.status) }
-            await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt), bytes: file.data.count))
+            if multipart {
+                stage = .uploadPart
+                let chunkSize = 10 * 1_024 * 1_024
+                var parts: [[String: Any]] = []
+                for (index, offset) in stride(from: 0, to: file.data.count, by: chunkSize).enumerated() {
+                    let number = index + 1, end = min(offset + chunkSize, file.data.count)
+                    part = number; status = nil; bytes = end - offset
+                    let url = try LipsyncURLPolicy.upload(target, suffix: String(number))
+                    await logger.register(secret: url.absoluteString)
+                    let response = try await uploadPart(put(url, data: file.data.subdata(in: offset..<end), type: file.contentType), permit: permit)
+                    status = response.status
+                    let body = (try? JSONSerialization.jsonObject(with: response.body)) as? [String: Any]
+                    guard let etag = body?["etag"] as? String ?? response.etag, !etag.isEmpty else { throw LipsyncError.invalidResponse }
+                    parts.append(["partNumber": number, "etag": etag])
+                    await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt), bytes: bytes, part: part))
+                    await onProgress(Double(end) / Double(file.data.count))
+                }
+                stage = .uploadComplete; part = nil; status = nil; bytes = nil
+                let url = try LipsyncURLPolicy.upload(target, suffix: "complete")
+                await logger.register(secret: url.absoluteString)
+                var complete = URLRequest(url: url)
+                complete.httpMethod = "POST"
+                complete.httpBody = try JSONSerialization.data(withJSONObject: ["parts": parts])
+                complete.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                status = try await http.send(complete, limit: LipsyncLimits.maximumJSONBytes, permit: permit).status
+            } else {
+                stage = .upload; status = nil; bytes = file.data.count
+                status = try await http.send(put(target, data: file.data, type: file.contentType), limit: LipsyncLimits.maximumJSONBytes, permit: permit).status
+            }
+            guard let status else { throw LipsyncError.invalidResponse }
+            guard (200...299).contains(status) else { throw LipsyncError.http(status) }
+            await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt), bytes: bytes))
             return try LipsyncSignedInput(uploadedURL: result, file: file, expiresAt: initiatedAt.addingTimeInterval(3600))
         } catch let error as LipsyncError {
-            await log("upload-failed stage=\(stage.rawValue) status=\(status.map(String.init) ?? "unknown") reason=\(error)")
+            if case .http(let code) = error { status = code }
+            let label = stage.rawValue + (part.map { " \($0)" } ?? "")
+            await log("upload-failed stage=\(label) status=\(status.map(String.init) ?? "unknown") reason=\(error)")
             await diagnostic?.record(.init(stage: stage, status: status, seconds: now().timeIntervalSince(initiatedAt),
-                                           bytes: stage == .upload ? file.data.count : nil, error: error))
+                                           bytes: bytes, part: part, error: error))
             throw error
+        }
+    }
+
+    private func put(_ url: URL, data: Data, type: String) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"; request.httpBody = data
+        request.setValue(type, forHTTPHeaderField: "Content-Type")
+        return request
+    }
+
+    private func uploadPart(_ request: URLRequest, permit: VoiceDispatchPermit) async throws -> LipsyncHTTPResponse {
+        var attempt = 1
+        while true {
+            try Task.checkCancellation()
+            do {
+                let response = try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
+                guard (200...299).contains(response.status) else { throw LipsyncError.http(response.status) }
+                return response
+            } catch let error as LipsyncError where attempt < 3 && error.isTransient && error != .invalidResponse && error != .responseTooLarge {
+                try await sleep(.milliseconds(250 * attempt))
+                attempt += 1
+            }
         }
     }
 }

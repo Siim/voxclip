@@ -49,16 +49,18 @@ public sealed partial class EditorPage
             using var fal = new FalLipsyncProvider(services.Keys, catalog);
             var pictureRun = new WholeClipPictureRun(fal, consent, paidRoot, scratchRoot, edited.Id);
             var saved = WholeClipVoiceCheckpoint.Read(paidRoot, edited.Id, selection.Recovery.BaseKey, selection.Identity);
-            if (saved is null && selection.Kept is { } kept && selection.Intent is WholeClipIntent.RedoLipSync or WholeClipIntent.Sharper)
+            if (saved is null && selection.Kept is { } kept && selection.Intent == WholeClipIntent.RedoLipSync)
                 saved = SavedWholeClipVoice.FromKept(edited, kept, selection.Recovery);
             async Task<ComposeSnapshot> VoiceSnapshot(SavedWholeClipVoice voice, CancellationToken token) =>
                 await Snapshot(WholeClipRevoiceDraft.Voice(edited, clipId, voice.Voice(selection.RecordId)), clipId, token);
             if (saved is not null) session.KeepWholeClipVoice(selection, saved);
             var rendered = saved is null ? null : (await VoiceSnapshot(saved, ct)).VoiceLab?.Prepared;
             var fps = source.Video!.FrameRate;
-            if (selection.Intent == WholeClipIntent.Revoice && model == WholeClipLipsync.Lipsync2 && saved is not null && rendered is not null &&
-                pictureRun.HasAttempt(selection.Identity, saved, rendered, WholeClipLipsync.Sync3, fps)) model = WholeClipLipsync.Sync3;
-            var picture = await pictureRun.PriceAsync(selection.Plan, selection.Identity, saved, rendered, model, fps, ct);
+            var pictureIdentity = selection.Identity;
+            if (saved is not null && rendered is not null && selection.LegacyPictureIdentity is { } earlierIdentity &&
+                !pictureRun.HasAttempt(pictureIdentity, saved, rendered, model, fps) && pictureRun.HasAttempt(earlierIdentity, saved, rendered, model, fps))
+                pictureIdentity = earlierIdentity;
+            var picture = await pictureRun.PriceAsync(selection.Plan, pictureIdentity, saved, rendered, model, fps, ct);
             if (picture.Price > 0 && services.FrameFaces is null)
                 throw new RewriteGenerationException("The Windows face check isn't available. No video was sent.");
             var region = ElevenLabsRegions.FromSettings(services.Settings, services.Log);
@@ -111,7 +113,7 @@ public sealed partial class EditorPage
                 {
                     services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Warn, "voice-lab", $"lipsync provider=fal event=cleanup-unconfirmed status={status}");
                     services.FalCleanup.MarkDenied(fingerprint);
-                });
+                }, log: services.Log);
                 if (await activeFal.AccountFingerprintAsync(token) != offer.Picture.Account)
                     throw new FalLipsyncException(FalLipsyncError.ApprovalRequired);
                 if (saved is null)
@@ -141,7 +143,7 @@ public sealed partial class EditorPage
                 token.ThrowIfCancellationRequested();
                 if (!Current()) throw new VoiceLabRunInvalidatedException();
                 var snapshot = await VoiceSnapshot(saved, token);
-                return await new WholeClipPictureRun(activeFal, consent, paidRoot, scratchRoot, edited.Id, spend).ExecuteAsync(selection.Identity, saved,
+                return await new WholeClipPictureRun(activeFal, consent, paidRoot, scratchRoot, edited.Id, spend).ExecuteAsync(pictureIdentity, saved,
                     snapshot, selection.Recovery.Script, offer.Model, offer.Picture, storeRecord, binding, services.FrameFaces, progress, token);
             });
         }, (id, key) => WholeClipVoiceCheckpoint.ReadLatest(paidRoot, id, key), recordId => consent.ValidateUse(consent.Load(recordId)),

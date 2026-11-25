@@ -240,7 +240,8 @@ private struct NoProviderKeys: ProviderKeyStore {
         let published = fixture.backend.publications
         await plan.lipsync.refresh()
         #expect(requests.count == 1 && fixture.backend.publications == published)
-        #expect(plan.lipsync.allOffer?.request.voiceLab?.project == input.project, Comment(rawValue: plan.lipsync.problem))
+        let offer = try #require(plan.lipsync.allOffer, "Lip Sync All must be ready after refresh: \(plan.lipsync.problem)")
+        #expect(offer.isCurrent() && offer.request.voiceLab?.project == input.project)
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         undo.beginUndoGrouping()
         let accepted = await session.acceptTakes()

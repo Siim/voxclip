@@ -5,11 +5,11 @@ import VoxClipMedia
 
 /// Revoice the whole clip (ADR-R46, design.md R2 "How should it sound?"): one AI voice for every word of the clip,
 /// laid out on the clip as edited and lip synced. Choose → Running (Script, Voice, Fit, Lip sync, with Cancel) → Review (Play,
-/// A/B, the match line, Undo, Use Whole Clip, the sync-3 upgrade). The paid steps go through Rewrite's own take path and
+/// A/B, the match line, Undo, Use Whole Clip). The paid steps go through Rewrite's own take path and
 /// lip sync (`RewriteWholeClip.swift`); this session owns the order, the prices, the ledger that never pays a step twice,
 /// and what the panel says. Cancel or a failure keeps the clip as it was, and never forgets what was paid: a paid voice
 /// stays usable until an edit changes what it was made from (then Undo brings it back), and a paid lip sync stays applied
-/// through Try Again, a failed upgrade and a failed Use.
+/// through Try Again and a failed Use.
 @MainActor @Observable final class WholeClipRevoiceSession {
     typealias Lipsync = WholeClipRevoice.Lipsync
     enum Step: Int, CaseIterable, Identifiable {
@@ -126,7 +126,7 @@ import VoxClipMedia
         var picture: @MainActor (Voice) async throws -> Picture = { _ in Picture(speed: 1, outputSeconds: 0, laidOut: false) }
         /// The lip sync over the whole clip, the picture sped up by `factor` (the Fit step's), paid.
         var lipsync: @MainActor (Voice, Double, Lipsync, @escaping @MainActor (Double?) -> Void) async throws -> Synced
-        /// The lip sync's price for the upgrade, free.
+        /// The lip sync's price, free to check.
         var lipsyncPrice: @MainActor (Lipsync) throws -> Decimal?
         /// The take-match line's scores, free, on this Mac.
         var match: @MainActor (Voice) async -> WholeClipRevoiceRecord.Match?
@@ -219,7 +219,6 @@ import VoxClipMedia
     private(set) var ledger = WholeClipRevoiceLedger()
     private(set) var started: Date?
     private(set) var progress: Double?
-    private(set) var upgradeUSD: Decimal?
     /// Set when the last run failed (not when it was cancelled).
     private(set) var failure: Failure?
     /// The choice on the Choose card: true for the whole clip.
@@ -230,8 +229,6 @@ import VoxClipMedia
     private(set) var keyAvailable = true
     /// A shorter wording waiting for its own click (`ShorterWording`), nil otherwise.
     private(set) var shorterWording: ShorterWording?
-    /// A failed or cancelled Sharper Lip Sync put lipsync-2 back: Review says why, inline.
-    private(set) var upgradeNote: String?
     /// The proposal the card was made for (`RewriteSession.proposalID`): a new one makes a fresh card and default.
     @ObservationIgnored var proposalID: UUID?
     @ObservationIgnored var backend: Backend?
@@ -259,8 +256,6 @@ import VoxClipMedia
     /// The user checked fal.ai's request history after a lost submit answer and asked to lip sync again (it may charge
     /// twice): the next lip sync starts past that check, once. Only the user's click sets it.
     @ObservationIgnored private(set) var checkedFal = false
-    /// A failed Sharper Lip Sync's billed result is kept: the next upgrade re-imports it for free.
-    @ObservationIgnored private(set) var upgradeKept = false
     /// The Fit step's picture for the current voice.
     private(set) var picture: Picture?
 
@@ -332,9 +327,7 @@ import VoxClipMedia
         let lipsyncPaid = synced.map { synced in
             kept.map { ledger.paid(WholeClipRevoiceLedger.LipsyncKey(voice: $0.key, retime: synced.factor, model: synced.model)) } ?? false
         } ?? false
-        let restoredKey = restoredVoiceKey
-        // The paid lip sync comes back only over the very voice it was made with: every part back from the journal.
-        let lipsyncRestored = restored && restoredVoiceWhole && restoredLipsyncs.keys.contains { $0.voice == restoredKey && $0.model == .standard }
+        let lipsyncRestored = restored && restoredLipsyncModel != nil
         let matched: Decimal? = picture != nil ? ((try? backend?.lipsyncPrice(synced?.model ?? .standard)) ?? nil) : nil
         let lipsyncPrice = matched ?? quoted
         return remainingVoice + (lipsyncKept || lipsyncPaid || lipsyncRestored ? 0 : lipsyncPrice)
@@ -344,6 +337,13 @@ import VoxClipMedia
     var restoredVoiceKey: WholeClipRevoiceLedger.VoiceKey? {
         guard let text = script?.text else { return nil }
         return restoredVoices.keys.filter { $0.script == text }.min { $0.recordId < $1.recordId }
+    }
+
+    private var restoredLipsyncModel: Lipsync? {
+        guard restoredVoiceChosen, restoredVoiceWhole, let key = restoredVoiceKey else { return nil }
+        return [Lipsync.standard, .lipsync2].first { model in
+            restoredLipsyncs.keys.contains { $0.voice == key && $0.model == model }
+        }
     }
 
     /// The restored voice is the one a voice of the script would be made with now (`Backend.voiceKey`): its voice and model
@@ -440,7 +440,7 @@ import VoxClipMedia
         }
         // A retry priced for the picture and the lip sync can't buy speech: it keeps the voice it stopped with.
         let retained = retainedVoice
-        let model: Lipsync = retained != nil ? (synced?.model ?? .standard) : .standard
+        let model: Lipsync = retained != nil ? (synced?.model ?? .standard) : (restoredLipsyncModel ?? .standard)
         rewordRound = 0
         begin(automatic: automatic, budget: budget)
         launch { await $0.perform(model: model, retaining: retained) }
@@ -466,7 +466,7 @@ import VoxClipMedia
         // A run after Use was undone makes new work: a Redo of the old commit no longer marks the card used.
         undoneUse = nil
         phase = .running; started = Date(); progress = nil; failure = nil; fitStoppedScript = nil; picture = nil
-        shorterWording = nil; upgradeNote = nil; stoppedAt = nil; stopError = nil; lipsyncMayPay = true; currentStep = .script
+        shorterWording = nil; stoppedAt = nil; stopError = nil; lipsyncMayPay = true; currentStep = .script
         steps = Dictionary(uniqueKeysWithValues: Step.allCases.map { ($0, StepState.waiting) })
     }
 
@@ -520,16 +520,6 @@ import VoxClipMedia
         launch { await $0.performShorterWording(script) }
     }
 
-    /// Sharper Lip Sync · sync-3: runs only the lip sync again, over the voice and picture already paid for and matched. If
-    /// it fails or is cancelled, lipsync-2 is put back and Review says so; nothing paid is lost.
-    func upgrade() {
-        guard backend != nil, !running, phase == .review, let kept = synced, kept.model != .sync3, let voice, let picture else { return }
-        let before = steps[.lipsync], upgradePrice = upgradeUSD, entries = syncedEntries
-        phase = .running; started = Date(); progress = nil; failure = nil; upgradeNote = nil; currentStep = .lipsync
-        steps[.lipsync] = .waiting
-        launch { await $0.performUpgrade(voice: voice, picture: picture, kept: kept, entries: entries, before: before, price: upgradePrice) }
-    }
-
     private func pictureRedoPrice(_ model: Lipsync) -> Decimal? {
         guard let voice, let picture, backend?.voiceCurrent(voice) == true else { return nil }
         let key = WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)
@@ -559,19 +549,11 @@ import VoxClipMedia
     func runPictureRedo(_ model: Lipsync, approved: Decimal) {
         guard !running, let price = pictureRedoPrice(model), price <= approved, let voice, let picture else { return }
         redoLipApproval = approved
-        phase = .running; started = Date(); progress = nil; failure = nil; upgradeNote = nil; currentStep = .lipsync
+        phase = .running; started = Date(); progress = nil; failure = nil; currentStep = .lipsync
         launch {
             await $0.performLipsyncOnly(voice: voice, picture: picture, model: model)
             $0.redoLipApproval = nil
         }
-    }
-
-    /// I Checked fal.ai · Sharper Lip Sync Again (fal.ai may charge twice): the upgrade's submit answer was lost, and the
-    /// user checked fal.ai's request history. Only this click starts it again.
-    func upgradeAfterCheckingFal() {
-        guard phase == .review, submissionUnconfirmed, !running else { return }
-        submissionUnconfirmed = false; checkedFal = true
-        upgrade()
     }
 
     /// I Checked fal.ai · Lip Sync Again · ≈ $X (fal.ai may charge twice): the user looked at fal.ai's request history after
@@ -701,13 +683,12 @@ import VoxClipMedia
                 // when every part of the voice came back. A part voiced again changed the audio it was made over, so it
                 // can't come back: Try Again priced a new one, and this step pays for it.
                 restoringLipsync = restoredVoiceWhole ? restoredLipsyncs.keys.first { $0.voice == key.voice && $0.model == model } : nil
-                lipsyncMayPay = !ledger.paid(key) && restoringLipsync == nil
+                lipsyncMayPay = model == .standard && !ledger.paid(key) && restoringLipsync == nil
                 _ = try await lipsyncStep(voice: voice, factor: factor, model: model, backend: backend)
             }
             try Task.checkCancellation()
             steps[.lipsync] = .done("Lip sync · fal.ai \(model.name)" + (price.map { " · " + VoiceLabCostPresentation.format($0) } ?? ""))
             match = await backend.match(voice)
-            upgradeUSD = model == .sync3 ? nil : (try? backend.lipsyncPrice(.sync3)).flatMap { $0 }
             phase = .review
             backend.persist()
             if automatic { await use() }
@@ -735,46 +716,6 @@ import VoxClipMedia
         return made
     }
 
-    private func performUpgrade(voice: Voice, picture: Picture, kept: Synced, entries: [Int: RewriteLipsyncSession.Applied],
-                                before: StepState?, price: Decimal?) async {
-        guard let backend else { return }
-        steps[.lipsync] = .running("Lip sync · fal.ai \(Lipsync.sync3.name) · usually 1–2 min")
-        do {
-            lipsyncMayPay = !upgradeKept
-            // A result that came back is the upgrade, even when Cancel landed meanwhile: it is applied and paid.
-            let made = try await lipsyncStep(voice: voice, factor: picture.speed, model: .sync3, backend: backend)
-            upgradeKept = false
-            steps[.lipsync] = .done("Lip sync · fal.ai \(Lipsync.sync3.name) · " + VoiceLabCostPresentation.format(made.usd))
-            upgradeUSD = nil
-            phase = .review
-        } catch {
-            let cancelled = Task.isCancelled || error is CancellationError
-            var charged = ""
-            if let failed = error as? LipsyncFailed {
-                let uncertain = Self.cause(failed) as? LipsyncError == .submissionUncertain
-                if uncertain { submissionUnconfirmed = true }
-                if !uncertain, let id = failed.requestID, let usd = failed.usd {
-                    billedLipsyncs[id] = usd
-                    charged = " fal.ai charged for it (\(VoiceLabCostPresentation.format(usd)))" + (failed.freeRetry ? "; it's kept, so trying again is free." : ".")
-                }
-                upgradeKept = failed.freeRetry
-            }
-            lipsyncMayPay = true; checkedFal = false
-            backend.report("whole clip upgrade failure " + Self.failureKind(error))
-            // lipsync-2 stays: the live step put it back if the job took it off; this makes sure.
-            if await backend.restoreLipsync(entries) {
-                synced = kept; syncedEntries = entries; upgradeUSD = price
-                steps[.lipsync] = before ?? .done("Lip sync · fal.ai \(kept.model.name)")
-                let why = cancelled ? "Sharper Lip Sync was cancelled." : "Sharper Lip Sync didn't finish: " + Self.copy(error)
-                upgradeNote = why + charged + " Your \(kept.model.name) lip sync is kept."
-                phase = .review
-            } else {
-                synced = kept; syncedEntries = entries
-                await stopped(error, backend: backend)
-            }
-        }
-    }
-
     private func performLipsyncOnly(voice: Voice, picture: Picture, model: Lipsync) async {
         guard let backend else { return }
         steps[.lipsync] = .running("Lip sync · fal.ai \(model.name) · usually 1–2 min")
@@ -784,12 +725,11 @@ import VoxClipMedia
             // paid again, as in a run's own Lip sync step.
             let key = WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: picture.speed, model: model)
             if restoredLipsyncs[key] != nil { restoringLipsync = key }
-            lipsyncMayPay = !ledger.paid(key) && !lipsyncKept && restoringLipsync == nil
+            lipsyncMayPay = model == .standard && !ledger.paid(key) && !lipsyncKept && restoringLipsync == nil
             try await lipsyncStep(voice: voice, factor: picture.speed, model: model, backend: backend)
             try Task.checkCancellation()
             steps[.lipsync] = .done("Lip sync · fal.ai \(model.name)" + (price.map { " · " + VoiceLabCostPresentation.format($0) } ?? ""))
             match = await backend.match(voice)
-            upgradeUSD = pictureRedoModel != nil || model == .sync3 ? nil : (try? backend.lipsyncPrice(.sync3)).flatMap { $0 }
             phase = .review
         } catch {
             checkedFal = false; lipsyncMayPay = true
@@ -1078,9 +1018,9 @@ import VoxClipMedia
     func discard() async {
         guard let backend, phase == .review || isStopped else { return }
         await backend.discard()
-        phase = .choose; voice = nil; synced = nil; match = nil; steps = [:]; upgradeUSD = nil; picture = nil
-        failure = nil; stopError = nil; stoppedAt = nil; shorterWording = nil; upgradeNote = nil
-        syncedEntries = [:]; lipsyncKept = false; submissionUnconfirmed = false; checkedFal = false; upgradeKept = false
+        phase = .choose; voice = nil; synced = nil; match = nil; steps = [:]; picture = nil
+        failure = nil; stopError = nil; stoppedAt = nil; shorterWording = nil
+        syncedEntries = [:]; lipsyncKept = false; submissionUnconfirmed = false; checkedFal = false
         baseScript = nil; rewordRound = 0; usedVoiceOnly = false; usedFrom = nil; undoneUse = nil
         // What was paid before a relaunch goes with it, and stays counted.
         restoredLetGo += restoredVoices.values.reduce(0, +) + restoredLipsyncs.values.reduce(0, +)

@@ -517,7 +517,7 @@ def main():
                       'maximumRewordRounds': MAXIMUM_REWORD_ROUNDS, 'maximumPartSeconds': MAXIMUM_PART_SECONDS,
                       'minimumPartSeconds': MINIMUM_PART_SECONDS,
                       'maximumPartCharacters': MAXIMUM_PART_CHARACTERS, 'maximumClipSeconds': MAXIMUM_CLIP_SECONDS,
-                      'standardLipsync': LIPSYNC['lipsync2'][0],
+                      'standardLipsync': LIPSYNC['sync3'][0],
                       'lipsyncModels': [{'rawValue': raw, 'endpoint': endpoint, 'model': model, 'name': name}
                                         for (raw, endpoint, model), name in zip(LIPSYNC.values(), ['lipsync-2', 'sync-3'])]},
         'rule': rule_cases(),
