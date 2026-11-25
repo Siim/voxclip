@@ -78,7 +78,7 @@ public sealed partial class EditorViewModel
     /// <summary>The selection flyout's "✦ Rewrite as ▾": rewrites the selected words in that tone at once.</summary>
     public bool RewriteSelectionAs(RewriteStripItem item)
     {
-        if (!ShowsToneStrip || !HasSelection) return false;
+        if (!ShowsToneStrip || !HasSelection || IsStoryClip) return false;
         Request(item, new(item.Instruction, item.Title, Words: (SelectionStart, SelectionEnd)));
         return true;
     }
@@ -86,7 +86,7 @@ public sealed partial class EditorViewModel
     /// <summary>The scope bar's tone row: rewrites the scope now (the open clip, or the full take) in that tone.</summary>
     public bool RewriteScopeAs(RewriteStripItem item)
     {
-        if (!ShowsToneStrip) return false;
+        if (!ShowsToneStrip || IsStoryClip) return false;
         ClearSelection();
         Request(item, new(item.Instruction, item.Title, ClipId: state?.ActiveClipId));
         return true;
@@ -95,7 +95,7 @@ public sealed partial class EditorViewModel
     /// <summary>A clip row's "Rewrite as": a suggestion is kept first, then its clip is rewritten in that tone.</summary>
     public bool RewriteClipAs(RewriteStripItem item, string clipId)
     {
-        if (!ShowsToneStrip || ClipSpan(clipId) is null || !KeepForRowAction(clipId)) return false;
+        if (!ShowsToneStrip || StoryVoice(clipId) is not null || ClipSpan(clipId) is null || !KeepForRowAction(clipId)) return false;
         SetScope(clipId);
         ClearSelection();
         Request(item, new(item.Instruction, item.Title, ClipId: clipId));

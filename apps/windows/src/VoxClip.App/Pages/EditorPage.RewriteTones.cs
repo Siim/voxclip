@@ -34,6 +34,7 @@ public sealed partial class EditorPage
     /// the field, and sends it at once; a send that asks first asks inline in the panel.</summary>
     private async Task RewriteAsAsync(RewriteAsRequest request)
     {
+        if (ViewModel.IsStoryClip) return;
         // Over the open Rewrite's paid takes the tone asks first, there; its Discard and Rewrite runs the tone again.
         if (AskBeforeReplacingRewrite(() => RewriteAsAsync(request))) return;
         if (request.Words is { } words)
@@ -49,6 +50,20 @@ public sealed partial class EditorPage
     /// <summary>"Tone: ✦ Viral YouTuber" while the scope can be rewritten.</summary>
     private void UpdateToneButton()
     {
+        if (ViewModel.IsStoryClip)
+        {
+            ToneButton.Visibility = Visibility.Visible;
+            ToneButton.IsEnabled = false;
+            ToneButton.Content = "Rewrite as";
+            AutomationProperties.SetName(ToneButton, "Rewrite as");
+            AutomationProperties.SetHelpText(ToneButton, EditorViewModel.StoryRewriteReason);
+            ToolTipService.SetToolTip(ToneButton, EditorViewModel.StoryRewriteReason);
+            SaveToneHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+        ToneButton.IsEnabled = true;
+        AutomationProperties.SetHelpText(ToneButton, "");
+        ToolTipService.SetToolTip(ToneButton, null);
         var items = ViewModel.ShowsToneStrip ? ViewModel.RewriteStripItems : [];
         ToneButton.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (items.Count == 0) { SaveToneHost.Visibility = Visibility.Collapsed; return; }

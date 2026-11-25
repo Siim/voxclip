@@ -54,8 +54,9 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string Key { get; } = key;
     public int WordIndex { get; set; } = -1;
     internal string? PartId { get; set; }
-    public string Badge { get => badge; set { if (SetProperty(ref badge, value)) OnPropertyChanged(nameof(HasBadge)); } }
+    public string Badge { get => badge; set { if (SetProperty(ref badge, value)) { OnPropertyChanged(nameof(HasBadge)); OnPropertyChanged(nameof(ShowsDuration)); OnPropertyChanged(nameof(ActionsColumn)); OnPropertyChanged(nameof(ShowsRewrite)); } } }
     public bool HasBadge => Badge.Length > 0;
+    public int ActionsColumn => HasBadge ? 3 : 2;
     /// <summary>The clip id of a clip or suggestion row.</summary>
     public string? ClipId { get; init; }
     /// <summary>The recent project shown by a Recent row.</summary>
@@ -92,7 +93,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string DismissName => $"Dismiss suggested clip {Number}";
     public string RewriteName => $"Rewrite Clip {Number}";
     public string RewriteHelp => $"{RewriteName} (Ctrl+R)";
-    public bool CanRewrite { get => canRewrite; set => SetProperty(ref canRewrite, value); }
+    public bool CanRewrite { get => canRewrite; set { if (SetProperty(ref canRewrite, value)) OnPropertyChanged(nameof(ShowsRewrite)); } }
+    public bool ShowsRewrite => CanRewrite || HasBadge;
     /// <summary>✦ Make it postable on the row: "✦ Make it postable · up to $0.42" (design §6.7); the row ✦ and the first menu item.</summary>
     public string MakeItName { get => makeItName; set => SetProperty(ref makeItName, value); }
     public bool CanMakeIt { get => canMakeIt; set => SetProperty(ref canMakeIt, value); }
@@ -105,7 +107,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public bool IsPointerOver { get => isPointerOver; set { if (SetProperty(ref isPointerOver, value)) RefreshActions(); } }
     /// <summary>✦ Rewrite and ⋯ More: on the selected or hovered clip or suggestion row (a suggestion keeps ✓ and ✕ too).</summary>
     public bool ShowsActions => Kind is SidebarKind.Clip or SidebarKind.Suggestion && (IsSelected || IsPointerOver);
-    public bool ShowsDuration => !ShowsActions;
+    public bool ShowsDuration => HasBadge || !ShowsActions;
     private void RefreshActions()
     {
         OnPropertyChanged(nameof(ShowsActions));
@@ -250,7 +252,7 @@ public sealed class ShellViewModel
                 var first = editor.Index(clip.Clip.StartWordId);
                 var last = editor.Index(clip.Clip.EndWordId);
                 // A suggestion's Rewrite keeps it first (MainWindow.RewriteClipClicked), so it offers Rewrite like a kept clip.
-                row.CanRewrite = row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
+                row.CanRewrite = !row.HasBadge && row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
                     && editor.Words.Skip(first).Take(last - first + 1).Any(word => editor.State?.CutWordIds.Contains(word.Id) != true);
                 row.CanMakeIt = row.Edits && editor.CanMakeItPostable(clip.Id);
                 if (row.CanMakeIt) row.MakeItName = editor.MakeItTitle(clip.Id);
@@ -296,6 +298,7 @@ public sealed class ShellViewModel
                             row.Title = part.Excerpt;
                             row.Detail = part.TakeTime;
                             row.IsActive = editor.SelectedPart?.Id == part.Id;
+                            row.Edits = editor.CanEditParts;
                             row.AccessibleName = $"Part {part.Number} of {editor.ClipParts.Count}, {part.Excerpt}, take time {part.TakeTime}" + (row.IsActive ? ", selected" : "");
                             next.Add(row);
                         }

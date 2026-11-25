@@ -61,7 +61,8 @@ public sealed partial class EditorPage : Page
     private double previewDuration;
     /// <summary>The previewed clip's speed: the transport shows rendered time, positions stay edited (design §6.9).</summary>
     private Core.Domain.Clips.ClipSpeedTiming previewSpeed = new(1);
-    private double? previewStop;
+    private (double Time, bool OnEditedAxis)? previewStop;
+    private double? previewStoryEnd;
     /// <summary>Play/Pause reads the playing state from before an open correction is saved (design §4.2).</summary>
     private readonly PlaybackToggle playback = new();
     private string? previewClipId;
@@ -191,6 +192,7 @@ public sealed partial class EditorPage : Page
                 var snapshot = await SnapshotAsync(ct);
                 if (!ReferenceEquals(capturedProject, ViewModel.Project)) return;
                 previewDuration = snapshot.Timeline.Duration;
+                RememberStoryEnd(snapshot.Timeline);
                 previewSpeed = snapshot.Speed;
                 previewStage.Cleared();
                 await preview.LoadAsync(snapshot, null, ct);
@@ -295,7 +297,9 @@ public sealed partial class EditorPage : Page
     {
         if (disposed) return;
         var sourceTime = position.SourceTime;
-        if (ViewModel.State?.ActiveClipId is { } clipId && position.EditedTime >= previewDuration &&
+        if (position.EditedTime >= previewDuration && previewStoryEnd is { } storyEnd)
+            sourceTime = storyEnd;
+        else if (ViewModel.State?.ActiveClipId is { } clipId && position.EditedTime >= previewDuration &&
             ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } active &&
             ViewModel.Words.FirstOrDefault(word => word.Id == active.Clip.EndWordId) is { } endWord)
             sourceTime = endWord.End;
@@ -308,11 +312,11 @@ public sealed partial class EditorPage : Page
         AutomationProperties.SetName(PreviewPlay, PlaybackPresentation.Name(position.IsPlaying));
         ToolTipService.SetToolTip(PreviewPlay, PlaybackPresentation.Hint(position.IsPlaying));
         Timeline.SetTransport(elapsed, total, position.IsPlaying);
-        Timeline.Position(position.SourceTime);
+        Timeline.Position(sourceTime);
         viewerHost?.SetPlayback(position.EditedTime, position.IsPlaying, timelineVisible);
         CaptionDrag.Position(position.EditedTime);
         captions?.UpdatePosition(position.EditedTime, sourceTime);
-        if (previewStop is { } stop && sourceTime >= stop && preview is not null)
+        if (previewStop is { } stop && (stop.OnEditedAxis ? position.EditedTime : sourceTime) >= stop.Time && preview is not null)
         { previewStop = null; _ = RunAsync(() => SourceTransportAsync(token => preview.PauseAsync(token)), "Preview"); }
         if (changed) Transcript.RefreshVisuals();
     }
@@ -363,6 +367,7 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateRewriteCommand()
     {
+        AutomationProperties.SetHelpText(RewriteCommand, ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : "");
         if (shellInitialized && shellJobs is not null)
         {
             RewriteCommand.Visibility = Visibility.Visible;
@@ -370,7 +375,7 @@ public sealed partial class EditorPage : Page
             return;
         }
         RewriteCommand.Visibility = Visibility.Visible;
-        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript;
+        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript && !ViewModel.IsStoryClip;
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -523,6 +528,8 @@ public sealed partial class EditorPage : Page
             var clipChanged = previewClipId != state?.ActiveClipId;
             previewClipId = state?.ActiveClipId;
             previewDuration = snapshot.Timeline.Duration;
+            RememberStoryEnd(snapshot.Timeline);
+            if (clipChanged) previewStop = null;
             previewSpeed = snapshot.Speed;
             // A load or plan swap that works clears the stage's line; a failure while drawing it sets the line again.
             previewStage.Cleared();
@@ -605,7 +612,7 @@ public sealed partial class EditorPage : Page
     }
     private async Task OpenRewriteAsync(bool insertion, string? instruction = null, WholeClipIntent? wholeClipIntent = null)
     {
-if (insertion ||
+        if (insertion || ViewModel.IsStoryClip ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
 !ViewModel.HasTranscript) return;
         if (wholeClipIntent is { } existingIntent && rewrite is { IsOpen: true } existing && rewritePanel is { } existingPanel &&
@@ -944,7 +951,7 @@ if (insertion ||
         await SourceTransportAsync(async token =>
         {
             await SeekSourceCoreAsync(range.Start, token);
-            previewStop = range.End;
+            previewStop = (range.End, false);
             if (preview is not null && !ViewModel.IsReadOnly) await preview.PlayAsync(token);
         });
     }

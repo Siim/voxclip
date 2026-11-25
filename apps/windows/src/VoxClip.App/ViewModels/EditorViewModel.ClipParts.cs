@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
@@ -7,6 +8,9 @@ internal sealed record ClipPartRow(ClipPart Part, int Number, int First, int Las
     internal string Id => Part.Id;
     internal string TakeTime => $"{EditorViewModel.Duration(Start)}–{EditorViewModel.Duration(End)}";
 }
+
+internal sealed record StoryVoiceActions(string RewriteReason, string LipSyncReason, string MakeSelected, string MakeAll,
+    decimal? VoiceAndLipSync, decimal? LipSync);
 
 public sealed partial class EditorViewModel
 {
@@ -18,10 +22,34 @@ public sealed partial class EditorViewModel
     internal bool CanEditParts => ActiveClip is not null && !IsReadOnly && !isLeaving && !Busy;
     internal const string AddPartReason = "Select words outside the clip's parts to add them.";
     internal const string LastPartReason = "A clip needs one part. Remove Clip instead.";
+    internal const string StoryRewriteReason = "Voice changes work on one part at a time. Make a clip of the part first.";
     internal bool CanAddPart => CanEditParts && ClipParts.Count < 12 && HasSelection &&
-        ClipParts.All(part => SelectionEnd < part.First || SelectionStart > part.Last);
+        ClipParts.All(part => SelectionEnd < part.First || SelectionStart > part.Last) &&
+        Words.Skip(SelectionStart).Take(SelectionEnd - SelectionStart + 1).Any(word => state?.CutWordIds.Contains(word.Id) != true);
     internal string AddPartHelp => ClipParts.Count == 12 ? "A clip can have up to 12 parts." : CanAddPart ? "" : AddPartReason;
     internal bool CanRemovePart => CanEditParts && ClipParts.Count > 1;
+    internal string? RemovePartHelp => ClipParts.Count == 1 ? LastPartReason : null;
+
+    internal StoryVoiceActions? StoryVoice(string? clipId = null, VoiceLabPriceCatalog? prices = null)
+    {
+        var clip = clipId is null ? ActiveClip : state?.Clips.FirstOrDefault(clip => clip.Id == clipId);
+        if (clip?.Parts is not { } parts) return null;
+        var number = clip.Id == ActiveClip?.Id ? SelectedPart?.Number ?? 1 : 1;
+        WholeClipRevoice.Price? estimate = null;
+        if (prices is not null && state is not null && clip.PlayPartIndices(Words) is { } spans)
+        {
+            var length = Clips.FirstOrDefault(row => row.Id == clip.Id)?.DurationSeconds ?? 0;
+            var script = string.Join(" ", spans.SelectMany(span => Words.Skip(span.Start).Take(span.End - span.Start + 1))
+                .Where(word => !state.CutWordIds.Contains(word.Id)).Select(DisplayText));
+            estimate = WholeClipRevoice.PriceFor(VoiceLabTextLength.Length(script), VoiceLabWordingFit.ModelId,
+                length, WholeClipLipsyncValues.Standard, prices);
+        }
+        return new(StoryRewriteReason, $"Lip sync can't run across the {parts.Count - 1} seams of a story clip yet. Make a clip of the part first.",
+            $"Make Clip of Part {number}", $"Make Clips of All {parts.Count} Parts", estimate?.Usd, estimate?.Lipsync.Usd);
+    }
+
+    internal static string StoryVoicePrice(string label, decimal? usd) =>
+        $"{label} · {(usd is { } price ? VoiceLabCostPresentation.Format(price) : "Price unavailable")}";
 
     private void RefreshClipParts()
     {

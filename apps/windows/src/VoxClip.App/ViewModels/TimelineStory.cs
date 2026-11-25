@@ -101,4 +101,19 @@ internal sealed class TimelineStory
         var band = bands.First(item => position < item.Range.End);
         return sources[band.Part.Number - 1].Start + Math.Max(0, position - band.Range.Start);
     }
+
+    internal IReadOnlyList<TimelineCue> OpenCaptionCues(IReadOnlyList<TimelineCaptions.Page> pages)
+    {
+        var cues = new List<TimelineCue>();
+        foreach (var band in open)
+        {
+            var source = sources[band.Part.Number - 1];
+            var offset = band.Range.Start - source.Start;
+            var projected = pages.Where(page => page.Source.Start < source.End && page.Source.End > source.Start)
+                .Select(page => page with { Source = new(Math.Max(page.Source.Start, source.Start) + offset,
+                    Math.Min(page.Source.End, source.End) + offset) }).ToArray();
+            cues.AddRange(TimelineCaptions.Cues(projected, TimelineAxis.Source, OpenCuts));
+        }
+        return cues;
+    }
 }
