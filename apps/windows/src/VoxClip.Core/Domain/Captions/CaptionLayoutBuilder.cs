@@ -60,7 +60,9 @@ internal static class CaptionLayoutBuilder
             var lines = Break(widths, gap, Fits, style.Layout.Balance == CaptionLayoutBalanceValue.Balanced);
             return lines.Count <= style.Layout.MaxLines && (indices.Count == 1 || lines.All(line => Fits(Units(widths, gap, line))));
         }
-        var groups = Group(words, style.Layout, PageFits);
+        var partStarts = Enumerable.Range(0, request.Words.Count).Where(index => request.Words[index].StartsPart == true).ToArray();
+        bool PartBreak(int index) => index > 0 && partStarts.Any(start => words[index - 1].SourceIndex < start && start <= words[index].SourceIndex);
+        var groups = Group(words.Count, style.Layout, index => words[index].Raw, index => words[index].Start, index => words[index].End, PageFits, PartBreak);
         var pages = new List<CaptionPage>();
         var paletteIndex = 0;
         string? previousEmoji = null;
@@ -89,7 +91,8 @@ internal static class CaptionLayoutBuilder
             var shrunk = indices.Count == 1 && !Fits(widths[0]);
             var page64 = shrunk ? Math.Max((long)Math.Ceiling(font64 * style.Layout.MinShrink), Math.Min(font64, limit64 * font.UnitsPerEm / widths[0])) : font64;
             var start = words[indices[0]].Start;
-            var next = pageIndex + 1 < groups.Count ? words[groups[pageIndex + 1][0]].Start : double.PositiveInfinity;
+            var nextIndex = pageIndex + 1 < groups.Count ? groups[pageIndex + 1][0] : (int?)null;
+            var next = nextIndex is { } following ? (PartBreak(following) ? words[indices[^1]].End : words[following].Start) : double.PositiveInfinity;
             var end = PageEnd(start, words[indices[^1]].End, next, style.Layout, request.Duration);
             pages.Add(Place(pageIndex, indices, start, end, page64, shrunk, widths, lines, gap, style, font, request.Frame, safe, emphasised, emoji));
         }
@@ -173,7 +176,7 @@ internal static class CaptionLayoutBuilder
 
     /// <summary>Captions §6.1 paging. Caption cards have no glyph widths yet and pass a fit test that always fits; design §5.4.2.</summary>
     internal static IReadOnlyList<IReadOnlyList<int>> Group(int count, CaptionLayout layout, Func<int, string> raw, Func<int, double> start,
-        Func<int, double> end, Func<IReadOnlyList<int>, bool> fits)
+        Func<int, double> end, Func<IReadOnlyList<int>, bool> fits, Func<int, bool>? startsPart = null)
     {
         var pages = new List<IReadOnlyList<int>>();
         var current = new List<int>();
@@ -182,7 +185,7 @@ internal static class CaptionLayoutBuilder
             if (current.Count > 0)
             {
                 var previous = current[^1];
-                if (current.Count >= layout.MaxWords || layout.BreakOnSentence && CaptionTextRules.Ends(raw(previous), true)
+                if (startsPart?.Invoke(index) == true || current.Count >= layout.MaxWords || layout.BreakOnSentence && CaptionTextRules.Ends(raw(previous), true)
                     || layout.BreakOnComma && current.Count >= 2 && CaptionTextRules.Ends(raw(previous), false)
                     || layout.BreakOnGapSec is { } gap && start(index) - end(previous) >= gap
                     || layout.MaxPageSec is { } duration && end(index) - start(current[0]) > duration || !fits(current.Append(index).ToArray()))

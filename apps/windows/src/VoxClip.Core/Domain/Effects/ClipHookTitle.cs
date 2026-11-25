@@ -46,7 +46,7 @@ public static class ClipHookTitle
         var duration = project.Media.Source.DurationSeconds;
         var rate = project.Media.Source.Audio?.SampleRate ?? 48000;
         var scoped = state with { ActiveClipId = clipId };
-        return EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, duration), duration, rate, state.PauseKeepSeconds);
+        return EditingEngine.BuildPlan(scoped, duration, rate);
     }
 
     /// <summary>The card for <paramref name="hook"/> on <paramref name="clipId"/>, replacing the clip's existing card (same id). It runs

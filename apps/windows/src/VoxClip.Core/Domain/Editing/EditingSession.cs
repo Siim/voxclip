@@ -6,18 +6,12 @@ namespace VoxClip.Core.Domain.Editing;
 
 internal static class EditingSession
 {
-    private static (int Start, int End)? Scope(EditState state)
-    {
-        var clip = state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId);
-        if (clip is null) return null;
-        var ids = state.Transcript.Words.Select(word => word.Id).ToList();
-        var start = ids.IndexOf(clip.StartWordId);
-        var end = ids.IndexOf(clip.EndWordId);
-        return start >= 0 && end >= start ? (start, end) : null;
-    }
+    private static IReadOnlyList<(int Start, int End)>? Scope(EditState state) =>
+        state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId)?.PlayPartIndices(state.Transcript.Words);
 
-    private static bool InScope(int index, (int Start, int End)? scope) => scope is null || index >= scope.Value.Start && index <= scope.Value.End;
-    private static bool PauseInScope(Pause pause, (int Start, int End)? scope) => InScope(pause.AfterIndex, scope) && InScope(pause.AfterIndex + 1, scope);
+    private static bool InScope(int index, IReadOnlyList<(int Start, int End)>? scope) => scope?.Any(range => index >= range.Start && index <= range.End) ?? true;
+    private static bool PauseInScope(Pause pause, IReadOnlyList<(int Start, int End)>? scope) =>
+        scope?.Any(range => pause.AfterIndex >= range.Start && pause.AfterIndex + 1 <= range.End) ?? true;
     private static string Text(EditState state, TimedWord word) => state.Corrections.GetValueOrDefault(word.Id, word.Text);
     private static bool Filler(EditState state, TimedWord word) => word.Kind == WordKind.UnlabeledSpeech || word.Kind == WordKind.Word && EditingAlgorithms.IsFillerText(Text(state, word));
 
@@ -38,8 +32,9 @@ internal static class EditingSession
         var words = state.Transcript.Words;
         var segments = words.Select((word, index) => new EditSegment(word.Id, EditSegmentKind.Word, word.Kind, Text(state, word), word.Start, word.End, state.CutWordIds.Contains(word.Id) || !InScope(index, scope))).ToList();
         segments.AddRange(state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => new EditSegment(pause.Id, EditSegmentKind.Pause, null, null, pause.Start, pause.End, true)));
-        if (scope is { } range)
+        if (scope is { Count: 1 })
         {
+            var range = scope[0];
             // The clip's opening lead-in (ADR-R48 part 2) opens it earlier, inside the pause before its first word.
             var leadIn = state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId)?.LeadInSeconds;
             var times = EditingAlgorithms.ClipTimes(words, range.Start, range.End, leadIn);

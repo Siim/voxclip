@@ -54,7 +54,7 @@ internal sealed class TimelineTileCache
         var column = Math.Max(1, width / 2048);
         for (var index = visible.Start.Value; index < visible.End.Value; index++)
         {
-            var piece = pieces.Pieces[index];
+            var piece = pieces.OnAxis(axis)[index];
             var range = piece.Range(axis);
             var left = Math.Clamp(window.X(range.Start, width), 0, width);
             var right = Math.Clamp(window.X(range.End, width), 0, width);

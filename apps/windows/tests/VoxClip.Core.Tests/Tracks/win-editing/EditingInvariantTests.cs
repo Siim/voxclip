@@ -49,6 +49,8 @@ public sealed class EditingInvariantTests
                 var sample = plan.TotalSamples * probe / 200;
                 var source = sample / (double)rate;
                 var edited = plan.MapTime(source);
+                var removed = plan.Cuts.Sum(cut => Math.Max(0, Math.Min(sample, cut.EndSample) - cut.StartSample));
+                Assert.Equal((sample - removed) / (double)rate, edited);
                 Assert.True(edited >= previous);
                 previous = edited;
                 if (plan.CutContaining(source) is null) Assert.Equal(source, plan.SourceTime(edited));

@@ -75,7 +75,7 @@ private actor SettingsDebounceClock {
         try project.applyEditing(.addClip(ClipRange(id: "story", startWordId: "w1", endWordId: "w4", parts: [closing, opening])))
         #expect(project.schemaVersion == 5)
         #expect(project.edits.clips.first?.playParts == [closing, opening])
-        try project.applyEditing(.toggle(id: "w2"))
+        let cuts = project.edits.cutWordIds
         let before = project
         try project.applyEditing(.updateClip(id: "story", startIndex: 0, endIndex: 1))
         #expect(project == before)
@@ -83,7 +83,7 @@ private actor SettingsDebounceClock {
         #expect(project.edits.clips.last?.playParts.first?.endWordId == "w2")
         try project.applyEditing(.setClipParts(id: "story", parts: [opening]))
         #expect(project.schemaVersion == 4)
-        #expect(project.edits.cutWordIds == ["w2"])
+        #expect(project.edits.cutWordIds == cuts)
     }
     @Test func fiveQuestionsRedesignFixture() throws {
         let fixture = try project("five-questions")

@@ -79,7 +79,7 @@ public enum VoiceLabRenderPreflight {
             let shown = CaptionTranslations.applying(ClipEffects.maskingBleeps(plan.captions, effects: effects), project: input.project,
                                                      clipID: clip?.id, effects: effects)
             let expected = shown.map {
-                CaptionInputWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end)
+                CaptionInputWord($0)
             }
             guard layout.input.words == expected,
                   abs(layout.input.duration - plan.duration) < 1 / plan.sampleRate,

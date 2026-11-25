@@ -182,7 +182,8 @@ EditPlan {
   sampleRate: Double
   totalSamples: Int64        // max(0, jsRound(duration * rate))
   cuts: [MediaInterval]      // sorted, disjoint, merged; consecutive cuts are separated by at least one kept sample
-  kept: [MediaInterval]      // complement of cuts in [0, totalSamples)
+  kept: [MediaInterval]      // complement of cuts in [0, totalSamples), in play order
+  partSeams: [Int64]         // output sample offsets between nonempty story parts
   outputSamples: Int64       // sum of kept lengths
   duration: Double           // outputSamples / rate
   mapTime(source) -> edited
@@ -627,6 +628,10 @@ The transcript string used for copying, share captions and the clip finder is de
 
 ## 7. Planning, time mapping and rendering rules
 
+For story clips, `EditPlan.build` / `EditingEngine.BuildPlan` run the ordinary planner for each `playParts` range and concatenate the kept spans in that order. `cuts` is the source-sorted complement of their union. The spans must be disjoint in source, but need not ascend in play order. Joins use the same 5 ms fades as ordinary clips. `RenderCallerInputs.timeline` / `Timeline` chooses this plan or its Voice Lab equivalent, which concatenates per-part plans with existing source-anchored patches intact.
+
+On either plan, source-to-edited lookup uses a source-sorted index carrying each span's output offset. A source gap maps to the preceding span's output end in source order, or zero if there is no preceding span. Caption words are mapped per part and shifted by its output offset; layout starts a new page at the next part. `TimelinePieces` exposes play-order seams via `isPartSeam` / `IsPartSeam`; use the Source-axis array for Source-axis indices.
+
 ### 7.1 buildSegments
 
 ```text
@@ -723,7 +728,7 @@ sourceTime(e):                                // edited -> source
 cutContaining(t) = the first cut c with c.sa / rate <= t < c.sb / rate, or none     // fixtures: previewSkip
 ```
 
-These invariants hold for every plan (the generator's property checks: 300 random plans, 200 probes each, at 1k/16k/44.1k/48k):
+These invariants hold for ordinary ascending plans (the generator's property checks: 300 random plans, 200 probes each, at 1k/16k/44.1k/48k). Story plans retain the sample-grid round trips but can map source time non-monotonically:
 
 1. `mapTime(sourceTime(e)) == e` exactly for every sample-aligned `e` in `[0, outputSamples)`.
 2. `sourceTime(mapTime(s)) == jsRound(s·rate)/rate` for every `s` outside the cuts.

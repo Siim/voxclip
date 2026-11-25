@@ -269,6 +269,19 @@ public sealed class WindowsShellV2Tests
     }
 
     [Fact]
+    public void CyclingToAStoryClipSelectsItsFirstPlayedPart()
+    {
+        var project = Model().Project;
+        var words = project.Transcript!.Words;
+        var clip = new ClipRange("story", words[0].Id, words[4].Id, null, ClipOrigin.Manual, null, null, true, Parts:
+            [new("later", words[3].Id, words[4].Id), new("earlier", words[0].Id, words[1].Id)]);
+        var model = new EditorViewModel(project with { SchemaVersion = 5, Edits = project.Edits with { Clips = [clip] } });
+        model.CycleClip(1);
+        Assert.Equal(clip.Id, model.State?.ActiveClipId);
+        Assert.Equal(3, model.SelectionStart);
+    }
+
+    [Fact]
     public async Task ScopeChangesKeepTheDirtyIdentityTimestampAndHistoryUntouched()
     {
         var model = Model();

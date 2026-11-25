@@ -29,7 +29,7 @@ public sealed class VoiceTakeIdentityTests
     public void PartEditPreservesPaidWholeClipAsACopy()
     {
         var original = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/whole-clip-revoice-project.voxclip"));
-        ClipPart[] parts = [new("late", "w7", "w8"), new("early", "w3", "w4")];
+        ClipPart[] parts = [new("second", "w2", "w2"), new("first", "w1", "w1")];
         var project = EditingEngine.ApplyEditing(original, new EditOperation.SetClipParts("clip-main", parts));
         Assert.Equal(original.Edits.Clips[0], project.Edits.Clips[0]);
         Assert.Equal(parts, project.Edits.Clips[^1].PlayParts);

@@ -87,6 +87,7 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     private long outputSamples = NormalizeOutputSamples(Kept, OutputSamples);
     private IReadOnlyList<Join> joins = NormalizeJoins(SampleRate, TotalSamples, Kept, Joins);
     private GainPart[] gainParts = BuildGainParts(SampleRate, TotalSamples, Kept);
+    private SourceMapEntry[] sourceIndex = EditingPlanner.SourceIndex(Kept);
 
     /// <summary>Native audio sample rate. A record copy rebuilds its gain table when changed.</summary>
     public double SampleRate { get => sampleRate; init { sampleRate = value; RebuildDerived(); } }
@@ -99,11 +100,15 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     /// <summary>Joins derived from kept intervals and source bounds, editing §2.7.</summary>
     public IReadOnlyList<Join> Joins { get => joins; init { } }
 
+    /// <summary>Output sample at the start of each nonempty part after the first.</summary>
+    [JsonIgnore] public IReadOnlyList<long> PartSeams { get; init; } = [];
+
     private void RebuildDerived()
     {
         outputSamples = Kept.Sum(part => part.EndSample - part.StartSample);
         joins = EditingPlanner.BuildJoins(SampleRate, TotalSamples, Kept);
         gainParts = BuildGainParts(SampleRate, TotalSamples, Kept);
+        sourceIndex = EditingPlanner.SourceIndex(Kept);
     }
 
     private static long NormalizeOutputSamples(IReadOnlyList<MediaInterval> intervals, long supplied)
@@ -141,14 +146,10 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     public double MapTime(double source)
     {
         var sample = EditingMath.ClampSample(double.IsFinite(source) ? source : 0, SampleRate, TotalSamples);
-        long removed = 0;
-        for (var index = 0; index < Cuts.Count; index++)
-        {
-            var cut = Cuts[index];
-            if (cut.StartSample >= sample) break;
-            removed += Math.Min(sample, cut.EndSample) - cut.StartSample;
-        }
-        return Math.Clamp(sample - removed, 0, OutputSamples) / SampleRate;
+        var index = EditingPlanner.FindSource(sourceIndex, sample, entry => entry.Source.StartSample);
+        if (index < 0) return 0;
+        var entry = sourceIndex[index];
+        return Math.Min(entry.OutputEnd, entry.OutputStart + sample - entry.Source.StartSample) / SampleRate;
     }
     /// <summary>Edited to source time; editing §7.4.</summary>
     public double SourceTime(double edited)
@@ -197,7 +198,8 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
 }
 
 /// <summary>Edited-timeline word, derived and never stored; editing §2.8.</summary>
-public sealed record CaptionWord(string Id, string Text, double Start, double End);
+public sealed record CaptionWord(string Id, string Text, double Start, double End,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? StartsPart = null);
 
 /// <summary>Editor operations; editing §6. Reducers are pure and one operation is one undo step.</summary>
 public abstract record EditOperation
@@ -281,6 +283,16 @@ public static class EditingEngine
     public static IReadOnlyList<EditSegment> BuildSegments(EditState state, double duration) => EditingSession.BuildSegments(state);
     /// <summary>Words for captions after cuts and corrections.</summary>
     public static IReadOnlyList<CaptionWord> CaptionWords(EditState state, EditPlan plan) => CaptionCopy(BuildSegments(state, plan.TotalSamples / plan.SampleRate), plan);
+
+    /// <summary>Build the selected clip or the full take, respecting ordered parts.</summary>
+    public static EditPlan BuildPlan(EditState state, double duration, double rate) =>
+        state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId) is { Parts: not null } story
+            ? BuildStoryPlan(state, story, duration, rate)
+            : BuildEditPlan(BuildSegments(state, duration), duration, rate, state.PauseKeepSeconds);
+
+    /// <summary>Build a story by concatenating its single-range plans on the same sample grid.</summary>
+    public static EditPlan BuildStoryPlan(EditState state, ClipRange clip, double duration, double rate) =>
+        EditingPlanner.BuildStoryPlan(state, clip, duration, rate);
     /// <summary>Derive transcript copy from current speech text, never split a multi-word correction, editing §6.5.</summary>
     public static string TranscriptText(EditState state)
         => string.Join(" ", state.Transcript.Words.Where(word => word.Kind == Shared.WordKind.Word).Select(word => state.Corrections.GetValueOrDefault(word.Id, word.Text)));
@@ -289,8 +301,9 @@ public static class EditingEngine
         => EditingPlanner.CutRange(segments, index, duration, pauseKeepSeconds);
     /// <summary>Map valid kept speech words independently, preserving corrected text exactly, editing §7.6.</summary>
     public static IReadOnlyList<CaptionWord> CaptionCopy(IReadOnlyList<EditSegment> segments, EditPlan plan)
-        => segments.Where(segment => segment.Kind == EditSegmentKind.Word && (segment.WordKind ?? Shared.WordKind.Word) == Shared.WordKind.Word && !segment.Cut && EditingPlanner.Valid(segment))
-            .Select(segment => new CaptionWord(segment.Id, segment.Text ?? "", plan.MapTime(segment.Start), plan.MapTime(segment.End))).Where(word => word.End > word.Start).ToArray();
+        => plan.PartSeams.Count > 0 ? EditingPlanner.StoryCaptions(segments, plan)
+            : segments.Where(segment => segment.Kind == EditSegmentKind.Word && (segment.WordKind ?? Shared.WordKind.Word) == Shared.WordKind.Word && !segment.Cut && EditingPlanner.Valid(segment))
+                .Select(segment => new CaptionWord(segment.Id, segment.Text ?? "", plan.MapTime(segment.Start), plan.MapTime(segment.End))).Where(word => word.End > word.Start).ToArray();
 }
 
 /// <summary>Immutable undo/redo snapshots; editing §6.</summary>

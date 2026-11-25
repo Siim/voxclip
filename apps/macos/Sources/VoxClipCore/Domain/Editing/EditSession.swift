@@ -18,7 +18,7 @@ extension EditState {
     func filler(_ word: TimedWord) -> Bool { word.kind == .unlabeledSpeech || (word.kind == .word && EditingPrimitives.filler(textOf(word))) }
 
     public var summary: EditSummary {
-        let bounds = clipIndices(activeClip, words: transcript.words)
+        let bounds = activeClip?.playPartIndices(in: transcript.words)
         let words = transcript.words.enumerated().filter { inScope($0.offset, bounds: bounds) }.map(\.element)
         let scopedPauses = pauses.filter { pauseInScope($0, bounds: bounds) }
         let fillers = words.filter { !cutWordIds.contains($0.id) && filler($0) }.count
@@ -30,15 +30,15 @@ extension EditState {
     }
 }
 
-func inScope(_ index: Int, bounds: ClosedRange<Int>?) -> Bool { bounds?.contains(index) ?? true }
-func pauseInScope(_ pause: Pause, bounds: ClosedRange<Int>?) -> Bool {
-    inScope(pause.afterIndex, bounds: bounds) && inScope(pause.afterIndex + 1, bounds: bounds)
+func inScope(_ index: Int, bounds: [ClosedRange<Int>]?) -> Bool { bounds?.contains { $0.contains(index) } ?? true }
+func pauseInScope(_ pause: Pause, bounds: [ClosedRange<Int>]?) -> Bool {
+    bounds?.contains { $0.contains(pause.afterIndex) && $0.contains(pause.afterIndex + 1) } ?? true
 }
 
 func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [ProjectAIResult]? = nil, project: Project? = nil) throws -> EditState {
     var result = state
     let words = state.transcript.words
-    let bounds = clipIndices(state.activeClip, words: words)
+    let bounds = state.activeClip?.playPartIndices(in: words)
     let wordIDs = Set(words.map(\.id)), pauseIDs = Set(state.pauses.map(\.id))
     func isCut(_ id: String) -> Bool { pauseIDs.contains(id) ? result.cutPauseIds.contains(id) : wordIDs.contains(id) && result.cutWordIds.contains(id) }
     func setCut(_ id: String, _ cut: Bool) {

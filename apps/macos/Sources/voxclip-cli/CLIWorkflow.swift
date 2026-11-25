@@ -390,7 +390,7 @@ enum CLIWorkflow {
                         captions: .init(overrides: project.captions.overrides, position: project.captions.position,
                                         positionByAspect: project.captions.positionByAspect),
                         words: translated(ClipEffects.maskingBleeps(plan.captions, effects: effects))
-                            .map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+                            .map { CaptionInputWord($0) })
                     try Task.checkCancellation()
                     let pipeline = try CaptionPipeline(shared: SharedResources.locate())
                     let layout = try await pipeline.layout(input: input, style: style)

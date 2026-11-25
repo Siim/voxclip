@@ -511,7 +511,7 @@ internal static class CliOperations
         }
         var state = State(project);
         if (!activeClip) state = state with { ActiveClipId = null };
-        return EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, reference.DurationSeconds), reference.DurationSeconds, rate, state.PauseKeepSeconds);
+        return EditingEngine.BuildPlan(state, reference.DurationSeconds, rate);
     }
 
     private static EditState State(Project project)

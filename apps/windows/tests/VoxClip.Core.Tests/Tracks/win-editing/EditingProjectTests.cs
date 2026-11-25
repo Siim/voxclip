@@ -47,7 +47,7 @@ public sealed class EditingProjectTests
         Assert.Equal("w2", Assert.Single(project.Edits.Clips[^1].PlayParts).EndWordId);
         project = EditingEngine.ApplyEditing(project, new EditOperation.SetClipParts("story", [opening]));
         Assert.Equal(4, project.SchemaVersion);
-        Assert.Equal("w2", Assert.Single(project.Edits.CutWordIds));
+        Assert.Equal(new[] { "w2", "w6" }, project.Edits.CutWordIds);
     }
 
     [Theory]

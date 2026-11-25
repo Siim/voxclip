@@ -1,6 +1,7 @@
 import Foundation
 
 extension ClipRange {
+    /// The inclusive transcript indices of each part, in play order; nil for invalid or overlapping ranges.
     public func playPartIndices(in words: [TimedWord]) -> [ClosedRange<Int>]? {
         StoryClips.indices(playParts.map { ($0.startWordId, $0.endWordId) }, words: words)
     }

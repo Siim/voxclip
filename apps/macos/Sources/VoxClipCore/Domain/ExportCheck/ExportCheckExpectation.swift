@@ -51,7 +51,7 @@ public enum ExportCheckExpectation {
             // A seam wherever the next piece doesn't continue the previous one's source, or is generated.
             var cuts: [Double] = []
             for (previous, next) in zip(plan.pieces, plan.pieces.dropFirst())
-            where previous.kind != next.kind || next.kind == .synth || next.sourceStartSample != previous.sourceEndSample {
+            where plan.partSeams.contains(next.outputStartSample) || previous.kind != next.kind || next.kind == .synth || next.sourceStartSample != previous.sourceEndSample {
                 cuts.append(speed.rendered(Double(next.outputStartSample) / rate))
             }
             return Edit(words: words, phrases: phrases, cuts: cuts, duration: duration)

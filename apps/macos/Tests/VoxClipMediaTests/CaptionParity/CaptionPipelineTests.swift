@@ -41,6 +41,21 @@ enum CaptionTestFrames {
 
 @Suite(.serialized, .offlineFixtures)
 struct CaptionPipelineTests {
+    @Test func storyPageBreakSurvivesAnEmptyFirstWord() async throws {
+        let shared = try CaptionMediaFixtures.shared(), pipeline = try CaptionPipeline(shared: shared)
+        var style = try CaptionMediaFixtures.style("vox-bold", shared: shared)
+        style.layout.maxWords = 6
+        style.layout.breakOnGapSec = nil
+        let before = CaptionWord(id: "before", text: "one", start: 0, end: 0.2)
+        var seam = CaptionWord(id: "seam", text: " ", start: 0.21, end: 0.25)
+        seam.startsPart = true
+        let after = CaptionWord(id: "after", text: "two", start: 0.26, end: 0.5)
+        let layout = try await pipeline.layout(words: [before, seam, after], language: "en", style: style,
+            position: nil, frame: PixelSize(width: 1080, height: 1920), duration: 1)
+        #expect(layout.pages.map(\.indices.count) == [1, 1])
+        #expect(layout.pages.first?.page.end == before.end)
+    }
+
     @Test("M6 resolved styles and M7 layout match engine resolution for every fixture")
     func resolvedFixtures() async throws {
         struct Fixture: Decodable { var input: CaptionLayoutInput }

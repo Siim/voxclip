@@ -328,12 +328,13 @@ public enum ClipControlsProject {
         return try setting(controls, in: project)
     }
 
-    /// A clip's span in source seconds: its first word's start to its last word's end.
+    /// The clip's source hull, not its playback range or duration.
     public static func sourceSpan(of clipId: String, in project: Project) -> ClosedRange<Double>? {
         guard let clip = project.edits.clips.first(where: { $0.id == clipId }), let words = project.transcript?.words,
-              let first = words.first(where: { $0.id == clip.startWordId }), let last = words.first(where: { $0.id == clip.endWordId }),
-              last.end > first.start else { return nil }
-        return first.start...last.end
+              let ranges = clip.playPartIndices(in: words),
+              let first = ranges.map(\.lowerBound).min(), let last = ranges.map(\.upperBound).max(),
+              words[last].end > words[first].start else { return nil }
+        return words[first].start...words[last].end
     }
 
     /// How far a stretch may miss a clip's ends and still count as the whole clip (Ask Claude's speed, ai.md §18).

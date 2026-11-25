@@ -67,8 +67,8 @@ import Testing
 
     @Test func partEditPreservesPaidWholeClipAsACopy() throws {
         let original = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/whole-clip-revoice-project.voxclip"))
-        let parts = [ClipPart(id: "late", startWordId: "w7", endWordId: "w8"),
-                     ClipPart(id: "early", startWordId: "w3", endWordId: "w4")]
+        let parts = [ClipPart(id: "second", startWordId: "w2", endWordId: "w2"),
+                     ClipPart(id: "first", startWordId: "w1", endWordId: "w1")]
         var project = original
         try project.applyEditing(.setClipParts(id: "clip-main", parts: parts))
         #expect(project.edits.clips.first == original.edits.clips.first)

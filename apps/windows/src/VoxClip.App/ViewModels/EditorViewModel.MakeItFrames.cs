@@ -104,7 +104,7 @@ public sealed partial class EditorViewModel
             var media = project.Media.Source;
             var rate = media.Audio?.SampleRate is > 0 ? media.Audio.SampleRate : 48000;
             var scoped = state with { ActiveClipId = clipId };
-            var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, media.DurationSeconds), media.DurationSeconds, rate, scoped.PauseKeepSeconds);
+            var plan = EditingEngine.BuildPlan(scoped, media.DurationSeconds, rate);
             var speed = ClipControlsProject.Controls(clipId, project)?.Speed ?? 1;
             var timing = ClipSpeedTiming.ForEffects(speed, plan.MapTime, ClipEffects.Rendered(project, clipId));
             return Clock(timing.Rendered(plan.MapTime(source)));

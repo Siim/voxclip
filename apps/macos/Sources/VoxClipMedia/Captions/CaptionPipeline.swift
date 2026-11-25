@@ -23,7 +23,7 @@ public actor CaptionPipeline {
 
     public func layout(words: [CaptionWord], language: String?, style: CaptionStyle, position: CaptionPosition?, frame: PixelSize, duration: Double) async throws -> CaptionLayoutResult {
         let input = CaptionLayoutInput(style: style.id, frame: .init(width: frame.width, height: frame.height), language: language ?? "und", duration: duration,
-            captions: .init(position: position), words: words.map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+            captions: .init(position: position), words: words.map { CaptionInputWord($0) })
         do {
             return try await CaptionLayoutEngine.build(input: input, style: style, resources: resources, shaper: shaper, resolvedStyle: true)
         } catch is CancellationError {

@@ -165,9 +165,11 @@ public enum CaptionTranslations {
             guard let lower = order[translation.startWordId], let upper = order[translation.endWordId] else { continue }
             let positions = result.indices.filter { index in order[result[index].id].map { (lower...upper).contains($0) } ?? false }
             guard !positions.isEmpty, positions.allSatisfy({ !consumed.contains(result[$0].id) }) else { continue }
+            if positions.count > 1, result[(positions[0] + 1)...positions.last!].contains(where: \.startsPart) { continue }
             let slots = positions.map { result[$0] }
-            let spread = spreading(translation.tokens, over: slots, bleeped: bleeped)
+            var spread = spreading(translation.tokens, over: slots, bleeped: bleeped)
             guard !spread.isEmpty else { continue }
+            spread[0].startsPart = slots[0].startsPart
             consumed.formUnion(slots.map(\.id))
             for position in positions.reversed() { result.remove(at: position) }
             result.insert(contentsOf: spread, at: positions[0])

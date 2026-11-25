@@ -1,0 +1,433 @@
+[
+  {
+    "id": "out-of-order-with-cuts-and-source-edges",
+    "base": "story-clips/story-project.voxclip",
+    "clip": {
+      "id": "clip-main",
+      "startWordId": "w1",
+      "endWordId": "w9",
+      "title": "Two moments",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true,
+      "kind": "story",
+      "parts": [
+        {
+          "id": "part-1",
+          "startWordId": "w9",
+          "endWordId": "w9"
+        },
+        {
+          "id": "part-2",
+          "startWordId": "w1",
+          "endWordId": "w3"
+        },
+        {
+          "id": "part-3",
+          "startWordId": "w5",
+          "endWordId": "w7"
+        }
+      ]
+    },
+    "cuts": [
+      "w2",
+      "w6"
+    ],
+    "edges": true,
+    "reject": false,
+    "rate": 48000,
+    "kept": [
+      [
+        258240,
+        336000
+      ],
+      [
+        0,
+        31200
+      ],
+      [
+        50400,
+        84000
+      ],
+      [
+        133200,
+        151200
+      ],
+      [
+        165600,
+        174000
+      ]
+    ],
+    "complement": [
+      [
+        31200,
+        50400
+      ],
+      [
+        84000,
+        133200
+      ],
+      [
+        151200,
+        165600
+      ],
+      [
+        174000,
+        258240
+      ]
+    ],
+    "captions": [
+      [
+        "w9",
+        5760,
+        77760
+      ],
+      [
+        "w1",
+        77760,
+        106560
+      ],
+      [
+        "w3",
+        111360,
+        130560
+      ],
+      [
+        "w5",
+        143760,
+        158160
+      ],
+      [
+        "w7",
+        162960,
+        167760
+      ]
+    ],
+    "seams": [
+      77760,
+      142560
+    ],
+    "probes": [
+      [
+        297120,
+        38880
+      ],
+      [
+        15600,
+        93360
+      ],
+      [
+        67200,
+        125760
+      ],
+      [
+        142200,
+        151560
+      ],
+      [
+        169800,
+        164760
+      ]
+    ],
+    "fades": [
+      [
+        0,
+        240,
+        0
+      ],
+      [
+        77760,
+        0,
+        240
+      ],
+      [
+        108960,
+        240,
+        240
+      ],
+      [
+        142560,
+        240,
+        240
+      ],
+      [
+        160560,
+        240,
+        240
+      ]
+    ]
+  },
+  {
+    "id": "adjacent-but-disjoint",
+    "base": "story-clips/story-project.voxclip",
+    "clip": {
+      "id": "clip-main",
+      "startWordId": "w1",
+      "endWordId": "w4",
+      "title": "Two moments",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true,
+      "kind": "story",
+      "parts": [
+        {
+          "id": "part-1",
+          "startWordId": "w3",
+          "endWordId": "w4"
+        },
+        {
+          "id": "part-2",
+          "startWordId": "w1",
+          "endWordId": "w2"
+        }
+      ]
+    },
+    "cuts": [],
+    "edges": false,
+    "reject": false,
+    "rate": 48000,
+    "kept": [
+      [
+        50400,
+        133200
+      ],
+      [
+        8640,
+        50400
+      ]
+    ],
+    "complement": [
+      [
+        0,
+        8640
+      ],
+      [
+        133200,
+        336000
+      ]
+    ],
+    "captions": [
+      [
+        "w3",
+        2400,
+        21600
+      ],
+      [
+        "w4",
+        74400,
+        81600
+      ],
+      [
+        "w1",
+        88560,
+        102960
+      ],
+      [
+        "w2",
+        107760,
+        122160
+      ]
+    ],
+    "seams": [
+      82800
+    ],
+    "probes": [
+      [
+        91800,
+        41400
+      ],
+      [
+        29520,
+        103680
+      ]
+    ],
+    "fades": [
+      [
+        0,
+        240,
+        240
+      ],
+      [
+        82800,
+        240,
+        240
+      ]
+    ]
+  },
+  {
+    "id": "overlapping-parts",
+    "base": "story-clips/story-project.voxclip",
+    "clip": {
+      "id": "clip-main",
+      "startWordId": "w1",
+      "endWordId": "w5",
+      "title": "Two moments",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true,
+      "kind": "story",
+      "parts": [
+        {
+          "id": "part-1",
+          "startWordId": "w3",
+          "endWordId": "w5"
+        },
+        {
+          "id": "part-2",
+          "startWordId": "w1",
+          "endWordId": "w3"
+        }
+      ]
+    },
+    "cuts": [],
+    "edges": false,
+    "reject": true
+  },
+  {
+    "id": "voice-patch-in-part-two",
+    "base": "voice-lab/passage-render-v3.voxclip",
+    "clip": {
+      "id": "clip-main",
+      "startWordId": "w1",
+      "endWordId": "w9",
+      "title": "Fixture clip",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true,
+      "parts": [
+        {
+          "id": "part-1",
+          "startWordId": "w9",
+          "endWordId": "w9"
+        },
+        {
+          "id": "part-2",
+          "startWordId": "w3",
+          "endWordId": "w7"
+        },
+        {
+          "id": "part-3",
+          "startWordId": "w1",
+          "endWordId": "w1"
+        }
+      ]
+    },
+    "cuts": [],
+    "edges": false,
+    "reject": false,
+    "rate": 1000,
+    "kept": [
+      [
+        5380,
+        6150
+      ],
+      [
+        1050,
+        3625
+      ],
+      [
+        180,
+        650
+      ]
+    ],
+    "complement": [
+      [
+        0,
+        180
+      ],
+      [
+        650,
+        1050
+      ],
+      [
+        3625,
+        5380
+      ],
+      [
+        6150,
+        7000
+      ]
+    ],
+    "captions": [
+      [
+        "w9",
+        120,
+        520
+      ],
+      [
+        "w3",
+        820,
+        1220
+      ],
+      [
+        "w4",
+        2320,
+        2470
+      ],
+      [
+        "w5",
+        2520,
+        2820
+      ],
+      [
+        "w6",
+        2920,
+        3120
+      ],
+      [
+        "w7",
+        3220,
+        3320
+      ],
+      [
+        "w1",
+        3465,
+        3765
+      ]
+    ],
+    "seams": [
+      770,
+      3345
+    ],
+    "probes": [
+      [
+        5765,
+        385
+      ],
+      [
+        2337,
+        2057
+      ],
+      [
+        415,
+        3580
+      ]
+    ],
+    "fades": [
+      [
+        0,
+        5,
+        5
+      ],
+      [
+        770,
+        5,
+        5
+      ],
+      [
+        3345,
+        5,
+        5
+      ]
+    ],
+    "voice": {
+      "segmentId": "vl-passage",
+      "source": 2500,
+      "output": 2220
+    }
+  }
+]

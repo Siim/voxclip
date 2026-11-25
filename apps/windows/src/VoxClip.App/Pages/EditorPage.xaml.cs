@@ -919,7 +919,7 @@ if (insertion ||
         ViewModel.SetScope(clipId);
         if (!keepSelection && clipId is not null && ViewModel.State?.ActiveClipId == clipId && ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } row)
         {
-            ViewModel.Select(ViewModel.Index(row.Clip.StartWordId));
+            ViewModel.Select(ViewModel.Index(row.Clip.PlayParts[0].StartWordId));
             Transcript.RevealWord(ViewModel.SelectionStart);
         }
     }

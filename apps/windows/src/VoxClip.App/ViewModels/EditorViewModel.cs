@@ -587,7 +587,7 @@ public sealed partial class EditorViewModel : ObservableObject
         if (kept.Count == 0) return;
         var active = kept.ToList().FindIndex(clip => clip.Id == state?.ActiveClipId);
         var next = Math.Clamp(active + delta, 0, kept.Count - 1);
-        SetScope(kept[next].Id); Select(Index(kept[next].Clip.StartWordId));
+        SetScope(kept[next].Id); Select(Index(kept[next].Clip.PlayParts[0].StartWordId));
     }
     public void SetShareCaption(string targetId, string text)
     {
@@ -854,8 +854,7 @@ public sealed partial class EditorViewModel : ObservableObject
             }
             var source = project.Media.Source;
             var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
-            double EditedLength(EditState scoped) => EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, source.DurationSeconds),
-                source.DurationSeconds, sampleRate, scoped.PauseKeepSeconds).Duration;
+            double EditedLength(EditState scoped) => EditingEngine.BuildPlan(scoped, source.DurationSeconds, sampleRate).Duration;
             try { FullTakeDuration = EditedLength(state with { ActiveClipId = null }); }
             catch (VoxClipException) { FullTakeDuration = 0; }
             // Kept clips by start word, then creation order, numbered 1…n; then suggestions n+1… (design §2). Numbers are never stored.

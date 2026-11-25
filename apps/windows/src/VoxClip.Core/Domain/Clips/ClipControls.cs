@@ -212,14 +212,15 @@ public static class ClipControlsProject
     public static Project SettingLook(ClipLook look, string clipId, Project project) =>
         Setting(Controls(clipId, project)! with { Look = look }, project);
 
-    /// <summary>A clip's span in source seconds, its first word's start to its last word's end; null for an unknown clip.</summary>
+    /// <summary>The clip's source hull, not its playback range or duration; null for an unknown clip.</summary>
     public static (double Start, double End)? SourceSpan(string clipId, Project project)
     {
         var clip = project.Edits.Clips.FirstOrDefault(item => item.Id == clipId);
         var words = project.Transcript?.Words;
-        var first = words?.FirstOrDefault(word => word.Id == clip?.StartWordId);
-        var last = words?.FirstOrDefault(word => word.Id == clip?.EndWordId);
-        return first is not null && last is not null && last.End > first.Start ? (first.Start, last.End) : null;
+        if (words is null || clip?.PlayPartIndices(words) is not { Count: > 0 } ranges) return null;
+        var first = words[ranges.Min(range => range.Start)];
+        var last = words[ranges.Max(range => range.End)];
+        return last.End > first.Start ? (first.Start, last.End) : null;
     }
 
     /// <summary>How far a stretch may miss a clip's first word start or last word end and still count as the whole clip.</summary>

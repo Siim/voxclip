@@ -212,6 +212,22 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(canvas.ruler.invalidations > invalidations)
     }
 
+    @Test func activatingAStoryClipSeeksToItsFirstPlayedPart() async throws {
+        let app = try app()
+        var story = try project()
+        story.edits.activeClipId = nil
+        story.edits.clips = [ClipRange(id: "clip-1", startWordId: "t10", endWordId: "t29", parts: [
+            ClipPart(id: "later", startWordId: "t25", endWordId: "t29"),
+            ClipPart(id: "earlier", startWordId: "t10", endWordId: "t12"),
+        ])]
+        let model = editor(app, project: story)
+        defer { model.close() }
+        model.activate(try #require(story.edits.clips.first))
+        for _ in 0..<100 where model.sourceTime != 25 { await Task.yield() }
+        #expect(model.sourceTime == 25)
+        #expect(model.playhead == 0)
+    }
+
     @Test func showCutsOpensTakeTimeAtTheEditedZoomFromTheClip() throws {
         let app = try app()
         let model = editor(app, project: try project())

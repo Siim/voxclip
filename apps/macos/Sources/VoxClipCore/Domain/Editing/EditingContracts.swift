@@ -379,9 +379,11 @@ public struct EditPlan: Codable, Sendable, Equatable {
         didSet { joins = Self.makeJoins(parts: fadeParts, outputSamples: outputSamples) }
     }
     public private(set) var fadeParts: [FadePart]
+    public private(set) var partSeams: [Int64]
+    private var sourceIndex: [SourceMapEntry]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(sampleRate: Double, totalSamples: Int64, cuts: [MediaInterval] = [], kept: [MediaInterval] = []) {
+    public init(sampleRate: Double, totalSamples: Int64, cuts: [MediaInterval] = [], kept: [MediaInterval] = [], partSeams: [Int64] = []) {
         self.sampleRate = sampleRate
         self.totalSamples = totalSamples
         self.cuts = cuts
@@ -390,6 +392,8 @@ public struct EditPlan: Codable, Sendable, Equatable {
         self.outputSamples = kept.reduce(0) { $0 + $1.count }
         self.joins = Self.makeJoins(parts: parts, outputSamples: self.outputSamples)
         self.fadeParts = parts
+        self.partSeams = partSeams
+        self.sourceIndex = Self.makeSourceIndex(kept, parts: parts)
     }
 
     @available(*, deprecated, message: "outputSamples and joins are derived from kept")
@@ -404,6 +408,12 @@ public struct EditPlan: Codable, Sendable, Equatable {
         fadeParts = Self.makeFadeParts(kept: kept, totalSamples: totalSamples, sampleRate: sampleRate)
         outputSamples = kept.reduce(0) { $0 + $1.count }
         joins = Self.makeJoins(parts: fadeParts, outputSamples: outputSamples)
+        sourceIndex = Self.makeSourceIndex(kept, parts: fadeParts)
+    }
+
+    private static func makeSourceIndex(_ kept: [MediaInterval], parts: [FadePart]) -> [SourceMapEntry] {
+        zip(kept, parts).map { SourceMapEntry(source: $0, outputStart: $1.outputStart, outputEnd: $1.outputStart + $1.length) }
+            .sorted { $0.source.startSample < $1.source.startSample }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -413,6 +423,7 @@ public struct EditPlan: Codable, Sendable, Equatable {
         case kept
         case outputSamples
         case joins
+        case partSeams
     }
 
     public init(from decoder: any Decoder) throws {
@@ -420,7 +431,8 @@ public struct EditPlan: Codable, Sendable, Equatable {
         self.init(sampleRate: try values.decode(Double.self, forKey: .sampleRate),
                   totalSamples: try values.decode(Int64.self, forKey: .totalSamples),
                   cuts: try values.decodeIfPresent([MediaInterval].self, forKey: .cuts) ?? [],
-                  kept: try values.decodeIfPresent([MediaInterval].self, forKey: .kept) ?? [])
+                  kept: try values.decodeIfPresent([MediaInterval].self, forKey: .kept) ?? [],
+                  partSeams: try values.decodeIfPresent([Int64].self, forKey: .partSeams) ?? [])
         _ = try values.decode(Int64.self, forKey: .outputSamples)
         _ = try values.decodeIfPresent([Join].self, forKey: .joins)
     }
@@ -433,6 +445,7 @@ public struct EditPlan: Codable, Sendable, Equatable {
         try values.encode(self.kept, forKey: .kept)
         try values.encode(self.outputSamples, forKey: .outputSamples)
         try values.encode(self.joins, forKey: .joins)
+        if !partSeams.isEmpty { try values.encode(partSeams, forKey: .partSeams) }
     }
 
     public var duration: Double { sampleRate > 0 ? Double(outputSamples) / sampleRate : 0 }
@@ -440,16 +453,15 @@ public struct EditPlan: Codable, Sendable, Equatable {
     public static func build(transcript: Transcript, editState: EditState, activeClip: ClipRange?, duration: Double, sampleRate: Double) throws -> EditPlan {
         var snapshot = editState
         snapshot.transcript = transcript
+        if let activeClip, activeClip.parts != nil {
+            return try buildStoryPlan(snapshot, clip: activeClip, duration: duration, sampleRate: sampleRate)
+        }
         return try buildEditPlan(buildSegments(snapshot, activeClip: activeClip), duration: duration, sampleRate: sampleRate, pauseKeepSeconds: snapshot.pauseKeepSeconds)
     }
     public func mapTime(_ source: Double) -> Double {
         let sample = clampSample(source.isFinite ? source : 0)
-        var removed: Int64 = 0
-        for cut in cuts {
-            if cut.startSample >= sample { break }
-            removed += min(sample, cut.endSample) - cut.startSample
-        }
-        return Double(min(outputSamples, max(0, sample - removed))) / sampleRate
+        guard let entry = sourceMapEntry(sourceIndex, at: sample) else { return 0 }
+        return Double(min(entry.outputEnd, entry.outputStart + sample - entry.source.startSample)) / sampleRate
     }
     public func sourceTime(_ edited: Double) -> Double {
         let rounded = EditingPrimitives.jsRound((edited.isFinite ? edited : 0) * sampleRate)

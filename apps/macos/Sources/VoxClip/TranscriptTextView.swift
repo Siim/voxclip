@@ -60,7 +60,7 @@ import VoxClipCore
     static func scrollIfRequested(_ model: EditorModel, coordinator: Coordinator, in text: TranscriptNSTextView) {
         if coordinator.scopeScrollRevision != model.scopeScrollRevision {
             coordinator.scopeScrollRevision = model.scopeScrollRevision
-            let id = model.outlineScrollWordID ?? model.activeClip?.startWordId ?? model.words.first?.id
+            let id = model.outlineScrollWordID ?? model.activeClip?.playParts.first?.startWordId ?? model.words.first?.id
             if let id, let span = text.map.span(id: id) {
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = EditorAccessibilityPolicy.system.transcriptScrollDuration

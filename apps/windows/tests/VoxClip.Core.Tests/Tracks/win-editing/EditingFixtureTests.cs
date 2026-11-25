@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 using VoxClip.Tests.Support;
@@ -12,6 +14,77 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 
 public sealed class EditingFixtureTests
 {
+    [Fact]
+    public void StoryPlansReplay()
+    {
+        using var vectors = JsonDocument.Parse(FixtureLoader.ReadText("fixtures/story-clips/plan-vectors.json"));
+        Assert.Equal(4, vectors.RootElement.GetArrayLength());
+        foreach (var row in vectors.RootElement.EnumerateArray())
+        {
+            var document = JsonNode.Parse(FixtureLoader.ReadText("fixtures/" + row.GetProperty("base").GetString()))!;
+            var clip = JsonNode.Parse(row.GetProperty("clip").GetRawText())!;
+            var clipId = clip["id"]!.GetValue<string>();
+            document["schemaVersion"] = 5;
+            document["edits"]!["clips"] = new JsonArray(clip);
+            document["edits"]!["activeClipId"] = clipId;
+            document["edits"]!["cutWordIds"] = JsonNode.Parse(row.GetProperty("cuts").GetRawText());
+            document["edits"]!["cutPauseIds"] = new JsonArray();
+            if (row.GetProperty("edges").GetBoolean())
+            {
+                var words = document["transcript"]!["words"]!.AsArray();
+                words[0]!["start"] = 0;
+                words[^1]!["end"] = document["media"]!["source"]!["durationSeconds"]!.DeepClone();
+            }
+            if (row.GetProperty("reject").GetBoolean())
+            {
+                Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+                continue;
+            }
+            var project = ProjectSerialization.Deserialize(document.ToJsonString());
+            var state = EditingEngine.FromProject(project)!;
+            var rate = row.GetProperty("rate").GetDouble();
+            var plan = EditingEngine.BuildPlan(state, project.Media.Source.DurationSeconds, rate);
+            IEnumerable<MediaInterval> Intervals(string key) => row.GetProperty(key).EnumerateArray().Select(pair => new MediaInterval(pair[0].GetInt64(), pair[1].GetInt64()));
+            Assert.Equal(Intervals("kept"), plan.Kept);
+            Assert.Equal(Intervals("complement"), plan.Cuts);
+            Assert.Equal(row.GetProperty("seams").EnumerateArray().Select(seam => seam.GetInt64()), plan.PartSeams);
+            var pieces = new TimelinePieces(new RenderTimeline.Legacy(plan));
+            Assert.Equal(plan.PartSeams.Select(seam => seam / rate), Enumerable.Range(0, pieces.Pieces.Count).Where(pieces.IsPartSeam).Select(index => pieces.Pieces[index].Edited.Start));
+            Assert.Equal(pieces.Pieces.Select(piece => piece.Source.Start).Order(), pieces.OnAxis(TimelineAxis.Source).Select(piece => piece.Source.Start));
+            var captions = EditingEngine.CaptionWords(state, plan);
+            var expected = row.GetProperty("captions").EnumerateArray().ToArray();
+            Assert.Equal(expected.Select(word => word[0].GetString()), captions.Select(word => word.Id));
+            foreach (var (caption, word) in captions.Zip(expected))
+            {
+                Assert.Equal(word[1].GetDouble(), caption.Start * rate, 6);
+                Assert.Equal(word[2].GetDouble(), caption.End * rate, 6);
+            }
+            Assert.Equal(plan.PartSeams.Count, captions.Count(word => word.StartsPart == true));
+            foreach (var probe in row.GetProperty("probes").EnumerateArray())
+            {
+                Assert.Equal(probe[1].GetDouble() / rate, plan.MapTime(probe[0].GetDouble() / rate));
+                Assert.Equal(probe[0].GetDouble() / rate, plan.SourceTime(probe[1].GetDouble() / rate));
+            }
+            var fades = row.GetProperty("fades").EnumerateArray().ToArray();
+            for (var index = 1; index < fades.Length; index++)
+                Assert.Contains(new Join(fades[index][0].GetInt64(), fades[index - 1][2].GetInt64(), fades[index][1].GetInt64()), plan.Joins);
+            if (row.TryGetProperty("voice", out var patch))
+            {
+                var timeline = Assert.IsType<RenderTimeline.VoiceLab>(RenderCallerInputs.Timeline(project, clipId));
+                var piece = Assert.Single(timeline.Plan.Pieces, piece => piece.SegmentId == patch.GetProperty("segmentId").GetString());
+                Assert.Equal(patch.GetProperty("source").GetInt64(), piece.SourceStartSample);
+                Assert.Equal(patch.GetProperty("output").GetInt64(), piece.OutputStartSample);
+                Assert.Equal(piece.OutputStartSample / rate, timeline.Plan.MapTime(piece.SourceStartSample / rate));
+            }
+            else
+            {
+                var rendered = Assert.IsType<RenderTimeline.Legacy>(RenderCallerInputs.Timeline(project, clipId));
+                Assert.Equal(plan.Kept, rendered.Plan.Kept);
+                Assert.Equal(plan.PartSeams, rendered.Plan.PartSeams);
+            }
+        }
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

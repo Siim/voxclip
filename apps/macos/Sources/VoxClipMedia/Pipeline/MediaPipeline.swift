@@ -102,6 +102,7 @@ public struct CompositionBuilder: Sendable {
                       isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
         try Task.checkCancellation()
         let plan = request.plan
+        let sourceOrdered = plan.kept.sorted { $0.startSample < $1.startSample }
         let voicePlan = request.voiceLab?.prepared.outputPlan
         let synthetic = voicePlan?.requiresSyntheticRendering == true
         try VoiceLabRenderPreflight.validate(request)
@@ -110,7 +111,7 @@ public struct CompositionBuilder: Sendable {
         guard synthetic || (plan.totalSamples >= 0 && plan.sampleRate.isFinite && plan.sampleRate > 0 && plan.sampleRate <= Double(Int32.max) &&
               plan.sampleRate.rounded() == plan.sampleRate &&
               plan.kept.allSatisfy({ $0.startSample >= 0 && $0.endSample <= plan.totalSamples && $0.count > 0 }) &&
-              zip(plan.kept, plan.kept.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) &&
+              zip(sourceOrdered, sourceOrdered.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) &&
               plan.kept.reduce(Int64(0), { $0.addingReportingOverflow($1.count).overflow ? -1 : $0 + $1.count }) == plan.outputSamples &&
               plan.joins.allSatisfy({ $0.outSample >= 0 && $0.outSample <= plan.outputSamples && $0.fadeInLen >= 0 && $0.fadeOutLen >= 0 }) &&
               zip(plan.joins, plan.joins.dropFirst()).allSatisfy({ $0.outSample <= $1.outSample })) else {

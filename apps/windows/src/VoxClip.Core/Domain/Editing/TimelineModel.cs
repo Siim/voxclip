@@ -13,17 +13,24 @@ public readonly record struct TimelinePiece(TimeRange Source, TimeRange Edited, 
     public TimeRange Range(TimelineAxis axis) => axis == TimelineAxis.Edited ? Edited : Source;
 }
 
-/// <summary>Ascending source/output pieces; visibility is O(log n) plus the visible pieces.</summary>
+/// <summary>Play-order pieces and a separate Source-axis index.</summary>
 public sealed class TimelinePieces
 {
     public IReadOnlyList<TimelinePiece> Pieces { get; }
-    public TimelinePieces(IEnumerable<TimelinePiece> pieces) => Pieces = pieces.ToArray();
+    private readonly IReadOnlyList<TimelinePiece> sourcePieces;
+    private readonly HashSet<double> partSeams = [];
+    public TimelinePieces(IEnumerable<TimelinePiece> pieces)
+    {
+        Pieces = pieces.ToArray();
+        sourcePieces = Pieces.OrderBy(piece => piece.Source.Start).ToArray();
+    }
     public TimelinePieces(RenderTimeline timeline)
     {
         var pieces = new List<TimelinePiece>();
         switch (timeline)
         {
             case RenderTimeline.Legacy legacy:
+                partSeams.UnionWith(legacy.Plan.PartSeams.Select(seam => seam / legacy.Plan.SampleRate));
                 long output = 0;
                 foreach (var interval in legacy.Plan.Kept)
                 {
@@ -35,6 +42,7 @@ public sealed class TimelinePieces
                 }
                 break;
             case RenderTimeline.VoiceLab voice:
+                partSeams.UnionWith(voice.Plan.PartSeams.Select(seam => seam / voice.Plan.SampleRate));
                 foreach (var piece in voice.Plan.Pieces)
                 {
                     if (piece.OutputEndSample <= piece.OutputStartSample) continue;
@@ -46,10 +54,15 @@ public sealed class TimelinePieces
             default: throw new ArgumentOutOfRangeException(nameof(timeline));
         }
         Pieces = pieces;
+        sourcePieces = Pieces.OrderBy(piece => piece.Source.Start).ToArray();
     }
+    /// <summary>The array addressed by the indices returned for this axis.</summary>
+    public IReadOnlyList<TimelinePiece> OnAxis(TimelineAxis axis) => axis == TimelineAxis.Source ? sourcePieces : Pieces;
     public double EditedDuration => Pieces.Count == 0 ? 0 : Pieces[^1].Edited.End;
-    public TimeRange? SourceSpan => Pieces.Count == 0 ? null : new(Pieces[0].Source.Start, Math.Max(Pieces[0].Source.Start, Pieces[^1].Source.End));
-    public bool IsSeam(int index) => index > 0 && index < Pieces.Count && Pieces[index].Source.Start - Pieces[index - 1].Source.End > 1e-6;
+    public TimeRange? SourceSpan => Pieces.Count == 0 ? null : new(sourcePieces[0].Source.Start, Math.Max(sourcePieces[0].Source.Start, sourcePieces[^1].Source.End));
+    /// <summary>Whether this play-order piece begins a new part, even if its source is adjacent.</summary>
+    public bool IsPartSeam(int index) => index >= 0 && index < Pieces.Count && partSeams.Contains(Pieces[index].Edited.Start);
+    public bool IsSeam(int index) => index > 0 && index < Pieces.Count && (IsPartSeam(index) || Math.Abs(Pieces[index].Source.Start - Pieces[index - 1].Source.End) > 1e-6);
     public IReadOnlyList<double> Seams => Enumerable.Range(0, Pieces.Count).Where(IsSeam).Select(index => Pieces[index].Edited.Start).ToArray();
     public IReadOnlyList<TimeRange> Gaps(TimeRange span, double minimum = .02)
     {
@@ -58,7 +71,7 @@ public sealed class TimelinePieces
         var indices = Indices(span, TimelineAxis.Source);
         for (var i = indices.Start.Value; i < indices.End.Value; i++)
         {
-            var piece = Pieces[i];
+            var piece = sourcePieces[i];
             if (piece.Source.Start - covered > minimum) result.Add(new(covered, piece.Source.Start));
             covered = Math.Max(covered, piece.Source.End);
         }
@@ -67,18 +80,19 @@ public sealed class TimelinePieces
     }
     public Range Indices(TimeRange range, TimelineAxis axis)
     {
-        var lower = 0; var upper = Pieces.Count;
+        var pieces = OnAxis(axis);
+        var lower = 0; var upper = pieces.Count;
         while (lower < upper)
         {
             var middle = (lower + upper) / 2;
-            if (Pieces[middle].Range(axis).End <= range.Start) lower = middle + 1; else upper = middle;
+            if (pieces[middle].Range(axis).End <= range.Start) lower = middle + 1; else upper = middle;
         }
         var first = lower;
-        upper = Pieces.Count;
+        upper = pieces.Count;
         while (lower < upper)
         {
             var middle = (lower + upper) / 2;
-            if (Pieces[middle].Range(axis).Start < range.End) lower = middle + 1; else upper = middle;
+            if (pieces[middle].Range(axis).Start < range.End) lower = middle + 1; else upper = middle;
         }
         return new(first, Math.Max(first, lower));
     }

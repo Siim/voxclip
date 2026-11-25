@@ -158,9 +158,11 @@ public static class CaptionTranslations
             var positions = Enumerable.Range(0, result.Count)
                 .Where(index => order.TryGetValue(result[index].Id, out var at) && at >= lower && at <= upper).ToArray();
             if (positions.Length == 0 || positions.Any(index => consumed.Contains(result[index].Id))) continue;
+            if (Enumerable.Range(positions[0] + 1, positions[^1] - positions[0]).Any(index => result[index].StartsPart == true)) continue;
             var slots = positions.Select(index => result[index]).ToArray();
-            var spread = Spreading(translation.Tokens(), slots, bleeped);
-            if (spread.Count == 0) continue;
+            var spread = Spreading(translation.Tokens(), slots, bleeped).ToArray();
+            if (spread.Length == 0) continue;
+            spread[0] = spread[0] with { StartsPart = slots[0].StartsPart };
             foreach (var slot in slots) consumed.Add(slot.Id);
             foreach (var index in positions.Reverse()) result.RemoveAt(index);
             result.InsertRange(positions[0], spread);

@@ -1361,7 +1361,12 @@ struct EditorRenderSnapshot {
     }
     /// Moves the playhead to the active clip's first word.
     private func seekToActiveClip() {
-        if let clip = activeClip, let word = words.first(where: { $0.id == clip.startWordId }) { seek(source: word.start) }
+        guard let clip = activeClip else { return }
+        if clip.parts != nil, let timeline = renderTimeline, timeline.duration > 0 {
+            seek(source: timeline.sourceTime(0))
+        } else if let start = clip.playParts.first?.startWordId, let first = index(start) {
+            seek(source: words[first].start)
+        }
     }
     func moveClip(_ direction: Int) {
         guard !sortedClips.isEmpty else { return }

@@ -1015,7 +1015,7 @@ struct TimelineOverviewLabel: Equatable {
         }
         if let before { keep(before) }
         for index in pieces.indices(overlapping: window, on: .source) {
-            let piece = pieces.pieces[index]
+            let piece = pieces.pieces(on: .source)[index]
             if piece.kind == .ai { ai.append(pieceRect(piece.source)); continue }
             keep(piece.source)
         }
@@ -1573,7 +1573,7 @@ enum TrackHeight: String, CaseIterable {
         let axis = state.viewport.axis, visible = state.viewport.visible
         var result: [Span] = []
         for index in state.pieces.indices(overlapping: visible.lowerBound..<visible.upperBound, on: axis) {
-            let piece = state.pieces.pieces[index]
+            let piece = state.pieces.pieces(on: axis)[index]
             let range = axis == .edited ? piece.edited : piece.source
             if axis == .source, let io = state.inOut {
                 let lower = max(range.lowerBound, io.lowerBound), upper = min(range.upperBound, io.upperBound)
