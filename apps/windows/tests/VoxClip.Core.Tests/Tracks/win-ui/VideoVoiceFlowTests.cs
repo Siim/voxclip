@@ -75,9 +75,13 @@ public sealed class VideoVoiceFlowTests
         await h.Session.SetVideoVoiceModeAsync(VoicePerVideo.Mode.Match);
 
         // Video 1: its own verified speech under the anchor's consent, noise removal on (a piece is under 20 dB).
+        // The find is held open so the line shown while it runs can be read without racing the work.
+        h.Backend.FindGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var first = h.Session.MakeVideoVoice(car, "/videos/car.mp4");
         Assert.Equal(VideoVoicePhase.Making, first.Phase);
         Assert.Equal("Finding your clearest speech in this video… Nothing is sent yet.", first.Line);
+        h.Backend.FindGate.SetResult();
+        h.Backend.FindGate = null;
         await first.Work;
         Assert.Equal(VideoVoicePhase.Ready, first.Phase);
         var carVoice = first.RecordId!;
@@ -543,6 +547,8 @@ public sealed class VideoVoiceFlowTests
         internal double? Score;
         internal int Scored;
         internal readonly Dictionary<string, VoiceRebuildFind> Finds = [];
+        /// <summary>When set, a find waits for it, so a test can read the line shown while finding runs.</summary>
+        internal TaskCompletionSource? FindGate { get; set; }
         internal readonly Dictionary<string, long> NotEnough = [];
         internal readonly List<string> Calls = [];
         internal readonly List<(VoiceConsentRecord Anchor, VoiceRebuildFind Found, string Name)> Created = [];
@@ -571,13 +577,14 @@ public sealed class VideoVoiceFlowTests
         public bool? MatchEachVideo() => Match;
         public Task SetMatchEachVideoAsync(bool? value, CancellationToken ct) { Match = value; return Task.CompletedTask; }
         public string? VideoVoicePrice() => "free";
-        public Task<VoiceRebuildFind> FindVideoVoiceAsync(string anchorId, VoiceLabProjectSource source, CancellationToken ct)
+        public async Task<VoiceRebuildFind> FindVideoVoiceAsync(string anchorId, VoiceLabProjectSource source, CancellationToken ct)
         {
             var key = source.Project.Media.Source.ContentKey;
             Calls.Add("find " + key);
+            if (FindGate is { } gate) await gate.Task.WaitAsync(ct);
             if (!Available) throw new VoiceRebuildFailedException(VoiceRebuildFailureKind.Unavailable);
             if (NotEnough.TryGetValue(key, out var little)) throw new VoiceRebuildNotEnoughException(little, 0);
-            return Task.FromResult(Finds.GetValueOrDefault(key) ?? new($"40 s from 1 video and your consent clip", [27.72, 20, 20], new object(), VideoMilliseconds: 40_000));
+            return Finds.GetValueOrDefault(key) ?? new($"40 s from 1 video and your consent clip", [27.72, 20, 20], new object(), VideoMilliseconds: 40_000);
         }
         public Task<VoiceRebuildCreated> CreateVideoVoiceAsync(VoiceConsentRecord anchor, VoiceRebuildFind found, string displayName, CancellationToken ct)
         {
