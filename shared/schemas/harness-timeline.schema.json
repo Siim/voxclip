@@ -1,23 +1,64 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/harness-timeline.schema.json",
-  "title": "VoxClip harness timeline",
+  "title": "VoxClip harness timeline v2",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "clipId",
-    "reason"
-  ],
   "properties": {
     "clipId": {
       "type": "string",
       "minLength": 1,
       "description": "An existing clip id from read_clips."
     },
+    "newClip": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "stretch",
+            "story",
+            "showreel"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "kind",
+        "title"
+      ]
+    },
     "reason": {
       "type": "string",
       "minLength": 1,
       "maxLength": 240
+    },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "endWord": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "startWord",
+          "endWord"
+        ]
+      }
     },
     "cuts": {
       "type": "array",
@@ -26,12 +67,6 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "startWord",
-          "endWord",
-          "kind",
-          "reason"
-        ],
         "properties": {
           "startWord": {
             "type": "integer",
@@ -56,29 +91,198 @@
             "minLength": 1,
             "maxLength": 240
           }
-        }
+        },
+        "required": [
+          "startWord",
+          "endWord",
+          "kind",
+          "reason"
+        ]
+      }
+    },
+    "pauseCuts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "afterWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "afterWord",
+          "reason"
+        ]
+      }
+    },
+    "corrections": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "word": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "heard": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "word",
+          "heard",
+          "text",
+          "reason"
+        ]
       }
     },
     "captionStyle": {
       "type": "string",
+      "minLength": 1
+    },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 900
+        }
+      },
+      "required": [
+        "family",
+        "weight"
+      ]
+    },
+    "case": {
+      "enum": [
+        "upper",
+        "lower",
+        "asSaid"
+      ]
+    },
+    "wordsPerCaption": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 12
+    },
+    "look": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "enum": [
+            "original",
+            "muted",
+            "warm",
+            "bw"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "speed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "rate"
+      ]
+    },
+    "hook": {
+      "type": "string",
       "minLength": 1,
-      "description": "A bundled caption style id, or off."
+      "maxLength": 80
     },
     "title": {
       "type": "string",
       "minLength": 1,
       "maxLength": 120
     },
-    "musicTrackId": {
+    "postText": {
       "type": "string",
       "minLength": 1,
-      "description": "Reuse a saved track id from read_decisions. No download."
+      "maxLength": 500
     },
-    "generateMusic": {
+    "coverTitle": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 500,
-      "description": "A music brief for a separate priced action in VoxClip. Never sends or spends."
+      "maxLength": 80
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trackId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "brief": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "trackId"
+          ]
+        },
+        {
+          "required": [
+            "brief"
+          ]
+        }
+      ]
     },
     "effects": {
       "type": "array",
@@ -86,14 +290,89 @@
       "maxItems": 12,
       "items": {
         "$ref": "clip-plan-effect.schema.json"
-      },
-      "description": "Use any clip-plan entry. Footage references a sourceKey from read_clips. Asset requests are reviewed in VoxClip; this tool never sends or spends."
+      }
+    },
+    "rewrites": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "endWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "startWord",
+          "endWord",
+          "text",
+          "reason"
+        ]
+      }
+    },
+    "musicTrackId": {
+      "type": "string",
+      "minLength": 1,
+      "deprecated": true
+    },
+    "generateMusic": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "deprecated": true
     }
   },
+  "required": [
+    "reason"
+  ],
+  "oneOf": [
+    {
+      "required": [
+        "clipId"
+      ]
+    },
+    {
+      "required": [
+        "newClip"
+      ]
+    }
+  ],
   "anyOf": [
     {
       "required": [
+        "parts"
+      ]
+    },
+    {
+      "required": [
         "cuts"
+      ]
+    },
+    {
+      "required": [
+        "pauseCuts"
+      ]
+    },
+    {
+      "required": [
+        "corrections"
       ]
     },
     {
@@ -103,7 +382,62 @@
     },
     {
       "required": [
+        "font"
+      ]
+    },
+    {
+      "required": [
+        "case"
+      ]
+    },
+    {
+      "required": [
+        "wordsPerCaption"
+      ]
+    },
+    {
+      "required": [
+        "look"
+      ]
+    },
+    {
+      "required": [
+        "speed"
+      ]
+    },
+    {
+      "required": [
+        "hook"
+      ]
+    },
+    {
+      "required": [
         "title"
+      ]
+    },
+    {
+      "required": [
+        "postText"
+      ]
+    },
+    {
+      "required": [
+        "coverTitle"
+      ]
+    },
+    {
+      "required": [
+        "music"
+      ]
+    },
+    {
+      "required": [
+        "effects"
+      ]
+    },
+    {
+      "required": [
+        "rewrites"
       ]
     },
     {
@@ -115,17 +449,69 @@
       "required": [
         "generateMusic"
       ]
-    },
-    {
-      "required": [
-        "effects"
-      ]
     }
   ],
-  "not": {
-    "required": [
-      "musicTrackId",
-      "generateMusic"
-    ]
-  }
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "newClip"
+        ]
+      },
+      "then": {
+        "required": [
+          "parts"
+        ],
+        "if": {
+          "properties": {
+            "newClip": {
+              "properties": {
+                "kind": {
+                  "const": "stretch"
+                }
+              }
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "parts": {
+              "maxItems": 1
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "parts": {
+              "minItems": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "music",
+              "musicTrackId"
+            ]
+          },
+          {
+            "required": [
+              "music",
+              "generateMusic"
+            ]
+          },
+          {
+            "required": [
+              "musicTrackId",
+              "generateMusic"
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

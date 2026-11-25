@@ -4,12 +4,191 @@
   "title": "VoxClip pending harness proposal",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "id", "projectId", "baseRevision", "timeline"],
   "properties": {
-    "version": {"const": 1},
-    "id": {"type": "string", "format": "uuid"},
-    "projectId": {"type": "string", "minLength": 1},
-    "baseRevision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "timeline": {"$ref": "harness-timeline.schema.json"}
+    "version": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baseRevision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "timeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clipId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An existing clip id from read_clips."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "cuts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "startWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "endWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "enum": [
+                  "filler",
+                  "stumble",
+                  "repeat",
+                  "falseStart",
+                  "tangent",
+                  "other"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              }
+            },
+            "required": [
+              "startWord",
+              "endWord",
+              "kind",
+              "reason"
+            ]
+          }
+        },
+        "captionStyle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "$ref": "clip-plan-effect.schema.json"
+          }
+        },
+        "musicTrackId": {
+          "type": "string",
+          "minLength": 1,
+          "deprecated": true
+        },
+        "generateMusic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "deprecated": true
+        }
+      },
+      "required": [
+        "clipId",
+        "reason"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "cuts"
+          ]
+        },
+        {
+          "required": [
+            "captionStyle"
+          ]
+        },
+        {
+          "required": [
+            "title"
+          ]
+        },
+        {
+          "required": [
+            "effects"
+          ]
+        },
+        {
+          "required": [
+            "musicTrackId"
+          ]
+        },
+        {
+          "required": [
+            "generateMusic"
+          ]
+        }
+      ],
+      "not": {
+        "required": [
+          "musicTrackId",
+          "generateMusic"
+        ]
+      }
+    },
+    "timelines": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": {
+        "$ref": "harness-timeline.schema.json"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "id",
+    "projectId",
+    "baseRevision"
+  ],
+  "if": {
+    "properties": {
+      "version": {
+        "const": 1
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "timeline"
+    ],
+    "not": {
+      "required": [
+        "timelines"
+      ]
+    }
+  },
+  "else": {
+    "required": [
+      "timelines"
+    ],
+    "not": {
+      "required": [
+        "timeline"
+      ]
+    }
   }
 }
