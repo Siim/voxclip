@@ -6628,6 +6628,7 @@ member VoxClip.Core.Domain.Effects.ClipEffect :: method public .ctor(string,stri
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public Deconstruct(string&,string&,string&,double&,double&)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public Equals(VoxClip.Core.Domain.Effects.ClipEffect)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public Equals(object)
+member VoxClip.Core.Domain.Effects.ClipEffect :: method public ExplicitFadeOpacityAt(double)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public GetHashCode()
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public OpacityAt(double)
 member VoxClip.Core.Domain.Effects.ClipEffect :: method public OverlayPoseAt(double)
@@ -8367,15 +8368,19 @@ member VoxClip.Core.Domain.Music.MusicMix :: field public ReleaseSeconds
 member VoxClip.Core.Domain.Music.MusicMix :: field public SilenceFloorDb
 member VoxClip.Core.Domain.Music.MusicMix :: method private ReplaceRuns(bool[],bool,int,bool,bool)
 member VoxClip.Core.Domain.Music.MusicMix :: method public BedGainDb(System.Nullable`1<double>,System.Nullable`1<double>,double)
+member VoxClip.Core.Domain.Music.MusicMix :: method public Crossfade(long,long)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckFactor(System.Collections.Generic.IReadOnlyList`1<double>,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckingGainsDb(System.Collections.Generic.IReadOnlyList`1<bool>,bool)
+member VoxClip.Core.Domain.Music.MusicMix :: method public DuckingGainsDb(System.Collections.Generic.IReadOnlyList`1<bool>,bool,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public FadeFactor(double,double,double,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public FrameLevels(System.ReadOnlySpan`1<float>,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public FrameSize(double)
+member VoxClip.Core.Domain.Music.MusicMix :: method public ItemGain(double,VoxClip.Core.Domain.Editing.ItemShape,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public LoopPieces(long,long,long,long)
 member VoxClip.Core.Domain.Music.MusicMix :: method public MusicLevelDb(System.Collections.Generic.IReadOnlyList`1<double>)
 member VoxClip.Core.Domain.Music.MusicMix :: method public PieceWeight(VoxClip.Core.Domain.Music.MusicMix+LoopPiece,long)
 member VoxClip.Core.Domain.Music.MusicMix :: method public PowerMeanDb(System.Collections.Generic.IReadOnlyList`1<double>,System.Collections.Generic.IReadOnlyList`1<bool>)
+member VoxClip.Core.Domain.Music.MusicMix :: method public SegmentPieces(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicSegment>,long,int,long,System.Func`2<double,double>)
 member VoxClip.Core.Domain.Music.MusicMix :: method public SpeechActivity(System.Collections.Generic.IReadOnlyList`1<double>)
 member VoxClip.Core.Domain.Music.MusicMix :: method public SpeechLevelDb(System.Collections.Generic.IReadOnlyList`1<double>,System.Collections.Generic.IReadOnlyList`1<bool>)
 member VoxClip.Core.Domain.Music.MusicMix+LevelAccumulator :: field private count
@@ -8407,6 +8412,23 @@ member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_FadeIn(
 member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_FadeOut(long)
 member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_OutputStart(long)
 member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_SourceStart(long)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method private .ctor(VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public .ctor(VoxClip.Core.Domain.Music.MusicSegment,VoxClip.Core.Domain.Music.MusicMix+LoopPiece,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public Deconstruct(VoxClip.Core.Domain.Music.MusicSegment&,VoxClip.Core.Domain.Music.MusicMix+LoopPiece&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>&)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public Equals(VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public Equals(object)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public GetHashCode()
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public ToString()
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public get_Pieces()
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public get_Segment()
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public get_Span()
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public op_Equality(VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement,VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public op_Inequality(VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement,VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public set_Pieces(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public set_Segment(VoxClip.Core.Domain.Music.MusicSegment)
+member VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement :: method public set_Span(VoxClip.Core.Domain.Music.MusicMix+LoopPiece)
 member VoxClip.Core.Domain.Music.MusicPricing :: field public MaximumSeconds
 member VoxClip.Core.Domain.Music.MusicPricing :: field public MinimumSeconds
 member VoxClip.Core.Domain.Music.MusicPricing :: field public Model
@@ -9042,6 +9064,7 @@ member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public Equals(Vox
 member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public Equals(object)
 member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public GetHashCode()
 member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public SourceTime(double)
+member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public SourceTime(double,VoxClip.Core.Domain.Clips.ClipSpeedTiming)
 member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public ToString()
 member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public get_EditedEnd()
 member VoxClip.Core.Domain.Shared.FootageRenderLayer :: method public get_EditedStart()
@@ -20023,6 +20046,7 @@ type VoxClip.Core.Domain.Music.MusicLicense
 type VoxClip.Core.Domain.Music.MusicMix
 type VoxClip.Core.Domain.Music.MusicMix+LevelAccumulator
 type VoxClip.Core.Domain.Music.MusicMix+LoopPiece
+type VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement
 type VoxClip.Core.Domain.Music.MusicPricing
 type VoxClip.Core.Domain.Music.MusicProject
 type VoxClip.Core.Domain.Music.MusicRenderInput
