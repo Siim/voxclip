@@ -1965,6 +1965,7 @@ member VoxClip.App.Pages.EditorPage :: method private MakeItBilling(VoxClip.App.
 member VoxClip.App.Pages.EditorPage :: method private MakeItChange(VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItRow)
 member VoxClip.App.Pages.EditorPage :: method private MakeItCommandClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private MakeItExportAsync(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.ExportAspect>,System.Threading.CancellationToken)
+member VoxClip.App.Pages.EditorPage :: method private MakeItFootageDescriptionsAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.MediaReference>,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private MakeItFramePass(VoxClip.Core.Domain.Frames.IFrameFaces,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.Pages.EditorPage :: method private MakeItPlanAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,System.IProgress`1<VoxClip.Core.Services.LLM.ClipAutopilotProgress>,VoxClip.App.ViewModels.MakeItFrameSources,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private MakeItVoiceAsync(VoxClip.App.ViewModels.MakeItRewriteRequest,System.Threading.CancellationToken)
@@ -3741,9 +3742,11 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItCoverLabel
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItCoverOptions(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.App.ViewModels.MakeItRun,double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItCoverRow(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItFaceRow(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.App.ViewModels.MakeItRun)
+member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItMusicTracks()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItNoteText()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItNotify()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItOpeningRowAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.Media.Frames.VideoFramePass)
+member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItParts(VoxClip.Core.Domain.Editing.ClipRange,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItPictureRowsAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItScreenOptions(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItShownRequest()
@@ -4665,6 +4668,22 @@ member VoxClip.App.ViewModels.MakeItInverse+Effect :: method public op_Equality(
 member VoxClip.App.ViewModels.MakeItInverse+Effect :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+Effect,VoxClip.App.ViewModels.MakeItInverse+Effect)
 member VoxClip.App.ViewModels.MakeItInverse+Effect :: method public set_Id(string)
 member VoxClip.App.ViewModels.MakeItInverse+Effect :: method public set_Previous(System.Nullable`1<System.Text.Json.JsonElement>)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+Footage)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public .ctor(string,VoxClip.Core.Domain.Shared.ProjectFootage)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public Deconstruct(string&,VoxClip.Core.Domain.Shared.ProjectFootage&)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public Equals(VoxClip.App.ViewModels.MakeItInverse)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public Equals(VoxClip.App.ViewModels.MakeItInverse+Footage)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public Equals(object)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public GetHashCode()
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public ToString()
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public get_Id()
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public get_Previous()
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public op_Equality(VoxClip.App.ViewModels.MakeItInverse+Footage,VoxClip.App.ViewModels.MakeItInverse+Footage)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+Footage,VoxClip.App.ViewModels.MakeItInverse+Footage)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public set_Id(string)
+member VoxClip.App.ViewModels.MakeItInverse+Footage :: method public set_Previous(VoxClip.Core.Domain.Shared.ProjectFootage)
 member VoxClip.App.ViewModels.MakeItInverse+LeadIn :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+LeadIn)
 member VoxClip.App.ViewModels.MakeItInverse+LeadIn :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.MakeItInverse+LeadIn :: method protected get_EqualityContract()
@@ -4745,6 +4764,22 @@ member VoxClip.App.ViewModels.MakeItInverse+Reframe :: method public op_Equality
 member VoxClip.App.ViewModels.MakeItInverse+Reframe :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+Reframe,VoxClip.App.ViewModels.MakeItInverse+Reframe)
 member VoxClip.App.ViewModels.MakeItInverse+Reframe :: method public set_ClipId(string)
 member VoxClip.App.ViewModels.MakeItInverse+Reframe :: method public set_Previous(VoxClip.Core.Domain.Shared.ReframeSettings)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+ReusedMusic)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public .ctor(VoxClip.Core.Domain.Music.ProjectMusic,VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public Deconstruct(VoxClip.Core.Domain.Music.ProjectMusic&,VoxClip.Core.Domain.Music.ProjectMusic&)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public Equals(VoxClip.App.ViewModels.MakeItInverse)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public Equals(VoxClip.App.ViewModels.MakeItInverse+ReusedMusic)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public Equals(object)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public GetHashCode()
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public ToString()
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public get_Added()
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public get_Previous()
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public op_Equality(VoxClip.App.ViewModels.MakeItInverse+ReusedMusic,VoxClip.App.ViewModels.MakeItInverse+ReusedMusic)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+ReusedMusic,VoxClip.App.ViewModels.MakeItInverse+ReusedMusic)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public set_Added(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.App.ViewModels.MakeItInverse+ReusedMusic :: method public set_Previous(VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.App.ViewModels.MakeItInverse+Share :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+Share)
 member VoxClip.App.ViewModels.MakeItInverse+Share :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.MakeItInverse+Share :: method protected get_EqualityContract()
@@ -9086,11 +9121,13 @@ type VoxClip.App.ViewModels.MakeItInverse+Captions
 type VoxClip.App.ViewModels.MakeItInverse+Cover
 type VoxClip.App.ViewModels.MakeItInverse+Edits
 type VoxClip.App.ViewModels.MakeItInverse+Effect
+type VoxClip.App.ViewModels.MakeItInverse+Footage
 type VoxClip.App.ViewModels.MakeItInverse+LeadIn
 type VoxClip.App.ViewModels.MakeItInverse+Look
 type VoxClip.App.ViewModels.MakeItInverse+Motion
 type VoxClip.App.ViewModels.MakeItInverse+Music
 type VoxClip.App.ViewModels.MakeItInverse+Reframe
+type VoxClip.App.ViewModels.MakeItInverse+ReusedMusic
 type VoxClip.App.ViewModels.MakeItInverse+Share
 type VoxClip.App.ViewModels.MakeItInverse+Speed
 type VoxClip.App.ViewModels.MakeItInverse+Voice
