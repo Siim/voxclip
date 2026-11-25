@@ -361,6 +361,46 @@ private struct RefusingAssetHTTP: MusicHTTP {
         #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch eleven-1"])
     }
 
+    @Test func undoThenChangeReusesAnUnchangedPaidPhrase() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false))
+        let editor = fixture.editor
+        defer { editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let segment = try #require(editor.project.voiceLab.segments.first)
+        let asset = try #require(editor.project.voiceLab.assets?.first { $0.id == segment.audio.assetId })
+        let file = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(asset.file)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Self.wav().write(to: file)
+        editor.document.replaceProject(try VoiceLabProject.setEnabled(false, id: segment.id, in: editor.project))
+        editor.refresh()
+        editor.makeIt.services?.voice = { _, editor in
+            fixture.calls.record("voice charge")
+            do {
+                editor.replace(try VoiceLabProject.setEnabled(true, id: segment.id, in: editor.project), name: "Use take")
+                return MakeItRewriteOutcome(result: .voiced(segments: [segment.id]), spent: 0.01)
+            } catch {
+                Issue.record("Couldn't place the fixture take: \(error)")
+                return MakeItRewriteOutcome(result: .unavailable("Fixture take failed"))
+            }
+        }
+        let first = try await run(fixture)
+        #expect(first.phase == .ready && first.spent == 0.01)
+        editor.undoCreativeProposal(first)
+        #expect(editor.project.voiceLab.segments.first?.enabled == false)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        editor.makeIt.services?.plan = { request, _, _, _ in
+            var revised = try #require(request.revision?.plan)
+            revised.title = "A revised title"
+            return ClipAutopilotSeries(plans: [revised])
+        }
+        editor.reviseCreativeProposal(first, instruction: "Change the title")
+        await first.task?.value
+        let revised = try #require(editor.makeIt.run(for: first.clipID))
+        #expect(revised.phase == .ready && revised.plan?.title == "A revised title")
+        #expect(editor.project.voiceLab.segments.first?.enabled == true)
+        #expect(revised.spent == first.spent)
+        #expect(fixture.calls.all.filter { $0 == "voice charge" }.count == 1)
+    }
+
     @Test(arguments: ["Add an ElevenLabs key in Settings to make music for this clip.", "No current estimate is available."])
     func noTrackReportsTheGeneratedSourceNote(reason: String) async throws {
         let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [], notes: [.generated: reason])

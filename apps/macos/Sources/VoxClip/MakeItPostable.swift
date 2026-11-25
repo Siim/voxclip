@@ -121,6 +121,11 @@ struct MakeItRewriteOutcome: Equatable {
     var keptAsRecorded = 0
 }
 
+struct MakeItPaidVoice {
+    let inputs: Project
+    let outcome: MakeItRewriteOutcome
+}
+
 /// How a decision is taken back on its own (the review's Undo).
 enum MakeItInverse {
     case edits([EditCommand])
@@ -283,6 +288,7 @@ struct MakeItRow: Identifiable, Equatable {
     @ObservationIgnored var proposalInput: ClipAutopilotRequest?
     @ObservationIgnored var paidMusic: [ProjectMusic] = []
     @ObservationIgnored var paidCues: [String: ProjectMusic] = [:]
+    @ObservationIgnored var paidPhrases: [ClosedRange<Int>: [String: MakeItPaidVoice]] = [:]
     @ObservationIgnored var task: Task<Void, Never>?
     @ObservationIgnored var inverses: [String: MakeItInverse] = [:]
     @ObservationIgnored var cancelled = false
@@ -742,6 +748,7 @@ extension EditorModel {
             next.spent = run.spent
             next.paidMusic = saved
             next.paidCues = run.paidCues
+            next.paidPhrases = run.paidPhrases
             next.proposalInput = run.proposalInput
             next.priorPlan = run.plan
             next.priorOperations = run.proposalOperations
@@ -1023,6 +1030,15 @@ extension EditorModel {
         let play = words[safe: range.lowerBound].map { max(0, $0.start - 1) }
         var row = MakeItRow(id: operation.id, text: "Rewrote “\(text)”", detail: operation.reason, play: play, change: .phrase(range))
         guard allowed else { row.kind = .note; row.text = "Claude suggests “\(text)”"; row.detail = "This clip style keeps your words."; return row }
+        let inputs = makeItVoiceInputs(.selection(range), clipID: run.clipID)
+        if let saved = run.paidPhrases[range]?[text], saved.inputs == inputs,
+           case .voiced(let segments) = saved.outcome.result, restoreMakeItVoice(segments, clipID: run.clipID) {
+            run.inverses[operation.id] = .voice(segments: segments)
+            run.voiceSpent += saved.outcome.spent
+            row.undoable = true
+            row.text = "Reused your voice for “\(text)”"
+            return row
+        }
         if run.budget?.paidAllowed == false {
             row.kind = .note; row.text = "Claude suggests “\(text)”"
             row.detail = "Spend is $0 per video, so your words stay. Change voices it in Rewrite."
@@ -1041,6 +1057,9 @@ extension EditorModel {
         }
         switch outcome.result {
         case .voiced(let segments):
+            if outcome.spent > 0, !segments.isEmpty {
+                run.paidPhrases[range, default: [:]][text] = MakeItPaidVoice(inputs: inputs, outcome: outcome)
+            }
             run.inverses[operation.id] = .voice(segments: segments)
             row.undoable = true
             row.text = "Voiced “\(text)” in your voice"
@@ -1069,6 +1088,38 @@ extension EditorModel {
             row.detail = reason
         }
         return row
+    }
+
+    func makeItVoiceInputs(_ scope: RewriteScope, clipID: String) -> Project {
+        var inputs = project.voiceTakeIdentity(scope: scope, enclosingClipID: clipID)
+        inputs.voiceLab.segments.removeAll { !$0.enabled }
+        inputs.edits.clips = project.edits.clips.filter { $0.id == clipID }.map { clip in
+            ClipRange(id: clip.id, startWordId: clip.startWordId, endWordId: clip.endWordId, parts: clip.parts, kind: clip.kind)
+        }
+        return inputs
+    }
+
+    func restoreMakeItVoice(_ ids: [String], clipID: String, wholeClip: WholeClipRevoiceRecord? = nil) -> Bool {
+        let segments = ids.compactMap { id in project.voiceLab.segments.first { $0.id == id && !$0.enabled } }
+        guard !segments.isEmpty, segments.count == ids.count else { return false }
+        let root = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        func exists(_ file: String?) -> Bool {
+            file.map { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) } == true
+        }
+        for segment in segments {
+            guard exists(project.voiceLab.assets?.first { $0.id == segment.audio.assetId }?.file) else { return false }
+            if let video = segment.candidates[safe: segment.selectedCandidateIndex]?.recipe?.video.assetId,
+               !exists(project.voiceLab.videoAssets?.first { $0.id == video }?.file) { return false }
+        }
+        var next = project
+        if let wholeClip { next.voiceLab.wholeClipRevoices = (next.voiceLab.wholeClipRevoices ?? []) + [wholeClip] }
+        for index in next.voiceLab.segments.indices where ids.contains(next.voiceLab.segments[index].id) {
+            next.voiceLab.segments[index].enabled = true
+        }
+        let restored = next.voiceLab.segments.filter { ids.contains($0.id) }
+        guard (try? VoiceLabProject.validate(next, scope: .clip(clipID), accepting: restored)) != nil else { return false }
+        replace(next, name: "Reuse paid voice")
+        return true
     }
 
     private func musicStep(_ pick: ClipAutopilotPlan.Music?, run: MakeItRun) async -> MakeItRow? {
