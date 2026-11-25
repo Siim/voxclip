@@ -47,7 +47,7 @@ internal static class TimelineLayout
         var duration = model.Project.Media.Source.DurationSeconds;
         var rate = model.Project.Media.Source.Audio?.SampleRate ?? 48000;
         if (model.State is { } state)
-            return EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state with { ActiveClipId = null }, duration), duration, rate, state.PauseKeepSeconds);
+            return EditingEngine.BuildPlan(model.IsStoryClip ? state : state with { ActiveClipId = null }, duration, rate);
         var samples = (long)Math.Floor(duration * rate + 0.5);
         return new(rate, samples, [], [new(0, samples)], samples, []);
     }

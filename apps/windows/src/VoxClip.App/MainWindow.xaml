@@ -52,8 +52,8 @@
                     <ContentControl.ContextFlyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="{x:Bind MakeItName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="MakeItClipClicked" Visibility="{x:Bind CanMakeIt, Mode=OneWay}"/>
-                            <MenuFlyoutItem Text="{x:Bind RewriteName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" Visibility="{x:Bind CanRewrite, Mode=OneWay}"/>
-                            <MenuFlyoutSubItem Text="✦ Rewrite as" Tag="{x:Bind ClipId}" Visibility="{x:Bind CanRewrite, Mode=OneWay}" AutomationProperties.AutomationId="Clip.RewriteAs"/>
+                            <MenuFlyoutItem Text="{x:Bind RewriteName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" IsEnabled="{x:Bind CanRewrite, Mode=OneWay}" Visibility="{x:Bind ShowsRewrite, Mode=OneWay}"/>
+                            <MenuFlyoutSubItem Text="✦ Rewrite as" Tag="{x:Bind ClipId}" Visibility="{x:Bind ShowsRewrite, Mode=OneWay}" AutomationProperties.AutomationId="Clip.RewriteAs"/>
                             <MenuFlyoutItem Text="Ask Claude…" Tag="{x:Bind ClipId}" Click="AskClaudeClipClicked" Visibility="{x:Bind CanAskClaude, Mode=OneWay}" AutomationProperties.AutomationId="Clip.AskClaude"/>
                             <!-- On Home the project's rows only navigate: the commands that act on the hidden editor are disabled. -->
                             <MenuFlyoutItem Text="Captions" Tag="{x:Bind ClipId}" Click="CaptionsClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
@@ -78,11 +78,12 @@
                             </Border>
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <Grid ColumnSpacing="8" MinHeight="32">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Grid ColumnSpacing="5" MinHeight="32">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" FontSize="14"/>
-                                <TextBlock Grid.Column="1" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind ShowsDuration, Mode=OneWay}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" Visibility="{x:Bind ShowsActions, Mode=OneWay}">
+                                <Border Grid.Column="1" BorderThickness="1" BorderBrush="{ThemeResource VcLineStrongBrush}" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" Visibility="{x:Bind HasBadge, Mode=OneWay}"><TextBlock Text="{x:Bind Badge, Mode=OneWay}" FontSize="10"/></Border>
+                                <TextBlock Grid.Column="2" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind ShowsDuration, Mode=OneWay}"/>
+                                <StackPanel Grid.Column="{x:Bind ActionsColumn, Mode=OneWay}" Orientation="Horizontal" Spacing="2" Visibility="{x:Bind ShowsActions, Mode=OneWay}">
                                     <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" IsTabStop="False" Tag="{x:Bind ClipId}" Click="MakeItClipClicked" Tapped="RowButtonTapped"
                                         Visibility="{x:Bind CanMakeIt, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind MakeItName, Mode=OneWay}" AutomationProperties.Name="{x:Bind MakeItName, Mode=OneWay}"><TextBlock Text="✦" FontSize="14"/></Button>
                                     <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" IsTabStop="False" Click="MoreClipClicked" Tapped="RowButtonTapped"
@@ -116,8 +117,8 @@
                         <MenuFlyout>
                             <!-- Rewrite and Export keep the suggestion first, in one undo step, then act on it as on a kept clip. -->
                             <MenuFlyoutItem Text="{x:Bind MakeItName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="MakeItClipClicked" Visibility="{x:Bind CanMakeIt, Mode=OneWay}"/>
-                            <MenuFlyoutItem Text="{x:Bind RewriteName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" Visibility="{x:Bind CanRewrite, Mode=OneWay}"/>
-                            <MenuFlyoutSubItem Text="✦ Rewrite as" Tag="{x:Bind ClipId}" Visibility="{x:Bind CanRewrite, Mode=OneWay}" AutomationProperties.AutomationId="Clip.RewriteAs"/>
+                            <MenuFlyoutItem Text="{x:Bind RewriteName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" IsEnabled="{x:Bind CanRewrite, Mode=OneWay}" Visibility="{x:Bind ShowsRewrite, Mode=OneWay}"/>
+                            <MenuFlyoutSubItem Text="✦ Rewrite as" Tag="{x:Bind ClipId}" Visibility="{x:Bind ShowsRewrite, Mode=OneWay}" AutomationProperties.AutomationId="Clip.RewriteAs"/>
                             <MenuFlyoutItem Text="Captions" Tag="{x:Bind ClipId}" Click="CaptionsClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Find more clips" Tag="{x:Bind ClipId}" Click="FindMoreClipsClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Export clip…" Tag="{x:Bind ClipId}" Click="ExportClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
@@ -138,12 +139,12 @@
                             </Border>
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Grid ColumnSpacing="5">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" FontSize="14"/>
-                                <TextBlock Grid.Column="1" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind ShowsDuration, Mode=OneWay}"/>
-                                <!-- Selected or hovered: ✦ Make it postable and ⋯ More take the duration's place; the title truncates first. -->
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" Visibility="{x:Bind ShowsActions, Mode=OneWay}">
+                                <Border Grid.Column="1" BorderThickness="1" BorderBrush="{ThemeResource VcLineStrongBrush}" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" Visibility="{x:Bind HasBadge, Mode=OneWay}"><TextBlock Text="{x:Bind Badge, Mode=OneWay}" FontSize="10"/></Border>
+                                <TextBlock Grid.Column="2" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind ShowsDuration, Mode=OneWay}"/>
+                                <StackPanel Grid.Column="{x:Bind ActionsColumn, Mode=OneWay}" Orientation="Horizontal" Spacing="2" Visibility="{x:Bind ShowsActions, Mode=OneWay}">
                                     <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" IsTabStop="False" Tag="{x:Bind ClipId}" Click="MakeItClipClicked" Tapped="RowButtonTapped"
                                         Visibility="{x:Bind CanMakeIt, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind MakeItName, Mode=OneWay}" AutomationProperties.Name="{x:Bind MakeItName, Mode=OneWay}"><TextBlock Text="✦" FontSize="14"/></Button>
                                     <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" IsTabStop="False" Click="MoreClipClicked" Tapped="RowButtonTapped"
@@ -237,7 +238,37 @@
                     <TextBlock Grid.Column="1" Text="{x:Bind Title, Mode=OneWay}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 </Grid>
             </DataTemplate>
+            <DataTemplate x:Key="StoryPartRow" x:DataType="vm:SidebarRow">
+                <Border Background="Transparent" Loaded="PartRowLoaded" AllowDrop="True" DragOver="PartDragOver" DragLeave="PartDragLeave" Drop="PartDrop">
+                    <Grid ColumnSpacing="4" MinHeight="32">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="⋮⋮" Width="16" VerticalAlignment="Center" CanDrag="True" DragStarting="PartDragStarting" DropCompleted="PartDropCompleted"
+                            ToolTipService.ToolTip="Drag to reorder (Ctrl+Alt+Up/Down)" AutomationProperties.Name="Drag to reorder"/>
+                        <Border Grid.Column="1" Loaded="PartBadgeLoaded" BorderThickness="1" Padding="3,0" CornerRadius="4" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontSize="11"/>
+                        </Border>
+                        <TextBlock Grid.Column="2" Text="{x:Bind Title, Mode=OneWay}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="3" Text="{x:Bind Detail, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="11" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="4" Content="×" Width="28" Height="32" Padding="0" IsEnabled="{x:Bind Edits, Mode=OneWay}" Click="RemovePartClicked" Tapped="RowButtonTapped"
+                            Style="{ThemeResource SubtleButtonStyle}" ToolTipService.ToolTip="Remove Part (Delete)" AutomationProperties.Name="Remove Part"/>
+                    </Grid>
+                </Border>
+            </DataTemplate>
+            <DataTemplate x:Key="OutlineHeaderRow" x:DataType="vm:SidebarRow">
+                <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="{x:Bind Title, Mode=OneWay}"/>
+                    <TextBlock Grid.Column="1" Text="{x:Bind Detail, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
+                </Grid>
+            </DataTemplate>
+            <DataTemplate x:Key="AddPartRow" x:DataType="vm:SidebarRow">
+                <StackPanel Spacing="2" Padding="0,4">
+                    <Button Content="{x:Bind Title}" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" Click="AddPartClicked" Tapped="RowButtonTapped" Style="{ThemeResource SubtleButtonStyle}"
+                        AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}"/>
+                    <TextBlock Text="{x:Bind Detail, Mode=OneWay}" TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
+                </StackPanel>
+            </DataTemplate>
             <controls:ExplorerTemplates x:Key="SidebarTemplates" Home="{StaticResource HomeRow}" Separator="{StaticResource SeparatorRow}" Project="{StaticResource ProjectRow}" Outline="{StaticResource OutlineRow}"
+                StoryPart="{StaticResource StoryPartRow}" OutlineHeader="{StaticResource OutlineHeaderRow}" AddPart="{StaticResource AddPartRow}"
                 FullTake="{StaticResource FullTakeRow}" Clip="{StaticResource ClipRow}" SuggestedHeader="{StaticResource SuggestedHeaderRow}" Suggestion="{StaticResource SuggestionRow}"
                 Action="{StaticResource ActionRow}" RecentHeader="{StaticResource RecentHeaderRow}" Recent="{StaticResource RecentRow}"
                 Empty="{StaticResource EmptyRow}" Finding="{StaticResource FindingRow}" Callout="{StaticResource CalloutRow}" NoneFound="{StaticResource NoneFoundRow}"/>

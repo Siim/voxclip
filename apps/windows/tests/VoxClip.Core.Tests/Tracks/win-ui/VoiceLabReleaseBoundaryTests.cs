@@ -151,7 +151,7 @@ public sealed class VoiceLabReleaseBoundaryTests
         Assert.DoesNotContain("ProviderCatalog.ConsentAsync", opening);
         Assert.Contains("session.ConfigureInlineConsent", Source("Controls/RewritePanel.cs"));
         var transcript = ReleaseSource(Source("Controls/TranscriptView.cs"));
-        Assert.Contains("RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true }", transcript);
+        Assert.Contains("RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true, IsStoryClip: false }", transcript);
         Assert.Contains("cut, RewriteRequested is not null, CanRewrite", transcript);
         Assert.DoesNotContain("Insert Words…", transcript);
         Assert.DoesNotContain("voiceLab.betaNoticeAccepted", transcript);

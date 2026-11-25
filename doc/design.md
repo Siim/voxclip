@@ -401,6 +401,8 @@ A single click previews a clip or suggestion in the one temporary tab. Double-cl
 
 **Windows meta line grammar.** On macOS v2 the idle row shows duration, with AI speech as a blue waveform glyph. Export warnings live in the EXPORTS rows (§7), with the same status in help and VoiceOver. Clip rows show no export glyph.
 
+**Story clips (Windows).** The Clips list shows the actual part count, such as `6 parts`, or `reel` for a showreel, beside its edited length. The Outline shows parts in play order rather than transcript order, with a drag grip, coloured number, first words, monospaced `m:ss–m:ss` take time and ×. The header identifies the clip and the part count.
+
 The duration, a separator, then one status:
 
 - The duration is the edited length of the clip or of the full take, from the same edit plan as the viewer and export, as `m:ss` in SF Mono 11 or Cascadia Mono 12, `text.secondary`.
@@ -736,6 +738,8 @@ No other zoom in v1. Full take always fits.
 - The strip is one slider (macOS: `Canvas` with `.accessibilityRepresentation { Slider }`; Windows: a `RangeValue` automation peer). Its name is "Playhead", and its value reads like "22 seconds of 2 minutes 10 after cuts, 8 cuts". ← and → step by one word, ⇧← and ⇧→ by one sentence, Home and End go to the ends.
 - Escape during a mouse trim cancels its preview without an edit or undo step. The trim handles are separate adjustable elements, "Clip 2 start" and "Clip 2 end", that step by one word.
 - Edited | Source is a two-option picker named "Timeline time".
+
+**Story clips (Windows).** Numbered transcript bands and timeline bands use the Outline colours. On the edited axis, part seams are 3 epx lines labelled with ↶ (back) or ↷ (ahead) and the destination take time. Cuts inside a part stay 1 epx lines. The overview marks each part in its original take position. **Show cuts** opens the cuts within each part and puts the parts side by side in play order. An effect that crosses a seam says “Place it inside one part.” A translation that crosses a seam says “Translate inside one part.”
 
 ### 5.3 Compact transport (viewer collapsed)
 
@@ -1096,6 +1100,10 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
 On a story clip, keep each translated caption inside one part: “Translate inside one part.”
 
 The sidebar list is the clip range layer (editing §2.5 and §10.6), presented as in §2 and §3.4.
+
+**Editing parts (Windows).** Select a part, then press I or O to set its edge at the selected word. Drag the grip to the accent line or press Ctrl+Alt+↑/↓ to move it. Remove it with × or Delete. The row menu also has **Play Part 2** (the actual number), **Show in Take**, **Move Up**, **Move Down**, **Make Clip of This Part** and **Remove Part**. **Add Selection as Part** appends the selected words; with no usable selection, say “Select words outside the clip's parts to add them.” A last part cannot be removed: “A clip needs one part. Remove Clip instead.” Parts edits use one undo step each: “Move part”, “Remove part”, “Add part” or “Trim part”. Narrator announces the result, such as “Part 2 moved to 3 of 6”. If a part crosses a paid lip-sync window, say “Part 3 cuts through a lip-synced stretch. Include all of 2:40–2:57 or none of it.” with the actual part and time range.
+
+**Voice on story clips (Windows).** **Rewrite as ▾** is visible but disabled: “Voice changes work on one part at a time. Make a clip of the part first.” **Revoice Whole Clip** and **Lip Sync** stay visible with a price but are disabled: “Lip sync can't run across the n seams of a story clip yet. Make a clip of the part first.” Use the actual seam count. **Make Clip of Part n** and **Make Clips of All n Parts** are free and inline; they make ordinary clips with the same source words and cuts.
 
 **Making a clip.**
 

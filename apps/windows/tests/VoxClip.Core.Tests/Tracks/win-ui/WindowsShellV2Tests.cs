@@ -161,7 +161,8 @@ public sealed class WindowsShellV2Tests
         Assert.Contains("PointerExited=\"ClipRowPointerExited\"", clip);
         Assert.Contains("Visibility=\"{x:Bind ShowsActions, Mode=OneWay}\"", clip);
         Assert.Contains("Visibility=\"{x:Bind ShowsDuration, Mode=OneWay}\"", clip);
-        Assert.Contains("<Grid ColumnSpacing=\"8\" MinHeight=\"32\">", clip);
+        Assert.Contains("MinHeight=\"32\">", clip);
+        Assert.Contains("Text=\"{x:Bind Badge, Mode=OneWay}\"", clip);
         // The row ✦ is Make it postable (design §6.7); Rewrite stays in the row's menu.
         Assert.Contains("Click=\"MakeItClipClicked\" Tapped=\"RowButtonTapped\"", clip);
         Assert.Contains("Click=\"MoreClipClicked\" Tapped=\"RowButtonTapped\"", clip);

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.Pages;
 using VoxClip.App.Controls;
@@ -217,7 +218,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// scope's row.</summary>
     private void PaneRowKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (editor is not { } page || ShowingHome || args.Key is not ((VirtualKey)219 or (VirtualKey)221) || !FocusInPane() || FocusedRow() is not { } row) return;
+        if (editor is not { } page || ShowingHome || !FocusInPane() || FocusedRow() is not { } row) return;
+        if (HandlePartKey(row, args, page.ViewModel)) { args.Handled = true; return; }
+        if (args.Key is not ((VirtualKey)219 or (VirtualKey)221)) return;
         var modifier = InputState.Down(VirtualKey.Control) || InputState.Down(VirtualKey.Menu) || InputState.Down(VirtualKey.Shift);
         var step = ShortcutPolicy.RowClipStep(args.Key == (VirtualKey)219 ? '[' : ']', row.Kind, modifier);
         if (step == 0) return;
@@ -712,9 +715,19 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void ClipMenuOpening(object? sender, object args)
     {
         if (sender is not MenuFlyout menu || menu.Items.OfType<MenuFlyoutSubItem>().FirstOrDefault() is not { Tag: string id } tones) return;
-        foreach (var old in menu.Items.OfType<MenuFlyoutItem>().Where(item => item.Tag is WholeClipIntent).ToArray()) menu.Items.Remove(old);
+        foreach (var old in menu.Items.OfType<MenuFlyoutItem>().Where(item => item.Tag is WholeClipIntent or StoryVoiceActions).ToArray()) menu.Items.Remove(old);
+        AutomationProperties.SetHelpText(tones, "");
         if (editor is { } page && page.ViewModel.Project.Edits.Clips.Any(clip => clip.Id == id))
         {
+            if (page.ViewModel.StoryVoice(id) is { } story)
+            {
+                tones.Items.Clear();
+                tones.IsEnabled = false;
+                AutomationProperties.SetHelpText(tones, story.RewriteReason);
+                menu.Items.Insert(menu.Items.IndexOf(tones) + 1, new MenuFlyoutItem { Text = story.RewriteReason, IsEnabled = false, Tag = story });
+                AddVoice("Revoice Whole Clip, with Lip Sync", WholeClipIntent.Revoice, false, story.LipSyncReason);
+                return;
+            }
             var canVoice = RowEdits(id) && page.ViewModel.HasTranscript;
             AddVoice("Revoice Whole Clip, with Lip Sync", WholeClipIntent.Revoice, canVoice, "Open an editable transcript to revoice this take.");
             AddVoice("Redo Voice and Lip Sync", WholeClipIntent.RedoVoice, canVoice && WholeClipRevoice.IsRevoiced(id, page.ViewModel.Project),
@@ -885,6 +898,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             case SidebarKind.Clip or SidebarKind.Suggestion: ShowScope(row.ClipId); break;
             case SidebarKind.Outline:
                 ShowScope(editor?.ViewModel.State?.ActiveClipId, keepSelection: true);
+                if (row.PartId is { } partId) editor?.ViewModel.SelectPart(partId);
                 editor?.RevealOutline(row.WordIndex);
                 SyncSelection();
                 break;

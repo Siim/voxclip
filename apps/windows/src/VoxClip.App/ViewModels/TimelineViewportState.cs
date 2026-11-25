@@ -21,6 +21,7 @@ internal sealed class TimelineViewportState
     private string[] sourceClocks = [];
     private readonly string[] frameLabels = Enumerable.Range(0, 240).Select(frame => frame.ToString("D2", System.Globalization.CultureInfo.InvariantCulture)).ToArray();
     internal int FrameRate { get; private set; } = 30;
+    internal int Cuts => cuts;
     internal ClipRow? ActiveClip { get; private set; }
     internal int First { get; private set; }
     internal int Last { get; private set; }
@@ -45,8 +46,8 @@ internal sealed class TimelineViewportState
         ActiveClip = null;
         for (var index = 0; index < model.Clips.Count; index++)
             if (model.Clips[index].Id == model.State?.ActiveClipId) { ActiveClip = model.Clips[index]; break; }
-        First = ActiveClip is null ? -1 : model.Index(ActiveClip.Clip.StartWordId);
-        Last = ActiveClip is null ? -1 : model.Index(ActiveClip.Clip.EndWordId);
+        First = model.IsStoryClip ? -1 : model.SelectedPart?.First ?? -1;
+        Last = model.IsStoryClip ? -1 : model.SelectedPart?.Last ?? -1;
         if (number != ActiveClip?.Number)
         {
             StartName = ActiveClip is null ? "Clip start" : $"Clip {ActiveClip.Number} start";

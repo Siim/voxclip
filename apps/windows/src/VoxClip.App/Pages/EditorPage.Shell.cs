@@ -92,6 +92,7 @@ public sealed partial class EditorPage
         TightenCommand.IsEnabled = ShellEditable && (ViewModel.Summary.CanCutFillers || ViewModel.Summary.CanTighten);
         MakeClipCommand.IsEnabled = ShellEditable && ViewModel.HasSelection;
         AskButton.IsEnabled = ShellJobAvailable(ShellJob.Rewrite);
+        AutomationProperties.SetHelpText(AskButton, ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : "");
         HookCommand.IsEnabled = ShellJobAvailable(ShellJob.Hook);
         UpdateMakeItCommand();
         UpdateToneButton();
@@ -113,6 +114,7 @@ public sealed partial class EditorPage
 
     private bool ShellJobAvailable(ShellJob job)
     {
+        if (job == ShellJob.Rewrite && ViewModel.IsStoryClip) return false;
         if (!ShellReady || ViewModel.Busy) return false;
         if (job == ShellJob.Export && ViewModel.ExportBlocked(demo, MediaPath is null || media is null, ViewModel.State?.ActiveClipId) is not null) return false;
         if (job != ShellJob.Export && !ShellEditable) return false;
@@ -195,9 +197,9 @@ public sealed partial class EditorPage
             Command("edit.fillers", "Cut fillers", "Ctrl+Shift+U", () => ShellEditable && ViewModel.Summary.CanCutFillers, () => FillersClicked(this, new())),
             Command("edit.pauses", "Tighten pauses", "Ctrl+Shift+P", () => ShellEditable && ViewModel.Summary.CanTighten, () => PausesClicked(this, new())),
             Command("edit.restore", "Restore cuts", "Ctrl+Shift+R", () => ShellEditable && ViewModel.Summary.HasEdits, () => RestoreClicked(this, new())),
-            Command("job.rewrite", "Rewrite…", "Ctrl+R", () => ShellJobAvailable(ShellJob.Rewrite), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite"), "Rewrite needs an editable transcript and the current right-panel capability."),
+            Command("job.rewrite", "Rewrite…", "Ctrl+R", () => ShellJobAvailable(ShellJob.Rewrite), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite"), ViewModel.StoryVoice()?.RewriteReason ?? "Rewrite needs an editable transcript and the current right-panel capability."),
             Command("voice.wholeTake", "Revoice Whole Take, with Lip Sync", "", () => ShellJobAvailable(ShellJob.Rewrite),
-                () => OpenWholeTakeVoice(), "Open an editable transcript to revoice this take."),
+                () => OpenWholeTakeVoice(), ViewModel.StoryVoice()?.LipSyncReason ?? "Open an editable transcript to revoice this take."),
             Command("voice.redoWholeTake", "Redo Voice and Lip Sync", "", () => ShellJobAvailable(ShellJob.Rewrite) &&
                 WholeClipRevoice.IsRevoiced(ViewModel.Project.Edits.ActiveClipId ?? WholeClipRevoice.FullTakeId, ViewModel.Project),
                 () => OpenWholeTakeVoice(redo: true), "Use a whole-take revoice first."),

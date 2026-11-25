@@ -299,6 +299,7 @@ public sealed partial class EditorViewModel : ObservableObject
     {
         if (isLeaving || state is null || state.ActiveClipId == clipId || clipId is not null && !state.Clips.Any(clip => clip.Id == clipId)) return false;
         CaptionDrag.Cancel();
+        selectedPartId = null;
         state = state with { ActiveClipId = clipId };
         project = project with { Edits = project.Edits with { ActiveClipId = clipId } };
         IsScopeChange = true;
@@ -308,16 +309,21 @@ public sealed partial class EditorViewModel : ObservableObject
     }
 
     /// <summary>Reduce the operations one after another from the current state as one undo step, then sync and refresh once.</summary>
-    public bool ApplyBatch(IEnumerable<EditOperation> operations)
+    public bool ApplyBatch(IEnumerable<EditOperation> operations) => ApplyBatch(operations, null);
+
+    private bool ApplyBatch(IEnumerable<EditOperation> operations, string? actionName)
     {
         if (isLeaving || IsReadOnly || state is null) return false;
         try
         {
             var next = state;
-            foreach (var operation in operations) next = reduce(next, operation);
+            foreach (var operation in operations)
+                next = operation is EditOperation.SetClipParts
+                    ? EditingEngine.Reduce(next, operation, project)
+                    : reduce(next, operation);
             if (next == state) return false;
             CaptionDrag.Cancel();
-            PushHistory();
+            PushHistory(actionName);
             state = next;
             SyncProject();
             Refresh();
@@ -540,6 +546,12 @@ public sealed partial class EditorViewModel : ObservableObject
 
     public void Nudge(ClipRow clip, bool start, int delta)
     {
+        if (clip.Clip.Parts is not null)
+        {
+            if (clip.Id == state?.ActiveClipId && SelectedPart is { } part)
+                TrimPart(part, start, (start ? part.First : part.Last) + delta);
+            return;
+        }
         var first = Index(clip.Clip.StartWordId);
         var last = Index(clip.Clip.EndWordId);
         if (start) first = Math.Clamp(first + delta, 0, last);
@@ -576,6 +588,11 @@ public sealed partial class EditorViewModel : ObservableObject
     public void SetClipEdgeAtCaret(bool start)
     {
         if (!HasSelection || state?.ActiveClipId is not { } active || Clips.FirstOrDefault(clip => clip.Id == active) is not { } row) return;
+        if (row.Clip.Parts is not null)
+        {
+            if (SelectedPart is { } part) TrimPart(part, start, start ? SelectionStart : SelectionEnd);
+            return;
+        }
         var first = start ? SelectionStart : Index(row.Clip.StartWordId);
         var last = start ? Index(row.Clip.EndWordId) : SelectionEnd;
         if (first <= last) Apply(new EditOperation.UpdateClip(row.Id, first, last));
@@ -804,17 +821,19 @@ public sealed partial class EditorViewModel : ObservableObject
     private void UpdateSummaryLine(double sourceSeconds)
     {
         var active = state?.ActiveClipId is { } id ? Clips.FirstOrDefault(clip => clip.Id == id) : null;
-        var first = active is null ? 0 : Index(active.Clip.StartWordId);
-        var last = active is null ? Words.Count - 1 : Index(active.Clip.EndWordId);
+        var spans = active is null ? [(Start: 0, End: Words.Count - 1)] : active.Clip.PlayPartIndices(Words) ?? [];
         int cutWords = 0, runs = 0;
-        var inRun = false;
-        for (var index = Math.Max(0, first); index <= last; index++)
+        foreach (var (first, last) in spans)
         {
-            var cut = state!.CutWordIds.Contains(Words[index].Id);
-            if (cut) { cutWords++; if (!inRun) runs++; }
-            inRun = cut;
+            var inRun = false;
+            for (var index = first; index <= last; index++)
+            {
+                var cut = state!.CutWordIds.Contains(Words[index].Id);
+                if (cut) { cutWords++; if (!inRun) runs++; }
+                inRun = cut;
+            }
         }
-        var cutPauses = state!.Pauses.Count(pause => state.CutPauseIds.Contains(pause.Id) && (active is null || pause.AfterIndex >= first && pause.AfterIndex < last));
+        var cutPauses = state!.Pauses.Count(pause => state.CutPauseIds.Contains(pause.Id) && spans.Any(span => pause.AfterIndex >= span.Start && pause.AfterIndex < span.End));
         var cuts = runs + cutPauses;
         var edited = Duration(active?.DurationSeconds ?? FullTakeDuration);
         var prefix = active is null ? "" : $"Clip {active.Number} · ";
@@ -837,6 +856,7 @@ public sealed partial class EditorViewModel : ObservableObject
 
     private void Refresh()
     {
+        RefreshClipParts();
         Paragraphs.Clear();
         Clips.Clear();
         if (state is not null)
@@ -871,7 +891,8 @@ public sealed partial class EditorViewModel : ObservableObject
                 var suggestion = project.Ai.Results.FirstOrDefault(result => result.Id == clip.AiResultId)?.Clips.ElementAtOrDefault(clip.AiClipIndex ?? -1);
                 number++;
                 Clips.Add(new(clip, number, clip.Title ?? suggestion?.Title ?? $"Clip {number}",
-                    string.Join(" ", Words.Skip(range.First).Take(range.Last - range.First + 1).Select(DisplayText)),
+                    string.Join(" ", clip.PlayParts.SelectMany(part => Words.Skip(Index(part.StartWordId))
+                        .Take(Index(part.EndWordId) - Index(part.StartWordId) + 1)).Select(DisplayText)),
                     (suggestion?.Reason ?? "") + (suggestion?.NotInTake is { Length: > 0 } missing ? "\nNot in this take: " + missing : ""),
                     suggestion?.Score, EditedLength(state with { ActiveClipId = clip.Id })));
             }
@@ -898,6 +919,7 @@ public sealed record ClipRow(ClipRange Clip, int Number, string Title, string Ex
     public bool IsSuggested => Clip.Origin == ClipOrigin.Ai && !Clip.Selected;
     /// <summary>Edited length as <c>m:ss</c>, from the same plan as preview and export.</summary>
     public string Duration => EditorViewModel.Duration(DurationSeconds);
+    public string PartsBadge => Clip.Parts is not { } parts ? "" : Clip.Kind == StoryClipKind.Showreel ? "reel" : $"{parts.Count} parts";
     /// <summary>The clip's poster frame once cached; null shows the bare stage tile.</summary>
     public string? Thumbnail { get; init; }
     public ClipExportState ExportState { get; init; }

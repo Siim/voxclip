@@ -109,18 +109,22 @@ internal sealed class RightColumn : Grid
     }
     private void ShowVoice()
     {
-        if (!App.Services.VoiceLabEnabled || !CloseJob()) return;
-        director.Show(new DirectorVoiceSteps()); surface.Child = director; heading.Text = "Voice"; RefreshHeader();
+        if ((!App.Services.VoiceLabEnabled && !captions.Editor.IsStoryClip) || !CloseJob()) return;
+        director.Show(new DirectorVoiceSteps(captions.Editor)); surface.Child = director; heading.Text = "Voice"; RefreshHeader();
     }
     private void EditorChanged(object? sender, EventArgs args)
     {
-        if (!App.Services.VoiceLabEnabled && heading.Text == "Voice") ShowCaptions();
+        if (heading.Text == "Voice")
+        {
+            if (!App.Services.VoiceLabEnabled && !captions.Editor.IsStoryClip) ShowCaptions();
+            else if (director.Content is DirectorVoiceSteps voice && voice.ShowsStory != captions.Editor.IsStoryClip) ShowVoice();
+        }
         RefreshHeader();
     }
     private void RefreshHeader()
     {
         rewriteTab.IsEnabled = rewrite?.IsSessionOpen == true;
-        voiceTab.Visibility = App.Services.VoiceLabEnabled ? Visibility.Visible : Visibility.Collapsed;
+        voiceTab.Visibility = App.Services.VoiceLabEnabled || captions.Editor.IsStoryClip ? Visibility.Visible : Visibility.Collapsed;
         context.Text = captions.Editor.Project.Edits.ActiveClipId is { } id
             ? "Clip " + captions.Editor.Clips.FirstOrDefault(clip => clip.Id == id)?.Number : "Full Take";
     }

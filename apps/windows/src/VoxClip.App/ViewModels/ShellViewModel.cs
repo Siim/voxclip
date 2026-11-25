@@ -19,6 +19,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private string number = "";
     private string accessibleName = "";
     private string toolTip = "";
+    private string badge = "";
     private bool isActive;
     private bool isSelected;
     private bool isPointerOver;
@@ -52,6 +53,10 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
     public int WordIndex { get; set; } = -1;
+    internal string? PartId { get; set; }
+    public string Badge { get => badge; set { if (SetProperty(ref badge, value)) { OnPropertyChanged(nameof(HasBadge)); OnPropertyChanged(nameof(ShowsDuration)); OnPropertyChanged(nameof(ActionsColumn)); OnPropertyChanged(nameof(ShowsRewrite)); } } }
+    public bool HasBadge => Badge.Length > 0;
+    public int ActionsColumn => HasBadge ? 3 : 2;
     /// <summary>The clip id of a clip or suggestion row.</summary>
     public string? ClipId { get; init; }
     /// <summary>The recent project shown by a Recent row.</summary>
@@ -88,7 +93,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string DismissName => $"Dismiss suggested clip {Number}";
     public string RewriteName => $"Rewrite Clip {Number}";
     public string RewriteHelp => $"{RewriteName} (Ctrl+R)";
-    public bool CanRewrite { get => canRewrite; set => SetProperty(ref canRewrite, value); }
+    public bool CanRewrite { get => canRewrite; set { if (SetProperty(ref canRewrite, value)) OnPropertyChanged(nameof(ShowsRewrite)); } }
+    public bool ShowsRewrite => CanRewrite || HasBadge;
     /// <summary>✦ Make it postable on the row: "✦ Make it postable · up to $0.42" (design §6.7); the row ✦ and the first menu item.</summary>
     public string MakeItName { get => makeItName; set => SetProperty(ref makeItName, value); }
     public bool CanMakeIt { get => canMakeIt; set => SetProperty(ref canMakeIt, value); }
@@ -101,7 +107,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public bool IsPointerOver { get => isPointerOver; set { if (SetProperty(ref isPointerOver, value)) RefreshActions(); } }
     /// <summary>✦ Rewrite and ⋯ More: on the selected or hovered clip or suggestion row (a suggestion keeps ✓ and ✕ too).</summary>
     public bool ShowsActions => Kind is SidebarKind.Clip or SidebarKind.Suggestion && (IsSelected || IsPointerOver);
-    public bool ShowsDuration => !ShowsActions;
+    public bool ShowsDuration => HasBadge || !ShowsActions;
     private void RefreshActions()
     {
         OnPropertyChanged(nameof(ShowsActions));
@@ -220,6 +226,7 @@ public sealed class ShellViewModel
                 row.Title = clip.Title;
                 row.Number = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 row.MetaTime = EditorViewModel.Duration(clip.DurationSeconds);
+                row.Badge = clip.PartsBadge;
                 row.MetaStatus = suggestion ? " · Suggested" : "";
                 var export = suggestion ? new ExportRowState(ClipExportState.None) : editor.ExportStatus(clip.Id);
                 row.ExportState = export.State; row.ExportProgress = export.Progress;
@@ -231,6 +238,7 @@ public sealed class ShellViewModel
                     ? $"Suggested clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}"
                     : $"Clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}";
                 row.ToolTip = clip.ToolTip;
+                if (row.HasBadge) row.AccessibleName += ", " + row.Badge;
                 if (export.Label.Length > 0) row.AccessibleName += ", " + export.Label;
                 if (claude is { } said) row.AccessibleName += ", " + EditorViewModel.ClaudeClipLabel(said);
                 if (editor.ContainsAiSpeech(clip.Id))
@@ -244,7 +252,7 @@ public sealed class ShellViewModel
                 var first = editor.Index(clip.Clip.StartWordId);
                 var last = editor.Index(clip.Clip.EndWordId);
                 // A suggestion's Rewrite keeps it first (MainWindow.RewriteClipClicked), so it offers Rewrite like a kept clip.
-                row.CanRewrite = row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
+                row.CanRewrite = !row.HasBadge && row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
                     && editor.Words.Skip(first).Take(last - first + 1).Any(word => editor.State?.CutWordIds.Contains(word.Id) != true);
                 row.CanMakeIt = row.Edits && editor.CanMakeItPostable(clip.Id);
                 if (row.CanMakeIt) row.MakeItName = editor.MakeItTitle(clip.Id);
@@ -276,9 +284,26 @@ public sealed class ShellViewModel
                 {
                     var outline = Row(SidebarKind.OutlineHeader, "outline");
                     outline.Title = "OUTLINE";
-                    outline.AccessibleName = "Transcript outline";
+                    outline.Detail = editor.IsStoryClip ? $"Clip {editor.Clips.FirstOrDefault(clip => clip.Id == active)?.Number} · {editor.ClipParts.Count} parts" : "";
+                    outline.AccessibleName = editor.IsStoryClip ? "Outline, " + outline.Detail : "Transcript outline";
                     next.Add(outline);
-                    foreach (var paragraph in editor.Paragraphs)
+                    if (editor.IsStoryClip)
+                    {
+                        foreach (var part in editor.ClipParts)
+                        {
+                            var row = Row(SidebarKind.Outline, $"outline:{active}:{part.Id}");
+                            row.PartId = part.Id;
+                            row.Number = part.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            row.WordIndex = part.First;
+                            row.Title = part.Excerpt;
+                            row.Detail = part.TakeTime;
+                            row.IsActive = editor.SelectedPart?.Id == part.Id;
+                            row.Edits = editor.CanEditParts;
+                            row.AccessibleName = $"Part {part.Number} of {editor.ClipParts.Count}, {part.Excerpt}, take time {part.TakeTime}" + (row.IsActive ? ", selected" : "");
+                            next.Add(row);
+                        }
+                    }
+                    else foreach (var paragraph in editor.Paragraphs)
                     {
                         var row = Row(SidebarKind.Outline, "outline:" + editor.Words[paragraph.StartIndex].Id);
                         row.WordIndex = paragraph.StartIndex;
@@ -287,6 +312,16 @@ public sealed class ShellViewModel
                         row.AccessibleName = $"Paragraph at {paragraph.Timecode}, {row.Title}";
                         next.Add(row);
                     }
+                }
+                if (editor.ActiveClip is not null)
+                {
+                    var add = Row(SidebarKind.Action, "action:add-part");
+                    add.Title = "Add Selection as Part";
+                    add.IsEnabled = editor.CanAddPart;
+                    add.Detail = editor.AddPartHelp;
+                    add.ToolTip = add.Detail;
+                    add.AccessibleName = add.Detail.Length == 0 ? add.Title : $"{add.Title}, {add.Detail}";
+                    next.Add(add);
                 }
                 next.Add(Row(SidebarKind.Separator, "separator:actions"));
                 var make = Row(SidebarKind.Action, "action:make");
