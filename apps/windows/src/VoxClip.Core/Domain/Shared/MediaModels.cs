@@ -46,9 +46,12 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
 /// <param name="EditedEnd">The exclusive end on the edited timeline.</param>
 public sealed record FootageRenderLayer(ProjectFootage Entry, string Path, double EditedStart, double EditedEnd)
 {
-    /// <summary>Companion seconds for this frame: a screenshot holds, video spans the interval.</summary>
-    public double SourceTime(double editedTime) => Entry.Kind == "screenshot" ? Entry.Footage.Start :
-        Entry.Footage.Start + (editedTime - EditedStart) / (EditedEnd - EditedStart) * (Entry.End - Entry.Start);
+    /// <summary>Companion seconds for this frame at normal speed: a screenshot holds, video plays at 1×.</summary>
+    public double SourceTime(double editedTime) => SourceTime(editedTime, new(1));
+
+    /// <summary>Companion seconds for this frame when the primary picture has speed changes.</summary>
+    public double SourceTime(double editedTime, ClipSpeedTiming speed) => Entry.Kind == "screenshot" ? Entry.Footage.Start :
+        Entry.Footage.Start + (speed.Rendered(editedTime) - speed.Rendered(EditedStart));
 }
 /// <summary>Output encoding configuration; architecture §4.1 and §6.4.</summary>
 public sealed record OutputSpec(PixelSize Size, double FrameRate, long VideoBitrate, int AudioSampleRate = 48_000,

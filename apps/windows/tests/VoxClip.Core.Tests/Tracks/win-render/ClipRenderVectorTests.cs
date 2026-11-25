@@ -191,6 +191,16 @@ public sealed class ClipRenderVectorTests
     }
 
     [Fact]
+    public void ExplicitOverlayFadesReplaceTheLegacyRampIndependently()
+    {
+        var title = new ClipEffect("fx-title", null, "title", 1, 3) { FadeInSeconds = 0, FadeOutSeconds = 1 };
+        Assert.Equal(1, title.OpacityAt(1));
+        Assert.Equal(0.75, title.OpacityAt(2.25));
+        Assert.Equal(0, title.OpacityAt(3));
+        Assert.Equal(0.5, (title with { FadeInSeconds = null }).OpacityAt(1.06), 9);
+    }
+
+    [Fact]
     public void TheRenderInputCarriesTheClipsControlsTheScopesEffectsAndTheirSounds()
     {
         var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/clip-effects/effects-project.voxclip"));

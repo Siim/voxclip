@@ -38,6 +38,8 @@ internal sealed class EffectFrames : IDisposable
     {
         var effect = Picture.LastOrDefault(effect => effect.Kind == "illustration" && effect.Start <= time && time < effect.End);
         if (effect is null || !Input.Images.TryGetValue(effect.Id, out var path)) return;
+        var opacity = effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue ? effect.OpacityAt(time) : 1;
+        if (opacity <= 0) return;
         var image = illustrations.GetOrAdd(path, key => new(() => File.Exists(key) ? SKImage.FromEncodedData(key) : null)).Value;
         if (image is null) return;
         using var pin = frame.Pixels.Pin();
@@ -46,8 +48,9 @@ internal sealed class EffectFrames : IDisposable
         var scale = Math.Max(frame.Width / (float)image.Width, frame.Height / (float)image.Height);
         var width = image.Width * scale;
         var height = image.Height * scale;
+        using var paint = opacity < 1 ? new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(opacity * 255)) } : null;
         surface.Canvas.DrawImage(image, SKRect.Create((frame.Width - width) / 2, (frame.Height - height) / 2, width, height),
-            new SKSamplingOptions(SKCubicResampler.Mitchell));
+            new SKSamplingOptions(SKCubicResampler.Mitchell), paint);
         surface.Canvas.Flush();
     }
 
@@ -78,7 +81,8 @@ internal sealed class EffectFrames : IDisposable
             if (effect.RectAt(time) is not { } rect) continue;
             var region = SKRectI.Intersect(Mapped(rect), bounds);
             if (region.Width < 1 || region.Height < 1) continue;
-            Censor(frame, region, effect.Kind == "pixelate");
+            var opacity = effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue ? effect.OpacityAt(time) : 1;
+            Censor(frame, region, effect.Kind == "pixelate", opacity);
         }
         var pointers = active.Where(effect => effect.Kind is "arrow" or "circle").ToArray();
         if (pointers.Length == 0) return;
@@ -192,7 +196,11 @@ internal sealed class EffectFrames : IDisposable
     /// <summary>A strong blur, or large square pixels, over <paramref name="region"/>. Both scale with the region, so a small face
     /// and a whole screen are equally unreadable. Edges clamp to the frame, as Core Image's clampedToExtent does.</summary>
     internal static unsafe void Censor(PixelBuffer frame, SKRectI region, bool pixelate)
+        => Censor(frame, region, pixelate, 1);
+
+    private static unsafe void Censor(PixelBuffer frame, SKRectI region, bool pixelate, double opacity)
     {
+        if (opacity <= 0) return;
         var side = Math.Min(region.Width, region.Height);
         var block = pixelate ? Math.Max(8, Math.Round(side / 8.0, MidpointRounding.AwayFromZero)) : 0;
         var sigma = pixelate ? block / 2 : Math.Min(80, Math.Max(10, side * 0.2));
@@ -227,7 +235,10 @@ internal sealed class EffectFrames : IDisposable
                         y = Math.Clamp((int)Math.Floor(region.Bottom - (blockY + 0.5) * block), 0, frame.Height - 1);
                     }
                     var from = ((Math.Clamp(y, area.Top, area.Bottom - 1) - area.Top) * area.Width + Math.Clamp(x, area.Left, area.Right - 1) - area.Left) * 4;
-                    blurred.AsSpan(from, 4).CopyTo(pixels.Slice(row * frame.Stride + column * 4, 4));
+                    var target = pixels.Slice(row * frame.Stride + column * 4, 4);
+                    if (opacity >= 1) blurred.AsSpan(from, 4).CopyTo(target);
+                    else for (var channel = 0; channel < 4; channel++)
+                        target[channel] = (byte)Math.Round(target[channel] + (blurred[from + channel] - target[channel]) * opacity);
                 }
         }
         finally { ArrayPool<byte>.Shared.Return(blurred); }

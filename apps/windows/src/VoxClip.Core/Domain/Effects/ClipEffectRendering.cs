@@ -153,9 +153,10 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
     public double OpacityAt(double time)
     {
         if (time < Start || time >= End) return 0;
-        var fade = Math.Min(OverlayFadeSeconds, (End - Start) / 2);
-        if (fade <= 0) return 1;
-        return Math.Min(1, Math.Min((time - Start) / fade, (End - time) / fade));
+        var legacyFade = Math.Min(OverlayFadeSeconds, (End - Start) / 2);
+        var fadeIn = FadeInSeconds ?? legacyFade;
+        var fadeOut = FadeOutSeconds ?? legacyFade;
+        return Math.Min(1, Math.Min(fadeIn > 0 ? (time - Start) / fadeIn : 1, fadeOut > 0 ? (End - time) / fadeOut : 1));
     }
     /// <summary>Overlay centre scale and downward offset as a fraction of frame height, at a source second.</summary>
     public (double Scale, double Down) OverlayPoseAt(double time)
