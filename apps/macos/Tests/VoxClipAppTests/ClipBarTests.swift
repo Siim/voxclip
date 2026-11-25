@@ -457,6 +457,7 @@ private actor HookFixtureConnector: LLMConnector {
 
     @Test func storyRewriteStaysVisibleWithTheReasonAndDoesNotRun() async throws {
         var project = try fiveQuestions()
+        project.id = UUID().uuidString.lowercased()
         let parts = [ClipPart(id: "second", startWordId: "w12", endWordId: "w14"),
                      ClipPart(id: "first", startWordId: "w2", endWordId: "w4")]
         let story = ClipRange(id: "story", startWordId: "w2", endWordId: "w14", parts: parts, kind: .showreel)
@@ -468,6 +469,7 @@ private actor HookFixtureConnector: LLMConnector {
         let reason = "Voice changes work on one part at a time. Make a clip of the part first."
         #expect(shows(bar.rewrite) && !bar.rewrite.isEnabled && !bar.rewriteAvailable)
         #expect(bar.rewrite.toolTip == reason)
+        #expect(editor.mutationEnabled(38) == false)
         editor.select("w12")
         editor.rewriteShortcut()
         #expect(editor.lastAnnouncement == reason)

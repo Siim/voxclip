@@ -58,7 +58,7 @@ public enum CaptionTranslations {
 
     private static func matches(_ text: String, _ pattern: String) -> Bool { text.range(of: pattern, options: .regularExpression) != nil }
 
-    /// The typed rules: v4 only, unique ids, known words in order, a known clip, a language tag, a non-empty text, no two
+    /// The typed rules: v4 and later, unique ids, known words in order, a known clip, a language tag, a non-empty text, no two
     /// over the same words in one scope.
     public static func validate(_ project: Project) throws {
         let entries = project.captionTranslations

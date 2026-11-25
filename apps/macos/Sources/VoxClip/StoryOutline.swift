@@ -4,7 +4,6 @@ import SwiftUI
     let shell: WorkspaceShell
     let editor: EditorModel
     let entry: ExplorerOutlineEntry
-    @State private var hovering = false
     @State private var dropTarget = false
 
     private var partID: String { entry.partID ?? "" }
@@ -28,14 +27,11 @@ import SwiftUI
             Text(entry.title).font(.system(size: 12)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityHidden(true)
             Text(entry.time).font(DesignValues.mono(10)).fixedSize().foregroundStyle(.secondary).accessibilityHidden(true)
-            if hovering || selected {
-                removeButton
-            }
+            removeButton
         }
         .padding(.horizontal, 3).frame(height: ExplorerMetrics.rowHeight)
         .background(selected ? Color.secondary.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
         .dropDestination(for: String.self) { items, _ in acceptDrop(items.first) } isTargeted: { dropTarget = $0 }
         .overlay(alignment: dropAtBottom ? .bottom : .top) {
             if dropTarget, editable, let dragged = editor.draggedStoryPartID, dragged != partID {

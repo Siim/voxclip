@@ -498,9 +498,6 @@ import VoxClipCore
             }
             switch item.tag {
             case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
-            case 38:
-                return editor.storyRewriteReason(for: editor.rewriteScopeNow) == nil
-                    && RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: editor.rewriteScopeNow)
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true

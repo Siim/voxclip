@@ -1093,6 +1093,8 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
 
 **Voice on story clips.** **Rewrite as ▾** and **Only the changed phrases** remain visible, disabled: “Voice changes work on one part at a time. Make a clip of the part first.” **The whole clip in your voice, lip-synced** and **Revoice Whole Clip** remain visible with their price, disabled: “Lip sync can't run across the 5 seams of a story clip yet. Make a clip of the part first.” Use the actual seam count. Under the action: “Not available on a story clip yet. Phrases you already revoiced still play in their parts.” **Make Clip of Part 2** and **Make Clips of All 6 Parts** (actual part number and count) are free, inline actions that make ordinary clips with the same words and cuts. A part edit that would lose paid work makes a story copy and announces it. For a boundary inside a paid lip-sync window, say “Part 3 cuts through a lip-synced stretch. Include all of 2:40–2:57 or none of it.”
 
+On a story clip, keep each translated caption inside one part: “Translate inside one part.”
+
 The sidebar list is the clip range layer (editing §2.5 and §10.6), presented as in §2 and §3.4.
 
 **Making a clip.**

@@ -98,9 +98,9 @@ extension EditorModel {
                     Button { model.openTimelineEditor(.effects) } label: {
                         Label("Titles & effects", systemImage: "textformat")
                     }
-                    Button { model.openTimelineEditor(.trim) } label: { Label("Trim clip", systemImage: "timeline.selection") }
+                    Button { model.openTimelineEditor(.trim) } label: { Label(model.timelineTrimTitle, systemImage: "timeline.selection") }
                         .disabled(!model.timelineCanTrim)
-                        .help("Adjust the first or last word of the open clip")
+                        .help("Adjust the first or last word")
                     Divider().frame(height: 14)
                     Button { model.cutSelection() } label: { Label("Cut selection", systemImage: "scissors") }
                         .disabled(!model.timelineCanCut).help("Cut the selected words and pauses (Delete). Undo with ⌘Z.")

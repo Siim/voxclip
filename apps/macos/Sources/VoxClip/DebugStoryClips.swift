@@ -7,7 +7,12 @@ import VoxClipCore
         guard let shared = app.shared else { throw VoxClipError.sharedResourcesMissing }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let original = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
-        let project = try storyProject(original)
+        let savedSettings = app.settings
+        defer { app.settings = savedSettings }
+        app.settings.values[ClipsMode.key] = .string(ClipsMode.pick.rawValue)
+        var project = try storyProject(original)
+        let styles = try ClipStyleCatalog.load(shared: shared)
+        project.clipStyle = styles.initial(saved: nil)
         let shell = WorkspaceShell(app: app)
         shell.windowWidth = 1280
         await shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .clip("story"))
@@ -16,10 +21,13 @@ import VoxClipCore
         editor.mediaResolved = true
         editor.refresh()
         editor.selectedStoryPartID = "second"
+        guard shell.outlineEntries.count == 6, !editor.showsClipsModeCard, !editor.showsClipStyleCard else {
+            throw CocoaError(.coderInvalidValue)
+        }
 
         func capture(_ name: String, width: CGFloat, height: CGFloat, @ViewBuilder content: () -> some View) async throws -> DebugUISuite.Result {
             try await DebugUISuite.snapshot(content().environment(app), name: name, size: NSSize(width: width, height: height),
-                                            appearance: .darkAqua, directory: directory, active: true)
+                                            appearance: .darkAqua, directory: directory, active: true, orderOffscreen: false)
             return .init(name: name, passed: true)
         }
         var results: [DebugUISuite.Result] = []

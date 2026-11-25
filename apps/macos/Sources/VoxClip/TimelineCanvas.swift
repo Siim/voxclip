@@ -723,7 +723,11 @@ final class TimelineSliderElement: NSAccessibilityElement {
                 seams.append(left)
                 context.setFillColor(NSColor.white.cgColor)
                 context.fill(CGRect(x: left - 1.5, y: 0, width: 3, height: bounds.height))
-                if jumps { drawPartLabel(seam, x: left + 4, right: right, font: font, color: .white) }
+                if jumps {
+                    let width = Self.width(seam, font: font) + 5
+                    let x = left + 4 + width <= min(right, bounds.width) ? left + 4 : left - width - 4
+                    if x >= headerWidth { drawPartLabel(seam, x: x, right: bounds.width, font: font, color: .white) }
+                }
             }
             if labels, left >= headerWidth {
                 let title = right - left >= Self.width(part.label, font: font) + 8 ? part.label : "\(part.position + 1)"

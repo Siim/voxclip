@@ -7,12 +7,14 @@ import Testing
 
 @Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
-    private func open(demo: Bool = true) async throws -> (WorkspaceShell, EditorModel) {
+    private func open(demo: Bool = true, projectID: String? = nil) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
-        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: base), demo: demo), selection: .fullTake)
+        var project = try DebugExplorer.fiveQuestions(from: base)
+        if let projectID { project.id = projectID }
+        await shell.attachForTesting(VoxClipDocument(project: project, demo: demo), selection: .fullTake)
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
         editor.refresh()
@@ -31,7 +33,7 @@ import Testing
     }
 
     @Test func storyOutlineFollowsPlayOrderAndPartEditsUndo() async throws {
-        let (shell, editor) = try await open()
+        let (shell, editor) = try await open(projectID: UUID().uuidString.lowercased())
         defer { editor.close() }
         let parts = [ClipPart(id: "late", startWordId: "w12", endWordId: "w14"),
                      ClipPart(id: "early", startWordId: "w2", endWordId: "w4")]
@@ -51,6 +53,7 @@ import Testing
 
         editor.selectedStoryPartID = "late"
         editor.select("w13")
+        #expect(editor.timelineTrimBounds == 11...13 && editor.timelineTrimTitle == "Trim part 1")
         undo.beginUndoGrouping(); editor.setClipEdge(start: true); undo.endUndoGrouping()
         #expect(editor.activeClip?.playParts.first?.startWordId == "w13")
         #expect(undo.undoActionName == "Trim part")
