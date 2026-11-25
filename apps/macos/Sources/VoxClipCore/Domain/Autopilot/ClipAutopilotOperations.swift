@@ -101,8 +101,10 @@ public enum ClipAutopilotMapping {
             try ranges.enumerated().map { index, range in
                 guard range.startWord >= 0, range.endWord < words.count, range.startWord <= range.endWord else { throw VoiceLabError.invalidInput }
                 let start = words[range.startWord].id, end = words[range.endWord].id
+                var id = "proposal-part-\(index + 1)"
+                while previous.contains(where: { $0.id == id }) { id += "-new" }
                 return previous.first { $0.startWordId == start && $0.endWordId == end }
-                    ?? ClipPart(id: "proposal-part-\(index + 1)", startWordId: start, endWordId: end)
+                    ?? ClipPart(id: id, startWordId: start, endWordId: end)
             }
         } ?? previous
         guard (1...12).contains(parts.count),
@@ -115,6 +117,7 @@ public enum ClipAutopilotMapping {
             guard start <= end else { return nil }
             return spans.first { $0.contains(start) && $0.contains(end) }
         }
+        let strictScope = plan == nil || parts.count > 1
         let state = try EditState(transcript: transcript, edits: project.edits)
         var operations: [ClipAutopilotOperation] = []
         func add(_ id: String, _ decision: ClipAutopilotOperation.Decision, _ action: ClipAutopilotOperation.Action, _ reason: String = "") {
@@ -145,7 +148,11 @@ public enum ClipAutopilotMapping {
                 parts: parts.count > 1 ? parts : nil, kind: kind))), proposal.reason)
         }
         for (index, correction) in (proposal.corrections ?? []).enumerated() {
-            guard scope(correction.word, correction.word) != nil, words[correction.word].kind == .word else {
+            guard words.indices.contains(correction.word), !strictScope || scope(correction.word, correction.word) != nil else {
+                throw HarnessError.invalid("A correction is outside the clip.")
+            }
+            if words[correction.word].kind != .word {
+                if plan != nil { continue }
                 throw HarnessError.invalid("A correction is outside the clip or does not name a spoken word.")
             }
             add("correction-\(index)", .correction, .edit(.correct(id: words[correction.word].id, text: correction.text)), correction.reason)
@@ -153,8 +160,9 @@ public enum ClipAutopilotMapping {
         var cutIDs = state.cutWordIds
         var requestedCuts = Set<String>()
         for (index, cut) in (proposal.cuts ?? []).enumerated() {
-            guard scope(cut.startWord, cut.endWord) != nil else { throw HarnessError.invalid("A cut is outside a clip part.") }
-            let spoken = words[cut.startWord...cut.endWord].filter { $0.kind == .word }.map(\.id)
+            guard words.indices.contains(cut.startWord), words.indices.contains(cut.endWord), cut.startWord <= cut.endWord,
+                  !strictScope || scope(cut.startWord, cut.endWord) != nil else { throw HarnessError.invalid("A cut is outside a clip part.") }
+            let spoken = words[cut.startWord...cut.endWord].filter { plan != nil || $0.kind == .word }.map(\.id)
             if plan == nil && (spoken.isEmpty || !requestedCuts.isDisjoint(with: spoken)) {
                 throw HarnessError.invalid("Cuts must name distinct spoken words.")
             }
@@ -168,7 +176,7 @@ public enum ClipAutopilotMapping {
         }
         var tightened = Set(state.pauses.filter { state.cutPauseIds.contains($0.id) }.map(\.afterIndex))
         for (index, pause) in (proposal.pauseCuts ?? []).enumerated() {
-            guard let part = scope(pause.afterWord, pause.afterWord), pause.afterWord < part.upperBound,
+            guard !strictScope || scope(pause.afterWord, pause.afterWord).map({ pause.afterWord < $0.upperBound }) == true,
                   let found = state.pauses.first(where: { $0.afterIndex == pause.afterWord }) else {
                 if plan == nil { throw HarnessError.invalid("Choose a detected pause inside a clip part.") }
                 continue
@@ -177,7 +185,8 @@ public enum ClipAutopilotMapping {
             add("pause-\(index)", .pauseCut, .edit(.cutSelection(ids: [found.id])), pause.reason)
         }
         for (index, rewrite) in (proposal.rewrites ?? []).enumerated() {
-            guard scope(rewrite.startWord, rewrite.endWord) != nil else { throw HarnessError.invalid("A rewrite crosses a clip part.") }
+            guard words.indices.contains(rewrite.startWord), words.indices.contains(rewrite.endWord), rewrite.startWord <= rewrite.endWord,
+                  !strictScope || scope(rewrite.startWord, rewrite.endWord) != nil else { throw HarnessError.invalid("A rewrite crosses a clip part.") }
             add("rewrite-\(index)", .rewrite, .rewrite(scope: .selection(rewrite.startWord...rewrite.endWord), text: rewrite.text), rewrite.reason)
         }
         if proposal.captionStyle != nil || proposal.font != nil || proposal.textCase != nil || proposal.wordsPerCaption != nil {

@@ -67,7 +67,7 @@ struct HarnessReviewTests {
         let series = try HarnessProposal(timelines: [story, timeline, timeline], project: editor.project)
         try HarnessInbox.stage(series, for: url)
         try HarnessInbox.resolve(series, remaining: series.discarding(at: 2), for: url)
-        let two = try #require(HarnessInbox.read(for: url))
+        let two = try #require(try HarnessInbox.read(for: url))
         #expect(two.timelines == [story, timeline])
 
         undo.beginUndoGrouping()
@@ -75,7 +75,7 @@ struct HarnessReviewTests {
         undo.endUndoGrouping()
         #expect(!editor.project.edits.clips.contains { $0.kind == .story })
         let afterFirst = editor.project
-        let one = try #require(HarnessInbox.read(for: url))
+        let one = try #require(try HarnessInbox.read(for: url))
         #expect(one.timelines == [story])
 
         undo.beginUndoGrouping()

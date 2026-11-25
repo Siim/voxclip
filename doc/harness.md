@@ -37,10 +37,10 @@ The executable finds `shared/` in its checkout or app bundle. If you relocate it
 | MCP tool | Matching CLI | What it does |
 |---|---|---|
 | `read_transcript` | `transcript --project Talk.voxclip --offset 0 --limit 200` | Returns transcript items with their zero-based indices, corrected words, cut flags and source seconds. Follow `nextOffset` until it's null. |
-| `read_clips` | `clips --project Talk.voxclip` | Lists kept and suggested clips with ids, inclusive word indices and source spans, plus `footageSources` keys for companion recordings. |
+| `read_clips` | `clips --project Talk.voxclip` | Lists clips with ids, kinds, parts in play order and source spans, plus `footageSources` keys for companion recordings. |
 | `read_decisions` | `decisions --project Talk.voxclip --clip CLIP_ID` | Reads the clip's saved choices: Find Clips reason where available, opening lead-in, framing and cover controls, captions, effects, zooms and saved music ids. |
 | `read_frames` | `frames --project Talk.voxclip --time 2.1 --time 3` | Returns one to four unedited source thumbnails from a local MP4, M4V or MOV. CLI output includes JPEGs as base64. Relink missing media in VoxClip. |
-| `propose_timeline` | `propose-timeline --project Talk.voxclip < timeline.json` | Stages a proposal for one existing clip. It writes no project edits and returns separate estimates for requested paid actions. |
+| `propose_timeline` | `propose-timeline --project Talk.voxclip < timeline.json` | Stages one to six timelines for new or existing clips. It writes no project edits and returns separate estimates for requested paid actions. |
 
 You might ask: “Read the clips and the transcript. For the clip about editing faster, propose a punch-in on the strongest sentence and a short on-screen title. Don't generate anything.”
 

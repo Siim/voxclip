@@ -32,6 +32,7 @@ public sealed partial class EditorPage
     private readonly List<ClipAutopilotOperation> harnessRewrites = [];
     private string? harnessRewriteClipId;
     private bool harnessRewriteOpening;
+    private (int Count, bool Opening, string? Blocked)? harnessRewriteDisplay;
     private Project? harnessAssetProject;
     private bool harnessAssetWorking;
     private bool? harnessIllustrationReady;
@@ -170,12 +171,15 @@ public sealed partial class EditorPage
 
     private void ShowHarnessRewrites()
     {
+        var blocked = ViewModel.HarnessKeepBlocked ?? (!ReferenceEquals(harnessAssetProject, ViewModel.Project)
+            ? "The clip changed. Ask for a new rewrite proposal." : rewrite is { IsOpen: true } ? "Finish the open Rewrite first." : null);
+        var display = (harnessRewrites.Count, harnessRewriteOpening, blocked);
+        if (harnessRewriteDisplay == display) return;
+        harnessRewriteDisplay = display;
         HarnessRewriteRows.Children.Clear();
         foreach (var operation in harnessRewrites)
         {
             if (operation.Action is not ClipAutopilotAction.Rewrite words) continue;
-            var blocked = ViewModel.HarnessKeepBlocked ?? (!ReferenceEquals(harnessAssetProject, ViewModel.Project)
-                ? "The clip changed. Ask for a new rewrite proposal." : rewrite is { IsOpen: true } ? "Finish the open Rewrite first." : null);
             var open = new Button { Content = ViewModel.AskClaudePrice(operation), IsEnabled = blocked is null && !harnessRewriteOpening };
             var dismiss = new Button { Content = "Dismiss", IsEnabled = !harnessRewriteOpening };
             open.Click += (_, _) => _ = RunAsync(() => OpenHarnessRewriteAsync(operation, words), "Rewrite");
@@ -194,6 +198,7 @@ public sealed partial class EditorPage
         if (disposed || harnessRewriteOpening || harnessRewriteClipId is not { } clipId || rewrite is { IsOpen: true } ||
             ViewModel.HarnessKeepBlocked is not null || !ReferenceEquals(harnessAssetProject, ViewModel.Project)) return;
         harnessRewriteOpening = true;
+        ShowHarnessRewrites();
         var snapshot = ViewModel.Project;
         try
         {
@@ -201,6 +206,7 @@ public sealed partial class EditorPage
             if (session is null) return;
             if (disposed || !ReferenceEquals(snapshot, ViewModel.Project)) { session.Dispose(); return; }
             session.Edit(words.Text);
+            if (session.Review is null) { session.Dispose(); return; }
             ShowRewriteSession(session, null);
             harnessRewrites.Remove(operation);
         }

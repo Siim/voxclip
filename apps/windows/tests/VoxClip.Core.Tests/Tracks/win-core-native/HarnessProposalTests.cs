@@ -25,7 +25,8 @@ public sealed class HarnessProposalTests
         Assert.Equal(StoryClipKind.Story, story.Kind);
         Assert.Equal(new[] { project.Transcript!.Words[14].Id, project.Transcript.Words[9].Id },
             story.PlayParts.Select(part => part.StartWordId));
-        Assert.Equal(project.VoiceLab, candidate.VoiceLab);
+        Assert.Equal(project.VoiceLab.Segments.ToArray(), candidate.VoiceLab.Segments.ToArray());
+        Assert.Empty(candidate.VoiceLab.Assets ?? []);
         Assert.IsType<ClipAutopilotAction.Rewrite>(Assert.Single(result.Pending).Action);
     }
 

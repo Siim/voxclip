@@ -119,6 +119,7 @@ public static partial class ClipAutopilotMapping
         var endWord = spans.Max(span => span.End);
         WordSpan? Scope(int start, int end) => start <= end
             ? spans.Where(span => span.Contains(start) && span.Contains(end)).Select(span => (WordSpan?)span).FirstOrDefault() : null;
+        var strictScope = plan is null || parts.Count > 1;
         var operations = new List<ClipAutopilotOperation>();
         void Add(string id, ClipAutopilotDecision decision, ClipAutopilotAction action, string reason = "") => operations.Add(new(id, decision, action, reason));
         var title = string.IsNullOrEmpty(proposal.Title) ? null : proposal.Title;
@@ -150,8 +151,13 @@ public static partial class ClipAutopilotMapping
         for (var index = 0; index < correctionsToApply.Count; index++)
         {
             var correction = correctionsToApply[index];
-            if (Scope(correction.Word, correction.Word) is null || words[correction.Word].Kind != WordKind.Word)
+            if (correction.Word < 0 || correction.Word >= words.Count || strictScope && Scope(correction.Word, correction.Word) is null)
+                throw new HarnessException("A correction is outside the clip.");
+            if (words[correction.Word].Kind != WordKind.Word)
+            {
+                if (plan is not null) continue;
                 throw new HarnessException("A correction is outside the clip or does not name a spoken word.");
+            }
             Add("correction-" + index, ClipAutopilotDecision.Correction, new ClipAutopilotAction.Edit(new EditOperation.Correct(words[correction.Word].Id, correction.Text)), correction.Reason);
         }
         var cuts = proposal.Cuts ?? [];
@@ -160,8 +166,9 @@ public static partial class ClipAutopilotMapping
         for (var index = 0; index < cuts.Count; index++)
         {
             var cut = cuts[index];
-            if (Scope(cut.StartWord, cut.EndWord) is null) throw new HarnessException("A cut is outside a clip part.");
-            var spoken = new WordSpan(cut.StartWord, cut.EndWord).Indices.Select(position => words[position]).Where(word => word.Kind == WordKind.Word).Select(word => word.Id).ToArray();
+            if (cut.StartWord < 0 || cut.EndWord >= words.Count || cut.StartWord > cut.EndWord || strictScope && Scope(cut.StartWord, cut.EndWord) is null)
+                throw new HarnessException("A cut is outside a clip part.");
+            var spoken = new WordSpan(cut.StartWord, cut.EndWord).Indices.Select(position => words[position]).Where(word => plan is not null || word.Kind == WordKind.Word).Select(word => word.Id).ToArray();
             if (plan is null && (spoken.Length == 0 || requestedCuts.Overlaps(spoken))) throw new HarnessException("Cuts must name distinct spoken words.");
             requestedCuts.UnionWith(spoken);
             var ids = spoken.Where(cutIds.Add).ToArray();
@@ -174,7 +181,7 @@ public static partial class ClipAutopilotMapping
         for (var index = 0; index < pauses.Count; index++)
         {
             var pause = pauses[index];
-            if (Scope(pause.AfterWord, pause.AfterWord) is not { } part || pause.AfterWord >= part.End ||
+            if (strictScope && (Scope(pause.AfterWord, pause.AfterWord) is not { } part || pause.AfterWord >= part.End) ||
                 state.Pauses.FirstOrDefault(item => item.AfterIndex == pause.AfterWord) is not { } found)
             {
                 if (plan is null) throw new HarnessException("Choose a detected pause inside a clip part.");
@@ -187,7 +194,8 @@ public static partial class ClipAutopilotMapping
         for (var index = 0; index < rewrites.Count; index++)
         {
             var rewrite = rewrites[index];
-            if (Scope(rewrite.StartWord, rewrite.EndWord) is null) throw new HarnessException("A rewrite crosses a clip part.");
+            if (rewrite.StartWord < 0 || rewrite.EndWord >= words.Count || rewrite.StartWord > rewrite.EndWord ||
+                strictScope && Scope(rewrite.StartWord, rewrite.EndWord) is null) throw new HarnessException("A rewrite crosses a clip part.");
             Add("rewrite-" + index, ClipAutopilotDecision.Rewrite, new ClipAutopilotAction.Rewrite(new(rewrite.StartWord, rewrite.EndWord), rewrite.Text), rewrite.Reason);
         }
         if (proposal.CaptionStyle is not null || proposal.Font is not null || proposal.TextCase is not null || proposal.WordsPerCaption is not null)

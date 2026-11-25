@@ -14,7 +14,7 @@ struct HarnessProposalTests {
         let story = try #require(kept.edits.clips.last)
         #expect(story.playParts.map(\.startWordId) == ["w15", "w10"])
         #expect(story.kind == .story)
-        #expect(kept.voiceLab == project.voiceLab)
+        #expect(kept.voiceLab == (try ContextDemoProject.upgradeToV4(project)).voiceLab)
         #expect(result.pending.map(\.decision) == [.rewrite])
     }
 
