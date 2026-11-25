@@ -102,15 +102,16 @@ public static partial class ClipAutopilotMapping
             ? proposal.Target.ClipId is not null || proposal.Target.New is null
             : proposal.Target.ClipId != clipId || proposal.Target.New is not null)) throw ClipAutopilotRequestBuilder.Invalid();
         var previous = existing?.PlayParts ?? [];
+        var previousRanges = plan?.OrderedParts is null ? null : existing?.PlayPartIndices(words);
         var parts = proposal.Parts?.Select((range, index) =>
         {
             if (range.StartWord < 0 || range.EndWord >= words.Count || range.StartWord > range.EndWord) throw ClipAutopilotRequestBuilder.Invalid();
             var start = words[range.StartWord].Id;
             var end = words[range.EndWord].Id;
-            if (plan?.OrderedParts is not null && previous.FirstOrDefault(candidate =>
-                words.Select((word, position) => (word.Id, position)).Any(word => word.Id == candidate.StartWordId && word.position <= range.StartWord) &&
-                words.Select((word, position) => (word.Id, position)).Any(word => word.Id == candidate.EndWordId && word.position >= range.EndWord)) is { } part)
-                return part with { StartWordId = start, EndWordId = end };
+            if (previousRanges is not null)
+                for (var partIndex = 0; partIndex < previousRanges.Count; partIndex++)
+                    if (previousRanges[partIndex] is var bound && bound.Start <= range.StartWord && range.EndWord <= bound.End)
+                        return previous[partIndex] with { StartWordId = start, EndWordId = end };
             var id = "proposal-part-" + (index + 1).ToString(CultureInfo.InvariantCulture);
             while (previous.Any(part => part.Id == id)) id += "-new";
             return previous.FirstOrDefault(part => part.StartWordId == start && part.EndWordId == end) ?? new ClipPart(id, start, end);
