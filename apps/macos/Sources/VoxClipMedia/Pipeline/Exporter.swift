@@ -366,7 +366,7 @@ public actor AVExporter: Exporter {
         let audioSampleLimit = Int64((job.render.renderedDuration * 48000).rounded())
         // Social loudness (ADR-R47): measure the mix the pump will write, simulate the limiter when it has work, then
         // write it through the same gain and limiter.
-        let loudnessPlan = try await socialLoudness(job, graph: graph, timeRange: timeRange, sampleLimit: audioSampleLimit)
+        let loudnessPlan = try await Self.socialLoudness(job.loudness, graph: graph, timeRange: timeRange, sampleLimit: audioSampleLimit)
         try Task.checkCancellation()
         guard let videoComposition = graph.composition.copy() as? AVComposition,
               videoComposition.track(withTrackID: graph.videoTrack.trackID) != nil else {
@@ -648,9 +648,9 @@ public actor AVExporter: Exporter {
     /// The social loudness plan of the mix `perform` writes (ADR-R47), or nil with loudness off or without audio:
     /// one pass measures it; when the gain leaves the limiter work, one or two more run the gain and the limiter
     /// offline and land the gain on target (`SocialLoudness.landing`).
-    private func socialLoudness(_ job: ExportJob, graph: RenderGraph, timeRange: CMTimeRange,
-                                sampleLimit: Int64) async throws -> ExportLoudnessPlan? {
-        guard job.loudness == .social, !graph.mixedAudioTracks.isEmpty else { return nil }
+    static func socialLoudness(_ setting: ExportLoudness, graph: RenderGraph, timeRange: CMTimeRange,
+                               sampleLimit: Int64, isolation: isolated (any Actor)? = #isolation) async throws -> ExportLoudnessPlan? {
+        guard setting == .social, !graph.mixedAudioTracks.isEmpty else { return nil }
         var meter = try SocialLoudnessMeter(sampleRate: 48_000, channels: 2)
         try await readMix(graph: graph, timeRange: timeRange, sampleLimit: sampleLimit) { try meter.append($0) }
         let measurement = meter.finish()
@@ -671,8 +671,9 @@ public actor AVExporter: Exporter {
 
     /// The mix `perform` writes, read offline: the export's own composition, mixed tracks, audio mix and time range
     /// at 48 kHz Float32 stereo, cut to `sampleLimit` frames and padded with silence to it.
-    private func readMix(graph: RenderGraph, timeRange: CMTimeRange, sampleLimit: Int64,
-                         _ body: (UnsafeBufferPointer<Float>) throws -> Void) async throws {
+    static func readMix(graph: RenderGraph, timeRange: CMTimeRange, sampleLimit: Int64,
+                        isolation: isolated (any Actor)? = #isolation,
+                        _ body: (UnsafeBufferPointer<Float>) throws -> Void) async throws {
         guard let composition = graph.composition.copy() as? AVComposition else {
             throw VoxClipError.decodeFailed("Cannot copy export audio composition")
         }

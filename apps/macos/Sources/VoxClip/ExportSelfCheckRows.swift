@@ -61,6 +61,8 @@ struct ClipExportReview: Identifiable {
         switch result.check {
         case .words: Text("Listen at the marked word, then adjust the cut or review the Rewrite take.")
         case .sync: Text("Listen at the marked time. Check the source sync or review the revoiced phrase before exporting again.")
+        case .loudness where result.items.contains(where: { $0.kind == .timelineAudioLevel || $0.kind == .timelineAudioGap }):
+            Text("Listen at the marked time and check the music or sound edit before exporting again.")
         case .loudness: Text("Check that the voice isn't muted and adjust the voice or music level, then export again.")
         case .captions where result.items.contains(where: { $0.kind == .titleBand }):
             Text("Move the title away from the frame edge before exporting again.")
@@ -91,10 +93,13 @@ struct ClipExportReview: Identifiable {
         case .sync:
             return result.status == .ok ? "Measured audio and video timing is within tolerance." : "A track or a revoiced phrase is outside its timing tolerance."
         case .loudness:
+            if let issue = result.items.first(where: { $0.kind == .timelineAudioLevel || $0.kind == .timelineAudioGap }) {
+                return "At \(durationLabel(issue.time)), the soundtrack differs from the timeline mix."
+            }
             if let level = result.integratedLufs, let peak = result.truePeakDbtp {
                 return "\(level.formatted(.number.precision(.fractionLength(1)))) LUFS · \(peak.formatted(.number.precision(.fractionLength(1)))) dBTP."
             }
-            return "No audible mix was measured."
+            return result.status == .ok ? "The edited music and sound match the timeline mix." : "No audible mix was measured."
         case .captions:
             return result.status == .ok ? "Every caption is inside the safe area for \(review.aspect.rawValue)." : "A caption or title reaches outside the safe area."
         }

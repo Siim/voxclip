@@ -4,6 +4,30 @@ import Testing
 
 /// What the export check expects to hear (ADR-R49), from the same timeline the renderer plays.
 @Suite(.offlineFixtures) struct ExportCheckExpectationTests {
+    @Test func audioWindowsKeepOwnLengthAcrossACutAndExpectGaps() throws {
+        let rate = 48_000.0
+        let plan = EditPlan(sampleRate: rate, totalSamples: 288_000,
+                            kept: [.init(startSample: 0, endSample: 48_000), .init(startSample: 96_000, endSample: 288_000)])
+        var render = RenderRequest(sourceURL: URL(fileURLWithPath: "/Media/take.mov"), plan: plan,
+                                   output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 0))
+        var entry = ProjectMusic(id: "bed", clipId: nil, asset: .init(file: "bed.wav", sha256: "", durationSeconds: 6),
+                                 source: .file, title: "Bed", license: .own, gainDb: -20, startOffsetSeconds: 0)
+        entry.segments = [.init(id: "part", anchorSeconds: 1.5, lengthSeconds: 2, songFromSeconds: 0.75,
+                                loop: false, fadeInSeconds: 0.5, fadeOutSeconds: 0)]
+        render.music = .init(entry: entry, assetURL: URL(fileURLWithPath: "/Media/bed.wav"))
+        var sound = ClipEffect(id: "sound", clipId: nil, kind: .sound, start: 3, end: 3.5)
+        sound.mediaOffsetSeconds = 0.25
+        sound.gainPoints = [.init(t: 0, db: -6)]
+        render.effects = .init(effects: [sound], soundURLs: [:])
+        let edit = try ExportCheckExpectation.edit(render: render, state: nil)
+        #expect(edit.audioWindows.map(\.kind) == [.gap, .music, .sound, .gap])
+        let windows: [Range<Double>] = [0..<1, 1..<3, 2..<2.5, 3..<5]
+        #expect(edit.audioWindows.map(\.range) == windows)
+        #expect(edit.audioWindows[1].sourceStart == 0.75)
+        #expect(edit.audioWindows[2].sourceStart == 0.25)
+        #expect(edit.audioWindows[2].shape?.gainPoints == sound.gainPoints)
+    }
+
     @Test func storySeamPassesUnlessTheNextPartLosesItsFirstWord() throws {
         let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
         let clipID = try #require(project.edits.activeClipId)

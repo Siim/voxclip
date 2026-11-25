@@ -82,6 +82,21 @@ struct ExportCheckReplayTests {
         return found
     }
 
+    @Test func editedAudioFindingsReplayWithoutFeedLoudness() throws {
+        var input = ExportCheckInput(expected: [], heard: nil, video: nil, audio: nil, frameSeconds: 1.0 / 30,
+                                     loudness: nil, frame: .init(width: 320, height: 180))
+        input.timelineAudio = [
+            .init(time: 0.5, expectedDb: -120, measuredDb: -75),
+            .init(time: 1, expectedDb: -18, measuredDb: -19),
+            .init(time: 2, expectedDb: -18, measuredDb: -19.25),
+            .init(time: 3, expectedDb: -120, measuredDb: -35),
+        ]
+        let result = try #require(ExportCheck.run(input)[.loudness])
+        #expect(result.status == .warning)
+        #expect(result.items.map(\.kind) == [.timelineAudioLevel, .timelineAudioGap])
+        #expect(result.items.map(\.time) == [2, 3])
+    }
+
     @Test func theFileHasItsOwnSchemaAndEveryCheck() throws {
         let document = try Self.document()
         #expect(document["schema"] == .string("voxclip-export-check-cases/1"))

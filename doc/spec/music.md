@@ -156,6 +156,10 @@ The edited-audio path (word and speaker checks) and the video-duration probe alw
 
 A clip's speed (design.md §6.9) never speeds the bed up: it is staged for the clip's rendered length (the edited length divided by the speed) and measures the voice after the clip's volume, fades and mute, so it ducks under the voice as it plays.
 
+On Mac, a timeline-edited track uses anchored segments instead of a continuous bed. Each segment carries its own playback length, source offset, fades and dB envelope. The clip's speed changes the segment's placement, not the audio's pitch or length. Loops and overlapping segments use equal-power crossfades; an overlap hands off to the incoming segment within two seconds. The same composer supplies preview and export. A track without segments keeps the legacy whole-clip mix.
+
+Final Cut Pro handoff keeps segmented music as connected audio asset clips with source offsets and editable volume keyframes. It does not bake in the automatic speech-driven ducking or the render's loudness normalization. The Mac export self-check compares short decoded windows with the expected mix, including music gaps and sound windows. It checks the audible mix, not isolated stems recovered from a finished MP4.
+
 ## 5. Credits
 
 `ProjectMusic.creditLine`: CC BY and the other library licences use Openverse's attribution ("Music: " + attribution),

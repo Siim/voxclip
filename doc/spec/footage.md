@@ -12,6 +12,8 @@ When macOS asks for removable-volume access, VoxClip explains that it reads reco
 
 Windows Core round-trips these fields and validates plan placements against the same fixtures as Swift. The Windows preview and exporter resolve and verify the companion file alongside the project, then use the same frame composer for all three placements. The interval is half-open on the edited clock. Moving footage is fitted to that interval; a screenshot holds one frame. Stacks place the edited primary picture above the companion, centre-cropping each to fill its half. Companion orientation comes from its own recording. Missing or changed files stop the render rather than silently dropping a placement. The card import UI remains macOS-only.
 
+On Mac, moving footage now plays continuously at 1× from its companion start, even across a cut in the primary picture. Its slot follows the edited word range; a short companion runs out early and reveals the primary picture. Timeline fades dissolve to and from that picture without touching the primary audio.
+
 ## Export review
 
 Batch export renders Ready clips, saves their covers when available, and collects their copy into `posts.txt` (`posts-16x9.txt` for the landscape export). The exporter applies its usual social loudness pass. It then reuses the local CLI self-check to inspect the written video for word matching, sync evidence, loudness, and caption safe area. The review identifies warnings, unavailable checks, and places to listen. It does not start a new paid take on a warning.
