@@ -129,6 +129,7 @@ enum MakeItInverse {
     case motion(added: MotionCue)
     case share(clipID: String, previous: String?)
     case music(added: ProjectMusic)
+    case reusedMusic(added: ProjectMusic, previous: ProjectMusic?)
     case voice(segments: [String])
     /// A whole-clip revoice (ADR-R46): its segments off and its record removed.
     case wholeClip(WholeClipRevoiceRecord)
@@ -430,8 +431,13 @@ extension EditorModel {
         let ranked = chosen.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>, moment: ClipAutopilotMoment)? in
             guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
             let found = foundSuggestion(clip)
-            let moment = ClipAutopilotMoment.found(lower...upper, title: clip.title ?? found?.title ?? "", reason: found?.reason ?? "",
+            var moment = ClipAutopilotMoment.found(lower...upper, title: clip.title ?? found?.title ?? "", reason: found?.reason ?? "",
                                                    score: suggestionScore(clip) ?? found?.score ?? 0)
+            if clip.parts != nil, let words = project.transcript?.words {
+                moment.orderedParts = clip.playPartIndices(in: words)?.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }
+                moment.shape = clip.kind == .showreel ? .showreel : .story
+            }
+            moment.missingFromTake = found?.notInTake
             return (clip.id, lower...upper, moment)
         }
         guard !ranked.isEmpty, makeIt.active == nil, capabilities.ai, capabilities.edit, let transcript = project.transcript else { return }
@@ -439,9 +445,10 @@ extension EditorModel {
         let runs = ranked.map { MakeItRun(clipID: $0.id, cap: budget?.cap ?? makeItCap(clipID: $0.id), budget: budget) }
         for run in runs.reversed() { makeIt.insert(run); run.line("Waiting for Claude…") }
         onShowMakeIt?()
-        let request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
+        var request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
                                            captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone(),
                                            moments: ranked.map(\.moment), footageSources: project.media.additionalSources)
+        if makeItStyle.music { request.musicTracks = Dictionary(project.music.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first }) }
         let task = Task { [weak self] () -> Void in await self?.performSeries(runs, spans: ranked.map(\.span), request: request, clock: clock) }
         for run in runs { run.task = task }
         makeIt.holdQueue(task)
@@ -637,9 +644,15 @@ extension EditorModel {
     func makeItRequest(_ clipID: String) -> ClipAutopilotRequest? {
         guard let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == clipID }),
               let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
-        return ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clip(lower...upper),
+        var request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clip(lower...upper),
                                     captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone(),
                                     footageSources: project.media.additionalSources)
+        if clip.parts != nil {
+            request.selectedParts = clip.playPartIndices(in: transcript.words)?.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }
+            request.selectedKind = clip.kind == .showreel ? .showreel : .story
+        }
+        if makeItStyle.music { request.musicTracks = Dictionary(project.music.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first }) }
+        return request
     }
 
     /// The planner's tone (ai.md §16.3): a Change's tone once, else the style's. Auto offers the catalogue tones; a tone
@@ -722,9 +735,9 @@ extension EditorModel {
             }
         }
         // Music, once the clip's length is final.
-        if makeItStyle.music, !makeItStopped(run) {
+        if makeItStyle.music || plan.kind == .showreel, !makeItStopped(run) {
             run.line("Picking music…")
-            if let row = await musicStep(plan.pickedMusic ?? plan.music.first, run: run) { rows.append(row) }
+            if plan.savedMusicTrackId == nil, let row = await musicStep(plan.pickedMusic ?? plan.music.first, run: run) { rows.append(row) }
         }
         if let hookRow { rows.append(hookRow) }
         for (index, question) in plan.questions.enumerated() {
@@ -764,6 +777,10 @@ extension EditorModel {
                 let seconds = editedSeconds(of: id, in: project)
                 return (.edits([.updateClip(id: id, startIndex: lower, endIndex: upper)]),
                         MakeItRow(id: operation.id, text: "Tightened the clip to \(durationLabel(seconds))", play: words[safe: plan.startWord]?.start, undoable: true))
+            case .setClipParts(let id, _):
+                guard let old = before.edits.clips.first(where: { $0.id == id }) else { return (nil, nil) }
+                return (.edits([.setClipParts(id: id, parts: old.playParts)]),
+                        MakeItRow(id: operation.id, text: "Updated the clip parts", play: clipPlay(id, in: project), undoable: true))
             case .renameClip(let id, let title):
                 let old = before.edits.clips.first { $0.id == id }?.title
                 return (.edits([.renameClip(id: id, title: old)]), MakeItRow(id: operation.id, kind: .choice, text: "Claude chose the title “\(title ?? "")”", undoable: true, change: .rename))
@@ -830,6 +847,13 @@ extension EditorModel {
                               detail: Self.makeItHookDetail, play: clipPlay(clipID, in: project), undoable: true, change: .hook))
         case .rewrite, .music, .asset:
             return nil
+        case .savedMusic(let clipID, _):
+            guard makeItStyle.music || plan.kind == .showreel,
+                  let changed = try? ClipAutopilotMapping.apply([operation], to: project).project,
+                  let entry = MusicProject.entry(for: clipID, in: changed), changed != project else { return (nil, nil) }
+            let previous = MusicProject.entry(for: clipID, in: project)
+            project = changed
+            return (.reusedMusic(added: entry, previous: previous), MakeItRow(id: operation.id, text: "Reused music: \(entry.title)", undoable: true))
         case .effect(let effect):
             let previous = project.clipEffects.first { $0.id == effect.id }
             guard let changed = try? ClipEffects.adding([effect], to: project) else { return (nil, nil) }
@@ -1089,6 +1113,10 @@ extension EditorModel {
         case .music(let added):
             guard MusicProject.entry(for: added.clipId, in: project) == added else { return true }
             guard let next = try? MusicProject.setting(nil, clipId: added.clipId, in: project) else { return false }
+            replace(next, name: name); return true
+        case .reusedMusic(let added, let previous):
+            guard MusicProject.entry(for: added.clipId, in: project) == added else { return true }
+            guard let next = try? MusicProject.setting(previous, clipId: added.clipId, in: project) else { return false }
             replace(next, name: name); return true
         case .wholeClip(let record):
             let next = removingWholeClip(record, from: project)
@@ -1426,6 +1454,8 @@ extension EditorModel {
         // Claude Code runs one process per connector: two more lanes plan a series' clips three at once.
         let lanes: [any LLMConnector] = cardPlanConnector == nil && provider.id == ConnectorID.claudeCode.rawValue
             ? [app.connector(provider.id), app.connector(provider.id)] : []
-        return try await service.plan(request, connector: connector, model: model, lanes: lanes, frames: frames, progress: progress).series
+        var described = request
+        described.footageDescriptions = try await makeItFootageDescriptions(request.footageSources)
+        return try await service.plan(described, connector: connector, model: model, lanes: lanes, frames: frames, progress: progress).series
     }
 }

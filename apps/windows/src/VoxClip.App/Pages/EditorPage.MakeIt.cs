@@ -242,7 +242,32 @@ public sealed partial class EditorPage
         }
         // Each clip's frames, from the whole video's pass, as its plan is sent (none without faces).
         var source = frames?.Invoke(FrameAi(chosen, connector, MakeItBilling(chosen, connector)));
-        return (await service.PlanAsync(request, connector, model, lanes, progress.Report, ct, source)).Series;
+        var described = request with { FootageDescriptions = await MakeItFootageDescriptionsAsync(request.FootageSources, ct) };
+        return (await service.PlanAsync(described, connector, model, lanes, progress.Report, ct, source)).Series;
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> MakeItFootageDescriptionsAsync(IReadOnlyList<MediaReference> sources, CancellationToken ct)
+    {
+        var descriptions = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (sources.Count == 0) return descriptions;
+        frameText ??= new WindowsFrameText();
+        var analyzer = new FrameAnalyzer(App.Services.FrameFaces, FrameAnalyzer.ScreensWith(frameText), new FfmpegFrameDecoder(), new FrameAnalysisCache());
+        foreach (var source in sources.Where(item => item.Video is not null).Take(32))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!double.IsFinite(source.DurationSeconds) || source.DurationSeconds <= 0 || !File.Exists(source.AbsolutePath)) continue;
+            double[] times = [0.15 * source.DurationSeconds, 0.5 * source.DurationSeconds, 0.85 * source.DurationSeconds];
+            try
+            {
+                var found = await analyzer.ObservationsAsync(source.AbsolutePath, source.ContentKey, times, FrameScanKind.Sentence, ct);
+                if (found.Frames.Count > 0)
+                    descriptions[source.FootageKey] = string.Join("; ", found.Frames.Select(frame => FormattableString.Invariant(
+                        $"{frame.Time:F1}s: {frame.FaceCount} faces, {frame.Screens.Count} screen-like regions, {frame.TextRects.Count} text boxes")));
+            }
+            catch (Exception exception) when (exception is IOException or VoxClipException or UnauthorizedAccessException) { }
+        }
+        ct.ThrowIfCancellationRequested();
+        return descriptions;
     }
 
     /// <summary>How a send to <paramref name="chosen"/> is billed: confirmed on an API key, inline on a plan or a local server.</summary>

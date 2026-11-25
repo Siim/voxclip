@@ -79,6 +79,24 @@ extension EditorModel {
         }
     }
 
+    func makeItFootageDescriptions(_ sources: [MediaReference]) async throws -> [String: String] {
+        let analyzer = FrameAnalyzer(cache: FrameAnalysisCache(locations: app.locations))
+        var descriptions: [String: String] = [:]
+        for source in sources.lazy.filter({ $0.video != nil }).prefix(32) {
+            try Task.checkCancellation()
+            guard source.durationSeconds.isFinite, source.durationSeconds > 0, FileManager.default.fileExists(atPath: source.absolutePath) else { continue }
+            let times = [0.15, 0.5, 0.85].map { $0 * source.durationSeconds }
+            guard let found = try? await analyzer.observations(source: URL(fileURLWithPath: source.absolutePath), contentKey: source.contentKey,
+                                                               times: times, tolerance: FrameAnalyzer.sentenceTolerance), !found.frames.isEmpty else { continue }
+            descriptions[source.footageKey] = found.frames.map { frame in
+                let time = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), frame.time)
+                return "\(time)s: \(frame.faceCount) faces, \(frame.screens.count) screen-like regions, \(frame.textRects.count) text boxes"
+            }.joined(separator: "; ")
+        }
+        try Task.checkCancellation()
+        return descriptions
+    }
+
     /// The AI the plan goes to, as the frames see it.
     func liveFrameAI() async -> MakeItFrameAI? {
         guard let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }),

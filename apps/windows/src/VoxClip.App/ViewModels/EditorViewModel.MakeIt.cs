@@ -178,9 +178,16 @@ public sealed partial class EditorViewModel
         foreach (var run in runs.Reverse()) { MakeIt.Insert(run); run.Line("Waiting for Claude…"); }
         MakeItShown?.Invoke(this, EventArgs.Empty);
         MakeItNotify();
-        var moments = ranked.Select(item => ClipAutopilotMoment.Found(item.Span, item.Row.Title, item.Row.Reason, MakeIt.Score(item.Id)?.Score ?? item.Row.Score ?? 0)).ToArray();
+        var moments = ranked.Select(item => ClipAutopilotMoment.Found(item.Span, item.Row.Title, item.Row.Reason, MakeIt.Score(item.Id)?.Score ?? item.Row.Score ?? 0) with
+        {
+            OrderedParts = MakeItParts(item.Row.Clip, transcript.Words),
+            Shape = item.Row.Clip.Kind == StoryClipKind.Showreel ? "showreel" : null
+        }).ToArray();
         var request = new ClipAutopilotRequest(transcript, project.Edits, new ClipAutopilotMode.Clips(ranked.Select(item => item.Span).ToArray()))
-        { CaptionPreference = MakeItStyle.CaptionPreference, Note = MakeItNoteText(), Tone = MakeItPlannerTone(), Moments = moments };
+        {
+            CaptionPreference = MakeItStyle.CaptionPreference, Note = MakeItNoteText(), Tone = MakeItPlannerTone(), Moments = moments,
+            FootageSources = project.Media.AdditionalSources ?? [], MusicTracks = MakeItMusicTracks()
+        };
         var task = PerformSeriesAsync(runs, ranked.Select(item => item.Span).ToArray(), request, services, clock);
         foreach (var run in runs) run.Task = task;
         MakeIt.SeriesTask = task;
@@ -381,10 +388,21 @@ public sealed partial class EditorViewModel
     /// <summary>The planner's request for one clip: its span, the project's edits, the style's captions, note and tone.</summary>
     public ClipAutopilotRequest? MakeItRequest(string clipId)
     {
-        if (project.Transcript is not { } transcript || ClipSpan(clipId) is not { } span) return null;
+        if (project.Transcript is not { } transcript || ClipSpan(clipId) is not { } span ||
+            state?.Clips.FirstOrDefault(clip => clip.Id == clipId) is not { } clip) return null;
         return new(transcript, project.Edits, new ClipAutopilotMode.Clip(new(span.First, span.Last)))
-        { CaptionPreference = MakeItStyle.CaptionPreference, Note = MakeItNoteText(), Tone = MakeItPlannerTone() };
+        {
+            CaptionPreference = MakeItStyle.CaptionPreference, Note = MakeItNoteText(), Tone = MakeItPlannerTone(),
+            FootageSources = project.Media.AdditionalSources ?? [], MusicTracks = MakeItMusicTracks(),
+            SelectedParts = MakeItParts(clip, transcript.Words), SelectedKind = clip.Kind == StoryClipKind.Showreel ? "showreel" : null
+        };
     }
+
+    private static IReadOnlyList<ClipProposal.Part>? MakeItParts(ClipRange clip, IReadOnlyList<TimedWord> words) =>
+        clip.Parts is null ? null : clip.PlayPartIndices(words)?.Select(part => new ClipProposal.Part(part.Start, part.End)).ToArray();
+
+    private IReadOnlyDictionary<string, string> MakeItMusicTracks() => MakeItStyle.Music
+        ? project.Music.ToDictionary(track => track.Id, track => track.Title) : new Dictionary<string, string>();
 
     /// <summary>The planner's tone (ai.md §16.3): the style's. Auto offers the catalogue tones; a tone this PC does not know plans as Auto.</summary>
     public ClipAutopilotTone? MakeItPlannerTone()
@@ -478,7 +496,7 @@ public sealed partial class EditorViewModel
             }
         }
         // "Picking music…": the plan's mood in the Music section, the first free track, or a generated one within the cap (design §6.7 step 4).
-        if (style.Music && !MakeItStopped(run) && operations.FirstOrDefault(operation => operation.Action is ClipAutopilotAction.Music) is { Action: ClipAutopilotAction.Music music })
+        if ((style.Music || plan.Kind == "showreel") && !MakeItStopped(run) && operations.FirstOrDefault(operation => operation.Action is ClipAutopilotAction.Music) is { Action: ClipAutopilotAction.Music music })
         {
             run.Line("Picking music…");
             MakeItNotify();
@@ -555,6 +573,9 @@ public sealed partial class EditorViewModel
                         return (new MakeItInverse.Edits([new EditOperation.RenameClip(rename.Id, old)]),
                             new(operation.Id, $"Claude chose the title “{rename.Title}”") { Kind = MakeItRowKind.Choice, Undoable = true, Change = MakeItChange.Rename });
                     }
+                    case EditOperation.SetClipParts parts when beforeState.Clips.FirstOrDefault(clip => clip.Id == parts.Id) is { } original:
+                        return (new MakeItInverse.Edits([new EditOperation.SetClipParts(parts.Id, original.PlayParts)]),
+                            new(operation.Id, "Updated the clip parts") { Play = ClipPlay(parts.Id, next), Undoable = true });
                     case EditOperation.AddClip add:
                         return (new MakeItInverse.Edits([new EditOperation.RemoveClip(add.Clip.Id)]), new(operation.Id, "Added the clip") { Undoable = true });
                     default:
@@ -638,10 +659,27 @@ public sealed partial class EditorViewModel
                 System.Text.Json.JsonElement? previous = next.ClipEffects.FirstOrDefault(item => item.GetProperty("id").GetString() == overlay.Id);
                 if (previous?.ValueKind == System.Text.Json.JsonValueKind.Undefined) previous = null;
                 next = ClipEffects.Adding([value], next);
-                var name = overlay.Kind switch { "title" => "Motion title", "lowerThird" => "Lower third", "colourLook" => "Colour look", "speedForPart" => "Speed for this beat", _ => "Emoji pop" };
+                var name = overlay.Kind switch { "title" => "Motion title", "motionTemplate" => "Motion template", "lowerThird" => "Lower third", "colourLook" => "Colour look", "speedForPart" => "Speed for this beat", _ => "Emoji pop" };
                 var text = overlay.Text ?? overlay.Look ?? (overlay.Rate is { } rate ? $"{rate:0.##}×" : null);
                 return (new MakeItInverse.Effect(overlay.Id, previous), new(operation.Id, text is null ? name : $"{name}: {text}")
                     { Detail = operation.Reason, Play = Math.Max(0, overlay.Start - 0.5), Undoable = true });
+            }
+            case ClipAutopilotAction.Footage { Entry: var entry }:
+            {
+                var previous = next.Media.Footage?.FirstOrDefault(item => item.Id == entry.Id);
+                var (changed, pending) = ClipAutopilotMapping.Apply([operation], next);
+                if (pending.Count != 0 || changed == next) return (null, null);
+                next = changed;
+                var name = entry.Kind switch { "bRoll" => "Added B-roll", "screenshot" => "Added a screenshot", _ => "Added a video stack" };
+                return (new MakeItInverse.Footage(entry.Id, previous), new(operation.Id, name) { Detail = operation.Reason, Play = entry.Start, Undoable = true });
+            }
+            case ClipAutopilotAction.SavedMusic saved when style.Music || plan.Kind == "showreel":
+            {
+                var previous = Core.Domain.Music.MusicProject.Entry(saved.ClipId, next);
+                var (changed, pending) = ClipAutopilotMapping.Apply([operation], next);
+                if (pending.Count != 0 || changed == next || Core.Domain.Music.MusicProject.Entry(saved.ClipId, changed) is not { } entry) return (null, null);
+                next = changed;
+                return (new MakeItInverse.ReusedMusic(entry, previous), new(operation.Id, $"Reused music: {entry.Title}") { Undoable = true });
             }
             default:
                 return (null, null);
@@ -859,6 +897,15 @@ public sealed partial class EditorViewModel
                 }
                 case MakeItInverse.Music music:
                     return SetMusic(music.Previous, music.ClipId, "Undo music") || true;
+                case MakeItInverse.ReusedMusic music:
+                    if (Core.Domain.Music.MusicProject.Entry(music.Added.ClipId, project) != music.Added) return true;
+                    return SetMusic(music.Previous, music.Added.ClipId, "Undo music") || true;
+                case MakeItInverse.Footage footage:
+                {
+                    var kept = (project.Media.Footage ?? []).Where(item => item.Id != footage.Id)
+                        .Concat(footage.Previous is { } previous ? [previous] : []).ToArray();
+                    return ReplaceProject(project with { Media = project.Media with { Footage = kept } }, "Undo companion footage") || true;
+                }
                 case MakeItInverse.Motion motion:
                 {
                     var kept = project.MotionCues.Where(cue => cue.Id != motion.Id).Concat(motion.Previous is { } previous ? [previous] : []).ToArray();
