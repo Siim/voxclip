@@ -1,12 +1,93 @@
 #if DEBUG
 import AppKit
+@preconcurrency import AVFoundation
+import CryptoKit
 import Foundation
 import Testing
-import VoxClipCore
+@testable import VoxClipCore
 @testable import VoxClip
+@testable import VoxClipMedia
 
 @Suite("Render caller integration", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR"), .offlineFixtures)
 @MainActor struct RenderCallerIntegrationTests {
+    @Test func bRollOverACutUsesConsecutiveSourceFramesAndEndsWhenTheRecordingDoes() async throws {
+        let shared = try SharedResources.locate()
+        let camera = shared.root.appendingPathComponent("fixtures/media/joins-tone.mov")
+        let companion = shared.root.appendingPathComponent("fixtures/media/counter-1080p.mp4")
+        let plan = EditPlan(sampleRate: 48_000, totalSamples: 576_000,
+                            kept: [.init(startSample: 0, endSample: 48_000), .init(startSample: 96_000, endSample: 192_000)])
+        var render = RenderRequest(sourceURL: camera, plan: plan,
+                                   output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 100_000))
+        let entry = ClipFootage(id: "footage", clipID: "scope", kind: .bRoll, start: 0.5, end: 3.5,
+                                footage: .init(sourceKey: "counter", start: 3), fadeInSeconds: 0.25, fadeOutSeconds: 0.25)
+        render.footage = [.init(entry: entry, url: companion)]
+        let graph = try await CompositionBuilder().build(render)
+        let other = try #require(graph.composition.tracks(withMediaType: .video).first { $0.trackID != graph.videoTrack.trackID })
+        let media = try #require(other.segments.first { !$0.isEmpty })
+        let mapping = media.timeMapping
+        #expect(mapping.source.start.seconds == 3)
+        #expect(mapping.target.start.seconds == 0.5)
+        #expect(mapping.target.duration.seconds == 1)
+        #expect(mapping.source.duration == mapping.target.duration)
+        let generator = AVAssetImageGenerator(asset: graph.composition)
+        generator.videoComposition = graph.videoComposition
+        generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
+        let referencePlan = EditPlan(sampleRate: 48_000, totalSamples: 192_000, kept: [.init(startSample: 144_000, endSample: 192_000)])
+        let reference = try await CompositionBuilder().build(RenderRequest(sourceURL: companion, plan: referencePlan, output: render.output))
+        let expected = AVAssetImageGenerator(asset: reference.composition)
+        expected.videoComposition = reference.videoComposition
+        expected.requestedTimeToleranceBefore = .zero; expected.requestedTimeToleranceAfter = .zero
+        var thumbnails: [Data] = []
+        for frame in [29, 30] as [Int64] {
+            let actual = try await generator.image(at: CMTime(value: frame, timescale: 30)).image
+            let consecutive = try await expected.image(at: CMTime(value: frame - 15, timescale: 30)).image
+            let actualBytes = try #require(actual.dataProvider?.data as Data?)
+            let expectedBytes = try #require(consecutive.dataProvider?.data as Data?)
+            #expect(actualBytes == expectedBytes)
+            thumbnails.append(actualBytes)
+        }
+        #expect(thumbnails[0] != thumbnails[1])
+    }
+
+    @Test func previewAndExportPCMMatchForSlippedFadedSplitMusic() async throws {
+        let shared = try SharedResources.locate()
+        let source = shared.root.appendingPathComponent("fixtures/media/joins-tone.mov")
+        let rate: Int32 = 48_000
+        let frames: Int64 = 96_000
+        let plan = EditPlan(sampleRate: Double(rate), totalSamples: 576_000,
+                            kept: [.init(startSample: 0, endSample: frames)])
+        var render = RenderRequest(sourceURL: source, plan: plan,
+                                   output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 100_000))
+        var entry = ProjectMusic(id: "music", clipId: nil, asset: .init(file: "bed.mov", sha256: "", durationSeconds: 12),
+                                 source: .file, title: "Bed", license: .own, gainDb: -20, ducking: false, startOffsetSeconds: 0)
+        entry.segments = [
+            .init(id: "left", anchorSeconds: 0, lengthSeconds: 0.75, songFromSeconds: 2, loop: false, fadeInSeconds: 0.25, fadeOutSeconds: 0),
+            .init(id: "right", anchorSeconds: 0.75, lengthSeconds: 0.75, songFromSeconds: 2.75, loop: false, fadeInSeconds: 0, fadeOutSeconds: 0.25)
+        ]
+        render.music = .init(entry: entry, assetURL: source)
+        let preview = PreviewPlayerController()
+        defer { preview.close() }
+        try await preview.load(render)
+        let item = try #require(preview.player.currentItem as? LeasedPlayerItem)
+        var previewHash = SHA256()
+        let range = CMTimeRange(start: .zero, duration: CMTime(value: frames, timescale: rate))
+        try await AVExporter.readMix(graph: item.renderGraph, timeRange: range, sampleLimit: frames) { samples in
+            previewHash.update(data: Data(UnsafeRawBufferPointer(samples)))
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let exporter = AVExporter(cleanupRegistry: root.appendingPathComponent("Scratch"))
+        let wav = try await exporter.stageEditedAudio(render, to: root.appendingPathComponent("sound.wav"), includeMusic: true)
+        let file = try AVAudioFile(forReading: wav, commonFormat: .pcmFormatFloat32, interleaved: true)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(frames)))
+        try file.read(into: buffer)
+        let pcm = buffer.audioBufferList.pointee.mBuffers
+        let bytes = try #require(pcm.mData)
+        let exportHash = SHA256.hash(data: Data(bytes: bytes, count: Int(pcm.mDataByteSize)))
+        #expect(previewHash.finalize() == exportHash)
+    }
+
     private func project(origin: ClipOrigin = .manual) throws -> Project {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))

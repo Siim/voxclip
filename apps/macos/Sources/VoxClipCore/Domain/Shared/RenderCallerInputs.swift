@@ -1,6 +1,19 @@
 import Foundation
 
 public enum RenderCallerInputs {
+    static func scopedAnchors(project: Project, clipID: String?) -> ((Double) -> Bool)? {
+        guard let clipID, let clip = project.edits.clips.first(where: { $0.id == clipID }),
+              let words = project.transcript?.words else { return nil }
+        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+        let parts = StoryClips.times(clip, words: words).map {
+            TimeRange(start: EditingPrimitives.jsRound($0.start * rate), end: EditingPrimitives.jsRound($0.end * rate))
+        }
+        return { seconds in
+            let sample = EditingPrimitives.jsRound(seconds * rate)
+            return parts.contains { $0.start <= sample && sample < $0.end }
+        }
+    }
+
     public static func timeline(project: Project, clipID: String? = nil) throws -> RenderTimeline {
         let clip: ClipRange?
         if let clipID {

@@ -33,6 +33,40 @@ struct MusicMixVectorTests {
         for (key, value) in expected { #expect(constants[key]?.aiDouble == value, "\(key)") }
     }
 
+    @Test func timelinePlacementsAndGainReplay() throws {
+        struct Vector: Decodable {
+            let sampleRate: Double, trackFrames: Int, speed: Double
+            let segments: [MusicSegment], starts: [Int], fades: [[Int]], pieces: [[Piece]]
+            let itemSeconds: [Double], itemGains: [Double], crossfadeFrame: Int, crossfadeWeight: Double
+            let activity: [Bool], depthDb: Double, duckingDb: [Double]
+        }
+        struct Piece: Decodable {
+            let sourceStart: Int, outputStart: Int, count: Int, fadeIn: Int, fadeOut: Int
+            var value: MusicMix.LoopPiece {
+                .init(sourceStart: sourceStart, outputStart: outputStart, count: count, fadeIn: fadeIn, fadeOut: fadeOut)
+            }
+        }
+        struct Fixture: Decodable { let timeline: [Vector] }
+        let fixture = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json"))
+        for vector in fixture.timeline {
+            let segments = MusicMix.segmentPieces(vector.segments, trackFrames: vector.trackFrames, outputFrames: 1_000,
+                                                   rate: vector.sampleRate) { $0 / vector.speed }
+            #expect(segments.map(\.span.outputStart) == vector.starts)
+            #expect(segments.map { [$0.span.fadeIn, $0.span.fadeOut] } == vector.fades)
+            let expectedPieces = vector.pieces.map { $0.map(\.value) }
+            #expect(segments.map(\.pieces) == expectedPieces)
+            let first = try #require(vector.segments.first)
+            let shape = ItemShape(fadeInSeconds: first.fadeInSeconds, fadeOutSeconds: first.fadeOutSeconds, gainPoints: first.gainPoints)
+            for (time, gain) in zip(vector.itemSeconds, vector.itemGains) {
+                #expect(Self.near(gain, MusicMix.itemGain(at: time, shape: shape, length: first.lengthSeconds)))
+            }
+            let incoming = try #require(segments.last?.span)
+            #expect(Self.near(vector.crossfadeWeight, MusicMix.pieceWeight(incoming, at: vector.crossfadeFrame)))
+            let duck = MusicMix.duckingGainsDb(activity: vector.activity, depthDb: vector.depthDb)
+            for (actual, expected) in zip(duck, vector.duckingDb) { #expect(Self.near(expected, actual)) }
+        }
+    }
+
     @Test("10 ms levels, speech activity, ducking, bed gain, music level and fades replay")
     func levelsActivityDuckingAndGains() throws {
         let cases = try Self.cases()

@@ -5,3 +5,5 @@
 Apple's FCPXML 1.10 DTD is not redistributed here: Apple's published definition reserves all rights. Tests always check the document structure in this vector; set `VOXCLIP_FCPXML_DTD` to a locally obtained copy of the 1.10 DTD to also validate the document with Apple's definition.
 
 `story.json` keeps three parts, with a cut within the second. All times are in seconds. The Media tests use the same ranges to check the decoded order; the XML vector checks that the spine offsets advance even when its source offsets jump backward.
+
+`music-segments.json` checks slip, volume keyframes in song time, and an uninterrupted connected music clip across a cut.

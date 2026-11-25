@@ -35,6 +35,38 @@ struct MusicBedVectorTests {
     }
     private struct Cases: Decodable { let beds: [Bed] }
 
+    @Test func segmentCrossfadesAndGapsReplayThroughTheDecodedBed() throws {
+        struct Probe: Decodable {
+            let outputFrames: Int, trackSample: Float, gainDb: Double, frames: [Int], samples: [Double]
+        }
+        struct Vector: Decodable {
+            let sampleRate: Double, trackFrames: Int, speed: Double, segments: [MusicSegment], mixProbe: Probe
+        }
+        struct Fixture: Decodable { let timeline: [Vector] }
+        let fixture = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json"))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for (index, vector) in fixture.timeline.enumerated() {
+            let probe = vector.mixProbe
+            let asset = MusicAsset(file: "tone.caf", sha256: "", durationSeconds: Double(vector.trackFrames) / vector.sampleRate)
+            var entry = ProjectMusic(id: "timeline", clipId: nil, asset: asset, source: .file, title: "Tone", license: .own,
+                                     gainDb: probe.gainDb, ducking: false, startOffsetSeconds: 0)
+            entry.segments = vector.segments
+            let track = [Float](repeating: probe.trackSample, count: vector.trackFrames * 2)
+            let plan = try #require(MusicBedPlan(track: track, speech: [], entry: entry, outputFrames: probe.outputFrames,
+                                                 rate: vector.sampleRate, mapTime: { $0 / vector.speed }))
+            let url = root.appendingPathComponent("bed-\(index).caf")
+            let writer = try MusicCAFWriter(url: url, channels: 2)
+            try MusicBedRenderer.write(track: track, plan: plan, to: writer)
+            writer.close()
+            let decoded = try MusicBedTests.readBed(url)
+            for (frame, sample) in zip(probe.frames, probe.samples) {
+                #expect(abs(Double(decoded[2 * frame]) - sample) < 1e-6, "frame \(frame)")
+            }
+        }
+    }
+
     @Test("Each bed's trim or loop, levels, gains and samples replay through the renderer's plan and mix")
     func bedsReplay() throws {
         let beds = try JSONDecoder().decode(Cases.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json")).beds

@@ -48,6 +48,46 @@ func checkerProject(source: URL) async throws -> Project {
 
 /// The export self-check on real exported files (ADR-R49), with a stub engine in place of the local model.
 extension HeavyMediaTests {
+    @Test(.timeLimit(.minutes(2))) func selfCheckFindsAnExportThatFillsAnEditedMusicGap() async throws {
+        let directory = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let camera = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/bars-1080p.mp4")
+        let song = directory.appendingPathComponent("tone.caf")
+        let frames = 96_000
+        var stereo: [Float] = []
+        for frame in 0..<frames {
+            let phase = Double(frame) * (2 * Double.pi * 440 / 48_000)
+            let sample = Float(0.25 * sin(phase))
+            stereo.append(contentsOf: [sample, sample])
+        }
+        try MusicBedTests.caf(stereo, channels: 2, to: song)
+        let sampleCount = Int64(frames)
+        let plan = EditPlan(sampleRate: 48_000, totalSamples: sampleCount, kept: [.init(startSample: 0, endSample: sampleCount)])
+        var render = RenderRequest(sourceURL: camera, plan: plan,
+                                   output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
+        var entry = ProjectMusic(id: "music", clipId: nil, asset: .init(file: "tone.caf", sha256: "", durationSeconds: 2),
+                                 source: .file, title: "Tone", license: .own, gainDb: 0, ducking: false,
+                                 fadeInSeconds: 0, fadeOutSeconds: 0, startOffsetSeconds: 0)
+        render.music = .init(entry: entry, assetURL: song)
+        let exporter = AVExporter(cleanupRegistry: directory.appendingPathComponent("Scratch"))
+        let incorrect = directory.appendingPathComponent("continuous.mp4")
+        _ = try await exporter.export(.init(render: render, outputURL: incorrect, loudness: .off)) { _ in }
+
+        entry.segments = [.init(id: "segment", anchorSeconds: 0.5, lengthSeconds: 1, songFromSeconds: 0.25,
+                                loop: false, fadeInSeconds: 0.25, fadeOutSeconds: 0.25)]
+        render.music = .init(entry: entry, assetURL: song)
+        let edited = directory.appendingPathComponent("edited.mp4")
+        _ = try await exporter.export(.init(render: render, outputURL: edited, loudness: .off)) { _ in }
+        let expected = try ExportCheckExpectation.edit(render: render, state: nil)
+        let checker = ExportChecker(hearing: nil, scratch: directory)
+        let good = try await checker.check(export: edited, render: render, edit: expected, loudness: .off)
+        #expect(good.report[.loudness]?.status == .ok, "\(String(describing: good.report[.loudness]))")
+        let bad = try await checker.check(export: incorrect, render: render, edit: expected, loudness: .off)
+        let findings = try #require(bad.report[.loudness]?.items)
+        #expect(findings.contains { $0.kind == .timelineAudioGap && $0.time < 0.5 })
+        #expect(findings.contains { $0.kind == .timelineAudioLevel && (0.5..<0.75).contains($0.time) })
+    }
+
     /// The clip exported through the export command's own path, and the render it ran (`CLIWorkflow.prepare`).
     private func exported(_ directory: URL, extra: [String] = [], automaticLooks: Bool = false) async throws -> (url: URL, prepared: CLIWorkflow.PreparedExport) {
         let source = try await NativeMediaFixtures.shared.file("speech-bursts.mov")

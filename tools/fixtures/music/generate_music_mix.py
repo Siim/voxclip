@@ -274,12 +274,31 @@ def main():
     overlap = first_start + first_count - second_start
     first_piece = dict(sourceStart=50, outputStart=0, count=first_count, fadeIn=0, fadeOut=0)
     second_pieces = loop_pieces(track_frames, 100, 600, timeline_rate)
+    spans = [dict(first_piece, outputStart=first_start, fadeOut=overlap),
+             dict(sourceStart=100, outputStart=second_start, count=600, fadeIn=overlap, fadeOut=0)]
+    probe_frames = [0, 50, 75, 100, 225, 250, 275, 299, 300, 449, 499, 549, 849, 850]
+    probe_samples = []
+    for frame in probe_frames:
+        mix = 0.0
+        for segment, span, pieces in zip([first, second], spans, [[first_piece], second_pieces]):
+            local = frame - span['outputStart']
+            if not 0 <= local < span['count']:
+                continue
+            time = local / timeline_rate
+            db = -12 + min(1, max(0, (time - 0.25) / 0.5)) * 12 if segment is first else 0
+            gain = 10 ** ((-40 + db) / 20) * fade_factor(time, segment['lengthSeconds'], segment['fadeInSeconds'], segment['fadeOutSeconds'])
+            for piece in pieces:
+                relative = local - piece['outputStart']
+                if 0 <= relative < piece['count']:
+                    mix += gain * piece_weight(span, local) * piece_weight(piece, relative)
+        probe_samples.append(r9(mix))
     timeline = [dict(sampleRate=timeline_rate, trackFrames=track_frames, speed=speed, segments=[first, second],
                      starts=[first_start, second_start], fades=[[0, overlap], [overlap, 0]], pieces=[[first_piece], second_pieces],
                      itemSeconds=[0.125, 0.5, 1.75, 2.25],
                      itemGains=[r9(10 ** (db / 20) * fade_factor(t, 2.5, 1, 0.5))
                                 for t, db in [(0.125, -12), (0.5, -6), (1.75, 0), (2.25, 0)]],
                      crossfadeFrame=20, crossfadeWeight=r9(math.sin(math.pi / 2 * 20.5 / overlap)),
+                     mixProbe=dict(outputFrames=1_000, trackSample=0.25, gainDb=-20, frames=probe_frames, samples=probe_samples),
                      activity=[False, True, True, False], depthDb=-6,
                      duckingDb=[r9(db) for db in ducking_gains_db([False, True, True, False], depth=-6)])]
     document = dict(format='voxclip-music-mix-cases/1',

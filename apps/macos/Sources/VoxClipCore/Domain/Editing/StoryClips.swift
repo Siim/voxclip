@@ -84,15 +84,22 @@ enum StoryClips {
 
     static func validatePlacement(_ clip: ClipRange, project: Project, words: [TimedWord]) throws {
         let spans = times(clip, words: words)
-        for (index, span) in spans.enumerated() {
-            for window in lipsyncWindows(project) where overlaps(span, window) && !contains(span, window) {
-                let start = clock(window.start), end = clock(window.end)
-                throw VoxClipError.projectUnreadable("Part \(index + 1) cuts through a lip-synced stretch. Include all of \(start)–\(end) or none of it.")
-            }
+        if let refusal = lipsyncRefusal(spans, windows: lipsyncWindows(project)) {
+            throw VoxClipError.projectUnreadable(refusal)
         }
+        guard project.schemaVersion < TimelineEditFields.version else { return }
         for effect in project.clipEffects where effect.clipId == clip.id {
             try ProjectValidation.require(spans.contains { contains($0, TimeRange(start: effect.start, end: effect.end)) }, "Place it inside one part.")
         }
+    }
+
+    static func lipsyncRefusal(_ spans: [TimeRange], windows: [TimeRange]) -> String? {
+        for (index, span) in spans.enumerated() {
+            for window in windows where overlaps(span, window) && !contains(span, window) {
+                return "Part \(index + 1) cuts through a lip-synced stretch. Include all of \(clock(window.start))–\(clock(window.end)) or none of it."
+            }
+        }
+        return nil
     }
 
     static func overlaps(_ span: TimeRange, _ window: TimeRange) -> Bool {
@@ -103,7 +110,7 @@ enum StoryClips {
         span.start <= window.start && window.end <= span.end
     }
 
-    private static func clock(_ seconds: Double) -> String {
+    static func clock(_ seconds: Double) -> String {
         let whole = Int(seconds)
         return String(format: "%d:%02d", whole / 60, whole % 60)
     }

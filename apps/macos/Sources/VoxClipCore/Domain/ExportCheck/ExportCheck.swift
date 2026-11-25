@@ -22,7 +22,7 @@ public struct ExportCheckItem: Codable, Sendable, Equatable {
         /// Phrase placement wasn't measured (the words check was skipped).
         case phrasesSkipped
         /// The integrated loudness is outside the target's range, the true peak above the ceiling, or nothing is audible.
-        case integratedLoudness, truePeak, silent
+        case integratedLoudness, truePeak, silent, timelineAudioLevel, timelineAudioGap
         /// A caption card or the title reaches into a safe-zone band.
         case captionBand, titleBand
     }
@@ -162,6 +162,16 @@ public struct ExportCheckInput: Sendable, Equatable {
     public var frameSeconds: Double
     /// nil when the export has no audio track.
     public var loudness: Loudness?
+    public struct TimelineAudioLevel: Sendable, Equatable {
+        public var time: Double
+        public var expectedDb: Double
+        public var measuredDb: Double
+
+        public init(time: Double, expectedDb: Double, measuredDb: Double) {
+            self.time = time; self.expectedDb = expectedDb; self.measuredDb = measuredDb
+        }
+    }
+    public var timelineAudio: [TimelineAudioLevel] = []
     public var boxes: [Box]
     /// The export frame's pixel size, which picks the safe-zone bands.
     public var frame: PixelSize
@@ -367,6 +377,24 @@ public enum ExportCheck {
     // MARK: Loudness
 
     static func loudness(_ input: ExportCheckInput) -> ExportCheckResult {
+        var result = feedLoudness(input)
+        guard !input.timelineAudio.isEmpty else { return result }
+        let silenceDb = -60.0
+        for level in input.timelineAudio {
+            let silent = level.expectedDb <= silenceDb
+            let delta = level.measuredDb - level.expectedDb
+            let missed = silent ? level.measuredDb > silenceDb : abs(delta) > 1
+            guard missed else { continue }
+            result.items.append(.init(kind: silent ? .timelineAudioGap : .timelineAudioLevel, time: level.time,
+                                      value: silent ? level.measuredDb : delta, limit: silent ? silenceDb : 1))
+            if result.items.count >= 20 { break }
+        }
+        result.reason = nil
+        result.status = result.items.isEmpty ? .ok : .warning
+        return result
+    }
+
+    private static func feedLoudness(_ input: ExportCheckInput) -> ExportCheckResult {
         guard let measured = input.loudness else { return .skipped(.loudness, "No audio track") }
         guard measured.setting == .social else { return .skipped(.loudness, "Loudness is off for this export") }
         var result = ExportCheckResult(check: .loudness, status: .ok)

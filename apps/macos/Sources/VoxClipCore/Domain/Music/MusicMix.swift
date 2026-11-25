@@ -112,7 +112,7 @@ public enum MusicMix {
 
     /// Per-frame ducking in dB, linear in dB: it reaches `duckDb` by each speech onset (the attack starts 150 ms early,
     /// since the whole clip is known) and recovers over 400 ms after speech ends. All zeros without ducking.
-    public static func duckingGainsDb(activity: [Bool], ducking: Bool = true) -> [Double] {
+    public static func duckingGainsDb(activity: [Bool], ducking: Bool = true, depthDb: Double = duckDb) -> [Double] {
         guard ducking, activity.contains(true) else { return Array(repeating: 0, count: activity.count) }
         let attack = max(1.0, attackSeconds / frameSeconds)
         let release = max(1.0, releaseSeconds / frameSeconds)
@@ -130,8 +130,8 @@ public enum MusicMix {
             sinceLast[index] = last
         }
         return (0..<count).map { index in
-            let before = duckDb * max(0, 1 - untilNext[index] / attack)
-            let after = duckDb * max(0, 1 - sinceLast[index] / release)
+            let before = depthDb * max(0, 1 - untilNext[index] / attack)
+            let after = depthDb * max(0, 1 - sinceLast[index] / release)
             return min(before, after)
         }
     }
@@ -153,6 +153,64 @@ public enum MusicMix {
         if fadeIn > 0 { factor = min(factor, max(0, seconds / fadeIn)) }
         if fadeOut > 0 { factor = min(factor, max(0, (duration - seconds) / fadeOut)) }
         return min(1, factor)
+    }
+
+    public static func envelopeDb(at seconds: Double, points: [GainPoint]) -> Double {
+        guard let first = points.first, let last = points.last else { return 0 }
+        if seconds <= first.t { return first.db }
+        if seconds >= last.t { return last.db }
+        var lower = 0
+        var upper = points.count - 1
+        while upper - lower > 1 {
+            let middle = (lower + upper) / 2
+            if points[middle].t <= seconds { lower = middle } else { upper = middle }
+        }
+        let left = points[lower], right = points[upper]
+        return left.db + (right.db - left.db) * ((seconds - left.t) / (right.t - left.t))
+    }
+
+    public static func itemGain(at seconds: Double, shape: ItemShape, length: Double) -> Double {
+        guard seconds >= 0, seconds < length else { return 0 }
+        return pow(10, envelopeDb(at: seconds, points: shape.gainPoints ?? []) / 20) *
+            fadeFactor(at: seconds, duration: length, fadeIn: shape.fadeInSeconds ?? 0, fadeOut: shape.fadeOutSeconds ?? 0)
+    }
+
+    public struct SegmentPlacement: Sendable, Equatable {
+        public let segment: MusicSegment
+        public var span: LoopPiece
+        public let pieces: [LoopPiece]
+    }
+
+    public static func segmentPieces(_ segments: [MusicSegment], trackFrames: Int, outputFrames: Int, rate: Double,
+                                     mapTime: (Double) -> Double) -> [SegmentPlacement] {
+        var placements = segments.compactMap { segment -> SegmentPlacement? in
+            let start = Int((mapTime(segment.anchorSeconds) * rate).rounded())
+            let offset = Int((segment.songFromSeconds * rate).rounded())
+            guard start >= 0, start < outputFrames, offset >= 0, offset < trackFrames else { return nil }
+            let horizon = Double(outputFrames - start) / rate + 2
+            let length = Int((min(segment.lengthSeconds, horizon) * rate).rounded())
+            guard length > 0 else { return nil }
+            let count = segment.loop ? length : min(length, trackFrames - offset)
+            let span = LoopPiece(sourceStart: offset, outputStart: start, count: count)
+            let pieces = segment.loop
+                ? loopPieces(trackFrames: trackFrames, offsetFrames: offset, outputFrames: count,
+                             crossfadeFrames: Int((loopCrossfadeSeconds * rate).rounded()))
+                : [LoopPiece(sourceStart: offset, outputStart: 0, count: count)]
+            guard !pieces.isEmpty else { return nil }
+            return SegmentPlacement(segment: segment, span: span, pieces: pieces)
+        }.sorted { $0.span.outputStart < $1.span.outputStart }
+        for index in placements.indices.dropFirst() {
+            let previous = index - 1
+            let start = placements[index].span.outputStart
+            let outgoing = placements[previous].span
+            let overlap = min(outgoing.outputStart + outgoing.count - start, placements[index].span.count,
+                              Int((2 * rate).rounded()))
+            guard overlap > 0 else { continue }
+            placements[previous].span = LoopPiece(sourceStart: outgoing.sourceStart, outputStart: outgoing.outputStart,
+                count: start + overlap - outgoing.outputStart, fadeIn: outgoing.fadeIn, fadeOut: overlap)
+            placements[index].span.fadeIn = overlap
+        }
+        return placements
     }
 
     /// One stretch of the source track placed in the bed. Neighbours overlap by `fadeIn`/`fadeOut` frames.
@@ -189,12 +247,18 @@ public enum MusicMix {
     public static func pieceWeight(_ piece: LoopPiece, at index: Int) -> Double {
         var weight = 1.0
         if piece.fadeIn > 0, index < piece.fadeIn {
-            weight *= sin(Double.pi / 2 * (Double(index) + 0.5) / Double(piece.fadeIn))
+            weight *= crossfade(at: index, frames: piece.fadeIn)
         }
         let tail = piece.count - index
         if piece.fadeOut > 0, tail <= piece.fadeOut {
-            weight *= sin(Double.pi / 2 * (Double(tail) - 0.5) / Double(piece.fadeOut))
+            weight *= crossfade(at: tail - 1, frames: piece.fadeOut)
         }
         return weight
+    }
+
+    public static func crossfade(at index: Int, frames: Int) -> Double {
+        guard frames > 0, index < frames else { return 1 }
+        guard index >= 0 else { return 0 }
+        return sin(Double.pi / 2 * (Double(index) + 0.5) / Double(frames))
     }
 }
