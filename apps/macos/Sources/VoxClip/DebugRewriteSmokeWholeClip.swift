@@ -349,7 +349,7 @@ extension DebugRewriteSmoke.Harness {
                                      "Back to My Recording retains the paid assets")])
     }
 
-    private func reopenUsedWholeClip() async throws -> RewriteSession {
+    private func reopenUsedWholeClip(clipID: String? = nil) async throws -> RewriteSession {
         guard let previous = editor else { throw DebugRewriteSmoke.Failure.setup("no editor to reopen") }
         let project = try JSONProjectStore.decode(JSONProjectStore.encode(previous.project))
         let reopened = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
@@ -359,7 +359,7 @@ extension DebugRewriteSmoke.Harness {
         reopened.lipsyncSmoke = previous.lipsyncSmoke
         previous.close()
         editor = reopened
-        reopened.openWholeClipVoice()
+        reopened.openWholeClipVoice(clipID: clipID)
         guard let voice = reopened.openRewrite, let whole = voice.wholeClip else {
             throw DebugRewriteSmoke.Failure.setup("no Voice panel after reopening the project")
         }
@@ -908,12 +908,12 @@ extension DebugRewriteSmoke.Harness {
     }
 
     func redoLegacyWholeClip() async throws {
-        let lipsync = installWholeClipStandIn()
+        let lipsync = try installFalShortResult(exactPicture: true)
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
         try await runWholeClip(session, whole, title: primary)
-        try await useAndCheck(session, whole, model: .sync3)
-        guard let editor, var legacy = session.usedWholeClip else {
+        try await act("click [Use Whole Clip]", clicked: "wholeClipUse") { await session.useWholeClip().value }
+        guard let editor, var legacy = session.usedWholeClip, whole.phase == .used else {
             throw DebugRewriteSmoke.Failure.setup("no used take to reopen")
         }
         var project = editor.project
@@ -921,19 +921,26 @@ extension DebugRewriteSmoke.Harness {
         project.voiceLab.wholeClipRevoices = [legacy]
         for index in project.voiceLab.segments.indices where legacy.segmentIds.contains(project.voiceLab.segments[index].id) {
             let selected = project.voiceLab.segments[index].selectedCandidateIndex
-            project.voiceLab.segments[index].candidates[selected].recipe?.video.model = legacy.lipsyncModel
+            if project.voiceLab.segments[index].candidates[selected].recipe?.video.mode == .lipsync {
+                project.voiceLab.segments[index].candidates[selected].recipe?.video.model = legacy.lipsyncModel
+            }
         }
-        try VoiceLabProject.validate(project)
         editor.replace(project, name: "Legacy lipsync-2 fixture")
         let speech = speechRequests
-        let reopened = try await reopenUsedWholeClip()
+        let reopened = try await reopenUsedWholeClip(clipID: legacy.clipId)
         let voiceAssets = reopened.project.voiceLab.assets, videoAssets = reopened.project.voiceLab.videoAssets
+        let savedVideo = reopened.project.voiceLab.segments.filter { legacy.segmentIds.contains($0.id) }
+            .compactMap { $0.candidates[$0.selectedCandidateIndex].recipe?.video }
+            .filter { $0.mode == .lipsync }
+        makeItAppend([wholeClipCheck("WU0", !savedVideo.isEmpty && savedVideo.allSatisfy { $0.model == legacy.lipsyncModel },
+            "reopened with \(savedVideo.count) saved lipsync-2 picture recipes")])
         let source = try reopened.wholeClipPictureRedoSource(legacy)
         let estimate = try source.estimate(.sync3)
         guard let redo = reopened.wholeClipLipRedo(), let amount = estimate.usd else {
             throw DebugRewriteSmoke.Failure.setup("no priced Redo Lip Sync Only")
         }
-        let kept = reopened.usedWholeClip == legacy && lipsync.calls == [.sync3]
+        let firstRun = lipsync.models
+        let kept = reopened.usedWholeClip == legacy && !firstRun.isEmpty && firstRun.allSatisfy { $0 == .sync3 }
         let priced = redo.priced && redo.title == "Redo Lip Sync Only · " + VoiceLabCostPresentation.format(amount)
         try await act("click [\(redo.title)]", clicked: redo.id) {
             redo.perform()
@@ -943,9 +950,10 @@ extension DebugRewriteSmoke.Harness {
         try await act("Use sync-3 redo", clicked: "wholeClipUse") { await reopened.useWholeClip().value }
         let ready = reopened.usedWholeClip?.lipsyncModel == WholeClipRevoice.Lipsync.sync3.rawValue
         let earlierAssetsKept = videoAssets?.allSatisfy { reopened.project.voiceLab.videoAssets?.contains($0) == true } == true
+        let redoModels = Array(lipsync.models.dropFirst(firstRun.count))
         makeItAppend([wholeClipCheck("WU1", kept && priced && reviewKept && ready && earlierAssetsKept
-                && reopened.project.voiceLab.assets == voiceAssets && speechRequests == speech && lipsync.calls == [.sync3, .sync3],
-            "[\(redo.title)] · legacy kept until Use \(reviewKept) · \(speechRequests - speech) new speech requests · lip sync \(lipsync.calls.map(\.name))")])
+                && reopened.project.voiceLab.assets == voiceAssets && speechRequests == speech && redoModels == firstRun,
+            "[\(redo.title)] · legacy kept until Use \(reviewKept) · \(speechRequests - speech) new speech requests · lip sync \(lipsync.models.map(\.name))")])
         completed = ready; ended = true
     }
 
