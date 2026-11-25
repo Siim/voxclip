@@ -350,6 +350,8 @@ attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Line @ Syst
 attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Page @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("page")
 attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Word @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("word")
 attribute VoxClip.Core.Domain.Captions.GradientSpace @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Captions.GradientSpace], System.Text.Json")
+attribute VoxClip.Core.Domain.Clips.AiClip :: property NotInTake @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Clips.AiClip :: property Parts @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Clips.ClipCaptionPick :: property By @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Clips.ClipCaptionPick :: property ByUser @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Clips.ClipCaptionPick :: property Overrides @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -392,15 +394,24 @@ attribute VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKind :: field public 
 attribute VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKind :: field public WebPage @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("webPage")
 attribute VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKind @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKindConverter")
 attribute VoxClip.Core.Domain.ContextDemo.MotionCue :: property ClipID @ System.Text.Json.Serialization.JsonPropertyNameAttribute("clipID")
+attribute VoxClip.Core.Domain.Editing.CaptionWord :: property StartsPart @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipOrigin :: field public Ai @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("ai")
 attribute VoxClip.Core.Domain.Editing.ClipOrigin :: field public Manual @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("manual")
 attribute VoxClip.Core.Domain.Editing.ClipOrigin @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Editing.ClipOrigin], System.Text.Json")
+attribute VoxClip.Core.Domain.Editing.ClipPart :: property Reframe @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.ClipRange :: property Kind @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipRange :: property LeadInSeconds @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.ClipRange :: property Parts @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.ClipRange :: property PlayParts @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Editing.EditPlan :: property PartSeams @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Pause @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("pause")
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Range @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("range")
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Word @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("word")
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Editing.EditSegmentKind], System.Text.Json")
 attribute VoxClip.Core.Domain.Editing.EditingAlgorithms :: method private FillerPattern() @ System.Text.RegularExpressions.GeneratedRegexAttribute("\\A(?:[Uu][Mm]+|[Uu][Hh]+|[Ee][Rr][Mm]+|[Hh][Mm][Mm]+)[,.!?]?\\z",512)
+attribute VoxClip.Core.Domain.Editing.StoryClipKind :: field public Showreel @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("showreel")
+attribute VoxClip.Core.Domain.Editing.StoryClipKind :: field public Story @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("story")
+attribute VoxClip.Core.Domain.Editing.StoryClipKind @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Editing.StoryClipKind], System.Text.Json")
 attribute VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public .ctor() @ System.ObsoleteAttribute("Constructors of types with required members are not supported in this version of your compiler.",true)
 attribute VoxClip.Core.Domain.Music.MusicLicense :: field public By @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("by")
 attribute VoxClip.Core.Domain.Music.MusicLicense :: field public Cc0 @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("cc0")
@@ -3265,7 +3276,7 @@ member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal Buil
 member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal Cascade(string,string,VoxClip.Core.Domain.Captions.CaptionStyle,VoxClip.Core.Domain.Captions.CaptionData)
 member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal EmojiFor(string,string,VoxClip.Core.Domain.Captions.CaptionData)
 member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal Group(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.MeasuredCaptionWord>,VoxClip.Core.Domain.Captions.CaptionLayout,System.Func`2<System.Collections.Generic.IReadOnlyList`1<int>,bool>)
-member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal Group(int,VoxClip.Core.Domain.Captions.CaptionLayout,System.Func`2<int,string>,System.Func`2<int,double>,System.Func`2<int,double>,System.Func`2<System.Collections.Generic.IReadOnlyList`1<int>,bool>)
+member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal Group(int,VoxClip.Core.Domain.Captions.CaptionLayout,System.Func`2<int,string>,System.Func`2<int,double>,System.Func`2<int,double>,System.Func`2<System.Collections.Generic.IReadOnlyList`1<int>,bool>,System.Func`2<int,bool>)
 member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal PageEnd(double,double,double,VoxClip.Core.Domain.Captions.CaptionLayout,double)
 member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal Radius(bool,double,double,double,double)
 member VoxClip.Core.Domain.Captions.CaptionLayoutBuilder :: method internal RunUnits(VoxClip.Core.Domain.Captions.ShapedRun,int)
@@ -4269,13 +4280,15 @@ member VoxClip.Core.Domain.Captions.SolidPaint :: method public set_Color(string
 member VoxClip.Core.Domain.Clips.AiClip :: method private .ctor(VoxClip.Core.Domain.Clips.AiClip)
 member VoxClip.Core.Domain.Clips.AiClip :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Clips.AiClip :: method private get_EqualityContract()
-member VoxClip.Core.Domain.Clips.AiClip :: method public .ctor(string,string,int,string,string)
-member VoxClip.Core.Domain.Clips.AiClip :: method public Deconstruct(string&,string&,int&,string&,string&)
+member VoxClip.Core.Domain.Clips.AiClip :: method public .ctor(string,string,int,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipWordRange>,string)
+member VoxClip.Core.Domain.Clips.AiClip :: method public Deconstruct(string&,string&,int&,string&,string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipWordRange>&,string&)
 member VoxClip.Core.Domain.Clips.AiClip :: method public Equals(VoxClip.Core.Domain.Clips.AiClip)
 member VoxClip.Core.Domain.Clips.AiClip :: method public Equals(object)
 member VoxClip.Core.Domain.Clips.AiClip :: method public GetHashCode()
 member VoxClip.Core.Domain.Clips.AiClip :: method public ToString()
 member VoxClip.Core.Domain.Clips.AiClip :: method public get_EndWordId()
+member VoxClip.Core.Domain.Clips.AiClip :: method public get_NotInTake()
+member VoxClip.Core.Domain.Clips.AiClip :: method public get_Parts()
 member VoxClip.Core.Domain.Clips.AiClip :: method public get_Reason()
 member VoxClip.Core.Domain.Clips.AiClip :: method public get_Score()
 member VoxClip.Core.Domain.Clips.AiClip :: method public get_StartWordId()
@@ -4283,6 +4296,8 @@ member VoxClip.Core.Domain.Clips.AiClip :: method public get_Title()
 member VoxClip.Core.Domain.Clips.AiClip :: method public op_Equality(VoxClip.Core.Domain.Clips.AiClip,VoxClip.Core.Domain.Clips.AiClip)
 member VoxClip.Core.Domain.Clips.AiClip :: method public op_Inequality(VoxClip.Core.Domain.Clips.AiClip,VoxClip.Core.Domain.Clips.AiClip)
 member VoxClip.Core.Domain.Clips.AiClip :: method public set_EndWordId(string)
+member VoxClip.Core.Domain.Clips.AiClip :: method public set_NotInTake(string)
+member VoxClip.Core.Domain.Clips.AiClip :: method public set_Parts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipWordRange>)
 member VoxClip.Core.Domain.Clips.AiClip :: method public set_Reason(string)
 member VoxClip.Core.Domain.Clips.AiClip :: method public set_Score(int)
 member VoxClip.Core.Domain.Clips.AiClip :: method public set_StartWordId(string)
@@ -5405,8 +5420,8 @@ member VoxClip.Core.Domain.Editing.AudioEnvelopeBuilder :: method public Finish(
 member VoxClip.Core.Domain.Editing.CaptionWord :: method private .ctor(VoxClip.Core.Domain.Editing.CaptionWord)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method private get_EqualityContract()
-member VoxClip.Core.Domain.Editing.CaptionWord :: method public .ctor(string,string,double,double)
-member VoxClip.Core.Domain.Editing.CaptionWord :: method public Deconstruct(string&,string&,double&,double&)
+member VoxClip.Core.Domain.Editing.CaptionWord :: method public .ctor(string,string,double,double,System.Nullable`1<bool>)
+member VoxClip.Core.Domain.Editing.CaptionWord :: method public Deconstruct(string&,string&,double&,double&,System.Nullable`1<bool>&)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public Equals(VoxClip.Core.Domain.Editing.CaptionWord)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public Equals(object)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public GetHashCode()
@@ -5414,31 +5429,56 @@ member VoxClip.Core.Domain.Editing.CaptionWord :: method public ToString()
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public get_End()
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public get_Id()
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public get_Start()
+member VoxClip.Core.Domain.Editing.CaptionWord :: method public get_StartsPart()
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public get_Text()
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public op_Equality(VoxClip.Core.Domain.Editing.CaptionWord,VoxClip.Core.Domain.Editing.CaptionWord)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public op_Inequality(VoxClip.Core.Domain.Editing.CaptionWord,VoxClip.Core.Domain.Editing.CaptionWord)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public set_End(double)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public set_Id(string)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public set_Start(double)
+member VoxClip.Core.Domain.Editing.CaptionWord :: method public set_StartsPart(System.Nullable`1<bool>)
 member VoxClip.Core.Domain.Editing.CaptionWord :: method public set_Text(string)
 member VoxClip.Core.Domain.Editing.ClipOrigin :: field public Ai
 member VoxClip.Core.Domain.Editing.ClipOrigin :: field public Manual
 member VoxClip.Core.Domain.Editing.ClipOrigin :: field public value__
+member VoxClip.Core.Domain.Editing.ClipPart :: method private .ctor(VoxClip.Core.Domain.Editing.ClipPart)
+member VoxClip.Core.Domain.Editing.ClipPart :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.ClipPart :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.ClipPart :: method public .ctor(string,string,string,VoxClip.Core.Domain.Shared.ReframeSettings)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public Deconstruct(string&,string&,string&,VoxClip.Core.Domain.Shared.ReframeSettings&)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public Equals(VoxClip.Core.Domain.Editing.ClipPart)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.ClipPart :: method public ToString()
+member VoxClip.Core.Domain.Editing.ClipPart :: method public get_EndWordId()
+member VoxClip.Core.Domain.Editing.ClipPart :: method public get_Id()
+member VoxClip.Core.Domain.Editing.ClipPart :: method public get_Reframe()
+member VoxClip.Core.Domain.Editing.ClipPart :: method public get_StartWordId()
+member VoxClip.Core.Domain.Editing.ClipPart :: method public op_Equality(VoxClip.Core.Domain.Editing.ClipPart,VoxClip.Core.Domain.Editing.ClipPart)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public op_Inequality(VoxClip.Core.Domain.Editing.ClipPart,VoxClip.Core.Domain.Editing.ClipPart)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public set_EndWordId(string)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public set_Reframe(VoxClip.Core.Domain.Shared.ReframeSettings)
+member VoxClip.Core.Domain.Editing.ClipPart :: method public set_StartWordId(string)
 member VoxClip.Core.Domain.Editing.ClipRange :: method private .ctor(VoxClip.Core.Domain.Editing.ClipRange)
 member VoxClip.Core.Domain.Editing.ClipRange :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Editing.ClipRange :: method private get_EqualityContract()
-member VoxClip.Core.Domain.Editing.ClipRange :: method public .ctor(string,string,string,string,VoxClip.Core.Domain.Editing.ClipOrigin,string,System.Nullable`1<int>,bool,System.Nullable`1<double>)
-member VoxClip.Core.Domain.Editing.ClipRange :: method public Deconstruct(string&,string&,string&,string&,VoxClip.Core.Domain.Editing.ClipOrigin&,string&,System.Nullable`1<int>&,bool&,System.Nullable`1<double>&)
+member VoxClip.Core.Domain.Editing.ClipRange :: method public .ctor(string,string,string,string,VoxClip.Core.Domain.Editing.ClipOrigin,string,System.Nullable`1<int>,bool,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipPart>,System.Nullable`1<VoxClip.Core.Domain.Editing.StoryClipKind>)
+member VoxClip.Core.Domain.Editing.ClipRange :: method public Deconstruct(string&,string&,string&,string&,VoxClip.Core.Domain.Editing.ClipOrigin&,string&,System.Nullable`1<int>&,bool&,System.Nullable`1<double>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipPart>&,System.Nullable`1<VoxClip.Core.Domain.Editing.StoryClipKind>&)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public Equals(VoxClip.Core.Domain.Editing.ClipRange)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public Equals(object)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.ClipRange :: method public PlayPartIndices(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public ToString()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_AiClipIndex()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_AiResultId()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_EndWordId()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Id()
+member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Kind()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_LeadInSeconds()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Origin()
+member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Parts()
+member VoxClip.Core.Domain.Editing.ClipRange :: method public get_PlayParts()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Selected()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_StartWordId()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Title()
@@ -5448,11 +5488,28 @@ member VoxClip.Core.Domain.Editing.ClipRange :: method public set_AiClipIndex(Sy
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_AiResultId(string)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_EndWordId(string)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Kind(System.Nullable`1<VoxClip.Core.Domain.Editing.StoryClipKind>)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_LeadInSeconds(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Origin(VoxClip.Core.Domain.Editing.ClipOrigin)
+member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Parts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipPart>)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Selected(bool)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_StartWordId(string)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Title(string)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method private .ctor(VoxClip.Core.Domain.Editing.ClipWordRange)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public .ctor(string,string)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public Deconstruct(string&,string&)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public Equals(VoxClip.Core.Domain.Editing.ClipWordRange)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public ToString()
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public get_EndWordId()
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public get_StartWordId()
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public op_Equality(VoxClip.Core.Domain.Editing.ClipWordRange,VoxClip.Core.Domain.Editing.ClipWordRange)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public op_Inequality(VoxClip.Core.Domain.Editing.ClipWordRange,VoxClip.Core.Domain.Editing.ClipWordRange)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public set_EndWordId(string)
+member VoxClip.Core.Domain.Editing.ClipWordRange :: method public set_StartWordId(string)
 member VoxClip.Core.Domain.Editing.EditHistory :: method private .ctor(VoxClip.Core.Domain.Editing.EditHistory)
 member VoxClip.Core.Domain.Editing.EditHistory :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Editing.EditHistory :: method private Record(VoxClip.Core.Domain.Editing.EditState)
@@ -5556,6 +5613,22 @@ member VoxClip.Core.Domain.Editing.EditOperation+CutSelection :: method public g
 member VoxClip.Core.Domain.Editing.EditOperation+CutSelection :: method public op_Equality(VoxClip.Core.Domain.Editing.EditOperation+CutSelection,VoxClip.Core.Domain.Editing.EditOperation+CutSelection)
 member VoxClip.Core.Domain.Editing.EditOperation+CutSelection :: method public op_Inequality(VoxClip.Core.Domain.Editing.EditOperation+CutSelection,VoxClip.Core.Domain.Editing.EditOperation+CutSelection)
 member VoxClip.Core.Domain.Editing.EditOperation+CutSelection :: method public set_Ids(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method private .ctor(VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public .ctor(string,string)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public Deconstruct(string&,string&)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public Equals(VoxClip.Core.Domain.Editing.EditOperation)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public Equals(VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public ToString()
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public get_ClipId()
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public get_PartId()
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public op_Equality(VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart,VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public op_Inequality(VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart,VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart :: method public set_PartId(string)
 member VoxClip.Core.Domain.Editing.EditOperation+RemoveClip :: method private .ctor(VoxClip.Core.Domain.Editing.EditOperation+RemoveClip)
 member VoxClip.Core.Domain.Editing.EditOperation+RemoveClip :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Editing.EditOperation+RemoveClip :: method protected get_EqualityContract()
@@ -5639,6 +5712,22 @@ member VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip :: method public 
 member VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip :: method public op_Equality(VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip,VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip)
 member VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip :: method public op_Inequality(VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip,VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip)
 member VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method private .ctor(VoxClip.Core.Domain.Editing.EditOperation+SetClipParts)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public .ctor(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipPart>)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public Deconstruct(string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipPart>&)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public Equals(VoxClip.Core.Domain.Editing.EditOperation)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public Equals(VoxClip.Core.Domain.Editing.EditOperation+SetClipParts)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public ToString()
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public get_Id()
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public get_Parts()
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public op_Equality(VoxClip.Core.Domain.Editing.EditOperation+SetClipParts,VoxClip.Core.Domain.Editing.EditOperation+SetClipParts)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public op_Inequality(VoxClip.Core.Domain.Editing.EditOperation+SetClipParts,VoxClip.Core.Domain.Editing.EditOperation+SetClipParts)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.EditOperation+SetClipParts :: method public set_Parts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipPart>)
 member VoxClip.Core.Domain.Editing.EditOperation+SetClipSelected :: method private .ctor(VoxClip.Core.Domain.Editing.EditOperation+SetClipSelected)
 member VoxClip.Core.Domain.Editing.EditOperation+SetClipSelected :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Editing.EditOperation+SetClipSelected :: method protected get_EqualityContract()
@@ -5763,6 +5852,7 @@ member VoxClip.Core.Domain.Editing.EditPlan :: field private joins
 member VoxClip.Core.Domain.Editing.EditPlan :: field private kept
 member VoxClip.Core.Domain.Editing.EditPlan :: field private outputSamples
 member VoxClip.Core.Domain.Editing.EditPlan :: field private sampleRate
+member VoxClip.Core.Domain.Editing.EditPlan :: field private sourceIndex
 member VoxClip.Core.Domain.Editing.EditPlan :: field private totalSamples
 member VoxClip.Core.Domain.Editing.EditPlan :: method private .ctor(VoxClip.Core.Domain.Editing.EditPlan)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private BuildGainParts(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
@@ -5786,6 +5876,7 @@ member VoxClip.Core.Domain.Editing.EditPlan :: method public get_Duration()
 member VoxClip.Core.Domain.Editing.EditPlan :: method public get_Joins()
 member VoxClip.Core.Domain.Editing.EditPlan :: method public get_Kept()
 member VoxClip.Core.Domain.Editing.EditPlan :: method public get_OutputSamples()
+member VoxClip.Core.Domain.Editing.EditPlan :: method public get_PartSeams()
 member VoxClip.Core.Domain.Editing.EditPlan :: method public get_SampleRate()
 member VoxClip.Core.Domain.Editing.EditPlan :: method public get_TotalSamples()
 member VoxClip.Core.Domain.Editing.EditPlan :: method public op_Equality(VoxClip.Core.Domain.Editing.EditPlan,VoxClip.Core.Domain.Editing.EditPlan)
@@ -5794,6 +5885,7 @@ member VoxClip.Core.Domain.Editing.EditPlan :: method public set_Cuts(System.Col
 member VoxClip.Core.Domain.Editing.EditPlan :: method public set_Joins(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Join>)
 member VoxClip.Core.Domain.Editing.EditPlan :: method public set_Kept(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
 member VoxClip.Core.Domain.Editing.EditPlan :: method public set_OutputSamples(long)
+member VoxClip.Core.Domain.Editing.EditPlan :: method public set_PartSeams(System.Collections.Generic.IReadOnlyList`1<long>)
 member VoxClip.Core.Domain.Editing.EditPlan :: method public set_SampleRate(double)
 member VoxClip.Core.Domain.Editing.EditPlan :: method public set_TotalSamples(long)
 member VoxClip.Core.Domain.Editing.EditPlan+GainPart :: method private PrintMembers(System.Text.StringBuilder)
@@ -5941,15 +6033,19 @@ member VoxClip.Core.Domain.Editing.EditingAlgorithms+Analysis :: method public s
 member VoxClip.Core.Domain.Editing.EditingAlgorithms+Analysis :: method public set_SpeechLevel(double)
 member VoxClip.Core.Domain.Editing.EditingAlgorithms+Analysis :: method public set_Threshold(double)
 member VoxClip.Core.Domain.Editing.EditingAlgorithms+Analysis :: method public set_Total(double)
+member VoxClip.Core.Domain.Editing.EditingEngine :: method public ApplyEditing(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.EditOperation)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public ApplyToProject(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public BuildEditPlan(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,double,double,double)
+member VoxClip.Core.Domain.Editing.EditingEngine :: method public BuildPlan(VoxClip.Core.Domain.Editing.EditState,double,double)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public BuildSegments(VoxClip.Core.Domain.Editing.EditState,double)
+member VoxClip.Core.Domain.Editing.EditingEngine :: method public BuildStoryPlan(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.ClipRange,double,double)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public CaptionCopy(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,VoxClip.Core.Domain.Editing.EditPlan)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public CaptionWords(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditPlan)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public CutRange(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,int,double,double)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public FromProject(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public Reduce(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditOperation)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public Reduce(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditOperation,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.AiResult>)
+member VoxClip.Core.Domain.Editing.EditingEngine :: method public Reduce(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditOperation,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public Summarize(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.Core.Domain.Editing.EditingEngine :: method public TranscriptText(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.Core.Domain.Editing.EditingFormat :: method public ToFixed1(double)
@@ -5984,8 +6080,15 @@ member VoxClip.Core.Domain.Editing.EditingMath :: method internal ClampSample(do
 member VoxClip.Core.Domain.Editing.EditingMath :: method internal Round(double)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal Build(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,double,double,double)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal BuildJoins(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal BuildStoryPlan(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.ClipRange,double,double)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal CutRange(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,int,double,double)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal FindSource`1(System.Collections.Generic.IReadOnlyList`1<!!0>,long,System.Func`2<!!0,long>)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal ShiftCaptions(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.CaptionWord>,long,double,bool)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal SinglePartClips(VoxClip.Core.Domain.Editing.ClipRange)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal SourceIndex(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal StoryCaptions(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,VoxClip.Core.Domain.Editing.EditPlan)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal Valid(VoxClip.Core.Domain.Editing.EditSegment)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method private Complement(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.MediaInterval>,long)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method private CutRange(VoxClip.Core.Domain.Editing.EditSegment,int,VoxClip.Core.Domain.Editing.EditingPlanner+SpeechLookup,double,double)
 member VoxClip.Core.Domain.Editing.EditingPlanner+SpeechLookup :: field internal EarlierEnds
 member VoxClip.Core.Domain.Editing.EditingPlanner+SpeechLookup :: field internal Positions
@@ -6011,11 +6114,11 @@ member VoxClip.Core.Domain.Editing.EditingProject :: method internal ApplyToProj
 member VoxClip.Core.Domain.Editing.EditingProject :: method internal Clean(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.List`1<string>)
 member VoxClip.Core.Domain.Editing.EditingProject :: method internal FromProject(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Editing.EditingSession :: method internal BuildSegments(VoxClip.Core.Domain.Editing.EditState)
-member VoxClip.Core.Domain.Editing.EditingSession :: method internal Reduce(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditOperation,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.AiResult>)
+member VoxClip.Core.Domain.Editing.EditingSession :: method internal Reduce(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditOperation,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.AiResult>,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Editing.EditingSession :: method internal Summarize(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.Core.Domain.Editing.EditingSession :: method private Filler(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Shared.TimedWord)
-member VoxClip.Core.Domain.Editing.EditingSession :: method private InScope(int,System.Nullable`1<System.ValueTuple`2<int,int>>)
-member VoxClip.Core.Domain.Editing.EditingSession :: method private PauseInScope(VoxClip.Core.Domain.Editing.Pause,System.Nullable`1<System.ValueTuple`2<int,int>>)
+member VoxClip.Core.Domain.Editing.EditingSession :: method private InScope(int,System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<int,int>>)
+member VoxClip.Core.Domain.Editing.EditingSession :: method private PauseInScope(VoxClip.Core.Domain.Editing.Pause,System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<int,int>>)
 member VoxClip.Core.Domain.Editing.EditingSession :: method private PreserveNoOp(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.Core.Domain.Editing.EditingSession :: method private Scope(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.Core.Domain.Editing.EditingSession :: method private Set(System.Collections.Generic.HashSet`1<string>,string,bool)
@@ -6081,6 +6184,37 @@ member VoxClip.Core.Domain.Editing.Relinking :: method public Decide(long,string
 member VoxClip.Core.Domain.Editing.SMPTETimecode :: method public Format(double,int)
 member VoxClip.Core.Domain.Editing.SMPTETimecode :: method public Frame(double,int)
 member VoxClip.Core.Domain.Editing.SMPTETimecode :: method public String(double,int)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public .ctor(VoxClip.Core.Domain.Editing.MediaInterval,long,long)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public Deconstruct(VoxClip.Core.Domain.Editing.MediaInterval&,long&,long&)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public Equals(VoxClip.Core.Domain.Editing.SourceMapEntry)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public ToString()
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public get_OutputEnd()
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public get_OutputStart()
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public get_Source()
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public op_Equality(VoxClip.Core.Domain.Editing.SourceMapEntry,VoxClip.Core.Domain.Editing.SourceMapEntry)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public op_Inequality(VoxClip.Core.Domain.Editing.SourceMapEntry,VoxClip.Core.Domain.Editing.SourceMapEntry)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public set_OutputEnd(long)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public set_OutputStart(long)
+member VoxClip.Core.Domain.Editing.SourceMapEntry :: method public set_Source(VoxClip.Core.Domain.Editing.MediaInterval)
+member VoxClip.Core.Domain.Editing.StoryClipKind :: field public Showreel
+member VoxClip.Core.Domain.Editing.StoryClipKind :: field public Story
+member VoxClip.Core.Domain.Editing.StoryClipKind :: field public value__
+member VoxClip.Core.Domain.Editing.StoryClips :: field private PartId
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal ForWriting(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal Indices(System.Collections.Generic.IEnumerable`1<System.ValueTuple`2<string,string>>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal LipsyncWindows(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal Overlaps(VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal Times(VoxClip.Core.Domain.Editing.ClipRange,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal Valid(VoxClip.Core.Domain.Editing.ClipRange,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal Validate(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.StoryClips :: method internal ValidatePlacement(VoxClip.Core.Domain.Editing.ClipRange,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.Editing.StoryClips :: method private .cctor()
+member VoxClip.Core.Domain.Editing.StoryClips :: method private Clock(double)
+member VoxClip.Core.Domain.Editing.StoryClips :: method private Contains(VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.StoryClips :: method private Require(bool,string)
 member VoxClip.Core.Domain.Editing.TimelineAxis :: field public Edited
 member VoxClip.Core.Domain.Editing.TimelineAxis :: field public Source
 member VoxClip.Core.Domain.Editing.TimelineAxis :: field public value__
@@ -6138,11 +6272,15 @@ member VoxClip.Core.Domain.Editing.TimelinePiece :: method public set_Source(Vox
 member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public Ai
 member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public Kept
 member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public value__
+member VoxClip.Core.Domain.Editing.TimelinePieces :: field private partSeams
+member VoxClip.Core.Domain.Editing.TimelinePieces :: field private sourcePieces
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public .ctor(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.TimelinePiece>)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public .ctor(VoxClip.Core.Domain.VoiceLab.RenderTimeline)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public Gaps(VoxClip.Core.Domain.Shared.TimeRange,double)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public Indices(VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Editing.TimelineAxis)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public IsPartSeam(int)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public IsSeam(int)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public OnAxis(VoxClip.Core.Domain.Editing.TimelineAxis)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_EditedDuration()
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_Pieces()
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_Seams()
@@ -9030,6 +9168,7 @@ member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_CenterX(S
 member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_CenterY(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_Mode(string)
 member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_Zoom(double)
+member VoxClip.Core.Domain.Shared.RenderCallerInputs :: method public Timeline(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Shared.SavedBy :: method private .ctor(VoxClip.Core.Domain.Shared.SavedBy)
 member VoxClip.Core.Domain.Shared.SavedBy :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Shared.SavedBy :: method private get_EqualityContract()
@@ -12396,6 +12535,8 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece :: method public set_Sou
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPieceKind :: field public Source
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPieceKind :: field public Synth
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPieceKind :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: field private pieces
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: field private sourceIndex
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private get_EqualityContract()
@@ -12412,6 +12553,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public ToString
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_Captions()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_Duration()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_OutputSamples()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_PartSeams()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_Pieces()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_RequiresSyntheticRendering()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_SampleRate()
@@ -12421,12 +12563,14 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public get_Vide
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_Captions(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.CaptionWord>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_PartSeams(System.Collections.Generic.IReadOnlyList`1<long>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_Pieces(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_SampleRate(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_Scope(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_TotalSourceSamples(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_VideoCuts(System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut>>)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method internal Build(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method internal Build(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,string,VoxClip.Core.Domain.Editing.ClipRange)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method private Concatenate(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan>,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,double,long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method public Build(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner+Replacement :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner+Replacement)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner+Replacement :: method private PrintMembers(System.Text.StringBuilder)
@@ -19319,7 +19463,9 @@ type VoxClip.Core.Domain.ContextDemo.MotionKeyframe
 type VoxClip.Core.Domain.Editing.AudioEnvelopeBuilder
 type VoxClip.Core.Domain.Editing.CaptionWord
 type VoxClip.Core.Domain.Editing.ClipOrigin
+type VoxClip.Core.Domain.Editing.ClipPart
 type VoxClip.Core.Domain.Editing.ClipRange
+type VoxClip.Core.Domain.Editing.ClipWordRange
 type VoxClip.Core.Domain.Editing.EditHistory
 type VoxClip.Core.Domain.Editing.EditOperation
 type VoxClip.Core.Domain.Editing.EditOperation+AddAiClips
@@ -19327,12 +19473,14 @@ type VoxClip.Core.Domain.Editing.EditOperation+AddClip
 type VoxClip.Core.Domain.Editing.EditOperation+Correct
 type VoxClip.Core.Domain.Editing.EditOperation+CutFillers
 type VoxClip.Core.Domain.Editing.EditOperation+CutSelection
+type VoxClip.Core.Domain.Editing.EditOperation+MakeClipOfPart
 type VoxClip.Core.Domain.Editing.EditOperation+RemoveClip
 type VoxClip.Core.Domain.Editing.EditOperation+RenameClip
 type VoxClip.Core.Domain.Editing.EditOperation+ReplaceTranscript
 type VoxClip.Core.Domain.Editing.EditOperation+RestoreCuts
 type VoxClip.Core.Domain.Editing.EditOperation+RestoreSelection
 type VoxClip.Core.Domain.Editing.EditOperation+SetActiveClip
+type VoxClip.Core.Domain.Editing.EditOperation+SetClipParts
 type VoxClip.Core.Domain.Editing.EditOperation+SetClipSelected
 type VoxClip.Core.Domain.Editing.EditOperation+SetPauseCuts
 type VoxClip.Core.Domain.Editing.EditOperation+SetPauseKeep
@@ -19366,6 +19514,9 @@ type VoxClip.Core.Domain.Editing.Pause
 type VoxClip.Core.Domain.Editing.RelinkDecision
 type VoxClip.Core.Domain.Editing.Relinking
 type VoxClip.Core.Domain.Editing.SMPTETimecode
+type VoxClip.Core.Domain.Editing.SourceMapEntry
+type VoxClip.Core.Domain.Editing.StoryClipKind
+type VoxClip.Core.Domain.Editing.StoryClips
 type VoxClip.Core.Domain.Editing.TimelineAxis
 type VoxClip.Core.Domain.Editing.TimelineCaptions
 type VoxClip.Core.Domain.Editing.TimelineCaptions+Page
@@ -19550,6 +19701,7 @@ type VoxClip.Core.Domain.Shared.ProjectShare
 type VoxClip.Core.Domain.Shared.RectD
 type VoxClip.Core.Domain.Shared.Redactor
 type VoxClip.Core.Domain.Shared.ReframeSettings
+type VoxClip.Core.Domain.Shared.RenderCallerInputs
 type VoxClip.Core.Domain.Shared.SavedBy
 type VoxClip.Core.Domain.Shared.SincResampler
 type VoxClip.Core.Domain.Shared.TimeRange
