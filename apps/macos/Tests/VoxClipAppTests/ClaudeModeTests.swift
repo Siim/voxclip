@@ -165,7 +165,7 @@ private final class ClaudeCalls: Sendable {
             #expect(request.creativeShapes)
             return ClipAutopilotSeries(plans: [story])
         }
-        editor.makeTopPostable(1, budget: MakeItBudget(cap: 2), onlyClipIDs: ["clip-main"])
+        editor.makeTopPostable(1, budget: MakeItBudget(cap: 2), only: ["clip-main"])
         await editor.makeIt.waitForQueue()
         let run = try #require(editor.makeIt.run(for: "clip-main"))
         let card = try #require(editor.creativeProposalData(run))
