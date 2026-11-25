@@ -2,14 +2,18 @@ import SwiftUI
 import VoxClipCore
 
 extension EditorModel {
-    @discardableResult func keepHarnessProposal(_ proposal: HarnessProposal, at url: URL) throws -> [ClipPlanAsset] {
+    @discardableResult func keepHarnessProposal(_ proposal: HarnessProposal, at url: URL, timeline index: Int = 0) throws -> [ClipPlanAsset] {
+        try keepHarnessTimeline(proposal, at: url, index: index).compactMap { if case .asset(let asset) = $0.action { asset } else { nil } }
+    }
+
+    func keepHarnessTimeline(_ proposal: HarnessProposal, at url: URL, index: Int) throws -> [ClipAutopilotOperation] {
         guard document.fileURL == url, !document.demo, capabilities.edit, !capabilities.aiBusy, !musicPanel.isBusy, let shared = app.shared else {
             throw HarnessError.invalid("Finish the current edit and try again. Your project is unchanged.")
         }
-        let (next, assets) = try proposal.evaluate(project, shared: shared)
-        try HarnessInbox.dismiss(proposal, for: url)
-        if next != project { replace(next, name: "Keep timeline proposal") }
-        return assets
+        let result = try proposal.review(project, shared: shared, at: index)
+        try HarnessInbox.resolve(proposal, remaining: proposal.remaining(after: index, project: result.project), for: url)
+        if result.project != project { replace(result.project, name: "Keep timeline proposal") }
+        return result.pending
     }
 }
 
@@ -20,12 +24,14 @@ extension EditorModel {
     @State private var pending: HarnessProposal?
     @State private var issue: String?
     @State private var actionError: String?
-    @State private var estimate: String?
+    @State private var reviews: [Int: Review] = [:]
     @State private var checkedURL: URL?
     @State private var checkedEdit: Date?
     @State private var paid: PaidMusic?
     @State private var submitted = false
     @State private var assets: [ClipPlanAsset] = []
+    @State private var rewrites: [ClipAutopilotOperation] = []
+    @State private var rewriteClipID: String?
     @State private var assetProject: Project?
     @State private var workingAsset: String?
     @State private var illustrationKeyAvailable: Bool?
@@ -37,6 +43,12 @@ extension EditorModel {
         let estimate: String?
     }
 
+    private struct Review {
+        let operations: [ClipAutopilotOperation]
+        let estimate: String?
+        let issue: String?
+    }
+
     init(model: EditorModel, shell: WorkspaceShell) {
         self.model = model
         self.shell = shell
@@ -45,10 +57,13 @@ extension EditorModel {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let pending { review(pending) }
+            if let pending {
+                ForEach(pending.timelines.indices, id: \.self) { index in review(pending, at: index) }
+            }
             else if let issue { InlineNotice(text: issue) }
             if let paid { music(paid) }
             ForEach(assets, id: \.id) { asset in assetAction(asset) }
+            ForEach(rewrites) { operation in rewriteAction(operation) }
             if let actionError { InlineNotice(text: actionError) }
         }
         .task {
@@ -63,36 +78,33 @@ extension EditorModel {
     private var unavailable: String? {
         if !model.capabilities.edit { return "Open a writable project with its source video to keep this timeline." }
         if model.capabilities.aiBusy || model.musicPanel.isBusy { return "Finish the current action before keeping this timeline." }
-        if paid != nil || !assets.isEmpty { return "Finish or dismiss the previous asset actions first." }
+        if paid != nil || !assets.isEmpty || !rewrites.isEmpty { return "Finish or dismiss the previous asset actions first." }
         return nil
     }
 
-    private func review(_ proposal: HarnessProposal) -> some View {
-        let timeline = proposal.timeline
-        let blocked = issue ?? unavailable
+    private func review(_ proposal: HarnessProposal, at index: Int) -> some View {
+        let timeline = proposal.timelines[index]
+        let detail = reviews[index]
+        let blocked = issue ?? detail?.issue ?? unavailable
+        let name = timeline.proposal.target.new?.title ?? model.scopeName(timeline.clipId)
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Timeline proposal · \(model.scopeName(timeline.clipId))").font(.headline)
+            Text("Timeline proposal · \(name)").font(.headline)
             Text(verbatim: timeline.reason).lineLimit(3)
             DisclosureGroup("Proposed changes") {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
-                        if let title = timeline.title { Text("Title: \(title)") }
-                        if let style = timeline.captionStyle { Text("Captions: \(style)") }
-                        if let trackId = timeline.musicTrackId {
-                            Text("Reuse music: \(model.project.music.first { $0.id == trackId }?.title ?? trackId)")
+                        if let parts = timeline.proposal.parts {
+                            Text(parts.map { "\($0.startWord)–\($0.endWord)" }.joined(separator: " → "))
                         }
-                        ForEach(Array((timeline.cuts ?? []).enumerated()), id: \.offset) { _, cut in
-                            Text("\(cutLabel(cut)): \(cut.reason)")
-                        }
-                        ForEach(Array((timeline.effects ?? []).enumerated()), id: \.offset) { _, effect in
-                            Text("\(effectLabel(effect)): \(effect.reason)")
+                        ForEach(detail?.operations ?? []) { operation in
+                            Text(operationLabel(operation))
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.frame(maxHeight: 120)
             }
             if let prompt = timeline.generateMusic {
                 Text("Music: \(prompt)").lineLimit(2)
-                Text(estimate.map { "About \($0) to generate music. Keeping the timeline doesn't send anything." }
+                Text(detail?.estimate.map { "About \($0) to generate music. Keeping the timeline doesn't send anything." }
                      ?? "Keeping the timeline doesn't generate music.").foregroundStyle(.secondary)
             }
             if timeline.effects?.contains(where: { $0.kind == .illustration || $0.kind == .soundEffect }) == true {
@@ -100,9 +112,9 @@ extension EditorModel {
             }
             if let blocked { Text(blocked).foregroundStyle(.secondary) }
             HStack {
-                Button("Keep") { keep(proposal) }.disabled(blocked != nil)
+                Button("Keep") { keep(proposal, at: index) }.disabled(blocked != nil)
                     .accessibilityIdentifier("voxclip.harness.keep")
-                Button("Undo") { dismiss(proposal) }
+                Button("Undo") { dismiss(proposal, at: index) }
                     .accessibilityIdentifier("voxclip.harness.undo")
             }
         }
@@ -111,39 +123,33 @@ extension EditorModel {
         .accessibilityIdentifier("voxclip.harness.review")
     }
 
-    private func cutLabel(_ cut: ClipAutopilotPlan.Cut) -> String {
-        let words = model.words
-        guard words.indices.contains(cut.startWord), words.indices.contains(cut.endWord), cut.startWord <= cut.endWord else {
-            return "Cut words \(cut.startWord)–\(cut.endWord)"
+    private func operationLabel(_ operation: ClipAutopilotOperation) -> String {
+        let label: String = switch operation.action {
+        case .edit(.renameClip(_, let title)): "Title: \(title ?? "")"
+        case .captions(let settings, _): "Captions: \(settings.styleId)"
+        case .savedMusic(_, let id): "Reuse music: \(model.project.music.first { $0.id == id }?.title ?? id)"
+        default: EditorModel.rowTitle(operation)
         }
-        let selection = words[cut.startWord...cut.endWord].filter { $0.kind == .word }
-        let excerpt = selection.prefix(12).map { model.text($0) }.joined(separator: " ")
-        return "Cut “\(excerpt)\(selection.count > 12 ? "…" : "")”"
+        return operation.reason.isEmpty ? label : "\(label) · \(operation.reason)"
     }
 
-    private func effectLabel(_ effect: ClipPlanEffect) -> String {
-        if let template = effect.template {
-            switch template {
-            case .titleCard(let text), .kineticCaption(let text), .logoSting(let text): return "\(template.label) “\(text)”"
-            case .counter(let from, let to): return "\(template.label) \(from) to \(to)"
+    private func rewriteAction(_ operation: ClipAutopilotOperation) -> some View {
+        let stale = model.project != assetProject
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Proposed rewrite").font(.headline)
+            Text(model.rowDetail(operation)).lineLimit(3)
+            if stale { Text("The edit changed. Ask for a new timeline proposal.").foregroundStyle(.secondary) }
+            HStack {
+                Button("Review rewrite and price") {
+                    guard !stale, let clipID = rewriteClipID,
+                          case .rewrite(.selection(let range), let text) = operation.action else { return }
+                    if MakeItRewriteDriver.openSession(editor: model, clipID: clipID, range: range, text: text) != nil {
+                        rewrites.removeAll { $0.id == operation.id }
+                    } else { actionError = "This rewrite doesn't fit the kept words." }
+                }.disabled(stale || model.openRewrite != nil || !model.capabilities.edit)
+                Button("Dismiss") { rewrites.removeAll { $0.id == operation.id } }
             }
-        }
-        let name: String = switch effect.kind {
-        case .zoom: "Zoom"
-        case .punchIn: "Punch in"
-        case .motionTitle: "Animated title"
-        case .motionTemplate: effect.template?.label ?? "Motion template"
-        case .lowerThird: "Lower third"
-        case .emojiPop: "Emoji pop"
-        case .soundEffect: "Sound effect"
-        case .illustration: "Illustration"
-        case .colourLook: "Colour look"
-        case .speedForPart: "Speed change"
-        case .bRoll: "B-roll"
-        case .screenshot: "Screenshot"
-        case .videoStack: "Video stack"
-        }
-        return effect.text.map { "\(name) “\($0)”" } ?? name
+        }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(DesignValues.color("bg.muted"))
     }
 
     private func assetAction(_ asset: ClipPlanAsset) -> some View {
@@ -260,10 +266,18 @@ extension EditorModel {
             checkedEdit = model.project.modifiedAt
             pending = next
             issue = nil
-            estimate = nil
+            reviews = [:]
             if let next, let shared = model.app.shared {
-                let candidate = try next.applying(to: model.project, shared: shared)
-                estimate = try next.estimatedMusicPrice(in: candidate, shared: shared)
+                try next.validateRevision(of: model.project)
+                for index in next.timelines.indices {
+                    do {
+                        let candidate = try next.review(model.project, shared: shared, at: index)
+                        let estimate = try? next.estimatedMusicPrice(in: candidate.project, shared: shared, at: index)
+                        reviews[index] = Review(operations: candidate.operations, estimate: estimate, issue: nil)
+                    } catch {
+                        reviews[index] = Review(operations: [], estimate: nil, issue: error.localizedDescription)
+                    }
+                }
             } else if next != nil { issue = "VoxClip can't read its timeline resources." }
         } catch let error as HarnessError {
             issue = error.localizedDescription
@@ -272,19 +286,23 @@ extension EditorModel {
         }
     }
 
-    private func keep(_ proposal: HarnessProposal) {
+    private func keep(_ proposal: HarnessProposal, at index: Int) {
         guard let url = document.fileURL, url == checkedURL, unavailable == nil else { return }
         do {
-            assets = try model.keepHarnessProposal(proposal, at: url)
+            let clipID = try proposal.clipID(at: index)
+            let operations = try model.keepHarnessTimeline(proposal, at: url, index: index)
+            assets = operations.compactMap { if case .asset(let asset) = $0.action { asset } else { nil } }
+            rewrites = operations.filter { $0.decision == .rewrite }
+            rewriteClipID = clipID
             assetProject = model.project
             if assets.contains(where: { $0.kind == .illustration }) {
                 illustrationKeyAvailable = nil
                 Task { illustrationKeyAvailable = (try? await model.app.secrets.key(for: "fal"))?.isEmpty == false }
             }
-            if let prompt = proposal.timeline.generateMusic {
+            if let prompt = proposal.timelines[index].generateMusic {
                 submitted = false
-                paid = PaidMusic(clipId: proposal.timeline.clipId, sourceKey: model.project.media.source.contentKey,
-                                 prompt: prompt, estimate: estimate)
+                paid = PaidMusic(clipId: clipID, sourceKey: model.project.media.source.contentKey,
+                                 prompt: prompt, estimate: reviews[index]?.estimate)
             }
             actionError = nil
             refresh()
@@ -292,10 +310,10 @@ extension EditorModel {
         catch { actionError = "VoxClip couldn't keep this timeline. Your project is unchanged."; refresh() }
     }
 
-    private func dismiss(_ proposal: HarnessProposal) {
+    private func dismiss(_ proposal: HarnessProposal, at index: Int) {
         guard let url = document.fileURL, url == checkedURL else { return }
         do {
-            try HarnessInbox.dismiss(proposal, for: url)
+            try HarnessInbox.resolve(proposal, remaining: proposal.discarding(at: index), for: url)
             actionError = nil
         } catch { actionError = "VoxClip couldn't discard this timeline. Your project is unchanged." }
         refresh()

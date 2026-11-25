@@ -9,34 +9,98 @@ public enum HarnessError: LocalizedError {
 }
 
 public struct HarnessTimeline: Codable, Sendable, Equatable {
-    package static let keys: Set<String> = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"]
-    public let clipId: String
-    public let reason: String
-    public let cuts: [ClipAutopilotPlan.Cut]?
-    public let captionStyle: String?
-    public let title: String?
-    public let musicTrackId: String?
-    public let generateMusic: String?
-    public let effects: [ClipPlanEffect]?
+    package static let legacyKeys: Set<String> = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"]
+    package static let keys = legacyKeys.union(["newClip", "parts", "pauseCuts", "corrections", "font", "case", "wordsPerCaption",
+                                                "look", "speed", "hook", "postText", "coverTitle", "music", "rewrites"])
+    private let wire: JSONValue
+    public let proposal: ClipProposal
+    public var clipId: String { proposal.target.clipId ?? "" }
+    public var reason: String { proposal.reason }
+    public var cuts: [ClipAutopilotPlan.Cut]? { proposal.cuts }
+    public var captionStyle: String? { proposal.captionStyle }
+    public var title: String? { proposal.title ?? proposal.target.new?.title }
+    public var musicTrackId: String? { proposal.music?.trackId }
+    public var generateMusic: String? { proposal.music?.brief }
+    public var effects: [ClipPlanEffect]? { proposal.effects }
 
-    public static func read(_ value: JSONValue) throws -> Self {
-        let fields = try requireObject(value, keys: keys)
-        if case .array(let cuts) = fields["cuts"] {
-            for cut in cuts { _ = try requireObject(cut, keys: ["startWord", "endWord", "kind", "reason"]) }
+    public static func read(_ value: JSONValue) throws -> Self { try read(value, legacy: false) }
+
+    package static func readSeries(_ value: JSONValue) throws -> [Self] {
+        if case .object(let fields) = value, fields["timelines"] != nil {
+            _ = try requireObject(value, keys: ["timelines"])
+            guard case .array(let timelines) = fields["timelines"], (1...6).contains(timelines.count) else {
+                throw HarnessError.invalid("Propose one to six timelines.")
+            }
+            return try timelines.map { try read($0) }
         }
-        guard let timeline = try? JSONDecoder().decode(Self.self, from: JSONEncoder().encode(value)),
-              line(timeline.reason, max: 240), timeline.title.map({ line($0, max: EditingLimits.maxClipTitleScalars) }) != false,
-              timeline.generateMusic.map({ line($0, max: 500) }) != false,
-              timeline.generateMusic == nil || timeline.musicTrackId == nil,
-              timeline.effects.map({ (1...ClipPlanEffect.maximumEntries).contains($0.count) }) != false,
-              timeline.cuts.map({ (1...30).contains($0.count) }) != false,
-              (timeline.cuts ?? []).allSatisfy({ line($0.reason, max: 240) }),
-              timeline.title != nil || timeline.captionStyle != nil || timeline.musicTrackId != nil || timeline.generateMusic != nil
-                || timeline.effects?.isEmpty == false || timeline.cuts?.isEmpty == false else {
-            throw HarnessError.invalid("Invalid timeline. Give a clip, a reason and at least one supported change.")
-        }
-        return timeline
+        return [try read(value)]
     }
+
+    private static func read(_ value: JSONValue, legacy: Bool) throws -> Self {
+        var fields = try requireObject(value, keys: legacy ? legacyKeys : keys)
+        let invalid = HarnessError.invalid("Invalid timeline. Give a clip or new clip, a reason and at least one supported change.")
+        let clip = fields.removeValue(forKey: "clipId")
+        let new = fields.removeValue(forKey: "newClip")
+        guard (clip == nil) != (new == nil), (fields.keys.count > 1) else { throw invalid }
+        if let clip {
+            guard case .string(let id) = clip, !id.isEmpty else { throw invalid }
+            fields["target"] = .object(["clipId": clip])
+        }
+        if let new {
+            _ = try requireObject(new, keys: ["kind", "title"])
+            fields["target"] = .object(["new": new])
+        }
+        let track = fields.removeValue(forKey: "musicTrackId")
+        let brief = fields.removeValue(forKey: "generateMusic")
+        guard [track, brief, fields["music"]].compactMap({ $0 }).count <= 1 else { throw invalid }
+        if let track { fields["music"] = .object(["trackId": track]) }
+        if let brief { fields["music"] = .object(["brief": brief]) }
+        if let music = fields["music"] { _ = try requireObject(music, keys: ["trackId", "brief"]) }
+        if let font = fields["font"] { _ = try requireObject(font, keys: ["family", "weight"]) }
+        for (key, allowed) in [("look", Set(["id", "reason"])), ("speed", Set(["rate", "reason"]))] {
+            if let item = fields[key] {
+                var object = try requireObject(item, keys: allowed)
+                if object["reason"] == nil { object["reason"] = .string("") }
+                else if object["reason"]?.aiString.map({ line($0, max: 240) }) != true { throw invalid }
+                fields[key] = .object(object)
+            }
+        }
+        let arrays: [(String, Set<String>, Int)] = [
+            ("parts", ["startWord", "endWord"], 12), ("cuts", ["startWord", "endWord", "kind", "reason"], 30),
+            ("pauseCuts", ["afterWord", "reason"], 30), ("corrections", ["word", "heard", "text", "reason"], 30),
+            ("rewrites", ["startWord", "endWord", "text", "reason"], 12), ("effects", [], ClipPlanEffect.maximumEntries),
+        ]
+        for (key, allowed, maximum) in arrays where fields[key] != nil {
+            guard case .array(let items) = fields[key], (1...maximum).contains(items.count) else { throw invalid }
+            for item in items where !allowed.isEmpty {
+                let entry = try requireObject(item, keys: allowed)
+                guard Set(entry.keys) == allowed else { throw invalid }
+                if allowed.contains("reason"), entry["reason"]?.aiString.map({ line($0, max: 240) }) != true { throw invalid }
+                for field in ["startWord", "endWord", "afterWord", "word"] where allowed.contains(field) {
+                    guard let index = entry[field]?.aiInt, index >= 0 else { throw invalid }
+                }
+                if allowed.contains("text"), entry["text"]?.aiString.map({ line($0, max: key == "rewrites" ? 2000 : 120) }) != true { throw invalid }
+                if allowed.contains("heard"), entry["heard"]?.aiString.map({ line($0, max: 120) }) != true { throw invalid }
+            }
+        }
+        guard let proposal = try? JSONDecoder().decode(ClipProposal.self, from: JSONEncoder().encode(JSONValue.object(fields))),
+              line(proposal.reason, max: 240), proposal.title.map({ line($0, max: 120) }) != false,
+              proposal.hook.map({ line($0, max: 80) }) != false, proposal.postText.map({ line($0, max: 500) }) != false,
+              proposal.coverTitle.map({ line($0, max: 80) }) != false, proposal.captionStyle.map({ !$0.isEmpty }) != false,
+              proposal.font.map({ line($0.family, max: 80) && (100...900).contains($0.weight) }) != false,
+              proposal.wordsPerCaption.map({ (1...12).contains($0) }) != false,
+              proposal.speed.map({ ProjectClipControls.speedRange.contains($0.rate) }) != false,
+              proposal.music.map({ ($0.trackId == nil) != ($0.brief == nil) && $0.trackId?.isEmpty != true && $0.brief.map { line($0, max: 500) } != false }) != false,
+              proposal.target.new.map({ entry in
+                  line(entry.title, max: 120) && (entry.kind == .stretch ? proposal.parts?.count == 1 : (proposal.parts?.count ?? 0) >= 2)
+              }) != false else { throw invalid }
+        return .init(wire: value, proposal: proposal)
+    }
+
+    private init(wire: JSONValue, proposal: ClipProposal) { self.wire = wire; self.proposal = proposal }
+
+    public init(from decoder: any Decoder) throws { self = try Self.read(JSONValue(from: decoder)) }
+    public func encode(to encoder: any Encoder) throws { try wire.encode(to: encoder) }
 
     package static func requireObject(_ value: JSONValue, keys: Set<String>) throws -> [String: JSONValue] {
         guard case .object(let fields) = value, Set(fields.keys).isSubset(of: keys), !fields.values.contains(.null) else {
@@ -56,101 +120,131 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
     public let id: UUID
     public let projectId: String
     public let baseRevision: String
-    public let timeline: HarnessTimeline
+    public let timelines: [HarnessTimeline]
+    public var timeline: HarnessTimeline { timelines[0] }
 
-    public init(timeline: HarnessTimeline, project: Project) throws {
-        version = 1
-        id = UUID()
+    public init(timeline: HarnessTimeline, project: Project) throws { try self.init(timelines: [timeline], project: project) }
+
+    public init(timelines: [HarnessTimeline], project: Project) throws {
+        try self.init(id: UUID(), timelines: timelines, project: project)
+    }
+
+    private init(id: UUID, timelines: [HarnessTimeline], project: Project) throws {
+        guard (1...6).contains(timelines.count) else { throw HarnessError.invalid("Propose one to six timelines.") }
+        version = 2
+        self.id = id
         projectId = project.id
-        baseRevision = try Self.revision(of: project, timeline: timeline)
-        self.timeline = timeline
+        baseRevision = try Self.revision(of: project, timelines: timelines, version: 2)
+        self.timelines = timelines
     }
 
-    public func applying(to project: Project, shared: SharedResources) throws -> Project {
-        try evaluate(project, shared: shared).project
+    public init(from decoder: any Decoder) throws {
+        let wire = try JSONValue(from: decoder)
+        let fields = try HarnessTimeline.requireObject(wire, keys: ["version", "id", "projectId", "baseRevision", "timeline", "timelines"])
+        guard let version = fields["version"]?.aiInt, let id = fields["id"]?.aiString.flatMap(UUID.init(uuidString:)),
+              let projectId = fields["projectId"]?.aiString, !projectId.isEmpty,
+              let baseRevision = fields["baseRevision"]?.aiString, baseRevision.range(of: "\\A[0-9a-f]{64}\\z", options: .regularExpression) != nil else {
+            throw HarnessError.invalid("This timeline proposal can't be read.")
+        }
+        switch version {
+        case 1 where fields["timelines"] == nil:
+            guard let change = fields["timeline"] else { throw HarnessError.invalid("Missing timeline.") }
+            _ = try HarnessTimeline.requireObject(change, keys: HarnessTimeline.legacyKeys)
+            timelines = [try HarnessTimeline.read(change)]
+        case 2 where fields["timeline"] == nil:
+            guard case .array(let changes) = fields["timelines"], (1...6).contains(changes.count) else {
+                throw HarnessError.invalid("Propose one to six timelines.")
+            }
+            timelines = try changes.map { try HarnessTimeline.read($0) }
+        default: throw HarnessError.invalid("This timeline proposal version can't be read.")
+        }
+        self.version = version; self.id = id; self.projectId = projectId; self.baseRevision = baseRevision
     }
 
-    public func evaluate(_ project: Project, shared: SharedResources) throws -> (project: Project, assets: [ClipPlanAsset]) {
-        guard version == 1, projectId == project.id, baseRevision == (try Self.revision(of: project, timeline: timeline)) else {
+    public func encode(to encoder: any Encoder) throws {
+        var fields = encoder.container(keyedBy: CodingKeys.self)
+        try fields.encode(version, forKey: .version)
+        try fields.encode(id, forKey: .id)
+        try fields.encode(projectId, forKey: .projectId)
+        try fields.encode(baseRevision, forKey: .baseRevision)
+        if version == 1 { try fields.encode(timeline, forKey: .timeline) }
+        else { try fields.encode(timelines, forKey: .timelines) }
+    }
+
+    private enum CodingKeys: String, CodingKey { case version, id, projectId, baseRevision, timeline, timelines }
+
+    public func clipID(at index: Int) throws -> String {
+        let timeline = timelines[index]
+        if let existing = timeline.proposal.target.clipId { return existing }
+        let digest = SourceContentKey.sha256(try ProjectJSON.encoder().encode(timeline))
+        return "harness-\(id.uuidString.lowercased())-\(digest.prefix(12))"
+    }
+
+    public func validateRevision(of project: Project) throws {
+        guard projectId == project.id, baseRevision == (try Self.revision(of: project, timelines: timelines, version: version)) else {
             throw HarnessError.invalid("The project changed. Ask for a new timeline proposal.")
         }
-        guard let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == timeline.clipId }),
-              let start = transcript.words.firstIndex(where: { $0.id == clip.startWordId }),
-              let end = transcript.words.firstIndex(where: { $0.id == clip.endWordId }), start <= end else {
-            throw HarnessError.invalid("Choose an existing clip with a transcript.")
-        }
-        let words = transcript.words
-        let scope = start...end
-        var next = project
-        var assets: [ClipPlanAsset] = []
-        var cutIDs = Set<String>()
-        for cut in timeline.cuts ?? [] {
-            guard scope.contains(cut.startWord), scope.contains(cut.endWord), cut.startWord <= cut.endWord else {
-                throw HarnessError.invalid("A cut is outside the clip.")
-            }
-            let ids = words[cut.startWord...cut.endWord].filter { $0.kind == .word }.map(\.id)
-            guard !ids.isEmpty, cutIDs.isDisjoint(with: ids) else { throw HarnessError.invalid("Cuts must name distinct spoken words.") }
-            cutIDs.formUnion(ids)
-        }
-        let uncut = cutIDs.subtracting(project.edits.cutWordIds)
-        if !uncut.isEmpty { try next.applyEditing(.cutSelection(ids: uncut.sorted())) }
-        let allCuts = Set(next.edits.cutWordIds)
-        guard cutIDs.isSubset(of: allCuts), words[scope].contains(where: { $0.kind == .word && !allCuts.contains($0.id) }) else {
-            throw HarnessError.invalid("Keep at least one spoken word in the clip.")
-        }
-        if let title = timeline.title { try next.applyEditing(.renameClip(id: clip.id, title: title)) }
-        if let style = timeline.captionStyle {
-            guard try style == "off" || CaptionStyleLibrary(shared: shared).style(id: style) != nil else {
-                throw HarnessError.invalid("Choose a bundled caption style or off.")
-            }
-            let catalog = try ClipStyleCatalog.load(shared: shared)
-            guard let settings = next.clipStyle ?? catalog.presets.first(where: { $0.id == catalog.defaultPreset })?.style else {
-                throw HarnessError.invalid("No clip style is available.")
-            }
-            next.clipStyle = settings.choosingCaptionStyle(style, forClip: clip.id, current: next.captionSettings(forClip: clip.id))
-        }
-        if let trackID = timeline.musicTrackId {
-            guard var track = project.music.first(where: { $0.id == trackID }) else {
-                throw HarnessError.invalid("Choose a saved music track from this project.")
-            }
-            track.clipId = clip.id
-            next = try MusicProject.setting(MusicProject.unique(track, in: next), clipId: clip.id, in: next)
-        }
-        if let effects = timeline.effects, !effects.isEmpty {
-            let stickers = try AskClaudePrompt.load(shared: shared).stickers
-            let cutPauses = Set(next.edits.cutPauseIds)
-            let tightened = Set(scope.filter { cutPauses.contains("pause-after-" + words[$0].id) })
-            for (index, effect) in effects.enumerated() {
-                let effectID = "harness-\(id.uuidString.lowercased())-\(index)"
-                guard let operation = effect.operation(id: effectID, clipID: clip.id, scope: scope, words: words,
-                                                       cut: allCuts, tightenedAfter: tightened, stickers: stickers,
-                                                       sources: next.media.footageDurations) else {
-                    throw HarnessError.invalid("Effect \(index + 1) doesn’t fit those kept words or its selected footage.")
-                }
-                switch operation.action {
-                case .motion(let cue):
-                    guard let changed = ClipAutopilotMapping.addingMotionCue(cue, to: next) else {
-                        throw HarnessError.invalid("Effect \(index + 1) overlaps a cut or another zoom.")
-                    }
-                    next = changed
-                case .effect(let overlay): next = try ClipEffects.adding([overlay], to: next)
-                case .asset(let asset): assets.append(asset)
-                case .footage(let entry):
-                    guard next.media.setFootage(entry) else {
-                        throw HarnessError.invalid("Effect \(index + 1) overlaps or exceeds available footage.")
-                    }
-                    next.schemaVersion = max(4, next.schemaVersion)
-                default: throw HarnessError.invalid("Unsupported effect.")
-                }
-            }
-        }
-        _ = try JSONProjectStore.encode(next)
-        return (next, assets)
     }
 
-    public func estimatedMusicPrice(in project: Project, shared: SharedResources) throws -> String? {
-        guard timeline.generateMusic != nil, project.transcript != nil else { return nil }
-        let clipID = timeline.clipId
+    public func remaining(after index: Int, project: Project) throws -> Self? {
+        var remaining = timelines
+        remaining.remove(at: index)
+        return remaining.isEmpty ? nil : try Self(id: id, timelines: remaining, project: project)
+    }
+
+    public func discarding(at index: Int) -> Self? {
+        var remaining = timelines
+        remaining.remove(at: index)
+        return remaining.isEmpty ? nil : Self(version: version, id: id, projectId: projectId, baseRevision: baseRevision, timelines: remaining)
+    }
+
+    private init(version: Int, id: UUID, projectId: String, baseRevision: String, timelines: [HarnessTimeline]) {
+        self.version = version; self.id = id; self.projectId = projectId; self.baseRevision = baseRevision; self.timelines = timelines
+    }
+
+    public func applying(to project: Project, shared: SharedResources) throws -> Project { try evaluate(project, shared: shared).project }
+
+    public func evaluate(_ project: Project, shared: SharedResources, at index: Int = 0) throws -> (project: Project, assets: [ClipPlanAsset]) {
+        let review = try review(project, shared: shared, at: index)
+        return (review.project, review.pending.compactMap { if case .asset(let asset) = $0.action { asset } else { nil } })
+    }
+
+    public func review(_ project: Project, shared: SharedResources, at index: Int = 0) throws
+        -> (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation]) {
+        try validateRevision(of: project)
+        return try mapping(project, shared: shared, at: index)
+    }
+
+    package func mapping(_ project: Project, shared: SharedResources, at index: Int) throws
+        -> (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation]) {
+        let proposal = timelines[index].proposal
+        let clipID = try clipID(at: index)
+        if let style = proposal.captionStyle, try style != "off" && CaptionStyleLibrary(shared: shared).style(id: style) == nil {
+            throw HarnessError.invalid("Choose a bundled caption style or off.")
+        }
+        let fonts = proposal.font == nil ? [:] : try ClipAutopilotFonts.load(shared: shared)
+        if let font = proposal.font, fonts[font] == nil { throw HarnessError.invalid("Choose a bundled caption font.") }
+        let stickers = proposal.effects == nil ? [] : try AskClaudePrompt.load(shared: shared).stickers
+        let operations = try ClipAutopilotMapping.operations(for: proposal, clipID: clipID, project: project, fonts: fonts, stickers: stickers)
+        let clipStyle = operations.contains(where: { $0.decision == .captions })
+            ? try (project.clipStyle ?? ClipStyleCatalog.load(shared: shared).initial(saved: nil)) : nil
+        let result = try ClipAutopilotMapping.apply(operations, to: project, clipCaptions: clipStyle.map { (clipID, $0) })
+        guard result.project.edits.clips.contains(where: { $0.id == clipID }) else {
+            throw HarnessError.invalid("The proposed clip duplicates an existing clip or doesn't have valid parts.")
+        }
+        for operation in result.pending {
+            switch operation.action {
+            case .asset, .music, .rewrite: break
+            default: throw HarnessError.invalid("A proposed change overlaps a cut or an existing effect, or doesn't fit the clip.")
+            }
+        }
+        _ = try JSONProjectStore.encode(result.project)
+        return (result.project, operations, result.pending)
+    }
+
+    public func estimatedMusicPrice(in project: Project, shared: SharedResources, at index: Int = 0) throws -> String? {
+        guard timelines[index].generateMusic != nil, project.transcript != nil else { return nil }
+        let clipID = try clipID(at: index)
         let edit = try RenderCallerInputs.timeline(project: project, clipID: clipID)
         let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
         let timing = ClipSpeedTiming(speed: speed, timeline: edit, effects: ClipEffects.rendered(in: project, clipID: clipID))
@@ -159,7 +253,7 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
         return MusicPricing.label(price)
     }
 
-    private static func revision(of project: Project, timeline: HarnessTimeline) throws -> String {
+    private static func revision(of project: Project, timelines: [HarnessTimeline], version: Int) throws -> String {
         struct Inputs: Encodable {
             let sourceKey: String
             let transcript: Transcript?
@@ -172,18 +266,20 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
             let reuseMusic: [ProjectMusic]?
             let footageSources: [MediaReference]?
             let footage: [ClipFootage]?
+            let postText: [String: String]?
+            let voiceLab: ProjectVoiceLab?
         }
         var edits = project.edits
         edits.activeClipId = nil
         edits.cutWordIds.sort()
         edits.cutPauseIds.sort()
-        let usesFootage = timeline.effects?.contains { [.bRoll, .screenshot, .videoStack].contains($0.kind) } == true
+        let usesFootage = version == 2 || timelines.contains { $0.effects?.contains { [.bRoll, .screenshot, .videoStack].contains($0.kind) } == true }
         let input = Inputs(sourceKey: project.media.source.contentKey, transcript: project.transcript, edits: edits,
                            captions: project.captions, clipStyle: project.clipStyle, controls: project.clipControls,
-                           motion: project.motionCues, effects: project.clipEffects, reuseMusic: timeline.musicTrackId == nil ? nil : project.music,
-                           footageSources: usesFootage ? project.media.additionalSources : nil, footage: usesFootage ? project.media.footage : nil)
-        let bytes = try ProjectJSON.encoder().encode(input)
-        return SourceContentKey.sha256(bytes)
+                           motion: project.motionCues, effects: project.clipEffects, reuseMusic: version == 2 || timelines.contains { $0.musicTrackId != nil } ? project.music : nil,
+                           footageSources: usesFootage ? project.media.additionalSources : nil, footage: usesFootage ? project.media.footage : nil,
+                           postText: version == 2 ? project.share.captions : nil, voiceLab: version == 2 ? project.voiceLab : nil)
+        return SourceContentKey.sha256(try ProjectJSON.encoder().encode(input))
     }
 }
 
@@ -204,9 +300,6 @@ public enum HarnessInbox {
         }
         let data = try Data(contentsOf: path)
         guard data.count <= maximumBytes else { throw HarnessError.invalid("This timeline proposal is too large.") }
-        let raw = try JSONDecoder().decode(JSONValue.self, from: data)
-        let fields = try HarnessTimeline.requireObject(raw, keys: ["version", "id", "projectId", "baseRevision", "timeline"])
-        _ = try HarnessTimeline.read(fields["timeline"] ?? .null)
         return try JSONDecoder().decode(HarnessProposal.self, from: data)
     }
 
@@ -225,8 +318,15 @@ public enum HarnessInbox {
         }
     }
 
-    public static func dismiss(_ proposal: HarnessProposal, for projectURL: URL) throws {
+    public static func resolve(_ proposal: HarnessProposal, remaining: HarnessProposal?, for projectURL: URL) throws {
         guard try read(for: projectURL) == proposal else { throw HarnessError.invalid("The pending timeline changed. Review it again.") }
-        try FileManager.default.removeItem(at: url(for: projectURL))
+        let path = url(for: projectURL)
+        if let remaining {
+            try AtomicJSON.encoded(remaining).write(to: path, options: .atomic)
+        } else { try FileManager.default.removeItem(at: path) }
+    }
+
+    public static func dismiss(_ proposal: HarnessProposal, for projectURL: URL) throws {
+        try resolve(proposal, remaining: nil, for: projectURL)
     }
 }

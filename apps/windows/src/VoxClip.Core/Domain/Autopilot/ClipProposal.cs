@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
+using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Autopilot;
 
+#pragma warning disable CS1591
 public sealed record ClipProposal(ClipProposal.TargetChoice Target, string Reason)
 {
     public sealed record Part(int StartWord, int EndWord);
@@ -26,4 +28,19 @@ public sealed record ClipProposal(ClipProposal.TargetChoice Target, string Reaso
     public MusicChoice? Music { get; init; }
     public IReadOnlyList<ClipPlanEffect>? Effects { get; init; }
     public IReadOnlyList<ClipAutopilotPlan.Rewrite>? Rewrites { get; init; }
+
+    public static ClipProposal FromPlan(ClipAutopilotPlan plan, string clipId, Project project)
+    {
+        var existing = project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId);
+        return new(existing is null ? new(New: new("stretch", plan.Title)) : new(ClipId: clipId), "")
+        {
+            Parts = existing?.Parts is null ? [new(plan.StartWord, plan.EndWord)] : null,
+            Cuts = plan.Cuts, PauseCuts = plan.PauseCuts, Corrections = plan.Corrections, Rewrites = plan.Rewrites,
+            CaptionStyle = plan.CaptionChoice.StyleId, Font = plan.CaptionChoice.Font, TextCase = plan.CaptionChoice.TextCase,
+            WordsPerCaption = plan.CaptionChoice.WordsPerCaption, Look = plan.ClipLookChoice, Speed = plan.SpeedChoice,
+            Effects = plan.Effects, Hook = plan.Hook, Title = plan.Title, PostText = plan.PostText,
+            CoverTitle = plan.Frames?.CoverChoice?.Title, Music = plan.PickedMusic is { } picked ? new(Brief: picked.Prompt) : null,
+        };
+    }
 }
+#pragma warning restore CS1591

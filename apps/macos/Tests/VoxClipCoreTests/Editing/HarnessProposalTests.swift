@@ -4,6 +4,22 @@ import Testing
 
 @Suite("Project harness proposals", .offlineFixtures)
 struct HarnessProposalTests {
+    @Test func newStoryPreservesPartOrderAndLeavesRewritesPending() throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))
+        let value = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            {"newClip":{"kind":"story","title":"Result first"},"reason":"Lead with the result.",
+             "parts":[{"startWord":14,"endWord":15},{"startWord":9,"endWord":11}],
+             "rewrites":[{"startWord":9,"endWord":11,"text":"A different opening","reason":"Try a new opening."}]}
+            """.utf8))
+        let proposal = try HarnessProposal(timeline: HarnessTimeline.read(value), project: project)
+        let kept = try proposal.applying(to: project, shared: shared)
+        let story = try #require(kept.edits.clips.last)
+        #expect(story.playParts.map(\.startWordId) == ["w15", "w10"])
+        #expect(story.kind == .story)
+        #expect(kept.voiceLab == project.voiceLab)
+    }
+
     @Test(.enabled(if: SchemaPython.enabled, SchemaPython.skipReason))
     func allHarnessMotionTemplatesReplayAsSchemaValidProjects() throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())

@@ -55,3 +55,19 @@ public struct ClipProposal: Codable, Sendable, Equatable {
         case look, speed, hook, title, postText, coverTitle, music, effects, rewrites
     }
 }
+
+extension ClipAutopilotPlan {
+    public func canonicalProposal(clipID: String, in project: Project) -> ClipProposal {
+        let existing = project.edits.clips.first { $0.id == clipID }
+        let target: ClipProposal.Target = existing != nil ? .init(clipId: clipID) : .init(new: .init(kind: .stretch, title: title))
+        var proposal = ClipProposal(target: target, reason: "")
+        if existing?.parts == nil { proposal.parts = [.init(startWord: startWord, endWord: endWord)] }
+        proposal.cuts = cuts; proposal.pauseCuts = pauseCuts; proposal.corrections = corrections; proposal.rewrites = rewrites
+        proposal.captionStyle = captions.styleId; proposal.font = captions.font
+        proposal.textCase = captions.textCase; proposal.wordsPerCaption = captions.wordsPerCaption
+        proposal.look = look; proposal.speed = speed; proposal.effects = effects
+        proposal.hook = hook; proposal.title = title; proposal.postText = postText; proposal.coverTitle = frames?.cover?.title
+        proposal.music = pickedMusic.map { .init(brief: $0.prompt) }
+        return proposal
+    }
+}
