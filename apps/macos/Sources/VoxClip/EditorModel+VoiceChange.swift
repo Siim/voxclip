@@ -211,6 +211,7 @@ extension EditorModel {
     }
 
     func openVoiceChange(scope: RewriteScope) async {
+        if let reason = storyRewriteReason(for: scope) { announce(reason); return }
         if voiceChange == nil, let recovery = VoiceChangeSession.recoverable(for: project).first {
             voiceChange = recovery
             app.shell.choosePanelJob(.voice, for: self)

@@ -1030,7 +1030,8 @@ import ApplicationServices
     /// window: full-size content under a transparent titlebar with no toolbar, as the
     /// shell expects.
     static func snapshot<Content: View>(_ content: Content, name: String, size: NSSize, appearance: NSAppearance.Name, directory: URL, active: Bool = false, mainWindow: Bool = false,
-                                      native: Bool = false, beforeCapture: (@MainActor (NSWindow) async throws -> NSWindow?)? = nil) async throws {
+                                      native: Bool = false, orderOffscreen: Bool = true,
+                                      beforeCapture: (@MainActor (NSWindow) async throws -> NSWindow?)? = nil) async throws {
         let controller = NSHostingController(rootView: content.background(DesignValues.color("bg.window")).sceneAccent().preferredColorScheme(appearance == .darkAqua ? .dark : .light).environment(\.controlActiveState, active ? .key : .inactive))
         // A fixed size from the start: a hosting controller that sizes its window
         // leaves split views laid out for the wrong height in the first frames.
@@ -1056,7 +1057,7 @@ import ApplicationServices
         window.title = name.contains("editor") || name.contains("clips") ? "interview-take" : name.contains("settings") ? "VoxClip Settings" : name.hasPrefix("export") ? "Export" : "Home"
         window.contentViewController = controller
         hosting.frame = NSRect(origin: .zero, size: size)
-        window.orderBack(nil)
+        if orderOffscreen { window.orderBack(nil) }
         try await Task.sleep(for: .milliseconds(600))
         window.setContentSize(size)
         hosting.frame = NSRect(origin: .zero, size: size)

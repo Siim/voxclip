@@ -70,6 +70,8 @@ import VoxClipCore
                     } else if CommandLine.arguments.contains("-spacingCaptures") {
                         // Offscreen spacing captures (DebugSpacing.swift), on the -layoutAudit launch path.
                         results = try await DebugSpacing.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-storyClipCaptures") {
+                        results = try await DebugStoryClips.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-timelinePerformanceAudit") {
                         // Headless counterpart of the timeline portion of -uiPerformanceTest.
                         // Keep -layoutAudit so AppModel uses the test-session launch path.
@@ -451,7 +453,10 @@ import VoxClipCore
             return NSApp.keyWindow != nil
         }
         if item.action == #selector(performEditorCommand(_:)) {
-            if item.tag == 38 { item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take" }
+            if item.tag == 38 {
+                item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take"
+                item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
+            }
             switch item.tag {
             case 13: return mainWindowIsKey
             case 14: return mainWindowIsKey && model.shell.document != nil
@@ -495,7 +500,6 @@ import VoxClipCore
             }
             switch item.tag {
             case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
-            case 38: return RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: editor.rewriteScopeNow)
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true

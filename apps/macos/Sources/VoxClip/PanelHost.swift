@@ -201,7 +201,12 @@ extension WorkspaceShell {
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if let task = model.panelTask, task.confirm != nil || showsTask { DirectorPanel(task: task, model: model) }
+                if let task = model.panelTask, task.confirm != nil { DirectorPanel(task: task, model: model) }
+                else if job == .voice, let story = model.storyClip(for: nil), model.voiceChange == nil {
+                    ScrollView { StoryVoiceOptions(model: model, clip: story).padding(14) }
+                        .modifier(EditorPaneFocus(model: model, pane: .panel))
+                }
+                else if let task = model.panelTask, showsTask { DirectorPanel(task: task, model: model) }
                 else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
                 else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
                 else if job == .picture {

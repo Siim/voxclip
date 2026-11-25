@@ -8,8 +8,12 @@ import VoxClipCore
     let model: EditorModel?
 
     var body: some View {
-        if let rewrite = model?.openRewrite, let session = rewrite.wholeClip {
-            WholeClipRevoiceContent(rewrite: rewrite, session: session)
+        if let model, let rewrite = model.openRewrite {
+            if let story = model.storyClip(for: rewrite.rewriteScope) {
+                StoryVoiceOptions(model: model, clip: story)
+            } else if let session = rewrite.wholeClip {
+                WholeClipRevoiceContent(rewrite: rewrite, session: session)
+            }
         }
     }
 }

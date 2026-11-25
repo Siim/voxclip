@@ -15,6 +15,26 @@ private struct FalKeyOnly: ProviderKeyStore {
 /// edited, the shorter-only reword round and its check before paying, Cancel and failure keeping the clip, Try Again and the
 /// sync-3 upgrade never paying a step twice, Review's Use and Undo.
 @Suite(.serialized) @MainActor struct WholeClipRevoiceSessionTests {
+    @Test func storyClipVoiceActionsAreDisabledBeforeAnyVoicePreparation() throws {
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        let words = try #require(project.transcript?.words)
+        try #require(words.count >= 9)
+        let parts = [ClipPart(id: "late", startWordId: words[7].id, endWordId: words[8].id),
+                     ClipPart(id: "early", startWordId: words[3].id, endWordId: words[4].id),
+                     ClipPart(id: "earliest", startWordId: words[0].id, endWordId: words[1].id)]
+        try project.applyEditing(.addClip(ClipRange(id: "story", startWordId: words[0].id, endWordId: words[8].id, parts: parts)))
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let rewrite = RewriteSession(editor: editor, scope: .clip("story"), envelope: nil, connector: nil)
+        let reason = "Lip sync can't run across the 2 seams of a story clip yet. Make a clip of the part first."
+        #expect(rewrite.wholeClipUnavailable == reason)
+        #expect(rewrite.wholeClipPrimaryUnavailable == reason)
+        #expect(rewrite.changedPhrasesUnavailable == "Voice changes work on one part at a time. Make a clip of the part first.")
+        #expect(rewrite.wholeClipPrimary() == nil)
+    }
+
     @MainActor final class Stubs {
         var voices: [String] = []
         var lipsyncs: [WholeClipRevoice.Lipsync] = []

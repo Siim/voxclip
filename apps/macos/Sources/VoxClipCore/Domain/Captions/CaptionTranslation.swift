@@ -49,9 +49,16 @@ public enum CaptionTranslationError: Error, Equatable, Sendable {
 
 /// Validation, editing and rendering of `Project.captionTranslations`.
 public enum CaptionTranslations {
+    static func storyPartRestriction(for range: ClosedRange<Int>, clipID: String?, in project: Project) -> String? {
+        guard let clip = project.edits.clips.first(where: { $0.id == clipID }), clip.parts != nil,
+              let words = project.transcript?.words else { return nil }
+        let fits = clip.playPartIndices(in: words)?.contains { $0.contains(range.lowerBound) && $0.contains(range.upperBound) }
+        return fits == true ? nil : "Translate inside one part."
+    }
+
     private static func matches(_ text: String, _ pattern: String) -> Bool { text.range(of: pattern, options: .regularExpression) != nil }
 
-    /// The typed rules: v4 only, unique ids, known words in order, a known clip, a language tag, a non-empty text, no two
+    /// The typed rules: v4 and later, unique ids, known words in order, a known clip, a language tag, a non-empty text, no two
     /// over the same words in one scope.
     public static func validate(_ project: Project) throws {
         let entries = project.captionTranslations
@@ -113,7 +120,10 @@ public enum CaptionTranslations {
         guard let words = project.transcript?.words, range.lowerBound >= 0, range.upperBound < words.count else {
             throw CaptionTranslationError.invalidEntry("words")
         }
-        var result = project.schemaVersion == 4 ? project : try ContextDemoProject.upgradeToV4(project)
+        if let reason = storyPartRestriction(for: range, clipID: clipID, in: project) {
+            throw CaptionTranslationError.invalidEntry(reason)
+        }
+        var result = project.schemaVersion >= 4 ? project : try ContextDemoProject.upgradeToV4(project)
         let order = wordOrder(result)
         result.captionTranslations.removeAll { entry in
             guard entry.clipId == clipID, let lower = order[entry.startWordId], let upper = order[entry.endWordId] else { return false }

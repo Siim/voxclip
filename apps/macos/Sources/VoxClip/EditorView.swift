@@ -139,6 +139,13 @@ import VoxClipCore
         VStack(spacing: 0) {
             // The scope bar's "Rewrite as" strip (design.md §6.3.1), always under the clip bar's field while Rewrite can run.
             if model.showsScopeToneStrip { ScopeToneStrip(model: model) }
+            if let reason = model.storyRewriteReason(), let clip = model.activeClip {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(reason).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    StoryPartClipButtons(model: model, clip: clip, includesAll: false)
+                }.font(VCType.small.font()).padding(.horizontal, 12).padding(.vertical, 4)
+            }
             ConnectorConfirmationView(confirmation: model.sendConfirmation, model: model)
             HarnessReview(model: model, shell: shell)
             if model.document.demo {

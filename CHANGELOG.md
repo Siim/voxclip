@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac, review stories, showreels and stretches with their ordered parts, creative choices and cost; use Change… inline without paying again for assets you keep.
+- On Mac, add, trim, reorder and remove story clip parts in the Outline, see their joins in the timeline, and make ordinary clips from parts for voice edits.
 - Mac video exports keep licensed sound-effect credits in the MP4, including on macOS 26.
 - On Windows, edit story clip parts in the Outline, see their joins and open cuts in the timeline, and make ordinary clips from parts for voice edits.
 - Find Clips Custom can join moments in the order you ask for and say what isn't in the take. The Autopilot planner can propose stories, music-led showreels and single stretches.

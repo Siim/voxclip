@@ -7,12 +7,13 @@ import Testing
 
 @Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
-    private func open(demo: Bool = true, story: Bool = false) async throws -> (WorkspaceShell, EditorModel) {
+    private func open(demo: Bool = true, story: Bool = false, projectID: String? = nil) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
-        let project = try story ? DebugCreativeProposals.suggestedStory(from: base) : DebugExplorer.fiveQuestions(from: base)
+        var project = try story ? DebugCreativeProposals.suggestedStory(from: base) : DebugExplorer.fiveQuestions(from: base)
+        if let projectID { project.id = projectID }
         await shell.attachForTesting(VoxClipDocument(project: project, demo: demo), selection: .fullTake)
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
@@ -40,6 +41,49 @@ import Testing
         let checks = DebugExplorer.explorerChecks(shell: shell)
         #expect(checks.count == 6)
         #expect(checks.allSatisfy { $0.passed })
+    }
+
+    @Test func storyOutlineFollowsPlayOrderAndPartEditsUndo() async throws {
+        let (shell, editor) = try await open(projectID: UUID().uuidString.lowercased())
+        defer { editor.close() }
+        let parts = [ClipPart(id: "late", startWordId: "w12", endWordId: "w14"),
+                     ClipPart(id: "early", startWordId: "w2", endWordId: "w4")]
+        var project = editor.project
+        try project.applyEditing(.addClip(ClipRange(id: "story", startWordId: "w2", endWordId: "w14", parts: parts, kind: .story)))
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); editor.replace(project, name: "Set up story"); undo.endUndoGrouping()
+        shell.choose(.clip("story"))
+        #expect(shell.outlineEntries.map(\.words) == [11..<14, 1..<4])
+        #expect(shell.outlineEntries.allSatisfy { $0.time.contains("–") })
+        undo.beginUndoGrouping(); editor.moveStoryPart("late", to: 1); undo.endUndoGrouping()
+        #expect(shell.outlineEntries.map(\.words) == [1..<4, 11..<14])
+        #expect(editor.lastAnnouncement == "Part 1 moved to 2 of 2")
+        #expect(undo.undoActionName == "Move part")
+        undo.undo()
+        #expect(shell.outlineEntries.map(\.words) == [11..<14, 1..<4])
+
+        editor.selectedStoryPartID = "late"
+        editor.select("w13")
+        #expect(editor.timelineTrimBounds == 11...13 && editor.timelineTrimTitle == "Trim part 1")
+        undo.beginUndoGrouping(); editor.setClipEdge(start: true); undo.endUndoGrouping()
+        #expect(editor.activeClip?.playParts.first?.startWordId == "w13")
+        #expect(undo.undoActionName == "Trim part")
+
+        #expect(editor.addStoryPartReason == "Select words outside the clip's parts to add them.")
+        editor.select("w7")
+        undo.beginUndoGrouping(); editor.addSelectionAsStoryPart(); undo.endUndoGrouping()
+        #expect(editor.activeClip?.playParts.map(\.startWordId) == ["w13", "w2", "w7"])
+        #expect(undo.undoActionName == "Add part")
+        let added = try #require(editor.activeClip?.playParts.last?.id)
+        undo.beginUndoGrouping(); editor.removeStoryPart(added); undo.endUndoGrouping()
+        #expect(editor.activeClip?.playParts.count == 2)
+        #expect(undo.undoActionName == "Remove part")
+
+        undo.beginUndoGrouping(); editor.makeClipsOfStoryParts(parts.map(\.id)); undo.endUndoGrouping()
+        let ordinary = Array(editor.project.edits.clips.suffix(2))
+        #expect(ordinary.allSatisfy { $0.parts == nil })
+        #expect(ordinary.map(\.startWordId) == ["w13", "w2"])
+        #expect(undo.undoActionName == "Make clips of parts")
     }
 
     @Test(arguments: ["selected", "focused", "hovered", "idle", "suggested", "suggestedIdle"], [176.0, 196.0, 200.0, 224.0])

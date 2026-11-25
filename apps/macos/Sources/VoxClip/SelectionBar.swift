@@ -49,7 +49,11 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
                     .help("Select a word and type to replace it in the transcript and captions. The audio stays the same.")
                     .accessibilityIdentifier("voxclip.selectionBar.editWord")
             }
-            if let rewriteAs, !model.selectedIDs.isEmpty, model.capabilities.ai {
+            if let reason = model.storyRewriteReason(), !model.selectedIDs.isEmpty {
+                Button {} label: { label("✦ Rewrite as ▾", "⇧⌘R") }
+                    .disabled(true).help(reason).accessibilityLabel("Rewrite as").accessibilityHint(reason)
+                    .accessibilityIdentifier("voxclip.selectionBar.rewriteAs")
+            } else if let rewriteAs, !model.selectedIDs.isEmpty, model.capabilities.ai {
                 Button(action: rewriteAs) { label("\u{2726} Rewrite as \u{25BE}", "⇧⌘R") }
                     .background(stripOpen ? DesignValues.color("bg.selectedRow") : .clear, in: RoundedRectangle(cornerRadius: 6))
                     .help("Rewrite these words in a tone. ⇧⌘R uses your default, \(model.defaultRewriteItem?.title ?? "Fix mistakes").")

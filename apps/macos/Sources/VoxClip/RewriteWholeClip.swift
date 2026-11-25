@@ -34,6 +34,9 @@ extension RewriteSession {
     }
 
     var wholeClipUnavailable: String? {
+        if let story = editor.storyClip(for: rewriteScope), let parts = story.parts {
+            return StoryClipPresentation.lipSyncReason(partCount: parts.count)
+        }
         guard wholeClipRecordScope != nil else { return "Open Full Take or a clip first." }
         guard let final = try? wholeClipReviewProject(), let video = final.media.source.video else {
             return "Lip sync needs a video."
@@ -55,6 +58,7 @@ extension RewriteSession {
     }
 
     var changedPhrasesUnavailable: String? {
+        if let reason = editor.storyRewriteReason(for: rewriteScope) { return reason }
         if wholeClipReplacement != nil { return "Go back to your recording to voice individual phrases." }
         if !editor.app.voiceLabRewriteEnabled { return "Turn on Voice Lab to make takes." }
         if wholeClipVoiceHunks.isEmpty { return "There are no changed phrases." }
@@ -167,6 +171,7 @@ extension RewriteSession {
     }
 
     var wholeClipPrimaryUnavailable: String {
+        if editor.storyClip(for: rewriteScope) != nil, let reason = wholeClipUnavailable { return reason }
         guard let session = wholeClip else { return "Open the Voice panel first." }
         if session.wholeSelected || usedWholeClip != nil {
             if let reason = wholeClipUnavailable { return reason }
@@ -186,6 +191,7 @@ extension RewriteSession {
     /// The card's primary: "Revoice Whole Clip · ≈ $X" (the click approves the voice and the lip sync at that price), or
     /// "Voice Only the Changed Phrases" for the patch. With no fal.ai key the whole clip opens Settings for it.
     func wholeClipPrimary(retry: Bool = false) -> PanelAction? {
+        guard editor.storyClip(for: rewriteScope) == nil else { return nil }
         guard let session = wholeClip, session.repeatedWordCheckPart == nil else { return nil }
         guard session.wholeSelected || retry || usedWholeClip != nil else {
             guard changedPhrasesUnavailable == nil else { return nil }

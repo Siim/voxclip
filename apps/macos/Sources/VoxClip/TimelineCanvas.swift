@@ -115,9 +115,38 @@ struct TimelineContent: Equatable {
     /// M1: the track under the open clip, on the axis.
     var music: TimelineMusic?
     var clips: [TimelineOverviewClip] = []
+    var story: StoryTimelineLayout?
+    var partMarkers: [StoryTimelineLayout.Marker] = []
     /// The scope's pieces and the take's waveform, for A1, and on Source the cut ranges in it.
     var pieces = TimelinePieces([])
     var waveform: WaveformData?
+
+    mutating func useStorySource(_ story: StoryTimelineLayout) {
+        showsSurroundingContext = false
+        let takeCuts = story.parts.flatMap { pieces.gaps(within: $0.take) }.sorted { $0.lowerBound < $1.lowerBound }
+        removed = takeCuts.flatMap { story.ranges(forSource: $0) }.sorted { $0.lowerBound < $1.lowerBound }
+        pieces = story.sourcePieces(pieces)
+        cues = cues.flatMap { cue in
+            story.ranges(forSource: cue.range).map { range in
+                let cuts = removed.compactMap { cut -> Range<Double>? in
+                    let lower = max(cut.lowerBound, range.lowerBound), upper = min(cut.upperBound, range.upperBound)
+                    return lower < upper ? lower..<upper : nil
+                }
+                return TimelineCue(range: range, text: cue.text, cuts: cuts)
+            }
+        }.sorted { $0.range.lowerBound < $1.range.lowerBound }
+        func remap(_ cues: [TimelineMotionCue]) -> [TimelineMotionCue] {
+            cues.flatMap { cue in
+                story.ranges(forSource: cue.range).map { TimelineMotionCue(id: cue.id, range: $0, label: cue.label) }
+            }
+        }
+        motionCues = remap(motionCues)
+        effects = remap(effects)
+        if let bed = music {
+            music = TimelineMusic(title: bed.title, range: 0..<story.length, gainDb: bed.gainDb,
+                                  fadeIn: bed.fadeIn, fadeOut: bed.fadeOut, ducking: bed.ducking)
+        }
+    }
     var removed: [Range<Double>] = []
     /// The scope's kept words in take time while there is no waveform (design §5.4.10).
     var words: [Range<Double>] = []
@@ -300,6 +329,8 @@ struct TimelineContent: Equatable {
         next.changes = model.timelinePendingChanges(on: axis)
         next.clips = model.timelineOverviewClips
         next.pieces = model.timelinePieces
+        next.story = model.storyTimeline
+        next.partMarkers = next.story?.markers(on: axis, pieces: next.pieces) ?? []
         next.waveform = model.waveform
         next.removed = axis == .source ? model.timelineRemovedRanges(next.pieces) : []
         next.words = next.waveform == nil ? model.timelineKeptWords : []
@@ -307,6 +338,7 @@ struct TimelineContent: Equatable {
         next.motionCues = model.timelineMotionCues(on: axis)
         next.effects = model.timelineEffects(on: axis)
         next.music = model.timelineMusic(on: axis)
+        if axis == .source, let story = next.story { next.useStorySource(story) }
         video.setSource(model.timelineFilmstripSource)
         video.mediaName = model.timelineMediaName
         let previous = content
@@ -316,10 +348,11 @@ struct TimelineContent: Equatable {
             rendered = true
             fitted = true
             viewport = fittedViewport(for: next)
-        } else if fitted, !keepingZoom, next.axis == .edited, next.axis != previous.axis || next.length != previous.length {
+        } else if fitted, !keepingZoom, next.axis == .edited || next.story != nil, next.axis != previous.axis || next.length != previous.length {
             viewport = fittedViewport(for: next)
         } else if next.axis != previous.axis {
-            viewport = viewport.switched(to: next.axis, start: next.axis == .source ? next.scopeSource?.lowerBound ?? 0 : 0)
+            let start = next.axis == .source && next.story == nil ? next.scopeSource?.lowerBound ?? 0 : 0
+            viewport = viewport.switched(to: next.axis, start: start)
         } else if next.displayRange != previous.displayRange, !next.showsSurroundingContext {
             viewport = fitted ? fittedViewport(for: next) : viewport.panned(by: 0, within: next.displayRange)
         }
@@ -330,11 +363,14 @@ struct TimelineContent: Equatable {
     /// The playhead's last times, kept by `followPlayhead`, so drawing reads no playhead.
     private var playheadEdited = 0.0
     private var playheadSource = 0.0
-    private var playheadTime: Double { content.axis == .edited ? playheadEdited : playheadSource }
+    private var playheadTime: Double {
+        content.axis == .edited ? playheadEdited : content.story?.time(forSource: playheadSource) ?? playheadSource
+    }
 
     /// The viewport that fits the scope: its output on Edited; on Source the same zoom,
     /// from a second before the clip.
     private func fittedViewport(for content: TimelineContent) -> TimelineViewport {
+        if content.story != nil { return TimelineViewport.fitting(content.displayRange, width: laneWidth, axis: content.axis) }
         if content.axis == .source, !content.showsSurroundingContext {
             return TimelineViewport.fitting(content.displayRange, width: laneWidth, axis: .source)
         }
@@ -370,7 +406,14 @@ struct TimelineContent: Equatable {
     func apply() {
         let window: ClosedRange<Double>
         let visible = viewport.visible
-        if content.axis == .source { window = visible }
+        if let story = content.story {
+            let ranges = story.parts.filter { part in
+                guard let visiblePart = content.axis == .source ? part.display : part.edited else { return false }
+                return visiblePart.overlaps(visible.lowerBound..<visible.upperBound)
+            }.map(\.take)
+            let lower = ranges.map(\.lowerBound).min() ?? 0
+            window = lower...(ranges.map(\.upperBound).max() ?? lower)
+        } else if content.axis == .source { window = visible }
         else {
             let lower = model.timelineSourceTime(max(0, visible.lowerBound), on: .edited)
             let upper = model.timelineSourceTime(min(content.length, visible.upperBound), on: .edited)
@@ -382,16 +425,19 @@ struct TimelineContent: Equatable {
         overview.state = TimelineOverviewLane.State(clips: content.clips, takeLength: content.takeLength,
                                                     sourceRange: overviewRange, window: windowLower...max(windowLower, windowUpper),
                                                     takeLabel: durationLabel(overviewRange.upperBound - overviewRange.lowerBound))
-        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection, changes: content.changes, trimHint: interaction.trimHint)
+        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection, changes: content.changes,
+                                             trimHint: interaction.trimHint, partMarkers: content.partMarkers, storySource: content.axis == .source ? content.story : nil)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
                                               words: content.words, inOut: content.axis == .source ? shownInOut : nil,
                                               clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
-                                              showsSurroundingContext: content.showsSurroundingContext)
+                                              showsSurroundingContext: content.showsSurroundingContext, partMarkers: content.partMarkers,
+                                              storySource: content.axis == .source ? content.story : nil)
         video.state = VideoLane.State(viewport: viewport, pieces: content.pieces, inOut: content.axis == .source ? shownInOut : nil,
                                       clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
-                                      showsSurroundingContext: content.showsSurroundingContext)
+                                      showsSurroundingContext: content.showsSurroundingContext, partMarkers: content.partMarkers,
+                                      storySource: content.axis == .source ? content.story : nil)
         video.requestFrames()
         captions.state = CaptionLane.State(viewport: viewport, cues: content.cues, inOut: content.axis == .source ? shownInOut : nil)
         motion.state = MotionLane.State(viewport: viewport, cues: content.motionCues, hasClip: content.scope != nil)
@@ -415,7 +461,7 @@ struct TimelineContent: Equatable {
     private var edgeCursorRects: [NSRect] = []
     private func updateEdgeCursors() {
         let rects: [NSRect] = content.inOut.flatMap { edges in
-            guard model.capabilities.edit else { return nil }
+            guard model.capabilities.edit, content.story == nil else { return nil }
             let lane = NSRect(x: headerWidth, y: TimelineMetrics.ruler.y, width: laneWidth, height: TimelineMetrics.ruler.height)
             return [edges.lowerBound, edges.upperBound].map { time in
                 NSRect(x: headerWidth + viewport.x(time) - TimelineMetrics.trimReach, y: lane.minY,
@@ -570,7 +616,8 @@ struct TimelineContent: Equatable {
     }
 
     override func accessibilityChildren() -> [Any]? {
-        let times: [Any] = content.inOut == nil || model.activeClip == nil ? [playheadElement] : [playheadElement, inElement, outElement]
+        let times: [Any] = content.inOut == nil || model.activeClip == nil || content.story != nil
+            ? [playheadElement] : [playheadElement, inElement, outElement]
         return times + [selectionElement] + headers + [horizontalScroller, verticalScroller].filter { !$0.isHidden }
     }
 }
@@ -657,6 +704,47 @@ final class TimelineSliderElement: NSAccessibilityElement {
     }
     func drawLane(in context: CGContext) {}
 
+    @discardableResult func drawStoryParts(_ parts: [StoryTimelineLayout.Marker], viewport: TimelineViewport,
+                                           context: CGContext, tint: Bool, labels: Bool = false, jumps: Bool = false) -> [CGFloat] {
+        var seams: [CGFloat] = []
+        let font = VCType.mini.nsMono()
+        for part in parts {
+            let left = headerWidth + viewport.x(part.range.lowerBound)
+            let right = headerWidth + viewport.x(part.range.upperBound)
+            guard right > headerWidth, left < bounds.width else { continue }
+            let color = StoryClipPresentation.nsColor(part.position)
+            if tint {
+                context.setFillColor(color.withAlphaComponent(0.16).cgColor)
+                context.fill(CGRect(x: left, y: 0, width: right - left, height: bounds.height))
+                context.setFillColor(color.cgColor)
+                context.fill(CGRect(x: left, y: 0, width: right - left, height: 2))
+            }
+            if let seam = part.seamLabel, left >= headerWidth {
+                seams.append(left)
+                context.setFillColor(NSColor.white.cgColor)
+                context.fill(CGRect(x: left - 1.5, y: 0, width: 3, height: bounds.height))
+                if jumps {
+                    let width = Self.width(seam, font: font) + 5
+                    let x = left + 4 + width <= min(right, bounds.width) ? left + 4 : left - width - 4
+                    if x >= headerWidth { drawPartLabel(seam, x: x, right: bounds.width, font: font, color: .white) }
+                }
+            }
+            if labels, left >= headerWidth {
+                let title = right - left >= Self.width(part.label, font: font) + 8 ? part.label : "\(part.position + 1)"
+                drawPartLabel(title, x: left + 4, right: right, font: font, color: color)
+            }
+        }
+        return seams
+    }
+
+    private func drawPartLabel(_ label: String, x: CGFloat, right: CGFloat, font: NSFont, color: NSColor) {
+        let width = Self.width(label, font: font) + 5
+        guard x + width <= min(right, bounds.width) else { return }
+        NSColor.black.withAlphaComponent(0.7).setFill()
+        NSBezierPath(roundedRect: CGRect(x: x, y: 4, width: width, height: 13), xRadius: 2, yRadius: 2).fill()
+        Self.draw(label, font: font, color: color, x: x + 2, baseline: 14)
+    }
+
     /// `string` with its baseline at `baseline`.
     static func draw(_ string: String, font: NSFont, color: NSColor, x: CGFloat, baseline: CGFloat) {
         NSAttributedString(string: string, attributes: [.font: font, .foregroundColor: color]).draw(at: NSPoint(x: x, y: baseline - font.ascender))
@@ -736,6 +824,7 @@ struct TimelineOverviewLabel: Equatable {
         NSBezierPath(roundedRect: lane, xRadius: 2, yRadius: 2).fill()
         let paper = DesignValues.nsColor("clip.label")
         for (index, clip) in state.clips.enumerated() {
+            let paper = clip.partIndex.map { StoryClipPresentation.nsColor($0) } ?? paper
             let band = band(index)
             let lower = x(clip.source.lowerBound), upper = x(clip.source.upperBound)
             if clip.proposal {
@@ -782,6 +871,8 @@ struct TimelineOverviewLabel: Equatable {
         var selection: ClosedRange<Double>?
         var changes: [ClosedRange<Double>] = []
         var trimHint: String?
+        var partMarkers: [StoryTimelineLayout.Marker] = []
+        var storySource: StoryTimelineLayout?
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     static let labelFont = VCType.label.nsMono()
@@ -809,7 +900,7 @@ struct TimelineOverviewLabel: Equatable {
             if tick.major {
                 major.setFill()
                 NSRect(x: tickX, y: 2, width: 1, height: height - 2).fill()
-                let text = SMPTETimecode.format(seconds: tick.time)
+                let text = SMPTETimecode.format(seconds: state.storySource?.sourceTime(tick.time) ?? tick.time)
                 let width = Double(Self.width(text.dimPrefix + text.value, font: Self.labelFont))
                 guard let start = TimelineRuler.labelX(tickX: Double(tickX), width: width, brackets: brackets, inBracket: inX.map(Double.init), laneEnd: Double(laneEnd)) else { continue }
                 Self.draw(text.dimPrefix, font: Self.labelFont, color: major, x: CGFloat(start), baseline: 10)
@@ -843,6 +934,7 @@ struct TimelineOverviewLabel: Equatable {
                 Self.draw(hint, font: font, color: DesignValues.nsColor("text.primary"), x: left + 5, baseline: height / 2 + font.xHeight / 2)
             }
         }
+        drawStoryParts(state.partMarkers, viewport: state.viewport, context: context, tint: false)
         context.restoreGState()
     }
 }
@@ -885,6 +977,8 @@ struct TimelineOverviewLabel: Equatable {
         var clip: ClosedRange<Double>?
         var takeLength = 0.0
         var showsSurroundingContext = true
+        var partMarkers: [StoryTimelineLayout.Marker] = []
+        var storySource: StoryTimelineLayout?
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
 
@@ -892,6 +986,7 @@ struct TimelineOverviewLabel: Equatable {
     struct Drawn: Equatable {
         /// The seams' x (each a 1 pt line just left of it).
         var seams: [CGFloat] = []
+        var partSeams: [CGFloat] = []
         /// Source view's removed ranges in view, in take time.
         var gaps: [Range<Double>] = []
         /// The lane points whose waveform column drew a peak, each once.
@@ -931,6 +1026,7 @@ struct TimelineOverviewLabel: Equatable {
         context.saveGState()
         context.clip(to: lane)
         if state.viewport.axis == .edited { drawEdited(in: context) } else { drawSource(in: context) }
+        drawn.partSeams = drawStoryParts(state.partMarkers, viewport: state.viewport, context: context, tint: true, jumps: true)
         context.restoreGState()
     }
 
@@ -950,7 +1046,7 @@ struct TimelineOverviewLabel: Equatable {
         draw(&kept, in: context, wave: "timeline.wave")
         var seams: [CGRect] = []
         var last = -CGFloat.infinity
-        for index in shown where pieces.isSeam(at: index) {
+        for index in shown where pieces.isSeam(at: index) && !pieces.isPartSeam(at: index) {
             let seamX = x(pieces.pieces[index].edited.lowerBound)
             guard seamX - last >= Self.seamSpacing else { continue }
             last = seamX
@@ -999,7 +1095,7 @@ struct TimelineOverviewLabel: Equatable {
             drawn.gaps.append(gap)
             let rect = pieceRect(gap)
             if rect.width >= 2 { outline.addRect(rect.insetBy(dx: 0.5, dy: 0.5)) }
-            columns(gap, offset: 0, into: &ghost)
+            columns(gap, offset: state.storySource?.offset(at: gap.lowerBound + 1e-9) ?? 0, into: &ghost)
         }
         context.addPath(outline)
         context.setStrokeColor(DesignValues.nsColor("timeline.cutOutline").cgColor)
@@ -1011,7 +1107,7 @@ struct TimelineOverviewLabel: Equatable {
         var kept = paint(), ai: [CGRect] = []
         func keep(_ range: Range<Double>) {
             kept.piece(x(range.lowerBound), x(range.upperBound))
-            columns(range, offset: 0, into: &kept)
+            columns(range, offset: state.storySource?.offset(at: range.lowerBound + 1e-9) ?? 0, into: &kept)
         }
         if let before { keep(before) }
         for index in pieces.indices(overlapping: window, on: .source) {
@@ -1532,6 +1628,8 @@ enum TrackHeight: String, CaseIterable {
         var clip: ClosedRange<Double>?
         var takeLength = 0.0
         var showsSurroundingContext = true
+        var partMarkers: [StoryTimelineLayout.Marker] = []
+        var storySource: StoryTimelineLayout?
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     var mediaName = "" { didSet { if mediaName != oldValue { invalidate() } } }
@@ -1577,7 +1675,8 @@ enum TrackHeight: String, CaseIterable {
             let range = axis == .edited ? piece.edited : piece.source
             if axis == .source, let io = state.inOut {
                 let lower = max(range.lowerBound, io.lowerBound), upper = min(range.upperBound, io.upperBound)
-                if upper > lower { result.append(Span(axis: lower..<upper, source: lower..<upper)) }
+                let offset = state.storySource?.offset(at: lower + 1e-9) ?? 0
+                if upper > lower { result.append(Span(axis: lower..<upper, source: (lower + offset)..<(upper + offset))) }
             } else { result.append(Span(axis: range, source: piece.source)) }
         }
         // At a fitted hour a kept piece can be narrower than one point. Share a visual
@@ -1585,7 +1684,8 @@ enum TrackHeight: String, CaseIterable {
         var grouped: [Span] = []
         for var span in result {
             let narrow = (span.axis.upperBound - span.axis.lowerBound) * state.viewport.ptPerSecond < 3
-            if narrow, let last = grouped.last, last.coalesced,
+            if narrow, let last = grouped.last, last.coalesced, span.source.lowerBound >= last.source.upperBound,
+               state.storySource == nil,
                (span.axis.lowerBound - last.axis.upperBound) * state.viewport.ptPerSecond < 1 {
                 grouped[grouped.count - 1] = Span(axis: last.axis.lowerBound..<span.axis.upperBound,
                                                 source: last.source.lowerBound..<span.source.upperBound, coalesced: true)
@@ -1684,7 +1784,7 @@ enum TrackHeight: String, CaseIterable {
             }
             context.saveGState()
             context.clip(to: rect.insetBy(dx: 1, dy: 1))
-            if !span.coalesced, rect.width >= 60 {
+            if state.partMarkers.isEmpty, !span.coalesced, rect.width >= 60 {
                 names += 1
                 Self.draw(mediaName, font: .systemFont(ofSize: 9), color: DesignValues.nsColor("text.tertiary"), x: rect.minX + 4, baseline: 10)
             }
@@ -1722,11 +1822,13 @@ enum TrackHeight: String, CaseIterable {
         if state.viewport.axis == .edited {
             var last = -CGFloat.infinity
             let visible = state.viewport.visible
-            for index in state.pieces.indices(overlapping: visible.lowerBound..<visible.upperBound, on: .edited) where state.pieces.isSeam(at: index) {
+            for index in state.pieces.indices(overlapping: visible.lowerBound..<visible.upperBound, on: .edited)
+                where state.pieces.isSeam(at: index) && !state.pieces.isPartSeam(at: index) {
                 let point = x(state.pieces.pieces[index].edited.lowerBound)
                 if point - last >= 2 { seams.append(point); last = point; context.setFillColor(DesignValues.nsColor("timeline.seam").cgColor); context.fill(CGRect(x: point - 1, y: 0, width: 1, height: bounds.height)) }
             }
         }
+        drawStoryParts(state.partMarkers, viewport: state.viewport, context: context, tint: true, labels: true)
         context.restoreGState()
     }
 }
