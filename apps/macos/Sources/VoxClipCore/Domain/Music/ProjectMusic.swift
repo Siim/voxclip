@@ -341,7 +341,15 @@ public struct MusicRenderInput: Sendable, Equatable {
 
     /// The input for a clip's (or with nil the full video's) track, or nil without one.
     public static func resolve(project: Project, clipId: String?, dataRoot: URL) -> MusicRenderInput? {
-        MusicProject.entry(for: clipId, in: project).map { MusicRenderInput(entry: $0, assetURL: url(for: $0.asset, dataRoot: dataRoot)) }
+        guard var entry = MusicProject.entry(for: clipId, in: project) else { return nil }
+        if let segments = entry.segments, let clip = project.edits.clips.first(where: { $0.id == clipId }),
+           let words = project.transcript?.words {
+            let parts = StoryClips.times(clip, words: words)
+            entry.segments = segments.filter { segment in
+                parts.contains { $0.start <= segment.anchorSeconds && segment.anchorSeconds < $0.end }
+            }
+        }
+        return MusicRenderInput(entry: entry, assetURL: url(for: entry.asset, dataRoot: dataRoot))
     }
 }
 

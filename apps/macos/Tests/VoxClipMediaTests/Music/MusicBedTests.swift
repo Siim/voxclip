@@ -108,6 +108,32 @@ import VoxClipCore
         #expect(Self.level(bed, 4.99, 5) < open - 30 && Self.level(bed, 4.2, 4.3) < open - 3)
     }
 
+    @Test func slippedSegmentHasItsOwnFadeEnvelopeAndGapAndSplittingPreservesPCM() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var edited = entry("p", duration: 4, ducking: false, fadeIn: 0, fadeOut: 0)
+        let points: [GainPoint] = [.init(t: 0.5, db: -12), .init(t: 1.5, db: 0)]
+        edited.segments = [.init(id: "one", anchorSeconds: 1, lengthSeconds: 2, songFromSeconds: 1,
+                                 loop: false, gainDb: 0, fadeInSeconds: 0.5, fadeOutSeconds: 0.5, gainPoints: points)]
+        let voice = Self.voice(seconds: 4, speech: [])
+        let music = [Float](repeating: 0, count: 2 * Self.rate) + [Float](repeating: 0.25, count: 6 * Self.rate)
+        let (_, whole) = try await stage(voice: voice, music: music, entry: edited, seconds: 4, in: directory)
+        #expect(Self.level(whole, 0, 1) == -300)
+        #expect(Self.level(whole, 3, 4) == -300)
+        func sample(_ time: Double) -> Double { Double(whole[2 * Int(time * Double(Self.rate))]) }
+        #expect(abs(20 * log10(sample(2.5) / sample(2)) - 6) < 0.5)
+        #expect(abs(sample(1.25) / sample(1.5) - 0.5) < 1e-6)
+        #expect(abs(sample(2.75) / sample(2.5) - 0.5) < 1e-6)
+        edited.segments = [
+            .init(id: "left", anchorSeconds: 1, lengthSeconds: 1, songFromSeconds: 1, loop: false,
+                  gainDb: 0, fadeInSeconds: 0.5, fadeOutSeconds: 0, gainPoints: [points[0], .init(t: 1, db: -6)]),
+            .init(id: "right", anchorSeconds: 2, lengthSeconds: 1, songFromSeconds: 2, loop: false,
+                  gainDb: 0, fadeInSeconds: 0, fadeOutSeconds: 0.5, gainPoints: [.init(t: 0, db: -6), .init(t: 0.5, db: 0)])
+        ]
+        let (_, split) = try await stage(voice: voice, music: music, entry: edited, seconds: 4, in: directory)
+        #expect(whole.withUnsafeBytes { Data($0) } == split.withUnsafeBytes { Data($0) })
+    }
+
     @Test func storySeamsDoNotResetOrFadeTheBed() async throws {
         let directory = try Self.directory()
         defer { try? FileManager.default.removeItem(at: directory) }

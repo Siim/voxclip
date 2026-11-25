@@ -173,7 +173,6 @@ public struct CompositionBuilder: Sendable {
         try EffectAudio.freeze(request, video: video, sourceVideo: sourceVideo, videoRange: videoRange, nominalRate: nominalRate, duration: duration)
         let demos = try await ContextDemoCompositionRoute.insert(request, into: composition, scratchRoot: scratchRoot)
         let lipsync = try await LipsyncComposition.insert(request, into: composition, scratchRoot: scratchRoot)
-        let footage = try await FootageLayer.insert(request, into: composition)
         var lease: VoiceLabRenderLease?
         if synthetic {
             guard sourceAudio != nil, let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
@@ -211,6 +210,7 @@ public struct CompositionBuilder: Sendable {
             voiceTrack = nil; mix = nil
         }
         ClipVoiceRenderer.scale(duration, timing: timing, apply: composition.scaleTimeRange(_:toDuration:))
+        let footage = try await FootageLayer.insert(request, into: composition)
         if let voiceLease {
             let staged = AVURLAsset(url: voiceLease.url) // Held while its track is inserted.
             guard let stagedTrack = try await MediaSupport.audioTrack(in: staged),
@@ -234,7 +234,8 @@ public struct CompositionBuilder: Sendable {
         if let music = request.music {
             // The bed is fitted to the rendered length, never sped up, and ducks under the voice as it plays.
             let bed = try await MusicBedRenderer.stage(music, composition: composition, voiceTrack: voiceTrack,
-                                                       durationSeconds: rendered.seconds, scratchRoot: scratchRoot)
+                                                       durationSeconds: rendered.seconds, scratchRoot: scratchRoot,
+                                                       mapTime: { timing.rendered(request.timeline.mapTime($0)) })
             let bedAsset = AVURLAsset(url: bed.url) // Held while its track is inserted.
             guard let bedTrack = try await MediaSupport.audioTrack(in: bedAsset),
                   let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {

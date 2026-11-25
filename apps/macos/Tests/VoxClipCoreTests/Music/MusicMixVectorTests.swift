@@ -19,9 +19,9 @@ struct MusicMixVectorTests {
     @Test("The file has its keys, its count and the Mac's constants")
     func fileShape() throws {
         let cases = try Self.cases()
-        #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "caseCount"])
+        #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "caseCount"])
         #expect(cases["format"]?.aiString == "voxclip-music-mix-cases/1")
-        #expect(cases["caseCount"]?.aiInt == 35)
+        #expect(cases["caseCount"]?.aiInt == 36)
         let constants = try #require(cases["constants"]?.aiObject)
         let expected: [String: Double] = [
             "frameSeconds": MusicMix.frameSeconds, "duckDb": MusicMix.duckDb, "attackSeconds": MusicMix.attackSeconds,
@@ -31,6 +31,39 @@ struct MusicMixVectorTests {
         ]
         #expect(Set(constants.keys) == Set(expected.keys))
         for (key, value) in expected { #expect(constants[key]?.aiDouble == value, "\(key)") }
+    }
+
+    @Test func timelinePlacementsAndGainReplay() throws {
+        struct Vector: Decodable {
+            let sampleRate: Double, trackFrames: Int, speed: Double
+            let segments: [MusicSegment], starts: [Int], fades: [[Int]], pieces: [[Piece]]
+            let itemSeconds: [Double], itemGains: [Double], crossfadeFrame: Int, crossfadeWeight: Double
+            let activity: [Bool], depthDb: Double, duckingDb: [Double]
+        }
+        struct Piece: Decodable {
+            let sourceStart: Int, outputStart: Int, count: Int, fadeIn: Int, fadeOut: Int
+            var value: MusicMix.LoopPiece {
+                .init(sourceStart: sourceStart, outputStart: outputStart, count: count, fadeIn: fadeIn, fadeOut: fadeOut)
+            }
+        }
+        struct Fixture: Decodable { let timeline: [Vector] }
+        let fixture = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json"))
+        for vector in fixture.timeline {
+            let segments = MusicMix.segmentPieces(vector.segments, trackFrames: vector.trackFrames, rate: vector.sampleRate) { $0 / vector.speed }
+            #expect(segments.map(\.span.outputStart) == vector.starts)
+            #expect(segments.map { [$0.span.fadeIn, $0.span.fadeOut] } == vector.fades)
+            let expectedPieces = vector.pieces.map { $0.map(\.value) }
+            #expect(segments.map(\.pieces) == expectedPieces)
+            let first = try #require(vector.segments.first)
+            let shape = ItemShape(fadeInSeconds: first.fadeInSeconds, fadeOutSeconds: first.fadeOutSeconds, gainPoints: first.gainPoints)
+            for (time, gain) in zip(vector.itemSeconds, vector.itemGains) {
+                #expect(Self.near(gain, MusicMix.itemGain(at: time, shape: shape, length: first.lengthSeconds)))
+            }
+            let incoming = try #require(segments.last?.span)
+            #expect(Self.near(vector.crossfadeWeight, MusicMix.pieceWeight(incoming, at: vector.crossfadeFrame)))
+            let duck = MusicMix.duckingGainsDb(activity: vector.activity, depthDb: vector.depthDb)
+            for (actual, expected) in zip(duck, vector.duckingDb) { #expect(Self.near(expected, actual)) }
+        }
     }
 
     @Test("10 ms levels, speech activity, ducking, bed gain, music level and fades replay")

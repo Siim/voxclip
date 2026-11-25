@@ -322,9 +322,13 @@ public struct ClipEffect: Codable, Sendable, Equatable, Identifiable {
     /// An overlay's opacity at source time `time`: 0 outside its range, ramping over `overlayFadeSeconds` at each end.
     public func opacity(at time: Double) -> Double {
         guard time >= start, time < end else { return 0 }
-        let fade = min(Self.overlayFadeSeconds, (end - start) / 2)
-        guard fade > 0 else { return 1 }
-        return min(1, (time - start) / fade, (end - time) / fade)
+        let defaultFade = min(Self.overlayFadeSeconds, (end - start) / 2)
+        let fadeIn = fadeInSeconds ?? defaultFade, fadeOut = fadeOutSeconds ?? defaultFade
+        return min(1, fadeIn > 0 ? (time - start) / fadeIn : 1, fadeOut > 0 ? (end - time) / fadeOut : 1)
+    }
+
+    public func explicitFadeOpacity(at time: Double) -> Double {
+        MusicMix.fadeFactor(at: time - start, duration: end - start, fadeIn: fadeInSeconds ?? 0, fadeOut: fadeOutSeconds ?? 0)
     }
 
     public func overlayPose(at time: Double) -> (scale: Double, down: Double) {

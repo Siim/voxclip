@@ -135,12 +135,16 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     crop: Self.centerCrop(source: captured.extent, output: size), output: size)
             }
             let sourceTime = instruction.request.timeline.sourceTime(editedTime)
-            if let illustration = instruction.effects?.illustration(at: sourceTime, output: size) { image = illustration }
+            if let illustration = instruction.effects?.illustration(at: sourceTime, output: size, over: image) { image = illustration }
             // The look grades the picture before any Ask Claude effect: censors cover graded pixels, and pointers, titles
             // and stickers keep their own colours. A colour transform per pixel, so it commutes with the motion crop.
-            let timedLook = instruction.request.effects?.look(at: sourceTime)
-            if let controls { image = ClipPicture.grade(image, controls: controls, override: timedLook) }
-            else if let timedLook { image = ClipPicture.look(image, timedLook) }
+            let lookEffect = instruction.request.effects?.lookEffect(at: sourceTime)
+            let timedLook = lookEffect?.look
+            let opacity = lookEffect?.explicitFadeOpacity(at: sourceTime) ?? 1
+            if let controls {
+                let graded = ClipPicture.grade(image, controls: controls, override: timedLook)
+                image = opacity == 1 ? graded : Self.dissolve(graded, over: ClipPicture.grade(image, controls: controls), opacity: opacity)
+            } else if let timedLook { image = Self.dissolve(ClipPicture.look(image, timedLook), over: image, opacity: opacity) }
             if let effects = instruction.effects {
                 image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
                                         controls: controls)
@@ -160,7 +164,10 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 guard let companion else {
                     fail(request, instruction, .sourceFrame, VoxClipError.decodeFailed("Missing companion video frame")); return
                 }
-                image = Self.withFootage(companion, camera: image, kind: layer.kind, output: size)
+                let cutaway = Self.withFootage(companion, camera: image, kind: layer.kind, output: size)
+                let opacity = MusicMix.fadeFactor(at: editedTime - layer.output.start.seconds, duration: layer.output.duration.seconds,
+                                                  fadeIn: layer.fadeIn, fadeOut: layer.fadeOut)
+                image = Self.dissolve(cutaway, over: image, opacity: opacity)
             }
             if let effects = instruction.effects {
                 let timeline = instruction.request.timeline
@@ -176,6 +183,13 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             CVBufferSetAttachment(output, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
             drawCaptions(request, instruction: instruction, into: output, generation: current)
         }
+    }
+
+    static func dissolve(_ foreground: CIImage, over background: CIImage, opacity: Double) -> CIImage {
+        if opacity >= 1 { return foreground }
+        if opacity <= 0 { return background }
+        return background.applyingFilter("CIDissolveTransition", parameters: [
+            kCIInputTargetImageKey: foreground, kCIInputTimeKey: opacity])
     }
 
     static func withFootage(_ footage: CIImage, camera: CIImage, kind: ClipFootage.Kind, output: CGSize) -> CIImage {

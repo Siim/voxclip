@@ -41,7 +41,11 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
     public var picture: [ClipEffect] { effects.filter { ![.bleep, .mute, .sound, .colourLook, .speedForPart].contains($0.kind) } }
 
     public func look(at sourceTime: Double) -> ClipLook? {
-        effects.last { $0.kind == .colourLook && $0.start <= sourceTime && sourceTime < $0.end }?.look
+        lookEffect(at: sourceTime)?.look
+    }
+
+    public func lookEffect(at sourceTime: Double) -> ClipEffect? {
+        effects.last { $0.kind == .colourLook && $0.start <= sourceTime && sourceTime < $0.end }
     }
 
     public var credits: [String] {
