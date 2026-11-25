@@ -140,8 +140,7 @@ public sealed class FrameComposer : IFrameComposer
     {
         if (snapshot.Footage.FirstOrDefault(layer => layer.EditedStart <= editedTime && editedTime < layer.EditedEnd) is not { } layer) return;
         var speed = snapshot.Speed;
-        var start = speed.Rendered(layer.EditedStart);
-        var opacity = MusicMix.FadeFactor(speed.Rendered(editedTime) - start, speed.Rendered(layer.EditedEnd) - start,
+        var opacity = MusicMix.FadeFactor(editedTime - layer.EditedStart, layer.EditedEnd - layer.EditedStart,
             layer.Entry.FadeInSeconds ?? 0, layer.Entry.FadeOutSeconds ?? 0);
         if (opacity <= 0) return;
         (PixelBuffer Frame, int Rotation) companion;
@@ -316,7 +315,7 @@ public sealed class FrameComposer : IFrameComposer
             if (value != ClipLook.Original || adjustments is not null) ClipPicture.Grade(frame, value, adjustments, ct);
         }
         if (look != baseLook && timedLook is { } effect && (effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue))
-            DrawBlended(output, effect.OpacityAt(sourceTime), frame => Grade(frame, look), frame => Grade(frame, baseLook));
+            DrawBlended(output, effect.ExplicitFadeOpacityAt(sourceTime), frame => Grade(frame, look), frame => Grade(frame, baseLook));
         else Grade(output, look);
         if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip!.Effects!.PictureTime(sourceTime), clip.Controls, ct);
         if (clip is { Motion.Count: > 0 } && !(forPreview && clip.ReduceMotionInPreview))

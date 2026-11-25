@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Effects;
@@ -158,6 +159,10 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
         var fadeOut = FadeOutSeconds ?? legacyFade;
         return Math.Min(1, Math.Min(fadeIn > 0 ? (time - Start) / fadeIn : 1, fadeOut > 0 ? (End - time) / fadeOut : 1));
     }
+
+    /// <summary>Opacity for picture treatments which do not fade unless a fade was set.</summary>
+    public double ExplicitFadeOpacityAt(double time) => time < Start || time >= End ? 0 :
+        MusicMix.FadeFactor(time - Start, End - Start, FadeInSeconds ?? 0, FadeOutSeconds ?? 0);
     /// <summary>Overlay centre scale and downward offset as a fraction of frame height, at a source second.</summary>
     public (double Scale, double Down) OverlayPoseAt(double time)
     {
@@ -201,6 +206,12 @@ public sealed record ClipEffectsRenderInput(IReadOnlyList<ClipEffect> Effects, I
     public static ClipEffectsRenderInput? Resolve(Project project, string? clipId, string dataRoot, string sharedRoot)
     {
         var effects = ClipEffects.Rendered(project, clipId);
+        if (project.SchemaVersion >= TimelineEditFields.Version && project.Transcript is { } transcript &&
+            project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } clip)
+        {
+            var parts = StoryClips.Times(clip, transcript.Words);
+            effects = effects.Where(effect => effect.Kind != "sound" || parts.Any(part => part.Start <= effect.Start && effect.Start < part.End)).ToArray();
+        }
         if (effects.Count == 0) return null;
         var paths = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var effect in effects)

@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Ffmpeg;
@@ -17,9 +18,14 @@ public static class FootageRendering
         var layers = new List<FootageRenderLayer>();
         var timeline = snapshot.Timeline;
         var speed = snapshot.Speed;
+        var clip = project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId);
+        var words = project.Transcript?.Words;
+        var parts = words is null ? null : clip?.PlayPartIndices(words)?.Select((part, index) =>
+            EditingAlgorithms.ClipTimes(words, part.Start, part.End, index == 0 ? clip.LeadInSeconds : null)).ToArray();
         foreach (var entry in placements.Where(entry => entry.ClipId == clipId).OrderBy(entry => entry.Start))
         {
             ct.ThrowIfCancellationRequested();
+            if (parts is not null && !parts.Any(part => part.Start <= entry.Start && entry.End <= part.End)) continue;
             var start = timeline.MapTime(entry.Start);
             var end = timeline.MapEndTime(entry.End);
             if (end <= start) continue;

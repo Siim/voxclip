@@ -819,6 +819,23 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void AColourLookDissolvesFromTheBaseGradeAndKeepsTheLegacyHardCut()
+    {
+        var frame = SyntheticFrame();
+        var warm = Controls(look: ClipLook.Warm);
+        var look = new ClipEffect("fx-look", "c", "colourLook", 1, 3) { Look = "bw" };
+        var baseGrade = Finish(frame, new(warm, null));
+        var fullGrade = Finish(frame, new(Controls(look: ClipLook.Bw), null));
+        Assert.Equal(fullGrade.Pixels.ToArray(), Finish(frame, new(warm, Effects(look)), 1).Pixels.ToArray());
+        var faded = new ClipRenderInput(warm, Effects(look with { FadeInSeconds = .5 }));
+        Assert.Equal(baseGrade.Pixels.ToArray(), Finish(frame, faded, 1).Pixels.ToArray());
+        var midpoint = Finish(frame, faded, 1.25);
+        var expected = baseGrade.Pixels.ToArray().Zip(fullGrade.Pixels.ToArray(), (first, second) => (byte)Math.Round((first + second) / 2.0));
+        Assert.Equal(expected, midpoint.Pixels.ToArray());
+        Assert.Equal(fullGrade.Pixels.ToArray(), Finish(frame, faded, 2.99).Pixels.ToArray());
+    }
+
+    [Fact]
     public void TheBlackAndWhiteLookGradesThePictureBeforeOverlaysDraw()
     {
         // Colour bars with a yellow bar, as the Mac's bars fixture has.

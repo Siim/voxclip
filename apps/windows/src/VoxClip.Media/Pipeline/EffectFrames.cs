@@ -38,7 +38,7 @@ internal sealed class EffectFrames : IDisposable
     {
         var effect = Picture.LastOrDefault(effect => effect.Kind == "illustration" && effect.Start <= time && time < effect.End);
         if (effect is null || !Input.Images.TryGetValue(effect.Id, out var path)) return;
-        var opacity = effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue ? effect.OpacityAt(time) : 1;
+        var opacity = effect.ExplicitFadeOpacityAt(time);
         if (opacity <= 0) return;
         var image = illustrations.GetOrAdd(path, key => new(() => File.Exists(key) ? SKImage.FromEncodedData(key) : null)).Value;
         if (image is null) return;
@@ -81,8 +81,7 @@ internal sealed class EffectFrames : IDisposable
             if (effect.RectAt(time) is not { } rect) continue;
             var region = SKRectI.Intersect(Mapped(rect), bounds);
             if (region.Width < 1 || region.Height < 1) continue;
-            var opacity = effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue ? effect.OpacityAt(time) : 1;
-            Censor(frame, region, effect.Kind == "pixelate", opacity);
+            Censor(frame, region, effect.Kind == "pixelate", effect.ExplicitFadeOpacityAt(time));
         }
         var pointers = active.Where(effect => effect.Kind is "arrow" or "circle").ToArray();
         if (pointers.Length == 0) return;

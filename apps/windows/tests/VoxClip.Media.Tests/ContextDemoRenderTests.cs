@@ -61,7 +61,7 @@ public sealed class ContextDemoRenderTests
     public void FootageDissolvesToAndFromTheSpeakerAtOneTimesSpeed(bool preview)
     {
         var frames = new Frames();
-        var entry = new ProjectFootage("placement", "clip", "cutaway", 1, 4, new("demo", 0.5), 0.5, 0.5);
+        var entry = new ProjectFootage("placement", "clip", "bRoll", 1, 4, new("demo", 0.5), 1, 1);
         var snapshot = Snapshot(size: new(180, 320)) with
         {
             ContextDemo = null, Clip = new(new("clip", 2, null, ClipLook.Original, 0, 0, 0, false, false, 0), null),
@@ -114,6 +114,9 @@ public sealed class ContextDemoRenderTests
             var layer = Assert.Single(await FootageRendering.ResolveAsync(reopened, snapshot, store, projectPath, ct));
             Assert.Equal(0, layer.EditedStart);
             Assert.Equal(0.75, layer.EditedEnd);
+            var trimmed = reopened with { Edits = reopened.Edits with { Clips = [clip with { EndWordId = "w13" }] } };
+            Assert.Empty(await FootageRendering.ResolveAsync(trimmed, snapshot, store, projectPath, ct));
+            Assert.Equal(placement, Assert.Single(trimmed.Media.Footage!));
         }
         finally { directory.Delete(recursive: true); }
     }
