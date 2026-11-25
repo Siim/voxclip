@@ -13,6 +13,24 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class TimelineTests
 {
+    [Fact]
+    public void StoryTimelineKeepsPartJumpsSeparateFromCutsOnBothAxes()
+    {
+        var model = ClipSemanticsTests.Story();
+        var plan = TimelineLayout.Plan(model);
+        var timeline = new TimelineStory(model, plan);
+        Assert.Equal(3.15, timeline.SourceAt(0, true), 4);
+        var seam = Assert.Single(timeline.Seams(true));
+        Assert.Equal(3, seam.Width);
+        Assert.Equal("↶ 0:00", seam.Label);
+        Assert.Equal(0.475, seam.Position, 4);
+        Assert.Equal(0.18, timeline.SourceAt(seam.Position, true), 4);
+        Assert.Equal(["first", "second"], timeline.Bands(false).Select(band => band.Part.Id));
+        Assert.Equal([3.2, 0.3], timeline.Overview.Select(band => band.Range.Start));
+        Assert.Equal(0.655, timeline.Display(0.36, false), 4);
+        Assert.Equal(0.36, timeline.SourceAt(0.655, false), 4);
+        Assert.Empty(new TimelineTileCache().Get(plan, null, new(0, plan.Duration), 600, true, timeline).Seams);
+    }
     [Theory]
     [InlineData(100, 20, 30, 18.5, 31.5)]
     [InlineData(100, 20, 60, 17, 63)]
