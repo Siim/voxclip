@@ -1,5 +1,10 @@
 # Voice Lab Core contract fixtures
 
+`fal-upload-case.json` pins the part sizes and order for a file one byte above
+fal.ai's 90 MiB single-upload limit. Both Core HTTP stand-ins replay it with a
+synthetic sparse file and check the one-byte final part. Regenerate with
+`python3 tools/fixtures/voice-lab/generate_fal_upload.py`.
+
 `hard-join-review-cases.json` (`voxclip-hard-join-review/1`) adds independent
 constant-bed vectors (including both generated edge fades and a 10 ms word
 gap), 2–20 ms source-fade counts, nonzero take-edge samples, and a synthetic

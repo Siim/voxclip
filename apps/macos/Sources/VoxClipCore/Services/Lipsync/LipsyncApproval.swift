@@ -128,6 +128,17 @@ public actor LipsyncApproval {
 enum LipsyncURLPolicy {
     static let resultHosts: Set<String> = ["fal.media", "v1.fal.media", "v2.fal.media", "v3.fal.media", "v3b.fal.media"]
 
+    static func isUploadHost(_ host: String) -> Bool { resultHosts.contains(host) || host == "storage.fal.ai" }
+
+    static func upload(_ target: URL, suffix: String? = nil) throws -> URL {
+        var value = try components(target)
+        guard let host = value.host, isUploadHost(host) else { throw LipsyncError.unsafeURL }
+        guard let suffix else { return target }
+        value.percentEncodedPath += "/" + suffix
+        guard let url = value.url, try components(url).host == host else { throw LipsyncError.unsafeURL }
+        return url
+    }
+
     static func components(_ url: URL) throws -> URLComponents {
         guard url.absoluteString.utf8.count <= 8_192,
               let value = URLComponents(url: url, resolvingAgainstBaseURL: false),

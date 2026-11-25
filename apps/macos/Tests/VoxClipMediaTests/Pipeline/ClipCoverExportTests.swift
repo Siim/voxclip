@@ -219,20 +219,23 @@ private func counterFrame(_ image: CGImage) -> Int? {
     return value
 }
 
-/// The JPEG inside the file's iTunes `covr` atom (its `data` atom's payload after the 8-byte type and locale), read from
-/// the bytes, so the check doesn't depend on what AVFoundation reads back on each macOS.
 func coverArt(_ video: URL) async throws -> Data? {
+    try iTunesMetadataPayload(video, itemType: Data("covr".utf8))
+}
+
+/// The iTunes item's `data` payload after the 8-byte type and locale, read from the bytes so the check doesn't
+/// depend on what AVFoundation reads back on each macOS.
+func iTunesMetadataPayload(_ video: URL, itemType: Data) throws -> Data? {
     let bytes = try Data(contentsOf: video)
     func size(at index: Int) -> Int { bytes[index..<index + 4].reduce(0) { $0 << 8 | Int($1) } }
-    // The four letters can occur by chance in coded media, so only a `covr` whose first child is a `data` atom counts.
+    // The type can occur by chance in coded media, so only an item whose first child is a `data` atom counts.
     var from = bytes.startIndex
-    while let covr = bytes.range(of: Data("covr".utf8), in: from..<bytes.endIndex) {
-        from = covr.upperBound
-        // covr's own size is the 4 bytes before its type; its first child is the `data` atom.
-        let start = covr.lowerBound - 4, data = covr.upperBound
+    while let item = bytes.range(of: itemType, in: from..<bytes.endIndex) {
+        from = item.upperBound
+        let start = item.lowerBound - 4, data = item.upperBound
         guard start >= bytes.startIndex, data + 16 <= bytes.endIndex, bytes[data + 4..<data + 8] == Data("data".utf8) else { continue }
-        let covrEnd = start + size(at: start), dataEnd = data + size(at: data)
-        guard dataEnd <= covrEnd, dataEnd <= bytes.endIndex, data + 16 <= dataEnd else { continue }
+        let itemEnd = start + size(at: start), dataEnd = data + size(at: data)
+        guard dataEnd <= itemEnd, itemEnd <= bytes.endIndex, data + 16 <= dataEnd else { continue }
         return Data(bytes[(data + 16)..<dataEnd])
     }
     return nil

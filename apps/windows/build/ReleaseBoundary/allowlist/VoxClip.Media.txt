@@ -2002,7 +2002,7 @@ member VoxClip.Media.VoiceLab.LipsyncRun :: field private journal
 member VoxClip.Media.VoiceLab.LipsyncRun :: method private Transient(System.Exception)
 member VoxClip.Media.VoiceLab.LipsyncRun :: method public .ctor(VoxClip.Core.Services.VoiceLab.FalLipsyncProvider,VoxClip.Core.Services.VoiceLab.VoiceConsentStore,string,string,VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger)
 member VoxClip.Media.VoiceLab.LipsyncRun :: method public AcceptedPrice(VoxClip.Media.VoiceLab.LipsyncRunWindow)
-member VoxClip.Media.VoiceLab.LipsyncRun :: method public ExecuteAsync(VoxClip.Media.VoiceLab.LipsyncRunWindow,VoxClip.Core.Services.VoiceLab.FalLipsyncQuote,string,string,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.IProgress`1<VoxClip.Core.Services.LLM.LipsyncState>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.LipsyncRun :: method public ExecuteAsync(VoxClip.Media.VoiceLab.LipsyncRunWindow,VoxClip.Core.Services.VoiceLab.FalLipsyncQuote,string,string,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.IProgress`1<VoxClip.Core.Services.LLM.LipsyncState>,System.Threading.CancellationToken,System.Action`2<int,int>)
 member VoxClip.Media.VoiceLab.LipsyncRun :: method public QuoteAsync(VoxClip.Media.VoiceLab.LipsyncRunWindow,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.LipsyncRun :: method public State(VoxClip.Media.VoiceLab.LipsyncRunWindow)
 member VoxClip.Media.VoiceLab.LipsyncRunWindow :: method internal get_Key()

@@ -484,7 +484,7 @@ public sealed class WholeClipScript
 }
 
 /// <summary>What a whole-clip run has paid for, keyed by what it was paid for. A step whose key matches is reused instead of paid again:
-/// Try Again after a failed or cancelled lip sync keeps the voice, and the sync-3 upgrade re-runs only the lip sync.</summary>
+/// Try Again after a failed or cancelled lip sync keeps the voice, and Redo Lip Sync Only reuses the saved voice.</summary>
 public sealed class WholeClipRevoiceLedger
 {
     /// <summary>The voice: the script, the voice record and the text-to-speech model it was said in.</summary>

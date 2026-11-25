@@ -2,17 +2,22 @@ import Darwin
 import Foundation
 
 public struct LipsyncDiagnosticEvent: Codable, Sendable {
-    public enum Stage: String, Codable, Sendable { case uploadInitiate, upload, submit, queued, running, completed, cancel, cleanup, failure }
+    public enum Stage: String, Codable, Sendable {
+        case uploadInitiate, upload, submit, queued, running, completed, cancel, cleanup, failure
+        case uploadPart = "upload-part", uploadComplete = "upload-complete"
+    }
     public let stage: Stage
     public let requestID: String?
     public let status: Int?
     public let seconds: Double
     public let bytes: Int?
+    public let part: Int?
     public let error: String?
 
-    init(stage: Stage, requestID: String? = nil, status: Int? = nil, seconds: Double = 0, bytes: Int? = nil, error: LipsyncError? = nil) {
+    init(stage: Stage, requestID: String? = nil, status: Int? = nil, seconds: Double = 0, bytes: Int? = nil, part: Int? = nil,
+         error: LipsyncError? = nil) {
         self.stage = stage; self.requestID = requestID.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
-        self.status = status; self.seconds = seconds; self.bytes = bytes
+        self.status = status; self.seconds = seconds; self.bytes = bytes; self.part = part
         self.error = error.map { String(describing: $0) }
     }
 }

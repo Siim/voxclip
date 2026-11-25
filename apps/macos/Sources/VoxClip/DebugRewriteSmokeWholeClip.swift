@@ -14,7 +14,7 @@ import VoxClipMedia
 // - S-revoice-whole-claude: Claude mode's quote says stitched and the price fits the cap: revoiced with no click.
 // - S-revoice-whole-over-cap: the price passes the cap: the patch goes on, the offer waits, nothing is sent.
 // - S-revoice-whole-cancel: Cancel during the lip sync keeps the clip; Try Again pays only the lip sync.
-// - S-revoice-whole-upgrade: Review's Sharper Lip Sync · sync-3 re-runs only the lip sync and Use saves sync-3.
+// - S-revoice-whole-legacy-redo: A saved lipsync-2 take stays in use until Use on its sync-3 redo.
 // - S-revoice-whole-cuts: the same clip with a cut "um" before each of its later sentences (voice-lab §8.14 item 3): the
 //   parts tile the clip, so a filler before a part's first word is absorbed and the run reaches Review and Use (WK1).
 // - S-revoice-whole-midtake: the clip opens mid-take on a word touching the one before it, with no silence (voice-lab §8.4,
@@ -165,7 +165,7 @@ extension DebugRewriteSmoke {
         },
         Definition(id: "S-revoice-whole-claude", title: "✦ Claude does it all revoices a stitched clip whole within the cap, with no click",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
-            try await harness.revoiceWholeClipAutomatically(budget: 2)
+            try await harness.revoiceWholeClipAutomatically(budget: 8)
         },
         Definition(id: "S-revoice-whole-over-cap", title: "over the cap Claude patches and offers the whole clip; nothing is sent",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -175,9 +175,9 @@ extension DebugRewriteSmoke {
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
             try await harness.cancelWholeClip()
         },
-        Definition(id: "S-revoice-whole-upgrade", title: "Review's Sharper Lip Sync · sync-3 re-runs only the lip sync",
+        Definition(id: "S-revoice-whole-legacy-redo", title: "A saved lipsync-2 take stays in use until its sync-3 Redo is used",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
-            try await harness.upgradeWholeClip()
+            try await harness.redoLegacyWholeClip()
         },
     ] }
 }
@@ -315,10 +315,10 @@ extension DebugRewriteSmoke.Harness {
         try await act("Use the redone take", clicked: "wholeClipUse") { await reopened.useWholeClip().value }
         let redoSubmits = await lipsync.http.submits
         makeItAppend([wholeClipCheck("VF-redo", kept && candidate.phase == .used && reopened.usedWholeClip?.id != record.id
-            && redoSpeech > usedSpeech && redoSubmits == 2 && lipsync.models == [.lipsync2, .lipsync2],
+            && redoSpeech > usedSpeech && redoSubmits == 2 && lipsync.models == [.sync3, .sync3],
             "one priced click after reopen sends a new voice and picture; the earlier version stays until Use")])
         let picture = try await reopenUsedWholeClip()
-        guard let current = picture.usedWholeClip, let lip = picture.wholeClipLipRedo(.standard), lip.priced else {
+        guard let current = picture.usedWholeClip, let lip = picture.wholeClipLipRedo(), lip.priced else {
             throw DebugRewriteSmoke.Failure.missing("priced Redo Lip Sync Only after reopen", phaseText(candidate))
         }
         let voiceAssets = picture.project.voiceLab.assets
@@ -341,29 +341,15 @@ extension DebugRewriteSmoke.Harness {
         let pictureSubmits = await lipsync.http.submits
         makeItAppend([wholeClipCheck("VF-lip", keptPicture && paidPictureBack && recovered.usedWholeClip?.id != current.id
             && recovered.project.voiceLab.assets == voiceAssets && speechRequests == redoSpeech && pictureSubmits == 3
-            && lipsync.models == [.lipsync2, .lipsync2, .lipsync2, .lipsync2],
+            && lipsync.models == [.sync3, .sync3, .sync3, .sync3],
             "one priced click sends only new lip sync over the saved voice; reopening recovers it without a submit")])
-        let sharpPicture = try await reopenUsedWholeClip()
-        guard let saved = sharpPicture.usedWholeClip, let sharper = sharpPicture.wholeClipLipRedo(.sync3), sharper.priced else {
-            throw DebugRewriteSmoke.Failure.missing("priced Sharper Lip Sync", phaseText(candidate))
-        }
-        try await act("click Sharper Lip Sync", clicked: sharper.id) {
-            sharper.perform()
-            await sharpPicture.wholeClip?.waitForRun()
-        }
-        let keptSharp = sharpPicture.wholeClip?.phase == .review && sharpPicture.usedWholeClip == saved
-        try await act("Use Sharper Lip Sync", clicked: "wholeClipUse") { await sharpPicture.useWholeClip().value }
-        let sharpSubmits = await lipsync.http.submits
-        makeItAppend([wholeClipCheck("VF-sharper", keptSharp && sharpPicture.usedWholeClip?.lipsyncModel == WholeClipRevoice.Lipsync.sync3.rawValue
-            && sharpPicture.project.voiceLab.assets == voiceAssets && speechRequests == redoSpeech && sharpSubmits == 4
-            && lipsync.models == [.lipsync2, .lipsync2, .lipsync2, .lipsync2, .sync3], "sync-3 after reopen keeps the voice and leaves the earlier version in use until Use")])
-        let paid = sharpPicture.project.voiceLab.assets
-        sharpPicture.backToMyRecording()
-        makeItAppend([wholeClipCheck("VF-original", sharpPicture.usedWholeClip == nil && sharpPicture.project.voiceLab.assets == paid,
+        let paid = recovered.project.voiceLab.assets
+        recovered.backToMyRecording()
+        makeItAppend([wholeClipCheck("VF-original", recovered.usedWholeClip == nil && recovered.project.voiceLab.assets == paid,
                                      "Back to My Recording retains the paid assets")])
     }
 
-    private func reopenUsedWholeClip() async throws -> RewriteSession {
+    private func reopenUsedWholeClip(clipID: String? = nil) async throws -> RewriteSession {
         guard let previous = editor else { throw DebugRewriteSmoke.Failure.setup("no editor to reopen") }
         let project = try JSONProjectStore.decode(JSONProjectStore.encode(previous.project))
         let reopened = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
@@ -373,7 +359,7 @@ extension DebugRewriteSmoke.Harness {
         reopened.lipsyncSmoke = previous.lipsyncSmoke
         previous.close()
         editor = reopened
-        reopened.openWholeClipVoice()
+        reopened.openWholeClipVoice(clipID: clipID)
         guard let voice = reopened.openRewrite, let whole = voice.wholeClip else {
             throw DebugRewriteSmoke.Failure.setup("no Voice panel after reopening the project")
         }
@@ -418,7 +404,7 @@ extension DebugRewriteSmoke.Harness {
         let seconds = edited.mapTime(script.sentences.last?.end ?? 0) - edited.mapTime(script.sentences.first?.start ?? 0) + 2
         let expected = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
                                                   videoSeconds: LipsyncLimits.uploadSeconds(seconds),
-                                                  lipsync: .lipsync2, catalog: catalog)
+                                                  lipsync: .sync3, catalog: catalog)
         let expectedMaximum: Decimal? = if let voice = expected.voice.usd, let lipsync = expected.lipsync.usd,
                                            let check = RewriteSession.wordCheckUSD(catalog) {
             voice + check * Decimal(script.parts.count) + lipsync
@@ -562,7 +548,7 @@ extension DebugRewriteSmoke.Harness {
             makeItAppend([wholeClipCheck("WF-reopen", playable && checksOnly && whole.phase == .review && speechRequests == 0 && submissions == 0
                 && fal.paymentPermissions == [false] && fal.imports.count == 1 && fal.imports[0].recovered,
                 "\(phaseText(whole)) · \(decodedParts) playable saved parts before retry · \(speechRequests) new speech requests · \(line) · recovery button: \(retry.title)")])
-            try await useAndCheck(session, whole, model: .lipsync2)
+            try await useAndCheck(session, whole, model: .sync3)
             return
         }
         let (session, whole) = try await openWholeClip()
@@ -572,7 +558,7 @@ extension DebugRewriteSmoke.Harness {
         checkReview(whole, segmentsBefore: before)
         let line = await fal.line(), passed = await fal.passed()
         makeItAppend([wholeClipCheck("WF1", whole.phase == .review && passed, phaseText(whole) + " · " + line)])
-        try await useAndCheck(session, whole, model: .lipsync2)
+        try await useAndCheck(session, whole, model: .sync3)
     }
 
     func rewriteUsedRevoice(partial: Bool = false) async throws {
@@ -589,7 +575,7 @@ extension DebugRewriteSmoke.Harness {
             throw DebugRewriteSmoke.Failure.setup("the first revoice did not reach Review: " + phaseText(whole))
         }
         try await act("click [Use Whole Clip]", clicked: "wholeClipUse") { await first.useWholeClip().value }
-        guard let editor, whole.phase == .used, lipsync.calls == [.lipsync2],
+        guard let editor, whole.phase == .used, lipsync.calls == [.sync3],
               let record = editor.project.voiceLab.wholeClipRevoices?.first else {
             throw DebugRewriteSmoke.Failure.setup("the first clip was not lip-synced and used")
         }
@@ -617,14 +603,14 @@ extension DebugRewriteSmoke.Harness {
             let off = current.segments.filter { record.segmentIds.contains($0.id) }.allSatisfy { !$0.enabled }
             let again = modelActions().contains { $0.0.id == "rewriteAgain" && !$0.0.priced }
             makeItAppend([wholeClipCheck("WU2", off && current.wholeClipRevoices == nil && current.assets == prior.assets
-                && current.videoAssets == prior.videoAssets && speechRequests == before && lipsync.calls == [.lipsync2] && again,
+                && current.videoAssets == prior.videoAssets && speechRequests == before && lipsync.calls == [.sync3] && again,
                 "old revoice off \(off) · assets kept \(current.assets == prior.assets && current.videoAssets == prior.videoAssets) · Rewrite Again \(again)")])
             return
         }
         guard let revoice = next.wholeClip else { throw DebugRewriteSmoke.Failure.setup("no whole-clip offer after opening Rewrite again") }
         await revoice.refreshQuote()
         guard let primary = next.wholeClipPrimary(), primary.priced else { throw DebugRewriteSmoke.Failure.setup("no priced whole-clip replacement") }
-        makeItAppend([wholeClipCheck("WU1", speechRequests == before && lipsync.calls == [.lipsync2] && editor.project.voiceLab == prior,
+        makeItAppend([wholeClipCheck("WU1", speechRequests == before && lipsync.calls == [.sync3] && editor.project.voiceLab == prior,
             "[\(primary.title)] · \(speechRequests - before) new speech requests · earlier revoice stays")])
         try await runWholeClip(next, revoice, title: primary.title)
         guard revoice.phase == .review else {
@@ -716,11 +702,11 @@ extension DebugRewriteSmoke.Harness {
         if midTake { checkMidTakeEdge(session, whole) }
         if tightened { checkEditedTimeline(session, whole) }
         if short { checkSpedPicture(session, whole) }
-        makeItAppend([wholeClipCheck("W5", lipsync.calls == [.lipsync2] && whole.voice.map { $0.parts >= 1 } == true,
+        makeItAppend([wholeClipCheck("W5", lipsync.calls == [.sync3] && whole.voice.map { $0.parts >= 1 } == true,
             "lip sync \(lipsync.calls.map(\.name)) · \(whole.voice?.parts ?? 0) parts · \(speechRequests) speech requests")])
         let after: (() -> Void)? = tightened ? { [weak self] in self?.checkEditedRender() }
             : short ? { [weak self, weak whole] in self?.checkSpedRender(whole?.picture) } : nil
-        try await useAndCheck(session, whole, model: .lipsync2, fullTake: midTake, afterUse: after)
+        try await useAndCheck(session, whole, model: .sync3, fullTake: midTake, afterUse: after)
     }
 
     /// WS1: a voice 35% short is checked at Fit: its picture is the clip's own cuts sped up evenly (1.2×, the cap) with the
@@ -734,8 +720,8 @@ extension DebugRewriteSmoke.Harness {
         let sped = phrases.allSatisfy { phrase in phrase.videoChoice == .cut && (phrase.selected?.row.audio?.fit.plan.pictureSpeed ?? 1) > 1 }
         let catalog = try? VoiceLabPriceCatalog.load(shared: SharedResources.locate())
         let expected = catalog.flatMap { try? WholeClipRevoice.lipsyncPrice(videoSeconds: LipsyncLimits.uploadSeconds(picture.outputSeconds + 2),
-                                                                            lipsync: .lipsync2, catalog: $0).usd }
-        let priced = (try? whole.backend?.lipsyncPrice(.lipsync2)) ?? nil
+                                                                            lipsync: .sync3, catalog: $0).usd }
+        let priced = (try? whole.backend?.lipsyncPrice(.sync3)) ?? nil
         makeItAppend([wholeClipCheck("WS1", voice.seconds < video * 0.75 && abs(picture.speed - WholeClipRevoice.maximumPictureSpeed) < 0.002
                 && picture.laidOut && fit.contains("picture 1.20× and laid out on the clip's pauses") && sped
                 && picture.outputSeconds < video && priced != nil && priced == expected,
@@ -881,7 +867,7 @@ extension DebugRewriteSmoke.Harness {
         let clipAfter = editor?.project.voiceTakeIdentity(scope: .clip("clip-whole"), enclosingClipID: "clip-whole")
         let unchanged = clipBefore != nil && clipBefore == clipAfter
         // Try Again over the paid voice pays only the lip sync: the price of the matched picture's lip sync, no voice.
-        let lipsyncPrice = (try? whole.backend?.lipsyncPrice(.lipsync2)) ?? nil
+        let lipsyncPrice = (try? whole.backend?.lipsyncPrice(.sync3)) ?? nil
         let retryUSD = whole.retryUSD
         let lipsyncOnly = retryUSD != nil && retryUSD == lipsyncPrice
         makeItAppend([wholeClipCheck("WX1", whole.isStopped && phaseText(whole).contains("Cancelled. Your clip is unchanged.") && unchanged && lipsyncOnly,
@@ -892,7 +878,7 @@ extension DebugRewriteSmoke.Harness {
             retry?.perform()
             await whole.waitForRun()
         }
-        makeItAppend([wholeClipCheck("WX2", whole.phase == .review && speechRequests == speech && lipsync.calls == [.lipsync2, .lipsync2],
+        makeItAppend([wholeClipCheck("WX2", whole.phase == .review && speechRequests == speech && lipsync.calls == [.sync3, .sync3],
             phaseText(whole) + " · \(speechRequests - speech) new speech requests · lip sync \(lipsync.calls.map(\.name)) · requests "
                 + RewriteSmokeHTTP.script.withLock { $0.requests }.dropFirst(logged).joined(separator: ", "))])
         completed = whole.phase == .review; ended = true
@@ -916,27 +902,59 @@ extension DebugRewriteSmoke.Harness {
             session.startWholeClip()
             await whole.waitForRun()
         }
-        makeItAppend([wholeClipCheck("WR2", whole.phase == .review && speechRequests == speech && lipsync.calls == [.lipsync2] && lipsync.renders > renders,
+        makeItAppend([wholeClipCheck("WR2", whole.phase == .review && speechRequests == speech && lipsync.calls == [.sync3] && lipsync.renders > renders,
             "\(phaseText(whole)) · \(speechRequests - speech) new speech requests · \(lipsync.renders - renders) new renders · lip sync \(lipsync.calls.map(\.name))")])
         completed = whole.phase == .review; ended = true
     }
 
-    func upgradeWholeClip() async throws {
-        let lipsync = installWholeClipStandIn()
+    func redoLegacyWholeClip() async throws {
+        let lipsync = try installFalShortResult(exactPicture: true)
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
         try await runWholeClip(session, whole, title: primary)
-        let speech = speechRequests
-        let upgrade = session.wholeClipUpgradeAction()
-        let expected = whole.upgradeUSD.map { "Sharper Lip Sync · sync-3 · " + VoiceLabCostPresentation.format($0) }
-        try await act("click [\(upgrade?.title ?? "Sharper Lip Sync")]", clicked: "wholeClipUpgrade") {
-            upgrade?.perform()
-            await whole.waitForRun()
+        try await act("click [Use Whole Clip]", clicked: "wholeClipUse") { await session.useWholeClip().value }
+        guard let editor, var legacy = session.usedWholeClip, whole.phase == .used else {
+            throw DebugRewriteSmoke.Failure.setup("no used take to reopen")
         }
-        makeItAppend([wholeClipCheck("WU1", upgrade?.title == expected && upgrade?.priced == true && whole.phase == .review
-                && speechRequests == speech && lipsync.calls == [.lipsync2, .sync3] && whole.synced?.model == .sync3,
-            "[\(upgrade?.title ?? "none")] · \(phaseText(whole)) · \(speechRequests - speech) new speech requests · lip sync \(lipsync.calls.map(\.name))")])
-        try await useAndCheck(session, whole, model: .sync3)
+        var project = editor.project
+        legacy.lipsyncModel = WholeClipRevoice.Lipsync.lipsync2.rawValue
+        project.voiceLab.wholeClipRevoices = [legacy]
+        for index in project.voiceLab.segments.indices where legacy.segmentIds.contains(project.voiceLab.segments[index].id) {
+            let selected = project.voiceLab.segments[index].selectedCandidateIndex
+            if project.voiceLab.segments[index].candidates[selected].recipe?.video.mode == .lipsync {
+                project.voiceLab.segments[index].candidates[selected].recipe?.video.model = legacy.lipsyncModel
+            }
+        }
+        editor.replace(project, name: "Legacy lipsync-2 fixture")
+        let speech = speechRequests
+        let reopened = try await reopenUsedWholeClip(clipID: legacy.clipId)
+        let voiceAssets = reopened.project.voiceLab.assets, videoAssets = reopened.project.voiceLab.videoAssets
+        let savedVideo = reopened.project.voiceLab.segments.filter { legacy.segmentIds.contains($0.id) }
+            .compactMap { $0.candidates[$0.selectedCandidateIndex].recipe?.video }
+            .filter { $0.mode == .lipsync }
+        makeItAppend([wholeClipCheck("WU0", !savedVideo.isEmpty && savedVideo.allSatisfy { $0.model == legacy.lipsyncModel },
+            "reopened with \(savedVideo.count) saved lipsync-2 picture recipes")])
+        let source = try reopened.wholeClipPictureRedoSource(legacy)
+        let estimate = try source.estimate(.sync3)
+        guard let redo = reopened.wholeClipLipRedo(), let amount = estimate.usd else {
+            throw DebugRewriteSmoke.Failure.setup("no priced Redo Lip Sync Only")
+        }
+        let firstRun = lipsync.models
+        let kept = reopened.usedWholeClip == legacy && !firstRun.isEmpty && firstRun.allSatisfy { $0 == .sync3 }
+        let priced = redo.priced && redo.title == "Redo Lip Sync Only · " + VoiceLabCostPresentation.format(amount)
+        try await act("click [\(redo.title)]", clicked: redo.id) {
+            redo.perform()
+            await reopened.wholeClip?.waitForRun()
+        }
+        let reviewKept = reopened.usedWholeClip == legacy && reopened.wholeClip?.phase == .review
+        try await act("Use sync-3 redo", clicked: "wholeClipUse") { await reopened.useWholeClip().value }
+        let ready = reopened.usedWholeClip?.lipsyncModel == WholeClipRevoice.Lipsync.sync3.rawValue
+        let earlierAssetsKept = videoAssets?.allSatisfy { reopened.project.voiceLab.videoAssets?.contains($0) == true } == true
+        let redoModels = Array(lipsync.models.dropFirst(firstRun.count))
+        makeItAppend([wholeClipCheck("WU1", kept && priced && reviewKept && ready && earlierAssetsKept
+                && reopened.project.voiceLab.assets == voiceAssets && speechRequests == speech && redoModels == firstRun,
+            "[\(redo.title)] · legacy kept until Use \(reviewKept) · \(speechRequests - speech) new speech requests · lip sync \(lipsync.models.map(\.name))")])
+        completed = ready; ended = true
     }
 
     func stopWholeClipAfterTwoWordFailures() async throws {

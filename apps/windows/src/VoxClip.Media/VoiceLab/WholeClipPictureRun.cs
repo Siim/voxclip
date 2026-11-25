@@ -92,7 +92,8 @@ public sealed class WholeClipPictureRun(FalLipsyncProvider provider, VoiceConsen
                 if (!quote.MatchesAccount(approval.Account) || quote.Estimate.Usd is not { } amount || amount > remaining)
                     throw new FalLipsyncException(FalLipsyncError.ApprovalRequired);
                 remaining -= amount;
-                picture = await run.ExecuteAsync(job.Input, quote, upload.Video, upload.Audio, record, binding, null, ct).ConfigureAwait(false);
+                picture = await run.ExecuteAsync(job.Input, quote, upload.Video, upload.Audio, record, binding, null, ct,
+                    (part, total) => progress?.Report($"Uploading for lip sync · part {part} of {total}")).ConfigureAwait(false);
             }
             else picture = await run.ExecuteAsync(job.Input, null, null, null, record, binding, null, ct).ConfigureAwait(false);
             var asset = await LipsyncMedia.ImportAsync(picture, projectId, paidRoot, snapshot.Media, job.Input.Seconds, ct).ConfigureAwait(false);

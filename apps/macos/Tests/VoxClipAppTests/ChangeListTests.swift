@@ -86,7 +86,7 @@ import Testing
         #expect(budget.task.cards.contains(.callout("These changes re-voice 15 words, a lot for a \(budget.task.words.wordCount)-word clip. Long stretches in your voice can sound stitched; Rewrite goes on.")))
         let none = try #require(scenes.first { $0.name == "r2-no-changes" })
         #expect(none.task.headline.text == "No changes needed" && none.task.footer.primary?.title == "Ask for Something Else")
-        #expect(none.task.cards == [.text("Claude Code found nothing to change in clip 1."), .ask(placeholder: "What should change in clip 1?")])
+        #expect(none.task.cards == [.wholeClip, .text("Claude Code found nothing to change in clip 1."), .ask(placeholder: "What should change in clip 1?")])
     }
 
     /// Over the voice budget Rewrite goes on (voice-lab.md §8.2): the advisory is a note, Make Takes is offered as in the
@@ -421,13 +421,16 @@ import Testing
     @Test func makeTakesProblemShowsInR2() async throws {
         let (_, session, _, scenes) = try scene("r2-make-takes")
         defer { scenes.forEach { $0.editor?.close() } }
+        let proposalCards = session.task.cards
+        #expect(proposalCards.first == .wholeClip && proposalCards.count == 2)
+        let problem = PanelCard.callout("ElevenLabs rejected the key (401). Your edits are saved.")
         session.reportGenerationProblem(VoiceLabError.unauthorized)
-        await settle { session.task.cards.count > 1 }
-        #expect(session.task.cards.last == .callout("ElevenLabs rejected the key (401). Your edits are saved."))
+        await settle { session.task.cards.last == problem }
+        #expect(session.task.cards == proposalCards + [problem])
         #expect(session.task.footer.primary?.title == "Get Price · 1 phrase")
         session.reportGenerationProblem(nil)
-        await settle { session.task.cards.count == 1 }
-        #expect(session.task.cards.count == 1)
+        await settle { session.task.cards == proposalCards }
+        #expect(session.task.cards == proposalCards)
     }
 }
 #endif

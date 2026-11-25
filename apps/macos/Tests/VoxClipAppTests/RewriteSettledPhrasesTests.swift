@@ -71,7 +71,7 @@ import Testing
         #expect(!(session.task.footer.note ?? "").contains("phrases fit"))
     }
 
-    @Test func everyPhraseBlockedSaysItOnceAtTheTopAndOffersNoPrice() throws {
+    @Test func everyPhraseBlockedSaysItOnceAboveTheTakesAndOffersNoPrice() throws {
         let (editor, session, scenes) = try scene()
         defer { scenes.forEach { $0.editor?.close() } }
         try DebugRewriteGeneration.install("guard-all-blocked", in: session)
@@ -79,12 +79,13 @@ import Testing
         session.takeRowsShown = true
         session.showProposal()
         #expect(plan.settledWithBlocks && session.everyPhraseBlocked(plan))
-        guard case .nextSteps(let steps)? = session.task.cards.first else {
-            Issue.record("no card at the top: \(session.task.cards.map(\.id))"); return
+        #expect(session.task.cards.map(\.id) == ["wholeClip", "nextSteps:guardBlocked", "takes"])
+        guard case .nextSteps(let steps)? = session.task.cards.dropFirst().first else {
+            Issue.record("no blocked note below the whole-clip choice: \(session.task.cards.map(\.id))"); return
         }
         #expect(steps.id == "guardBlocked" && steps.line?.hasPrefix("This doesn't sound like the voice owner.") == true)
         #expect(steps.chips.map(\.action.title) == ["● Say it myself", "Keep all as recorded"])
-        // Each row has the short line; the stop is said once, at the top.
+        // Each row has the short line; the stop is said once above the takes.
         for phrase in plan.phrases { #expect(session.phraseStatus(phrase, plan: plan) == "Not voiced. Nothing sent.") }
         #expect(prices(session).isEmpty, "\(prices(session))")
         let primary = try #require(session.task.footer.primary)

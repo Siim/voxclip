@@ -6,7 +6,7 @@ using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
-internal enum WholeClipIntent { Revoice, RedoVoice, RedoLipSync, Sharper }
+internal enum WholeClipIntent { Revoice, RedoVoice, RedoLipSync }
 
 internal sealed record WholeClipSelection(Project Edited, WholeClipRevoicePlan? Plan, WholeClipVoiceRecovery Recovery,
     int Revision, IReadOnlyList<EditOperation> Operations, WholeClipIntent Intent = WholeClipIntent.Revoice, WholeClipRevoiceRecord? Kept = null)
@@ -14,6 +14,9 @@ internal sealed record WholeClipSelection(Project Edited, WholeClipRevoicePlan? 
     internal string ClipId => Recovery.ClipId;
     internal string RecordId => Recovery.RecordId;
     internal string Identity => Recovery.Identity;
+    internal string? LegacyPictureIdentity => Intent == WholeClipIntent.RedoLipSync && Kept is { } kept
+        ? Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"picture-redo/1\n{kept.Id}\n{Recovery.BaseKey}\nSharper"))) : null;
 }
 
 internal sealed record WholeClipOffer(WholeClipSelection Selection, WholeClipLipsync Model, decimal VoicePrice, WholeClipPictureApproval Picture,
@@ -74,10 +77,8 @@ internal sealed partial class RewriteSession
         : wholeClipPreview is null ? "Preview isn't available."
         : WholeClipReviewCurrent && WholeClipReview is not null || KeptWholeClip is not null && GenerationIsCurrent ? null
         : WholeClipUseBlocked;
-    internal string? WholeClipSharperBlocked => WholeClipBusy ? "Wait for the current voice step to finish."
-        : WholeClipBlocked ?? (KeptWholeClip is null && WholeClipReview is null ? "Make a lip-synced take first." : null);
     internal bool WholeClipCurrent(WholeClipSelection selection) => GenerationIsCurrent && revision == selection.Revision &&
-        (selection.Intent is WholeClipIntent.RedoLipSync or WholeClipIntent.Sharper || Generation?.VoiceId == selection.RecordId ||
+        (selection.Intent == WholeClipIntent.RedoLipSync || Generation?.VoiceId == selection.RecordId ||
             Generation?.VoiceId is null && (selection.Plan is null || selection.Kept?.ConsentRecordId == selection.RecordId)) &&
         Editor.Project.Edits.ActiveClipId == WholeClipRevoice.OutputScope(selection.ClipId).ClipId && WholeClipBaseKey(Editor.Project, selection.ClipId) == selection.Recovery.BaseKey &&
         (selection.Kept is null || KeptWholeClip?.Id == selection.Kept.Id);
@@ -130,15 +131,14 @@ internal sealed partial class RewriteSession
         if (WholeClipBlocked is not null || wholeClipPrice is null || Envelope is not { } envelope || !OffersWholeClip) return;
         var clipId = WholeClipScopeId;
         var kept = KeptWholeClip;
-        var model = intent == WholeClipIntent.Sharper ? WholeClipLipsync.Sync3 :
-            WholeClipLipsyncValues.FromRawValue(kept?.LipsyncModel ?? WholeClipReview?.Record.LipsyncModel) ?? WholeClipLipsync.Lipsync2;
         WholeClipPrice = null;
         progress.Report("Checking the whole-clip price…");
         var selection = wholeClipSelection;
         var basis = Editor.Project;
         var baseKey = WholeClipBaseKey(basis, clipId);
-        if (intent is WholeClipIntent.RedoLipSync or WholeClipIntent.Sharper && kept is not null)
+        if (intent == WholeClipIntent.RedoLipSync)
         {
+            if (kept is null) return;
             var identity = WholeClipHash($"picture-redo/1\n{kept.Id}\n{baseKey}\n{intent}");
             selection = new(basis, null, new(baseKey, identity, clipId, kept.ConsentRecordId, kept.Script), revision, [], intent, kept);
         }
@@ -152,8 +152,7 @@ internal sealed partial class RewriteSession
             if (kept is not null && intent == WholeClipIntent.RedoVoice) identity = WholeClipHash($"voice-redo/1\n{kept.Id}\n{identity}");
             selection = new(edited, plan, new(baseKey, identity, clipId, recordId, plan.Script.Text), revision, operations, intent, kept);
         }
-        else if (intent == WholeClipIntent.Sharper) selection = selection with { Intent = intent };
-        var quote = await wholeClipPrice(selection, model, ct);
+        var quote = await wholeClipPrice(selection, WholeClipLipsyncValues.Standard, ct);
         if (!WholeClipCurrent(selection)) return;
         WholeClipPrice = quote;
         WholeClipStatus = "";
@@ -270,6 +269,7 @@ internal sealed partial class RewriteSession
                 FalLipsyncError.MissingKey => "Add a fal.ai key in Settings → Providers & Keys to lip sync the clip.",
                 FalLipsyncError.ApprovalRequired => "The lip-sync price or account changed. Check the price again. Your voice is saved if it was made.",
                 FalLipsyncError.SubmissionUnconfirmed => "fal.ai may have accepted the request. Check your fal.ai account. VoxClip won't send it again.",
+                _ when error.UploadStage is not null => "The upload didn't finish. fal.ai didn't charge for this lip sync. Your voice and any earlier paid picture are saved.",
                 _ => "fal.ai couldn't finish the lip sync. Your voice and any paid picture are saved.",
             };
         }

@@ -5,6 +5,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Mac and Windows, choose a saved music track or a local audio file for a CLI export, include it in the WAV if wanted, and see which bed was mixed in JSON.
+- On Mac, project save failures say why once above the transcript, without interrupting edits with an alert.
+- On Mac, Rewrite finishes pricing lip sync for your current takes when video and lip-sync preparation overlap.
+- Whole-take lip sync uploads large clips in parts and uses sync-3 for new runs and redos on Mac and Windows. Existing lip syncs stay saved.
 - On Mac, redo a used whole take after reopening it: make a new voice and lip sync, or pay only for new lip sync and keep the voice you already made.
 - On Mac, editable timelines keep speed changes and put kept Rewrite or revoiced audio on its own lane; unsupported edits explain why before Save.
 - Harness proposals use the full clip-plan vocabulary on Mac and Windows, with separate priced clicks for generated assets.

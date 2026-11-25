@@ -160,6 +160,7 @@ import VoxClipCore
                 .onAppear { findFocused = true }
             }
             if let notice = shell.notice { InlineNotice(text: notice) }
+            if let notice = model.projectSaveNotice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
             // A preview failure over the player shows on the stage, with Reload Preview (design.md §5.4.4 g).
             if let error = model.previewError, !error.isEmpty, model.stagePreviewError == nil { InlineNotice(text: error) }
