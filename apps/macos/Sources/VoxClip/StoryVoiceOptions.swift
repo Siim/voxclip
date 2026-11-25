@@ -45,8 +45,11 @@ import VoxClipCore
     var body: some View {
         let price = estimates
         let reason = StoryClipPresentation.lipSyncReason(partCount: clip.playParts.count)
-        let priceLine = price.map { "voice ≈ \(VoiceLabCostPresentation.format($0.voice.usd)) + lip sync ≈ \(VoiceLabCostPresentation.format($0.lipsync.usd))" }
-        let actionTitle = price?.usd.map { "Revoice Whole Clip · ≈ \(VoiceLabCostPresentation.format($0))" } ?? "Revoice Whole Clip"
+        let priceLine = price.flatMap { estimate -> String? in
+            guard let voice = estimate.voice.usd, let lipsync = estimate.lipsync.usd else { return nil }
+            return "voice ≈ \(VoiceLabCostPresentation.format(voice)) + lip sync ≈ \(VoiceLabCostPresentation.format(lipsync))"
+        }
+        let actionTitle = price.flatMap { $0.usd }.map { "Revoice Whole Clip · ≈ \(VoiceLabCostPresentation.format($0))" } ?? "Revoice Whole Clip"
         VStack(alignment: .leading, spacing: 12) {
             Text("How should it sound?").font(VCType.callout.font(.semibold)).accessibilityAddTraits(.isHeader)
             option("Only the changed phrases", detail: "your recording stays", reason: StoryClipPresentation.rewriteReason)

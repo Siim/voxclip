@@ -461,7 +461,7 @@ struct TimelineContent: Equatable {
     private var edgeCursorRects: [NSRect] = []
     private func updateEdgeCursors() {
         let rects: [NSRect] = content.inOut.flatMap { edges in
-            guard model.capabilities.edit else { return nil }
+            guard model.capabilities.edit, content.story == nil else { return nil }
             let lane = NSRect(x: headerWidth, y: TimelineMetrics.ruler.y, width: laneWidth, height: TimelineMetrics.ruler.height)
             return [edges.lowerBound, edges.upperBound].map { time in
                 NSRect(x: headerWidth + viewport.x(time) - TimelineMetrics.trimReach, y: lane.minY,
@@ -616,7 +616,8 @@ struct TimelineContent: Equatable {
     }
 
     override func accessibilityChildren() -> [Any]? {
-        let times: [Any] = content.inOut == nil || model.activeClip == nil ? [playheadElement] : [playheadElement, inElement, outElement]
+        let times: [Any] = content.inOut == nil || model.activeClip == nil || content.story != nil
+            ? [playheadElement] : [playheadElement, inElement, outElement]
         return times + [selectionElement] + headers + [horizontalScroller, verticalScroller].filter { !$0.isHidden }
     }
 }

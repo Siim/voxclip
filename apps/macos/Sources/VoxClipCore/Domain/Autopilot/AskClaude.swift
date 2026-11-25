@@ -388,6 +388,10 @@ public struct AskClaudeValidator: Sendable {
                 add(.rewrite, .rewrite(scope: .selection(words), text: text))
             case "translate":
                 guard let words = wordRange(item) else { drop("no words of the selection"); continue }
+                if let reason = CaptionTranslations.storyPartRestriction(for: words, clipID: scope.clipID, in: project) {
+                    answer.repairs.append(reason)
+                    continue
+                }
                 let language = AIText.trim(item[ai: "language"].aiString ?? "").lowercased()
                 let text = AIText.trim(item[ai: "text"].aiString ?? "")
                 guard language.range(of: #"\A[a-z]{2,3}(-[a-z0-9]{2,8})*\z"#, options: .regularExpression) != nil, !text.isEmpty else { drop("no language or translation"); continue }
