@@ -296,7 +296,7 @@ public struct CompositionBuilder: Sendable {
         } else { disclosure = nil }
         let captionRasterizer = needsRasterizer ? try sharedRasterizer.get() : nil
         let effects = request.effects.flatMap { $0.picture.isEmpty ? nil : EffectFrames(input: $0) }
-        let framingSpans = videoSpans.filter { $0.zoom > 1 }
+        let framingSpans = videoSpans.filter { $0.zoom > 1 || $0.partReframe != nil }
         var boundaryTimes: [CMTime] = [.zero, duration]
         boundaryTimes.append(contentsOf: framingSpans.flatMap { [$0.output.start, $0.output.end] })
         boundaryTimes.append(contentsOf: demoLayers.flatMap { [$0.output.start, $0.output.end] })
@@ -330,6 +330,7 @@ public struct CompositionBuilder: Sendable {
                 legacyRasterizer: rasterizer, disclosure: disclosure, demoLayer: layer,
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
                 videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5,
+                partReframe: span?.partReframe,
                 lipsyncLayers: lipsyncLayers.filter { $0.output.start < end && $0.output.end > start }, colorCorrection: colorCorrection,
                 effects: effects, previewFailures: request.forPreview ? previewFailures : nil, captionDrawHook: captionDrawHook,
                 footage: footageLayers.first { $0.output.start <= start && $0.output.end > start })

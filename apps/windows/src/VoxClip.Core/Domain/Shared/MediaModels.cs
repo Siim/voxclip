@@ -26,7 +26,7 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
     /// <summary>Resolved, silent companion placements on the edited clock.</summary>
     public IReadOnlyList<FootageRenderLayer> Footage { get; init; } = [];
     /// <summary>The clip's speed timing; 1× without controls.</summary>
-    public ClipSpeedTiming Speed => ClipSpeedTiming.ForEffects(Clip?.Controls?.Speed ?? 1, Timeline.MapTime, Clip?.Effects?.Effects ?? []);
+    public ClipSpeedTiming Speed => ClipSpeedTiming.ForEffects(Clip?.Controls?.Speed ?? 1, Timeline.MapTime, Clip?.Effects?.Effects ?? [], Timeline.MapEndTime);
     /// <summary>The rendered length in samples at the timeline rate: the edited length divided by the speed. One speed for the
     /// whole clip divides the sample count exactly (the shared clip-render vectors); spans of partial speed go through seconds.</summary>
     public long RenderedSamples => Speed.Spans.Count == 0
@@ -99,6 +99,17 @@ public sealed record EncoderCacheKey(string AdapterLuid, string DriverVersion, s
 /// defaults or for the full video), the scope's effects (null without any) and the scope's background music (null without).</summary>
 public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsRenderInput? Effects)
 {
+    /// <summary>Source-anchored face centres for story parts; absent parts use the clip's own controls.</summary>
+    public IReadOnlyList<(TimeRange Source, ReframeSettings Reframe)> PartReframes { get; init; } = [];
+
+    /// <summary>The story part's face framing at this source time.</summary>
+    public ReframeSettings? PartReframeAt(double sourceTime)
+    {
+        foreach (var (source, reframe) in PartReframes)
+            if (source.Start <= sourceTime && sourceTime < source.End)
+                return reframe;
+        return null;
+    }
     /// <summary>The track mixed under the voice for this scope.</summary>
     public MusicRenderInput? Music { get; init; }
     /// <summary>The clip's motion cues (punch-in zooms), applied after censors and before overlays; empty for the full video.</summary>
@@ -113,7 +124,13 @@ public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsR
         var effects = ClipEffectsRenderInput.Resolve(project, clipId, dataRoot, sharedRoot);
         var music = MusicRenderInput.Resolve(project, clipId, dataRoot);
         var motion = ContextDemo.MotionCueRendering.For(project, clipId);
-        return controls is null && effects is null && music is null && motion.Count == 0 ? null : new(controls, effects) { Music = music, Motion = motion };
+        (TimeRange Source, ReframeSettings Reframe)[] reframes = [];
+        if (clipId is not null && project.Transcript is { } transcript &&
+            project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { Parts: { } parts } story)
+            reframes = StoryClips.Times(story, transcript.Words).Zip(parts)
+                .Where(pair => pair.Second.Reframe is not null).Select(pair => (pair.First, pair.Second.Reframe!)).ToArray();
+        return controls is null && effects is null && music is null && motion.Count == 0 && reframes.Length == 0
+            ? null : new(controls, effects) { Music = music, Motion = motion, PartReframes = reframes };
     }
 
     /// <summary>The same input for the edited WAV: 1× with no controls, bleeps and mutes kept, no sound effects and no music

@@ -143,8 +143,8 @@ internal sealed class Thumbnails(string cacheRoot, Action<string>? warn = null, 
         var range = clipId is null ? null : project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId);
         if (range is not null)
         {
-            first = Math.Max(0, IndexOf(range.StartWordId));
-            last = Math.Max(first, IndexOf(range.EndWordId));
+            first = Math.Max(0, IndexOf(range.PlayParts[0].StartWordId));
+            last = Math.Max(first, IndexOf(range.PlayParts[0].EndWordId));
         }
         var scoped = range is not null && words.Count > 0;
         var start = scoped ? words[first].Start : 0;

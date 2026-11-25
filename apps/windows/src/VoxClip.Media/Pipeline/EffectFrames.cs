@@ -100,7 +100,7 @@ internal sealed class EffectFrames : IDisposable
     /// and edited output time <paramref name="outputTime"/>; <paramref name="mapTime"/> maps source to edited seconds. A title or lower
     /// third that can't be drawn is left out and <paramref name="overlayFailed"/> runs (a sticker with no bundled emoji is not a failure).</summary>
     internal unsafe void DrawFrame(PixelBuffer frame, double time, double outputTime, Func<double, double> mapTime, CancellationToken ct,
-        Action? overlayFailed = null)
+        Action? overlayFailed = null, Func<double, double>? mapEndTime = null)
     {
         var active = Picture.Where(effect => (effect.UsesPosition || effect.Kind == "motionTemplate") && time >= effect.Start && time < effect.End).ToArray();
         if (active.Length == 0) return;
@@ -120,7 +120,7 @@ internal sealed class EffectFrames : IDisposable
             else if (effect.Kind == "progress")
             {
                 var start = mapTime(effect.Start);
-                var end = mapTime(effect.End);
+                var end = (mapEndTime ?? mapTime)(effect.End);
                 var fraction = end > start ? Math.Clamp((outputTime - start) / (end - start), 0, 1) : 1;
                 WithOpacity(canvas, opacity, target => DrawProgress(target, fraction, effect.Position ?? "bottom", frame.Width, frame.Height));
             }

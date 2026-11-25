@@ -122,6 +122,90 @@ extension HeavyMediaTests {
     #expect(moov.lowerBound < mdat.lowerBound)
 }
 
+@Test(.timeLimit(.minutes(2))) @MainActor func storyExportKeepsSourceOrderAndPreviewFramingAtSeams() async throws {
+    struct Story: Decodable { let kept: [[Double]]; let partSeams: [Double] }
+    let shared = try SharedResources.locate()
+    let story = try JSONDecoder().decode(Story.self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/fcpxml/story.json")))
+    let rate = 48_000.0
+    let plan = EditPlan(sampleRate: rate, totalSamples: 30 * 48_000, kept: story.kept.map {
+        MediaInterval(startSample: Int64(($0[0] * rate).rounded()), endSample: Int64(($0[1] * rate).rounded()))
+    }, partSeams: story.partSeams.map { Int64(($0 * rate).rounded()) })
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = try await fixture("chirp.mov"), destination = directory.appendingPathComponent("story.mp4")
+    var render = RenderRequest(sourceURL: source, plan: plan, output: .init(size: .init(width: 100, height: 180), fps: 30, videoBitrate: 2_000_000))
+    render.partReframes = [.init(source: .init(start: 3, end: 3.5), reframe: .face(x: 0.19, y: 0.5)),
+                           .init(source: .init(start: 0.5, end: 1.3), reframe: .face(x: 0.31, y: 0.5)),
+                           .init(source: .init(start: 2.5, end: 3), reframe: .face(x: 0.81, y: 0.5))]
+    let exporter = AVExporter(cleanupRegistry: directory.appendingPathComponent("Scratch"))
+    var job = ExportJob(render: render, outputURL: destination)
+    job.loudness = .off
+    _ = try await exporter.export(job) { _ in }
+    let wav = directory.appendingPathComponent("edited.wav")
+    try await exporter.writeEditedAudio(render, to: wav)
+    let edited = try Data(contentsOf: wav).dropFirst(44).withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+    for seam in plan.partSeams {
+        #expect(abs(edited[Int(seam - 1) * 2]) < 0.001)
+        #expect(abs(edited[Int(seam) * 2]) < 0.001)
+    }
+    func decode(_ url: URL, key: String, duration: Double) async throws -> [Int16] {
+        let extract = try await AVAudioExtractor().extract(.init(sourceURL: url, contentKey: key, durationSeconds: duration, cacheDirectory: directory)) { _ in }
+        return try Data(contentsOf: extract.audio.wav16k).dropFirst(44).withUnsafeBytes { Array($0.bindMemory(to: Int16.self)) }
+    }
+    let original = try await decode(source, key: "source", duration: 30)
+    let exported = try await decode(destination, key: "story", duration: plan.duration)
+    var offset = 0.0
+    for interval in story.kept {
+        let start = Int(((interval[0] + 0.06) * 16_000).rounded())
+        let output = Int(((offset + 0.06) * 16_000).rounded())
+        let count = 2_400
+        try #require(output + count + 16 < exported.count)
+        let correlations = (-16...16).map { shift in
+            var dot = 0.0, left = 0.0, right = 0.0
+            for index in 0..<count {
+                let a = Double(original[start + index]), b = Double(exported[output + index + shift])
+                dot += a * b; left += a * a; right += b * b
+            }
+            return dot / max(1, sqrt(left * right))
+        }
+        #expect((correlations.max() ?? 0) > 0.94, "Source \(interval[0]) at output \(offset): \(correlations.max() ?? 0)")
+        offset += interval[1] - interval[0]
+    }
+
+    let exportGraph = try await CompositionBuilder().build(render)
+    let unencoded = AVAssetImageGenerator(asset: exportGraph.composition)
+    unencoded.videoComposition = exportGraph.videoComposition
+    render.forPreview = true
+    let graph = try await CompositionBuilder().build(render)
+    let preview = AVAssetImageGenerator(asset: graph.composition)
+    preview.videoComposition = graph.videoComposition
+    let final = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
+    for generator in [preview, unencoded, final] {
+        generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
+    }
+    func center(_ image: CGImage) throws -> [Int] {
+        let crop = try #require(image.cropping(to: CGRect(x: image.width / 2, y: image.height / 2, width: 1, height: 1)))
+        var pixel = [UInt8](repeating: 0, count: 4)
+        try pixel.withUnsafeMutableBytes { bytes in
+            let context = try #require(CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(crop, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        return pixel.prefix(3).map(Int.init)
+    }
+    for time in [0.0] + story.partSeams {
+        let position = CMTime(value: Int64((time * 30).rounded()), timescale: 30)
+        let showing = try center(preview.copyCGImage(at: position, actualTime: nil))
+        let composed = try center(unencoded.copyCGImage(at: position, actualTime: nil))
+        let encoded = try center(final.copyCGImage(at: position, actualTime: nil))
+        #expect(showing == composed, "Preview and export composition differ at \(time) seconds")
+        #expect(zip(showing, encoded).allSatisfy { abs($0 - $1) <= 22 }, "At \(time) seconds: preview \(showing), export \(encoded)")
+        if time == 0 { #expect(showing[0] > 130 && showing[1] > 130 && showing[2] < 40) }
+        if time == story.partSeams[0] { #expect(showing[0] < 40 && showing[1] > 130 && showing[2] > 130) }
+        if time == story.partSeams[1] { #expect(showing[0] < 40 && showing[1] < 40 && showing[2] > 130) }
+    }
+}
+
 @Test(.timeLimit(.minutes(1))) func pocketMain10UsesFirstAudioTrack() async throws {
     let source = try await fixture("pocket-main10.mov")
     let probe = try await AVMediaProbe().probe(source)

@@ -23,7 +23,7 @@ enum EffectAudio {
         guard let input = request.effects else { return [] }
         let timeline = request.timeline
         return input.audio.filter(\.kind.usesWords).compactMap { effect in
-            let start = timeline.mapTime(effect.start), end = timeline.mapTime(effect.end)
+            let start = timeline.mapTime(effect.start), end = timeline.mapEndTime(effect.end)
             return end > start ? start...end : nil
         }.sorted { $0.lowerBound < $1.lowerBound }
     }
@@ -48,7 +48,7 @@ enum EffectAudio {
         let timeline = request.timeline
         for effect in freezes.sorted(by: { $0.start < $1.start }) {
             let start = CMTime(seconds: timeline.mapTime(effect.start), preferredTimescale: 600_000)
-            let end = min(duration, CMTime(seconds: timeline.mapTime(effect.end), preferredTimescale: 600_000))
+            let end = min(duration, CMTime(seconds: timeline.mapEndTime(effect.end), preferredTimescale: 600_000))
             guard end - start > frame else { continue }
             let held = CMTime(seconds: effect.start, preferredTimescale: 600_000)
             let source = CMTimeRange(start: max(videoRange.start, min(held, videoRange.end - frame)), duration: frame)
@@ -69,7 +69,7 @@ enum EffectAudio {
         func mapTime(_ source: Double) -> Double { speed.rendered(timeline.mapTime(source)) }
         let outputFrames = Int((durationSeconds * rate).rounded())
         let tones = input.audio.filter { $0.kind == .bleep }.compactMap { effect -> ClosedRange<Double>? in
-            let start = mapTime(effect.start), end = mapTime(effect.end)
+            let start = mapTime(effect.start), end = speed.rendered(timeline.mapEndTime(effect.end))
             return end > start ? start...end : nil
         }
         var sounds: [(start: Int, samples: [Float], gain: Float)] = []

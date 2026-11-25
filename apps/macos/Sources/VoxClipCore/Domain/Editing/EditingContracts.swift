@@ -459,8 +459,12 @@ public struct EditPlan: Codable, Sendable, Equatable {
         return try buildEditPlan(buildSegments(snapshot, activeClip: activeClip), duration: duration, sampleRate: sampleRate, pauseKeepSeconds: snapshot.pauseKeepSeconds)
     }
     public func mapTime(_ source: Double) -> Double {
+        mapTime(source, end: false)
+    }
+    func mapTime(_ source: Double, end: Bool) -> Double {
         let sample = clampSample(source.isFinite ? source : 0)
-        guard let entry = sourceMapEntry(sourceIndex, at: sample) else { return 0 }
+        let probe = end && !partSeams.isEmpty && sample > 0 ? sample - 1 : sample
+        guard let entry = sourceMapEntry(sourceIndex, at: probe) else { return 0 }
         return Double(min(entry.outputEnd, entry.outputStart + sample - entry.source.startSample)) / sampleRate
     }
     public func sourceTime(_ edited: Double) -> Double {

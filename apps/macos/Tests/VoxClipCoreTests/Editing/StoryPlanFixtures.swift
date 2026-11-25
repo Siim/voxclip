@@ -3,6 +3,38 @@ import Testing
 @testable import VoxClipCore
 
 @Suite(.offlineFixtures) struct StoryPlanFixtures {
+    @Test func storyOpeningStartsInPlaybackOrder() throws {
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+        let clip = try #require(project.edits.clips.first { $0.parts != nil })
+        let opening = try #require(ClipPicture.openingClip(project, clipID: clip.id))
+        let transcript = try #require(project.transcript)
+        let candidates = try #require(FrameClip(transcript: transcript, clip: clip, cutWordIds: []))
+        #expect(opening.words[opening.first].id == clip.playParts[0].startWordId)
+        #expect(opening.words[opening.last].id == clip.playParts[0].endWordId)
+        #expect(candidates == opening)
+    }
+
+    @Test func storyEffectsAndSavedLipSyncStopAtTheOwningPart() {
+        let later = MediaInterval(startSample: 144_000, endSample: 168_000)
+        let earlier = MediaInterval(startSample: 120_000, endSample: 144_000)
+        let legacy = EditPlan(sampleRate: 48_000, totalSamples: 192_000, kept: [later, earlier], partSeams: [24_000])
+        let effect = ClipEffect(id: "speed", clipId: "story", kind: .speedForPart, start: 2.5, end: 3, rate: 2)
+        let timing = ClipSpeedTiming(speed: 1, timeline: .legacy(legacy), effects: [effect])
+        #expect(timing.rendered(0.5) == 0.5)
+        #expect(timing.rendered(1) == 0.75)
+
+        let second = VoiceLabOutputPiece(kind: .synth, sourceStartSample: 120_000, sourceEndSample: 144_000,
+            outputStartSample: 24_000, outputEndSample: 48_000, segmentId: "speech", assetId: nil, audio: nil)
+        let first = VoiceLabOutputPiece(kind: .source, sourceStartSample: 144_000, sourceEndSample: 168_000,
+            outputStartSample: 0, outputEndSample: 24_000, segmentId: nil, assetId: nil, audio: nil)
+        let voice = VoiceLabOutputPlan(sampleRate: 48_000, totalSourceSamples: 192_000, pieces: [first, second],
+            captions: [], scope: .clip("story"), partSeams: [24_000])
+        #expect(LipsyncRenderWindow.savedOutputRange(start: 120_000, end: 144_000, piece: second, plan: voice) == 24_000..<48_000)
+        #expect(LipsyncRenderWindow.savedOutputRange(start: 120_000, end: 145_000, piece: second, plan: voice) == nil)
+        let onlyPart = VoiceLabOutputPlan(sampleRate: 48_000, totalSourceSamples: 192_000, pieces: [first], captions: [], scope: .clip("story"))
+        #expect(LipsyncRenderWindow.savedOutputRange(start: 143_999, end: 168_000, piece: first, plan: onlyPart, restrictToPart: true) == nil)
+    }
+
     @Test func storyPlansReplay() throws {
         let data = try FixtureLoader.data("fixtures/story-clips/plan-vectors.json")
         let cases = FixtureValue(try JSONDecoder().decode(JSONValue.self, from: data)).array

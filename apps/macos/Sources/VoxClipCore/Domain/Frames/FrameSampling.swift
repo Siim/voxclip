@@ -12,9 +12,8 @@ public struct FrameClip: Sendable, Equatable {
 
     /// Nil when either end word is missing, the range is reversed or no word in it is kept.
     public init?(transcript: Transcript, clip: ClipRange, cutWordIds: Set<String>) {
-        guard let first = transcript.words.firstIndex(where: { $0.id == clip.startWordId }),
-              let last = transcript.words.firstIndex(where: { $0.id == clip.endWordId }), first <= last else { return nil }
-        self.init(words: transcript.words, first: first, last: last, cutWordIds: cutWordIds)
+        guard let range = clip.playPartIndices(in: transcript.words)?.first else { return nil }
+        self.init(words: transcript.words, first: range.lowerBound, last: range.upperBound, cutWordIds: cutWordIds)
     }
 
     public init?(words: [TimedWord], first: Int, last: Int, cutWordIds: Set<String>) {

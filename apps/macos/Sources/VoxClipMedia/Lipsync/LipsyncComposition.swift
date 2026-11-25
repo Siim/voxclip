@@ -61,9 +61,16 @@ struct LipsyncVideoLayer: Sendable {
 
 enum LipsyncComposition {
     static func placement(start: Int64, end: Int64, piece: VoiceLabOutputPiece,
-                          plan: VoiceLabOutputPlan) -> (origin: Int64, end: Int64, replacement: Range<Int64>) {
-        let origin = LipsyncRenderWindow.outputSample(start, plan: plan)
-        let limit = LipsyncRenderWindow.outputSample(end, plan: plan)
+                          input: VoiceLabRenderInput) throws -> (origin: Int64, end: Int64, replacement: Range<Int64>)? {
+        let plan = input.prepared.outputPlan
+        let story: Bool
+        if case .clip(let id) = input.scope { story = input.project.edits.clips.contains { $0.id == id && $0.parts != nil } }
+        else { story = false }
+        guard let window = LipsyncRenderWindow.savedOutputRange(start: start, end: end, piece: piece, plan: plan, restrictToPart: story) else {
+            if story { return nil }
+            throw LipsyncError.invalidInput
+        }
+        let origin = window.lowerBound, limit = window.upperBound
         let handle = Int64((plan.sampleRate * 0.2).rounded())
         let lower = max(origin, piece.outputStartSample - handle)
         let upper = min(limit, piece.outputEndSample + handle)
@@ -83,7 +90,7 @@ enum LipsyncComposition {
             let video = item.recipe.video
             guard let assetID = video.assetId, let start = video.windowStartSample, let end = video.windowEndSample,
                   let record = input.project.voiceLab.videoAssets?.first(where: { $0.id == assetID }) else { throw LipsyncError.invalidInput }
-            let placement = placement(start: start, end: end, piece: item.piece, plan: plan)
+            guard let placement = try placement(start: start, end: end, piece: item.piece, input: input) else { continue }
             let outputStart = placement.origin, outputEnd = placement.end
             if tracks[assetID] == nil {
                 let file = try await lease.snapshot(record, projectID: input.project.id, paidRoot: input.paidRoot)

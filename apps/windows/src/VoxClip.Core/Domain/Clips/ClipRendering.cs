@@ -30,8 +30,12 @@ public readonly record struct ClipSpeedTiming
     public double Speed { get; }
     /// <summary>Map source-anchored speed spans onto the kept timeline.</summary>
     public static ClipSpeedTiming ForEffects(double speed, Func<double, double> mapTime, IEnumerable<ClipEffect> effects) =>
+        ForEffects(speed, mapTime, effects, mapTime);
+
+    /// <summary>Map speed ranges with the render's half-open end lookup.</summary>
+    public static ClipSpeedTiming ForEffects(double speed, Func<double, double> mapTime, IEnumerable<ClipEffect> effects, Func<double, double> mapEndTime) =>
         new(speed, effects.Where(effect => effect.Kind == "speedForPart" && effect.Rate.HasValue)
-            .Select(effect => new Span(mapTime(effect.Start), mapTime(effect.End), effect.Rate!.Value)));
+            .Select(effect => new Span(mapTime(effect.Start), mapEndTime(effect.End), effect.Rate!.Value)));
     /// <summary>Non-overlapping deviations from the default speed.</summary>
     public IReadOnlyList<Span> Spans { get; }
 

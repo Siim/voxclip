@@ -60,6 +60,13 @@ public enum RenderCallerInputs {
             }
         }
         result.clipControls = ClipControlsProject.controls(for: clipID, in: project).flatMap { $0.isDefault ? nil : $0 }
+        result.partReframes = []
+        if let clipID, let words = project.transcript?.words,
+           let clip = project.edits.clips.first(where: { $0.id == clipID }), let parts = clip.parts {
+            result.partReframes = zip(StoryClips.times(clip, words: words), parts).compactMap { source, part in
+                part.reframe.map { StoryPartReframe(source: source, reframe: $0) }
+            }
+        }
         result.reduceMotion = request.forPreview && reduceMotion
         result.contextDemo = nil
         result.contextDemoRoot = nil

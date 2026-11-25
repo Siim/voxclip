@@ -1345,7 +1345,7 @@ member VoxClip.Media.Pipeline.EffectFrames :: field private overlays
 member VoxClip.Media.Pipeline.EffectFrames :: field private sharedRoot
 member VoxClip.Media.Pipeline.EffectFrames :: method internal .ctor(VoxClip.Core.Domain.Effects.ClipEffectsRenderInput,string)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal Censor(VoxClip.Core.Domain.Captions.PixelBuffer,SkiaSharp.SKRectI,bool)
-member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawFrame(VoxClip.Core.Domain.Captions.PixelBuffer,double,double,System.Func`2<double,double>,System.Threading.CancellationToken,System.Action)
+member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawFrame(VoxClip.Core.Domain.Captions.PixelBuffer,double,double,System.Func`2<double,double>,System.Threading.CancellationToken,System.Action,System.Func`2<double,double>)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawIllustration(VoxClip.Core.Domain.Captions.PixelBuffer,double)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawPicture(VoxClip.Core.Domain.Captions.PixelBuffer,int,int,VoxClip.Core.Domain.Shared.RectD,double,VoxClip.Core.Domain.Clips.ProjectClipControls,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawPointer(SkiaSharp.SKCanvas,string,SkiaSharp.SKRectI,int,int)

@@ -38,8 +38,12 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
         if requiresSyntheticRendering { throw VoiceLabProjectError.unsupportedRendering }
     }
     public func mapTime(_ source: Double) -> Double {
+        mapTime(source, end: false)
+    }
+    func mapTime(_ source: Double, end: Bool) -> Double {
         let sample = Int64(min(Double(totalSourceSamples), max(0, EditingPrimitives.jsRound(source.isFinite ? source * sampleRate : 0))))
-        guard let piece = sourceMapEntry(sourceIndex, at: sample, start: { $0.sourceStartSample }) else { return 0 }
+        let probe = end && !partSeams.isEmpty && sample > 0 ? sample - 1 : sample
+        guard let piece = sourceMapEntry(sourceIndex, at: probe, start: { $0.sourceStartSample }) else { return 0 }
         if sample <= piece.sourceEndSample {
                 if let id = piece.segmentId, let cuts = videoCuts[id], !cuts.isEmpty {
                     let removed = cuts.reduce(Int64(0)) { $0 + max(0, min(sample, $1.endSample) - $1.startSample) }

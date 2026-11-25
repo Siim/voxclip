@@ -166,7 +166,7 @@ internal static class EffectAudio
         if (snapshot.Clip?.Effects is not { } input) return [];
         var timeline = snapshot.Timeline;
         return input.Audio.Where(effect => effect.UsesWords)
-            .Select(effect => (Start: timeline.MapTime(effect.Start), End: timeline.MapTime(effect.End)))
+            .Select(effect => (Start: timeline.MapTime(effect.Start), End: timeline.MapEndTime(effect.End)))
             .Where(range => range.End > range.Start).OrderBy(range => range.Start).ToArray();
     }
 
@@ -201,7 +201,8 @@ internal static class EffectAudio
         var speed = snapshot.Speed;
         double Map(double source) => speed.Rendered(timeline.MapTime(source));
         var outputFrames = (long)Math.Round(snapshot.RenderedDuration * rate, MidpointRounding.AwayFromZero);
-        var tones = input.Audio.Where(effect => effect.Kind == "bleep").Select(effect => (Start: Map(effect.Start), End: Map(effect.End)))
+        var tones = input.Audio.Where(effect => effect.Kind == "bleep")
+            .Select(effect => (Start: Map(effect.Start), End: speed.Rendered(timeline.MapEndTime(effect.End))))
             .Where(range => range.End > range.Start).ToArray();
         var sounds = new List<PlacedSound>();
         foreach (var effect in input.Audio.Where(effect => effect.Kind == "sound"))

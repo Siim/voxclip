@@ -95,10 +95,13 @@ public static class ClipFaceCrop
 {
     /// <summary>The centre crop <paramref name="crop"/> of a <paramref name="width"/>×<paramref name="height"/> oriented source,
     /// moved to the face (mapped through the clip's flip and turns) for an output of <paramref name="outputAspect"/>.</summary>
-    public static RectD Centered(RectD crop, double width, double height, ProjectClipControls? controls, double outputAspect)
+    public static RectD Centered(RectD crop, double width, double height, ProjectClipControls? controls, double outputAspect,
+        ReframeSettings? part = null)
     {
-        if (controls?.CropCenter(outputAspect) is not { } center) return crop;
-        var (x, y) = controls.MapAnchor(center.X, center.Y);
+        var center = part is { Mode: ReframeSettings.FaceMode, CenterX: { } faceX, CenterY: { } faceY } && outputAspect <= 1 + 1e-9
+            ? (faceX, faceY) : controls?.CropCenter(outputAspect);
+        if (center is not { } face) return crop;
+        var (x, y) = controls?.MapAnchor(face.Item1, face.Item2) ?? face;
         var left = Math.Min(width - crop.Width, Math.Max(0, width * x - crop.Width / 2));
         var top = Math.Min(height - crop.Height, Math.Max(0, height * y - crop.Height / 2));
         return new(left, top, crop.Width, crop.Height);

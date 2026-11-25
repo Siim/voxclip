@@ -25,6 +25,7 @@ internal sealed class LipsyncVideoLayer : IDisposable
         var synced = input.Prepared.SelectedSegmentRecipes.Where(item => item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync).ToArray();
         if (synced.Length == 0) return null;
         var plan = input.Prepared.OutputPlan;
+        var story = plan.Scope.ClipId is { } id && project.Edits.Clips.Any(clip => clip.Id == id && clip.Parts is not null);
         var root = Path.Combine(scratchRoot, "lipsync-render-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratchRoot);
         VoiceConsentPrivacy.CreateDirectory(root);
@@ -36,11 +37,11 @@ internal sealed class LipsyncVideoLayer : IDisposable
             {
                 var recipe = item.Recipe.Video;
                 var asset = project.VoiceLab.VideoAssets?.SingleOrDefault(asset => asset.Id == recipe.AssetId) ?? throw Invalid();
-                var first = LipsyncRenderWindow.OutputSample(recipe.WindowStartSample!.Value, plan);
-                var last = LipsyncRenderWindow.OutputSample(recipe.WindowEndSample!.Value, plan);
-                if (first > item.Piece.OutputStartSample || last < item.Piece.OutputEndSample ||
-                    Math.Abs((last - first) / plan.SampleRate - asset.DurationSeconds) > 1 / asset.FrameRate + 1e-6)
+                var range = LipsyncRenderWindow.SavedOutputRange(recipe.WindowStartSample!.Value, recipe.WindowEndSample!.Value, item.Piece, plan, story);
+                if (range is null && story) continue;
+                if (range is not { } mapped || Math.Abs((mapped.End - mapped.Start) / plan.SampleRate - asset.DurationSeconds) > 1 / asset.FrameRate + 1e-6)
                     throw Invalid();
+                var (first, last) = mapped;
                 var handle = (long)Math.Round(0.2 * plan.SampleRate, MidpointRounding.AwayFromZero);
                 spans.Add(new(asset.Id, first, Math.Max(first, item.Piece.OutputStartSample - handle), Math.Min(last, item.Piece.OutputEndSample + handle)));
                 if (files.ContainsKey(asset.Id)) continue;

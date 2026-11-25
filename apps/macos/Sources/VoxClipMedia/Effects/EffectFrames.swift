@@ -146,7 +146,7 @@ public final class EffectFrames: Sendable {
     /// `outputTime`; `mapTime` maps source to output seconds for the progress bar. An overlay that can't be drawn is left
     /// out and `overlayFailed` runs (a sticker with no bundled emoji is not a failure).
     public func frame(_ image: CIImage, output: CGSize, time: Double, outputTime: Double, mapTime: (Double) -> Double,
-                      overlayFailed: () -> Void = {}) -> CIImage {
+                      mapEndTime: ((Double) -> Double)? = nil, overlayFailed: () -> Void = {}) -> CIImage {
         var result = image
         for effect in input.picture where (effect.kind.usesPosition || effect.kind == .motionTemplate) && time >= effect.start && time < effect.end {
             let opacity = effect.opacity(at: time)
@@ -155,7 +155,7 @@ public final class EffectFrames: Sendable {
                 guard let graphic = motionTemplate(effect, output: output, time: time) else { overlayFailed(); continue }
                 result = Self.faded(graphic, opacity).composited(over: result)
             } else if effect.kind == .progress {
-                let start = mapTime(effect.start), end = mapTime(effect.end)
+                let start = mapTime(effect.start), end = mapEndTime?(effect.end) ?? mapTime(effect.end)
                 let fraction = end > start ? min(1, max(0, (outputTime - start) / (end - start))) : 1
                 result = Self.faded(Self.progress(fraction: fraction, position: effect.position ?? .bottom, output: output), opacity).composited(over: result)
             } else if let overlay = overlay(effect, output: output) {

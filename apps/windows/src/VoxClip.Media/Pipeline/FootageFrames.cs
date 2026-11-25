@@ -20,7 +20,7 @@ public static class FootageRendering
         {
             ct.ThrowIfCancellationRequested();
             var start = timeline.MapTime(entry.Start);
-            var end = timeline.MapTime(entry.End);
+            var end = timeline.MapEndTime(entry.End);
             if (end <= start) continue;
             var key = entry.Footage.SourceKey;
             if (!paths.TryGetValue(key, out var path))
