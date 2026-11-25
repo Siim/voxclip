@@ -223,8 +223,8 @@ private actor TimelineTestSettings: SettingsStore {
         let model = editor(app, project: story)
         defer { model.close() }
         model.activate(try #require(story.edits.clips.first))
-        for _ in 0..<100 where model.sourceTime != 25 { await Task.yield() }
-        #expect(model.sourceTime == 25)
+        for _ in 0..<100 where model.sourceTime != 24.9 { await Task.yield() }
+        #expect(model.sourceTime == 24.9)
         #expect(model.playhead == 0)
     }
 

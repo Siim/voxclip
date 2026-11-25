@@ -992,7 +992,12 @@ struct EditorRenderSnapshot {
                     planningWordIndex = Dictionary(uniqueKeysWithValues: segments.enumerated().filter { $0.element.kind == .word }.map { ($0.element.id, $0.offset) })
                 }
                 planningSegments = segments
-                plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: edits.pauseKeepSeconds)
+                let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+                if let clip = activeClip, clip.parts != nil {
+                    plan = try buildStoryPlan(state, clip: clip, duration: sourceDuration, sampleRate: rate)
+                } else {
+                    plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
+                }
             } else { planningSegments = nil; planningWordIndex = [:]; plan = Self.uncutPlan(duration: sourceDuration) }
         } catch {
             plan = nil; voiceLabPlan = nil
@@ -1485,8 +1490,9 @@ struct EditorRenderSnapshot {
     func editedDuration(_ clip: ClipRange?) -> Double {
         let key = clip?.id ?? "full"
         if let cached = scopeDurations[key] { return cached }
-        guard let state = editState(), let segments = try? buildSegments(state, activeClip: clip),
-              let plan = try? buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
+        guard let state = editState(),
+              let plan = try? EditPlan.build(transcript: state.transcript, editState: state, activeClip: clip, duration: sourceDuration,
+                                             sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000))
         else { return clip == nil ? sourceDuration : 0 }
         scopeDurations[key] = plan.duration
         return plan.duration
@@ -1701,8 +1707,9 @@ struct EditorRenderSnapshot {
         if clip != nil && state == nil { throw VoxClipError.exportFailed("Clip transcript is unavailable") }
         let segments = try state.map { try buildSegments($0, activeClip: clip) }
         var plan = snapshot.plan
-        if target != nil || voiceLab != nil, let state, let segments {
-            plan = try buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
+        if target != nil || voiceLab != nil, let state {
+            plan = try EditPlan.build(transcript: state.transcript, editState: state, activeClip: clip, duration: project.media.source.durationSeconds,
+                                      sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000))
         }
         if state == nil, project.contextDemo != nil, case .legacy(let canonical) = try RenderCallerInputs.timeline(project: project) {
             plan = canonical

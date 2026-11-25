@@ -168,7 +168,7 @@ struct ExportRecord: Codable, Equatable {
                                   cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips)
             segments = try buildSegments(state, activeClip: clip)
             let rate: Double = Double(project.media.source.audio?.sampleRate ?? 48_000)
-            plan = try buildEditPlan(segments, duration: duration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
+            plan = try EditPlan.build(transcript: transcript, editState: state, activeClip: clip, duration: duration, sampleRate: rate)
         }
         let output = output(project, clipID: clip?.id)
         let preset = CaptionStyleResolver.preset(width: output.size.width, height: output.size.height)
