@@ -57,7 +57,7 @@ public static class MusicProject
     public static void Validate(Project project)
     {
         if (project.Music.Count == 0) return;
-        Require(project.SchemaVersion == 4 && project.Music.Count <= 65);
+        Require(project.SchemaVersion >= 4 && project.Music.Count <= 65);
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var identities = new HashSet<string>(StringComparer.Ordinal);
         var scopes = new HashSet<string>(StringComparer.Ordinal);

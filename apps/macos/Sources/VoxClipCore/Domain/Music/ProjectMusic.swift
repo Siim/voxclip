@@ -163,7 +163,7 @@ public enum MusicProject {
     /// The typed rules the schema cannot express: clip identity, the project's own asset folder, one track per clip.
     public static func validate(_ project: Project) throws {
         guard !project.music.isEmpty else { return }
-        guard project.schemaVersion == 4 else { throw MusicProjectError.unsupportedVersion }
+        guard project.schemaVersion >= 4 else { throw MusicProjectError.unsupportedVersion }
         guard project.music.count <= ProjectMusic.maximumEntries else { throw MusicProjectError.invalidEntry("too many tracks") }
         let clips = Set(project.edits.clips.map(\.id))
         var identities = Set<String>()

@@ -564,6 +564,8 @@ public enum EditCommand: Sendable, Equatable {
     /// Adds one prepared batch; callers supply ids, and the reducer deduplicates ranges. Editing §6.3.
     case addAIClips(resultId: String, clips: [ClipRange])
     case updateClip(id: String, startIndex: Int, endIndex: Int)
+    case setClipParts(id: String, parts: [ClipPart])
+    case makeClipOfPart(clipId: String, partId: String)
     case renameClip(id: String, title: String?)
     case setClipSelected(id: String, selected: Bool)
     case removeClip(id: String)
@@ -574,11 +576,11 @@ public enum EditCommand: Sendable, Equatable {
 /// Pure reducer entry point; editing §6.3.
 public enum EditReducer {
     public static func reduce(_ state: EditState, command: EditCommand) -> EditState {
-        reduceEditingState(state, command: command)
+        (try? reduceEditingState(state, command: command)) ?? state
     }
 
     public static func reduce(_ state: EditState, command: EditCommand, aiResults: [ProjectAIResult]) -> EditState {
-        reduceEditingState(state, command: command, aiResults: aiResults)
+        (try? reduceEditingState(state, command: command, aiResults: aiResults)) ?? state
     }
 }
 

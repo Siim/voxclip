@@ -139,7 +139,7 @@ EditState {
   clips: [ClipRange]                   // the clip range layer
   activeClipId: String?                // the selected clip, or null for the full take
 }
-ClipRange { id, startWordId, endWordId, title?, origin: manual | ai, aiResultId?, aiClipIndex?, selected: Bool }
+ClipRange { id, startWordId, endWordId, title?, origin: manual | ai, aiResultId?, aiClipIndex?, selected: Bool, parts?, kind? }
 ```
 
 `selected` means kept (design.md §2). A manual clip is always a kept clip; an AI clip is kept when `selected` is true and a suggestion when it is false. "All {n} clips" in the Export sheet exports the kept clips in transcript order. It never affects planning. `addClip` and `addAIClips` create clips with `selected = true`; the apps' Find Clips then clears `selected` on the clips it added, in the same undo step.
@@ -151,6 +151,12 @@ The clip is a **range layer**. Selecting a clip never writes cut flags. Words ou
 On Mac, clip and suggestion views hide surrounding transcript and timeline context by default. One in-memory **Show surrounding context** toggle reveals both, independently of Show cuts. It resets off when entering a different scope, while Full Take always stays full. Transcript rendering intersects the original source ranges without changing word IDs or timing; timeline display and overview bounds are separate from the playback plan. This view preference changes no project data, dirty state, Undo history, clip boundaries, source-to-edited mapping or export scope.
 
 Indices: a clip is resolved to item indices `[startIndex, endIndex]` with `0 <= startIndex <= endIndex < items.count`. Index-based APIs (session ops, `clipTimes`, the clip finder) use these indices. The project file stores ids.
+
+A story clip stores 2–12 `parts` in play order. Each part has a stable `id`, inclusive `startWordId` and `endWordId`, and an optional face `reframe`. Parts cannot share transcript items. The clip's outer IDs are the source hull, not what plays; `playParts` / `PlayParts` returns the ordered parts or synthesizes one part for an ordinary clip. `leadInSeconds` applies to the first part in play order. An optional `kind` (`story` or `showreel`) labels a multi-part clip and never affects playback.
+
+`setClipParts` replaces the ordered parts and recomputes the hull in one edit. Passing one part collapses the clip to an ordinary range; passing none is rejected. `updateClip` cannot trim a multi-part clip. `makeClipOfPart` adds an ordinary clip without changing the project-wide cuts. Use the project-level reducer for part edits: it checks effects and lip-sync windows, and selects a new story copy instead of overwriting a clip when the part edit would invalidate paid work. The new clip ID lets callers announce the copy in the same undo step.
+
+Schema v5 carries story clips and their AI suggestion metadata (`parts` as word ranges, and `notInTake` of at most 200 characters). Without a story clip, writers keep the legacy suggestion fields and do not write v5. Removing the last story clip returns the document to v4. Legacy documents do not upgrade merely by loading and saving.
 
 ### 2.6 EditSegment (planner input)
 

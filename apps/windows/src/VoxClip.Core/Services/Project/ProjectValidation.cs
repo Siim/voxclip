@@ -20,12 +20,14 @@ internal static class ProjectValidation
         var root = document.RootElement;
         RejectDuplicateKeys(root);
         Require(root.ValueKind == JsonValueKind.Object);
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 4)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 5)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-        var supportsContext = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion == 4;
+        var schemaVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var supported) ? supported : 0;
+        var supportsContext = schemaVersion >= 4;
+        var supportsStories = schemaVersion == 5;
         Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""));
         String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, 4, true);
+        Number(root.GetProperty("schemaVersion"), 1, 5, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
@@ -98,7 +100,20 @@ internal static class ProjectValidation
         Array(edits.GetProperty("clips"), clip =>
         {
             // leadInSeconds: schema v4 only, above 0 and at most the 0.6 s opening scan (ADR-R48 part 2).
-            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsContext ? "leadInSeconds" : "");
+            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "");
+            if (clip.TryGetProperty("kind", out var kind))
+                Require(clip.TryGetProperty("parts", out _) && kind.ValueKind == JsonValueKind.String && kind.GetString() is "story" or "showreel");
+            if (clip.TryGetProperty("parts", out var parts)) Array(parts, part =>
+            {
+                Object(part, "id startWordId endWordId", "reframe");
+                if (part.TryGetProperty("reframe", out var reframe))
+                {
+                    Object(reframe, "mode zoom centerX centerY");
+                    Require(reframe.GetProperty("mode").ValueKind == JsonValueKind.String && reframe.GetProperty("mode").GetString() == "face");
+                    Number(reframe.GetProperty("zoom"), 1, 1);
+                    Number(reframe.GetProperty("centerX"), 0, 1); Number(reframe.GetProperty("centerY"), 0, 1);
+                }
+            });
             if (clip.TryGetProperty("leadInSeconds", out var leadIn)) { Number(leadIn, double.Epsilon, 0.6 + 1e-9); }
             foreach (var key in new[] { "id", "startWordId", "endWordId" }) String(clip.GetProperty(key), Id);
             Nullable(clip.GetProperty("title"), value => Text(value, 0, 120)); Choice(clip.GetProperty("origin"), "manual", "ai");
@@ -138,7 +153,10 @@ internal static class ProjectValidation
             Nullable(result.GetProperty("instructions"), value => Text(value, 0, 500)); Nullable(result.GetProperty("language"), value => Text(value, 0, 35)); String(result.GetProperty("inputSha256"), Hash);
             Array(result.GetProperty("clips"), clip =>
             {
-                Object(clip, "title reason score startWordId endWordId"); Text(clip.GetProperty("title"), 1, 120); Text(clip.GetProperty("reason"), 0, 300);
+                Object(clip, "title reason score startWordId endWordId", supportsStories ? "parts notInTake" : "");
+                if (clip.TryGetProperty("parts", out var parts)) Array(parts, part => Object(part, "startWordId endWordId"));
+                if (clip.TryGetProperty("notInTake", out var note)) Text(note, 0, 200);
+                Text(clip.GetProperty("title"), 1, 120); Text(clip.GetProperty("reason"), 0, 300);
                 Number(clip.GetProperty("score"), 1, 10, true); String(clip.GetProperty("startWordId"), Id); String(clip.GetProperty("endWordId"), Id);
             });
         });

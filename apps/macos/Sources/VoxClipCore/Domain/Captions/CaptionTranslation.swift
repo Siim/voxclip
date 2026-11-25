@@ -56,7 +56,7 @@ public enum CaptionTranslations {
     public static func validate(_ project: Project) throws {
         let entries = project.captionTranslations
         guard !entries.isEmpty else { return }
-        guard project.schemaVersion == 4 else { throw CaptionTranslationError.unsupportedVersion }
+        guard project.schemaVersion >= 4 else { throw CaptionTranslationError.unsupportedVersion }
         guard entries.count <= CaptionTranslation.maximumEntries else { throw CaptionTranslationError.invalidEntry("too many") }
         let order = wordOrder(project)
         let clips = Set(project.edits.clips.map(\.id))

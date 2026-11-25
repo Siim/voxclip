@@ -50,6 +50,41 @@ private actor SettingsDebounceClock {
     func project(_ name: String = "interview-take") throws -> Project {
         try JSONProjectStore.decode(FixtureLoader.data("fixtures/projects/\(name).voxclip"))
     }
+    @Test func storyPartsRoundTripInPlayOrder() throws {
+        let base = try ContextDemoProject.upgradeToV4(project())
+        var document = try #require(JSONSerialization.jsonObject(with: JSONProjectStore.encode(base)) as? [String: Any])
+        var edits = try #require(document["edits"] as? [String: Any])
+        document["schemaVersion"] = 4
+        let legacy = try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: document))
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(legacy)).schemaVersion == 4)
+        edits["clips"] = [["id": "story", "startWordId": "w1", "endWordId": "w4", "title": NSNull(),
+                           "origin": "manual", "aiResultId": NSNull(), "aiClipIndex": NSNull(), "selected": true,
+                           "kind": "story", "parts": [["id": "closing", "startWordId": "w4", "endWordId": "w4"],
+                                                         ["id": "opening", "startWordId": "w1", "endWordId": "w2"]]]]
+        document["edits"] = edits
+        document["schemaVersion"] = 5
+        let story = try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: document))
+        #expect(story.edits.clips.count == 1)
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(story)) == story)
+    }
+
+    @Test func partCommandsKeepCutsAndWriteOnlyNecessaryVersions() throws {
+        var project = try ContextDemoProject.upgradeToV4(project())
+        let opening = ClipPart(id: "opening", startWordId: "w1", endWordId: "w2")
+        let closing = ClipPart(id: "closing", startWordId: "w4", endWordId: "w4", reframe: .face(x: 0.3, y: 0.5))
+        try project.applyEditing(.addClip(ClipRange(id: "story", startWordId: "w1", endWordId: "w4", parts: [closing, opening])))
+        #expect(project.schemaVersion == 5)
+        #expect(project.edits.clips.first?.playParts == [closing, opening])
+        try project.applyEditing(.toggle(id: "w2"))
+        let before = project
+        try project.applyEditing(.updateClip(id: "story", startIndex: 0, endIndex: 1))
+        #expect(project == before)
+        try project.applyEditing(.makeClipOfPart(clipId: "story", partId: "opening"))
+        #expect(project.edits.clips.last?.playParts.first?.endWordId == "w2")
+        try project.applyEditing(.setClipParts(id: "story", parts: [opening]))
+        #expect(project.schemaVersion == 4)
+        #expect(project.edits.cutWordIds == ["w2"])
+    }
     @Test func fiveQuestionsRedesignFixture() throws {
         let fixture = try project("five-questions")
         #expect(fixture.title == "Five questions")
@@ -95,7 +130,7 @@ private actor SettingsDebounceClock {
             else { #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data) } }
         }
         var changed = root; changed["unexpected"] = .bool(true); try rejected(changed)
-        changed = root; changed["schemaVersion"] = .number(5); try rejected(changed, error: .projectTooNew)
+        changed = root; changed["schemaVersion"] = .number(6); try rejected(changed, error: .projectTooNew)
         changed = root; changed["schemaVersion"] = .number(0); try rejected(changed)
         changed = root; changed["format"] = .string("another"); try rejected(changed)
         changed = root; changed["id"] = .string("not-uuid"); try rejected(changed)

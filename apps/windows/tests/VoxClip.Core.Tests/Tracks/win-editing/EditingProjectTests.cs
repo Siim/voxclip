@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Shared;
 using Xunit;
 
@@ -9,6 +10,45 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 public sealed class EditingProjectTests
 {
     public static IEnumerable<TheoryDataRow<string>> Projects() => ProjectStoreTests.Projects();
+
+    [Fact]
+    public void StoryPartsRoundTripInPlayOrder()
+    {
+        var baseProject = ProjectSerialization.Deserialize(File.ReadAllText(TestStorage.ProjectPath("interview-take.voxclip")));
+        var document = JsonNode.Parse(ProjectSerialization.Serialize(ContextDemoProject.UpgradeToV4(baseProject)))!;
+        document["schemaVersion"] = 4;
+        var legacy = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.Equal(4, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(legacy)).SchemaVersion);
+        document["schemaVersion"] = 5;
+        document["edits"]!["clips"] = JsonNode.Parse("""
+            [{"id":"story","startWordId":"w1","endWordId":"w4","title":null,"origin":"manual","aiResultId":null,
+              "aiClipIndex":null,"selected":true,"kind":"story","parts":[
+                {"id":"closing","startWordId":"w4","endWordId":"w4"},{"id":"opening","startWordId":"w1","endWordId":"w2"}]}]
+            """);
+        var story = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.Single(story.Edits.Clips);
+        var roundTrip = JsonNode.Parse(ProjectSerialization.Serialize(story))!;
+        Assert.Equal(5, roundTrip["schemaVersion"]!.GetValue<int>());
+        Assert.True(JsonNode.DeepEquals(document["edits"]!["clips"], roundTrip["edits"]!["clips"]));
+    }
+
+    [Fact]
+    public void PartCommandsKeepCutsAndWriteOnlyNecessaryVersions()
+    {
+        var project = ContextDemoProject.UpgradeToV4(ProjectSerialization.Deserialize(File.ReadAllText(TestStorage.ProjectPath("interview-take.voxclip"))));
+        ClipPart opening = new("opening", "w1", "w2");
+        ClipPart closing = new("closing", "w4", "w4", new("face", 1, 0.3, 0.5));
+        project = EditingEngine.ApplyEditing(project, new EditOperation.AddClip(new("story", "w1", "w4", null, ClipOrigin.Manual, null, null, true, Parts: [closing, opening])));
+        Assert.Equal(5, project.SchemaVersion);
+        Assert.Equal(new[] { closing, opening }, Assert.Single(project.Edits.Clips).PlayParts);
+        project = EditingEngine.ApplyEditing(project, new EditOperation.SetWordCuts(["w2"], true));
+        Assert.Same(project, EditingEngine.ApplyEditing(project, new EditOperation.UpdateClip("story", 0, 1)));
+        project = EditingEngine.ApplyEditing(project, new EditOperation.MakeClipOfPart("story", "opening"));
+        Assert.Equal("w2", Assert.Single(project.Edits.Clips[^1].PlayParts).EndWordId);
+        project = EditingEngine.ApplyEditing(project, new EditOperation.SetClipParts("story", [opening]));
+        Assert.Equal(4, project.SchemaVersion);
+        Assert.Equal("w2", Assert.Single(project.Edits.CutWordIds));
+    }
 
     [Theory]
     [MemberData(nameof(Projects))]

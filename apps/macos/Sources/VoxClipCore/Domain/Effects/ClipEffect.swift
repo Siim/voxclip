@@ -333,7 +333,7 @@ public enum ClipEffects {
     public static func validate(_ project: Project) throws {
         let effects = project.clipEffects
         guard !effects.isEmpty else { return }
-        guard project.schemaVersion == 4 else { throw ClipEffectError.unsupportedVersion }
+        guard project.schemaVersion >= 4 else { throw ClipEffectError.unsupportedVersion }
         guard effects.count <= ClipEffect.maximumEntries else { throw ClipEffectError.invalidEntry("too many effects") }
         guard Set(effects.map(\.id)).count == effects.count else { throw ClipEffectError.invalidEntry("duplicate id") }
         let clips = Set(project.edits.clips.map(\.id))

@@ -4,14 +4,14 @@ public enum ContextDemoProject {
     public static func upgradeToV4(_ project: Project) throws -> Project {
         try validate(project)
         var result = try VoiceLabProject.upgradeToV3(project)
-        result.schemaVersion = 4
+        result.schemaVersion = max(4, project.schemaVersion)
         try validate(result)
         return result
     }
 
     public static func validate(_ project: Project) throws {
-        guard (1...4).contains(project.schemaVersion) else { throw ContextDemoError.unsupportedVersion }
-        guard project.schemaVersion == 4 || (project.contextDemo == nil && project.motionCues.isEmpty) else {
+        guard (1...5).contains(project.schemaVersion) else { throw ContextDemoError.unsupportedVersion }
+        guard project.schemaVersion >= 4 || (project.contextDemo == nil && project.motionCues.isEmpty) else {
             throw ContextDemoError.unsupportedVersion
         }
         if let document = project.contextDemo {

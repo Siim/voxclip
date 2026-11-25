@@ -31,7 +31,8 @@
         1,
         2,
         3,
-        4
+        4,
+        5
       ]
     },
     "id": {
@@ -236,7 +237,8 @@
           "schemaVersion": {
             "enum": [
               3,
-              4
+              4,
+              5
             ]
           }
         }
@@ -346,6 +348,84 @@
             }
           }
         ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 5
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "edits": {
+            "properties": {
+              "clips": {
+                "contains": {
+                  "required": [
+                    "parts"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "edits": {
+            "properties": {
+              "clips": {
+                "items": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "parts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "ai": {
+            "properties": {
+              "results": {
+                "items": {
+                  "properties": {
+                    "clips": {
+                      "items": {
+                        "not": {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "parts"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "notInTake"
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   ],
@@ -1105,7 +1185,7 @@
       }
     },
     "clipRange": {
-      "description": "A clip in the range layer: an inclusive word range. Never stored as cut flags.",
+      "description": "A clip in the range layer. For a story the inclusive outer word range is the source hull of its parts.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1170,7 +1250,26 @@
           "exclusiveMinimum": 0,
           "maximum": 0.6,
           "description": "Schema v4: the clip opens this many seconds before its first word, in the silence before it and never across the item before it (ADR-R48). Omitted when the clip opens as the editor places it."
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/clipPart"
+          }
+        },
+        "kind": {
+          "enum": [
+            "story",
+            "showreel"
+          ]
         }
+      },
+      "dependentRequired": {
+        "kind": [
+          "parts"
+        ]
       }
     },
     "edits": {
@@ -1486,6 +1585,18 @@
         },
         "endWordId": {
           "$ref": "#/$defs/wordId"
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/clipWordRange"
+          }
+        },
+        "notInTake": {
+          "type": "string",
+          "maxLength": 200
         }
       }
     },
@@ -4785,6 +4896,45 @@
           }
         }
       ]
+    },
+    "clipWordRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startWordId",
+        "endWordId"
+      ],
+      "properties": {
+        "startWordId": {
+          "$ref": "#/$defs/wordId"
+        },
+        "endWordId": {
+          "$ref": "#/$defs/wordId"
+        }
+      }
+    },
+    "clipPart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "startWordId",
+        "endWordId"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "startWordId": {
+          "$ref": "#/$defs/wordId"
+        },
+        "endWordId": {
+          "$ref": "#/$defs/wordId"
+        },
+        "reframe": {
+          "$ref": "#/$defs/clipControls/properties/reframe"
+        }
+      }
     }
   }
 }

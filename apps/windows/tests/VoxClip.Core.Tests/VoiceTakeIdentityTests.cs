@@ -1,10 +1,10 @@
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.Editing;
 using Xunit;
 #if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
-using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.VoiceLab;
@@ -24,6 +24,19 @@ public sealed class VoiceTakeIdentityTests
 {
     private static readonly Lazy<JsonObject> Cases = new(() => JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/voice-take-identity-cases.json"))!.AsObject());
     private static IEnumerable<JsonNode> Rows(string key) => Cases.Value[key]!.AsArray().Select(row => row!);
+
+    [Fact]
+    public void PartEditPreservesPaidWholeClipAsACopy()
+    {
+        var original = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/whole-clip-revoice-project.voxclip"));
+        ClipPart[] parts = [new("late", "w7", "w8"), new("early", "w3", "w4")];
+        var project = EditingEngine.ApplyEditing(original, new EditOperation.SetClipParts("clip-main", parts));
+        Assert.Equal(original.Edits.Clips[0], project.Edits.Clips[0]);
+        Assert.Equal(parts, project.Edits.Clips[^1].PlayParts);
+        Assert.Equal(project.Edits.Clips[^1].Id, project.Edits.ActiveClipId);
+        Assert.Same(original.VoiceLab, project.VoiceLab);
+        Assert.Equal(original.VoiceLab.WholeClipRevoices, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project)).VoiceLab.WholeClipRevoices);
+    }
 
     [Fact]
     public void SharedCasesHaveTheirSchemaAndCount()

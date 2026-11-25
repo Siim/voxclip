@@ -103,7 +103,7 @@ def generated():
     reject('offset-past-track', [set_value('/music/1/startOffsetSeconds', 8)], True)
     for version in (1, 2, 3):
         reject(f'v{version}-music', [set_value('/schemaVersion', version)])
-    reject('future-project', [set_value('/schemaVersion', 5)])
+    reject('future-project', [set_value('/schemaVersion', 6)])
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-music-wire-cases/1', 'project': 'fixtures/music/music-project.voxclip',
              'valid': valid, 'invalid': invalid}

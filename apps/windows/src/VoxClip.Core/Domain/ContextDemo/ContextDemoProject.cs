@@ -8,8 +8,8 @@ public static class ContextDemoProject
 {
     public static void Validate(Project project)
     {
-        ContextDemoValidation.Require(project.SchemaVersion is >= 1 and <= 4, ContextDemoError.UnsupportedVersion);
-        ContextDemoValidation.Require(project.SchemaVersion == 4 || (project.ContextDemo is null && project.MotionCues.Count == 0),
+        ContextDemoValidation.Require(project.SchemaVersion is >= 1 and <= 5, ContextDemoError.UnsupportedVersion);
+        ContextDemoValidation.Require(project.SchemaVersion >= 4 || (project.ContextDemo is null && project.MotionCues.Count == 0),
             ContextDemoError.UnsupportedVersion);
         if (project.ContextDemo is { } document)
         {
@@ -24,7 +24,7 @@ public static class ContextDemoProject
     public static Project UpgradeToV4(Project project)
     {
         Validate(project);
-        var result = VoiceLabProject.UpgradeToV3(project) with { SchemaVersion = 4 };
+        var result = VoiceLabProject.UpgradeToV3(project) with { SchemaVersion = Math.Max(4, project.SchemaVersion) };
         Validate(result);
         return result;
     }

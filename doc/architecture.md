@@ -283,6 +283,8 @@ On macOS, damaged settings are backed up before valid preferences are recovered.
 
 Project schema v4 adds explicit context-demo and clip-motion roots while retaining v3 Voice Lab semantics. Source binding, full-narration placement coordinates, single-compositor rendering and legacy preservation are specified in [Context demonstrations and clip motion](spec/context-demo.md). The v4 wire is not an optional-field extension to older versions.
 
+Project schema v5 adds story clips. A writer uses v5 only while the project contains a multi-part clip. The clip's outer word IDs are its source hull; consumers use `playParts` / `PlayParts` for the ordered ranges. Parts have stable IDs and optional individual face reframes. A reader refuses a version newer than it knows before checking the rest of the document.
+
 The normative project format is defined by `doc/spec/editing.md` section 10 and `shared/schemas/project.schema.json`. The architecture relies on these properties:
 
 - **One portable JSON file**, extension `.voxclip`, UTF-8, no BOM, identical schema on both platforms, `"format": "voxclip-project"` plus an integer `schemaVersion`. Autosaved (debounced about 1 s) with atomic writes. macOS UTType `com.voxconvo.voxclip.project` conforming to `public.json`; Windows associates `.voxclip` with `VoxClip.exe` in the Velopack install hook (current user only).

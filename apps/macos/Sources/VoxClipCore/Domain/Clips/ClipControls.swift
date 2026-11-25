@@ -213,7 +213,7 @@ public enum ClipControlsProject {
     /// The typed rules the schema cannot express: the clip exists, one entry per clip, no stored default entry.
     public static func validate(_ project: Project) throws {
         guard !project.clipControls.isEmpty else { return }
-        guard project.schemaVersion == 4 else { throw ClipControlsProjectError.unsupportedVersion }
+        guard project.schemaVersion >= 4 else { throw ClipControlsProjectError.unsupportedVersion }
         guard project.clipControls.count <= ProjectClipControls.maximumEntries else { throw ClipControlsProjectError.invalidEntry("too many entries") }
         let clips = Set(project.edits.clips.map(\.id))
         var seen = Set<String>()

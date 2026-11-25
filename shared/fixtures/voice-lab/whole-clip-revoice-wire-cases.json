@@ -896,7 +896,7 @@
       "patches": [
         {
           "path": "/schemaVersion",
-          "value": 5
+          "value": 6
         }
       ],
       "tooNew": true

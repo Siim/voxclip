@@ -115,7 +115,7 @@ public static class ClipControlsProject
     public static void Validate(Project project)
     {
         if (project.ClipControls.Count == 0) return;
-        Require(project.SchemaVersion == 4 && project.ClipControls.Count <= 64);
+        Require(project.SchemaVersion >= 4 && project.ClipControls.Count <= 64);
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in project.ClipControls)

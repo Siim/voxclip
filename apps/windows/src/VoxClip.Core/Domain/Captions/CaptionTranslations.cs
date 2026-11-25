@@ -51,7 +51,7 @@ public static class CaptionTranslations
     {
         var entries = project.CaptionTranslations;
         if (entries.Count == 0) return;
-        Require(project.SchemaVersion == 4 && entries.Count <= MaximumEntries);
+        Require(project.SchemaVersion >= 4 && entries.Count <= MaximumEntries);
         var order = (project.Transcript?.Words ?? []).Select((word, index) => (word.Id, index)).ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var ids = new HashSet<string>(StringComparer.Ordinal);

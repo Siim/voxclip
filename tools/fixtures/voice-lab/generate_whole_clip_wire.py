@@ -118,7 +118,7 @@ def generated():
     reject('empty-list', [set_value('/voiceLab/wholeClipRevoices', [])])
     reject('null-list', [set_value('/voiceLab/wholeClipRevoices', None)])
     reject('single-object', [set_value('/voiceLab/wholeClipRevoices', record())])
-    reject('future-project', [set_value('/schemaVersion', 5)])
+    reject('future-project', [set_value('/schemaVersion', 6)])
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-whole-clip-revoice-wire/1', 'project': 'fixtures/voice-lab/whole-clip-revoice-project.voxclip',
              'clipId': 'clip-main', 'valid': valid, 'invalid': invalid}

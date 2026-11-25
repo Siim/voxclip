@@ -113,7 +113,7 @@ public static class ClipEffects
     public static void Validate(Project project)
     {
         if (project.ClipEffects.Count == 0) return;
-        Require(project.SchemaVersion == 4 && project.ClipEffects.Count <= 500);
+        Require(project.SchemaVersion >= 4 && project.ClipEffects.Count <= 500);
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var words = (project.Transcript?.Words ?? []).Select(word => word.Id).ToHashSet(StringComparer.Ordinal);
         var identities = new HashSet<string>(StringComparer.Ordinal);

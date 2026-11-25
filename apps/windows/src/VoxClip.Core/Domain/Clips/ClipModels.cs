@@ -20,7 +20,9 @@ public enum ClipPreset
 }
 
 /// <summary>Stored validated suggestion; project schema $defs/aiClip and AI §11.7.</summary>
-public sealed record AiClip(string Title, string Reason, int Score, string StartWordId, string EndWordId);
+public sealed record AiClip(string Title, string Reason, int Score, string StartWordId, string EndWordId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ClipWordRange>? Parts = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NotInTake = null);
 
 /// <summary>Stored run, stable across cuts; project schema $defs/aiResult.</summary>
 public sealed record AiResult(string Id, DateTimeOffset CreatedAt, string Provider, string Model, ClipPreset Preset,

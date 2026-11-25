@@ -17,12 +17,39 @@ public enum ClipOrigin
     [JsonStringEnumMemberName("ai")] Ai
 }
 
+/// <summary>Optional label for a multi-part clip; never used for playback.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<StoryClipKind>))]
+public enum StoryClipKind
+{
+    /// <summary>A story told in the chosen order.</summary>
+    [JsonStringEnumMemberName("story")] Story,
+    /// <summary>A collection of highlights.</summary>
+    [JsonStringEnumMemberName("showreel")] Showreel
+}
+
+/// <summary>One inclusive source range in play order, with stable identity and optional face reframe.</summary>
+public sealed record ClipPart(string Id, string StartWordId, string EndWordId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null);
+
+/// <summary>One inclusive range in a persisted AI suggestion.</summary>
+public sealed record ClipWordRange(string StartWordId, string EndWordId);
+
 /// <summary>Inclusive word-id range; editing §2.5 and project schema. A range never rewrites cuts. <paramref name="LeadInSeconds"/>
 /// (schema v4, ADR-R48 part 2) opens the clip up to 0.6 s before its first word, inside the pause before it (never across the
 /// word before); omitted when null. Moving the clip's first word drops it.</summary>
 public sealed record ClipRange(string Id, string StartWordId, string EndWordId, string? Title,
     ClipOrigin Origin, string? AiResultId, int? AiClipIndex, bool Selected,
-    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] double? LeadInSeconds = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? LeadInSeconds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ClipPart>? Parts = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] StoryClipKind? Kind = null)
+{
+    /// <summary>Ordered playback ranges; synthesizes one part for an ordinary clip.</summary>
+    [JsonIgnore] public IReadOnlyList<ClipPart> PlayParts => Parts is { Count: > 0 } ? Parts : [new(Id, StartWordId, EndWordId)];
+
+    /// <summary>Resolve ordered ranges to inclusive transcript indices, or null for invalid references or overlap.</summary>
+    public IReadOnlyList<(int Start, int End)>? PlayPartIndices(IReadOnlyList<TimedWord> words) =>
+        StoryClips.Indices(PlayParts.Select(part => (part.StartWordId, part.EndWordId)), words);
+}
 
 /// <summary>Immutable editor snapshot; editing §2.5.</summary>
 public sealed record EditState(TranscriptModel Transcript, IReadOnlyList<Pause> Pauses, double PauseThresholdSeconds,
@@ -201,6 +228,10 @@ public abstract record EditOperation
     public sealed record AddAiClips(string ResultId, IReadOnlyList<AiClip> Clips) : EditOperation;
     /// <summary>Move inclusive clip edges without changing cuts; editing §6.3.</summary>
     public sealed record UpdateClip(string Id, int StartIndex, int EndIndex) : EditOperation;
+    /// <summary>Replace the ordered parts and recompute the hull as one edit.</summary>
+    public sealed record SetClipParts(string Id, IReadOnlyList<ClipPart> Parts) : EditOperation;
+    /// <summary>Make an ordinary clip from a part without changing the cut set.</summary>
+    public sealed record MakeClipOfPart(string ClipId, string PartId) : EditOperation;
     /// <summary>Set trimmed title or clear it; editing §6.3.</summary>
     public sealed record RenameClip(string Id, string? Title) : EditOperation;
     /// <summary>Set the export checkbox only; editing §6.3.</summary>
@@ -226,6 +257,17 @@ public static class EditingEngine
     public static EditState? FromProject(Project project) => EditingProject.FromProject(project);
     /// <summary>Store only persistent editing fields and prune removed clip captions; editing §10.4–10.7 and plan W3.</summary>
     public static Project ApplyToProject(Project project, EditState state) => EditingProject.ApplyToProject(project, state);
+    /// <summary>Apply one operation with project-wide paid-work and placement checks.</summary>
+    public static Project ApplyEditing(Project project, EditOperation operation)
+    {
+        if (FromProject(project) is not { } state) return project;
+        var changed = Reduce(state, operation, project);
+        return ReferenceEquals(state, changed) ? project : ApplyToProject(project, changed);
+    }
+
+    /// <summary>Reduce one operation using the project for paid-work and placement checks.</summary>
+    public static EditState Reduce(EditState state, EditOperation operation, Project project) =>
+        EditingSession.Reduce(state, operation, project.Ai.Results, project);
     /// <summary>Compute scoped counts and gates without changing the snapshot; editing §6.4.</summary>
     public static EditSummary Summarize(EditState state) => EditingSession.Summarize(state);
     /// <summary>Reduce one undoable operation.</summary>

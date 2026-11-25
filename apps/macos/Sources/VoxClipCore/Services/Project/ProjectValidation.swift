@@ -23,7 +23,9 @@ enum ProjectValidation {
 
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
-        let isV4 = try map(raw)["schemaVersion"] == .number(4)
+        let wireVersion = try map(raw)["schemaVersion"]
+        let isV5 = wireVersion == .number(5)
+        let isV4 = isV5 || wireVersion == .number(4)
         let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""))
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone")
@@ -64,7 +66,16 @@ enum ProjectValidation {
         }
         let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId")
         for clip in try array(edits["clips"]) {
-            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds")
+            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds" + (isV5 ? " parts kind" : ""))
+            if let kind = fields["kind"] {
+                try require(fields["parts"] != nil && (kind == .string("story") || kind == .string("showreel")), "Invalid clip kind")
+            }
+            if let parts = fields["parts"] {
+                for part in try array(parts) {
+                    let fields = try object(part, required: "id startWordId endWordId", optional: "reframe")
+                    if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY") }
+                }
+            }
             // An opening lead-in (ADR-R48) is schema v4 only: 0 < s ≤ 0.6.
             if let lead = fields["leadInSeconds"] {
                 guard isV4, case .number(let seconds) = lead, seconds.isFinite, seconds > 0, seconds <= FrameSampling.openingSpan + 1e-9 else {
@@ -84,7 +95,13 @@ enum ProjectValidation {
         let ai = try object(root["ai"], required: "results")
         for rawResult in try array(ai["results"]) {
             let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips")
-            for clip in try array(result["clips"]) { _ = try object(clip, required: "title reason score startWordId endWordId") }
+            for clip in try array(result["clips"]) {
+                let fields = try object(clip, required: "title reason score startWordId endWordId", optional: isV5 ? "parts notInTake" : "")
+                if let parts = fields["parts"] { for part in try array(parts) { _ = try object(part, required: "startWordId endWordId") } }
+                if let note = fields["notInTake"] {
+                    guard case .string = note else { try fail("Invalid missing-from-take note") }
+                }
+            }
         }
         let version = isV4 ? 4 : root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
         let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments",

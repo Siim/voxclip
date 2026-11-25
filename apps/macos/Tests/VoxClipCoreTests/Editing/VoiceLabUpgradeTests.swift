@@ -142,7 +142,7 @@ import Testing
         invalid.voiceLab.assets = []
         #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabProject.upgradeToV3(invalid) }
         var future = try extendedV1()
-        future.schemaVersion = 5
+        future.schemaVersion = 6
         #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabProject.upgradeToV3(future) }
     }
 
