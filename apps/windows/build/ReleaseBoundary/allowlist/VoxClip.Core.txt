@@ -4659,7 +4659,6 @@ member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public Size(Vox
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public UnmapAnchor(VoxClip.Core.Domain.Clips.ProjectClipControls,double,double)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public UnmapRect(VoxClip.Core.Domain.Clips.ProjectClipControls,VoxClip.Core.Domain.Effects.ClipEffectRect)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public VideoBitrate(VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Shared.ExportAspect,VoxClip.Core.Domain.Shared.ExportQuality,double,VoxClip.Core.Domain.Clips.ProjectClipControls)
-member VoxClip.Core.Domain.Clips.ClipFaceCrop :: method public Centered(VoxClip.Core.Domain.Shared.RectD,double,double,VoxClip.Core.Domain.Clips.ProjectClipControls,double)
 member VoxClip.Core.Domain.Clips.ClipFaceCrop :: method public Centered(VoxClip.Core.Domain.Shared.RectD,double,double,VoxClip.Core.Domain.Clips.ProjectClipControls,double,VoxClip.Core.Domain.Shared.ReframeSettings)
 member VoxClip.Core.Domain.Clips.ClipIndexRange :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Clips.ClipIndexRange :: method public .ctor(int,int)
