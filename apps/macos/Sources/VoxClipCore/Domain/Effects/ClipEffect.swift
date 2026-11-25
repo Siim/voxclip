@@ -366,9 +366,10 @@ public enum ClipEffects {
         guard Set(effects.map(\.id)).count == effects.count else { throw ClipEffectError.invalidEntry("duplicate id") }
         let clips = Set(project.edits.clips.map(\.id))
         let words = Set(project.transcript?.words.map(\.id) ?? [])
+        let timelineEdits = project.schemaVersion >= TimelineEditFields.version
         for effect in effects {
-            guard project.schemaVersion >= TimelineEditFields.version || !effect.usesTimelineEditFields else { throw ClipEffectError.unsupportedVersion }
-            try validate(effect, projectId: project.id)
+            guard timelineEdits || !effect.usesTimelineEditFields else { throw ClipEffectError.unsupportedVersion }
+            try validate(effect, projectId: project.id, timelineEdits: timelineEdits)
             if let clip = effect.clipId, !clips.contains(clip) { throw ClipEffectError.invalidEntry("clip") }
             if let ids = effect.wordIds, !ids.allSatisfy(words.contains) { throw ClipEffectError.invalidEntry("word") }
         }
@@ -376,6 +377,10 @@ public enum ClipEffects {
 
     /// One effect's own rules, independent of the project's clips and words.
     public static func validate(_ effect: ClipEffect, projectId: String) throws {
+        try validate(effect, projectId: projectId, timelineEdits: effect.usesTimelineEditFields)
+    }
+
+    private static func validate(_ effect: ClipEffect, projectId: String, timelineEdits: Bool) throws {
         func require(_ condition: Bool, _ reason: String) throws { if !condition { throw ClipEffectError.invalidEntry(reason) } }
         try require(matches(effect.id, identifier), "id")
         if let animation = effect.animation {
@@ -427,7 +432,7 @@ public enum ClipEffects {
             try require(effect.gainDb.map { $0.isFinite && ClipEffect.gainRange.contains($0) } == true, "gain")
             try require(sound.durationSeconds.isFinite && sound.durationSeconds > 0 && sound.durationSeconds <= ClipEffect.maximumSoundSeconds, "sound length")
             let length = effect.end - effect.start
-            if effect.usesTimelineEditFields {
+            if timelineEdits {
                 let offset = effect.mediaOffsetSeconds ?? 0
                 let tolerance = min(1e-9, effect.end.ulp)
                 try require(offset >= 0 && offset < sound.durationSeconds && length >= 0.05 - tolerance

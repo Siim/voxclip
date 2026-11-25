@@ -2144,8 +2144,8 @@ adding the first legacy effect promotes an older project to v4. `ClipEffect` has
 In v6, effects can write `fadeInSeconds` and `fadeOutSeconds` (0…5 s), except `bleep`, `mute`, `speedForPart` and
 `freeze`. Omitted fades keep the existing 0.12 s overlay fades or zero for sound; colour looks blend the grade.
 `bleep` and `mute` keep their fixed 10 ms ramps. Only `sound` may write `mediaOffsetSeconds` (nonnegative seconds into
-the asset) and optional `gainPoints`. An edited sound's `end − start` is its played length on the edited clock, at least
-0.05 s and no greater than the asset's remaining duration after the offset (default 0). A legacy sound spans its full
+the asset) and optional `gainPoints`. In v6, a sound's `end − start` is its played length on the edited clock, at least
+0.05 s and no greater than the asset's remaining duration after the offset (default 0). Before v6, a sound spans its full
 asset. Gain points follow [ADR-R53](../adr/R53-edit-connected-items-on-the-timeline.md). Companion `media.footage` entries
 may write fades of 0…2 s. These fields are omitted when unset, not written as null; the first edit using them promotes
 the project to v6. Trimming and splitting illustrations preserves the shared `imageFile`; deleting an item removes only

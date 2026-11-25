@@ -95,6 +95,9 @@ def generated():
     reject('sound-offset-exhausts-asset', [v6, set_value('/clipEffects/10/mediaOffsetSeconds', 0.35)], True)
     reject('sound-overrun-after-offset', [v6, set_value('/clipEffects/10/mediaOffsetSeconds', 0.01)], True)
     reject('sound-below-minimum-length', [v6, set_value('/clipEffects/10/end', 2.649)], True)
+    reject('v6-full-sound-below-minimum-length', [v6, set_value('/clipEffects/10/end', 2.64),
+        set_value('/clipEffects/10/sound/durationSeconds', 0.04)], True)
+    reject('v6-sound-overruns-within-legacy-tolerance', [v6, set_value('/clipEffects/10/end', 2.9500005)], True)
     for name, envelope, schema_valid in [
         ('descending', [points[1], points[0]], True), ('duplicate-time', [points[0], points[0]], True),
         ('too-many', points + [{'t': 1, 'db': 0}], False), ('negative-time', [{'t': -0.1, 'db': 0}], False),

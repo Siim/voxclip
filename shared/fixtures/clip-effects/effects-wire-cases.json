@@ -703,6 +703,38 @@
       ]
     },
     {
+      "id": "v6-full-sound-below-minimum-length",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 2.64
+        },
+        {
+          "path": "/clipEffects/10/sound/durationSeconds",
+          "value": 0.04
+        }
+      ]
+    },
+    {
+      "id": "v6-sound-overruns-within-legacy-tolerance",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 2.9500005
+        }
+      ]
+    },
+    {
       "id": "gain-points-descending",
       "schemaValid": true,
       "patches": [

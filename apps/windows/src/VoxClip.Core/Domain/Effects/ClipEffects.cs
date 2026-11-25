@@ -150,11 +150,12 @@ public static class ClipEffects
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var words = (project.Transcript?.Words ?? []).Select(word => word.Id).ToHashSet(StringComparer.Ordinal);
         var identities = new HashSet<string>(StringComparer.Ordinal);
+        var timelineEdits = project.SchemaVersion >= TimelineEditFields.Version;
         foreach (var effect in project.ClipEffects)
         {
-            ValidateWireEntry(effect, project.SchemaVersion >= TimelineEditFields.Version);
-            Require(project.SchemaVersion >= TimelineEditFields.Version || !UsesTimelineEditFields(effect));
-            Validate(effect, project.Id);
+            ValidateWireEntry(effect, timelineEdits);
+            Require(timelineEdits || !UsesTimelineEditFields(effect));
+            Validate(effect, project.Id, timelineEdits);
             Require(identities.Add(effect.GetProperty("id").GetString()!));
             var clip = effect.GetProperty("clipId");
             Require(clip.ValueKind == JsonValueKind.Null || clips.Contains(clip.GetString()!));
@@ -163,7 +164,7 @@ public static class ClipEffects
         }
     }
 
-    private static void Validate(JsonElement effect, string projectId)
+    private static void Validate(JsonElement effect, string projectId, bool timelineEdits)
     {
         var kind = effect.GetProperty("kind").GetString()!;
         var start = effect.GetProperty("start").GetDouble();
@@ -220,7 +221,7 @@ public static class ClipEffects
             var license = sound.GetProperty("license").GetString();
             Require(gain is >= -30 and <= 6 && duration is > 0 and <= 10 && title.Length is >= 1 and <= 200);
             var length = end - start;
-            if (UsesTimelineEditFields(effect))
+            if (timelineEdits)
             {
                 var offset = effect.TryGetProperty("mediaOffsetSeconds", out var mediaOffset) ? mediaOffset.GetDouble() : 0;
                 var tolerance = Math.Min(1e-9, Math.BitIncrement(end) - end);
@@ -248,7 +249,7 @@ public static class ClipEffects
     /// <paramref name="projectId"/>; the project-level checks (clip and words exist, unique ids) are <see cref="Validate(Project)"/>'s.</summary>
     public static bool IsValidEntry(JsonElement entry, string projectId)
     {
-        try { ValidateWireEntry(entry); Validate(entry, projectId); return true; }
+        try { ValidateWireEntry(entry); Validate(entry, projectId, UsesTimelineEditFields(entry)); return true; }
         catch (Exception exception) when (exception is VoxClipException or InvalidOperationException or KeyNotFoundException or FormatException) { return false; }
     }
 

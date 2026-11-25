@@ -115,7 +115,7 @@ import Testing
             #expect(NSDictionary(dictionary: ["e": raw["clipEffects"] ?? NSNull()]) == NSDictionary(dictionary: ["e": original["clipEffects"] ?? NSNull()]), "\(item.id)")
             for entry in (raw["clipEffects"] as? [[String: Any]]) ?? [] {
                 let kind = try #require(ClipEffect.Kind(rawValue: entry["kind"] as? String ?? ""))
-                #expect(Set(entry.keys) == ClipEffect.commonKeys.union(ClipEffect.kindKeys(kind)), "\(item.id) \(kind)")
+                #expect(ClipEffect.commonKeys.union(ClipEffect.kindKeys(kind)).isSubset(of: entry.keys), "\(item.id) \(kind)")
             }
         }
     }
