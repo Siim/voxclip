@@ -18,6 +18,7 @@ def part_array(definition):
 
 def main():
     schema = json.loads(SCHEMA.read_text())
+    schema['title'] = 'VoxClip project file (.voxclip), schemaVersion 1, 2, 3, 4 or 5'
     schema['properties']['schemaVersion']['enum'] = [1, 2, 3, 4, 5]
     for rule in schema['allOf']:
         versions = rule['if']['properties']['schemaVersion'].get('enum')
