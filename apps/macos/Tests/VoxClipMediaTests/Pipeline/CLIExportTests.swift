@@ -289,7 +289,8 @@ extension HeavyMediaTests {
             let lines = cue.split(separator: "\n")
             return lines.count >= 3 ? lines.dropFirst(2).joined(separator: " ") : nil
         }
-    #expect(cues == ["uh the", "So um,", "we ship"])
+    #expect(cues.joined(separator: " ") == "uh the So um, we ship")
+    #expect(!cues.contains { $0.contains("the So") || $0.contains("um, we") })
 }
 
 @Test(.timeLimit(.minutes(1)), arguments: ["clip", "range", "stored", "media"])

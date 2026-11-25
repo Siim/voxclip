@@ -96,6 +96,11 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
                     var final = new PixelBuffer(new byte[100 * 180 * 4], 100, 180, 400);
                     composer.Compose(decoded, pixels, snapshot, time, true, ct);
                     composer.Compose(decoded, final, snapshot, time, false, ct);
+                    var difference = 0.0;
+                    for (var offset = 0; offset < pixels.Pixels.Length; offset += 4)
+                        for (var channel = 0; channel < 3; channel++)
+                            difference += Math.Abs(pixels.Pixels.Span[offset + channel] - final.Pixels.Span[offset + channel]);
+                    Assert.InRange(difference / (100 * 180 * 3), 0, 3);
                     var pixel = pixels.Pixels.Slice(90 * 400 + 50 * 4, 3).ToArray();
                     centers.Add(pixel);
                     var encoded = exported?.ReadAt(time, false, ct) ?? final;

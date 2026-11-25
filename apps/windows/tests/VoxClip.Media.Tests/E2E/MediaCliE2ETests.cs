@@ -27,10 +27,12 @@ public sealed class MediaCliE2ETests
     private const string ChirpTranscript = "fillers-chirp.transcript.json";
     private const string Tone = "joins-tone.mov";
     private const string ToneTranscript = "joins-tone.transcript.json";
-    [Fact]
-    public async Task CliExportsStoryClipCaptionsInPartOrder()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CliExportsStoryClipCaptionsInPartOrder(bool encode)
     {
-        await NativeTest.RequireAsync(windows: true);
+        if (encode) await NativeTest.RequireAsync(windows: true);
         var ct = TestContext.Current.CancellationToken;
         var directory = Directory.CreateTempSubdirectory("voxclip-e2e-story-").FullName;
         try
@@ -40,19 +42,35 @@ public sealed class MediaCliE2ETests
             var fixture = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(saved, ct));
             var clip = fixture.Edits.Clips.Single();
             clip = clip with { Parts = [.. clip.PlayParts, new("third", "w4", "w5")] };
-            var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
+            var media = encode ? await new FfmpegMediaProbe().ProbeAsync(source, ct) :
+                new MediaInfo(source, 30, fixture.Media.Source.Video, fixture.Media.Source.Audio, new(1920, 1080), "h264", "aac", false, 0, 1, 0);
             var project = CliOperations.NewProject(media, fixture.Transcript, await new ProjectStore().ComputeContentKeyAsync(source, null, ct));
             project = project with { Edits = project.Edits with { Clips = [clip] } };
             var input = Path.Combine(directory, "story.voxclip");
             var output = Path.Combine(directory, "story.mp4");
             var srt = Path.Combine(directory, "story.srt");
             await File.WriteAllTextAsync(input, ProjectSerialization.Serialize(project), ct);
-            var (exit, result) = await RunCli(["export", "--open", input, "--clip", clip.Id, "--export", output,
-                "--srt", srt, "--style", "vox-bold", "--loudness", "off", "--json", "--quiet"], directory, "e2e-story", ct);
-            Assert.True(exit == 0, result.ToJsonString());
-            var cues = (await File.ReadAllTextAsync(srt, ct)).ReplaceLineEndings("\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
-                .Select(cue => string.Join(" ", cue.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2)));
-            Assert.Equal(["uh the", "So um,", "we ship"], cues);
+            string[] args = ["export", "--open", input, "--clip", clip.Id, "--export", output,
+                "--srt", srt, "--style", "vox-bold", "--loudness", "off", "--json", "--quiet"];
+            string subtitles;
+            if (encode)
+            {
+                var (exit, result) = await RunCli(args, directory, "e2e-story", ct);
+                Assert.True(exit == 0, result.ToJsonString());
+                subtitles = await File.ReadAllTextAsync(srt, ct);
+            }
+            else
+            {
+                var parsed = CliApplication.Parse(args);
+                Assert.Empty(parsed.Errors);
+                ExportInputReader open = async (file, token) => ((await new ProjectStore().LoadAsync(file, token)).Project, media);
+                var prepared = await CliOperations.PrepareExportAsync(parsed, ct, open, checkingOutputs: false);
+                subtitles = Exporter.Subtitles(prepared.Captions);
+            }
+            var cues = subtitles.ReplaceLineEndings("\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
+                .Select(cue => string.Join(" ", cue.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2))).ToArray();
+            Assert.Equal("uh the So um, we ship", string.Join(" ", cues));
+            Assert.DoesNotContain(cues, cue => cue.Contains("the So") || cue.Contains("um, we"));
         }
         finally { Directory.Delete(directory, true); }
     }

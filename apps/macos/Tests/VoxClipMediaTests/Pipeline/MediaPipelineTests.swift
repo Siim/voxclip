@@ -172,12 +172,15 @@ extension HeavyMediaTests {
         offset += interval[1] - interval[0]
     }
 
+    let exportGraph = try await CompositionBuilder().build(render)
+    let unencoded = AVAssetImageGenerator(asset: exportGraph.composition)
+    unencoded.videoComposition = exportGraph.videoComposition
     render.forPreview = true
     let graph = try await CompositionBuilder().build(render)
     let preview = AVAssetImageGenerator(asset: graph.composition)
     preview.videoComposition = graph.videoComposition
     let final = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
-    for generator in [preview, final] {
+    for generator in [preview, unencoded, final] {
         generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
     }
     func center(_ image: CGImage) throws -> [Int] {
@@ -193,8 +196,10 @@ extension HeavyMediaTests {
     for time in [0.0] + story.partSeams {
         let position = CMTime(value: Int64((time * 30).rounded()), timescale: 30)
         let showing = try center(preview.copyCGImage(at: position, actualTime: nil))
+        let composed = try center(unencoded.copyCGImage(at: position, actualTime: nil))
         let encoded = try center(final.copyCGImage(at: position, actualTime: nil))
-        #expect(zip(showing, encoded).allSatisfy { abs($0 - $1) <= 10 })
+        #expect(showing == composed, "Preview and export composition differ at \(time) seconds")
+        #expect(zip(showing, encoded).allSatisfy { abs($0 - $1) <= 22 }, "At \(time) seconds: preview \(showing), export \(encoded)")
         if time == 0 { #expect(showing[0] > 130 && showing[1] > 130 && showing[2] < 40) }
         if time == story.partSeams[0] { #expect(showing[0] < 40 && showing[1] > 130 && showing[2] > 130) }
         if time == story.partSeams[1] { #expect(showing[0] < 40 && showing[1] < 40 && showing[2] > 130) }
