@@ -122,6 +122,7 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/loudness/generate_social_loudness.py")], check=True)
     # The clip-effects schema field and its shared vectors (doc/spec/ai.md section 18.2), after the music field.
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_effects_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_timeline_edit_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_proposal_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-effects/generate_clip_effects.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/ask-claude/generate_ask_claude.py")], check=True)

@@ -63,7 +63,6 @@ class ClipEffectsSchemaTests(unittest.TestCase):
                 self.assertEqual(not vector.get("invalid", False), validator.is_valid(vector["entry"]))
         prompt = json.loads((ROOT / "shared/prompts/clip-autopilot.json").read_text())
         offered = prompt["schema"]["properties"]["effects"]["items"]["properties"]["kind"]["enum"]
-        self.assertEqual(set(offered), {vector["entry"]["kind"] for vector in vectors if "placement" in vector})
         templates = self.templates()
         for template in templates:
             validator.validate(template)
@@ -72,6 +71,9 @@ class ClipEffectsSchemaTests(unittest.TestCase):
             with self.subTest(kind=vector["kind"], reason=vector["reason"]):
                 entry = {key: value for key, value in vector.items() if key not in {"duration", "placement", "invalid", "editedLength", "editedFits"}}
                 self.assertEqual(not vector.get("invalid", False), validator.is_valid(entry))
+        self.assertEqual(set(offered), {vector["entry"]["kind"] for vector in vectors if "placement" in vector}
+                         | {vector["kind"] for vector in footage if vector.get("placement")}
+                         | {template["kind"] for template in templates})
         self.assertEqual(set(plan["properties"]["kind"]["enum"]),
                          {vector["entry"]["kind"] for vector in vectors} | {vector["kind"] for vector in footage}
                          | {template["kind"] for template in templates})
