@@ -82,6 +82,7 @@ struct EditorRenderSnapshot {
     var query = ""
     var textSize = DesignValues.transcriptTextSize
     var error: String?
+    var projectSaveNotice: String?
     var previewError: String?
     var captionError: String?
     var progress: String?

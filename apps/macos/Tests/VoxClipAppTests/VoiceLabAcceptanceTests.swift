@@ -208,10 +208,59 @@ private struct AcceptanceTestKeys: KeyProvider {
         let undo = try #require(document.undoManager)
         undo.groupsByEvent = true; model.undoManager = undo
         document.updateChangeCount(.changeCleared)
+        let originalBytes = try JSONProjectStore.encode(input.project)
         #expect(throws: VoiceLabProjectError.invalidSegment) {
-            try model.applyVoiceLab([], assets: [], voice: input.voice, scope: .fullTake)
+            try model.applyVoiceLab([], assets: [], voice: input.voice, scope: .fullTake,
+                                    localCommands: [.correct(id: "w1", text: "Corrected")])
         }
         #expect(model.project == input.project && !document.isDocumentEdited && !undo.canUndo)
+        #expect(try JSONProjectStore.encode(model.project) == originalBytes)
+    }
+
+    @Test func aTakeThatWouldBreakSavingLeavesTheProjectUntouched() throws {
+        let input = try acceptanceSet("single")
+        var otherClip = try #require(input.project.edits.clips.first)
+        otherClip.id = "clip-with-effect"
+        var original = input.project
+        original.edits.clips.append(otherClip)
+        original = try ClipEffects.adding([ClipEffect(id: "test-look", clipId: otherClip.id, kind: .freeze, start: 0, end: 0.5)], to: original)
+        let originalBytes = try JSONProjectStore.encode(original)
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+
+        #expect(throws: ClipEffectError.invalidEntry("clip")) {
+            try model.applyVoiceLab(input.segments, assets: input.assets, voice: input.voice, scope: .fullTake,
+                                    localCommands: [.removeClip(id: otherClip.id)])
+        }
+        #expect(model.project == original && !document.isDocumentEdited && !undo.canUndo)
+        #expect(try JSONProjectStore.encode(model.project) == originalBytes)
+    }
+
+    @Test func useRejectsAnUnsavableClipEditWithoutChangingTheProject() throws {
+        let input = try acceptanceSet("single")
+        var badClip = try #require(input.project.edits.clips.first)
+        badClip.id = "clip-with-invalid-lead-in"
+        badClip.leadInSeconds = FrameSampling.openingSpan + 1
+        var original = input.project
+        original.schemaVersion = 4
+        let originalBytes = try JSONProjectStore.encode(original)
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+
+        #expect(throws: VoxClipError.projectUnreadable("Invalid clip lead-in")) {
+            try model.applyVoiceLab(input.segments, assets: input.assets, voice: input.voice, scope: .fullTake,
+                                    localCommands: [.addClip(badClip)])
+        }
+        #expect(model.project == original && !document.isDocumentEdited && !undo.canUndo)
+        #expect(try JSONProjectStore.encode(model.project) == originalBytes)
     }
 
     @Test func setCommandHasNoImpliedScope() throws {
