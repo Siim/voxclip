@@ -290,7 +290,8 @@
       "maxItems": 12,
       "items": {
         "$ref": "clip-plan-effect.schema.json"
-      }
+      },
+      "description": "Use any clip-plan entry. Footage references a sourceKey from read_clips. Asset requests are reviewed in VoxClip; this tool never sends or spends."
     },
     "rewrites": {
       "type": "array",
