@@ -16,12 +16,6 @@ struct ProposalStripPart: Equatable {
 struct ProposalPartsStrip: View {
     let parts: [ProposalStripPart]
 
-    private static let colors: [Color] = [
-        Color(red: 0.35, green: 0.66, blue: 1), Color(red: 0.71, green: 0.55, blue: 1),
-        Color(red: 0.37, green: 0.83, blue: 0.66), Color(red: 1, green: 0.70, blue: 0.36),
-        Color(red: 1, green: 0.48, blue: 0.66), Color(red: 0.60, green: 0.82, blue: 0.35)
-    ]
-
     var body: some View {
         if !parts.isEmpty {
             GeometryReader { geometry in
@@ -42,7 +36,7 @@ struct ProposalPartsStrip: View {
     private func segment(_ index: Int, width: Double) -> some View {
         let time = durationLabel(parts[index].start)
         return RoundedRectangle(cornerRadius: 3)
-            .fill(Self.colors[index % Self.colors.count])
+            .fill(StoryClipPresentation.color(index))
             .overlay {
                 if width >= 34 { Text(time).font(DesignValues.mono(9)).foregroundStyle(.black).lineLimit(1) }
             }
