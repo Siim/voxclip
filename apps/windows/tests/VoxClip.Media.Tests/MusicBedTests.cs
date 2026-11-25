@@ -160,6 +160,23 @@ public sealed class MusicBedTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
+    public void StorySeamsDoNotResetOrFadeTheBed()
+    {
+        var music = new MusicRenderInput(Entry(ducking: false, fadeIn: 0, fadeOut: 0), Track(3));
+        var ordered = Snapshot(4, null, music, [(3 * Rate, 7 * Rate / 2), (Rate / 2, 13 * Rate / 10), (2 * Rate, 3 * Rate)]);
+        var story = ordered with { Plan = ordered.Plan with { PartSeams = [Rate / 2, 13 * Rate / 10] } };
+        var control = Snapshot(story.RenderedDuration, null, music);
+        var continuous = Render(control, story.RenderedDuration, (0, 0));
+        var actual = Render(story, story.RenderedDuration, (0, 0));
+        Assert.Equal(continuous, actual);
+        foreach (var seam in story.Plan.PartSeams)
+        {
+            var time = seam / (double)Rate;
+            Assert.True(Amplitude(actual, time - .02, time + .02, MusicHz) > .004);
+        }
+    }
+
+    [Fact]
     public void MusicFollowsTheRenderedClockThroughSpeedAndCutsWithoutSpeedingUp()
     {
         var music = new MusicRenderInput(Entry(fadeIn: 0, fadeOut: 0.5), Track(8));

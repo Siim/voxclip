@@ -192,8 +192,8 @@ extension HeavyMediaTests {
     }
     for time in [0.0] + story.partSeams {
         let position = CMTime(value: Int64((time * 30).rounded()), timescale: 30)
-        let showing = try await center(preview.image(at: position).image)
-        let encoded = try await center(final.image(at: position).image)
+        let showing = try center(preview.copyCGImage(at: position, actualTime: nil))
+        let encoded = try center(final.copyCGImage(at: position, actualTime: nil))
         #expect(zip(showing, encoded).allSatisfy { abs($0 - $1) <= 10 })
         if time == 0 { #expect(showing[0] > 130 && showing[1] > 130 && showing[2] < 40) }
         if time == story.partSeams[0] { #expect(showing[0] < 40 && showing[1] > 130 && showing[2] > 130) }

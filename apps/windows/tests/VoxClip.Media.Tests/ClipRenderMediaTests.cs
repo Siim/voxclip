@@ -39,7 +39,9 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
         var plan = new EditPlan(Rate, Samples(media.DurationSeconds), [], kept, kept.Sum(part => part.EndSample - part.StartSample), []) { PartSeams = seams };
         var style = new ClipRenderInput(null, null) { PartReframes =
-            [(new(3, 3.5), ReframeSettings.Face(0.19, 0.45)), (new(.5, 1.3), ReframeSettings.Face(.31, .45)), (new(2.5, 3), ReframeSettings.Face(.81, .45))] };
+            [(new(3, 3.5), new(ReframeSettings.FaceMode, CenterX: .19, CenterY: .45)),
+             (new(.5, 1.3), new(ReframeSettings.FaceMode, CenterX: .31, CenterY: .45)),
+             (new(2.5, 3), new(ReframeSettings.FaceMode, CenterX: .81, CenterY: .45))] };
         var snapshot = new ComposeSnapshot(media, plan, null, new(new(100, 180), 30, 2_000_000)) { Clip = style };
         var directory = Directory.CreateTempSubdirectory("voxclip-story-");
         try
