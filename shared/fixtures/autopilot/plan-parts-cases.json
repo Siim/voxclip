@@ -648,6 +648,79 @@
       }
     },
     {
+      "id": "adjacent-parts-keep-their-seam",
+      "offered": [
+        {
+          "startWord": 8,
+          "endWord": 15
+        },
+        {
+          "startWord": 0,
+          "endWord": 7
+        }
+      ],
+      "reply": {
+        "parts": [
+          {
+            "startWord": 8,
+            "endWord": 15
+          },
+          {
+            "startWord": 0,
+            "endWord": 7
+          }
+        ],
+        "cuts": [
+          {
+            "startWord": 7,
+            "endWord": 7,
+            "kind": "filler",
+            "reason": "Remove a filler."
+          },
+          {
+            "startWord": 8,
+            "endWord": 8,
+            "kind": "filler",
+            "reason": "Remove a filler."
+          }
+        ],
+        "corrections": [
+          {
+            "word": 6,
+            "heard": "beat8",
+            "text": "fixed",
+            "reason": "Correct the spelling."
+          }
+        ]
+      },
+      "expect": {
+        "kind": "story",
+        "parts": [
+          [
+            8,
+            15
+          ],
+          [
+            0,
+            7
+          ]
+        ],
+        "seconds": 7,
+        "effects": [],
+        "cuts": [
+          [
+            7,
+            7
+          ],
+          [
+            8,
+            8
+          ]
+        ],
+        "corrections": []
+      }
+    },
+    {
       "id": "cannot-extend-into-gap",
       "offered": [
         {

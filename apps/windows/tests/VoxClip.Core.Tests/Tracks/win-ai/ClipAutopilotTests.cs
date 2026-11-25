@@ -156,6 +156,11 @@ public sealed class ClipAutopilotTests
             Assert.Equal(expected["seconds"]!.GetValue<double>(), checkedPlan.Seconds);
             Assert.Equal(expected["effects"]!.AsArray().Select(item => item!.GetValue<string>()), (proposal.Effects ?? []).Select(effect => effect.Kind));
             Assert.Equal(expected["musicTrackId"]?.GetValue<string>(), proposal.Music?.TrackId);
+            if (expected["cuts"] is { } cuts)
+            {
+                Assert.Equal(ExpectedParts(cuts), checkedPlan.Cuts.Select(cut => new[] { cut.StartWord, cut.EndWord }).ToArray());
+                Assert.Equal(expected["corrections"]!.AsArray().Select(item => item!.GetValue<int>()), checkedPlan.Corrections.Select(correction => correction.Word));
+            }
             var stored = ClipAutopilotPlan.FromJson(checkedPlan.ToJson()).CanonicalProposal();
             Assert.Equal(proposal.Parts!, stored.Parts!);
             Assert.Equal(proposal.Target, stored.Target);
