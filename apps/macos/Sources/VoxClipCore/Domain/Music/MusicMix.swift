@@ -181,13 +181,15 @@ public enum MusicMix {
         public let pieces: [LoopPiece]
     }
 
-    public static func segmentPieces(_ segments: [MusicSegment], trackFrames: Int, rate: Double,
+    public static func segmentPieces(_ segments: [MusicSegment], trackFrames: Int, outputFrames: Int, rate: Double,
                                      mapTime: (Double) -> Double) -> [SegmentPlacement] {
         var placements = segments.compactMap { segment -> SegmentPlacement? in
             let start = Int((mapTime(segment.anchorSeconds) * rate).rounded())
             let offset = Int((segment.songFromSeconds * rate).rounded())
-            let length = Int((segment.lengthSeconds * rate).rounded())
-            guard start >= 0, offset >= 0, offset < trackFrames, length > 0 else { return nil }
+            guard start >= 0, start < outputFrames, offset >= 0, offset < trackFrames else { return nil }
+            let horizon = Double(outputFrames - start) / rate + 2
+            let length = Int((min(segment.lengthSeconds, horizon) * rate).rounded())
+            guard length > 0 else { return nil }
             let count = segment.loop ? length : min(length, trackFrames - offset)
             let span = LoopPiece(sourceStart: offset, outputStart: start, count: count)
             let pieces = segment.loop

@@ -55,7 +55,8 @@ public enum FCPXML {
         if effects.contains(where: { $0.kind == .freeze }) {
             return "This edit holds a picture still. Use video export to keep the freeze frame."
         }
-        if effects.contains(where: { ![.title, .lowerThird, .speedForPart].contains($0.kind) }) {
+        if effects.contains(where: { ![.title, .lowerThird, .speedForPart].contains($0.kind) ||
+            $0.fadeInSeconds != nil || $0.fadeOutSeconds != nil }) {
             return "This edit has effects an editable timeline can't carry. Use video export to keep them."
         }
         return nil
@@ -125,6 +126,16 @@ public enum FCPXML {
         let sequence = append("sequence", ["format": "sequence-format", "duration": grid.time(last.output.upperBound),
             "tcStart": "0s", "tcFormat": "NDF", "audioLayout": "stereo", "audioRate": "48k"], to: project)
         let spine = append("spine", to: sequence)
+        let musicRate = 48_000.0
+        let musicFrames = Int((grid.seconds(last.output.upperBound) * musicRate).rounded())
+        let musicPlacements = render.music.flatMap { music in
+            music.entry.segments.map { segments in
+                MusicMix.segmentPieces(segments, trackFrames: Int((music.entry.asset.durationSeconds * musicRate).rounded()),
+                                       outputFrames: musicFrames, rate: musicRate) {
+                    timing.rendered(render.timeline.mapTime($0))
+                }
+            }
+        }
         var titleIndex = 0
         for cut in cuts {
             guard let picture = pictures[cut.picture] else { throw VoxClipError.exportFailed("A picture source is missing.") }
@@ -157,7 +168,14 @@ public enum FCPXML {
                 }
             }
             if let music = render.music {
-                addMusic(music.entry, parentStart: start, outputStart: grid.seconds(cut.output.lowerBound), duration: duration, in: clip)
+                let outputStart = grid.seconds(cut.output.lowerBound)
+                if let musicPlacements {
+                    addMusicSegments(music.entry, placements: musicPlacements, rate: musicRate, parentStart: start,
+                                     cut: outputStart..<grid.seconds(cut.output.upperBound),
+                                     end: grid.seconds(last.output.upperBound), in: clip)
+                } else {
+                    addMusic(music.entry, parentStart: start, outputStart: outputStart, duration: duration, in: clip)
+                }
             }
             for (index, effect) in effects.enumerated() {
                 guard let text = effect.text, !text.isEmpty, effect.start.isFinite, effect.end.isFinite else { continue }
@@ -268,6 +286,65 @@ public enum FCPXML {
             }
             used += take; start = 0
         }
+    }
+
+    private static func addMusicSegments(_ entry: ProjectMusic, placements: [MusicMix.SegmentPlacement], rate: Double,
+                                         parentStart: Double, cut: Range<Double>, end: Double, in parent: XMLElement) {
+        for placement in placements {
+            let span = placement.span, segment = placement.segment
+            for piece in placement.pieces {
+                let start = Double(span.outputStart + piece.outputStart) / rate
+                guard cut.contains(start) else { continue }
+                let count = min(piece.count, span.count - piece.outputStart, Int(((end - start) * rate).rounded()))
+                guard count > 0 else { continue }
+                let source = Double(piece.sourceStart) / rate
+                let item = append("asset-clip", ["name": entry.title, "ref": "music-bed", "audioRole": "music", "lane": "-2",
+                    "offset": seconds(parentStart + (start - cut.lowerBound)), "start": seconds(source),
+                    "duration": seconds(Double(count) / rate), "srcEnable": "audio"], to: parent)
+                let base = entry.gainDb + segment.gainDb
+                let points = segment.gainPoints ?? []
+                let animated = !points.isEmpty || segment.fadeInSeconds > 0 || segment.fadeOutSeconds > 0 ||
+                    [span.fadeIn, span.fadeOut, piece.fadeIn, piece.fadeOut].contains(where: { $0 > 0 })
+                guard animated else {
+                    if base != 0 { append("adjust-volume", ["amount": volume(base)], to: item) }
+                    continue
+                }
+                let adjust = append("adjust-volume", to: item)
+                let param = append("param", ["name": "amount"], to: adjust)
+                let animation = append("keyframeAnimation", to: param)
+                let localStart = piece.outputStart, localEnd = localStart + count
+                var frames: Set<Int> = [localStart, localEnd]
+                for point in points where point.t <= Double(localEnd) / rate {
+                    frames.insert(Int((point.t * rate).rounded()))
+                }
+                let length = Int((min(segment.lengthSeconds, Double(localEnd) / rate + 10) * rate).rounded())
+                let fades = [(0, Int((segment.fadeInSeconds * rate).rounded())),
+                    (length - Int((segment.fadeOutSeconds * rate).rounded()), length),
+                    (0, span.fadeIn), (span.count - span.fadeOut, span.count),
+                    (localStart, localStart + piece.fadeIn), (localStart + piece.count - piece.fadeOut, localStart + piece.count)]
+                for (first, last) in fades where first < last {
+                    let lower = max(first, localStart), upper = min(last, localEnd)
+                    if lower <= upper {
+                        frames.formUnion(stride(from: lower, through: upper, by: Int(rate / 20)))
+                        frames.insert(upper)
+                    }
+                }
+                for frame in frames.sorted() where frame >= localStart && frame <= localEnd {
+                    let localTime = Double(frame) / rate
+                    let fade = MusicMix.fadeFactor(at: localTime, duration: segment.lengthSeconds,
+                                                   fadeIn: segment.fadeInSeconds, fadeOut: segment.fadeOutSeconds)
+                    let weight = fade * MusicMix.pieceWeight(span, at: frame) * MusicMix.pieceWeight(piece, at: frame - localStart)
+                    let db = base + MusicMix.envelopeDb(at: localTime, points: points) + 20 * log10(max(1e-6, weight))
+                    let time = source + Double(frame - localStart) / rate
+                    append("keyframe", ["time": seconds(time), "value": volume(max(-96, db)), "interp": "linear"], to: animation)
+                }
+            }
+        }
+    }
+
+    private static func volume(_ db: Double) -> String {
+        let rounded = (db * 1_000).rounded() / 1_000
+        return rounded == rounded.rounded() ? "\(Int(rounded))dB" : "\(rounded)dB"
     }
 
     private static func addTitle(_ text: String, role: String, lane: Int, position: String, size: Double, start: Double,

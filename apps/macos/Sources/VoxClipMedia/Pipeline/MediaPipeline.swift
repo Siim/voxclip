@@ -231,7 +231,7 @@ public struct CompositionBuilder: Sendable {
         let frameDuration = videoComposition.frameDuration
         var musicTrack: AVMutableCompositionTrack?
         var musicLease: MusicBedLease?
-        if let music = request.music {
+        if let music = request.music, music.entry.segments?.isEmpty != true {
             // The bed is fitted to the rendered length, never sped up, and ducks under the voice as it plays.
             let bed = try await MusicBedRenderer.stage(music, composition: composition, voiceTrack: voiceTrack,
                                                        durationSeconds: rendered.seconds, scratchRoot: scratchRoot,

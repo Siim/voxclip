@@ -177,7 +177,8 @@ struct MusicBedPlan: Sendable {
         if let segments = entry.segments {
             guard trackFrames >= 4 else { return nil }
             let assetFrames = Int((entry.asset.durationSeconds * rate).rounded())
-            self.segments = MusicMix.segmentPieces(segments, trackFrames: min(assetFrames, trackFrames), rate: rate, mapTime: mapTime)
+            self.segments = MusicMix.segmentPieces(segments, trackFrames: min(assetFrames, trackFrames), outputFrames: outputFrames,
+                                                    rate: rate, mapTime: mapTime)
             pieces = []
         } else {
             segments = nil

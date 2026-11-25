@@ -3,6 +3,29 @@ import Testing
 import VoxClipCore
 
 @Suite struct FCPXMLTests {
+    @Test func segmentedMusicKeepsItsSourceClockAcrossCuts() throws {
+        struct Vector: Decodable { let segments: [MusicSegment]; let expected: [String: [String]] }
+        let vector = try JSONDecoder().decode(Vector.self, from: FixtureLoader.data("fixtures/fcpxml/music-segments.json"))
+        let plan = EditPlan(sampleRate: 48_000, totalSamples: 288_000,
+                            kept: [.init(startSample: 0, endSample: 96_000), .init(startSample: 192_000, endSample: 288_000)])
+        var request = RenderRequest(sourceURL: URL(fileURLWithPath: "/Media/take.mov"), plan: plan,
+            output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 0))
+        let source = MediaProbeResult(durationSeconds: 6, video: .init(width: 320, height: 180, frameRate: 30),
+                                      audio: .init(sampleRate: 48_000, channels: 2), isPlayable: true)
+        var entry = ProjectMusic(id: "bed", clipId: nil, asset: .init(file: "bed.wav", sha256: "", durationSeconds: 6),
+                                 source: .file, title: "Bed", license: .own, gainDb: -20, startOffsetSeconds: 0)
+        entry.segments = vector.segments
+        request.music = .init(entry: entry, assetURL: URL(fileURLWithPath: "/Media/bed.wav"))
+        let xml = try XMLDocument(data: FCPXML.document(name: "Segmented music", render: request, source: source, musicAudio: source.audio))
+        for (path, values) in vector.expected.sorted(by: { $0.key < $1.key }) {
+            #expect(try xml.nodes(forXPath: path).compactMap(\.stringValue) == values, "\(path)")
+        }
+        try validateWithAppleDTD(xml)
+        var title = ClipEffect(id: "title", clipId: nil, kind: .title, start: 0, end: 1, text: "Title")
+        title.fadeInSeconds = 0.5
+        #expect(FCPXML.unsupportedReason(effects: [title]) != nil)
+    }
+
     @Test func storySpineKeepsPlaybackOrder() throws {
         struct Story: Decodable {
             let name: String

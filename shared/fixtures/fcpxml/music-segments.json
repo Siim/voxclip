@@ -1,0 +1,14 @@
+{
+  "segments": [
+    {"id":"slipped","anchorSeconds":1.5,"lengthSeconds":1.5,"songFromSeconds":1,"loop":false,"gainDb":-2,"fadeInSeconds":0.5,"fadeOutSeconds":0,"gainPoints":[{"t":0.5,"db":-6},{"t":1,"db":0}]},
+    {"id":"later","anchorSeconds":4.5,"lengthSeconds":0.25,"songFromSeconds":2,"loop":false,"gainDb":0,"fadeInSeconds":0,"fadeOutSeconds":0}
+  ],
+  "expected": {
+    "//asset-clip[@audioRole='music']/@lane": ["-2", "-2"],
+    "//asset-clip[@audioRole='music']/@offset": ["3/2s", "9/2s"],
+    "//asset-clip[@audioRole='music']/@start": ["1s", "2s"],
+    "//asset-clip[@audioRole='music']/@duration": ["3/2s", "1/4s"],
+    "//asset-clip[@audioRole='music']/adjust-volume/param/keyframeAnimation/keyframe[@time='3/2s']/@value": ["-28dB"],
+    "//asset-clip[@audioRole='music']/adjust-volume/param/keyframeAnimation/keyframe[@time='2s']/@value": ["-22dB"]
+  }
+}

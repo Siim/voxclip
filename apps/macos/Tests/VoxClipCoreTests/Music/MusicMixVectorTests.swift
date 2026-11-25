@@ -49,7 +49,8 @@ struct MusicMixVectorTests {
         struct Fixture: Decodable { let timeline: [Vector] }
         let fixture = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json"))
         for vector in fixture.timeline {
-            let segments = MusicMix.segmentPieces(vector.segments, trackFrames: vector.trackFrames, rate: vector.sampleRate) { $0 / vector.speed }
+            let segments = MusicMix.segmentPieces(vector.segments, trackFrames: vector.trackFrames, outputFrames: 1_000,
+                                                   rate: vector.sampleRate) { $0 / vector.speed }
             #expect(segments.map(\.span.outputStart) == vector.starts)
             #expect(segments.map { [$0.span.fadeIn, $0.span.fadeOut] } == vector.fades)
             let expectedPieces = vector.pieces.map { $0.map(\.value) }
