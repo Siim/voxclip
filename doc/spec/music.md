@@ -156,6 +156,8 @@ The edited-audio path (word and speaker checks) and the video-duration probe alw
 
 A clip's speed (design.md §6.9) never speeds the bed up: it is staged for the clip's rendered length (the edited length divided by the speed) and measures the voice after the clip's volume, fades and mute, so it ducks under the voice as it plays.
 
+On Windows the preview and exporter mix the same staged segments. Each starts at its mapped source anchor, plays its chosen song range without resampling for clip speed, and can loop with the same 1 s crossfade as the original bed. Overlapping segments hand off with an equal-power crossfade of up to 2 s. Relative gain keyframes interpolate in dB before fades and ducking; `duckDb` adjusts the ducking depth without changing attack or release. A track without segments still uses the original whole-scope bed.
+
 ## 5. Credits
 
 `ProjectMusic.creditLine`: CC BY and the other library licences use Openverse's attribution ("Music: " + attribution),
