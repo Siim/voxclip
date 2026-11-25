@@ -1289,16 +1289,22 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public 
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public ToString()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_ClipId()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_GainDb()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Id()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Kind()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Shape()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_SoundFrom()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Start()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public get_Text()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_ClipId(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_GainDb(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Id(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Kind(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Shape(VoxClip.Core.Domain.Editing.ItemShape)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_SoundFrom(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Start(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset :: method public set_Text(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions)
@@ -1480,10 +1486,12 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method pu
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public GetHashCode()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public ToString()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public get_Shape()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public get_TrackId()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public set_Shape(VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic :: method public set_TrackId(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+ShareText :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+ShareText)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+ShareText :: method protected PrintMembers(System.Text.StringBuilder)
@@ -1537,6 +1545,22 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method publi
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public set_End(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public set_Rate(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public set_Start(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public .ctor(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEditRequest>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public Deconstruct(string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEditRequest>&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public get_Edits()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline :: method public set_Edits(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEditRequest>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method protected get_EqualityContract()
@@ -1660,6 +1684,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Rewri
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Sound
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Speed
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Stretch
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Timeline
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Title
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Translate
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Zoom
@@ -2207,6 +2232,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look :: method public op_
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look :: method public set_Id(VoxClip.Core.Domain.Clips.ClipLook)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look :: method public set_Reason(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method internal ToJson()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method private get_EqualityContract()
@@ -2219,6 +2245,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public To
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public get_Mood()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public get_Prompt()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public get_Reason()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public get_TimelineShape()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public get_Title()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public get_UnderVoiceDb()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music)
@@ -2226,6 +2253,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public op
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public set_Mood(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public set_Prompt(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public set_Reason(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public set_TimelineShape(VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public set_Title(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music :: method public set_UnderVoiceDb(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+PauseCut :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+PauseCut)
@@ -2617,13 +2645,18 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotZoomDirection :: field public 
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotZoomDirection :: field public value__
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: field private payload
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: field private payloadKey
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: field private shape
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: field public MaximumEntries
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method internal Operation(string,string,VoxClip.Core.Domain.Autopilot.WordSpan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlySet`1<int>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlyDictionary`2<string,double>)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method internal ProviderEntry(System.Text.Json.Nodes.JsonNode)
-member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private .ctor(string,int,int,string,string,System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private .ctor(string,int,int,string,string,System.Text.Json.Nodes.JsonNode,System.Text.Json.Nodes.JsonObject)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private Footage(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private Line(System.Text.Json.Nodes.JsonNode,int)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private PayloadKey(string)
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private ShapeKeys(string)
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private WriteFades(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private get_FadeIn()
+member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method private get_FadeOut()
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public FootagePlacement(string,string,VoxClip.Core.Domain.Autopilot.WordSpan,System.Func`2<int,System.Nullable`1<System.ValueTuple`2<double,double>>>,System.Func`2<int,bool>,System.Collections.Generic.IReadOnlyDictionary`2<string,double>)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public Operation(string,string,VoxClip.Core.Domain.Autopilot.WordSpan,System.Func`2<int,System.Nullable`1<System.ValueTuple`2<double,double>>>,System.Func`2<int,bool>,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public Read(System.Text.Json.Nodes.JsonNode)
@@ -2632,6 +2665,13 @@ member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public get_EndWord
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public get_Kind()
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public get_Reason()
 member VoxClip.Core.Domain.Autopilot.ClipPlanEffect :: method public get_StartWord()
+member VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape :: field internal Keys
+member VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape :: field private fields
+member VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape :: method internal Read(System.Text.Json.Nodes.JsonNode,bool)
+member VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape :: method internal Write(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape :: method private .cctor()
+member VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape :: method private .ctor(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape :: method public Place(VoxClip.Core.Domain.Music.ProjectMusic,VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Autopilot.ClipProposal :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipProposal)
 member VoxClip.Core.Domain.Autopilot.ClipProposal :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipProposal :: method private get_EqualityContract()
@@ -2692,10 +2732,12 @@ member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public E
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public GetHashCode()
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public ToString()
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public get_Brief()
+member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public get_Shape()
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public get_TrackId()
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice,VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice)
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice,VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice)
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public set_Brief(string)
+member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public set_Shape(VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape)
 member VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice :: method public set_TrackId(string)
 member VoxClip.Core.Domain.Autopilot.ClipProposal+NewClip :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipProposal+NewClip)
 member VoxClip.Core.Domain.Autopilot.ClipProposal+NewClip :: method private PrintMembers(System.Text.StringBuilder)
@@ -6606,6 +6648,9 @@ member VoxClip.Core.Domain.Editing.TimelineCue :: method public op_Inequality(Vo
 member VoxClip.Core.Domain.Editing.TimelineCue :: method public set_Cuts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimeRange>)
 member VoxClip.Core.Domain.Editing.TimelineCue :: method public set_Range(VoxClip.Core.Domain.Shared.TimeRange)
 member VoxClip.Core.Domain.Editing.TimelineCue :: method public set_Text(string)
+member VoxClip.Core.Domain.Editing.TimelineDecisions :: method internal Id(VoxClip.Core.Domain.Editing.TimelineItemId,VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.Editing.TimelineDecisions :: method private JsonKey(string)
+member VoxClip.Core.Domain.Editing.TimelineDecisions :: method public Read(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Editing.TimelineEdge :: field public End
 member VoxClip.Core.Domain.Editing.TimelineEdge :: field public Start
 member VoxClip.Core.Domain.Editing.TimelineEdge :: field public value__
@@ -6883,6 +6928,19 @@ member VoxClip.Core.Domain.Editing.TimelineEditRefusal :: method public get_Copy
 member VoxClip.Core.Domain.Editing.TimelineEditRefusal :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineEditRefusal,VoxClip.Core.Domain.Editing.TimelineEditRefusal)
 member VoxClip.Core.Domain.Editing.TimelineEditRefusal :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineEditRefusal,VoxClip.Core.Domain.Editing.TimelineEditRefusal)
 member VoxClip.Core.Domain.Editing.TimelineEditRefusal :: method public set_Copy(string)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: field internal Maximum
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: field private wire
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method internal .ctor(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method internal ProviderEdits(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method internal get_Op()
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method private Check(string[],string[])
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method private Command(System.Func`2<string,VoxClip.Core.Domain.Editing.TimelineItemId>,System.Func`3<int,bool,double>)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method private Field(string)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method private Integer(string,bool)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method private Invalid()
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method private Number(string,bool)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method private Text(string)
+member VoxClip.Core.Domain.Editing.TimelineEditRequest :: method public Apply(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Editing.TimelineEditResult :: method protected .ctor()
 member VoxClip.Core.Domain.Editing.TimelineEditResult :: method protected .ctor(VoxClip.Core.Domain.Editing.TimelineEditResult)
 member VoxClip.Core.Domain.Editing.TimelineEditResult :: method protected PrintMembers(System.Text.StringBuilder)
@@ -6923,6 +6981,9 @@ member VoxClip.Core.Domain.Editing.TimelineEditResult+Refused :: method public g
 member VoxClip.Core.Domain.Editing.TimelineEditResult+Refused :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineEditResult+Refused,VoxClip.Core.Domain.Editing.TimelineEditResult+Refused)
 member VoxClip.Core.Domain.Editing.TimelineEditResult+Refused :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineEditResult+Refused,VoxClip.Core.Domain.Editing.TimelineEditResult+Refused)
 member VoxClip.Core.Domain.Editing.TimelineEditResult+Refused :: method public set_Refusal(VoxClip.Core.Domain.Editing.TimelineEditRefusal)
+member VoxClip.Core.Domain.Editing.TimelineEditUndo :: method private Restore`1(System.Collections.Generic.IReadOnlyList`1<!!0>,System.Collections.Generic.IReadOnlyList`1<!!0>,System.Collections.Generic.IReadOnlyList`1<!!0>,System.Func`2<!!0,string>,System.Func`3<!!0,!!0,bool>)
+member VoxClip.Core.Domain.Editing.TimelineEditUndo :: method public .ctor(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.TimelineEditUndo :: method public Restore(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Editing.TimelineEdits :: field private InsidePart
 member VoxClip.Core.Domain.Editing.TimelineEdits :: field private Invalid
 member VoxClip.Core.Domain.Editing.TimelineEdits :: field private InvalidTime
@@ -10118,6 +10179,8 @@ member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_CenterX(S
 member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_CenterY(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_Mode(string)
 member VoxClip.Core.Domain.Shared.ReframeSettings :: method public set_Zoom(double)
+member VoxClip.Core.Domain.Shared.RenderCallerInputs :: method private Timeline(VoxClip.Core.Domain.Shared.Project,string,bool)
+member VoxClip.Core.Domain.Shared.RenderCallerInputs :: method public PlacementPlan(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Shared.RenderCallerInputs :: method public Timeline(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Shared.SavedBy :: method private .ctor(VoxClip.Core.Domain.Shared.SavedBy)
 member VoxClip.Core.Domain.Shared.SavedBy :: method private PrintMembers(System.Text.StringBuilder)
@@ -18673,6 +18736,7 @@ member VoxClip.Core.Services.Project.HarnessProposal :: method public get_Timeli
 member VoxClip.Core.Services.Project.HarnessTimeline :: field private Keys
 member VoxClip.Core.Services.Project.HarnessTimeline :: field private LegacyKeys
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal Read(System.Text.Json.JsonElement,bool)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Edits()
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Proposal()
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_UsesFootage()
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Wire()
@@ -18687,10 +18751,12 @@ member VoxClip.Core.Services.Project.HarnessTimeline :: method private ReadEffec
 member VoxClip.Core.Services.Project.HarnessTimeline :: method private ReadItems`1(System.Text.Json.JsonElement,string,int,string[],System.Func`2<System.Text.Json.JsonElement,!!0>)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method private Reason(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method private Text(System.Text.Json.JsonElement,string,System.Nullable`1<int>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private set_Edits(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEditRequest>)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public Read(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public ReadSeries(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public RequireObject(System.Text.Json.JsonElement,System.Collections.Generic.IReadOnlyCollection`1<string>)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public get_GenerateMusic()
+member VoxClip.Core.Services.Project.HarnessTimelineEditException :: method public .ctor(string)
 member VoxClip.Core.Services.Project.IProjectStore :: method public ComputeContentKeyAsync(string,System.IProgress`1<double>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.IProjectStore :: method public LoadAsync(string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.IProjectStore :: method public RelinkAsync(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.Shared.MediaInfo,bool,System.Threading.CancellationToken)
@@ -20182,6 +20248,7 @@ type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+SavedMusic
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+ShareText
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Timeline
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionCase
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference
@@ -20239,6 +20306,7 @@ type VoxClip.Core.Domain.Autopilot.ClipAutopilotVerdict
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotWire
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotZoomDirection
 type VoxClip.Core.Domain.Autopilot.ClipPlanEffect
+type VoxClip.Core.Domain.Autopilot.ClipPlanMusicShape
 type VoxClip.Core.Domain.Autopilot.ClipProposal
 type VoxClip.Core.Domain.Autopilot.ClipProposal+MusicChoice
 type VoxClip.Core.Domain.Autopilot.ClipProposal+NewClip
@@ -20503,6 +20571,7 @@ type VoxClip.Core.Domain.Editing.TimelineClock
 type VoxClip.Core.Domain.Editing.TimelineClock+Part
 type VoxClip.Core.Domain.Editing.TimelineClock+Piece
 type VoxClip.Core.Domain.Editing.TimelineCue
+type VoxClip.Core.Domain.Editing.TimelineDecisions
 type VoxClip.Core.Domain.Editing.TimelineEdge
 type VoxClip.Core.Domain.Editing.TimelineEdit
 type VoxClip.Core.Domain.Editing.TimelineEdit+AddGainPoint
@@ -20522,9 +20591,11 @@ type VoxClip.Core.Domain.Editing.TimelineEdit+SplitAll
 type VoxClip.Core.Domain.Editing.TimelineEdit+Trim
 type VoxClip.Core.Domain.Editing.TimelineEditFields
 type VoxClip.Core.Domain.Editing.TimelineEditRefusal
+type VoxClip.Core.Domain.Editing.TimelineEditRequest
 type VoxClip.Core.Domain.Editing.TimelineEditResult
 type VoxClip.Core.Domain.Editing.TimelineEditResult+Applied
 type VoxClip.Core.Domain.Editing.TimelineEditResult+Refused
+type VoxClip.Core.Domain.Editing.TimelineEditUndo
 type VoxClip.Core.Domain.Editing.TimelineEdits
 type VoxClip.Core.Domain.Editing.TimelineEdits+Reducer
 type VoxClip.Core.Domain.Editing.TimelineEdits+Reducer+Draft
@@ -21298,6 +21369,7 @@ type VoxClip.Core.Services.Project.HarnessException
 type VoxClip.Core.Services.Project.HarnessInbox
 type VoxClip.Core.Services.Project.HarnessProposal
 type VoxClip.Core.Services.Project.HarnessTimeline
+type VoxClip.Core.Services.Project.HarnessTimelineEditException
 type VoxClip.Core.Services.Project.IProjectStore
 type VoxClip.Core.Services.Project.IRuntimeAgreementFiles
 type VoxClip.Core.Services.Project.ProjectOpenResult
