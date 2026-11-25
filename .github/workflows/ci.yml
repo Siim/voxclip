@@ -567,6 +567,13 @@ jobs:
           print("Validated ten structured Windows CLI E2E reports")
           PY
 
+      - name: Compare Windows timeline music exports
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: pwsh
+        run: |
+          python apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/export-equivalence.py --timeline-only --tools "$env:GITHUB_WORKSPACE/apps/windows/build/.cache/ffmpeg/win-x64/test-tools" --evidence "$env:RUNNER_TEMP/voxclip-test-results/timeline-export"
+          if ($LASTEXITCODE -ne 0) { throw 'Timeline music export equivalence failed.' }
+
       - name: Upload native test log and structured CLI reports
         if: always() && steps.detect.outputs.media_tests == 'true'
         uses: actions/upload-artifact@v4

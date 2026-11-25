@@ -3,6 +3,7 @@ using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using VoxClip.Media.Pipeline;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -43,7 +44,7 @@ public sealed class ContextDemoRenderTests
                     composer.FinishClipFrame(output, snapshot, .75, 640, 360, default, ct, preview);
                     Assert.Equal((byte)(kind == "videoStack" ? 90 : 200), Pixel(output, .25, .25).Red);
                     Assert.Equal((byte)200, Pixel(output, .25, .75).Red);
-                    Assert.Equal(kind == "screenshot" ? offset : offset + .5, frames.Reads[^1].SourceTime);
+                    Assert.Equal(kind == "screenshot" ? offset : offset + .25, frames.Reads[^1].SourceTime);
                     var end = Grey(snapshot.Output.Size);
                     composer.FinishClipFrame(end, snapshot, 1, 640, 360, default, ct, preview);
                     Assert.Equal(((byte)90, (byte)90, (byte)90), Pixel(end, .25, .75));
@@ -54,7 +55,71 @@ public sealed class ContextDemoRenderTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FootageDissolvesToAndFromTheSpeakerAtOneTimesSpeed(bool preview)
+    {
+        var frames = new Frames();
+        var entry = new ProjectFootage("placement", "clip", "bRoll", 1, 4, new("demo", 0.5), 1, 1);
+        var snapshot = Snapshot(size: new(180, 320)) with
+        {
+            ContextDemo = null, Clip = new(new("clip", 2, null, ClipLook.Original, 0, 0, 0, false, false, 0), null),
+            Footage = [new(entry, "companion.mp4", 1, 3)]
+        };
+        var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot, openFootage: _ => frames);
+        composer.PrepareSnapshot(snapshot);
+        try
+        {
+            foreach (var time in new[] { 1.5, 2.5 })
+            {
+                var output = Grey(snapshot.Output.Size);
+                composer.FinishClipFrame(output, snapshot, time, 640, 360, default, TestContext.Current.CancellationToken, preview);
+                Assert.Equal(145, Pixel(output, .25, .75).Red);
+            }
+            Assert.Equal(new[] { 0.75, 1.25 }, frames.Reads.Select(read => read.SourceTime));
+        }
+        finally { composer.ReleaseSnapshot(snapshot); }
+    }
+
     private static Project Fixture() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/context-demo/v4-project.voxclip"));
+
+    [Fact]
+    public async Task AReopenedPlacementEndsWhenTheCompanionRunsOut()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-footage-");
+        try
+        {
+            var sourcePath = Path.Combine(directory.FullName, "source.mp4");
+            var companionPath = Path.Combine(directory.FullName, "companion.mp4");
+            var projectPath = Path.Combine(directory.FullName, "draft.voxclip");
+            await File.WriteAllBytesAsync(sourcePath, [1], ct);
+            await File.WriteAllBytesAsync(companionPath, [2], ct);
+            var store = new ProjectStore();
+            var project = ContextDemoProject.UpgradeToV4(ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip")));
+            var source = project.Media.Source with { AbsolutePath = sourcePath, RelativePath = null, SizeBytes = 1,
+                ContentKey = await store.ComputeContentKeyAsync(sourcePath, null, ct) };
+            var companion = source with { AbsolutePath = companionPath, DurationSeconds = 1.25,
+                ContentKey = await store.ComputeContentKeyAsync(companionPath, null, ct) };
+            var clip = project.Edits.Clips.First();
+            var placement = new ProjectFootage("cutaway", clip.Id, "bRoll", 6, 9, new(companion.FootageKey, 0.5), 0, 0.25);
+            project = project with { SchemaVersion = 6, Edits = project.Edits with { ActiveClipId = clip.Id },
+                Media = new(source) { AdditionalSources = [companion], Footage = [placement] } };
+            await store.SaveAsync(project, projectPath, ct);
+            var reopened = (await store.LoadAsync(projectPath, ct)).Project;
+            Assert.Equal(placement, Assert.Single(reopened.Media.Footage!));
+            var plan = TestPlan.FromKept(Rate, 9 * Rate, [new(6 * Rate, 7 * Rate), new(8 * Rate, 9 * Rate)]);
+            var snapshot = Snapshot() with { Plan = plan, ContextDemo = null };
+            var layer = Assert.Single(await FootageRendering.ResolveAsync(reopened, snapshot, store, projectPath, ct));
+            Assert.Equal(0, layer.EditedStart);
+            Assert.Equal(0.75, layer.EditedEnd);
+            var trimmed = reopened with { Edits = reopened.Edits with { Clips = [clip with { EndWordId = "w13" }] } };
+            Assert.Empty(await FootageRendering.ResolveAsync(trimmed, snapshot, store, projectPath, ct));
+            Assert.Equal(placement, Assert.Single(trimmed.Media.Footage!));
+        }
+        finally { directory.Delete(recursive: true); }
+    }
 
     /// <summary>A 320 × 180 recording frame: red on the left, blue on the right, a white band along the top, and green carrying the
     /// source time in hundredths, so a pixel says which frame and which way up it is.</summary>

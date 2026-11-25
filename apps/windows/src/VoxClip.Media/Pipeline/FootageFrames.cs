@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Ffmpeg;
@@ -16,17 +17,29 @@ public static class FootageRendering
         var paths = new Dictionary<string, string>(StringComparer.Ordinal);
         var layers = new List<FootageRenderLayer>();
         var timeline = snapshot.Timeline;
+        var speed = snapshot.Speed;
+        var clip = project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId);
+        var words = project.Transcript?.Words;
+        var parts = words is null ? null : clip?.PlayPartIndices(words)?.Select((part, index) =>
+            EditingAlgorithms.ClipTimes(words, part.Start, part.End, index == 0 ? clip.LeadInSeconds : null)).ToArray();
         foreach (var entry in placements.Where(entry => entry.ClipId == clipId).OrderBy(entry => entry.Start))
         {
             ct.ThrowIfCancellationRequested();
+            if (parts is not null && !parts.Any(part => part.Start <= entry.Start && entry.End <= part.End)) continue;
             var start = timeline.MapTime(entry.Start);
             var end = timeline.MapEndTime(entry.End);
             if (end <= start) continue;
             var key = entry.Footage.SourceKey;
+            var asset = project.Media.AdditionalSources?.FirstOrDefault(source => source.FootageKey == key);
+            if (asset is null)
+                throw new VoxClipException(VoxClipErrorCode.MediaMissing, "The companion recording is missing or changed. Your edits are saved.");
+            var available = asset.DurationSeconds - entry.Footage.Start;
+            if (available <= 0) continue;
+            if (entry.Kind != "screenshot" && available < speed.Rendered(end) - speed.Rendered(start))
+                end = speed.Edited(speed.Rendered(start) + available);
             if (!paths.TryGetValue(key, out var path))
             {
-                var asset = project.Media.AdditionalSources?.FirstOrDefault(source => source.FootageKey == key);
-                if (asset is null || await store.ResolveMediaAsync(asset, projectPath, ct).ConfigureAwait(false) is not { } resolved)
+                if (await store.ResolveMediaAsync(asset, projectPath, ct).ConfigureAwait(false) is not { } resolved)
                     throw new VoxClipException(VoxClipErrorCode.MediaMissing, "The companion recording is missing or changed. Your edits are saved.");
                 paths[key] = path = resolved;
             }

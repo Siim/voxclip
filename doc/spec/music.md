@@ -160,6 +160,8 @@ On Mac, a timeline-edited track uses anchored segments instead of a continuous b
 
 Final Cut Pro handoff keeps segmented music as connected audio asset clips with source offsets and editable volume keyframes. It does not bake in the automatic speech-driven ducking or the render's loudness normalization. The Mac export self-check compares short decoded windows with the expected mix, including music gaps and sound windows. It checks the audible mix, not isolated stems recovered from a finished MP4.
 
+On Windows the preview and exporter mix the same staged segments. Each starts at its mapped source anchor, plays its chosen song range without resampling for clip speed, and can loop with the same 1 s crossfade as the original bed. Overlapping segments hand off with an equal-power crossfade of up to 2 s. Relative gain keyframes interpolate in dB before fades and ducking; `duckDb` adjusts the ducking depth without changing attack or release. A track without segments still uses the original whole-scope bed.
+
 ## 5. Credits
 
 `ProjectMusic.creditLine`: CC BY and the other library licences use Openverse's attribution ("Music: " + attribution),

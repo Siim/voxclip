@@ -49,7 +49,7 @@ public sealed class ProjectStore : IProjectStore
         if (decision is RelinkDecision.NeedsConfirmation or RelinkDecision.Refused) return new(decision, null);
         source = source with { AbsolutePath = Path.GetFullPath(mediaPath) };
         if (decision == RelinkDecision.Different) source = source with { SizeBytes = size, ContentKey = key, Video = probe.Video, Audio = probe.Audio };
-        return new(decision, project with { Media = new(source),
+        return new(decision, project with { Media = decision == RelinkDecision.Different ? new(source) : project.Media with { Source = source },
             ContextDemo = decision == RelinkDecision.Different ? null : project.ContextDemo,
             MotionCues = decision == RelinkDecision.Different ? [] : project.MotionCues });
     }
@@ -72,7 +72,7 @@ public sealed class ProjectStore : IProjectStore
             var warnings = new List<string>();
             project = EditingProject.Clean(project, warnings);
             var resolved = await ResolveMediaAsync(project.Media.Source, path, ct).ConfigureAwait(false);
-            if (resolved is not null) project = project with { Media = new(project.Media.Source with { AbsolutePath = resolved }) };
+            if (resolved is not null) project = project with { Media = project.Media with { Source = project.Media.Source with { AbsolutePath = resolved } } };
             return new(project, resolved, resolved is null, warnings);
         }
         catch (OperationCanceledException) { throw; }
@@ -102,7 +102,8 @@ public sealed class ProjectStore : IProjectStore
         var newest = project.Ai.Results.Select((result, index) => (result, index))
             .OrderByDescending(pair => pair.result.CreatedAt).ThenByDescending(pair => pair.index).Take(10).Select(pair => pair.result.Id).ToHashSet(StringComparer.Ordinal);
         project = project with { ModifiedAt = DateTimeOffset.UtcNow, SavedBy = new("VoxClip", appVersion, OperatingSystem.IsWindows() ? "windows" : "macos"),
-            Media = new(source with { RelativePath = relative }), Ai = new(project.Ai.Results.Where(result => referenced.Contains(result.Id) || newest.Contains(result.Id)).ToArray()) };
+            Media = project.Media with { Source = source with { RelativePath = relative } },
+            Ai = new(project.Ai.Results.Where(result => referenced.Contains(result.Id) || newest.Contains(result.Id)).ToArray()) };
         var json = ProjectSerialization.Serialize(project);
         ProjectValidation.Validate(json);
         await AtomicFile.WriteAsync(path, json, ct).ConfigureAwait(false);

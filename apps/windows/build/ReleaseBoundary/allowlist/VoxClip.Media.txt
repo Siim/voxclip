@@ -75,6 +75,7 @@ member VoxClip.Media.Audio.EffectAudio :: method internal Resample(float[],int,i
 member VoxClip.Media.Audio.EffectAudio :: method internal SilencedRanges(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Audio.EffectAudio :: method internal Stage(VoxClip.Core.Domain.Shared.ComposeSnapshot,int)
 member VoxClip.Media.Audio.EffectAudio :: method internal VoiceGain(double,System.ReadOnlySpan`1<System.ValueTuple`2<double,double>>)
+member VoxClip.Media.Audio.EffectAudio :: method private Decode(string,double,int,double)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method private .ctor(VoxClip.Media.Audio.EffectAudio+PlacedSound)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method private get_EqualityContract()
@@ -216,8 +217,9 @@ member VoxClip.Media.Audio.MusicBed :: field private ducking
 member VoxClip.Media.Audio.MusicBed :: field private entry
 member VoxClip.Media.Audio.MusicBed :: field private pieces
 member VoxClip.Media.Audio.MusicBed :: field private rate
+member VoxClip.Media.Audio.MusicBed :: field private segments
 member VoxClip.Media.Audio.MusicBed :: field private track
-member VoxClip.Media.Audio.MusicBed :: method internal Create(VoxClip.Core.Domain.Music.ProjectMusic,float[],double[],long,int)
+member VoxClip.Media.Audio.MusicBed :: method internal Create(VoxClip.Core.Domain.Music.ProjectMusic,float[],double[],long,int,System.Func`2<double,double>)
 member VoxClip.Media.Audio.MusicBed :: method internal Decode(VoxClip.Core.Domain.Music.MusicRenderInput,double,int)
 member VoxClip.Media.Audio.MusicBed :: method internal Mix(System.Span`1<float>,long,int)
 member VoxClip.Media.Audio.MusicBed :: method internal SpeechLevels(VoxClip.Media.Audio.RenderedAudioReader,int,System.Threading.CancellationToken)
@@ -226,7 +228,8 @@ member VoxClip.Media.Audio.MusicBed :: method internal Stage(VoxClip.Core.Domain
 member VoxClip.Media.Audio.MusicBed :: method internal get_BedGainDb()
 member VoxClip.Media.Audio.MusicBed :: method internal get_OutputFrames()
 member VoxClip.Media.Audio.MusicBed :: method internal get_SpeechDb()
-member VoxClip.Media.Audio.MusicBed :: method private .ctor(float[],System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,double[],VoxClip.Core.Domain.Music.ProjectMusic,int,long,double,System.Nullable`1<double>)
+member VoxClip.Media.Audio.MusicBed :: method private .ctor(float[],System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,double[],VoxClip.Core.Domain.Music.ProjectMusic,int,long,double,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement>)
+member VoxClip.Media.Audio.MusicBed :: method private MixSegments(System.Span`1<float>,long,int)
 member VoxClip.Media.Audio.MusicFiles :: method public DurationSecondsAsync(string,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.PhraseCueOutput :: method public DefaultOutputIsHeadphones()
 member VoxClip.Media.Audio.PhraseCueOutput :: method public HasMicrophone()
@@ -1358,6 +1361,7 @@ member VoxClip.Media.Pipeline.EffectFrames :: method internal TitleLayout(string
 member VoxClip.Media.Pipeline.EffectFrames :: method internal get_HasPicture()
 member VoxClip.Media.Pipeline.EffectFrames :: method internal get_Input()
 member VoxClip.Media.Pipeline.EffectFrames :: method private .cctor()
+member VoxClip.Media.Pipeline.EffectFrames :: method private Censor(VoxClip.Core.Domain.Captions.PixelBuffer,SkiaSharp.SKRectI,bool,double)
 member VoxClip.Media.Pipeline.EffectFrames :: method private DrawMotionTemplate(SkiaSharp.SKCanvas,VoxClip.Core.Domain.Effects.ClipEffect,int,int,double,double)
 member VoxClip.Media.Pipeline.EffectFrames :: method private Integral(double,double,double,double)
 member VoxClip.Media.Pipeline.EffectFrames :: method private OverlayFor(VoxClip.Core.Domain.Effects.ClipEffect,int,int)
@@ -1681,6 +1685,7 @@ member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseThreadReso
 member VoxClip.Media.Pipeline.FrameComposer :: method internal VideoCrop(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.Shared.RectD,int,int,double)
 member VoxClip.Media.Pipeline.FrameComposer :: method private .ctor(string)
 member VoxClip.Media.Pipeline.FrameComposer :: method private DemoKey(VoxClip.Core.Domain.Shared.ComposeSnapshot)
+member VoxClip.Media.Pipeline.FrameComposer :: method private DrawBlended(VoxClip.Core.Domain.Captions.PixelBuffer,double,System.Action`1<VoxClip.Core.Domain.Captions.PixelBuffer>,System.Action`1<VoxClip.Core.Domain.Captions.PixelBuffer>)
 member VoxClip.Media.Pipeline.FrameComposer :: method private DrawFootage(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method private PrepareDisclosureOverlay(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method private ReleaseDemo(VoxClip.Core.Domain.Shared.ComposeSnapshot)

@@ -9,6 +9,7 @@ using VoxClip.Cli;
 using VoxClip.Media.Audio;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
+using VoxClip.Media.VoiceLab;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -294,6 +295,35 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         var inside = ((int)(0.42 * Rate), (int)(0.78 * Rate));
         Assert.True(Amplitude(mixed, inside.Item1, inside.Item2, 441) < 0.005);
         Assert.Equal(0.25, Amplitude(mixed, inside.Item1, inside.Item2, 1_000), 2);
+    }
+
+    [Fact]
+    public void SlippedSoundPlaysAcrossACutAtItsOwnLengthWithFadesAndEnvelope()
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-sound-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "sound.wav");
+            var pcm = new short[Rate];
+            pcm.AsSpan(0, Rate / 2).Fill(4096);
+            pcm.AsSpan(Rate / 2).Fill(16384);
+            File.WriteAllBytes(path, new VoiceLabWavePcm(Rate, 1, 16, false, System.Runtime.InteropServices.MemoryMarshal.AsBytes(pcm.AsSpan()).ToArray()).Bytes());
+            var effect = new ClipEffect("sound", null, "sound", .75, 1.25)
+            {
+                Sound = new("library", null, "sound.wav", 1), MediaOffsetSeconds = .5, FadeInSeconds = .25,
+                FadeOutSeconds = .25, GainPoints = [new(0, -12), new(.25, 0)]
+            };
+            var plan = TestPlan.FromKept(Rate, 3 * Rate, [new(0, Rate / 2), new(Rate, 3 * Rate)]);
+            var snapshot = Snapshot(new(Controls(2), new([effect], new Dictionary<string, string> { [effect.Id] = path })), 3 * Rate) with { Plan = plan };
+            using var reader = Reader(snapshot, frames: plan.OutputSamples, amplitude: 0);
+            var samples = Left(reader);
+            Assert.Equal(0, samples[(int)(.25 * Rate)]);
+            Assert.Equal(.125297, samples[(int)(.375 * Rate)], 6);
+            Assert.Equal(.5f, samples[Rate / 2]);
+            Assert.Equal(.25f, samples[(int)(.625 * Rate)]);
+            Assert.Equal(0, samples[(int)(.75 * Rate)]);
+        }
+        finally { directory.Delete(recursive: true); }
     }
 
     [Fact]
@@ -786,6 +816,23 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         for (var index = 0; index < frame.Pixels.Length; index += 4)
             if (frame.Pixels.Span[index + 2] > 200 && frame.Pixels.Span[index + 1] > 150 && frame.Pixels.Span[index] < 90) count++;
         return count;
+    }
+
+    [Fact]
+    public void AColourLookDissolvesFromTheBaseGradeAndKeepsTheLegacyHardCut()
+    {
+        var frame = SyntheticFrame();
+        var warm = Controls(look: ClipLook.Warm);
+        var look = new ClipEffect("fx-look", "c", "colourLook", 1, 3) { Look = "bw" };
+        var baseGrade = Finish(frame, new(warm, null));
+        var fullGrade = Finish(frame, new(Controls(look: ClipLook.Bw), null));
+        Assert.Equal(fullGrade.Pixels.ToArray(), Finish(frame, new(warm, Effects(look)), 1).Pixels.ToArray());
+        var faded = new ClipRenderInput(warm, Effects(look with { FadeInSeconds = .5 }));
+        Assert.Equal(baseGrade.Pixels.ToArray(), Finish(frame, faded, 1).Pixels.ToArray());
+        var midpoint = Finish(frame, faded, 1.25);
+        var expected = baseGrade.Pixels.ToArray().Zip(fullGrade.Pixels.ToArray(), (first, second) => (byte)Math.Round((first + second) / 2.0));
+        Assert.Equal(expected, midpoint.Pixels.ToArray());
+        Assert.Equal(fullGrade.Pixels.ToArray(), Finish(frame, faded, 2.99).Pixels.ToArray());
     }
 
     [Fact]

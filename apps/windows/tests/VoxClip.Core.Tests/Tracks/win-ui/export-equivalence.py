@@ -1,7 +1,9 @@
-"""Run the real pre-round-3 and current Windows export pipelines, then compare."""
+"""Compare Windows dialog exports, including the slip, fade and split timeline case."""
 import argparse
+from array import array
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -106,12 +108,85 @@ def compare(before, after, ffprobe):
             "notes": "Real Core/Media builds from each revision; baseline dialog target/name code extracted mechanically, current dialog and harness both use production ExportDialogRouting for control indexes, scope, aspect, destination, quality and snapshot. Shared interview project, original timings/cuts/correction/style, synthetic matching 7-second source, two kept clips plus an excluded suggestion. All four aspects, full/all/this scopes and name collisions. MP4 container/encoder metadata bytes are informational, not an equality gate."}
 
 
+def render_source(ffmpeg, destination, size):
+    source = destination / "source.mp4"
+    run([str(ffmpeg), "-v", "error", "-f", "lavfi", "-i", f"testsrc2=s={size}:r=30", "-f", "lavfi", "-i",
+         "sine=frequency=440:sample_rate=48000", "-t", "7", "-c:v", "mpeg4", "-q:v", "8", "-c:a", "aac", "-ac", "1", "-y", str(source)],
+        log=destination / "source.log")
+    return source
+
+
+def run_exports(root, tools, evidence, env, prefix=""):
+    if shutil.disk_usage(root).free < 15 * 1024 ** 3:
+        raise RuntimeError("Builds require at least 15 GiB free")
+    project = root / RELATIVE / "VoxClip.Ui.Tests.csproj"
+    run(["dotnet", "build", str(project), "-c", "Release", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false"],
+        cwd=root / "apps/windows", env=env, log=evidence / f"{prefix}build.log")
+    output = project.parent / ".artifacts/bin/Release/net10.0"
+    pin = json.loads((ROOT / "apps/windows/build/ffmpeg.json").read_text(encoding="utf-8"))
+    for library, major in pin["libraryMajors"].items():
+        shutil.copyfile(tools / f"{library}-{major}.dll", output / f"{library}-{major}.dll")
+    run(["dotnet", str(output / "VoxClip.Ui.Tests.dll"), "-class", "VoxClip.Ui.Tests.ExportEquivalenceTests", "-noLogo"],
+        cwd=root / "apps/windows", env=env, log=evidence / f"{prefix}export.log")
+
+
+def samples(ffmpeg, path):
+    decoded = subprocess.run([str(ffmpeg), "-v", "error", "-i", str(path), "-map", "0:a:0", "-ac", "1", "-ar", "48000",
+                              "-f", "f32le", "-"], check=True, stdout=subprocess.PIPE)
+    result = array("f")
+    result.frombytes(decoded.stdout)
+    return result
+
+
+def tone(samples, start, end, hz):
+    window = samples[round(start * 48000):round(end * 48000)]
+    step = 2 * math.pi * hz / 48000
+    weights = [0.5 - 0.5 * math.cos(2 * math.pi * idx / len(window)) for idx in range(len(window))]
+    real = sum(value * weight * math.cos(idx * step) for idx, (value, weight) in enumerate(zip(window, weights)))
+    imaginary = sum(value * weight * math.sin(idx * step) for idx, (value, weight) in enumerate(zip(window, weights)))
+    return 2 * math.hypot(real, imaginary) / sum(weights)
+
+
+def verify_timeline(tools, evidence):
+    ffmpeg = tools / "ffmpeg.exe"
+    source = render_source(ffmpeg, evidence, "640x360")
+    run([str(ffmpeg), "-v", "error", "-f", "lavfi", "-i",
+         "aevalsrc='if(lt(t,0.5),0.4*sin(2*PI*173*t),0.4*sin(2*PI*317*t))':s=48000:d=4", "-c:a", "flac",
+         "-y", str(evidence / "music-timeline.flac")], log=evidence / "music.log")
+    env = dict(os.environ, VOXCLIP_SHARED_DIR=str(ROOT / "shared"), VOXCLIP_LIVE_TESTS="0", VOXCLIP_TEST_DOWNLOAD="0",
+               VOXCLIP_DATA_DIR=str(evidence / "data"), VOXCLIP_EXPORT_EQ_ROOT="", VOXCLIP_EXPORT_EQ_TIMELINE=str(evidence),
+               VOXCLIP_EXPORT_EQ_SOURCE=str(source))
+    run_exports(ROOT, tools, evidence, env)
+    unsplit, split = (samples(ffmpeg, evidence / f"{name}.mp4") for name in ("unsplit", "split"))
+    assert len(unsplit) == len(split) and len(split) >= 6 * 48000, "Splitting changed the export length"
+    delta = max(abs(first - second) for first, second in zip(unsplit, split, strict=True))
+    assert delta < 1e-4, f"Splitting changed the encoded music: peak error {delta:.6g}"
+    held = tone(split, 1.25, 1.45, 317)
+    assert held > .005, "The slipped portion of the song did not play"
+    levels = {"before": tone(split, .12, .35, 317) / held, "fadeIn": tone(split, .53, .67, 317) / held,
+              "fadeOut": tone(split, 2.33, 2.47, 317) / held, "after": tone(split, 2.7, 3.05, 317) / held,
+              "unslippedTone": tone(split, .65, .85, 173) / held}
+    assert max(levels["before"], levels["after"], levels["unslippedTone"]) < .05, f"Music leaked outside the placement or slipped window: {levels}"
+    assert all(.12 < levels[edge] < .42 for edge in ("fadeIn", "fadeOut")), f"The music did not ramp at both ends: {levels}"
+    (evidence / "comparison.json").write_text(json.dumps({"result": "passed", "frames": len(split), "peakSplitDelta": delta,
+                                                         "toneRatios": levels}, indent=2) + '\n', encoding="utf-8")
+    print("PASS: slipped music, two fades and sample-equivalent split export")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--timeline-only", action="store_true")
     parser.add_argument("--tools", type=Path)
     parser.add_argument("--evidence", type=Path)
     args = parser.parse_args()
+    if args.timeline_only:
+        if os.name != "nt" or args.tools is None or args.evidence is None or args.prepare_only:
+            parser.error("--timeline-only requires Windows, --tools and --evidence (without --prepare-only)")
+        evidence = args.evidence.resolve()
+        evidence.mkdir(parents=True, exist_ok=True)
+        verify_timeline(args.tools.resolve(), evidence)
+        return
     if run(["git", "cat-file", "-t", BASELINE]).strip() != "commit":
         raise RuntimeError("The exact baseline commit is required")
     before = prepare()
@@ -122,20 +197,12 @@ def main():
         raise RuntimeError("Windows, --tools and --evidence are required")
     evidence = args.evidence.resolve()
     evidence.mkdir(parents=True, exist_ok=True)
-    source = evidence / "source.mp4"
-    run([str(args.tools / "ffmpeg.exe"), "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=30", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "7", "-c:v", "mpeg4", "-q:v", "8", "-c:a", "aac", "-ac", "1", "-y", str(source)], log=evidence / "source.log")
+    source = render_source(args.tools / "ffmpeg.exe", evidence, "1920x1080")
     for name, root in (("before", before), ("after", ROOT)):
-        if shutil.disk_usage(root).free < 15 * 1024 ** 3:
-            raise RuntimeError("Builds require at least 15 GiB free")
         env = dict(os.environ, VOXCLIP_SHARED_DIR=str(root / "shared"), VOXCLIP_LIVE_TESTS="0", VOXCLIP_TEST_DOWNLOAD="0",
-                   VOXCLIP_DATA_DIR=str(evidence / name / "data"), VOXCLIP_EXPORT_EQ_ROOT=str(evidence / name), VOXCLIP_EXPORT_EQ_SOURCE=str(source))
-        project = root / RELATIVE / "VoxClip.Ui.Tests.csproj"
-        run(["dotnet", "build", str(project), "-c", "Release", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false"], cwd=root / "apps/windows", env=env, log=evidence / f"{name}-build.log")
-        output = project.parent / ".artifacts/bin/Release/net10.0"
-        pin = json.loads((ROOT / "apps/windows/build/ffmpeg.json").read_text(encoding="utf-8"))
-        for library, major in pin["libraryMajors"].items():
-            shutil.copyfile(args.tools / f"{library}-{major}.dll", output / f"{library}-{major}.dll")
-        run(["dotnet", str(output / "VoxClip.Ui.Tests.dll"), "-class", "VoxClip.Ui.Tests.ExportEquivalenceTests", "-noLogo"], cwd=root / "apps/windows", env=env, log=evidence / f"{name}-export.log")
+                   VOXCLIP_DATA_DIR=str(evidence / name / "data"), VOXCLIP_EXPORT_EQ_ROOT=str(evidence / name),
+                   VOXCLIP_EXPORT_EQ_TIMELINE="", VOXCLIP_EXPORT_EQ_SOURCE=str(source))
+        run_exports(root, args.tools, evidence, env, prefix=f"{name}-")
     report = compare(evidence / "before", evidence / "after", args.tools / "ffprobe.exe")
     (evidence / "comparison.json").write_text(json.dumps(report, indent=2) + '\n', encoding="utf-8")
     print(f"PASS: {len(report['exports'])} before/after exports, names/folders/order, SRT bytes and MP4 stream parameters/durations")

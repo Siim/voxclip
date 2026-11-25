@@ -6,6 +6,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Media;
@@ -138,20 +139,47 @@ public sealed class FrameComposer : IFrameComposer
     private void DrawFootage(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, CancellationToken ct)
     {
         if (snapshot.Footage.FirstOrDefault(layer => layer.EditedStart <= editedTime && editedTime < layer.EditedEnd) is not { } layer) return;
+        var speed = snapshot.Speed;
+        var opacity = MusicMix.FadeFactor(editedTime - layer.EditedStart, layer.EditedEnd - layer.EditedStart,
+            layer.Entry.FadeInSeconds ?? 0, layer.Entry.FadeOutSeconds ?? 0);
+        if (opacity <= 0) return;
         (PixelBuffer Frame, int Rotation) companion;
-        lock (footage) companion = footage[snapshot].Read(layer.Path, layer.SourceTime(editedTime), ct);
-        if (layer.Entry.Kind != "videoStack" || output.Height < 2)
+        lock (footage) companion = footage[snapshot].Read(layer.Path, layer.SourceTime(editedTime, speed), ct);
+        DrawBlended(output, opacity, frame =>
         {
-            ContextDemoPicture.Fill(companion.Frame, companion.Rotation, output, forPreview, ct);
-            return;
+            if (layer.Entry.Kind != "videoStack" || frame.Height < 2)
+            {
+                ContextDemoPicture.Fill(companion.Frame, companion.Rotation, frame, forPreview, ct);
+                return;
+            }
+            var bottomHeight = frame.Height / 2;
+            var topHeight = frame.Height - bottomHeight;
+            var topLength = topHeight * frame.Stride;
+            var top = new PixelBuffer(frame.Pixels[..topLength], frame.Width, topHeight, frame.Stride);
+            var bottom = new PixelBuffer(frame.Pixels[topLength..], frame.Width, bottomHeight, frame.Stride);
+            ContextDemoPicture.Fill(frame, 0, top, forPreview, ct);
+            ContextDemoPicture.Fill(companion.Frame, companion.Rotation, bottom, forPreview, ct);
+        });
+    }
+
+    private static void DrawBlended(PixelBuffer output, double opacity, Action<PixelBuffer> draw, Action<PixelBuffer>? backdrop = null)
+    {
+        if (opacity >= 1) { draw(output); return; }
+        if (opacity <= 0) { backdrop?.Invoke(output); return; }
+        var scratch = ArrayPool<byte>.Shared.Rent(output.Pixels.Length);
+        try
+        {
+            var layer = output with { Pixels = scratch.AsMemory(0, output.Pixels.Length) };
+            output.Pixels.CopyTo(layer.Pixels);
+            draw(layer);
+            backdrop?.Invoke(output);
+            var target = output.Pixels.Span;
+            var source = layer.Pixels.Span;
+            for (var row = 0; row < output.Height; row++)
+                for (var index = row * output.Stride; index < row * output.Stride + output.Width * 4; index++)
+                    target[index] = (byte)Math.Round(target[index] + (source[index] - target[index]) * opacity);
         }
-        var bottomHeight = output.Height / 2;
-        var topHeight = output.Height - bottomHeight;
-        var topLength = topHeight * output.Stride;
-        var top = new PixelBuffer(output.Pixels[..topLength], output.Width, topHeight, output.Stride);
-        var bottom = new PixelBuffer(output.Pixels[topLength..], output.Width, bottomHeight, output.Stride);
-        ContextDemoPicture.Fill(output, 0, top, forPreview, ct);
-        ContextDemoPicture.Fill(companion.Frame, companion.Rotation, bottom, forPreview, ct);
+        finally { ArrayPool<byte>.Shared.Return(scratch); }
     }
 
     /// <inheritdoc />
@@ -277,10 +305,18 @@ public sealed class FrameComposer : IFrameComposer
         var sourceTime = timeline.SourceTime(editedTime);
         var frames = clip?.Effects is { } input ? effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot)) : null;
         frames?.DrawIllustration(output, sourceTime);
-        var timedLook = clip?.Effects?.Effects.LastOrDefault(effect => effect.Kind == "colourLook" && effect.Start <= sourceTime && sourceTime < effect.End)?.Look;
-        var look = timedLook switch { "warm" => ClipLook.Warm, "muted" => ClipLook.Muted, "bw" => ClipLook.Bw,
-            "original" => ClipLook.Original, _ => clip?.Controls?.Look ?? ClipLook.Original };
-        if (look != ClipLook.Original || clip?.Controls?.ColorAdjustments is not null) ClipPicture.Grade(output, look, clip?.Controls?.ColorAdjustments, ct);
+        var timedLook = clip?.Effects?.Effects.LastOrDefault(effect => effect.Kind == "colourLook" && effect.Start <= sourceTime && sourceTime < effect.End);
+        var baseLook = clip?.Controls?.Look ?? ClipLook.Original;
+        var look = timedLook?.Look switch { "warm" => ClipLook.Warm, "muted" => ClipLook.Muted, "bw" => ClipLook.Bw,
+            "original" => ClipLook.Original, _ => baseLook };
+        var adjustments = clip?.Controls?.ColorAdjustments;
+        void Grade(PixelBuffer frame, ClipLook value)
+        {
+            if (value != ClipLook.Original || adjustments is not null) ClipPicture.Grade(frame, value, adjustments, ct);
+        }
+        if (look != baseLook && timedLook is { } effect && (effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue))
+            DrawBlended(output, effect.ExplicitFadeOpacityAt(sourceTime), frame => Grade(frame, look), frame => Grade(frame, baseLook));
+        else Grade(output, look);
         if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip!.Effects!.PictureTime(sourceTime), clip.Controls, ct);
         if (clip is { Motion.Count: > 0 } && !(forPreview && clip.ReduceMotionInPreview))
             ClipPicture.Motion(output, VoxClip.Core.Domain.ContextDemo.MotionCueRendering.Transform(clip.Motion, sourceTime), forPreview, ct);
