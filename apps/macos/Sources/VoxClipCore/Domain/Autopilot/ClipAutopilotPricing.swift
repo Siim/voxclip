@@ -14,11 +14,12 @@ public struct ClipAutopilotPrice: Sendable, Equatable {
     public let voice: CostEstimate?
     /// The picked track, nil when the plan has none.
     public let music: CostEstimate?
+    public let illustration: CostEstimate?
     public let llm: LLMCost
 
     /// Voice plus music, when every present part has a known price; nil when one is unknown. The LLM send is not part of it.
     public var usd: Decimal? {
-        let parts = [voice, music].compactMap { $0 }
+        let parts = [voice, music, illustration].compactMap { $0 }
         guard parts.allSatisfy({ $0.usd != nil }) else { return nil }
         return parts.reduce(Decimal(0)) { $0 + ($1.usd ?? 0) }
     }
@@ -35,8 +36,8 @@ public enum ClipAutopilotPricing {
     /// - `connector` and `signIn`: who answered the plan, priced as an LLM send (`VoiceLabCostPresentation.kind`).
     public static func price(_ plan: ClipAutopilotPlan, voiceModel: String, candidates: Int, voiceCatalog: VoiceLabPriceCatalog,
                              musicCatalog: VoiceLabPriceCatalog?, musicSeconds: Double, connector: ConnectorID,
-                             signIn: CLISignIn?) throws -> ClipAutopilotPrice {
-        guard musicSeconds.isFinite, musicSeconds >= 0 else { throw VoiceLabError.invalidInput }
+                             signIn: CLISignIn?, illustrationUSDPerImage: Decimal? = nil) throws -> ClipAutopilotPrice {
+        guard musicSeconds.isFinite, musicSeconds >= 0, illustrationUSDPerImage.map({ !$0.isNaN && $0 >= 0 }) ?? true else { throw VoiceLabError.invalidInput }
         let characters = plan.rewrites.reduce(0) { $0 + $1.text.unicodeScalars.count }
         let voice = plan.rewrites.isEmpty ? nil : try VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: voiceModel,
             units: Double(characters), candidates: candidates, catalog: voiceCatalog)
@@ -53,7 +54,10 @@ public enum ClipAutopilotPricing {
         let kind = VoiceLabCostPresentation.kind(forLLMSendTo: connector, signIn: signIn, providerName: connector.rawValue)
         let free: Bool
         if case .inline = kind { free = true } else { free = false }
-        return ClipAutopilotPrice(voice: voice, music: music, llm: free ? .none : .unknown)
+        let images = (plan.effects ?? []).filter { $0.kind == .illustration }.count
+        let illustration = images > 0 ? CostEstimate(provider: "fal.ai", operation: "illustration", units: Double(images), unit: "image",
+            usd: illustrationUSDPerImage.map { $0 * Decimal(images) }, basis: illustrationUSDPerImage == nil ? VoiceLabPricing.unknownBasis : "Per generated image") : nil
+        return ClipAutopilotPrice(voice: voice, music: music, illustration: illustration, llm: free ? .none : .unknown)
     }
 }
 

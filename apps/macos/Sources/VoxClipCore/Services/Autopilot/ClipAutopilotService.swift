@@ -282,32 +282,41 @@ public actor ClipAutopilotService {
         let moments = input.isSeries
         let offered = moments ? [] : Array(input.footageSources.filter { $0.video != nil }.prefix(32))
         let sources = Dictionary(offered.map { ($0.footageKey, $0.durationSeconds) }, uniquingKeysWith: { first, _ in first })
-        let system = moments ? prompt.momentsSystem : prompt.system + (offered.isEmpty ? "" : """
-
-        If an offered recording's label makes it relevant, use a bRoll (visual cutaway), screenshot (still), or videoStack (camera above companion video) effect. Use only an offered footage.sourceKey and source seconds in footage.start. Keep the primary voice. Never guess what an unknown recording shows. Use an empty sourceKey and start 0 for other effects. As with other effects, use scale 1 and empty text when unused.
-        """)
+        let system = moments ? prompt.momentsSystem : prompt.system
         let inventory: JSONValue = .array(offered.map { source in
             var label = URL(fileURLWithPath: source.absolutePath).deletingPathExtension().lastPathComponent
             if let hash = source.recordingHash, label.hasSuffix("--" + hash) { label = String(label.dropLast(hash.count + 2)) }
-            return .object(["sourceKey": .string(source.footageKey), "label": .string(String(label.prefix(150))), "seconds": .number(source.durationSeconds)])
+            return .object(["sourceKey": .string(source.footageKey), "label": .string(String(label.prefix(150))), "seconds": .number(source.durationSeconds),
+                            "description": .string(String((input.footageDescriptions[source.footageKey] ?? "").prefix(500)))])
         })
-        let instruction = rendered.instruction + (offered.isEmpty ? "" : "\n\nOffered recordings (metadata only):\n" + String(decoding: try JSONEncoder().encode(inventory), as: UTF8.self))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let tracks = moments ? [:] : Dictionary(uniqueKeysWithValues: input.musicTracks.sorted { $0.key < $1.key }.prefix(32).map { ($0.key, String($0.value.prefix(150))) })
+        let instruction = rendered.instruction
+            + (offered.isEmpty ? "" : "\n\nOffered recordings (metadata only):\n" + String(decoding: try encoder.encode(inventory), as: UTF8.self))
+            + (tracks.isEmpty ? "" : "\n\nSaved music tracks by id:\n" + String(decoding: try encoder.encode(tracks), as: UTF8.self))
         guard (system + rendered.cachedBlock + instruction).utf8.count <= 400_000 else { throw LLMError.contextTooLong }
         let promptCap = moments ? prompt.momentsOutputTokens : prompt.clipOutputTokens
         let output = min(promptCap, resources.catalog.connector(connector)[ai: "maxOutputTokensCap"].aiInt ?? promptCap)
         // Extra high replies take minutes: a plan waits at least the prompt file's minimum, more when the catalog allows it.
         let timeout = max(resources.catalog.timeout(for: connector, feature: .clipAutopilot), prompt.minimumTimeout)
-        let schema = moments ? prompt.momentsSchema : offered.isEmpty ? prompt.schema : ClipFootage.extendingPlanSchema(prompt.schema)
+        let schema = moments ? prompt.momentsSchema : prompt.schema
         let request = LLMRequest(feature: .clipAutopilot, system: system, cachedBlock: rendered.cachedBlock, instruction: instruction,
             schemaName: moments ? prompt.momentsSchemaName : prompt.schemaName, schema: schema,
             maxOutputTokens: output, effort: moments ? Self.momentsEffort : Self.effort, timeout: timeout,
             language: input.language ?? input.transcript.language,
             tag: moments ? "clip-autopilot-moments" : moment == nil ? "clip-autopilot" : "clip-autopilot-series-clip",
             images: shown?.images ?? [])
-        let context = ClipAutopilotContext(words: input.transcript.words, corrections: input.edits.corrections,
+        var context = ClipAutopilotContext(words: input.transcript.words, corrections: input.edits.corrections,
             cutWordIDs: Set(input.edits.cutWordIds), pauses: state.pauses, cutPauseIDs: Set(input.edits.cutPauseIds),
             pauseKeepSeconds: input.edits.pauseKeepSeconds, scope: rendered.scope, styleIDs: Set(resources.styles.map(\.id)),
             fonts: resources.fonts, preference: input.captionPreference, prompt: prompt, tone: moments ? nil : input.tone, frames: shown, footageSources: sources)
+        if !moments {
+            context.offeredParts = moment?.moment.parts ?? input.selectedParts ?? [.init(startWord: rendered.scope.lowerBound, endWord: rendered.scope.upperBound)]
+            context.kind = moment?.moment.kind ?? input.selectedKind
+            context.missingFromTake = moment?.moment.missingFromTake
+            context.musicTrackIDs = Set(tracks.keys)
+        }
         return Prepared(request: request, context: context, input: input, connector: connector, moment: moment)
     }
 }

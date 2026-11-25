@@ -32,7 +32,7 @@ public static partial class ClipAutopilotValidator
         for (var index = 0; index < Math.Min(entries.Count, ClipPlanEffect.MaximumEntries); index++)
         {
             if (ClipPlanEffect.ProviderEntry(entries[index]) is { } entry && entry.Operation("validate", "clip", span, context.Words, cut,
-                    tightenedAfter, context.Prompt.Stickers) is not null) accepted.Add(entry);
+                    tightenedAfter, context.Prompt.Stickers, context.FootageSources) is not null) accepted.Add(entry);
             else log.Drop($"effects[{N(index)}]", "invalid effect or not on a kept phrase");
         }
         return accepted;
@@ -45,25 +45,28 @@ public static partial class ClipAutopilotValidator
     public static ClipAutopilotPlan? Plan(JsonNode? value, ClipAutopilotContext context)
     {
         var log = new Log();
-        if (Span(value, context, false, log) is not { } span) return null;
-        var checkedCorrections = Corrections(AiJson.Get(value, "corrections"), span, context, log);
+        if (Parts(value, context, false, log) is not { } parts) return null;
+        var span = Bounds(parts);
+        var kind = context.Kind ?? (parts.Count > 1 ? "story" : "stretch");
+        var checkedValue = SeamChecked(value, parts, log);
+        var checkedCorrections = Corrections(AiJson.Get(checkedValue, "corrections"), parts, context, log);
         var corrected = context.Correcting(checkedCorrections.Select(item => item.Correction).ToArray());
-        var rewrites = Rewrites(AiJson.Get(value, "rewrites"), span, corrected, log);
-        var cuts = Cuts(AiJson.Get(value, "cuts"), span, rewrites, corrected, log);
+        var rewrites = Rewrites(AiJson.Get(checkedValue, "rewrites"), span, corrected, log);
+        var cuts = Cuts(AiJson.Get(checkedValue, "cuts"), span, parts, rewrites, corrected, log);
         var corrections = checkedCorrections.Where(item =>
         {
             if (!cuts.Any(cut => cut.StartWord <= item.Correction.Word && item.Correction.Word <= cut.EndWord)) return true;
             log.Drop(item.Field, "the plan cuts that word");
             return false;
         }).Select(item => item.Correction).ToArray();
-        var pauseCuts = PauseCuts(AiJson.Get(value, "pauseCuts"), span, rewrites, corrected, log);
+        var pauseCuts = PauseCuts(AiJson.Get(checkedValue, "pauseCuts"), span, rewrites, corrected, log);
         var captions = Captions(value, corrected, log);
         var look = Look(value, corrected, log);
         var speed = Speed(value, corrected, log);
         var (music, pick) = Music(value, corrected, log);
-        var zooms = Zooms(AiJson.Get(value, "zooms"), span, cuts, pauseCuts, corrected, log);
+        var zooms = Zooms(AiJson.Get(checkedValue, "zooms"), span, cuts, pauseCuts, corrected, log);
         var limits = corrected.Prompt.Limits;
-        var fallbackTitle = EditingAlgorithms.ClipTitle(span.Indices.Where(corrected.IsListedWord).Select(corrected.Text)) ?? "";
+        var fallbackTitle = EditingAlgorithms.ClipTitle(parts.SelectMany(part => part.Indices.Where(corrected.IsListedWord).Select(corrected.Text))) ?? "";
         var title = Text(AiJson.Get(value, "title"), Math.Min(limits.MaxTitleScalars, EditingLimits.MaxClipTitleCodePoints), "title", log);
         var score = Score(AiJson.Get(value, "score"), corrected, "score", log);
         var verdict = Verdict(AiJson.Get(value, "verdict"), score, "verdict", log);
@@ -71,9 +74,18 @@ public static partial class ClipAutopilotValidator
             .ToHashSet(StringComparer.Ordinal);
         var tightened = pauseCuts.Select(pause => pause.AfterWord).ToHashSet();
         var tightenedAfter = tightened.Concat(corrected.Pauses.Where(pause => corrected.CutPauseIds.Contains(pause.Id)).Select(pause => pause.AfterIndex)).ToHashSet();
-        var effects = Effects(AiJson.Get(value, "effects"), span, corrected, cutIds, tightenedAfter, log);
-        var seconds = ClipAutopilotMapping.EditedSeconds(span, corrected.Words, cutIds, corrected.Pauses, tightened,
-            corrected.CutPauseIds, corrected.PauseKeepSeconds) / (speed?.Rate ?? 1);
+        var effects = Effects(AiJson.Get(checkedValue, "effects"), span, corrected, cutIds, tightenedAfter, log);
+        var durations = parts.Select(part => ClipAutopilotMapping.EditedSeconds(part, corrected.Words, cutIds, corrected.Pauses, tightened,
+            corrected.CutPauseIds, corrected.PauseKeepSeconds) / (speed?.Rate ?? 1)).ToArray();
+        var seconds = durations.Sum();
+        var trackId = AiJson.String(AiJson.Get(value, "musicTrackId")) is { } track && corrected.MusicTrackIds.Contains(track) ? track : null;
+        if (kind == "showreel")
+        {
+            var opening = parts[0].Indices.FirstOrDefault(index => corrected.IsListedWord(index) && !cutIds.Contains(corrected.Words[index].Id), -1);
+            if (!ValidShowreel(durations) || (trackId is null && pick is null) || effects?.Any(entry => entry.StartWord == opening &&
+                entry.Kind == "motionTemplate" && AiJson.String(entry.ToJson()["template"]?["name"]) is "titleCard" or "logoSting") != true) return null;
+        }
+        if (parts.Count > 1 && parts.Any(part => !part.Indices.Any(index => corrected.IsListedWord(index) && !cutIds.Contains(corrected.Words[index].Id)))) return null;
         var lengthReason = Text(AiJson.Get(value, "lengthReason"), limits.MaxReasonScalars, "lengthReason", log);
         var tone = Tone(value, corrected, log);
         var frames = Frames(value, corrected, log);
@@ -87,7 +99,10 @@ public static partial class ClipAutopilotValidator
             Corrections = corrections, Rewrites = rewrites, CaptionChoice = captions, ClipLookChoice = look, SpeedChoice = speed, MusicChoices = music,
             MusicPick = pick, Zooms = zooms, Effects = effects, PostText = postText, Score = score, Verdict = verdict, ScoreReason = scoreReason, LengthReason = lengthReason,
             Seconds = seconds, Questions = questions, Repairs = log.Repairs.ToArray(), Flags = Flags(seconds, lengthReason, limits), ToneChoice = tone,
-            Frames = frames
+            Frames = frames, OrderedParts = AiJson.Get(value, "parts") is null ? null : CanonicalParts(parts),
+            Shape = kind == "showreel" ? kind : null, SavedMusicTrackId = trackId,
+            MissingFromTake = new[] { context.MissingFromTake, AiJson.String(AiJson.Get(value, "not_in_take")) }.FirstOrDefault(item => !string.IsNullOrEmpty(item)),
+            CoverTitle = AiJson.String(AiJson.Get(value, "coverTitle"))
         };
     }
 
@@ -176,10 +191,12 @@ public static partial class ClipAutopilotValidator
             var item = items[index];
             var field = "clips[" + N(index) + "]";
             if (moments.Count >= limits.MaxClips) { log.Drop(field, "more than " + N(limits.MaxClips) + " clips"); continue; }
-            if (Span(item, context, true, new Log()) is not { } span) { log.Drop(field, "the clip's span is unreadable, too short or too long"); continue; }
-            var earlier = moments.FindIndex(moment => moment.StartWord <= span.End && span.Start <= moment.EndWord);
+            if (Parts(item, context, true, new Log()) is not { } parts) { log.Drop(field, "the clip's span is unreadable, too short or too long"); continue; }
+            var span = Bounds(parts);
+            var kind = AiJson.String(AiJson.Get(item, "kind"));
+            var earlier = moments.FindIndex(moment => moment.Parts.Any(offered => parts.Any(part => part.Start <= offered.EndWord && offered.StartWord <= part.End)));
             if (earlier >= 0) { log.Drop(field, "overlaps clip " + N(earlier + 1)); continue; }
-            var fallbackTitle = EditingAlgorithms.ClipTitle(span.Indices.Where(context.IsListedWord).Select(context.Text)) ?? "";
+            var fallbackTitle = EditingAlgorithms.ClipTitle(parts.SelectMany(part => part.Indices.Where(context.IsListedWord).Select(context.Text))) ?? "";
             var title = Text(AiJson.Get(item, "title"), Math.Min(limits.MaxTitleScalars, EditingLimits.MaxClipTitleCodePoints), field + ".title", log);
             var score = Score(AiJson.Get(item, "score"), context, field + ".score", log);
             var verdict = Verdict(AiJson.Get(item, "verdict"), score, field + ".verdict", log);
@@ -192,7 +209,11 @@ public static partial class ClipAutopilotValidator
             var idea = Text(AiJson.Get(item, "idea"), limits.MaxReasonScalars, field + ".idea", log);
             var scoreReason = Text(AiJson.Get(item, "scoreReason"), limits.MaxReasonScalars, field + ".scoreReason", log);
             var captionReason = Text(AiJson.Get(item, "captionReason"), limits.MaxReasonScalars, field + ".captionReason", log);
-            moments.Add(new(span.Start, span.End, title.Length == 0 ? fallbackTitle : title, idea, score, verdict, scoreReason, style, captionReason));
+            moments.Add(new(span.Start, span.End, title.Length == 0 ? fallbackTitle : title, idea, score, verdict, scoreReason, style, captionReason)
+            {
+                OrderedParts = AiJson.Get(item, "parts") is null ? null : CanonicalParts(parts), Shape = kind == "showreel" ? kind : null,
+                MissingFromTake = AiJson.String(AiJson.Get(item, "not_in_take"))
+            });
         }
         return (moments, log.Repairs);
     }
@@ -268,6 +289,72 @@ public static partial class ClipAutopilotValidator
         return new(first, last);
     }
 
+    private static IReadOnlyList<ClipProposal.Part> CanonicalParts(IReadOnlyList<WordSpan> parts) =>
+        parts.Select(item => new ClipProposal.Part(item.Start, item.End)).ToArray();
+
+    private static WordSpan Bounds(IReadOnlyList<WordSpan> parts) => new(parts.Min(item => item.Start), parts.Max(item => item.End));
+
+    private static bool ValidShowreel(IReadOnlyList<double> durations) => durations.Count is >= 4 and <= 10 &&
+        durations.All(seconds => seconds is >= 1.999 and <= 5.001) && durations.Sum() is >= 14.999 and <= 35.001;
+
+    private static IReadOnlyList<WordSpan>? Parts(JsonNode? value, ClipAutopilotContext context, bool isSeries, Log log)
+    {
+        var offered = context.OfferedParts ?? [new(context.Scope.Start, context.Scope.End)];
+        bool Contains(int start, int end) => context.Scope.Contains(start) && context.Scope.Contains(end) && start >= 0 && end < context.Words.Count &&
+            offered.Any(part => part.StartWord <= start && end <= part.EndWord);
+        if (AiJson.Get(value, "parts") is not { } raw)
+            return Span(value, context, isSeries, log) is { } legacy && Contains(legacy.Start, legacy.End) ? [legacy] : null;
+        var items = AiJson.Array(raw);
+        if (items.Count is < 1 or > 10) return null;
+        var parts = new List<WordSpan>();
+        var rawParts = new List<WordSpan>();
+        var used = new HashSet<int>();
+        foreach (var item in items)
+        {
+            if (AiJson.Integer(AiJson.Get(item, "startWord")) is not { } start || AiJson.Integer(AiJson.Get(item, "endWord")) is not { } end ||
+                start > end || !Contains(start, end) || rawParts.Any(part => start <= part.End && part.Start <= end)) return null;
+            if (context.OfferedParts is not null && !used.Add(offered.ToList().FindIndex(part => part.StartWord <= start && end <= part.EndWord))) return null;
+            rawParts.Add(new(start, end));
+            while (start <= end && !context.IsListedWord(start)) start++;
+            while (end >= start && !context.IsListedWord(end)) end--;
+            if (start > end) return null;
+            parts.Add(new(start, end));
+        }
+        if (isSeries)
+        {
+            var durations = parts.Select(part => context.Words[part.End].End - context.Words[part.Start].Start).ToArray();
+            var kind = AiJson.String(AiJson.Get(value, "kind"));
+            if (kind is not ("stretch" or "story" or "showreel") || (kind == "stretch" && parts.Count != 1) ||
+                (kind == "showreel" && !ValidShowreel(durations)) || durations.Sum() < context.Prompt.Limits.MinClipSeconds ||
+                durations.Sum() > context.Prompt.Limits.MaxClipSeconds) return null;
+        }
+        return parts;
+    }
+
+    private static JsonNode? SeamChecked(JsonNode? value, IReadOnlyList<WordSpan> parts, Log log)
+    {
+        if (value is not JsonObject fields || fields["parts"] is null) return value;
+        var result = fields.DeepClone().AsObject();
+        foreach (var (field, startKey, endKey) in new[] { ("cuts", "startWord", "endWord"), ("rewrites", "startWord", "endWord"),
+            ("effects", "startWord", "endWord"), ("zooms", "word", "untilWord"), ("corrections", "word", "word"), ("pauseCuts", "afterWord", "afterWord") })
+        {
+            if (fields[field] is not JsonArray entries) continue;
+            var kept = new JsonArray();
+            for (var index = 0; index < entries.Count; index++)
+            {
+                var item = entries[index];
+                if (AiJson.Integer(AiJson.Get(item, startKey)) is { } start)
+                {
+                    var end = (AiJson.Integer(AiJson.Get(item, endKey)) ?? start) + (field == "pauseCuts" ? 1 : 0);
+                    if (parts.Any(part => part.Contains(start) && part.Contains(end))) { kept.Add(item?.DeepClone()); continue; }
+                }
+                log.Drop($"{field}[{N(index)}]", "not inside one part");
+            }
+            result[field] = kept;
+        }
+        return result;
+    }
+
     /// <summary>Rewrites (voice-lab §8.4 bridge words): 2 to <c>maxRewriteWords</c> listed items inside the span, starting and ending on
     /// a word, overlapping no other rewrite, whose spoken text keeps both bridge words, changes something, and holds no link,
     /// control character or bracket tag.</summary>
@@ -312,7 +399,7 @@ public static partial class ClipAutopilotValidator
 
     /// <summary>Cuts: listed items inside the span, never inside a rewrite (a cut is trimmed around one), merged where they touch, and
     /// never every word of the clip.</summary>
-    private static IReadOnlyList<ClipAutopilotPlan.Cut> Cuts(JsonNode? value, WordSpan span, IReadOnlyList<ClipAutopilotPlan.Rewrite> rewrites,
+    private static IReadOnlyList<ClipAutopilotPlan.Cut> Cuts(JsonNode? value, WordSpan span, IReadOnlyList<WordSpan> parts, IReadOnlyList<ClipAutopilotPlan.Rewrite> rewrites,
         ClipAutopilotContext context, Log log)
     {
         var limits = context.Prompt.Limits;
@@ -355,7 +442,8 @@ public static partial class ClipAutopilotValidator
         var merged = new List<ClipAutopilotPlan.Cut>();
         foreach (var cut in pieces.OrderBy(cut => cut.StartWord))
         {
-            if (merged.Count > 0 && order.TryGetValue(merged[^1].EndWord, out var lastEnd) && order.TryGetValue(cut.StartWord, out var startOrder) && startOrder <= lastEnd + 1)
+            if (merged.Count > 0 && order.TryGetValue(merged[^1].EndWord, out var lastEnd) && order.TryGetValue(cut.StartWord, out var startOrder) && startOrder <= lastEnd + 1 &&
+                parts.Any(part => part.Contains(merged[^1].StartWord) && part.Contains(cut.EndWord)))
                 merged[^1] = merged[^1] with { EndWord = Math.Max(merged[^1].EndWord, cut.EndWord) };
             else merged.Add(cut);
         }
@@ -501,7 +589,7 @@ public static partial class ClipAutopilotValidator
 
     /// <summary>Corrections (ai.md §16.5): a listed word inside the span that reads as <c>heard</c>, or the nearest one within 3
     /// positions that does (a repair); one per word; a short spelling that keeps the word's punctuation and changes it.</summary>
-    private static IReadOnlyList<(string Field, ClipAutopilotPlan.Correction Correction)> Corrections(JsonNode? value, WordSpan span, ClipAutopilotContext context, Log log)
+    private static IReadOnlyList<(string Field, ClipAutopilotPlan.Correction Correction)> Corrections(JsonNode? value, IReadOnlyList<WordSpan> parts, ClipAutopilotContext context, Log log)
     {
         var limits = context.Prompt.Limits;
         var accepted = new List<(string Field, ClipAutopilotPlan.Correction Correction)>();
@@ -515,7 +603,8 @@ public static partial class ClipAutopilotValidator
             var heardRaw = AiJson.String(AiJson.Get(item, "heard")) ?? "";
             var heard = LettersAndNumbersLower(heardRaw);
             if (heard.Length == 0) { log.Drop(field, "no heard word"); continue; }
-            bool Reads(int position) => span.Contains(position) && context.IsListedWord(position) && LettersAndNumbersLower(context.Text(position)) == heard;
+            bool Reads(int position) => parts.Any(part => (parts.Count == 1 || part.Contains(word)) && part.Contains(position)) &&
+                context.IsListedWord(position) && LettersAndNumbersLower(context.Text(position)) == heard;
             var position = word;
             if (!Reads(word))
             {

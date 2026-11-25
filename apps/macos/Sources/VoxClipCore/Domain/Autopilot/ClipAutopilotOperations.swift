@@ -40,6 +40,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case motion(MotionCue)
         /// The music package's input; `apply` leaves it pending.
         case music(ClipAutopilotMusicCue)
+        case savedMusic(clipID: String, trackID: String)
         /// The first-2-seconds on-screen text: `apply` adds it as the clip's title card (`ClipHookTitle`, design.md §6.7).
         case hook(clipID: String, text: String)
         /// The clip's share text (`project.share.captions[clipID]`).
@@ -76,7 +77,11 @@ public enum ClipAutopilotMapping {
                                   fonts: [ClipAutopilotPlan.Font: String], stickers: Set<String> = []) throws -> [ClipAutopilotOperation] {
         guard let transcript = project.transcript else { throw VoiceLabError.invalidInput }
         let words = transcript.words
+        let existing = project.edits.clips.first { $0.id == clipID }
+        let proposal = plan.canonicalProposal(clipID: existing?.id)
+        let parts = proposal.parts ?? []
         guard plan.startWord >= 0, plan.endWord < words.count, plan.startWord <= plan.endWord,
+              !parts.isEmpty, parts.allSatisfy({ $0.startWord >= plan.startWord && $0.endWord <= plan.endWord && $0.startWord <= $0.endWord }),
               clipID.range(of: "\\A(?:" + EditingLimits.clipIDPattern + ")\\z", options: .regularExpression) != nil else {
             throw VoiceLabError.invalidInput
         }
@@ -86,15 +91,27 @@ public enum ClipAutopilotMapping {
             operations.append(.init(id: id, decision: decision, action: action, reason: reason))
         }
         let title = plan.title.isEmpty ? nil : plan.title
-        if let existing = project.edits.clips.first(where: { $0.id == clipID }) {
+        let clipParts = parts.enumerated().map { index, part in
+            let start = words[part.startWord].id, end = words[part.endWord].id
+            let previous = existing?.playParts.first { candidate in
+                guard let startIndex = words.firstIndex(where: { $0.id == candidate.startWordId }),
+                      let endIndex = words.firstIndex(where: { $0.id == candidate.endWordId }) else { return false }
+                return startIndex <= part.startWord && part.endWord <= endIndex
+            }
+            return ClipPart(id: previous?.id ?? "part-\(index + 1)", startWordId: start, endWordId: end, reframe: previous?.reframe)
+        }
+        if let existing {
             let current = (words.firstIndex { $0.id == existing.startWordId }, words.firstIndex { $0.id == existing.endWordId })
-            if current.0 != plan.startWord || current.1 != plan.endWord {
+            if existing.parts != nil || parts.count > 1 {
+                if existing.playParts != clipParts { add("clip", .clip, .edit(.setClipParts(id: clipID, parts: clipParts))) }
+            } else if current.0 != plan.startWord || current.1 != plan.endWord {
                 add("clip", .clip, .edit(.updateClip(id: clipID, startIndex: plan.startWord, endIndex: plan.endWord)))
             }
             if let title, title != existing.title { add("title", .title, .edit(.renameClip(id: clipID, title: title))) }
         } else {
             add("clip", .clip, .edit(.addClip(ClipRange(id: clipID, startWordId: words[plan.startWord].id, endWordId: words[plan.endWord].id,
-                                                        title: title, origin: .ai, selected: true))))
+                title: title, origin: .ai, selected: true, parts: parts.count > 1 ? clipParts : nil,
+                kind: parts.count > 1 ? (plan.kind == .showreel ? .showreel : .story) : nil))))
         }
         for (index, correction) in plan.corrections.enumerated() where words[correction.word].kind == .word {
             add("correction-\(index)", .correction, .edit(.correct(id: words[correction.word].id, text: correction.text)), correction.reason)
@@ -172,7 +189,8 @@ public enum ClipAutopilotMapping {
         var openingTitle = false
         for (index, entry) in (plan.effects ?? []).prefix(ClipPlanEffect.maximumEntries).enumerated() {
             let id = "\(clipID.prefix(48))-plan-fx-\(index)"
-            guard let operation = entry.operation(id: id, clipID: clipID, scope: plan.startWord...plan.endWord, words: words,
+            guard let part = parts.first(where: { $0.startWord <= entry.startWord && entry.endWord <= $0.endWord }),
+                  let operation = entry.operation(id: id, clipID: clipID, scope: part.startWord...part.endWord, words: words,
                                                   cut: cutIDs, tightenedAfter: tightened, stickers: stickers,
                                                   sources: project.media.footageDurations) else { continue }
             switch operation.action {
@@ -184,8 +202,12 @@ public enum ClipAutopilotMapping {
                 let range = overlay.start..<overlay.end
                 guard !overlayRanges.contains(where: { $0.overlaps(range) }) else { continue }
                 overlayRanges.append(range)
-                let opening = (plan.startWord...plan.endWord).first(where: { !cutIDs.contains(words[$0].id) }) ?? plan.startWord
-                openingTitle = openingTitle || (overlay.kind == .title && overlay.start < words[opening].start + 2)
+                let first = parts[0]
+                let opening = (first.startWord...first.endWord).first(where: { !cutIDs.contains(words[$0].id) }) ?? first.startWord
+                openingTitle = openingTitle || (part == first && overlay.kind == .title && overlay.start < words[opening].start + 2)
+            case .effect(let overlay) where overlay.kind == .motionTemplate:
+                if part == parts[0], case .titleCard = overlay.template { openingTitle = true }
+                if part == parts[0], case .logoSting = overlay.template { openingTitle = true }
             case .footage(let entry):
                 let range = entry.start..<entry.end
                 guard !footageRanges.contains(where: { $0.overlaps(range) }) else { continue }
@@ -194,7 +216,9 @@ public enum ClipAutopilotMapping {
             }
             operations.append(operation)
         }
-        if let picked = plan.pickedMusic {
+        if let trackID = proposal.music?.trackId {
+            add("music", .music, .savedMusic(clipID: clipID, trackID: trackID))
+        } else if let picked = plan.pickedMusic {
             add("music", .music, .music(ClipAutopilotMusicCue(clipID: clipID, picked: picked,
                 alternatives: plan.music.filter { $0 != picked }, seconds: editedSeconds(plan, state: state))), picked.reason)
         }
@@ -210,8 +234,11 @@ public enum ClipAutopilotMapping {
         let words = state.transcript.words
         guard plan.startWord >= 0, plan.endWord < words.count, plan.startWord <= plan.endWord else { return 0 }
         let cut = Set(plan.cuts.flatMap { ($0.startWord...$0.endWord).map { words[$0].id } }).union(state.cutWordIds)
-        return editedSeconds(span: plan.startWord...plan.endWord, words: words, cut: cut, pauses: state.pauses,
-                             tightened: Set(plan.pauseCuts.map(\.afterWord)), cutPauseIDs: Set(state.cutPauseIds), keepSeconds: state.pauseKeepSeconds)
+        return plan.parts.reduce(0) { total, part in
+            guard words.indices.contains(part.startWord), words.indices.contains(part.endWord), part.startWord <= part.endWord else { return total }
+            return total + editedSeconds(span: part.startWord...part.endWord, words: words, cut: cut, pauses: state.pauses,
+                tightened: Set(plan.pauseCuts.map(\.afterWord)), cutPauseIDs: Set(state.cutPauseIds), keepSeconds: state.pauseKeepSeconds)
+        }
     }
 
     /// The finished clip's length: `editedSeconds` at the plan's speed. The validator stores it as `plan.seconds`.
@@ -252,6 +279,13 @@ public enum ClipAutopilotMapping {
             case .effect(let effect): effects.append(effect)
             case .footage(let entry):
                 if !result.media.setFootage(entry) { pending.append(operation) }
+            case .savedMusic(let clipID, let trackID):
+                guard var track = result.music.first(where: { $0.id == trackID }) else { pending.append(operation); continue }
+                if track.clipId != clipID {
+                    track.clipId = clipID
+                    track = MusicProject.unique(track, in: result)
+                    result = try MusicProject.setting(track, clipId: clipID, in: result)
+                }
             case .musicDucking(let clipID, let on):
                 guard var entry = MusicProject.entry(for: clipID, in: result) else { pending.append(operation); continue }
                 entry.ducking = on

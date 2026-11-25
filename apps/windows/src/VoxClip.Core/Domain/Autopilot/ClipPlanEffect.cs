@@ -152,11 +152,15 @@ public sealed class ClipPlanEffect
     }
 
     internal ClipAutopilotOperation? Operation(string id, string clipId, WordSpan scope, IReadOnlyList<TimedWord> words,
-        IReadOnlySet<string> cut, IReadOnlySet<int> tightenedAfter, IReadOnlySet<string> stickers)
+        IReadOnlySet<string> cut, IReadOnlySet<int> tightenedAfter, IReadOnlySet<string> stickers, IReadOnlyDictionary<string, double>? sources = null)
     {
         if (EndWord >= words.Count || tightenedAfter.Any(index => StartWord <= index && index < EndWord)) return null;
-        return Operation(id, clipId, scope, index => words[index] is { Kind: WordKind.Word } word &&
-            double.IsFinite(word.Start) && double.IsFinite(word.End) && word.End > word.Start ? (word.Start, word.End) : null,
-            index => cut.Contains(words[index].Id), stickers);
+        (double Start, double End)? Anchor(int index) => words[index] is { Kind: WordKind.Word } word &&
+            double.IsFinite(word.Start) && double.IsFinite(word.End) && word.End > word.Start ? (word.Start, word.End) : null;
+        bool IsCut(int index) => cut.Contains(words[index].Id);
+        if (Kind is "bRoll" or "screenshot" or "videoStack")
+            return sources is not null && FootagePlacement(id, clipId, scope, Anchor, IsCut, sources) is { } footage
+                ? new(id, ClipAutopilotDecision.Overlay, new ClipAutopilotAction.Footage(footage), Reason) : null;
+        return Operation(id, clipId, scope, Anchor, IsCut, stickers);
     }
 }

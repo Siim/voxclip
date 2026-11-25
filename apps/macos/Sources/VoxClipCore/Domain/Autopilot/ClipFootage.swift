@@ -36,22 +36,6 @@ public struct ClipFootage: Codable, Sendable, Equatable, Identifiable {
         return ClipFootageRenderInput(entry: self, url: resolveURL(URL(fileURLWithPath: source.absolutePath)), expectedKey: source.contentKey)
     }
 
-    static func extendingPlanSchema(_ schema: JSONValue) -> JSONValue {
-        guard var root = schema.aiObject, var properties = root["properties"]?.aiObject,
-              var effects = properties["effects"]?.aiObject, var items = effects["items"]?.aiObject,
-              var fields = items["properties"]?.aiObject, var kind = fields["kind"]?.aiObject else { return schema }
-        kind["enum"] = .array((kind["enum"]?.aiArray ?? []) + ["bRoll", "screenshot", "videoStack"].map(JSONValue.string))
-        fields["kind"] = .object(kind)
-        fields["footage"] = .object(["type": .string("object"), "additionalProperties": .bool(false),
-            "required": .array([.string("sourceKey"), .string("start")]), "properties": .object([
-                "sourceKey": .object(["type": .string("string")]), "start": .object(["type": .string("number")])])])
-        items["required"] = .array((items["required"]?.aiArray ?? []) + [.string("footage")])
-        items["properties"] = .object(fields)
-        effects["items"] = .object(items)
-        properties["effects"] = .object(effects)
-        root["properties"] = .object(properties)
-        return .object(root)
-    }
 }
 
 public struct ClipFootageRenderInput: Sendable, Equatable {

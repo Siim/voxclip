@@ -261,9 +261,35 @@ public sealed record ClipAutopilotPlan
     public FrameChoices? Frames { get; init; }
 
     /// <summary>The picked music, when there is one.</summary>
-    public Music? PickedMusic => MusicPick is { } pick && pick >= 0 && pick < MusicChoices.Count ? MusicChoices[pick] : null;
+    public Music? PickedMusic => SavedMusicTrackId is null && MusicPick is { } pick && pick >= 0 && pick < MusicChoices.Count ? MusicChoices[pick] : null;
     /// <summary>The clip's span.</summary>
     public WordSpan Span => new(StartWord, EndWord);
+    /// <summary>Explicit source ranges in playback order; null for a legacy span.</summary>
+    public IReadOnlyList<ClipProposal.Part>? OrderedParts { get; init; }
+    /// <summary>An explicit showreel shape, otherwise inferred from the parts.</summary>
+    public string? Shape { get; init; }
+    /// <summary>The wording or beat the take did not contain.</summary>
+    public string? MissingFromTake { get; init; }
+    /// <summary>The optional short title for the cover.</summary>
+    public string? CoverTitle { get; init; }
+    /// <summary>An offered project track to reuse without generation.</summary>
+    public string? SavedMusicTrackId { get; init; }
+    /// <summary>The ordered source ranges, including the legacy single-span fallback.</summary>
+    public IReadOnlyList<ClipProposal.Part> Parts => OrderedParts ?? [new(StartWord, EndWord)];
+    /// <summary>The clip shape that these parts form.</summary>
+    public string Kind => Shape ?? (Parts.Count > 1 ? "story" : "stretch");
+
+    /// <summary>Converts the checked provider reply to the shared proposal contract.</summary>
+    public ClipProposal CanonicalProposal(string? clipId = null) => new(
+        clipId is null ? new(New: new(Kind, Title)) : new(ClipId: clipId), ScoreReason)
+    {
+        Parts = Parts, Cuts = Cuts, PauseCuts = PauseCuts, Corrections = Corrections, CaptionStyle = CaptionChoice.StyleId,
+        Font = CaptionChoice.Font, TextCase = CaptionChoice.TextCase, WordsPerCaption = CaptionChoice.WordsPerCaption,
+        Look = ClipLookChoice, Speed = SpeedChoice, Hook = Hook, Title = Title, PostText = PostText,
+        CoverTitle = CoverTitle ?? Frames?.CoverChoice?.Title,
+        Music = SavedMusicTrackId is { } id ? new(TrackId: id) : PickedMusic is { } music ? new(Brief: music.Prompt) : null,
+        Effects = Effects, Rewrites = Rewrites
+    };
 
     /// <summary>The plan's JSON, in the Mac encoder's keys; null optionals are omitted.</summary>
     public JsonObject ToJson()
@@ -296,6 +322,11 @@ public sealed record ClipAutopilotPlan
         };
         if (SpeedChoice is { } speed) json["speed"] = new JsonObject { ["rate"] = speed.Rate, ["reason"] = speed.Reason };
         if (MusicPick is { } pick) json["musicPick"] = pick;
+        if (OrderedParts is { } parts) json["parts"] = Array(parts, item => new JsonObject { ["startWord"] = item.StartWord, ["endWord"] = item.EndWord });
+        if (Shape is not null) json["kind"] = Shape;
+        if (MissingFromTake is not null) json["not_in_take"] = MissingFromTake;
+        if (CoverTitle is not null) json["coverTitle"] = CoverTitle;
+        if (SavedMusicTrackId is not null) json["savedMusicTrackId"] = SavedMusicTrackId;
         if (Effects is { } effects) json["effects"] = Array(effects, effect => effect.ToJson());
         if (ToneChoice is { } tone) json["tone"] = new JsonObject { ["id"] = tone.Id, ["title"] = tone.Title, ["summary"] = tone.Summary };
         if (Frames is { } frames)
@@ -329,6 +360,9 @@ public sealed record ClipAutopilotPlan
             return new ClipAutopilotPlan
             {
                 StartWord = I(json["startWord"]), EndWord = I(json["endWord"]), Title = S(json["title"]), Hook = S(json["hook"]),
+                OrderedParts = json["parts"] is { } parts ? Items(parts).Select(item => new ClipProposal.Part(I(item["startWord"]), I(item["endWord"]))).ToArray() : null,
+                Shape = json["kind"]?.GetValue<string>(), MissingFromTake = json["not_in_take"]?.GetValue<string>(),
+                CoverTitle = json["coverTitle"]?.GetValue<string>(), SavedMusicTrackId = json["savedMusicTrackId"]?.GetValue<string>(),
                 Cuts = Items(json["cuts"]).Select(item => new Cut(I(item["startWord"]), I(item["endWord"]), ClipAutopilotWire.CutKind(S(item["kind"])) ?? throw new JsonException(), S(item["reason"]))).ToArray(),
                 PauseCuts = Items(json["pauseCuts"]).Select(item => new PauseCut(I(item["afterWord"]), S(item["reason"]))).ToArray(),
                 Corrections = json["corrections"] is null ? [] : Items(json["corrections"]).Select(item => new Correction(I(item["word"]), S(item["heard"]), S(item["text"]), S(item["reason"]))).ToArray(),
@@ -365,6 +399,16 @@ public sealed record ClipAutopilotPlan
 public sealed record ClipAutopilotMoment(int StartWord, int EndWord, string Title, string Idea, int Score, ClipAutopilotVerdict Verdict,
     string ScoreReason, string CaptionStyle, string CaptionReason)
 {
+    /// <summary>Explicit source ranges in playback order; null for a legacy span.</summary>
+    public IReadOnlyList<ClipProposal.Part>? OrderedParts { get; init; }
+    /// <summary>An explicit showreel shape, otherwise inferred from the parts.</summary>
+    public string? Shape { get; init; }
+    /// <summary>The wording or beat the take did not contain.</summary>
+    public string? MissingFromTake { get; init; }
+    /// <summary>The ordered source ranges, including the legacy single-span fallback.</summary>
+    public IReadOnlyList<ClipProposal.Part> Parts => OrderedParts ?? [new(StartWord, EndWord)];
+    /// <summary>The clip shape that these parts form.</summary>
+    public string Kind => Shape ?? (Parts.Count > 1 ? "story" : "stretch");
     /// <summary>A Find Clips suggestion as a moment of Claude mode's series (<see cref="ClipAutopilotRequest.Moments"/>): its span, title
     /// and reason, the score it was given and no caption style, which each clip's plan picks.</summary>
     public static ClipAutopilotMoment Found(WordSpan span, string title, string reason, int score) =>

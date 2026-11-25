@@ -8,14 +8,15 @@ namespace VoxClip.Core.Domain.Autopilot;
 /// <param name="Voice">The rewrites' text-to-speech, null when the plan has none.</param>
 /// <param name="Music">The picked track, null when the plan has none.</param>
 /// <param name="LlmIsFree">A CLI on the creator's plan, a local server or Apple: nothing extra. Otherwise VoxClip can't tell.</param>
-public sealed record ClipAutopilotPrice(CostEstimate? Voice, CostEstimate? Music, bool LlmIsFree)
+/// <param name="Illustration">The pending generated images, null when the plan has none.</param>
+public sealed record ClipAutopilotPrice(CostEstimate? Voice, CostEstimate? Music, bool LlmIsFree, CostEstimate? Illustration = null)
 {
     /// <summary>Voice plus music when every present part has a known price; null when one is unknown.</summary>
     public decimal? Usd
     {
         get
         {
-            var parts = new[] { Voice, Music }.OfType<CostEstimate>().ToArray();
+            var parts = new[] { Voice, Music, Illustration }.OfType<CostEstimate>().ToArray();
             return parts.All(part => part.Usd is not null) ? parts.Sum(part => part.Usd!.Value) : null;
         }
     }
@@ -36,9 +37,9 @@ public static class ClipAutopilotPricing
     /// <summary>Each rewrite bills its whole spoken text, bridge words included; the music bills the clip's edited length rounded up
     /// to whole seconds.</summary>
     public static ClipAutopilotPrice Price(ClipAutopilotPlan plan, string voiceModel, int candidates, VoiceLabPriceCatalog voiceCatalog,
-        VoiceLabPriceCatalog? musicCatalog, double musicSeconds, ConnectorId connector, CliSignIn? signIn)
+        VoiceLabPriceCatalog? musicCatalog, double musicSeconds, ConnectorId connector, CliSignIn? signIn, decimal? illustrationUsdPerImage = null)
     {
-        if (!double.IsFinite(musicSeconds) || musicSeconds < 0) throw ClipAutopilotRequestBuilder.Invalid();
+        if (!double.IsFinite(musicSeconds) || musicSeconds < 0 || illustrationUsdPerImage < 0) throw ClipAutopilotRequestBuilder.Invalid();
         var characters = plan.Rewrites.Sum(rewrite => rewrite.Text.EnumerateRunes().Count());
         var voice = plan.Rewrites.Count == 0 ? null
             : VoiceLabPricing.Estimate(VoiceLabPricedOperation.ElevenLabsTextToSpeech, voiceModel, characters, candidates, null, voiceCatalog);
@@ -50,6 +51,9 @@ public static class ClipAutopilotPricing
                 : new(MusicOperation.Provider, MusicOperation.Operation, seconds, "second", null, null, VoiceLabPricing.UnknownBasis);
         }
         var free = VoiceLabCostPresentation.KindForLlmSend(connector, signIn, LlmCatalog.WireId(connector)).Kind == VoiceLabCostPresentationKind.Inline;
-        return new(voice, music, free);
+        var images = plan.Effects?.Count(effect => effect.Kind == "illustration") ?? 0;
+        CostEstimate? illustration = images > 0 ? new("fal.ai", "illustration", images, "image", illustrationUsdPerImage * images, null,
+            illustrationUsdPerImage is null ? VoiceLabPricing.UnknownBasis : "Per generated image") : null;
+        return new(voice, music, free, illustration);
     }
 }

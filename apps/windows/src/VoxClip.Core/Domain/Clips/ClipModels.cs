@@ -35,12 +35,16 @@ public sealed record RawClip(string Title, string Reason, double Score,
     [property: JsonPropertyName("end_word")] double EndWord = -1,
     IReadOnlyList<RawClipPart>? Parts = null, [property: JsonPropertyName("not_in_take")] string? NotInTake = null);
 
+/// <summary>A loose provider range before integer and transcript validation.</summary>
 public readonly record struct RawClipPart([property: JsonPropertyName("start_word")] double Start,
     [property: JsonPropertyName("end_word")] double End);
 
+/// <summary>An inclusive transcript range after index validation.</summary>
 public readonly record struct ClipIndexRange(int Start, int End)
 {
+    /// <summary>The number of source indices in the range.</summary>
     public int Length => End - Start + 1;
+    /// <summary>The number of source indices shared with another range.</summary>
     public int Intersection(ClipIndexRange other) => Math.Max(0, Math.Min(End, other.End) - Math.Max(Start, other.Start) + 1);
 }
 
@@ -57,6 +61,7 @@ public sealed record TranscriptLine(int FirstIndex, int LastIndex, double Start,
 public sealed record ClipCandidate(string Title, string Reason, int Score, int Start, int End,
     IReadOnlyList<ClipIndexRange>? Parts = null, string? NotInTake = null)
 {
+    /// <summary>The candidate’s parts in playback order, or its legacy single range.</summary>
     public IReadOnlyList<ClipIndexRange> PlayParts => Parts ?? [new(Start, End)];
 }
 
