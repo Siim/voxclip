@@ -97,6 +97,7 @@ def main(argv):
         *fixtures.joinpath("projects").glob("*.voxclip"),
         *fixtures.joinpath("context-demo").glob("*.voxclip"),
         *fixtures.joinpath("music").glob("*.voxclip"),
+        *fixtures.joinpath("story-clips").glob("*.voxclip"),
         *fixtures.joinpath("media").glob("*.transcript.json"),
     ]) + [ROOT / "shared" / "catalog" / "voice-lab.json",
           ROOT / "shared" / "voice-lab" / "statements.json",
