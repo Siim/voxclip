@@ -24,6 +24,7 @@ import VoxClipCore
             origin: .ai, aiResultId: resultID, aiClipIndex: 0, selected: false, parts: parts, kind: .story)
         next.ai.results.append(result)
         try next.applyEditing(.addAIClips(resultId: resultID, clips: [clip]))
+        try next.applyEditing(.setClipSelected(id: clip.id, selected: false))
         return next
     }
 

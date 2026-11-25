@@ -97,22 +97,25 @@ public enum ClipAutopilotMapping {
             throw VoiceLabError.invalidInput
         }
         let previous = existing?.playParts ?? []
+        var reusedIDs = Set<String>()
         let parts = try proposal.parts.map { ranges in
             try ranges.enumerated().map { index, range in
                 guard range.startWord >= 0, range.endWord < words.count, range.startWord <= range.endWord else { throw VoiceLabError.invalidInput }
                 let start = words[range.startWord].id, end = words[range.endWord].id
-                if plan?.orderedParts != nil, var part = previous.first(where: { candidate in
+                let exact = previous.first { $0.startWordId == start && $0.endWordId == end }
+                let enclosing = plan?.orderedParts == nil ? nil : previous.first(where: { candidate in
+                    guard !reusedIDs.contains(candidate.id) else { return false }
                     guard let lower = words.firstIndex(where: { $0.id == candidate.startWordId }),
                           let upper = words.firstIndex(where: { $0.id == candidate.endWordId }) else { return false }
                     return lower <= range.startWord && range.endWord <= upper
-                }) {
+                })
+                if var part = exact ?? enclosing, reusedIDs.insert(part.id).inserted {
                     part.startWordId = start; part.endWordId = end
                     return part
                 }
                 var id = "proposal-part-\(index + 1)"
                 while previous.contains(where: { $0.id == id }) { id += "-new" }
-                return previous.first { $0.startWordId == start && $0.endWordId == end }
-                    ?? ClipPart(id: id, startWordId: start, endWordId: end)
+                return ClipPart(id: id, startWordId: start, endWordId: end)
             }
         } ?? previous
         guard (1...12).contains(parts.count),

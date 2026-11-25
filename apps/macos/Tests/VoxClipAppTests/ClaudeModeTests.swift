@@ -161,6 +161,7 @@ private final class ClaudeCalls: Sendable {
         story.rewrites = []
         story.cuts = []
         story.pauseCuts = []
+        story.look = .init(id: .warm, reason: "Keep the take personal.")
         editor.makeIt.services?.plan = { request, _, _, _ in
             #expect(request.creativeShapes)
             return ClipAutopilotSeries(plans: [story])
