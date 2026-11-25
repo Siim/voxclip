@@ -186,6 +186,7 @@ public static class MusicMix
     /// <summary>Item-local relative gain, interpolated in dB and then multiplied by the linear fades.</summary>
     public static double ItemGain(double seconds, ItemShape shape, double length)
     {
+        if (seconds < 0 || seconds >= length) return 0;
         var fade = FadeFactor(seconds, length, shape.FadeInSeconds ?? 0, shape.FadeOutSeconds ?? 0);
         if (fade == 0 || shape.GainPoints is not { Count: > 0 } points) return fade;
         if (seconds <= points[0].T) return fade * Math.Pow(10, points[0].Db / 20);
@@ -206,6 +207,43 @@ public static class MusicMix
 
     /// <summary>One stretch of the source track placed in the bed. Neighbours overlap by FadeIn/FadeOut frames.</summary>
     public sealed record LoopPiece(long SourceStart, long OutputStart, long Count, long FadeIn = 0, long FadeOut = 0);
+
+    /// <summary>A segment's rendered span (including neighbouring fades) and the source pieces relative to its start.</summary>
+    public sealed record SegmentPlacement(MusicSegment Segment, LoopPiece Span, IReadOnlyList<LoopPiece> Pieces);
+
+    /// <summary>Place segments at their mapped anchors without stretching the song. Overlap hands off to the next segment with
+    /// at most two seconds of equal-power crossfade.</summary>
+    public static IReadOnlyList<SegmentPlacement> SegmentPieces(IReadOnlyList<MusicSegment> segments, long trackFrames, int rate,
+        long outputFrames, Func<double, double> mapTime)
+    {
+        var placements = new List<SegmentPlacement>();
+        var crossfadeFrames = 2L * rate;
+        foreach (var segment in segments)
+        {
+            var start = (long)Math.Round(mapTime(segment.AnchorSeconds) * rate, MidpointRounding.AwayFromZero);
+            var offset = (long)Math.Round(segment.SongFromSeconds * rate, MidpointRounding.AwayFromZero);
+            if (start < 0 || start >= outputFrames || offset < 0 || offset >= trackFrames) continue;
+            var limit = outputFrames - start + crossfadeFrames;
+            var length = (long)Math.Round(Math.Min(segment.LengthSeconds * rate, limit), MidpointRounding.AwayFromZero);
+            var count = segment.Loop ? length : Math.Min(length, trackFrames - offset);
+            if (count <= 0) continue;
+            var pieces = segment.Loop ? LoopPieces(trackFrames, offset, count, (long)(LoopCrossfadeSeconds * rate)) : [new(offset, 0, count)];
+            if (pieces.Count > 0) placements.Add(new(segment, new(offset, start, count), pieces));
+        }
+        var ordered = placements.OrderBy(placement => placement.Span.OutputStart).ToArray();
+        for (var index = 1; index < ordered.Length; index++)
+        {
+            var previous = ordered[index - 1];
+            var current = ordered[index];
+            var previousEnd = previous.Span.OutputStart + previous.Span.Count;
+            var overlap = Math.Min(crossfadeFrames, Math.Min(current.Span.Count, previousEnd - current.Span.OutputStart));
+            if (overlap <= 0) continue;
+            ordered[index - 1] = previous with { Span = previous.Span with
+                { Count = current.Span.OutputStart + overlap - previous.Span.OutputStart, FadeOut = overlap } };
+            ordered[index] = current with { Span = current.Span with { FadeIn = overlap } };
+        }
+        return ordered;
+    }
 
     /// <summary>How a track of <paramref name="trackFrames"/> fills <paramref name="outputFrames"/> starting
     /// <paramref name="offsetFrames"/> in: trimmed when long enough, otherwise looped from the track's start with equal-power
@@ -232,11 +270,15 @@ public static class MusicMix
     public static double PieceWeight(LoopPiece piece, long index)
     {
         var weight = 1.0;
-        if (piece.FadeIn > 0 && index < piece.FadeIn) weight *= Math.Sin(Math.PI / 2 * (index + 0.5) / piece.FadeIn);
+        if (piece.FadeIn > 0 && index < piece.FadeIn) weight *= Crossfade(index, piece.FadeIn);
         var tail = piece.Count - index;
-        if (piece.FadeOut > 0 && tail <= piece.FadeOut) weight *= Math.Sin(Math.PI / 2 * (tail - 0.5) / piece.FadeOut);
+        if (piece.FadeOut > 0 && tail <= piece.FadeOut) weight *= Crossfade(tail - 1, piece.FadeOut);
         return weight;
     }
+
+    /// <summary>The equal-power incoming weight, sampled at the centre of each overlapping frame.</summary>
+    public static double Crossfade(long index, long frames) => frames <= 0 || index >= frames ? 1 : index < 0 ? 0 :
+        Math.Sin(Math.PI / 2 * (index + 0.5) / frames);
 }
 
 /// <summary>The track a preview or export mixes under the voice: the project's entry for the scope and its file in the data
@@ -250,6 +292,17 @@ public sealed record MusicRenderInput(ProjectMusic Entry, string AssetPath)
     public static string PathFor(MusicAsset asset, string dataRoot) => Path.Combine(Root(dataRoot), asset.File.Replace('/', Path.DirectorySeparatorChar));
 
     /// <summary>The input for a clip's (or with null the full video's) track, or null without one.</summary>
-    public static MusicRenderInput? Resolve(Project project, string? clipId, string dataRoot) =>
-        MusicProject.Entry(clipId, project) is { } entry ? new(entry, PathFor(entry.Asset, dataRoot)) : null;
+    public static MusicRenderInput? Resolve(Project project, string? clipId, string dataRoot)
+    {
+        if (MusicProject.Entry(clipId, project) is not { } entry) return null;
+        if (entry.Segments is { } segments && project.Transcript is { } transcript &&
+            project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } clip)
+        {
+            var parts = StoryClips.Times(clip, transcript.Words);
+            entry = entry with { Segments = segments.Where(segment => parts.Any(part =>
+                part.Start <= segment.AnchorSeconds && segment.AnchorSeconds < part.End)).ToArray() };
+            if (entry.Segments.Count == 0) return null;
+        }
+        return new(entry, PathFor(entry.Asset, dataRoot));
+    }
 }

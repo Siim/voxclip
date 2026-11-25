@@ -211,6 +211,29 @@ public sealed class MusicBedTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
+    public void ASlippedAndFadedBedIsSampleIdenticalAfterSplittingAndSeeking()
+    {
+        var bed = new MusicSegment("whole", .5, 1.5, .125, false, FadeInSeconds: .25, FadeOutSeconds: .25);
+        var entry = Entry(gainDb: -6, ducking: false, duration: 4) with { Segments = [bed] };
+        var path = Track(4);
+        var split = entry with
+        {
+            Segments = [bed with { Id = "left", LengthSeconds = .75, FadeOutSeconds = 0 },
+                bed with { Id = "right", AnchorSeconds = 1.25, SongFromSeconds = .875, LengthSeconds = .75, FadeInSeconds = 0 }]
+        };
+        var unsplit = Render(Snapshot(2.5, null, new(entry, path)), 2.5, (0, 0));
+        var snapshot = Snapshot(2.5, null, new(split, path));
+        var export = Render(snapshot, 2.5, (0, 0));
+        var preview = Render(snapshot, 2.5, (0, 0), startEdited: 1);
+        Assert.All(export[..(Rate / 2)], sample => Assert.Equal(0, sample));
+        Assert.All(export[(2 * Rate)..], sample => Assert.Equal(0, sample));
+        Assert.InRange(Amplitude(export, .5, .6, MusicHz) / Amplitude(export, .8, .9, MusicHz), .19, .21);
+        Assert.InRange(Amplitude(export, 1.9, 2, MusicHz) / Amplitude(export, 1.6, 1.7, MusicHz), .19, .21);
+        Assert.Equal(unsplit, export);
+        Assert.Equal(export[Rate..], preview);
+    }
+
+    [Fact]
     public void AStartOffsetBeginsInsideTheTrackAndAMissingFileStopsTheExport()
     {
         // The offset reads the track from 0.5 s: a WAV whose first half second is silent starts sounding at once.
