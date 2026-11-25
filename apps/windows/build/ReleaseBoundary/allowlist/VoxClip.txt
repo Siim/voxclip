@@ -1795,6 +1795,7 @@ member VoxClip.App.Pages.EditorPage :: field private captions
 member VoxClip.App.Pages.EditorPage :: field private demo
 member VoxClip.App.Pages.EditorPage :: field private disposed
 member VoxClip.App.Pages.EditorPage :: field private elevenMusic
+member VoxClip.App.Pages.EditorPage :: field private fillingHarnessTimelines
 member VoxClip.App.Pages.EditorPage :: field private frameText
 member VoxClip.App.Pages.EditorPage :: field private harnessActionVersion
 member VoxClip.App.Pages.EditorPage :: field private harnessAssetDisplay
@@ -1811,7 +1812,12 @@ member VoxClip.App.Pages.EditorPage :: field private harnessPriceIssue
 member VoxClip.App.Pages.EditorPage :: field private harnessPricing
 member VoxClip.App.Pages.EditorPage :: field private harnessQuote
 member VoxClip.App.Pages.EditorPage :: field private harnessReadIssue
+member VoxClip.App.Pages.EditorPage :: field private harnessRewriteClipId
+member VoxClip.App.Pages.EditorPage :: field private harnessRewriteDisplay
+member VoxClip.App.Pages.EditorPage :: field private harnessRewriteOpening
+member VoxClip.App.Pages.EditorPage :: field private harnessRewrites
 member VoxClip.App.Pages.EditorPage :: field private harnessSubmitted
+member VoxClip.App.Pages.EditorPage :: field private harnessTimelineIndex
 member VoxClip.App.Pages.EditorPage :: field private harnessTimer
 member VoxClip.App.Pages.EditorPage :: field private leave
 member VoxClip.App.Pages.EditorPage :: field private lifetime
@@ -1935,6 +1941,7 @@ member VoxClip.App.Pages.EditorPage :: method private HarnessKeepClicked(object,
 member VoxClip.App.Pages.EditorPage :: method private HarnessMusicClipExists(VoxClip.App.ViewModels.HarnessMusicAction)
 member VoxClip.App.Pages.EditorPage :: method private HarnessMusicDismissClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private HarnessMusicNextClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private HarnessTimelineSelected(object,Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private HarnessUndoClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private Hook(VoxClip.Core.Services.Media.IPreviewEngine)
 member VoxClip.App.Pages.EditorPage :: method private HookClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1967,6 +1974,7 @@ member VoxClip.App.Pages.EditorPage :: method private MediaFromProject(VoxClip.C
 member VoxClip.App.Pages.EditorPage :: method private ModelChanged(object,System.EventArgs)
 member VoxClip.App.Pages.EditorPage :: method private MusicFolder()
 member VoxClip.App.Pages.EditorPage :: method private OpenExportTargetAsync(string)
+member VoxClip.App.Pages.EditorPage :: method private OpenHarnessRewriteAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite)
 member VoxClip.App.Pages.EditorPage :: method private OpenIntegratedJobAsync(VoxClip.App.ViewModels.ShellJobRequest)
 member VoxClip.App.Pages.EditorPage :: method private OpenMakeItFromClipBar()
 member VoxClip.App.Pages.EditorPage :: method private OpenMakeItRewriteAsync(VoxClip.App.ViewModels.MakeItRewriteRequest)
@@ -2026,6 +2034,7 @@ member VoxClip.App.Pages.EditorPage :: method private ShowAskClaudePanel()
 member VoxClip.App.Pages.EditorPage :: method private ShowHarnessAssets()
 member VoxClip.App.Pages.EditorPage :: method private ShowHarnessDetails()
 member VoxClip.App.Pages.EditorPage :: method private ShowHarnessMusic()
+member VoxClip.App.Pages.EditorPage :: method private ShowHarnessRewrites()
 member VoxClip.App.Pages.EditorPage :: method private ShowMakeItPanel()
 member VoxClip.App.Pages.EditorPage :: method private ShowPreviewStage()
 member VoxClip.App.Pages.EditorPage :: method private ShowProjectClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -3661,12 +3670,13 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginUndoGroup(
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearSelection()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal CompleteCaptionDrag(VoxClip.Core.Domain.Shared.CaptionPosition)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ContainsAiSpeech(string)
-member VoxClip.App.ViewModels.EditorViewModel :: method internal DescribeHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string)
-member VoxClip.App.ViewModels.EditorViewModel :: method internal DismissHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal DescribeHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,int)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal DismissHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal EndUndoGroup()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ExportStatus(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessTimeline(VoxClip.Core.Services.Project.HarnessProposal,string,string,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation>&)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItFrameSource(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItPostable(string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItScreenRows(VoxClip.App.ViewModels.MakeItFrameRecord,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,bool)

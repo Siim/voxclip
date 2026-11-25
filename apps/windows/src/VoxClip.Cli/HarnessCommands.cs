@@ -179,12 +179,12 @@ internal sealed class HarnessSession(HarnessProject project, string sharedRoot)
         {
             HarnessTool.ReadTranscript => ("Read a page of the project's transcript, including corrected text, source times and zero-based item indices.",
                 ObjectSchema(new { offset = new { type = "integer", minimum = 0 }, limit = new { type = "integer", minimum = 1, maximum = 500 } })),
-            HarnessTool.ReadClips => ("List kept and suggested clips, with their inclusive transcript indices and source spans.", ObjectSchema(new { })),
+            HarnessTool.ReadClips => ("List clips with their kind, ordered parts, inclusive transcript indices and source spans.", ObjectSchema(new { })),
             HarnessTool.ReadDecisions => ("Read the clip's saved title context, framing, cover, captions, effects and music choices.",
                 ObjectSchema(new { clipId = new { type = "string" } }, "clipId")),
             HarnessTool.ReadFrames => ("Decode one to four unedited JPEG thumbnails from the project's local video at source seconds.",
                 ObjectSchema(new { times = new { type = "array", minItems = 1, maxItems = 4, items = new { type = "number", minimum = 0 } } }, "times")),
-            _ => ("Stage a timeline for Keep or Undo in VoxClip. Never applies edits, sends data, spends money or captures consent.", TimelineSchema(sharedRoot))
+            _ => ("Stage one to six timelines, each for Keep or Undo in VoxClip. Use newClip and ordered parts for a story or showreel. Never applies edits, sends data, spends money or captures consent.", TimelineSchema(sharedRoot))
         };
         return new { name, description, inputSchema = schema, annotations = new { readOnlyHint = tool != HarnessTool.ProposeTimeline, destructiveHint = false, openWorldHint = false } };
     }
@@ -207,7 +207,13 @@ internal sealed class HarnessSession(HarnessProject project, string sharedRoot)
             throw new HarnessException("The harness timeline schema is missing or invalid.");
         effectProperties["template"] = template;
         effects["items"] = effect;
-        return timeline;
+        timeline.Remove("$id");
+        timeline.Remove("$schema");
+        var series = new JsonObject { ["type"] = "array", ["minItems"] = 1, ["maxItems"] = 6, ["items"] = timeline };
+        var properties = timeline["properties"]!.DeepClone().AsObject();
+        properties["timelines"] = series.DeepClone();
+        return new { type = "object", properties, oneOf = new object[] { timeline,
+            ObjectSchema(new { timelines = series }, "timelines") } };
     }
 
     private static object Text(string text) => new { type = "text", text };

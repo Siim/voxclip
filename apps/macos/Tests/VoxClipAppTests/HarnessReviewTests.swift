@@ -61,6 +61,33 @@ struct HarnessReviewTests {
         undo.undo()
         #expect(editor.project.edits == project.edits)
         #expect(editor.project.clipEffects == project.clipEffects)
+
+        let cases = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/clips-mode/harness-proposal-cases.json")))
+        let story = try HarnessTimeline.read(#require(cases["story"]))
+        let series = try HarnessProposal(timelines: [story, timeline, timeline], project: editor.project)
+        try HarnessInbox.stage(series, for: url)
+        try HarnessInbox.resolve(series, remaining: series.discarding(at: 2), for: url)
+        let two = try #require(try HarnessInbox.read(for: url))
+        #expect(two.timelines == [story, timeline])
+
+        undo.beginUndoGrouping()
+        try editor.keepHarnessProposal(two, at: url, timeline: 1)
+        undo.endUndoGrouping()
+        #expect(!editor.project.edits.clips.contains { $0.kind == .story })
+        let afterFirst = editor.project
+        let one = try #require(try HarnessInbox.read(for: url))
+        #expect(one.timelines == [story])
+
+        undo.beginUndoGrouping()
+        let actions = try editor.keepHarnessTimeline(one, at: url, index: 0)
+        undo.endUndoGrouping()
+        #expect(actions.map(\.decision) == [.rewrite])
+        #expect(editor.project.edits.clips.last?.kind == .story)
+        #expect(try HarnessInbox.read(for: url) == nil)
+        undo.undo()
+        #expect(editor.project.edits == afterFirst.edits)
+        undo.undo()
+        #expect(editor.project.edits == project.edits)
     }
 }
 #endif

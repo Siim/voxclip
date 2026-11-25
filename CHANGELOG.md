@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Export story clips on Mac and Windows with each part’s crop and one continuous music bed; on Mac, hand the same cuts off to Final Cut Pro.
+- Claude Code and Codex can propose up to six clips, including stories with parts in play order, for individual Keep or Undo on Mac and Windows.
 - VoxClip opens story clips on Mac and Windows, plays their parts in the saved order, and starts a fresh caption at each join.
 - On Mac and Windows, choose a saved music track or a local audio file for a CLI export, include it in the WAV if wanted, and see which bed was mixed in JSON.
 - On Mac, project save failures say why once above the transcript, without interrupting edits with an alert.

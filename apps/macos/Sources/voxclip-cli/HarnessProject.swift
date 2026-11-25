@@ -48,7 +48,12 @@ struct HarnessProject {
         case .readClips:
             let indices = Dictionary(uniqueKeysWithValues: (project.transcript?.words ?? []).enumerated().map { ($0.element.id, $0.offset) })
             let clips: [JSONValue] = try project.edits.clips.map { clip in
-                .object(["id": .string(clip.id), "title": clip.title.map(JSONValue.string) ?? .null, "selected": .bool(clip.selected),
+                let parts = clip.playParts.compactMap { part -> ClipProposal.Part? in
+                    guard let start = indices[part.startWordId], let end = indices[part.endWordId] else { return nil }
+                    return .init(startWord: start, endWord: end)
+                }
+                return .object(["id": .string(clip.id), "title": clip.title.map(JSONValue.string) ?? .null, "selected": .bool(clip.selected),
+                         "kind": .string(clip.kind?.rawValue ?? (clip.parts == nil ? "stretch" : "story")), "parts": try Self.json(parts),
                          "startWord": indices[clip.startWordId].map { .number(Double($0)) } ?? .null,
                          "endWord": indices[clip.endWordId].map { .number(Double($0)) } ?? .null,
                          "sourceSpan": try Self.json(ClipControlsProject.sourceSpan(of: clip.id, in: project).map {
@@ -85,30 +90,38 @@ struct HarnessProject {
             let times = requested.compactMap { if case .number(let time) = $0 { return time }; return nil }
             return try await frames(times, project: project)
         case .proposeTimeline:
-            let timeline = try HarnessTimeline.read(arguments)
+            let timelines = try HarnessTimeline.readSeries(arguments)
             let shared = try SharedResources.locate()
-            let proposal = try HarnessProposal(timeline: timeline, project: project)
-            let (candidate, assets) = try proposal.evaluate(project, shared: shared)
-            guard candidate != project || timeline.generateMusic != nil || !assets.isEmpty else {
-                throw HarnessError.invalid("The timeline doesn't change the project.")
-            }
+            let proposal = try HarnessProposal(timelines: timelines, project: project)
             var actions: [JSONValue] = []
             var free: [JSONValue] = []
-            if let prompt = timeline.generateMusic {
-                guard let price = try proposal.estimatedMusicPrice(in: candidate, shared: shared) else {
-                    throw HarnessError.invalid("No music estimate is available. Nothing was sent.")
-                }
-                actions.append(.object(["kind": .string("generateMusic"), "prompt": .string(prompt), "price": .string(price),
-                                        "approval": .string("In VoxClip only; the app confirms the price for the open clip.")]))
-            }
-            for asset in assets {
-                if asset.kind == .illustration {
-                    let quote = try ClipIllustrationQuote.load(shared: shared)
-                    let amount = NSDecimalNumber(decimal: quote.usdPerImage).stringValue
-                    actions.append(.object(["kind": .string("generateIllustration"), "prompt": .string(asset.text),
-                        "price": .string("$\(amount)"), "approval": .string("In VoxClip only; the app confirms the price for the open clip.")]))
-                } else {
-                    free.append(.object(["kind": .string("findSound"), "query": .string(asset.text)]))
+            for index in timelines.indices {
+                let review = try proposal.review(project, shared: shared, at: index)
+                guard review.project != project || !review.pending.isEmpty else { throw HarnessError.invalid("The timeline doesn't change the project.") }
+                let approval: JSONValue = .string("In VoxClip only; the app confirms the price for the open clip.")
+                let position: JSONValue = .number(Double(index))
+                let music = review.pending.filter { $0.decision == .music }
+                for operation in music + review.pending.filter({ $0.decision != .music }) {
+                    switch operation.action {
+                    case .music(let cue):
+                        let price = try proposal.estimatedMusicPrice(in: review.project, shared: shared, at: index)
+                        actions.append(.object(["kind": .string("generateMusic"), "prompt": .string(cue.picked.prompt),
+                                                "price": price.map(JSONValue.string) ?? .null, "approval": approval, "timelineIndex": position]))
+                    case .asset(let asset) where asset.kind == .illustration:
+                        let quote = try ClipIllustrationQuote.load(shared: shared)
+                        let amount = NSDecimalNumber(decimal: quote.usdPerImage).stringValue
+                        actions.append(.object(["kind": .string("generateIllustration"), "prompt": .string(asset.text),
+                                                "price": .string("$\(amount)"), "approval": approval, "timelineIndex": position]))
+                    case .asset(let asset):
+                        free.append(.object(["kind": .string("findSound"), "query": .string(asset.text), "timelineIndex": position]))
+                    case .rewrite(_, let text):
+                        let estimate = try VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: "eleven_multilingual_v2",
+                            units: Double(VoiceLabTextLength.length(text)), catalog: VoiceLabPriceCatalog.load(shared: shared))
+                        let price = estimate.usd.map(VoiceLabCostPresentation.format)
+                        actions.append(.object(["kind": .string("rewrite"), "text": .string(text), "price": price.map(JSONValue.string) ?? .null,
+                                                "approval": approval, "timelineIndex": position]))
+                    default: break
+                    }
                 }
             }
             try HarnessInbox.stage(proposal, for: url)

@@ -15,7 +15,7 @@ enum HarnessTool: String, CaseIterable {
         case .readClips: []
         case .readDecisions: ["clipId"]
         case .readFrames: ["times"]
-        case .proposeTimeline: HarnessTimeline.keys
+        case .proposeTimeline: HarnessTimeline.keys.union(["timelines"])
         }
     }
 
@@ -32,7 +32,7 @@ enum HarnessTool: String, CaseIterable {
             schema = object(["offset": .object(["type": .string("integer"), "minimum": .number(0)]),
                              "limit": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(500)])])
         case .readClips:
-            description = "List kept and suggested clips, with their inclusive transcript indices and source spans."
+            description = "List clips with kind, ordered parts, inclusive transcript indices and source spans."
             schema = object([:])
         case .readDecisions:
             description = "Read the clip's saved title context, framing, cover, captions, effects and music choices."
@@ -42,7 +42,7 @@ enum HarnessTool: String, CaseIterable {
             schema = object(["times": .object(["type": .string("array"), "minItems": .number(1), "maxItems": .number(4),
                                                "items": .object(["type": .string("number"), "minimum": .number(0)])])], required: ["times"])
         case .proposeTimeline:
-            description = "Stage a timeline for Keep or Undo in VoxClip. Never applies edits, sends data, spends money or captures consent."
+            description = "Stage one timeline, or up to six in timelines, for individual Keep or Undo. Use newClip and ordered parts to make a story. Never sends, spends or captures consent."
             func load(_ file: String) throws -> JSONValue {
                 try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("schemas/" + file)))
             }
@@ -63,7 +63,14 @@ enum HarnessTool: String, CaseIterable {
                 root["properties"] = .object(properties)
                 timeline = .object(root)
             } else { throw HarnessError.invalid("The harness timeline schema is missing or invalid.") }
-            schema = timeline
+            guard case .object(var single) = timeline, case .object(var properties) = single["properties"] else {
+                throw HarnessError.invalid("The harness timeline schema is missing or invalid.")
+            }
+            single["$schema"] = nil; single["$id"] = nil
+            let series: JSONValue = .object(["type": .string("array"), "minItems": .number(1), "maxItems": .number(6), "items": .object(single)])
+            let batch = object(["timelines": series], required: ["timelines"])
+            properties["timelines"] = series
+            schema = .object(["type": .string("object"), "properties": .object(properties), "oneOf": .array([.object(single), batch])])
         }
         return .object(["name": .string(rawValue), "description": .string(description), "inputSchema": schema,
                         "annotations": .object(["readOnlyHint": .bool(self != .proposeTimeline), "destructiveHint": .bool(false),
