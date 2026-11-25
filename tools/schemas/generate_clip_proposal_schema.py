@@ -28,6 +28,33 @@ def one_of(*keys):
     return {"oneOf": [requires(key) for key in keys]}
 
 
+def timeline_commands(index):
+    number = {"type": "number"}
+    seconds = {**number, "minimum": 0}
+    count = {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
+    single = {"item": text()}
+    selection = {"items": {**array(text(), 30), "uniqueItems": True}}
+    split = {"items": {**selection["items"], "minItems": 0}}
+    def command(op, fields, optional=None):
+        return obj({"op": {"const": op}, **fields, **(optional or {})}, ["op", *fields])
+    variants = [command("trim", {**single, "edge": {"enum": ["start", "end"]}, "toWord": index}),
+                command("splitAll", {"atWord": index}),
+                command("fade", {**single, "edge": {"enum": ["in", "out"]}, "seconds": seconds}),
+                command("setGain", {**single, "db": number}),
+                command("addGainPoint", {**single, "atWord": index, "db": number}),
+                command("moveGainPoint", {**single, "fromSeconds": seconds, "toWord": index, "db": number}),
+                command("removeGainPoint", {**single, "atSeconds": seconds}),
+                command("slip", {**single, "bySeconds": number}),
+                command("setLoop", {**single, "enabled": {"type": "boolean"}}),
+                command("setDuck", {"track": text(), "db": number})]
+    for selected in (single, selection):
+        variants += [command("move", {**selected, "toWord": index}),
+                     command("nudge", {**selected, "frames": count}), command("nudge", {**selected, "words": count}),
+                     command("split", {**(split if selected == selection else single), "atWord": index}),
+                     command("duplicate", selected, {"toWord": index}), command("delete", selected)]
+    return array({"oneOf": variants}, 30)
+
+
 def write(name, title, body):
     filename = f"{name}.schema.json"
     schema = {"$schema": "https://json-schema.org/draft/2020-12/schema", "$id": BASE + filename,
@@ -77,13 +104,14 @@ def main():
     legacy_edits = {key: edits[key] for key in ("cuts", "captionStyle", "title", "effects")} | legacy_music
     legacy = {**obj({"clipId": clip_id, "reason": reason, **legacy_edits}, ["clipId", "reason"]),
               "anyOf": [requires(key) for key in legacy_edits], "not": requires(*legacy_music)}
-    harness_edits = {**edits, "effects": {**edits["effects"], "description": (
+    harness_edits = {**edits, "edits": timeline_commands(index), "effects": {**edits["effects"], "description": (
         "Use any clip-plan entry. Footage references a sourceKey from read_clips. "
         "Asset requests are reviewed in VoxClip; this tool never sends or spends.")}}
     write("harness-timeline", "VoxClip harness timeline v2", {
         **obj({"clipId": clip_id, "newClip": new_clip, "reason": reason, **harness_edits, **legacy_music}, ["reason"]),
-        **one_of("clipId", "newClip"), "anyOf": [requires(key) for key in edits | legacy_music],
+        **one_of("clipId", "newClip"), "anyOf": [requires(key) for key in harness_edits | legacy_music],
         "allOf": [parts_for_new(requires("newClip"), "newClip"),
+                  {"if": requires("edits"), "then": requires("clipId")},
                   {"not": {"anyOf": [requires(first, second) for first, second in (
                       ("music", "musicTrackId"), ("music", "generateMusic"), ("musicTrackId", "generateMusic"))]}}],
     })

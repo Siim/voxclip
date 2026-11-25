@@ -11,9 +11,11 @@ public enum HarnessError: LocalizedError {
 public struct HarnessTimeline: Codable, Sendable, Equatable {
     package static let legacyKeys: Set<String> = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"]
     package static let keys = legacyKeys.union(["newClip", "parts", "pauseCuts", "corrections", "font", "case", "wordsPerCaption",
-                                                "look", "speed", "hook", "postText", "coverTitle", "music", "rewrites"])
+                                                "look", "speed", "hook", "postText", "coverTitle", "music", "rewrites", "edits"])
     private let wire: JSONValue
     public let proposal: ClipProposal
+    let edits: [TimelineEditRequest]
+    public var timelineEditCount: Int { edits.count }
     public var clipId: String { proposal.target.clipId ?? "" }
     public var reason: String { proposal.reason }
     public var cuts: [ClipAutopilotPlan.Cut]? { proposal.cuts }
@@ -42,6 +44,8 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
         let clip = fields.removeValue(forKey: "clipId")
         let new = fields.removeValue(forKey: "newClip")
         guard (clip == nil) != (new == nil), (fields.keys.count > 1) else { throw invalid }
+        let edits = try fields.removeValue(forKey: "edits").map(TimelineEditRequest.read) ?? []
+        guard new == nil || edits.isEmpty else { throw invalid }
         if let clip {
             guard case .string(let id) = clip, !id.isEmpty else { throw invalid }
             fields["target"] = .object(["clipId": clip])
@@ -94,10 +98,12 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
               proposal.target.new.map({ entry in
                   line(entry.title, max: 120) && (entry.kind == .stretch ? proposal.parts?.count == 1 : (proposal.parts?.count ?? 0) >= 2)
               }) != false else { throw invalid }
-        return .init(wire: value, proposal: proposal)
+        return .init(wire: value, proposal: proposal, edits: edits)
     }
 
-    private init(wire: JSONValue, proposal: ClipProposal) { self.wire = wire; self.proposal = proposal }
+    private init(wire: JSONValue, proposal: ClipProposal, edits: [TimelineEditRequest]) {
+        self.wire = wire; self.proposal = proposal; self.edits = edits
+    }
 
     public init(from decoder: any Decoder) throws { self = try Self.read(JSONValue(from: decoder)) }
     public func encode(to encoder: any Encoder) throws { try wire.encode(to: encoder) }
@@ -238,8 +244,10 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
             default: throw HarnessError.invalid("A proposed change overlaps a cut or an existing effect, or doesn't fit the clip.")
             }
         }
-        _ = try JSONProjectStore.encode(result.project)
-        return (result.project, operations, result.pending)
+        var candidate = result.project
+        for edit in timelines[index].edits { candidate = try edit.applying(to: candidate, scope: clipID).project }
+        _ = try JSONProjectStore.encode(candidate)
+        return (candidate, operations, result.pending)
     }
 
     public func estimatedMusicPrice(in project: Project, shared: SharedResources, at index: Int = 0) throws -> String? {

@@ -65,10 +65,17 @@ internal sealed class HarnessProject
                 var proposal = new HarnessProposal(timelines, project);
                 var pricedActions = new List<object>();
                 var freeActions = new List<object>();
+                var refusals = new List<object>();
                 const string approval = "In VoxClip only; the app confirms the price for the open clip.";
                 for (var index = 0; index < timelines.Count; index++)
                 {
-                    var review = proposal.Review(project, shared, index);
+                    (Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending) review;
+                    try { review = proposal.Review(project, shared, index); }
+                    catch (HarnessTimelineEditException refusal)
+                    {
+                        refusals.Add(new { timelineIndex = index, reason = refusal.Message });
+                        continue;
+                    }
                     foreach (var operation in review.Pending.OrderBy(operation => operation.Decision == ClipAutopilotDecision.Music ? 0 : 1))
                     {
                         switch (operation.Action)
@@ -95,7 +102,8 @@ internal sealed class HarnessProject
                 }
                 var wire = proposal.ToJson();
                 await StageAsync(wire, ct).ConfigureAwait(false);
-                return new(new { proposal = wire, pricedActions, freeActions });
+                return refusals.Count == 0 ? new(new { proposal = wire, pricedActions, freeActions }) :
+                    new(new { proposal = wire, pricedActions, freeActions, refusals });
             default: throw new ArgumentOutOfRangeException(nameof(tool));
         }
     }
@@ -150,7 +158,7 @@ internal sealed class HarnessProject
         var found = result is not null && clip.AiClipIndex is >= 0 and var index && index < result.Clips.Count ? result.Clips[index] : null;
         return new(new
         {
-            clipId, clip.Title, findReason = found?.Reason, openingLeadInSeconds = clip.LeadInSeconds,
+            clipId, clip.Title, findReason = found?.Reason, openingLeadInSeconds = clip.LeadInSeconds, timeline = TimelineDecisions.Read(project, clipId),
             controls = ClipControlsProject.Controls(clipId, project), captionStyle = project.CaptionsFor(clipId).StyleId,
             musicTracks = project.Music.Select(item => new { item.Id, item.Title, item.ClipId }).ToArray(),
             effects = project.ClipEffects.Select(ClipEffect.Parse).Where(effect => effect.ClipId == clipId).Select(effect => new

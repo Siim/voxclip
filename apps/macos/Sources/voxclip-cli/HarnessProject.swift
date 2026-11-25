@@ -73,6 +73,7 @@ struct HarnessProject {
             let found = clip.aiClipIndex.flatMap { index in result.flatMap { $0.clips.indices.contains(index) ? $0.clips[index] : nil } }
             let tracks = project.music.map { JSONValue.object(["id": .string($0.id), "title": .string($0.title), "clipId": $0.clipId.map(JSONValue.string) ?? .null]) }
             return .init(["clipId": .string(clipId), "title": clip.title.map(JSONValue.string) ?? .null,
+                          "timeline": try TimelineDecisions.read(project: project, scope: clipId),
                           "findReason": (found?.reason).map(JSONValue.string) ?? .null,
                           "openingLeadInSeconds": clip.leadInSeconds.map(JSONValue.number) ?? .null,
                           "controls": try Self.json(ClipControlsProject.controls(for: clipId, in: project)),
@@ -95,8 +96,14 @@ struct HarnessProject {
             let proposal = try HarnessProposal(timelines: timelines, project: project)
             var actions: [JSONValue] = []
             var free: [JSONValue] = []
+            var refusals: [JSONValue] = []
             for index in timelines.indices {
-                let review = try proposal.review(project, shared: shared, at: index)
+                let review: (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation])
+                do { review = try proposal.review(project, shared: shared, at: index) }
+                catch let refusal as TimelineEditRefusal {
+                    refusals.append(.object(["timelineIndex": .number(Double(index)), "reason": .string(refusal.copy)]))
+                    continue
+                }
                 guard review.project != project || !review.pending.isEmpty else { throw HarnessError.invalid("The timeline doesn't change the project.") }
                 let approval: JSONValue = .string("In VoxClip only; the app confirms the price for the open clip.")
                 let position: JSONValue = .number(Double(index))
@@ -125,7 +132,9 @@ struct HarnessProject {
                 }
             }
             try HarnessInbox.stage(proposal, for: url)
-            return .init(["proposal": try Self.json(proposal), "pricedActions": .array(actions), "freeActions": .array(free)])
+            var response: [String: JSONValue] = ["proposal": try Self.json(proposal), "pricedActions": .array(actions), "freeActions": .array(free)]
+            if !refusals.isEmpty { response["refusals"] = .array(refusals) }
+            return .init(response)
         }
     }
 

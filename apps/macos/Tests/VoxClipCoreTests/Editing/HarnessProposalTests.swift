@@ -4,6 +4,27 @@ import Testing
 
 @Suite("Project harness proposals", .offlineFixtures)
 struct HarnessProposalTests {
+    @Test func timelineEditsApplyInOrderOrRefuseTheWholeProposal() throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))
+        func proposal(_ edits: String) throws -> HarnessProposal {
+            let wire = try JSONDecoder().decode(JSONValue.self, from: Data("""
+                {"clipId":"clip-2f1c","reason":"Tighten the clip.","title":"Tighter","edits":[\(edits)]}
+                """.utf8))
+            return try HarnessProposal(timeline: HarnessTimeline.read(wire), project: project)
+        }
+        let trim = #"{"op":"trim","item":"clip-2f1c","edge":"start","toWord":10}"#
+        let kept = try proposal(trim).review(project, shared: shared)
+        let clip = try #require(kept.project.edits.clips.first { $0.id == "clip-2f1c" })
+        #expect(clip.startWordId == "w11")
+        #expect(clip.title == "Tighter")
+        #expect(kept.pending.isEmpty)
+        let invalid = try proposal(trim + #",{"op":"delete","items":["missing"]}"#)
+        #expect(throws: TimelineEditRefusal("Select an item on this timeline.")) {
+            try invalid.review(project, shared: shared)
+        }
+    }
+
     @Test func newStoryPreservesPartOrderAndLeavesRewritesPending() throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))

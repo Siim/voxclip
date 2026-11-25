@@ -2,6 +2,14 @@ import Foundation
 
 public enum RenderCallerInputs {
     public static func timeline(project: Project, clipID: String? = nil) throws -> RenderTimeline {
+        if project.schemaVersion >= 3, project.transcript != nil {
+            let output = try VoiceLabOutputPlanner.build(project, scope: clipID.map(VoiceLabOutputScope.clip) ?? .full)
+            if output.requiresSyntheticRendering { return .voiceLab(output) }
+        }
+        return .legacy(try editPlan(project: project, clipID: clipID))
+    }
+
+    public static func editPlan(project: Project, clipID: String? = nil) throws -> EditPlan {
         let clip: ClipRange?
         if let clipID {
             guard let selected = project.edits.clips.first(where: { $0.id == clipID }) else {
@@ -21,12 +29,8 @@ public enum RenderCallerInputs {
                 throw VoiceLabProjectError.invalidScope
             }
             let total = Int64(totalSamples)
-            return .legacy(EditPlan(sampleRate: rate, totalSamples: total,
-                kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : []))
-        }
-        if project.schemaVersion >= 3 {
-            let output = try VoiceLabOutputPlanner.build(project, scope: clipID.map(VoiceLabOutputScope.clip) ?? .full)
-            if output.requiresSyntheticRendering { return .voiceLab(output) }
+            return EditPlan(sampleRate: rate, totalSamples: total,
+                kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
         }
         let edits = project.edits
         let state = EditState(transcript: transcript,
@@ -34,8 +38,8 @@ public enum RenderCallerInputs {
             pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
             cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds),
             corrections: edits.corrections, clips: edits.clips, activeClipId: clipID)
-        return .legacy(try EditPlan.build(transcript: transcript, editState: state, activeClip: clip,
-            duration: source.durationSeconds, sampleRate: rate))
+        return try EditPlan.build(transcript: transcript, editState: state, activeClip: clip,
+            duration: source.durationSeconds, sampleRate: rate)
     }
 
     public static func prepare(_ request: RenderRequest, project: Project, clipID: String?, dataRoot: URL,

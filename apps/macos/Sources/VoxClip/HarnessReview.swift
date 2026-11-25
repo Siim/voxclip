@@ -274,6 +274,8 @@ extension EditorModel {
             }
             actionError = nil
             refresh()
+        } catch let refusal as TimelineEditRefusal {
+            reviews[index] = Review(operations: [], result: nil, estimate: nil, issue: refusal.copy)
         } catch let error as HarnessError { actionError = error.localizedDescription; refresh() }
         catch { actionError = "VoxClip couldn't keep this timeline. Your project is unchanged."; refresh() }
     }

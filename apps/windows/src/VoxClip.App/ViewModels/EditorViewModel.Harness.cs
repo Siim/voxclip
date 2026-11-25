@@ -38,6 +38,8 @@ public sealed partial class EditorViewModel
             changes.AddRange(cuts.EnumerateArray().Select(change => DescribeCut(change)));
         if (timeline.TryGetProperty("effects", out var effects))
             changes.AddRange(effects.EnumerateArray().Select(effect => $"{EffectLabel(effect)}: {effect.GetProperty("reason").GetString()}"));
+        if (timeline.TryGetProperty("edits", out var edits))
+            changes.Add(edits.GetArrayLength() == 1 ? "1 timeline edit" : $"{edits.GetArrayLength()} timeline edits");
         var prompt = intent.Music?.Brief;
         string? estimate = null;
         string? blocked = null;

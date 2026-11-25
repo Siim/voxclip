@@ -13,7 +13,10 @@ import VoxClipCore
         let edit = if let result, let clip { try? RenderCallerInputs.timeline(project: result, clipID: clip.id) } else { nil as RenderTimeline? }
         let seconds = edit?.duration ?? parts.reduce(0) { $0 + $1.duration }
         let scope = declared == nil ? "updates this clip" : "makes a new clip"
-        let metadata = [durationLabel(seconds), "\(parts.count) \(parts.count == 1 ? "part" : "parts")", "\(cuts) \(cuts == 1 ? "cut" : "cuts")", scope]
+        var metadata = [durationLabel(seconds), "\(parts.count) \(parts.count == 1 ? "part" : "parts")", "\(cuts) \(cuts == 1 ? "cut" : "cuts")", scope]
+        if timeline.timelineEditCount > 0 {
+            metadata.append("\(timeline.timelineEditCount) timeline \(timeline.timelineEditCount == 1 ? "edit" : "edits")")
+        }
         let chips = creativeChips(operations, musicEstimate: estimate)
         return CreativeProposalData(source: "\(kind.cardLabel()) · proposed in your terminal", title: title,
             summary: metadata.joined(separator: " · "), parts: parts,

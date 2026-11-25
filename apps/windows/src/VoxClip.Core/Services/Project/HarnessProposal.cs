@@ -17,19 +17,23 @@ namespace VoxClip.Core.Services.Project;
 
 /// <summary>A project harness refusal safe to return to the agent.</summary>
 /// <param name="message">The user-facing reason.</param>
-public sealed class HarnessException(string message) : Exception(message);
+public class HarnessException(string message) : Exception(message);
+
+/// <summary>A reducer refusal to display on the affected proposal row.</summary>
+public sealed class HarnessTimelineEditException(string message) : HarnessException(message);
 
 /// <summary>Validated local edit intent in the shared harness timeline format.</summary>
 public sealed class HarnessTimeline
 {
     private static readonly string[] LegacyKeys = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"];
     private static readonly string[] Keys = [.. LegacyKeys, "newClip", "parts", "pauseCuts", "corrections", "font", "case",
-        "wordsPerCaption", "look", "speed", "hook", "postText", "coverTitle", "music", "rewrites"];
+        "wordsPerCaption", "look", "speed", "hook", "postText", "coverTitle", "music", "rewrites", "edits"];
 
     private HarnessTimeline(JsonElement wire, ClipProposal proposal) { Wire = wire.Clone(); Proposal = proposal; }
 
     internal JsonElement Wire { get; }
     internal ClipProposal Proposal { get; }
+    internal IReadOnlyList<TimelineEditRequest> Edits { get; private init; } = [];
     internal bool UsesFootage => Proposal.Effects?.Any(effect => effect.Kind is "bRoll" or "screenshot" or "videoStack") == true;
 
     /// <summary>The optional music brief, for estimating only.</summary>
@@ -59,6 +63,8 @@ public sealed class HarnessTimeline
             create = new(kind, Text(newClip, "title", 120) ?? throw InvalidTimeline());
         }
         if ((clipId is null) == (create is null) || wire.EnumerateObject().Count() < 3) throw InvalidTimeline();
+        var edits = wire.TryGetProperty("edits", out _) ? Items(wire, "edits", TimelineEditRequest.Maximum).Select(item => new TimelineEditRequest(item)).ToArray() : [];
+        if (create is not null && edits.Length != 0) throw InvalidTimeline();
         var parts = ReadItems(wire, "parts", 12, ["startWord", "endWord"], part => new ClipProposal.Part(Anchor(part, "startWord"), Anchor(part, "endWord")));
         if (create is not null && (create.Kind == "stretch" ? parts?.Count != 1 : (parts?.Count ?? 0) < 2)) throw InvalidTimeline();
         var track = Text(wire, "musicTrackId");
@@ -118,7 +124,7 @@ public sealed class HarnessTimeline
             Rewrites = ReadItems(wire, "rewrites", 12, ["startWord", "endWord", "text", "reason"], entry => new ClipAutopilotPlan.Rewrite(Anchor(entry, "startWord"),
                 Anchor(entry, "endWord"), Text(entry, "text", 2000) ?? throw InvalidTimeline(), Reason(entry))),
             Effects = wire.TryGetProperty("effects", out _) ? Items(wire, "effects", ClipPlanEffect.MaximumEntries).Select(ReadEffect).ToArray() : null,
-        });
+        }) { Edits = edits };
     }
 
     private static IReadOnlyList<T>? ReadItems<T>(JsonElement wire, string key, int maximum, string[] keys, Func<JsonElement, T> read) =>
@@ -299,13 +305,15 @@ public sealed class HarnessProposal
             throw new HarnessException("The proposed clip duplicates an existing clip or doesn't have valid parts.");
         if (result.Pending.Any(operation => operation.Action is not (ClipAutopilotAction.Asset or ClipAutopilotAction.Music or ClipAutopilotAction.Rewrite)))
             throw new HarnessException("A proposed change overlaps a cut or an existing effect, or doesn't fit the clip.");
-        _ = ProjectSerialization.Serialize(result.Project);
-        if (BaseRevision == Revision(result.Project, timelines, version))
+        var candidate = result.Project;
+        foreach (var edit in timelines[index].Edits) candidate = edit.Apply(candidate, clipId).Project;
+        _ = ProjectSerialization.Serialize(candidate);
+        if (BaseRevision == Revision(candidate, timelines, version))
         {
             if (result.Pending.Count == 0) throw new HarnessException("The timeline doesn't change the project.");
             return (snapshot, operations, result.Pending);
         }
-        return (result.Project, operations, result.Pending);
+        return (candidate, operations, result.Pending);
     }
 
     /// <summary>Look up an estimate for the candidate clip without contacting a provider.</summary>
