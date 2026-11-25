@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import VoxClipCore
 
-/// Puts the cover into an MP4 on disk (ADR-R48, doc/publishing.md §7) with `MP4CoverArt`, on every macOS. It streams:
+/// Puts the cover and/or sound credits into an MP4 on disk (doc/publishing.md §7) with `MP4CoverArt` on every macOS. It streams:
 /// only the top-level headers and `moov` are read into memory, the new `moov` is written, and the rest of the file is
 /// copied in chunks into a staged file beside it, which then replaces the file in one rename. A refusal or a failure
 /// leaves the file as it was and removes the staged copy.
@@ -22,14 +22,14 @@ enum MP4CoverEmbed {
     static let queue = DispatchQueue(label: "voxclip.export.cover", qos: .userInitiated)
 
     /// `embedNow` off the cooperative pool.
-    static func embed(_ image: Data, into file: URL) async throws {
+    static func embed(_ image: Data?, comment: String? = nil, into file: URL) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            queue.async { continuation.resume(with: Result { try embedNow(image, into: file) }) }
+            queue.async { continuation.resume(with: Result { try embedNow(image, comment: comment, into: file) }) }
         }
     }
 
     /// Writes `<file>.cover` beside `file`, then renames it over `file`.
-    static func embedNow(_ image: Data, into file: URL) throws {
+    static func embedNow(_ image: Data?, comment: String? = nil, into file: URL) throws {
         let input = try FileHandle(forReadingFrom: file)
         defer { try? input.close() }
         let length = try input.seekToEnd()
@@ -41,7 +41,7 @@ enum MP4CoverEmbed {
         guard movie.size <= movieLimit else { throw Failure.movieTooLarge(movie.size) }
         try input.seek(toOffset: movie.offset)
         let moov = try read(input, count: Int(movie.size))
-        let edit = try MP4CoverArt.edit(layout: layout, moov: moov, image: image)
+        let edit = try MP4CoverArt.edit(layout: layout, moov: moov, image: image, comment: comment)
 
         let staged = file.deletingLastPathComponent().appendingPathComponent(file.lastPathComponent + ".cover")
         let descriptor = Darwin.open(staged.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR)

@@ -223,6 +223,8 @@ func coverArt(_ video: URL) async throws -> Data? {
     try iTunesMetadataPayload(video, itemType: Data("covr".utf8))
 }
 
+let iTunesCommentAtom = Data([0xA9, 0x63, 0x6D, 0x74])
+
 /// The iTunes item's `data` payload after the 8-byte type and locale, read from the bytes so the check doesn't
 /// depend on what AVFoundation reads back on each macOS.
 func iTunesMetadataPayload(_ video: URL, itemType: Data) throws -> Data? {

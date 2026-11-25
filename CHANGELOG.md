@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Mac video exports keep licensed sound-effect credits in the MP4, including on macOS 26.
 - Find Clips Custom can join moments in the order you ask for and say what isn't in the take. The Autopilot planner can propose stories, music-led showreels and single stretches.
 - Export story clips on Mac and Windows with each part’s crop and one continuous music bed; on Mac, hand the same cuts off to Final Cut Pro.
 - Claude Code and Codex can propose up to six clips, including stories with parts in play order, for individual Keep or Undo on Mac and Windows.

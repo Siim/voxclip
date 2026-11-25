@@ -182,15 +182,17 @@ public actor AVExporter: Exporter {
     /// The cover inside the MP4 (ADR-R48): `MP4CoverEmbed` writes the JPEG as its iTunes `covr` art, which players,
     /// Finder and uploaders read as the attached picture. AVFoundation's writer embeds a `covr` item on macOS 27 and never
     /// on macOS 26 (13 variants on the hosted 26.7.2 runner, doc/publishing.md §7), so VoxClip writes the box itself on
-    /// every version. The cover is extra: a failure leaves the export and the JPEG beside it, logs one line and returns
-    /// false.
+    /// every version. A cover failure leaves the separate JPEG; a sound-credit failure stops publication.
     @discardableResult
-    static func embedCover(_ jpeg: Data, in partial: URL,
-                           log: @Sendable (String) -> Void = { AVExporter.logger.error("\($0, privacy: .public)") }) async -> Bool {
+    static func embedMetadata(_ jpeg: Data?, comment: String?, in partial: URL,
+                              log: @Sendable (String) -> Void = { AVExporter.logger.error("\($0, privacy: .public)") }) async throws -> Bool {
+        guard jpeg != nil || comment != nil else { return false }
         do {
-            try await MP4CoverEmbed.embed(jpeg, into: partial)
-            return true
+            try await MP4CoverEmbed.embed(jpeg, comment: comment, into: partial)
+            return jpeg != nil
         } catch {
+            guard jpeg != nil else { throw error }
+            if let comment { try await MP4CoverEmbed.embed(nil, comment: comment, into: partial) }
             log("cover: the export keeps its cover beside it but not inside the MP4 (\(String(describing: error)))")
             return false
         }
@@ -402,12 +404,7 @@ public actor AVExporter: Exporter {
         if let cover = job.cover { coverJPEG = try await coverImage(graph, cover: cover) }
         try Task.checkCancellation()
         let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
-        if let credits = job.render.effects?.credits, !credits.isEmpty {
-            let item = AVMutableMetadataItem()
-            item.identifier = .iTunesMetadataUserComment
-            item.value = credits.joined(separator: "\n") as NSString
-            writer.metadata = [item]
-        }
+        let credits = job.render.effects?.credits ?? []
         writer.directoryForTemporaryFiles = workDirectory
         writer.shouldOptimizeForNetworkUse = true
         writer.movieTimeScale = 48000
@@ -482,8 +479,7 @@ public actor AVExporter: Exporter {
             await writer.finishWriting()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
-            // The cover art goes into the finished MP4 before anything hashes or publishes it (see `embedCover`).
-            if let coverJPEG { await Self.embedCover(coverJPEG, in: partial) }
+            try await Self.embedMetadata(coverJPEG, comment: credits.isEmpty ? nil : credits.joined(separator: "\n"), in: partial)
             try Task.checkCancellation()
             if let loudnessPlan { for wav in gainedAudio { try PCMFile.applyLoudness(loudnessPlan.decision, toFloatWAV: wav) } }
             if let srtPartial, let srtText {

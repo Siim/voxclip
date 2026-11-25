@@ -71,8 +71,7 @@ private actor EffectFixtureHTTP: MusicHTTP {
         render.effects = ClipEffectsRenderInput(effects: [sound, image], soundURLs: [sound.id: soundURL], imageURLs: [image.id: imageURL])
         let output = root.appendingPathComponent("with-effects.mp4")
         _ = try await AVExporter().export(.init(render: render, outputURL: output, loudness: .off)) { _ in }
-        let commentAtom = Data([0xA9] + Array("cmt".utf8))
-        let payload = try #require(try iTunesMetadataPayload(output, itemType: commentAtom))
+        let payload = try #require(try iTunesMetadataPayload(output, itemType: iTunesCommentAtom))
         let comment = try #require(String(data: payload, encoding: .utf8))
         #expect(comment.contains("Pop by Fixture creator (CC BY 4.0)"))
         let exported = AVURLAsset(url: output)

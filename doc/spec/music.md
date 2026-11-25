@@ -156,6 +156,11 @@ or "Music: “title” by creator (CC0) <url>" when there is none; generated tra
 Music."; own files need no line. The Export job's post text for a target appends its track's line once, on its own line
 (`MusicCredits.postText`); the user can edit around it.
 
+On Mac, licensed sound effects also carry their credit lines in the exported MP4's UTF-8 iTunes comment
+(`moov/udta/meta/ilst/©cmt`). VoxClip writes the comment with the same MP4 metadata writer as embedded cover art,
+before publishing the export. A cover can fall back to the separate JPEG; an export that needs a credit is not
+published without it.
+
 ## 6. Interface (Mac)
 
 Choose **Music** in the header beneath the viewer to browse or change the current clip’s soundtrack. This labelled button stays visible when the panel scrolls. The timeline’s M1 music button opens the same panel, including when the viewer is hidden. You can also use **View → Browse Music** or type “music” in command search (⌘K). Opening Music does not replace a track or create an Undo step.

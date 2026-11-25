@@ -90,7 +90,9 @@ struct MP4CoverEmbedTests {
         try await Self.writeMovie(to: source)
         try FileManager.default.copyItem(at: source, to: file)
         let jpeg = try Self.fixture("cover.jpg")
-        try await MP4CoverEmbed.embed(jpeg, into: file)
+        let credits = "Pop by Äärel (CC BY 4.0)\nClick by 創作者 (CC BY 4.0)"
+        try await MP4CoverEmbed.embed(jpeg, comment: "Stale credit", into: file)
+        try await MP4CoverEmbed.embed(nil, comment: credits, into: file)
         let input = try Data(contentsOf: source), output = try Data(contentsOf: file)
         let layout = try Self.layout(input)
         #expect(layout.map(\.type).firstIndex(of: "moov")! < layout.map(\.type).firstIndex(of: "mdat")!)
@@ -100,6 +102,8 @@ struct MP4CoverEmbedTests {
         #expect(zip(old, new).allSatisfy { a, b in zip(a.entries, b.entries).allSatisfy { Int64($1) == Int64($0) + growth } })
         #expect(try await Self.samples(file) == Self.samples(source))
         #expect(try await coverArt(file) == jpeg)
+        #expect(try iTunesMetadataPayload(file, itemType: iTunesCommentAtom) == Data(credits.utf8))
+        #expect(output.range(of: Data("Stale credit".utf8)) == nil)
         #expect(try await Self.artwork(file) == jpeg)
         try Self.probe(file, against: source, id: "writer")
     }
@@ -112,7 +116,7 @@ struct MP4CoverEmbedTests {
         let input = try Self.fixture("truncated.mp4")
         try input.write(to: file)
         let lines = Mutex<[String]>([])
-        let embedded = await AVExporter.embedCover(try Self.fixture("cover.jpg"), in: file) { line in lines.withLock { $0.append(line) } }
+        let embedded = try await AVExporter.embedMetadata(Self.fixture("cover.jpg"), comment: nil, in: file) { line in lines.withLock { $0.append(line) } }
         #expect(!embedded)
         #expect(try Data(contentsOf: file) == input)
         let logged = lines.withLock { $0 }
@@ -120,8 +124,26 @@ struct MP4CoverEmbedTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["video.mp4.partial"])
         let fine = directory.appendingPathComponent("fine.mp4")
         try Self.fixture("moov-first.mp4").write(to: fine)
-        #expect(await AVExporter.embedCover(try Self.fixture("cover.jpg"), in: fine) { line in lines.withLock { $0.append(line) } })
+        #expect(try await AVExporter.embedMetadata(Self.fixture("cover.jpg"), comment: nil, in: fine) { line in lines.withLock { $0.append(line) } })
         #expect(lines.withLock { $0.count } == 1)
+    }
+
+    @Test func aCreditIsRequiredEvenWhenCoverArtCannotBeEmbedded() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("video.mp4.partial")
+        try Self.fixture("moov-first.mp4").write(to: file)
+        let credit = "Pop by Fixture creator (CC BY 4.0)"
+        let coverEmbedded = try await AVExporter.embedMetadata(Data(), comment: credit, in: file) { _ in }
+        #expect(!coverEmbedded)
+        #expect(try iTunesMetadataPayload(file, itemType: iTunesCommentAtom) == Data(credit.utf8))
+
+        let truncated = try Self.fixture("truncated.mp4")
+        try truncated.write(to: file)
+        await #expect(throws: MP4CoverArt.Refusal.self) {
+            try await AVExporter.embedMetadata(nil, comment: credit, in: file)
+        }
+        #expect(try Data(contentsOf: file) == truncated)
     }
 
     // MARK: Reading
