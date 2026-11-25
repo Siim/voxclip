@@ -55,10 +55,10 @@ private func aiIntegrationRequest(count: Int = 100, preset: ClipPresetID = .best
     return ClipFinderRequest(transcript: transcript, preset: try AIClipTestData.preset(preset), snap: false)
 }
 
-/// A reply naming lines `start...end` (prompt version 2). The fixture's lines hold 15 words each: line n is words
+/// A reply naming lines `start...end`. The fixture's lines hold 15 words each: line n is words
 /// 15(n − 1) to 15n − 1.
 private func aiIntegrationReply(start: Int, end: Int, title: String = "clip") -> JSONValue {
-    .object(["clips": .array([.object(["title": .string(title), "reason": .string("reason"), "score": .number(8), "start_line": .number(Double(start)), "end_line": .number(Double(end))])])])
+    .object(["clips": .array([.object(["title": .string(title), "reason": .string("reason"), "score": .number(8), "parts": .array([.object(["start_line": .number(Double(start)), "end_line": .number(Double(end))])]), "not_in_take": .string("")])])])
 }
 
 @Test("Clip finder fills empty titles and hashes the full corrected input")
@@ -86,6 +86,26 @@ func aiFinderTitleAndProvenance() async throws {
     #expect(result.id.range(of: #"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"#, options: .regularExpression) != nil)
     #expect(clips.first?.startWordId == "w0" && clips.first?.endWordId == "w59")
     #expect(clips.first?.score == 8 && clips.first?.reason == "reason")
+}
+
+@Test("Custom Finder keeps the requested playback order and drops an invented quote")
+func aiFinderStory() async throws {
+    let (finder, _) = try aiIntegrationSetup()
+    let corpus = try FixtureLoader.decode(JSONValue.self, at: "fixtures/llm/finalize-clips.json")
+    let vector = try #require(corpus[ai: "cases"].aiArray.first { $0[ai: "id"].aiString == "issue-27-ordered-story" })
+    let input = vector[ai: "input"], expected = try #require(vector[ai: "expected"].aiArray.first)
+    var request = try aiIntegrationRequest(preset: .custom)
+    request.transcript.words = try JSONDecoder().decode([ClipWord].self, from: input[ai: "words"].aiEncoded()).map {
+        TimedWord(id: "w\($0.index)", text: $0.text, start: $0.start, end: $0.end)
+    }
+    request.transcript.durationSeconds = try #require(request.transcript.words.last?.end)
+    request.instruction = input[ai: "instructions"].aiString
+    let result = try await finder.find(request, connector: AIIntegrationConnector(replies: [input[ai: "reply"]]), model: "chosen")
+    let clip = try #require(result.clips.first)
+    #expect(clip.parts?.map(\.startWordId) == ["w29", "w9", "w0"])
+    #expect(clip.parts?.map(\.endWordId) == ["w38", "w28", "w8"])
+    #expect(clip.reason == expected[ai: "reason"].aiString)
+    #expect(clip.notInTake == expected[ai: "notInTake"].aiString)
 }
 
 @Test("Topics continuation includes every earlier valid candidate")

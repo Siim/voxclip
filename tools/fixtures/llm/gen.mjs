@@ -122,6 +122,25 @@ for (const [id, preset, candidates] of finalizeCases) {
 const sameStartInput = { words: { generator: 'U100' }, preset: 'custom', candidates: [candidate('lower score', 20, 25, 7), candidate('higher score', 20, 30, 8)], snap: false, cutWordIds: [], windowCount: 1 }
 equal(finalize(sameStartInput).map(clip => clip.title), ['higher score', 'lower score'], 'same-start clips retain selection order')
 add('finalize-clips', 'same-start-selection-order', 'finalize-clips', sameStartInput, finalize(sameStartInput), 'doc/spec/ai.md §11.7 step 8')
+const issue27Instruction = "clip together where I talk about the chain of moving from x11.social to VoxConvo to SuperScribe. The most important part is that SuperScribe set me free: I automated my job, that gave me free time, which in turn helps me develop SuperScribe, and now I'm a couple of days away from my first business clients."
+const issue27Lines = [
+  [272, 'My first client is probably my, uh, freelance client.'],
+  [488, 'I have automated my job with Superscribe.'],
+  [494, "Most of the day, I don't even have to look what's going on."],
+  [879, 'The x11.social led to VoxConvo, and VoxConvo led to SuperScribe.']
+]
+const issue27Words = issue27Lines.flatMap(([start, line]) => line.split(' ').map((text, offset) => ({ text, start: start + offset * 0.35, end: start + offset * 0.35 + 0.3 })))
+  .map((word, index) => ({ ...word, index, id: `w${index}` }))
+const issue27Missing = 'The exact phrase “set me free” and the timing “a couple of days away” are not spoken.'
+const issue27Title = 'From x11.social to SuperScribe'
+const issue27Reason = 'The chain leads to “I have automated my job with Superscribe”.'
+const issue27Reply = { clips: [{ title: issue27Title, reason: `${issue27Reason} “SuperScribe set me free”`, score: 9,
+  parts: [{ start_line: 4, end_line: 4 }, { start_line: 2, end_line: 3 }, { start_line: 1, end_line: 1 }], not_in_take: issue27Missing }] }
+const issue27Parts = [[29, 38], [9, 28], [0, 8]]
+add('finalize-clips', 'issue-27-ordered-story', 'finalize-clips', { words: issue27Words, preset: 'custom', instructions: issue27Instruction, reply: issue27Reply,
+  candidates: [{ title: issue27Title, reason: issue27Reply.clips[0].reason, score: 9, parts: issue27Parts.map(([start_word, end_word]) => ({ start_word, end_word })), not_in_take: issue27Missing }], snap: false },
+  [{ title: issue27Title, reason: issue27Reason, score: 9, startWord: 0, endWord: 38, parts: issue27Parts, notInTake: issue27Missing }], 'issue #27; doc/spec/ai.md §11.7',
+  'Three beats excerpted verbatim from the lead’s hand-cut take, in source order with approximate word timing; the replayed reply orders the chain, automation and first client as requested.')
 equal(datasets.get('finalize-clips').find(test => test.id === 'invalid-numbers').expected.map(clip => clip.title), ['valid'], 'non-finite values rejected individually')
 equal(datasets.get('finalize-clips').find(test => test.id === 'trim-utf16-surrogate').expected[0].title, 'T'.repeat(119), 'surrogate-safe title truncation')
 for (const preset of clipFinder.presets) {
@@ -273,6 +292,8 @@ for (const preset of clipFinder.presets) {
     }
   }
 }
+renderCase('clip-finder-requests', 'issue-27-custom-story-schema', 'clipFinder', f1Words, formattedF1.lines, 'custom', issue27Instruction)
+renderCase('clip-finder-requests', 'pricing-single-part-schema', 'clipFinder', f1Words, formattedF1.lines, 'best', 'clips about pricing')
 for (const strength of aiTighten.request.strengths) {
   for (const [variant, instructions] of [['plain', ''], ['instructions', '  Keep names and numbers.  ']]) {
     renderCase('ai-tighten-requests', `${strength.id}-${variant}-single`, 'aiTighten', f1Words, formattedF1.lines, strength.id, instructions)

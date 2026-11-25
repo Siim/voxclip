@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using System.Security.Cryptography;
 using System.Text;
@@ -106,11 +107,15 @@ public sealed class ClipFinder : IClipFinder
             var result = await runner.RunCoreAsync(request, connector, input.Model, ct, reportErrors: false).ConfigureAwait(false);
             model = result.Model;
             if (result.UsedFallback) fallbackModel = result.Model;
-            // Prompt version 2 replies name lines; each maps to its lines' first and last words (AI §11.6).
             var current = result.Object["clips"]!.AsArray().OfType<JsonObject>().Select(clip =>
             {
-                var range = ClipPrompts.WordRange(LlmOutput.Number(clip["start_line"]!), LlmOutput.Number(clip["end_line"]!), lines);
-                return new RawClip(clip["title"]!.GetValue<string>(), clip["reason"]!.GetValue<string>(), LlmOutput.Number(clip["score"]!), range.Start, range.End);
+                var parts = clip["parts"]!.AsArray().OfType<JsonObject>().Select(part =>
+                {
+                    var range = ClipPrompts.WordRange(LlmOutput.Number(part["start_line"]!), LlmOutput.Number(part["end_line"]!), lines);
+                    return new RawClipPart(range.Start, range.End);
+                }).ToArray();
+                var missing = clip["not_in_take"]!.GetValue<string>();
+                return new RawClip(clip["title"]!.GetValue<string>(), clip["reason"]!.GetValue<string>(), LlmOutput.Number(clip["score"]!), Parts: parts, NotInTake: missing.Length == 0 ? null : missing);
             }).ToArray();
             candidates.AddRange(current);
             foreach (var candidate in current)
@@ -120,9 +125,10 @@ public sealed class ClipFinder : IClipFinder
             }
         }
         DryRunRequests = dryRequests;
-        var final = ClipValidation.FinalizeClips(new(candidates, input.Words, prompts.Rules(input.Preset), lines.Select(line => line.Line).ToArray(), input.CutWordIds, windows.Count, input.Snap), limits);
-        var clips = final.Clips.Select(clip => new AiClip(clip.Title.Length > 0 ? clip.Title : FallbackTitle(entries.Skip(clip.Start).Take(clip.End - clip.Start + 1), limits.TitleMaxLength), clip.Reason, clip.Score,
-            input.Words[clip.Start].Id, input.Words[clip.End].Id)).ToArray();
+        var final = ClipValidation.FinalizeClips(new(candidates, input.Words, prompts.Rules(input.Preset), lines.Select(line => line.Line).ToArray(), input.CutWordIds, windows.Count, input.Snap, input.Corrections), limits);
+        var clips = final.Clips.Select(clip => new AiClip(clip.Title.Length > 0 ? clip.Title : FallbackTitle(clip.PlayParts.SelectMany(part => entries.Skip(part.Start).Take(part.Length)), limits.TitleMaxLength), clip.Reason, clip.Score,
+            input.Words[clip.Start].Id, input.Words[clip.End].Id,
+            clip.Parts?.Select(part => new ClipWordRange(input.Words[part.Start].Id, input.Words[part.End].Id)).ToArray(), clip.NotInTake)).ToArray();
         ct.ThrowIfCancellationRequested();
         progress?.Report(new("Finding clips…", 1, windows.Count, windows.Count));
         var answeringModel = fallbackModel ?? model;

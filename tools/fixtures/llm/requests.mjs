@@ -42,9 +42,11 @@ export function canonicalRequest({ feature, words, lines, choice, instructions =
     if (window && window.count > 1) parts.push(interpolate(prompt.request.windowLine, { windowStart: formatTime(window.start), windowEnd: formatTime(window.end) }))
     instruction = parts.join('\n')
   }
+  const schema = structuredClone(prompt.output.schema)
+  if (feature === 'clipFinder' && choice === 'custom') schema.properties.clips.items.properties.parts.maxItems = prompt.output.customMaxParts
   return {
     feature, system: prompt.system, cachedBlock: feature === 'clipFinder' ? sentenceTranscript(words, lines, prompt) : cachedTranscript(lines, prompt), instruction,
-    schemaName: prompt.output.name, schema: prompt.output.schema,
+    schemaName: prompt.output.name, schema,
     maxOutputTokens: prompt.generation.maxOutputTokens, effort: prompt.generation.effort, language
   }
 }
@@ -102,7 +104,8 @@ export function appleSchema(schema, name, clipBudget = null, propertyName = null
       name: property, schema: appleSchema(child, `${name}_${property}`, clipBudget, property), isOptional: false
     }))
   }
-  if (schema.type === 'array') return { arrayOf: appleSchema(schema.items, `${name}_item`, clipBudget), maximumElements: propertyName === 'clips' ? clipBudget : null }
+  if (schema.type === 'array') return { arrayOf: appleSchema(schema.items, `${name}_item`, clipBudget), maximumElements: (propertyName === 'clips' ? clipBudget : null) ?? schema.maxItems ?? null,
+    ...(schema.minItems !== undefined ? { minimumElements: schema.minItems } : {}) }
   if (schema.enum) return { name, anyOf: schema.enum }
   return { type: { string: 'String', integer: 'Int', number: 'Double', boolean: 'Bool' }[schema.type] }
 }

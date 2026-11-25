@@ -174,7 +174,7 @@ private func findReply(_ transcript: Transcript) throws -> String {
         let first = words.firstIndex { $0.start >= Double(index) * 330 + 30 } ?? 0
         let last = words.lastIndex { $0.end <= words[first].start + 35 } ?? first
         let lines = ClipRequestBuilder.lineRange(of: first...last, words: words)
-        return ["title": "Moment \(index + 1)", "reason": "Idea \(index + 1).", "score": 9 - index, "start_line": lines.lowerBound, "end_line": lines.upperBound]
+        return ["title": "Moment \(index + 1)", "reason": "Idea \(index + 1).", "score": 9 - index, "parts": [["start_line": lines.lowerBound, "end_line": lines.upperBound]], "not_in_take": ""]
     }
     return String(decoding: try JSONSerialization.data(withJSONObject: ["clips": clips]), as: UTF8.self)
 }

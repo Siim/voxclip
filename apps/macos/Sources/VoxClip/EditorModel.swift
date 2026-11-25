@@ -1949,7 +1949,13 @@ extension EditorModel {
                     guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
                     var next = project
                     next.ai.results.append(result)
-                    let ranges = result.clips.enumerated().map { position, clip in ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId, title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position) }
+                    let ranges = result.clips.enumerated().map { position, clip in
+                        let parts = clip.parts?.enumerated().map { index, part in
+                            ClipPart(id: "part-\(index + 1)", startWordId: part.startWordId, endWordId: part.endWordId)
+                        }
+                        return ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId,
+                                         title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position, parts: parts)
+                    }
                     // One undo step: the result arrives as suggestions, not kept clips.
                     guard capabilities.edit, let state = editState() else { return }
                     if history?.state != state { history = EditHistory(state: state) }
@@ -2000,14 +2006,19 @@ extension EditorModel {
             return nearest
         }
         let candidates: [ClipCandidate] = result.clips.compactMap { clip in
-            guard let first = draftByID[clip.startWordId], let last = draftByID[clip.endWordId],
-                  let start = boundary(first.start, at: \.start), let end = boundary(last.end, at: \.end), start <= end else { return nil }
-            let title = confirmed.words[start...end].lazy.filter { $0.kind == .word }.prefix(6).map(\.text).joined(separator: " ")
-            return ClipCandidate(title: title, reason: "Suggested moment", score: Double(clip.score), startWord: Double(start), endWord: Double(end))
+            let parts = (clip.parts ?? [.init(startWordId: clip.startWordId, endWordId: clip.endWordId)]).compactMap { part -> ClipCandidatePart? in
+                guard let first = draftByID[part.startWordId], let last = draftByID[part.endWordId],
+                      let start = boundary(first.start, at: \.start), let end = boundary(last.end, at: \.end), start <= end else { return nil }
+                return .init(startWord: Double(start), endWord: Double(end))
+            }
+            guard let first = parts.first else { return nil }
+            let title = confirmed.words[Int(first.startWord)...Int(first.endWord)].lazy.filter { $0.kind == .word }.prefix(6).map(\.text).joined(separator: " ")
+            return ClipCandidate(title: title, reason: "Suggested moment", score: Double(clip.score), parts: parts, notInTake: clip.notInTake)
         }
         let validated = try finalizeClips(candidates, words: confirmed.words, preset: preset, lines: [], options: FinalizeClipsOptions(snap: false))
         updated.clips = validated.map { ProjectAIClip(title: $0.title, reason: $0.reason, score: $0.score,
-                                                       startWordId: confirmed.words[$0.startWord].id, endWordId: confirmed.words[$0.endWord].id) }
+                                                       startWordId: confirmed.words[$0.startWord].id, endWordId: confirmed.words[$0.endWord].id,
+                                                       parts: $0.parts?.map { .init(startWordId: confirmed.words[$0.lowerBound].id, endWordId: confirmed.words[$0.upperBound].id) }, notInTake: $0.notInTake) }
         return updated
     }
 }

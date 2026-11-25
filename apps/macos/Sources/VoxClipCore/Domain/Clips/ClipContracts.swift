@@ -128,6 +128,20 @@ public struct ClipWord: Codable, Sendable, Equatable {
 }
 
 /// Lenient numeric response before finalization; AI §2.3 and §11.7.
+public struct ClipCandidatePart: Codable, Sendable, Equatable {
+    public let startWord: Double
+    public let endWord: Double
+
+    public init(startWord: Double, endWord: Double) {
+        self.startWord = startWord
+        self.endWord = endWord
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case startWord = "start_word", endWord = "end_word"
+    }
+}
+
 public struct ClipCandidate: Codable, Sendable, Equatable {
     /// title; Lenient numeric response before finalization; AI §2.3 and §11.7.
     public var title: String
@@ -139,14 +153,18 @@ public struct ClipCandidate: Codable, Sendable, Equatable {
     public var startWord: Double
     /// endWord; Lenient numeric response before finalization; AI §2.3 and §11.7.
     public var endWord: Double
+    public var parts: [ClipCandidatePart]?
+    public var notInTake: String?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(title: String, reason: String, score: Double, startWord: Double, endWord: Double) {
+    public init(title: String, reason: String, score: Double, startWord: Double = -1, endWord: Double = -1, parts: [ClipCandidatePart]? = nil, notInTake: String? = nil) {
         self.title = title
         self.reason = reason
         self.score = score
         self.startWord = startWord
         self.endWord = endWord
+        self.parts = parts
+        self.notInTake = notInTake
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -155,6 +173,7 @@ public struct ClipCandidate: Codable, Sendable, Equatable {
         case score
         case startWord = "start_word"
         case endWord = "end_word"
+        case parts, notInTake = "not_in_take"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -162,8 +181,10 @@ public struct ClipCandidate: Codable, Sendable, Equatable {
         self.title = try values.decode(String.self, forKey: .title)
         self.reason = try values.decode(String.self, forKey: .reason)
         self.score = try values.decode(Double.self, forKey: .score)
-        self.startWord = try values.decode(Double.self, forKey: .startWord)
-        self.endWord = try values.decode(Double.self, forKey: .endWord)
+        self.startWord = try values.decodeIfPresent(Double.self, forKey: .startWord) ?? -1
+        self.endWord = try values.decodeIfPresent(Double.self, forKey: .endWord) ?? -1
+        self.parts = try values.decodeIfPresent([ClipCandidatePart].self, forKey: .parts)
+        self.notInTake = try values.decodeIfPresent(String.self, forKey: .notInTake)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -173,6 +194,8 @@ public struct ClipCandidate: Codable, Sendable, Equatable {
         try values.encode(self.score, forKey: .score)
         try values.encode(self.startWord, forKey: .startWord)
         try values.encode(self.endWord, forKey: .endWord)
+        try values.encodeIfPresent(parts, forKey: .parts)
+        try values.encodeIfPresent(notInTake, forKey: .notInTake)
     }
 
 }
@@ -189,14 +212,19 @@ public struct ClipSuggestion: Codable, Sendable, Equatable {
     public var startWord: Int
     /// endWord; Validated inclusive transcript index range; AI §11.7–11.8.
     public var endWord: Int
+    public var parts: [ClosedRange<Int>]?
+    public var notInTake: String?
+    public var playParts: [ClosedRange<Int>] { parts ?? [startWord...endWord] }
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(title: String, reason: String, score: Int, startWord: Int, endWord: Int) {
+    public init(title: String, reason: String, score: Int, startWord: Int, endWord: Int, parts: [ClosedRange<Int>]? = nil, notInTake: String? = nil) {
         self.title = title
         self.reason = reason
         self.score = score
         self.startWord = startWord
         self.endWord = endWord
+        self.parts = parts
+        self.notInTake = notInTake
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -205,6 +233,7 @@ public struct ClipSuggestion: Codable, Sendable, Equatable {
         case score
         case startWord
         case endWord
+        case parts, notInTake
     }
 
     public init(from decoder: any Decoder) throws {
@@ -214,6 +243,8 @@ public struct ClipSuggestion: Codable, Sendable, Equatable {
         self.score = try values.decode(Int.self, forKey: .score)
         self.startWord = try values.decode(Int.self, forKey: .startWord)
         self.endWord = try values.decode(Int.self, forKey: .endWord)
+        self.parts = try values.decodeIfPresent([ClosedRange<Int>].self, forKey: .parts)
+        self.notInTake = try values.decodeIfPresent(String.self, forKey: .notInTake)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -223,6 +254,8 @@ public struct ClipSuggestion: Codable, Sendable, Equatable {
         try values.encode(self.score, forKey: .score)
         try values.encode(self.startWord, forKey: .startWord)
         try values.encode(self.endWord, forKey: .endWord)
+        try values.encodeIfPresent(parts, forKey: .parts)
+        try values.encodeIfPresent(notInTake, forKey: .notInTake)
     }
 
 }
@@ -349,26 +382,39 @@ public func formatTranscript(_ words: [ClipWord]) throws -> FormattedTranscript 
     }
     return FormattedTranscript(lines: lines, rendered: lines.flatMap { [$0.text] + ($0.pauseAfter.map { [$0] } ?? []) }.joined(separator: "\n"))
 }
-public func finalizeClips(_ candidates: [ClipCandidate], words: [TimedWord], preset: ClipPreset, lines: [TranscriptLine], options: FinalizeClipsOptions = FinalizeClipsOptions()) throws -> [ClipSuggestion] {
+public func finalizeClips(_ candidates: [ClipCandidate], words: [TimedWord], preset: ClipPreset, lines: [TranscriptLine], options: FinalizeClipsOptions = FinalizeClipsOptions(), corrections: [String: String] = [:]) throws -> [ClipSuggestion] {
     guard !words.isEmpty, preset.maxClips > 0 else { return [] }
     let limits = options.limits
     var ranked: [(arrival: Int, clip: ClipSuggestion)] = []
     for (arrival, candidate) in candidates.enumerated() {
-        guard candidate.startWord.isFinite, candidate.endWord.isFinite, candidate.score.isFinite,
-              candidate.startWord == floor(candidate.startWord), candidate.endWord == floor(candidate.endWord),
-              candidate.startWord >= 0, candidate.endWord >= candidate.startWord, candidate.endWord < Double(words.count) else { continue }
-        var start = Int(candidate.startWord)
-        var end = Int(candidate.endWord)
-        if options.snap {
-            let (snappedStart, snappedEnd) = clipsSnapPair(start: start, end: end, lines: lines, radius: limits[ai: "snapRadiusWords"].aiInt ?? 3)
-            if snappedStart <= snappedEnd, snappedStart >= 0, snappedEnd < words.count { start = snappedStart; end = snappedEnd }
+        let proposed = candidate.parts ?? [.init(startWord: candidate.startWord, endWord: candidate.endWord)]
+        guard candidate.score.isFinite, proposed.count <= (preset.id == .custom ? 8 : 1) else { continue }
+        let minimum = max(limits[ai: "minLengthFloorSeconds"].aiDouble ?? 2, preset.minSeconds * (limits[ai: "minLengthFactor"].aiDouble ?? 0.6))
+        let maximum = preset.maxSeconds * (limits[ai: "maxLengthFactor"].aiDouble ?? 1.4)
+        var parts: [ClosedRange<Int>] = []
+        var duration = 0.0
+        for part in proposed {
+            guard part.startWord.isFinite, part.endWord.isFinite,
+                  part.startWord == floor(part.startWord), part.endWord == floor(part.endWord),
+                  part.startWord >= 0, part.endWord >= part.startWord, part.endWord < Double(words.count) else { continue }
+            var start = Int(part.startWord)
+            var end = Int(part.endWord)
+            if options.snap {
+                let (snappedStart, snappedEnd) = clipsSnapPair(start: start, end: end, lines: lines, radius: limits[ai: "snapRadiusWords"].aiInt ?? 3)
+                if snappedStart <= snappedEnd, snappedStart >= 0, snappedEnd < words.count { start = snappedStart; end = snappedEnd }
+            }
+            let range = start...end
+            let length = words[end].end - words[start].start
+            guard length >= minimum, length <= maximum, !parts.contains(where: { $0.overlaps(range) }) else { continue }
+            let cutCount = range.filter { options.cutWordIds.contains(words[$0].id) }.count
+            guard Double(cutCount) / Double(range.count) <= (limits[ai: "mostlyCutFraction"].aiDouble ?? 0.5) else { continue }
+            parts.append(range)
+            duration += length
         }
-        let length = words[end].end - words[start].start
-        guard length >= max(limits[ai: "minLengthFloorSeconds"].aiDouble ?? 2, preset.minSeconds * (limits[ai: "minLengthFactor"].aiDouble ?? 0.6)), length <= preset.maxSeconds * (limits[ai: "maxLengthFactor"].aiDouble ?? 1.4) else { continue }
-        let cutCount = (start...end).filter { options.cutWordIds.contains(words[$0].id) }.count
-        guard Double(cutCount) / Double(end - start + 1) <= (limits[ai: "mostlyCutFraction"].aiDouble ?? 0.5) else { continue }
+        guard let start = parts.map(\.lowerBound).min(), let end = parts.map(\.upperBound).max(), duration <= maximum else { continue }
+        let reason = checkedClipReason(candidate.reason, parts: parts, words: words, cut: options.cutWordIds, corrections: corrections)
         let rounded = EditingPrimitives.jsRound(candidate.score)
-        ranked.append((arrival, ClipSuggestion(title: AIText.prefix(AIText.trim(candidate.title), utf16: limits[ai: "titleMaxLength"].aiInt ?? 120), reason: AIText.prefix(AIText.trim(candidate.reason), utf16: limits[ai: "reasonMaxLength"].aiInt ?? 300), score: Int(min(limits[ai: "scoreMax"].aiDouble ?? 10, max(limits[ai: "scoreMin"].aiDouble ?? 1, rounded))), startWord: start, endWord: end)))
+        ranked.append((arrival, ClipSuggestion(title: AIText.prefix(AIText.trim(candidate.title), utf16: limits[ai: "titleMaxLength"].aiInt ?? 120), reason: AIText.prefix(AIText.trim(reason), utf16: limits[ai: "reasonMaxLength"].aiInt ?? 300), score: Int(min(limits[ai: "scoreMax"].aiDouble ?? 10, max(limits[ai: "scoreMin"].aiDouble ?? 1, rounded))), startWord: start, endWord: end, parts: parts.count > 1 ? parts : nil, notInTake: candidate.notInTake)))
     }
     ranked.sort { $0.clip.score == $1.clip.score ? $0.arrival < $1.arrival : $0.clip.score > $1.clip.score }
     var chosen: [ClipSuggestion] = []
@@ -376,15 +422,35 @@ public func finalizeClips(_ candidates: [ClipCandidate], words: [TimedWord], pre
         if chosen.count >= preset.maxClips { break }
         let clip = entry.clip
         let skip = chosen.contains { other in
-            if clip.startWord == other.startWord && clip.endWord == other.endWord { return true }
-            if preset.noOverlap && clip.startWord <= other.endWord && other.startWord <= clip.endWord { return true }
-            let intersection = max(0, min(clip.endWord, other.endWord) - max(clip.startWord, other.startWord) + 1)
-            let union = max(clip.endWord, other.endWord) - min(clip.startWord, other.startWord) + 1
+            let left = clip.playParts, right = other.playParts
+            if left == right { return true }
+            let intersection = left.reduce(0) { count, part in
+                right.reduce(count) { $0 + max(0, min(part.upperBound, $1.upperBound) - max(part.lowerBound, $1.lowerBound) + 1) }
+            }
+            if preset.noOverlap && intersection > 0 { return true }
+            let union = left.reduce(0) { $0 + $1.count } + right.reduce(0) { $0 + $1.count } - intersection
             return options.windowCount > 1 && Double(intersection) / Double(union) >= (limits[ai: "nearDuplicateOverlap"].aiDouble ?? 0.6)
         }
         if !skip { chosen.append(clip) }
     }
     return chosen.enumerated().sorted { $0.element.startWord == $1.element.startWord ? $0.offset < $1.offset : $0.element.startWord < $1.element.startWord }.map(\.element)
+}
+
+private func checkedClipReason(_ reason: String, parts: [ClosedRange<Int>], words: [TimedWord], cut: Set<String>, corrections: [String: String]) -> String {
+    let quotes = #/“([^”]*)”|"([^"]*)"/#
+    guard reason.firstMatch(of: quotes) != nil else { return reason }
+    func normalized(_ text: String) -> String {
+        text.lowercased().matches(of: #/[\p{L}\p{M}\p{N}]+/#).map { String($0.output) }.joined(separator: " ")
+    }
+    let spoken = parts.map { part in
+        " " + normalized(words[part].filter { !cut.contains($0.id) && $0.kind == .word }.map { corrections[$0.id] ?? $0.text }.joined(separator: " ")) + " "
+    }
+    var checked = reason
+    for match in reason.matches(of: quotes).reversed() {
+        let quote = normalized(String(match.output.1 ?? match.output.2 ?? ""))
+        if quote.isEmpty || !spoken.contains(where: { $0.contains(" \(quote) ") }) { checked.removeSubrange(match.range) }
+    }
+    return checked
 }
 public enum CanonicalResponseParser {
     public static func parse(_ completion: RawCompletion, schema: JSONValue) throws -> JSONValue { try validate(completion, schema: schema).object }

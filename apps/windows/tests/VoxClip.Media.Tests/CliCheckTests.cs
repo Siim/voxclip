@@ -189,7 +189,7 @@ public sealed class CliCheckTests : IDisposable
             return Task.FromResult(new RawCompletion(reply, null, model, new StopKind.Complete(), null, null));
         }
         private static JsonObject Clip(string title, int score, int first, int last) =>
-            new() { ["title"] = title, ["reason"] = title + " lands.", ["score"] = score, ["start_line"] = first, ["end_line"] = last };
+            new() { ["title"] = title, ["reason"] = title + " lands.", ["score"] = score, ["parts"] = new JsonArray(new JsonObject { ["start_line"] = first, ["end_line"] = last }), ["not_in_take"] = "" };
     }
 
     private async Task<JsonObject> AutopilotAsync(MediaInfo media, string project, string outDir, params string[] extra)

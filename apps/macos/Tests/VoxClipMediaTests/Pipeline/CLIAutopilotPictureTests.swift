@@ -20,7 +20,7 @@ private actor PictureStub: LLMConnector {
     func contextTokens(model: String) -> Int? { 200_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         if request.feature == .clipFinder {
-            let clips: [[String: Any]] = [["title": "Ship day", "reason": "A clear line.", "score": 8, "start_line": lines.lowerBound, "end_line": lines.upperBound]]
+            let clips: [[String: Any]] = [["title": "Ship day", "reason": "A clear line.", "score": 8, "parts": [["start_line": lines.lowerBound, "end_line": lines.upperBound]], "not_in_take": ""]]
             return RawCompletion(text: String(decoding: try JSONSerialization.data(withJSONObject: ["clips": clips]), as: UTF8.self), model: model, stop: .complete)
         }
         guard let span = request.instruction.firstMatch(of: #/Plan the clip from word (\d+) to word (\d+)/#), let start = Int(span.1), let end = Int(span.2) else {

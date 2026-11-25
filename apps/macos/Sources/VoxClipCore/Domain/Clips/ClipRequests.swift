@@ -11,6 +11,18 @@ public struct ClipPromptDocument: Sendable, Equatable {
         document = value
         presets = try JSONDecoder().decode([ClipPreset].self, from: value[ai: "presets"].aiEncoded())
     }
+
+    func schema(for preset: ClipPresetID) -> JSONValue {
+        let output = document[ai: "output"]
+        let schema = output[ai: "schema"]
+        guard preset == .custom, let maximum = output[ai: "customMaxParts"].aiInt else { return schema }
+        func withMaximum(_ value: JSONValue, path: ArraySlice<String>) -> JSONValue {
+            guard let key = path.first, var object = value.aiObject else { return .number(Double(maximum)) }
+            object[key] = withMaximum(object[key] ?? .null, path: path.dropFirst())
+            return .object(object)
+        }
+        return withMaximum(schema, path: ["properties", "clips", "items", "properties", "parts", "maxItems"][...])
+    }
 }
 
 public struct ClipWindow: Sendable, Equatable {
@@ -50,7 +62,7 @@ public struct ClipRequestBuilder: Sendable {
         let document = prompt.document
         let outputReserve = aiOutputReserve(generation: document[ai: "generation"][ai: "maxOutputTokens"].aiInt ?? 16000, cap: maxOutputTokensCap, context: contextTokens, localServer: localServer)
         let overheadInstruction = renderInstruction(words: words, lines: AIWindowPacking.longestTimeLines(formatted.lines), preset: preset, instruction: instruction, windowCount: 2, maxClips: 99, lastTopicEnd: words.last?.index)
-        let overhead = tokenPolicy.estimate(document[ai: "system"].aiString ?? "") + tokenPolicy.estimate(overheadInstruction) + tokenPolicy.estimate(try document[ai: "output"][ai: "schema"].aiCompact()) + 64
+        let overhead = tokenPolicy.estimate(document[ai: "system"].aiString ?? "") + tokenPolicy.estimate(overheadInstruction) + tokenPolicy.estimate(try prompt.schema(for: preset.id).aiCompact()) + 64
         let budget = Int(floor(Double(contextTokens - overhead - outputReserve) * tokenPolicy.safetyFactor))
         guard budget >= 600 else { throw LLMError.contextTooLong }
         let maxWords = document[ai: "limits"][ai: "maxWordsPerRequest"].aiInt ?? 8000
@@ -67,7 +79,7 @@ public struct ClipRequestBuilder: Sendable {
         let block = sentenceBlock(words: words, lines: window.lines)
         return LLMRequest(feature: .clipFinder, system: document[ai: "system"].aiString ?? "", cachedBlock: block,
                           instruction: renderInstruction(words: words, lines: window.lines, preset: preset, instruction: instruction, windowCount: windowCount, maxClips: window.maxClips, lastTopicEnd: windowIndex > 0 ? lastTopicEnd : nil),
-                          schemaName: document[ai: "output"][ai: "name"].aiString ?? "clips", schema: document[ai: "output"][ai: "schema"],
+                          schemaName: document[ai: "output"][ai: "name"].aiString ?? "clips", schema: prompt.schema(for: preset.id),
                           maxOutputTokens: window.maxOutputTokens ?? document[ai: "generation"][ai: "maxOutputTokens"].aiInt ?? 16000,
                           effort: Effort(rawValue: document[ai: "generation"][ai: "effort"].aiString ?? Effort.decision.rawValue), timeout: timeout, language: language,
                           tag: "clips/\(preset.id.rawValue)\(windowCount > 1 ? " part \(windowIndex + 1) of \(windowCount)" : "")")

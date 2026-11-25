@@ -397,7 +397,7 @@ import VoxClipCore
         guard let resultID = clip.aiResultId, let index = clip.aiClipIndex,
               let result = editor.project.ai.results.first(where: { $0.id == resultID }), index < result.clips.count else { return "" }
         let found = result.clips[index]
-        return "\(editor.suggestionScore(clip) ?? found.score)/10 · \(found.reason)"
+        return "\(editor.suggestionScore(clip) ?? found.score)/10 · \(found.reason)" + (found.notInTake.map { "\nNot in this take: \($0)" } ?? "")
     }
 
 }

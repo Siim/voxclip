@@ -15,7 +15,15 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
     internal ClipPresetRules Rules(ClipPreset preset)
     {
         var settings = Preset(preset);
-        return new(settings["minSeconds"]!.GetValue<double>(), settings["maxSeconds"]!.GetValue<double>(), settings["maxClips"]!.GetValue<int>(), settings["noOverlap"]!.GetValue<bool>());
+        return new(settings["minSeconds"]!.GetValue<double>(), settings["maxSeconds"]!.GetValue<double>(), settings["maxClips"]!.GetValue<int>(), settings["noOverlap"]!.GetValue<bool>(), MaxParts(preset));
+    }
+    private int MaxParts(ClipPreset preset) => preset == ClipPreset.Custom ? Clips["output"]!["customMaxParts"]!.GetValue<int>() : 1;
+
+    private JsonObject Schema(ClipPreset preset)
+    {
+        var schema = Clips["output"]!["schema"]!.DeepClone().AsObject();
+        schema["properties"]!["clips"]!["items"]!["properties"]!["parts"]!["maxItems"] = MaxParts(preset);
+        return schema;
     }
     internal string Instructions(string? text) => ClipText.Limit(ClipText.Trim(text ?? ""), Clips["request"]!["maxInstructionsLength"]!.GetValue<int>());
     internal ClipValidationLimits ValidationLimits
@@ -106,7 +114,7 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
         var preset = tighten ? ClipPreset.Best : Enum.Parse<ClipPreset>(choice, true);
         var instruction = tighten ? TightenInstruction(choice, instructions, longest, 2) :
             Instruction(preset, instructions, duration, longest, 2, 99, preset == ClipPreset.Topics ? lines[^1].Line.LastIndex : null, lines);
-        var overhead = catalog.Estimate(prompt["system"]!.GetValue<string>()) + catalog.Estimate(instruction) + catalog.Estimate(prompt["output"]!["schema"]!.ToJsonString()) + 64;
+        var overhead = catalog.Estimate(prompt["system"]!.GetValue<string>()) + catalog.Estimate(instruction) + catalog.Estimate((tighten ? prompt["output"]!["schema"]! : Schema(preset)).ToJsonString()) + 64;
         var reserve = Math.Min(prompt["generation"]!["maxOutputTokens"]!.GetValue<int>(), outputCap);
         if (localServer) reserve = Math.Min(reserve, Math.Max(1024, context / 4));
         var budget = (int)Math.Floor((context - overhead - reserve) * catalog.Data["policy"]!["tokenEstimate"]!["contextSafetyFactor"]!.GetValue<double>());
@@ -140,7 +148,7 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
     {
         var timeout = catalog.Timeout(input.Connector switch { ConnectorId.ClaudeCode or ConnectorId.Codex => "cli", ConnectorId.Ollama or ConnectorId.LmStudio => "localServer", ConnectorId.AppleFoundation => "appleFoundation", _ => "cloud" });
         var entries = ClipText.Entries(input.Words, input.Corrections, Clips["limits"]!["maxWordTextLength"]!.GetValue<int>());
-        return new(LlmFeature.ClipFinder, Clips["system"]!.GetValue<string>(), SentenceBlock(entries, ClipText.Lines(entries), lines), instruction, Clips["output"]!["name"]!.GetValue<string>(), Clips["output"]!["schema"]!.DeepClone().AsObject(),
+        return new(LlmFeature.ClipFinder, Clips["system"]!.GetValue<string>(), SentenceBlock(entries, ClipText.Lines(entries), lines), instruction, Clips["output"]!["name"]!.GetValue<string>(), Schema(input.Preset),
             outputReserve ?? Clips["generation"]!["maxOutputTokens"]!.GetValue<int>(), GenerationEffort(Clips), timeout, input.Language, $"clips/{input.Preset.ToString().ToLowerInvariant()} part {part} of {count}");
     }
 }

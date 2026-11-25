@@ -872,7 +872,8 @@ public sealed partial class EditorViewModel : ObservableObject
                 number++;
                 Clips.Add(new(clip, number, clip.Title ?? suggestion?.Title ?? $"Clip {number}",
                     string.Join(" ", Words.Skip(range.First).Take(range.Last - range.First + 1).Select(DisplayText)),
-                    suggestion?.Reason ?? "", suggestion?.Score, EditedLength(state with { ActiveClipId = clip.Id })));
+                    (suggestion?.Reason ?? "") + (suggestion?.NotInTake is { Length: > 0 } missing ? "\nNot in this take: " + missing : ""),
+                    suggestion?.Score, EditedLength(state with { ActiveClipId = clip.Id })));
             }
             UpdateSummaryLine(source.DurationSeconds);
         }

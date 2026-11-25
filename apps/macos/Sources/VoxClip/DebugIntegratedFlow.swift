@@ -13,7 +13,7 @@ actor RegressionClipConnector: LLMConnector {
     func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 128000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
-        RawCompletion(text: "{\"clips\":[{\"title\":\"A clear point\",\"reason\":\"Self-contained fixture section\",\"score\":8,\"start_line\":\(lines.lowerBound),\"end_line\":\(lines.upperBound)}]}",
+        RawCompletion(text: "{\"clips\":[{\"title\":\"A clear point\",\"reason\":\"Self-contained fixture section\",\"score\":8,\"parts\":[{\"start_line\":\(lines.lowerBound),\"end_line\":\(lines.upperBound)}],\"not_in_take\":\"\"}]}",
             model: model, stop: .complete)
     }
 }

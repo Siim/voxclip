@@ -51,7 +51,7 @@ extension DebugRewriteSmoke {
             while last + 1 < words.count, !words[last].text.hasSuffix("."), words[last + 1].end - words[first].start <= 14 { last += 1 }
             guard words[last].end - words[first].start >= 5 else { break }
             let lines = ClipRequestBuilder.lineRange(of: first...last, words: words)
-            let clip: [String: Any] = ["title": "Moment \(clips.count + 1)", "start_line": lines.lowerBound, "end_line": lines.upperBound, "reason": "Smoke",
+            let clip: [String: Any] = ["title": "Moment \(clips.count + 1)", "parts": [["start_line": lines.lowerBound, "end_line": lines.upperBound]], "not_in_take": "", "reason": "Smoke",
                                        "score": scores[clips.count]]
             clips.append(clip)
             first = last + 1

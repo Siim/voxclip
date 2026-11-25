@@ -1,23 +1,31 @@
 import Foundation
 
-/// One reply item of prompt version 2 (ai.md §11.6): the clip as an inclusive 1-based line range, numbers as received.
 struct ClipLineCandidate: Decodable {
+    struct Part: Decodable {
+        let startLine: Double
+        let endLine: Double
+
+        private enum CodingKeys: String, CodingKey {
+            case startLine = "start_line", endLine = "end_line"
+        }
+    }
+
     let title: String
     let reason: String
     let score: Double
-    let startLine: Double
-    let endLine: Double
+    let parts: [Part]
+    let notInTake: String
 
     private enum CodingKeys: String, CodingKey {
-        case title, reason, score
-        case startLine = "start_line"
-        case endLine = "end_line"
+        case title, reason, score, parts, notInTake = "not_in_take"
     }
 
     /// The finalizer's candidate: the lines' first and last words (`ClipRequestBuilder.wordRange`).
     func candidate(lines: [TranscriptLine]) -> ClipCandidate {
-        let range = ClipRequestBuilder.wordRange(startLine: startLine, endLine: endLine, lines: lines)
-        return ClipCandidate(title: title, reason: reason, score: score, startWord: range.start, endWord: range.end)
+        ClipCandidate(title: title, reason: reason, score: score, parts: parts.map { part in
+            let range = ClipRequestBuilder.wordRange(startLine: part.startLine, endLine: part.endLine, lines: lines)
+            return .init(startWord: range.start, endWord: range.end)
+        }, notInTake: notInTake.isEmpty ? nil : notInTake)
     }
 }
 
@@ -110,10 +118,10 @@ extension ClipFinder {
             index += 1
         }
         try Task.checkCancellation()
-        var suggestions = try finalizeClips(candidates, words: request.transcript.words, preset: request.preset, lines: lines.lines, options: FinalizeClipsOptions(snap: request.snap, cutWordIds: request.cutWordIds, windowCount: windows.count, limits: prompt.document[ai: "limits"]))
+        var suggestions = try finalizeClips(candidates, words: request.transcript.words, preset: request.preset, lines: lines.lines, options: FinalizeClipsOptions(snap: request.snap, cutWordIds: request.cutWordIds, windowCount: windows.count, limits: prompt.document[ai: "limits"]), corrections: request.corrections)
         for position in suggestions.indices where suggestions[position].title.isEmpty {
             let clip = suggestions[position]
-            let ownText = words[clip.startWord...clip.endWord].map(\.text).joined(separator: " ")
+            let ownText = clip.playParts.flatMap { words[$0].map(\.text) }.joined(separator: " ")
             var title = AIText.prefix(ownText, utf16: prompt.document[ai: "limits"][ai: "titleMaxLength"].aiInt ?? 120)
             if title.utf16.count < ownText.utf16.count, let space = title.lastIndex(of: " ") { title = String(title[..<space]) }
             suggestions[position].title = AIText.trim(title).isEmpty ? "…" : AIText.trim(title)
@@ -128,7 +136,9 @@ extension ClipFinder {
                                     inputSha256: AIHash.sha256(block), clips: suggestions.map { clip in
             ProjectAIClip(title: clip.title, reason: clip.reason, score: clip.score,
                           startWordId: request.transcript.words[clip.startWord].id,
-                          endWordId: request.transcript.words[clip.endWord].id)
+                          endWordId: request.transcript.words[clip.endWord].id,
+                          parts: clip.parts?.map { ClipWordRange(startWordId: request.transcript.words[$0.lowerBound].id, endWordId: request.transcript.words[$0.upperBound].id) },
+                          notInTake: clip.notInTake)
         })
         lastRun = ClipFinderRunSummary(model: result.model, usedFallback: fallback, droppedItems: dropped, inputSHA256: result.inputSha256, windowCount: windows.count)
         return result
