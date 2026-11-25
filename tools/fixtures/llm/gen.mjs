@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as reference from './reference.mjs'
-import { appleSchema, canonicalRequest, clipInstruction, effortLevels, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
+import { appleSchema, autopilotSchemaRequests, canonicalRequest, clipInstruction, effortLevels, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
 import { candidate, f1Words, f1Rendered, fixedVectors, timeVectors, finalizeVectors, snapVectors, w1Bounds, tightenVectors, t1Entries, u100Words, syntheticWords, randomValues } from './vectors.mjs'
 import { patchRewriteRequest, voiceLabEstimate, voiceRewriteRequest } from './voicelab.mjs'
 
@@ -17,6 +17,9 @@ const sourceBytes = await Promise.all(inputPaths.map(path => readFile(join(root,
 const [clipFinder, aiTighten, catalog] = sourceBytes.map(text => JSON.parse(text))
 const prompts = { clipFinder, aiTighten }
 const sourceHashes = Object.fromEntries(inputPaths.map((path, index) => [path, sha256(sourceBytes[index].replace(/\r\n/g, '\n'))]))
+const autopilotPath = 'shared/prompts/clip-autopilot.json'
+const autopilotBytes = (await readFile(join(root, autopilotPath), 'utf8')).replace(/\r\n/g, '\n')
+const clipAutopilot = JSON.parse(autopilotBytes)
 // The Voice Lab request datasets and the Codex output-schema cases track their prompt inputs.
 const voiceLabPaths = { voiceRewrite: 'shared/prompts/voice-rewrite.json', patchRewrite: 'shared/prompts/patch-rewrite.json', wordingFit: 'shared/prompts/voice-rewrite-fit.json' }
 const voiceLabBytes = Object.fromEntries(await Promise.all(Object.entries(voiceLabPaths).map(async ([name, path]) => [name, await readFile(join(root, path), 'utf8')])))
@@ -594,7 +597,7 @@ for (const [id, input, expected] of [
 ]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', ...input }, expected,
   'doc/spec/ai.md §4.5; §6.9', 'LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.')
 const datasetSources = { 'voice-rewrite-requests': voiceLabSources('voiceRewrite'), 'patch-rewrite-requests': voiceLabSources('patchRewrite'),
-  'connector-requests': { ...sourceHashes, [voiceLabPaths.voiceRewrite]: voiceLabSources('voiceRewrite')[voiceLabPaths.voiceRewrite], ...voiceLabSources('patchRewrite') },
+  'connector-requests': { ...sourceHashes, [autopilotPath]: sha256(autopilotBytes), [voiceLabPaths.voiceRewrite]: voiceLabSources('voiceRewrite')[voiceLabPaths.voiceRewrite], ...voiceLabSources('patchRewrite') },
   'cli-replies': { ...voiceLabSources('voiceRewrite'), 'shared/catalog/llm-providers.json': sourceHashes['shared/catalog/llm-providers.json'] } }
 for (const [suffix, stderr, message, classified = 'cliFailed'] of [
   ['leading-blank', '\n  Request failed.  \nignored', 'Request failed.'],
@@ -635,6 +638,20 @@ for (const name of ['voiceRewrite', 'patchRewrite']) {
   }
   checkRequired(JSON.parse(expected.files['<io>/schema.json']))
   add('connector-requests', `codex-strict-${name}`, 'connector-request', { request, connector: 'codex', options: {} }, expected, 'doc/spec/ai.md §2.2; §6.9')
+}
+const autopilot = autopilotSchemaRequests(clipAutopilot)
+const momentFields = autopilot.moments.schema.properties.clips.items.properties
+const planFields = autopilot.plan.schema.properties
+equal(momentFields.kind.enum, ['stretch', 'story', 'showreel'], 'Autopilot moment shapes')
+for (const parts of [momentFields.parts, planFields.parts]) {
+  equal([parts.minItems, parts.maxItems, ...parts.items.required], [1, 10, 'startWord', 'endWord'], 'Autopilot parts contract')
+}
+assert(autopilot.plan.instruction.startsWith('Plan the clip made of these parts, in this order: words 45–64, 5–24.'))
+for (const [stage, excerpt] of Object.entries(autopilot)) {
+  reference.validateSchema(excerpt.schema)
+  const request = { ...testRequest, ...excerpt }
+  add('connector-requests', `codex-strict-autopilot-${stage}`, 'connector-request', { request, connector: 'codex', options: {} },
+    renderConnector(request, connectors.codex, catalog), 'doc/spec/ai.md §6.9; §16', 'Autopilot v12 schema and representative request text; connector replay only.')
 }
 const variants = [
   ['anthropic-no-fallback-beta', 'anthropic', { serverSideFallback: false }],

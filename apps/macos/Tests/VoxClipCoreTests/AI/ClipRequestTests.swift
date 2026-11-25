@@ -21,7 +21,12 @@ import Testing
             #expect(request.system == raw[ai:"system"].aiString)
             #expect(request.cachedBlock == "<transcript>\n" + f1Sentences + "\n</transcript>")
             #expect(request.instruction == expected.joined(separator:"\n"))
-            #expect(request.schema == raw[ai:"output"][ai:"schema"])
+            let template = raw[ai:"output"][ai:"schema"]
+            let partsPath = ["properties", "clips", "items", "properties", "parts"]
+            let parts = partsPath.reduce(request.schema) { $0[ai: $1] }
+            #expect(parts[ai:"minItems"].aiInt == 1)
+            #expect(parts[ai:"maxItems"].aiInt == (preset.id == .custom ? 8 : 1))
+            if preset.id != .custom { #expect(request.schema == template) }
             #expect(request.maxOutputTokens == raw[ai:"generation"][ai:"maxOutputTokens"].aiInt)
         }
     }

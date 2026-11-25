@@ -3,9 +3,10 @@
   "id": "connector-requests",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/clip-finder.json": "e929b6101abb4d84ad34c471a2f83e8475a630651707d762ea6790bdc2a9a1a5",
+    "shared/prompts/clip-finder.json": "01bbde496bb349d937781b36f1bb2a530591a497e31a9e75be8a59d542471669",
     "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
     "shared/catalog/llm-providers.json": "b19c861b1bd5d9b7b5ff5f24eece6f1caf178a470d66d83e785e6b6f22e4446c",
+    "shared/prompts/clip-autopilot.json": "33f52c46767c50d615b14ecc373f4edb35c38f618ea02faca6cd17b13a1426b1",
     "shared/prompts/voice-rewrite.json": "7364e82dc7090b01ca0853b4f905b6175d17a2d6099498159a9c3b69df8f5b9c",
     "shared/prompts/patch-rewrite.json": "237b94efad0e698c1f8bf830bd94ee2520de9a9e273f13dcfe0f06ea404621a4"
   },
@@ -1101,6 +1102,727 @@
       }
     },
     {
+      "id": "codex-strict-autopilot-moments",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.9; §16",
+      "notes": "Autopilot v12 schema and representative request text; connector replay only.",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "Clip shapes\n- Vary the shapes. When moments build on each other, make one story from them in the order that tells it best.\n- When the take has several short, high-energy beats, make one showreel: 4–10 parts of 2–5 s, music-led, 15–35 s total, opening on a title card or logo sting.\n- Keep single stretches for ideas that land alone. Never make every clip the same shape just because it is simplest.\n- The creator's note decides the shape when present. A request to chain named moments in order becomes one story. Use only words the speaker actually said; if requested wording is absent, say so in not_in_take without inventing a quote.",
+          "cachedBlock": null,
+          "instruction": "Pick the moments in this video worth posting as clips, at most 4, ranked best first. Return only the strongest: fewer when the material is thin, none when nothing is worth posting. Give each a kind and its ordered parts. Parts of a moment never overlap; a part may appear in at most one moment.",
+          "schemaName": "clip_autopilot_moments",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clips"
+            ],
+            "properties": {
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "parts",
+                    "not_in_take",
+                    "title",
+                    "idea",
+                    "captionStyle",
+                    "captionReason",
+                    "score",
+                    "verdict",
+                    "scoreReason"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "stretch",
+                        "story",
+                        "showreel"
+                      ]
+                    },
+                    "parts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "startWord",
+                          "endWord"
+                        ],
+                        "properties": {
+                          "startWord": {
+                            "type": "integer"
+                          },
+                          "endWord": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "maxItems": 10,
+                      "minItems": 1
+                    },
+                    "not_in_take": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "idea": {
+                      "type": "string"
+                    },
+                    "captionStyle": {
+                      "type": "string"
+                    },
+                    "captionReason": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "integer"
+                    },
+                    "verdict": {
+                      "type": "string"
+                    },
+                    "scoreReason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxOutputTokens": 8000,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {}
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"Clip shapes\\n- Vary the shapes. When moments build on each other, make one story from them in the order that tells it best.\\n- When the take has several short, high-energy beats, make one showreel: 4–10 parts of 2–5 s, music-led, 15–35 s total, opening on a title card or logo sting.\\n- Keep single stretches for ideas that land alone. Never make every clip the same shape just because it is simplest.\\n- The creator's note decides the shape when present. A request to chain named moments in order becomes one story. Use only words the speaker actually said; if requested wording is absent, say so in not_in_take without inventing a quote.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Pick the moments in this video worth posting as clips, at most 4, ranked best first. Return only the strongest: fewer when the material is thin, none when nothing is worth posting. Give each a kind and its ordered parts. Parts of a moment never overlap; a part may appear in at most one moment.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"kind\",\"parts\",\"not_in_take\",\"title\",\"idea\",\"captionStyle\",\"captionReason\",\"score\",\"verdict\",\"scoreReason\"],\"properties\":{\"kind\":{\"type\":\"string\",\"enum\":[\"stretch\",\"story\",\"showreel\"]},\"parts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"startWord\",\"endWord\"],\"properties\":{\"startWord\":{\"type\":\"integer\"},\"endWord\":{\"type\":\"integer\"}}},\"maxItems\":10,\"minItems\":1},\"not_in_take\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"idea\":{\"type\":\"string\"},\"captionStyle\":{\"type\":\"string\"},\"captionReason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"verdict\":{\"type\":\"string\"},\"scoreReason\":{\"type\":\"string\"}}}}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-strict-autopilot-plan",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.9; §16",
+      "notes": "Autopilot v12 schema and representative request text; connector replay only.",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "Other effects\n- Use motionTemplate with template.name titleCard, kineticCaption, logoSting or counter; use template.text for the first three and template.from/to for a counter. With any other effect use empty name and text and zero from/to.\n- Use bRoll for a visual cutaway, screenshot for a still, and videoStack to put the camera above a companion video. Only use an offered footage.sourceKey and source seconds in footage.start; use an empty sourceKey and zero start for other effects. Keep the primary voice and never guess what an unknown recording shows.",
+          "cachedBlock": null,
+          "instruction": "Plan the clip made of these parts, in this order: words 45–64, 5–24. Its shape is story. As recorded the parts run 25 s; with fillers and pauses cut, about 22 s.",
+          "schemaName": "clip_autopilot_plan",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "parts",
+              "not_in_take",
+              "title",
+              "hook",
+              "corrections",
+              "cuts",
+              "pauseCuts",
+              "rewrites",
+              "tone",
+              "toneSummary",
+              "lengthReason",
+              "captionStyle",
+              "captionReason",
+              "captionFont",
+              "captionWeight",
+              "captionCase",
+              "wordsPerCaption",
+              "look",
+              "lookReason",
+              "speed",
+              "speedReason",
+              "zooms",
+              "music",
+              "musicPick",
+              "musicTrackId",
+              "postText",
+              "score",
+              "verdict",
+              "scoreReason",
+              "questions",
+              "frames"
+            ],
+            "properties": {
+              "parts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "startWord",
+                    "endWord"
+                  ],
+                  "properties": {
+                    "startWord": {
+                      "type": "integer"
+                    },
+                    "endWord": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "maxItems": 10,
+                "minItems": 1
+              },
+              "not_in_take": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "hook": {
+                "type": "string"
+              },
+              "corrections": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "word",
+                    "heard",
+                    "text",
+                    "reason"
+                  ],
+                  "properties": {
+                    "word": {
+                      "type": "integer"
+                    },
+                    "heard": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "cuts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "startWord",
+                    "endWord",
+                    "kind",
+                    "reason"
+                  ],
+                  "properties": {
+                    "startWord": {
+                      "type": "integer"
+                    },
+                    "endWord": {
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "pauseCuts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "afterWord",
+                    "reason"
+                  ],
+                  "properties": {
+                    "afterWord": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "rewrites": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "startWord",
+                    "endWord",
+                    "text",
+                    "reason"
+                  ],
+                  "properties": {
+                    "startWord": {
+                      "type": "integer"
+                    },
+                    "endWord": {
+                      "type": "integer"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "tone": {
+                "type": "string"
+              },
+              "toneSummary": {
+                "type": "string"
+              },
+              "lengthReason": {
+                "type": "string"
+              },
+              "captionStyle": {
+                "type": "string"
+              },
+              "captionReason": {
+                "type": "string"
+              },
+              "captionFont": {
+                "type": "string"
+              },
+              "captionWeight": {
+                "type": "integer"
+              },
+              "captionCase": {
+                "type": "string"
+              },
+              "wordsPerCaption": {
+                "type": "integer"
+              },
+              "look": {
+                "type": "string"
+              },
+              "lookReason": {
+                "type": "string"
+              },
+              "speed": {
+                "type": "number"
+              },
+              "speedReason": {
+                "type": "string"
+              },
+              "zooms": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "word",
+                    "untilWord",
+                    "scale",
+                    "reason"
+                  ],
+                  "properties": {
+                    "word": {
+                      "type": "integer"
+                    },
+                    "untilWord": {
+                      "type": "integer"
+                    },
+                    "scale": {
+                      "type": "number"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "zoomIn",
+                        "zoomOut"
+                      ]
+                    }
+                  }
+                }
+              },
+              "music": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "mood",
+                    "prompt",
+                    "reason",
+                    "underVoiceDb"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "mood": {
+                      "type": "string"
+                    },
+                    "prompt": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "underVoiceDb": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "musicPick": {
+                "type": "integer"
+              },
+              "musicTrackId": {
+                "type": "string"
+              },
+              "postText": {
+                "type": "string"
+              },
+              "score": {
+                "type": "integer"
+              },
+              "verdict": {
+                "type": "string"
+              },
+              "scoreReason": {
+                "type": "string"
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "question",
+                    "answer",
+                    "options"
+                  ],
+                  "properties": {
+                    "question": {
+                      "type": "string"
+                    },
+                    "answer": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "frames": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "blur",
+                  "cover"
+                ],
+                "properties": {
+                  "blur": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "blur",
+                        "reason"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "blur": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "cover": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "reason"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "effects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "startWord",
+                    "endWord",
+                    "reason",
+                    "scale",
+                    "text",
+                    "query",
+                    "prompt",
+                    "look",
+                    "rate",
+                    "template",
+                    "footage"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "zoom",
+                        "punchIn",
+                        "motionTitle",
+                        "lowerThird",
+                        "emojiPop",
+                        "soundEffect",
+                        "illustration",
+                        "colourLook",
+                        "speedForPart",
+                        "motionTemplate",
+                        "bRoll",
+                        "screenshot",
+                        "videoStack"
+                      ]
+                    },
+                    "startWord": {
+                      "type": "integer"
+                    },
+                    "endWord": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "scale": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "query": {
+                      "type": "string"
+                    },
+                    "prompt": {
+                      "type": "string"
+                    },
+                    "look": {
+                      "type": "string"
+                    },
+                    "rate": {
+                      "type": "number"
+                    },
+                    "template": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "text",
+                        "from",
+                        "to"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "enum": [
+                            "",
+                            "titleCard",
+                            "kineticCaption",
+                            "logoSting",
+                            "counter"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "integer"
+                        },
+                        "to": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "footage": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "sourceKey",
+                        "start"
+                      ],
+                      "properties": {
+                        "sourceKey": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxOutputTokens": 16000,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {}
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"Other effects\\n- Use motionTemplate with template.name titleCard, kineticCaption, logoSting or counter; use template.text for the first three and template.from/to for a counter. With any other effect use empty name and text and zero from/to.\\n- Use bRoll for a visual cutaway, screenshot for a still, and videoStack to put the camera above a companion video. Only use an offered footage.sourceKey and source seconds in footage.start; use an empty sourceKey and zero start for other effects. Keep the primary voice and never guess what an unknown recording shows.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Plan the clip made of these parts, in this order: words 45–64, 5–24. Its shape is story. As recorded the parts run 25 s; with fillers and pauses cut, about 22 s.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"parts\",\"not_in_take\",\"title\",\"hook\",\"corrections\",\"cuts\",\"pauseCuts\",\"rewrites\",\"tone\",\"toneSummary\",\"lengthReason\",\"captionStyle\",\"captionReason\",\"captionFont\",\"captionWeight\",\"captionCase\",\"wordsPerCaption\",\"look\",\"lookReason\",\"speed\",\"speedReason\",\"zooms\",\"music\",\"musicPick\",\"musicTrackId\",\"postText\",\"score\",\"verdict\",\"scoreReason\",\"questions\",\"frames\",\"effects\"],\"properties\":{\"parts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"startWord\",\"endWord\"],\"properties\":{\"startWord\":{\"type\":\"integer\"},\"endWord\":{\"type\":\"integer\"}}},\"maxItems\":10,\"minItems\":1},\"not_in_take\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"hook\":{\"type\":\"string\"},\"corrections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"word\",\"heard\",\"text\",\"reason\"],\"properties\":{\"word\":{\"type\":\"integer\"},\"heard\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"}}}},\"cuts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"startWord\",\"endWord\",\"kind\",\"reason\"],\"properties\":{\"startWord\":{\"type\":\"integer\"},\"endWord\":{\"type\":\"integer\"},\"kind\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"}}}},\"pauseCuts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"afterWord\",\"reason\"],\"properties\":{\"afterWord\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"}}}},\"rewrites\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"startWord\",\"endWord\",\"text\",\"reason\"],\"properties\":{\"startWord\":{\"type\":\"integer\"},\"endWord\":{\"type\":\"integer\"},\"text\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"}}}},\"tone\":{\"type\":\"string\"},\"toneSummary\":{\"type\":\"string\"},\"lengthReason\":{\"type\":\"string\"},\"captionStyle\":{\"type\":\"string\"},\"captionReason\":{\"type\":\"string\"},\"captionFont\":{\"type\":\"string\"},\"captionWeight\":{\"type\":\"integer\"},\"captionCase\":{\"type\":\"string\"},\"wordsPerCaption\":{\"type\":\"integer\"},\"look\":{\"type\":\"string\"},\"lookReason\":{\"type\":\"string\"},\"speed\":{\"type\":\"number\"},\"speedReason\":{\"type\":\"string\"},\"zooms\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"word\",\"untilWord\",\"scale\",\"reason\",\"direction\"],\"properties\":{\"word\":{\"type\":\"integer\"},\"untilWord\":{\"type\":\"integer\"},\"scale\":{\"type\":\"number\"},\"reason\":{\"type\":\"string\"},\"direction\":{\"type\":\"string\",\"enum\":[\"zoomIn\",\"zoomOut\"]}}}},\"music\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"mood\",\"prompt\",\"reason\",\"underVoiceDb\"],\"properties\":{\"title\":{\"type\":\"string\"},\"mood\":{\"type\":\"string\"},\"prompt\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"underVoiceDb\":{\"type\":\"number\"}}}},\"musicPick\":{\"type\":\"integer\"},\"musicTrackId\":{\"type\":\"string\"},\"postText\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"verdict\":{\"type\":\"string\"},\"scoreReason\":{\"type\":\"string\"},\"questions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"question\",\"answer\",\"options\"],\"properties\":{\"question\":{\"type\":\"string\"},\"answer\":{\"type\":\"string\"},\"options\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}},\"frames\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"blur\",\"cover\"],\"properties\":{\"blur\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"blur\",\"reason\"],\"properties\":{\"id\":{\"type\":\"string\"},\"blur\":{\"type\":\"boolean\"},\"reason\":{\"type\":\"string\"}}}},\"cover\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"reason\",\"title\"],\"properties\":{\"id\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}}}}},\"effects\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"kind\",\"startWord\",\"endWord\",\"reason\",\"scale\",\"text\",\"query\",\"prompt\",\"look\",\"rate\",\"template\",\"footage\"],\"properties\":{\"kind\":{\"type\":\"string\",\"enum\":[\"zoom\",\"punchIn\",\"motionTitle\",\"lowerThird\",\"emojiPop\",\"soundEffect\",\"illustration\",\"colourLook\",\"speedForPart\",\"motionTemplate\",\"bRoll\",\"screenshot\",\"videoStack\"]},\"startWord\":{\"type\":\"integer\"},\"endWord\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"scale\":{\"type\":\"number\"},\"text\":{\"type\":\"string\"},\"query\":{\"type\":\"string\"},\"prompt\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"rate\":{\"type\":\"number\"},\"template\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\",\"text\",\"from\",\"to\"],\"properties\":{\"name\":{\"type\":\"string\",\"enum\":[\"\",\"titleCard\",\"kineticCaption\",\"logoSting\",\"counter\"]},\"text\":{\"type\":\"string\"},\"from\":{\"type\":\"integer\"},\"to\":{\"type\":\"integer\"}}},\"footage\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"sourceKey\",\"start\"],\"properties\":{\"sourceKey\":{\"type\":\"string\"},\"start\":{\"type\":\"number\"}}}}}}}}"
+        }
+      }
+    },
+    {
       "id": "anthropic-no-fallback-beta",
       "kind": "connector-request",
       "origin": "voxclip",
@@ -1143,8 +1865,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -1160,7 +1880,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -1247,8 +1969,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -1264,7 +1984,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -1322,8 +2044,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -1339,7 +2059,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -1426,8 +2148,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -1443,7 +2163,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -1501,8 +2223,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -1518,7 +2238,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -1604,8 +2326,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -1621,7 +2341,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -1679,8 +2401,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -1696,7 +2416,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -1744,7 +2466,7 @@
                 },
                 {
                   "type": "text",
-                  "text": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.\n\nReply with only a JSON object that matches this JSON Schema: {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":1,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}}},\"not_in_take\":{\"type\":\"string\"}}}}}}"
+                  "text": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.\n\nReply with only a JSON object that matches this JSON Schema: {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}},\"maxItems\":1,\"minItems\":1},\"not_in_take\":{\"type\":\"string\"}}}}}}"
                 }
               ]
             }
@@ -1796,8 +2518,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -1813,7 +2533,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -1900,8 +2622,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -1917,7 +2637,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -1975,8 +2697,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -1992,7 +2712,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -2080,8 +2802,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -2097,7 +2817,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -2155,8 +2877,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -2172,7 +2892,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -2255,8 +2977,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -2272,7 +2992,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -2333,8 +3055,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -2350,7 +3070,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -2433,8 +3155,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -2450,7 +3170,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -2514,8 +3236,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -2531,7 +3251,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -2615,8 +3337,6 @@
                       },
                       "parts": {
                         "type": "array",
-                        "minItems": 1,
-                        "maxItems": 1,
                         "items": {
                           "type": "object",
                           "additionalProperties": false,
@@ -2632,7 +3352,9 @@
                               "type": "integer"
                             }
                           }
-                        }
+                        },
+                        "maxItems": 1,
+                        "minItems": 1
                       },
                       "not_in_take": {
                         "type": "string"
@@ -2689,8 +3411,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -2706,7 +3426,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -2790,8 +3512,6 @@
                       },
                       "parts": {
                         "type": "array",
-                        "minItems": 1,
-                        "maxItems": 1,
                         "items": {
                           "type": "object",
                           "additionalProperties": false,
@@ -2807,7 +3527,9 @@
                               "type": "integer"
                             }
                           }
-                        }
+                        },
+                        "maxItems": 1,
+                        "minItems": 1
                       },
                       "not_in_take": {
                         "type": "string"
@@ -2864,8 +3586,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -2881,7 +3601,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -2958,8 +3680,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -2975,7 +3695,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3037,8 +3759,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3054,7 +3774,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3136,8 +3858,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3153,7 +3873,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3216,8 +3938,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3233,7 +3953,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3314,8 +4036,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3331,7 +4051,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3394,8 +4116,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3411,7 +4131,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3492,8 +4214,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3509,7 +4229,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3571,8 +4293,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3588,7 +4308,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3669,8 +4391,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3686,7 +4406,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3749,8 +4471,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3766,7 +4486,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -3845,8 +4567,6 @@
                         },
                         "parts": {
                           "type": "array",
-                          "minItems": 1,
-                          "maxItems": 1,
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
@@ -3862,7 +4582,9 @@
                                 "type": "integer"
                               }
                             }
-                          }
+                          },
+                          "maxItems": 1,
+                          "minItems": 1
                         },
                         "not_in_take": {
                           "type": "string"
@@ -3920,8 +4642,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3937,7 +4657,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -4091,8 +4813,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -4108,7 +4828,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -4147,7 +4869,7 @@
           "--output-format",
           "json",
           "--json-schema",
-          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":1,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}}},\"not_in_take\":{\"type\":\"string\"}}}}}}",
+          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}},\"maxItems\":1,\"minItems\":1},\"not_in_take\":{\"type\":\"string\"}}}}}}",
           "--system-prompt",
           "You choose clips from a spoken recording. Each clip is its own post and needs to make sense to someone who never heard the rest.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, five seconds into the recording.\n\n- When a Custom request asks to join, combine or chain moments, or names them in an order, answer with one clip whose parts are those moments in that order. Look across the full transcript in this request. A later passage can open the clip. Pick the clearest spoken beat for each step, then land the story; do not return each beat as a separate clip. Otherwise use one part.\n- Each part starts and ends on whole lines. Use inclusive start_line and end_line numbers that appear in the transcript. Parts must not overlap. Start where a thought starts and end where it lands.\n- Respect the requested clip length across all parts, not across the gaps between them.\n- title: a short, plain headline in the speaker's language. No hashtags, emoji or quotation marks.\n- reason: one sentence on why the assembled clip works as a standalone post. Quote only words that are in the selected transcript.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- When the recording doesn't contain something the request describes, say what is missing in not_in_take and use the closest thing the speaker actually says. Never invent words or treat an inference as a quote. Use an empty string when nothing is missing. If nothing fits the request, return an empty list.",
           "--tools",
@@ -4203,8 +4925,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -4220,7 +4940,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -4322,7 +5044,7 @@
         "stdin": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "cwd": "<cwd>",
         "files": {
-          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":1,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}}},\"not_in_take\":{\"type\":\"string\"}}}}}}"
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}},\"maxItems\":1,\"minItems\":1},\"not_in_take\":{\"type\":\"string\"}}}}}}"
         }
       }
     },
@@ -4369,8 +5091,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -4386,7 +5106,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -4486,7 +5208,7 @@
         "stdin": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "cwd": "<cwd>",
         "files": {
-          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":1,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}}},\"not_in_take\":{\"type\":\"string\"}}}}}}"
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}},\"maxItems\":1,\"minItems\":1},\"not_in_take\":{\"type\":\"string\"}}}}}}"
         }
       }
     },
@@ -4533,8 +5255,6 @@
                     },
                     "parts": {
                       "type": "array",
-                      "minItems": 1,
-                      "maxItems": 1,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -4550,7 +5270,9 @@
                             "type": "integer"
                           }
                         }
-                      }
+                      },
+                      "maxItems": 1,
+                      "minItems": 1
                     },
                     "not_in_take": {
                       "type": "string"
@@ -4629,7 +5351,7 @@
         "stdin": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "cwd": "<cwd>",
         "files": {
-          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":1,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}}},\"not_in_take\":{\"type\":\"string\"}}}}}}"
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"reason\",\"score\",\"parts\",\"not_in_take\"],\"properties\":{\"title\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"},\"parts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"start_line\",\"end_line\"],\"properties\":{\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"}}},\"maxItems\":1,\"minItems\":1},\"not_in_take\":{\"type\":\"string\"}}}}}}"
         }
       }
     },
