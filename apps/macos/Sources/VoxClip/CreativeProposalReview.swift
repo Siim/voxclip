@@ -69,6 +69,7 @@ import VoxClipCore
             let section: CreativeProposalGroup.Section? = switch row.id {
             case ClipPicture.cropRowID, ClipPicture.coverRowID: .picture
             case ClipPicture.openingRowID: .opening
+            case "wholeClip": .extras
             default: row.change == .screens ? .picture : nil
             }
             if let section, !operations.contains(where: { $0.id == row.id }) {

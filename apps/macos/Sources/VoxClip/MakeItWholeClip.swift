@@ -55,6 +55,12 @@ enum WholeClipAutoOutcome: Equatable {
     }
 }
 
+struct MakeItPaidWholeClip {
+    let inputs: Project
+    let record: WholeClipRevoiceRecord
+    let spent: Decimal
+}
+
 extension WholeClipRevoiceSession {
     /// Paid work this whole clip holds that is not in the clip: a run under way, or a stop after something was paid (a
     /// voice or verified parts of one, a lip sync, fal.ai's charge for a failed one whose result is kept). The whole clip's
@@ -117,8 +123,18 @@ extension EditorModel {
     /// the patch would sound stitched and the price fits what is left of the cap; over the cap, the patch goes on and an
     /// offer row waits. Outside Claude mode nil: the Rewrite panel's card asks instead.
     func makeItWholeClip(_ rewrites: [ClipAutopilotOperation], run: MakeItRun, services: MakeItServices) async -> WholeClipStep? {
-        guard run.budget != nil, let request = makeItWholeClipRequest(rewrites, run: run),
-              let quote = await services.wholeClipQuote(request, self) else { return nil }
+        guard run.budget != nil, let request = makeItWholeClipRequest(rewrites, run: run) else { return nil }
+        let inputs = makeItVoiceInputs(.clip(run.clipID), clipID: run.clipID)
+        let passage = MakeItServices.wholeClipPassage(request, editor: self)
+        if let saved = run.paidWholeClips[passage], saved.inputs == inputs,
+           restoreMakeItVoice(saved.record.segmentIds, clipID: run.clipID, wholeClip: saved.record) {
+            run.inverses["wholeClip"] = .wholeClip(saved.record)
+            run.voiceSpent += saved.spent
+            let row = MakeItRow(id: "wholeClip", text: "Reused whole-clip voice and lip sync",
+                                detail: "The words and source edit are unchanged.", undoable: true)
+            return WholeClipStep(row: row, revoiced: true)
+        }
+        guard let quote = await services.wholeClipQuote(request, self) else { return nil }
         switch WholeClipRevoice.autoChoice(quote.reason, price: quote.price, remaining: run.remaining) {
         case .patch:
             return nil
@@ -128,6 +144,9 @@ extension EditorModel {
         case .revoice:
             run.line("Revoicing the whole clip…")
             let outcome = await services.revoiceWholeClip(request, self)
+            if case .revoiced(let record, let spent) = outcome, spent > 0 {
+                run.paidWholeClips[passage] = MakeItPaidWholeClip(inputs: inputs, record: record, spent: spent)
+            }
             return WholeClipStep(row: makeItWholeClipRow(outcome, request: request, run: run, reason: quote.reason), revoiced: outcome.isRevoiced,
                                  holdsPaidWork: outcome.holdsPaidWork, patchFollows: outcome.patches)
         }

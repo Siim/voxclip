@@ -289,6 +289,7 @@ struct MakeItRow: Identifiable, Equatable {
     @ObservationIgnored var paidMusic: [ProjectMusic] = []
     @ObservationIgnored var paidCues: [String: ProjectMusic] = [:]
     @ObservationIgnored var paidPhrases: [ClosedRange<Int>: [String: MakeItPaidVoice]] = [:]
+    @ObservationIgnored var paidWholeClips: [String: MakeItPaidWholeClip] = [:]
     @ObservationIgnored var task: Task<Void, Never>?
     @ObservationIgnored var inverses: [String: MakeItInverse] = [:]
     @ObservationIgnored var cancelled = false
@@ -749,6 +750,7 @@ extension EditorModel {
             next.paidMusic = saved
             next.paidCues = run.paidCues
             next.paidPhrases = run.paidPhrases
+            next.paidWholeClips = run.paidWholeClips
             next.proposalInput = run.proposalInput
             next.priorPlan = run.plan
             next.priorOperations = run.proposalOperations
@@ -1211,7 +1213,7 @@ extension EditorModel {
     /// Claude mode at the cap: the run waits for Continue (exactly `shortfall`) or Stop. The creator's edits meanwhile are
     /// their own undo steps, not the run's.
     private func makeItWaitAtCap(_ run: MakeItRun, budget: MakeItBudget, shortfall: Decimal) async -> Bool {
-        guard budget.paidAllowed, shortfall > 0 else { return false }
+        guard run.priorPlan == nil, budget.paidAllowed, shortfall > 0 else { return false }
         run.line("Needs about \(Self.makeItDollars(shortfall)) more…")
         let owned = undoGroup?.ownsEdits
         undoGroup?.ownsEdits = false
