@@ -19,6 +19,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private string number = "";
     private string accessibleName = "";
     private string toolTip = "";
+    private string badge = "";
     private bool isActive;
     private bool isSelected;
     private bool isPointerOver;
@@ -52,6 +53,9 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
     public int WordIndex { get; set; } = -1;
+    internal string? PartId { get; set; }
+    public string Badge { get => badge; set { if (SetProperty(ref badge, value)) OnPropertyChanged(nameof(HasBadge)); } }
+    public bool HasBadge => Badge.Length > 0;
     /// <summary>The clip id of a clip or suggestion row.</summary>
     public string? ClipId { get; init; }
     /// <summary>The recent project shown by a Recent row.</summary>
@@ -220,6 +224,7 @@ public sealed class ShellViewModel
                 row.Title = clip.Title;
                 row.Number = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 row.MetaTime = EditorViewModel.Duration(clip.DurationSeconds);
+                row.Badge = clip.PartsBadge;
                 row.MetaStatus = suggestion ? " · Suggested" : "";
                 var export = suggestion ? new ExportRowState(ClipExportState.None) : editor.ExportStatus(clip.Id);
                 row.ExportState = export.State; row.ExportProgress = export.Progress;
@@ -231,6 +236,7 @@ public sealed class ShellViewModel
                     ? $"Suggested clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}"
                     : $"Clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}";
                 row.ToolTip = clip.ToolTip;
+                if (row.HasBadge) row.AccessibleName += ", " + row.Badge;
                 if (export.Label.Length > 0) row.AccessibleName += ", " + export.Label;
                 if (claude is { } said) row.AccessibleName += ", " + EditorViewModel.ClaudeClipLabel(said);
                 if (editor.ContainsAiSpeech(clip.Id))
@@ -276,9 +282,25 @@ public sealed class ShellViewModel
                 {
                     var outline = Row(SidebarKind.OutlineHeader, "outline");
                     outline.Title = "OUTLINE";
-                    outline.AccessibleName = "Transcript outline";
+                    outline.Detail = editor.IsStoryClip ? $"Clip {editor.Clips.FirstOrDefault(clip => clip.Id == active)?.Number} · {editor.ClipParts.Count} parts" : "";
+                    outline.AccessibleName = editor.IsStoryClip ? "Outline, " + outline.Detail : "Transcript outline";
                     next.Add(outline);
-                    foreach (var paragraph in editor.Paragraphs)
+                    if (editor.IsStoryClip)
+                    {
+                        foreach (var part in editor.ClipParts)
+                        {
+                            var row = Row(SidebarKind.Outline, $"outline:{active}:{part.Id}");
+                            row.PartId = part.Id;
+                            row.Number = part.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            row.WordIndex = part.First;
+                            row.Title = part.Excerpt;
+                            row.Detail = part.TakeTime;
+                            row.IsActive = editor.SelectedPart?.Id == part.Id;
+                            row.AccessibleName = $"Part {part.Number} of {editor.ClipParts.Count}, {part.Excerpt}, take time {part.TakeTime}" + (row.IsActive ? ", selected" : "");
+                            next.Add(row);
+                        }
+                    }
+                    else foreach (var paragraph in editor.Paragraphs)
                     {
                         var row = Row(SidebarKind.Outline, "outline:" + editor.Words[paragraph.StartIndex].Id);
                         row.WordIndex = paragraph.StartIndex;
@@ -287,6 +309,16 @@ public sealed class ShellViewModel
                         row.AccessibleName = $"Paragraph at {paragraph.Timecode}, {row.Title}";
                         next.Add(row);
                     }
+                }
+                if (editor.ActiveClip is not null)
+                {
+                    var add = Row(SidebarKind.Action, "action:add-part");
+                    add.Title = "Add Selection as Part";
+                    add.IsEnabled = editor.CanAddPart;
+                    add.Detail = editor.AddPartHelp;
+                    add.ToolTip = add.Detail;
+                    add.AccessibleName = add.Detail.Length == 0 ? add.Title : $"{add.Title}, {add.Detail}";
+                    next.Add(add);
                 }
                 next.Add(Row(SidebarKind.Separator, "separator:actions"));
                 var make = Row(SidebarKind.Action, "action:make");

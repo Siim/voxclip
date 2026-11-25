@@ -11,14 +11,37 @@ namespace VoxClip.Ui.Tests;
 /// line; design §2, §3.5 and §6.2. The core reducer is unchanged.</summary>
 public sealed class ClipSemanticsTests
 {
-    private static Project Fixture(string name)
+    private static Project Fixture(string name, string group = "projects")
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
-            var path = Path.Combine(directory.FullName, "shared", "fixtures", "projects", name);
+            var path = Path.Combine(directory.FullName, "shared", "fixtures", group, name);
             if (File.Exists(path)) return ProjectSerialization.Deserialize(File.ReadAllText(path));
         }
         throw new FileNotFoundException("Shared project fixture not found.", name);
+    }
+
+    internal static EditorViewModel Story() => new(Fixture("story-project.voxclip", "story-clips"));
+
+    [Fact]
+    public void StoryOutlineFollowsPlayOrderAndMovesOnePartInAnUndoStep()
+    {
+        var model = Story();
+        var shell = new ShellViewModel();
+        shell.Update(model, false, [], null);
+        Assert.Equal("2 parts", Assert.Single(model.Clips).PartsBadge);
+        Assert.Equal("0:01", Assert.Single(model.Clips).Duration);
+        Assert.Equal(["uh the", "So um,"], shell.Rows.Where(row => row.PartId is not null).Select(row => row.Title));
+        Assert.Equal("0:03–0:04", model.ClipParts[0].TakeTime);
+
+        string? announcement = null;
+        model.Announcement += (_, text) => announcement = text;
+        Assert.True(model.MovePart("first", 1));
+        Assert.Equal("Part 1 moved to 2 of 2", announcement);
+        Assert.Equal("Move part", model.UndoActionName);
+        Assert.Equal(["second", "first"], model.ClipParts.Select(part => part.Id));
+        model.Undo();
+        Assert.Equal(["first", "second"], model.ClipParts.Select(part => part.Id));
     }
 
     /// <summary>The long take with no clips, no cuts and no earlier clip-finding runs.</summary>
