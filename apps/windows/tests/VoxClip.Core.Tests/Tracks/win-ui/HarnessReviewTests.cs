@@ -111,7 +111,7 @@ public sealed class HarnessReviewTests
         review.Stage();
         var pending = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
         var changed = pending.ToJson();
-        changed["timeline"]!["title"] = "Not the reviewed title";
+        changed["timelines"]![0]!["title"] = "Not the reviewed title";
         File.WriteAllText(review.Sidecar, changed.ToJsonString());
 
         Assert.Throws<HarnessException>(() => review.Editor.DismissHarnessProposal(pending, review.Path));
