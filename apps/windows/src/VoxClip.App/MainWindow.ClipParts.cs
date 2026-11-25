@@ -111,23 +111,27 @@ public sealed partial class MainWindow
 
     private void PartDropCompleted(UIElement sender, DropCompletedEventArgs args) => partDrag = null;
 
-    private int PartDropDestination(Border target, DragEventArgs args)
+    private int? PartDropDestination(Border target, bool after)
     {
-        if (partDrag is not { } drag || editor?.ViewModel is not { CanEditParts: true } model || model.ActiveClip?.Id != drag.Clip ||
-            target.DataContext is not SidebarRow { PartId: { } id } || id == drag.Part ||
-            model.ClipParts.FirstOrDefault(part => part.Id == id) is not { } slot ||
-            model.ClipParts.FirstOrDefault(part => part.Id == drag.Part) is not { } moving) return -1;
-        var after = args.GetPosition(target).Y > target.ActualHeight / 2;
-        return slot.Number - 1 + (after ? 1 : 0) - (moving.Number < slot.Number ? 1 : 0);
+        if (partDrag is not { } drag || editor?.ViewModel is not { } model || model.ActiveClip?.Id != drag.Clip ||
+            target.DataContext is not SidebarRow { PartId: { } id }) return null;
+        return model.PartDropIndex(drag.Part, id, after);
     }
 
     private void PartDragOver(object sender, DragEventArgs args)
     {
-        if (sender is not Border target || PartDropDestination(target, args) < 0) return;
+        if (sender is not Border target || partDrag is null) return;
+        var after = args.GetPosition(target).Y > target.ActualHeight / 2;
+        args.Handled = true;
+        if (PartDropDestination(target, after) is null)
+        {
+            args.AcceptedOperation = DataPackageOperation.None;
+            target.BorderThickness = new(0);
+            return;
+        }
         args.AcceptedOperation = DataPackageOperation.Move;
         target.BorderBrush = Ui.ThemeBrush(target, "VcTintDefaultBrush");
-        target.BorderThickness = args.GetPosition(target).Y > target.ActualHeight / 2 ? new(0, 0, 0, 2) : new(0, 2, 0, 0);
-        args.Handled = true;
+        target.BorderThickness = after ? new(0, 0, 0, 2) : new(0, 2, 0, 0);
     }
 
     private void PartDragLeave(object sender, DragEventArgs args)
@@ -137,11 +141,11 @@ public sealed partial class MainWindow
 
     private void PartDrop(object sender, DragEventArgs args)
     {
-        PartDragLeave(sender, args);
-        if (sender is not Border target || PartDropDestination(target, args) is not (>= 0) || partDrag is not { } drag) return;
-        var destination = PartDropDestination(target, args);
+        if (sender is not Border target || partDrag is not { } drag) return;
+        var destination = PartDropDestination(target, args.GetPosition(target).Y > target.ActualHeight / 2);
+        target.BorderThickness = new(0);
         partDrag = null;
-        editor?.ViewModel.MovePart(drag.Part, destination);
+        if (destination is { } index) editor?.ViewModel.MovePart(drag.Part, index);
         args.Handled = true;
     }
 }

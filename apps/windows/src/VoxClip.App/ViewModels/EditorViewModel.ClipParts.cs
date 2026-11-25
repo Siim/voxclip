@@ -81,6 +81,15 @@ public sealed partial class EditorViewModel
         return ChangeParts(parts, id, "Move part", $"Part {moving.Number} moved to {destination + 1} of {parts.Count}");
     }
 
+    internal int? PartDropIndex(string movingId, string targetId, bool after)
+    {
+        if (!CanEditParts || movingId == targetId ||
+            ClipParts.FirstOrDefault(part => part.Id == movingId) is not { } moving ||
+            ClipParts.FirstOrDefault(part => part.Id == targetId) is not { } target) return null;
+        var destination = target.Number - 1 + (after ? 1 : 0) - (moving.Number < target.Number ? 1 : 0);
+        return destination == moving.Number - 1 ? null : destination;
+    }
+
     internal bool AddSelectionAsPart()
     {
         if (!CanAddPart) return false;
