@@ -26,7 +26,7 @@ internal static class CliApplication
         WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null)
     {
         var root = BuildCommand(openExport, prepareExport, inputExists);
-        var result = root.Parse(args);
+        var result = root.Parse(ExportArguments(args));
         if (result.Errors.Count > 0)
         {
             foreach (var error in result.Errors) Console.Error.WriteLine(BasicRedactor.Redact(error.Message));
@@ -126,11 +126,14 @@ internal static class CliApplication
         ? $"VoxClip couldn't decode this video: {exception.Message.TrimEnd('.')}. Your edits are saved." : exception.Message;
 
     /// <summary>The command line parsed as the CLI parses it, so one command can run another's path (autopilot's export).</summary>
-    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null).Parse(args);
+    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null).Parse(ExportArguments(args));
+
+    private static string[] ExportArguments(string[] args) => args is ["export", ..] &&
+        (args.Length == 1 || args[1].StartsWith('-')) ? args[1..] : args;
 
     private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists)
     {
-        var root = new RootCommand("VoxClip headless media tool.");
+        var root = new RootCommand("VoxClip headless media tool. Export is the default command; 'export' is optional.");
         root.Options.Add(Json);
         root.Options.Add(Quiet);
         root.Options.Add(RuntimeTerms);
@@ -149,7 +152,10 @@ internal static class CliApplication
         Choice(root, "--quality", "Encoding quality.", "standard", "high");
         root.Options.Add(new Option<string?>("--fps") { Description = "Constant output frame rate." });
         Add(root, "--srt", "SRT sidecar path.");
-        Add(root, "--audio-out", "Edited faded 32-bit float WAV test hook.");
+        Add(root, "--audio-out", "Also write edited, faded Float32 WAV.");
+        Add(root, "--music", "Saved project track ID to mix for this export.");
+        Add(root, "--music-file", "Local audio file to mix for this export.");
+        Flag(root, "--with-music", "Include the music bed in --audio-out.");
         Choice(root, "--loudness", "social (-14 LUFS, true peak at most -1 dBTP; the default) or off.", "social", "off");
         root.Validators.Add(validation =>
         {
@@ -157,6 +163,10 @@ internal static class CliApplication
                 validation.AddError("Use --runtime-terms or --accept-runtime-terms, not both.");
             if (validation.GetValue<string?>("--clip") is not null && validation.GetValue<string?>("--range") is not null)
                 validation.AddError("--clip and --range are mutually exclusive.");
+            if (validation.GetValue<string?>("--music") is not null && validation.GetValue<string?>("--music-file") is not null)
+                validation.AddError("Use either --music or --music-file, not both.");
+            if (validation.GetValue<bool>("--with-music") && validation.GetValue<string?>("--audio-out") is null)
+                validation.AddError("--with-music requires --audio-out.");
             if (validation.GetValue<string?>("--fps") is { } fps && !TryFps(fps, out _))
                 validation.AddError("--fps must be greater than zero and at most 60");
             if (validation.GetValue<string?>("--range") is { } range)
@@ -226,8 +236,8 @@ internal static class CliApplication
         Flag(clips, "--dry-run", "Print rendered prompts without sending.");
         Stub(clips, "find-clips");
         // ✦ Claude does it all, headless (design §6.7, ai.md §16.12): Find Clips, then the top clips planned at once and each applied (and
-        // exported) as soon as its plan is ready. Rewrites and music are left for the app. The frame analyzer isn't wired in yet (W6): no frames.
-        var autopilot = Command(root, "autopilot", "Make the top clips of a video postable, as Claude mode does, and time each stage.");
+        // exported) as soon as its plan is ready.
+        var autopilot = Command(root, "autopilot", "Make the top clips of a video postable, as Claude mode does, and time each stage. Reuse matching saved music; otherwise report it as pending.");
         Add(autopilot, "--open", "Source media, or a project with a transcript.", true);
         Add(autopilot, "--connector", "Connector catalog id.", true);
         Add(autopilot, "--model", "LLM model id.");

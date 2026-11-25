@@ -233,6 +233,87 @@ struct MediaCliE2ETests {
         }
     }
 
+    @Test(.timeLimit(.minutes(5)))
+    func cliExportMixesSavedAndLocalTracksAndReportsTheActualBed() async throws {
+        let shared = try FixtureLoader.sharedRoot()
+        let directory = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = shared.appendingPathComponent("fixtures/media/joins-tone.mov")
+        let probe = try await AVMediaProbe().probe(source)
+        let size = try #require(source.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        var project = try ProjectJSON.decode(Data(contentsOf: shared.appendingPathComponent("fixtures/music/music-project.voxclip")))
+        project.media.source = MediaReference(absolutePath: source.path, sizeBytes: Int64(size), durationSeconds: probe.durationSeconds,
+            contentKey: try JSONProjectStore.contentKey(for: source), video: probe.video, audio: probe.audio)
+        var entry = try #require(project.music.first)
+        entry.asset.file = project.id + "/music-calm-intro.wav"
+        entry.asset.durationSeconds = 2
+        entry.gainDb = -18
+        project.music = [entry]
+        var bare = try #require(project.edits.clips.first)
+        bare.id = "clip-bare"
+        project.edits.clips.append(bare)
+        project.clipControls = ["clip-main", "clip-bare"].map { (clipID: String) in
+            ProjectClipControls(clipId: clipID, gainDb: -1)
+        }
+        project.clipEffects = ["clip-main", "clip-bare"].map { (clipID: String) in
+            ClipEffect(id: "mute-\(clipID)", clipId: clipID, kind: .mute, start: 2.6, end: 3.6, wordIds: ["w4", "w5", "w6", "w7"])
+        }
+        let track = directory.appendingPathComponent("data/Music/" + entry.asset.file)
+        try FileManager.default.createDirectory(at: track.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let writer = try PCMFile(url: track, rate: 48_000, channels: 1, float: true)
+        let tone = (0..<96_000).map { Float(0.4 * sin(2 * Double.pi * 220 * Double($0) / 48_000)) }
+        try writer.append(tone.withUnsafeBytes { Data($0) })
+        try writer.finish()
+        let projectURL = directory.appendingPathComponent("music.voxclip")
+        try await JSONProjectStore().save(project, to: projectURL)
+        let original = try Data(contentsOf: projectURL)
+        let output = directory.appendingPathComponent("mix.mp4"), wave = directory.appendingPathComponent("mix.wav")
+        let args = ["export", "--open", projectURL.path, "--export", output.path, "--style", "off", "--loudness", "off", "--json", "--quiet"]
+
+        let saved = try runCLI(args + ["--clip", "clip-main", "--audio-out", wave.path], directory: directory)
+        try #require(saved.status == 0, "\(saved.stderr) \(String(decoding: saved.stdout, as: UTF8.self))")
+        let music = try #require(saved.json["music"] as? [String: Any])
+        #expect(music["trackId"] as? String == "music-main")
+        #expect(music["title"] as? String == "Synthetic calm intro")
+        #expect(music["gainDb"] as? Double == -18)
+        #expect(music["ducking"] as? Bool == true)
+        func assertBed(_ stereo: [Float]) throws {
+            let left = stride(from: 0, to: stereo.count, by: 2).map { stereo[$0] }
+            try #require(left.count > 153_600)
+            let speech = EffectRenderTests.amplitude(left, 48_000..<72_000, 220)
+            let pause = EffectRenderTests.amplitude(left, 148_800..<153_600, 220)
+            let rms = MusicBedTests.level(stereo, 3.1, 3.2)
+            #expect(rms > -50)
+            #expect(pause > 0.005 && pause > 2 * speech && speech > 0.0005, "bed under speech \(speech), in pause \(pause)")
+        }
+        try assertBed(await decodedAudio(output))
+        #expect(MusicBedTests.level(try MusicBedTests.readBed(wave), 3.1, 3.2) < -70)
+
+        let reused = try runCLI(args + ["--clip", "clip-bare", "--music", "music-main", "--audio-out", wave.path, "--with-music"], directory: directory)
+        try #require(reused.status == 0, "\(reused.stderr) \(String(decoding: reused.stdout, as: UTF8.self))")
+        let reusedMusic = try #require(reused.json["music"] as? [String: Any])
+        #expect(reusedMusic["trackId"] as? String == "music-main" && reusedMusic["gainDb"] as? Double == -18)
+        try assertBed(await decodedAudio(output))
+        try assertBed(MusicBedTests.readBed(wave))
+
+        let local = try runCLI(args + ["--clip", "clip-bare", "--music-file", track.path], directory: directory)
+        try #require(local.status == 0, "\(local.stderr) \(String(decoding: local.stdout, as: UTF8.self))")
+        let localMusic = try #require(local.json["music"] as? [String: Any])
+        let hash = SHA256.hash(data: try Data(contentsOf: track)).map { String(format: "%02x", $0) }.joined()
+        #expect(localMusic["trackId"] as? String == "file-" + hash.prefix(16))
+        #expect(localMusic["title"] as? String == "music-calm-intro")
+        try assertBed(await decodedAudio(output))
+
+        let dry = try runCLI(args + ["--clip", "clip-bare"], directory: directory)
+        try #require(dry.status == 0)
+        #expect(try dry.json["music"] is NSNull)
+        let before = try Data(contentsOf: output)
+        let unknown = try runCLI(args + ["--clip", "clip-bare", "--music", "missing"], directory: directory)
+        #expect(unknown.status == 2)
+        #expect(try Data(contentsOf: output) == before)
+        #expect(try Data(contentsOf: projectURL) == original)
+    }
+
     private func verifyHashes(_ directory: URL, index: URL) throws {
         let entries = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: index)) as? [[String: Any]])
         let names = Set(["joins-tone.mov", "fillers-chirp.mp4", "counter-1080p.mp4", "big-2400x1350.mp4", "bars-1080p.mp4", "tiny.webm"])

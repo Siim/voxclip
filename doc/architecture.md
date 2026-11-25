@@ -616,7 +616,7 @@ The Windows CLI checks the separate per-user runtime agreement before dispatchin
 ### 9.1 Primary form (export)
 
 ```text
-voxclip-cli --open <project.voxclip | media file> --export <out.mp4>
+voxclip-cli [export] --open <project.voxclip | media file> --export <out.mp4>
             [--style <captionStyleId> | --style off]          style id from shared/caption-styles (e.g. vox-highlight); default: the project's style, else "off"
             [--aspect source | 16:9 | 9:16 | 1:1]               default: the project's aspect, else "source"
             [--clip <clipId> | --range <startWordIndex>:<endWordIndex>]
@@ -624,7 +624,8 @@ voxclip-cli --open <project.voxclip | media file> --export <out.mp4>
             [--engine whisper | apple | elevenlabs] [--model <modelId>] [--language <bcp47>]
             [--cut-fillers] [--tighten-pauses]                  applied in this order before export
             [--quality standard | high] [--fps <n>] [--srt <out.srt>]
-            [--audio-out <edited.wav>]                          test hook: also write the edited, faded audio as 32-bit float WAV
+            [--music <trackId> | --music-file <audio file>]     choose the bed for this MP4 export only
+            [--audio-out <edited.wav> [--with-music]]            also write 32-bit float WAV; voice only by default
             [--loudness social | off]                           default social: -14 LUFS, true peak at most -1 dBTP (ADR-R47)
             [--json] [--quiet]
 ```
@@ -634,7 +635,7 @@ Behaviour:
 1. `--open` a `.voxclip` project: load it and relink media by the project rules (section 3) without prompts; a `contentKey` mismatch is exit 3.
 2. `--open` a media file: create an in-memory project. With `--transcript`, load that file: one JSON object exactly as `transcript` is stored in a project (`project.schema.json` `$defs/transcript`), used as is with no post-processing (stored timings never change); a file that does not decode is exit 3. Otherwise transcribe with `--engine` (default: whisper with the first installed model that matches `--language`, else exit 7).
 3. Select the export scope first: `--clip` (an existing clip) or `--range` (a new clip over those words) when given, else an opened project's stored `activeClipId`, else the whole take. Then apply `--cut-fillers`, then `--tighten-pauses` (the same reducers as the UI), which act within that scope as they do in the app. So `--clip b --cut-fillers` cuts the fillers of clip `b`, whichever clip was active when the project was saved. A new in-memory project (media-file input) sets `pauseThresholdSeconds` as an import does (editing.md 2.5: 0.8 when the transcript is refined, else 1.0).
-4. Export with the same exporter as the app. Write `--srt` if asked.
+4. Export with the same exporter as the app. MP4 uses the clip's saved bed (or the full take's bed for a full-take export). Use `--music <trackId>` to reuse any saved entry in the open project, even if the exported clip has no track. The ID is the entry's `music[].id`, also listed by `voxclip-cli decisions`. The entry must already have a local asset in the data folder. Use `--music-file <path>` instead for a local MP3, M4A, WAV, AIF/AIFF or FLAC (up to 200 MB and 30 minutes). A file uses the app defaults: −20 dB under speech, ducking on, 0.5 s fade-in and 1.5 s fade-out. Both options use the app's loudness matching, ducking, fades and crossfaded loops; neither writes to the project, copies an audio file into the library, or calls a music provider. Write `--srt` if asked.
 
 ### 9.2 Subcommands
 
@@ -648,6 +649,7 @@ Behaviour:
 | `voxclip-cli render-caption --case <layout fixture> --sample <index> --out <file.png>` | Render one sample of a case, golden or not |
 | `voxclip-cli render-caption --tiles <preview-tiles.json> --out <dir>` | Render every gallery tile into `<dir>/tiles/` |
 | `voxclip-cli find-clips --open <project> --preset best\|hooks\|topics\|quotes\|custom [--instruction <text>] --connector <id> [--model <id>] [--no-snap] [--dry-run] --json` | Run the clip finder headless (AI spec section 10.4); never modifies the project; `--dry-run` prints the rendered prompts without sending |
+| `voxclip-cli autopilot --open <project-or-media> --connector <id> [--out-dir <dir>] --json` | Plan the top clips. Reuse local saved entries that match a suggested title or mood; try the picked suggestion first. Each clip reports the attached `music` object, or `"music": "pending"` when there is no match. No music is purchased, generated or downloaded. With `--out-dir`, export the clips and save the resulting project there; leave the input project untouched. |
 | `voxclip-cli llm-test --connector <id> [--model <id>] --json` | Run the connector Test (AI spec section 10.2); exit 0 on pass |
 | `voxclip-cli encoders --json` | Windows: run the encoder probe; macOS: report VideoToolbox H.264 availability |
 | `voxclip-cli check --project <project> --clip <n\|id> <export.mp4> [--aspect …] [--style …] [--loudness social\|off] [--json]` | macOS and Windows: the export self-check (ADR-R49). It checks the words heard against the clip's edit, the tracks' and phrases' sync, the loudness and the caption and title boxes against the safe-zone bands. Transcription is local only. `--json` adds a `check` object with `passed`, `engine`, `model`, `seconds` and one result per check (`status`, `reason`, `items`). Exit 8 when any check warns |
@@ -667,7 +669,8 @@ Other bad arguments are usage errors (exit 2) before the input is opened, with t
 Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its destination, where the destination path is resolved through symlinks first. An existing regular file at a `.partial` path is a leftover from an earlier run and is replaced; a directory or symlink there is a bad argument. The WAV and SRT are finished before anything is published. Publication is all-or-nothing, in the order MP4, SRT, WAV: before the first rename, each existing destination is kept as a backup beside it (`<name>.rollback-<random>`, a copy-on-write clone where the file system supports one). If any rename fails, every destination already replaced is restored from its backup, or removed if it did not exist before, so a failure at any step leaves every existing destination unchanged. Every restore is attempted even if an earlier one fails. A backup whose restore fails is never deleted: it stays beside the destination, and the error (`exportFailed`) says "Couldn't put back {file name}. The previous version is saved as {backup file name}." Every other backup is deleted on success, failure and cancellation. Partial files are removed on success, failure and cancellation.
 
 - Human-readable progress goes to **stderr**: one line per phase change, percentages at most once per second, nothing with `--quiet`.
-- The edited WAV (`--audio-out`) is written at the plan's sample rate with exactly `plan.outputSamples` samples per channel; it is never resampled. It carries the export's loudness gain and limiter, run over its own samples (ADR-R47).
+- `--audio-out` writes voice alone at 1×, at the plan's sample rate with exactly `plan.outputSamples` samples per channel. Add `--with-music` to write the rendered mix at the plan's sample rate and rendered length, including clip speed and levels, when a bed is selected. With no bed it still writes voice alone. Both WAV modes carry the MP4 export's loudness gain and limiter, run over the WAV's own samples (ADR-R47).
+- `music` is the bed actually mixed into the MP4: `trackId`, `title`, `gainDb` (the track's level under speech, not the output loudness gain) and `ducking`; `null` if no bed was mixed. A local file reports `file-` plus the first 16 hex characters of its SHA-256 and uses the filename stem as its title. Editable FCPXML on Mac links its existing project assets rather than mixing an MP4 bed and reports `music: null`.
 - `--loudness social` (the default) applies one gain and the true-peak limiter so the exported audio lands at −14 LUFS with its true peak at or below −1 dBTP (ADR-R47); `loudness` in the JSON reports `measuredLufs` (before the gain), `gainDb`, `outputLufs` and `truePeakDbtp` (after the gain and the limiter), `capped` (the 9 dB reduction cap stopped the gain short), `limiterMaxReductionDb` and `limitedPercent` (the share of frames under any reduction, release included). It is null with `--loudness off` or without an audio track.
 - `audioSampleRate` reports the 48,000 Hz export target on both platforms. For video-only output it stays 48,000, `audioSamples` is 0 and no audio track is written.
 - `--json` prints exactly one JSON object on **stdout** at the end:
@@ -677,6 +680,7 @@ Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its 
   "durationSeconds": 42.317, "width": 1080, "height": 1920, "fps": 30, "frames": 1270,
   "audioSampleRate": 48000, "audioSamples": 2031216, "videoCodec": "h264", "encoder": "h264_videotoolbox",
   "captionStyle": "vox-highlight", "aspect": "9:16", "elapsedSeconds": 6.4,
+  "music": { "trackId": "music-main", "title": "Calm intro", "gainDb": -20, "ducking": true },
   "loudness": { "measuredLufs": -21.5, "gainDb": 8.5, "outputLufs": -14.04, "truePeakDbtp": -1, "capped": false,
                 "limiterMaxReductionDb": 6.9, "limitedPercent": 45.7 },
   "version": "0.1.0" }

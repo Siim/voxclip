@@ -6,7 +6,9 @@ using System.Text.Json.Nodes;
 using FFmpeg.AutoGen;
 using VoxClip.Cli;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
@@ -214,15 +216,7 @@ public sealed class MediaCliE2ETests
             var file = project.Id + "/music-bed.wav";
             var track = Path.Combine(directory, "data", "Music", project.Id, "music-bed.wav");
             Directory.CreateDirectory(Path.GetDirectoryName(track)!);
-            const int rate = 48_000;
-            using (var writer = new BinaryWriter(File.Create(track)))
-            {
-                var frames = rate * 10;
-                writer.Write("RIFF"u8); writer.Write(36 + frames * 8); writer.Write("WAVE"u8);
-                writer.Write("fmt "u8); writer.Write(16); writer.Write((short)3); writer.Write((short)2); writer.Write(rate); writer.Write(rate * 8);
-                writer.Write((short)8); writer.Write((short)32); writer.Write("data"u8); writer.Write(frames * 8);
-                for (var frame = 0; frame < frames; frame++) { var value = 0.4f * MathF.Sin(2 * MathF.PI * 220 * frame / rate); writer.Write(value); writer.Write(value); }
-            }
+            WriteMusicTone(track, seconds: 10, channels: 2);
             project = VoxClip.Core.Domain.Music.MusicProject.Setting(new("music-bed", "clip-music", new(file, new string('0', 64), 10),
                 VoxClip.Core.Domain.Music.MusicSource.File, "Bed", null, VoxClip.Core.Domain.Music.MusicLicense.Own, null, null, null, -20, true, 0.5, 1.5, 0),
                 "clip-music", project);
@@ -259,6 +253,113 @@ public sealed class MediaCliE2ETests
             Assert.True(ClipRenderMediaTests.Amplitude(left, At(1), At(3), 220) < 0.0005);
         }
         finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task CliExportMixesSavedAndLocalTracksAndReportsTheActualBed()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-e2e-music-selection-").FullName;
+        try
+        {
+            var shared = FixtureLoader.SharedRoot;
+            var source = Path.Combine(shared, "fixtures", "media", Tone);
+            var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
+            var reference = CliOperations.NewProject(media, null, await new ProjectStore().ComputeContentKeyAsync(source, null, ct)).Media;
+            var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(shared, "fixtures", "music", "music-project.voxclip")));
+            var entry = project.Music[0] with
+            {
+                Asset = project.Music[0].Asset with { File = project.Id + "/music-calm-intro.wav", DurationSeconds = 2 }, GainDb = -18
+            };
+            project = project with
+            {
+                Media = reference,
+                Music = [entry],
+                Edits = project.Edits with { Clips = [project.Edits.Clips[0], project.Edits.Clips[0] with { Id = "clip-bare" }] },
+                ClipControls = new[] { "clip-main", "clip-bare" }.Select(clipId =>
+                    new ProjectClipControls(clipId, 1, null, ClipLook.Original, -1, 0, 0, false, false, 0)).ToArray(),
+                ClipEffects = new[] { "clip-main", "clip-bare" }.Select(clipId => JsonSerializer.SerializeToElement(new
+                {
+                    id = "mute-" + clipId, clipId, kind = "mute", start = 2.6, end = 3.6, wordIds = new[] { "w4", "w5", "w6", "w7" }
+                })).ToArray()
+            };
+            var track = MusicRenderInput.PathFor(entry.Asset, Path.Combine(directory, "data"));
+            Directory.CreateDirectory(Path.GetDirectoryName(track)!);
+            WriteMusicTone(track, seconds: 2, channels: 1);
+            var projectPath = Path.Combine(directory, "music.voxclip");
+            var original = ProjectSerialization.Serialize(project);
+            File.WriteAllText(projectPath, original);
+            var output = Path.Combine(directory, "mix.mp4");
+            var wave = Path.Combine(directory, "mix.wav");
+            var args = new[] { "export", "--open", projectPath, "--export", output, "--style", "off", "--loudness", "off", "--json", "--quiet" };
+            var plan = CliOperations.BuildPlan(project, true);
+            float[] Left(float[] stereo) => Enumerable.Range(0, stereo.Length / 2).Select(index => stereo[index * 2]).ToArray();
+            Task<float[]> Decode() => MediaThread.Run("vc-e2e-music-audio", () =>
+            {
+                using var reader = new AudioDecoder(output, 2);
+                var stereo = new float[plan.OutputSamples * 2];
+                reader.Read(stereo, stereo.Length / 2, ct);
+                return Left(stereo);
+            }, ct);
+            double PauseRms(float[] left) => Math.Sqrt(left[148_800..153_600].Average(sample => (double)sample * sample));
+            void AssertBed(float[] left)
+            {
+                var speech = ClipRenderMediaTests.Amplitude(left, 48_000, 72_000, 220);
+                var pause = ClipRenderMediaTests.Amplitude(left, 148_800, 153_600, 220);
+                Assert.True(PauseRms(left) > 0.003, $"pause RMS {PauseRms(left)}");
+                Assert.True(pause > 0.005 && pause > 2 * speech && speech > 0.0005, $"bed under speech {speech}, in pause {pause}");
+            }
+
+            var saved = await RunCli([.. args, "--clip", "clip-main", "--audio-out", wave], directory, "e2e-music-saved", ct);
+            Assert.True(saved.Exit == 0, saved.Result.ToJsonString());
+            var report = saved.Result["music"]!;
+            Assert.Equal(("music-main", "Synthetic calm intro", -18d, true), (report["trackId"]!.GetValue<string>(),
+                report["title"]!.GetValue<string>(), report["gainDb"]!.GetValue<double>(), report["ducking"]!.GetValue<bool>()));
+            AssertBed(await Decode());
+            Assert.True(PauseRms(Left(Wave(wave, plan))) < 0.00032);
+
+            var reused = await RunCli([.. args, "--clip", "clip-bare", "--music", "music-main", "--audio-out", wave, "--with-music"],
+                directory, "e2e-music-reuse", ct);
+            Assert.True(reused.Exit == 0, reused.Result.ToJsonString());
+            Assert.True(JsonNode.DeepEquals(report, reused.Result["music"]));
+            AssertBed(await Decode());
+            AssertBed(Left(Wave(wave, plan)));
+
+            var local = await RunCli([.. args, "--clip", "clip-bare", "--music-file", track], directory, "e2e-music-file", ct);
+            Assert.True(local.Exit == 0, local.Result.ToJsonString());
+            var hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(track)));
+            Assert.Equal("file-" + hash[..16], local.Result["music"]!["trackId"]!.GetValue<string>());
+            Assert.Equal("music-calm-intro", local.Result["music"]!["title"]!.GetValue<string>());
+            AssertBed(await Decode());
+
+            var dry = await RunCli([.. args, "--clip", "clip-bare"], directory, "e2e-music-none", ct);
+            Assert.True(dry.Exit == 0, dry.Result.ToJsonString());
+            Assert.True(dry.Result.AsObject().ContainsKey("music"));
+            Assert.Null(dry.Result["music"]);
+            var before = File.ReadAllBytes(output);
+            var unknown = await RunCli([.. args, "--clip", "clip-bare", "--music", "missing"], directory, "e2e-music-unknown", ct);
+            Assert.Equal(2, unknown.Exit);
+            Assert.Equal(before, File.ReadAllBytes(output));
+            Assert.Equal(original, File.ReadAllText(projectPath));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    private static void WriteMusicTone(string path, int seconds, short channels)
+    {
+        const int rate = 48_000;
+        var frames = rate * seconds;
+        var stride = channels * sizeof(float);
+        using var writer = new BinaryWriter(File.Create(path));
+        writer.Write("RIFF"u8); writer.Write(36 + frames * stride); writer.Write("WAVE"u8);
+        writer.Write("fmt "u8); writer.Write(16); writer.Write((short)3); writer.Write(channels); writer.Write(rate); writer.Write(rate * stride);
+        writer.Write((short)stride); writer.Write((short)32); writer.Write("data"u8); writer.Write(frames * stride);
+        for (var frame = 0; frame < frames; frame++)
+        {
+            var sample = 0.4f * MathF.Sin(2 * MathF.PI * 220 * frame / rate);
+            for (var channel = 0; channel < channels; channel++) writer.Write(sample);
+        }
     }
 
     public static TheoryData<string> Cases

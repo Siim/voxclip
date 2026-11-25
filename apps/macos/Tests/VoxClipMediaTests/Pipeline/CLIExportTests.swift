@@ -246,6 +246,18 @@ func cliDirectory() throws -> URL {
     return directory
 }
 
+@Test(arguments: [
+    (["--with-music"], "--with-music requires --audio-out."),
+    (["--music", "bed", "--music-file", "bed.wav"], "Use either --music or --music-file, not both.")
+])
+func musicFlagsRejectInvalidCombinationsBeforeOpeningInput(flags: [String], message: String) throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let result = try runCLI(["export", "--open", "missing.mp4", "--export", "unused.mp4", "--json"] + flags, directory: directory)
+    #expect(result.status == 2)
+    #expect(try (result.json["error"] as? [String: Any])?["message"] as? String == message)
+}
+
 private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdits = ProjectEdits()) async throws -> Project {
     let probe = try await AVMediaProbe().probe(source)
     let attributes = try FileManager.default.attributesOfItem(atPath: source.path)

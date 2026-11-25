@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - VoxClip opens story clips on Mac and Windows, plays their parts in the saved order, and starts a fresh caption at each join.
+- On Mac and Windows, choose a saved music track or a local audio file for a CLI export, include it in the WAV if wanted, and see which bed was mixed in JSON.
 - On Mac, project save failures say why once above the transcript, without interrupting edits with an alert.
 - On Mac, Rewrite finishes pricing lip sync for your current takes when video and lip-sync preparation overlap.
 - Whole-take lip sync uploads large clips in parts and uses sync-3 for new runs and redos on Mac and Windows. Existing lip syncs stay saved.

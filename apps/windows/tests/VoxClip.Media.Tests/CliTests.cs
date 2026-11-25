@@ -16,6 +16,25 @@ public sealed class CliTests
     public void VersionUsesSharedRuntimeDisplayFallback() => Assert.Equal(AppVersion.Current, CliApplication.Version);
 
     [Theory]
+    [InlineData("--with-music", "--with-music requires --audio-out.")]
+    [InlineData("--music bed --music-file bed.wav", "Use either --music or --music-file, not both.")]
+    public async Task MusicFlagsRejectInvalidCombinationsBeforeOpeningInput(string flags, string message)
+    {
+        var previousOutput = Console.Out; var previousError = Console.Error;
+        using var output = new StringWriter(); using var errors = new StringWriter();
+        try
+        {
+            Console.SetOut(output); Console.SetError(errors);
+            var exit = await AcceptedCli.RunAsync(["export", "--open", "missing.mp4", "--export", "unused.mp4", "--json", .. flags.Split(' ')],
+                TestContext.Current.CancellationToken, (_, _) => throw new InvalidOperationException("Input must not open"));
+            Assert.Equal(2, exit);
+            using var json = JsonDocument.Parse(output.ToString());
+            Assert.Equal(message, json.RootElement.GetProperty("error").GetProperty("message").GetString());
+        }
+        finally { Console.SetOut(previousOutput); Console.SetError(previousError); }
+    }
+
+    [Theory]
     [InlineData("version --json", 0, true, "version")]
     [InlineData("--json", 2, false, "export")]
     [InlineData("--fps -1 --json", 2, false, "export")]
