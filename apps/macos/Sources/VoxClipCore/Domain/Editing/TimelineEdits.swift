@@ -110,10 +110,24 @@ private struct TimelineReducer {
             for item in selected { try split(item, source: source) }
             return name("Split", selected)
         case .splitAll(let source):
-            let (clip, boundary) = try splitSpeech(at: time(source))
+            let source = try time(source)
+            if clock.scope == nil { return try splitFullTake(at: source) }
+            let (clip, leftEnd, rightStart) = try splitSpeech(at: source)
             try checkSpeech(clip)
-            for item in try underPlayhead(boundary, skipUnsupported: true) { try split(item, source: boundary) }
-            try replaceSpeech(clip)
+            let before = project
+            let crossing = try underPlayhead(rightStart, skipUnsupported: true)
+            for item in crossing {
+                if item.ownLength { try split(item, source: rightStart) }
+                else if item.span.start < leftEnd { try split(item, source: rightStart, leftEnd: leftEnd) }
+                else { try trim(item, edge: .start, source: rightStart) }
+            }
+            if leftEnd < rightStart {
+                let ending = try underPlayhead(leftEnd, skipUnsupported: true)
+                for item in ending where !item.ownLength && !crossing.contains(where: { $0.id == item.id }) {
+                    try trim(item, edge: .end, source: leftEnd)
+                }
+            }
+            try replaceSpeech(clip, preserving: before)
             return "Split all"
         case .fade(let id, let edge, let seconds):
             let item = try entry(id)
@@ -250,19 +264,20 @@ private struct TimelineReducer {
         if items.count == 1, case .part(let id) = items[0].id, !duplicate, let anchor {
             return try movePart(id, to: anchor)
         }
-        let delta = anchor.map { clock.round($0 - items[0].span.start) } ?? 0
+        let delta = anchor.map { clock.round($0 - clock.round(items[0].span.start)) } ?? (duplicate ? duplicateOffset(items) : 0)
         for item in items {
             try requireEditable(item)
             if delta == 0 && !duplicate { continue }
             var draft = Draft(item, clock: clock)
-            draft.span = clock.range(item.span.start + delta, item.span.end + delta)
+            draft.span = clock.range(draft.span.start + delta, draft.span.end + delta)
             if item.wordLocked { try snapWords(item, draft: &draft, edge: nil) }
+            if item.wordLocked, !duplicate, draft.span == item.span { continue }
             try checkSpan(item, draft.span)
-            if item.footage { try checkFootageOverlap(item, draft.span, duplicate: duplicate) }
             if duplicate { draft.newID = fresh(item.id.value, taken: allIDs(item.id)) }
             draft.trackShift = delta
             try write(item, draft)
         }
+        if items.contains(where: \.footage) { try checkFootageOverlap() }
         return name(verb, items)
     }
 
@@ -288,7 +303,7 @@ private struct TimelineReducer {
         }
         if item.wordLocked { try snapWords(item, draft: &draft, edge: edge) }
         try checkSpan(item, draft.span)
-        if item.footage { try checkFootageOverlap(item, draft.span, duplicate: false) }
+        if item.footage { try checkFootageOverlap(item, draft.span) }
         let newLength = length(item, draft.span)
         if item.audio || item.footage {
             if edge == .start && item.kind != "screenshot" {
@@ -320,23 +335,24 @@ private struct TimelineReducer {
         }
     }
 
-    mutating func split(_ item: TimelineEntry, source: Double) throws {
+    mutating func split(_ item: TimelineEntry, source: Double, leftEnd: Double? = nil) throws {
         if item.lane == .video { throw TimelineEditRefusal("Use Split All to split speech.") }
         try requireEditable(item)
         if item.wordLocked { throw Self.wholeWords }
         var left = Draft(item, clock: clock), right = left
-        let full = length(item, left.span)
-        let offset = item.ownLength ? local(source, for: item) : length(item, clock.range(item.span.start, source))
-        let rest = clock.round(full - offset)
+        let full = length(item, left.span), leftEdge = leftEnd ?? source
+        let offset = item.ownLength ? local(source, for: item) : length(item, clock.range(item.span.start, leftEdge))
+        let skipped = item.ownLength ? 0 : length(item, clock.range(leftEdge, source))
+        let rest = clock.round(full - offset - skipped)
         let minimum = item.kind == "zoom" ? 0.2 : item.kind == "music" ? 0.1 + 1 / clock.plan.sampleRate : item.kind == "sound" ? 0.05 : 1 / clock.plan.sampleRate
         guard offset >= minimum - 1e-9, rest >= minimum - 1e-9 else { throw Self.tooShort }
         if !item.ownLength && !(left.span.start < source && source < left.span.end) { throw Self.tooShort }
-        left.span.end = item.ownLength ? clock.round(left.span.start + offset) : source
+        left.span.end = item.ownLength ? clock.round(left.span.start + offset) : leftEdge
         right.span.start = source
         if item.ownLength { right.span.end = clock.round(source + rest) }
         try checkSpan(item, left.span); try checkSpan(item, right.span)
         if item.audio || (item.footage && item.kind != "screenshot") {
-            right.offset = mediaOffset(item, advancedBy: offset)
+            right.offset = mediaOffset(item, advancedBy: offset + skipped)
             try checkMedia(item, right, length: item.footage ? min(rest, (item.available ?? 0) - (right.offset ?? 0)) : rest)
         }
         if item.audio { left.points = envelope(item.points, from: 0, to: offset); right.points = envelope(item.points, from: offset, to: full) }
@@ -344,14 +360,17 @@ private struct TimelineReducer {
             left.fadeOut = 0; right.fadeIn = 0
         }
         if item.kind == "zoom", let cue = project.motionCues.first(where: { $0.id == item.id.value }) {
-            let progress = (source - cue.sourceStart) / (cue.sourceEnd - cue.sourceStart)
-            let pose = cue.transform(atSourceTime: source)
-            func frame(_ progress: Double) -> MotionKeyframe { .init(progress: progress, scale: pose.scale, anchorX: pose.anchorX, anchorY: pose.anchorY) }
+            let duration = cue.sourceEnd - cue.sourceStart
+            let lower = (leftEdge - cue.sourceStart) / duration, upper = (source - cue.sourceStart) / duration
+            func frame(_ progress: Double, at time: Double) -> MotionKeyframe {
+                let pose = cue.transform(atSourceTime: time)
+                return .init(progress: progress, scale: pose.scale, anchorX: pose.anchorX, anchorY: pose.anchorY)
+            }
             func resample(_ key: MotionKeyframe, from: Double, to: Double) -> MotionKeyframe {
                 .init(progress: (key.progress - from) / (to - from), scale: key.scale, anchorX: key.anchorX, anchorY: key.anchorY)
             }
-            left.motion = cue.keyframes.filter { $0.progress < progress }.map { resample($0, from: 0, to: progress) } + [frame(1)]
-            right.motion = [frame(0)] + cue.keyframes.filter { $0.progress > progress }.map { resample($0, from: progress, to: 1) }
+            left.motion = cue.keyframes.filter { $0.progress < lower }.map { resample($0, from: 0, to: lower) } + [frame(1, at: leftEdge)]
+            right.motion = [frame(0, at: source)] + cue.keyframes.filter { $0.progress > upper }.map { resample($0, from: upper, to: 1) }
         }
         right.newID = fresh(item.id.value, taken: allIDs(item.id))
         try write(item, right); try write(item, left)
@@ -413,11 +432,35 @@ private struct TimelineReducer {
         indices.min { abs(clock.round(edge($0)) - source) < abs(clock.round(edge($1)) - source) }
     }
 
-    func checkFootageOverlap(_ item: TimelineEntry, _ span: TimeRange, duplicate: Bool) throws {
+    func duplicateOffset(_ items: [TimelineEntry]) -> Double {
+        let moving = items.filter(\.footage).map { clock.range($0.span.start, $0.span.end) }
+        let occupied = project.media.footage.filter { $0.clipID == clock.scope }.map { clock.range($0.start, $0.end) }
+        var delta = 0.0
+        while true {
+            var next = delta
+            for span in moving {
+                let candidate = clock.range(span.start + delta, span.end + delta)
+                for other in occupied where StoryClips.overlaps(candidate, other) {
+                    next = max(next, clock.round(other.end - span.start))
+                }
+            }
+            if next <= delta { return delta }
+            delta = next
+        }
+    }
+
+    func checkFootageOverlap(_ item: TimelineEntry, _ span: TimeRange) throws {
         if project.media.footage.contains(where: { value in
-            value.clipID == clock.scope && (duplicate || value.id != item.id.value) &&
+            value.clipID == clock.scope && value.id != item.id.value &&
                 StoryClips.overlaps(clock.range(value.start, value.end), span)
         }) { throw TimelineEditRefusal("Place it where no other recording plays.") }
+    }
+
+    func checkFootageOverlap() throws {
+        let spans = project.media.footage.filter { $0.clipID == clock.scope }.sorted { $0.start < $1.start }
+        if zip(spans, spans.dropFirst()).contains(where: { $0.end > $1.start }) {
+            throw TimelineEditRefusal("Place it where no other recording plays.")
+        }
     }
 
     func allIDs(_ id: TimelineItemID) -> [String] {
@@ -444,7 +487,7 @@ private struct TimelineReducer {
     }
 
     func segment(_ item: TimelineEntry) -> MusicSegment? {
-        guard let track = project.music.first(where: { $0.clipId == clock.scope }) else { return nil }
+        guard item.kind == "music", let track = project.music.first(where: { $0.clipId == clock.scope }) else { return nil }
         return track.segments?.first { $0.id == item.id.value } ?? (track.segments == nil ? clock.bed(track) : nil)
     }
 
@@ -529,8 +572,21 @@ private struct TimelineReducer {
         if let refusal = StoryClips.lipsyncRefusal(spans, windows: windows) { throw TimelineEditRefusal(refusal) }
     }
 
-    mutating func replaceSpeech(_ clip: ClipRange) throws {
-        if let index = project.edits.clips.firstIndex(where: { $0.id == clip.id }) { project.edits.clips[index] = clip }
+    mutating func replaceSpeech(_ clip: ClipRange, preserving snapshot: Project? = nil) throws {
+        if let index = project.edits.clips.firstIndex(where: { $0.id == clip.id }) {
+            let original = project.edits.clips[index]
+            let before = StoryClips.times(original, words: clock.words), after = StoryClips.times(clip, words: clock.words)
+            let whole = project.voiceLab.wholeClipRevoices?.contains { $0.clipId == clip.id } == true
+            let losesLipsync = StoryClips.lipsyncWindows(project).contains { window in
+                before.contains { StoryClips.overlaps($0, window) } && !after.contains { StoryClips.overlaps($0, window) }
+            }
+            if clip.parts != nil, (whole && before != after) || losesLipsync {
+                var copy = clip
+                copy.id = fresh(clip.id + "-story", taken: allIDs(.clip("")))
+                copy.title = String(((original.title ?? "Clip \(index + 1)") + " story").unicodeScalars.prefix(120))
+                project = try copyScope(clip.id, to: copy, in: snapshot ?? project)
+            } else { project.edits.clips[index] = clip }
+        }
         else {
             guard project.edits.clips.count < 64 else { throw Self.invalid }
             project.edits.clips.append(clip)
@@ -541,6 +597,7 @@ private struct TimelineReducer {
     func updateHull(_ clip: inout ClipRange, parts: [ClipPart]) throws {
         guard let ranges = StoryClips.indices(parts.map { ($0.startWordId, $0.endWordId) }, words: clock.words),
               let first = ranges.map(\.lowerBound).min(), let last = ranges.map(\.upperBound).max() else { throw Self.insidePart }
+        if clip.playParts.first?.startWordId != parts.first?.startWordId { clip.leadInSeconds = nil }
         clip.parts = parts
         clip.startWordId = clock.words[first].id; clip.endWordId = clock.words[last].id
     }
@@ -554,7 +611,10 @@ private struct TimelineReducer {
         if var parts = clip.parts {
             if edge == .start { parts[index].startWordId = id } else { parts[index].endWordId = id }
             try updateHull(&clip, parts: parts)
-        } else if edge == .start { clip.startWordId = id } else { clip.endWordId = id }
+        } else if edge == .start {
+            if clip.startWordId != id { clip.leadInSeconds = nil }
+            clip.startWordId = id
+        } else { clip.endWordId = id }
         try checkSpeech(clip); try replaceSpeech(clip)
         return clip.parts == nil ? "Trim clip" : "Trim part \(index + 1)"
     }
@@ -564,26 +624,69 @@ private struct TimelineReducer {
               let destination = clock.part(at: source) ?? clock.parts.firstIndex(where: { $0.range.end == source }) else { throw Self.insidePart }
         let value = parts.remove(at: old)
         parts.insert(value, at: destination)
-        clip.parts = parts
+        try updateHull(&clip, parts: parts)
         try checkSpeech(clip); try replaceSpeech(clip)
         return "Move part"
     }
 
-    func splitSpeech(at source: Double) throws -> (ClipRange, Double) {
+    func splitSpeech(at source: Double) throws -> (ClipRange, Double, Double) {
         let words = clock.words
-        guard let first = words.first, let last = words.last else { throw Self.tooShort }
-        var clip = clock.clip ?? ClipRange(id: fresh("clip", taken: allIDs(.clip(""))), startWordId: first.id, endWordId: last.id)
-        guard let index = clock.part(at: source), let range = clip.playPartIndices(in: words)?[index],
+        guard var clip = clock.clip, let index = clock.part(at: source), let range = clip.playPartIndices(in: words)?[index],
               range.lowerBound < range.upperBound else { throw Self.tooShort }
         var parts = clip.playParts
-        guard parts.count < 12, let next = nearest(source, indices: (range.lowerBound + 1)..<(range.upperBound + 1), edge: { words[$0].start }) else { throw Self.tooShort }
+        guard parts.count < 12, let next = nearest(source, indices: (range.lowerBound + 1)..<(range.upperBound + 1),
+                                                  edge: { (words[$0 - 1].end + words[$0].start) / 2 }) else { throw Self.tooShort }
         let part = parts[index]
         parts[index].endWordId = words[next - 1].id
         let partID = fresh(part.id, taken: allIDs(.part("")) + parts.map(\.id))
         parts.insert(ClipPart(id: partID, startWordId: words[next].id, endWordId: part.endWordId, reframe: part.reframe), at: index + 1)
         try updateHull(&clip, parts: parts)
         if clip.kind == nil { clip.kind = .story }
-        return (clip, clock.round(words[next].start))
+        let spans = StoryClips.times(clip, words: words)
+        let end = clock.round(spans[index].end), start = clock.round(spans[index + 1].start)
+        guard end <= start else { throw Self.insidePart }
+        return (clip, end, start)
+    }
+
+    mutating func splitFullTake(at source: Double) throws -> String {
+        guard let first = clock.words.first, let last = clock.words.last else { throw Self.tooShort }
+        let clip = ClipRange(id: fresh("clip", taken: allIDs(.clip(""))), startWordId: first.id, endWordId: last.id)
+        let basis = try copyScope(nil, to: clip, in: project)
+        var reducer = TimelineReducer(basis, plan: clock.plan, scope: clip.id)
+        let name = try reducer.apply(.splitAll(atSource: source))
+        project = reducer.project
+        return name
+    }
+
+    func copyScope(_ source: String?, to clip: ClipRange, in basis: Project) throws -> Project {
+        var copy = basis
+        guard copy.edits.clips.count < 64 else { throw Self.invalid }
+        copy.edits.clips.append(clip)
+        copy.edits.activeClipId = clip.id
+        var ids = copy.clipEffects.map(\.id)
+        for effect in project.clipEffects where effect.clipId == source && !effect.kind.isCensor {
+            var duplicate = effect
+            duplicate.id = fresh(effect.id, taken: ids)
+            ids.append(duplicate.id)
+            duplicate.clipId = clip.id
+            copy.clipEffects.append(duplicate)
+        }
+        guard copy.clipEffects.count <= ClipEffect.maximumEntries else { throw Self.invalid }
+        for footage in project.media.footage where footage.clipID == source {
+            var duplicate = footage
+            duplicate.id = fresh(footage.id, taken: copy.media.footage.map(\.id))
+            duplicate.clipID = clip.id
+            copy.media.footage.append(duplicate)
+        }
+        for cue in project.motionCues where cue.clipID == source {
+            copy.motionCues.append(.init(id: fresh(cue.id, taken: copy.motionCues.map(\.id)), clipID: clip.id,
+                                        sourceStart: cue.sourceStart, sourceEnd: cue.sourceEnd, keyframes: cue.keyframes))
+        }
+        if var track = project.music.first(where: { $0.clipId == source }) {
+            track.id = fresh(track.id, taken: copy.music.map(\.id)); track.clipId = clip.id
+            copy.music.append(track)
+        }
+        return copy
     }
 
     struct Draft {

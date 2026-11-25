@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.ContextDemo;
@@ -86,7 +87,7 @@ public abstract record TimelineEdit
     public sealed record SetDuck(string Track, double Db) : TimelineEdit;
     /// <summary>Copy placements without copying their assets.</summary>
     /// <param name="Items">Selection, with its reference item first.</param>
-    /// <param name="ToAnchor">New reference source anchor; null duplicates in place.</param>
+    /// <param name="ToAnchor">New reference source anchor; null duplicates in place or after overlapping footage.</param>
     public sealed record Duplicate(IReadOnlyList<TimelineItemId> Items, double? ToAnchor = null) : TimelineEdit;
     /// <summary>Remove placements without deleting their assets.</summary>
     /// <param name="Items">Selection to remove.</param>
@@ -185,10 +186,22 @@ public static class TimelineEdits
                 }
                 case TimelineEdit.SplitAll split:
                 {
-                    var (clip, boundary) = SplitSpeech(Time(split.AtSource));
+                    var source = Time(split.AtSource);
+                    if (clock.Scope is null) return SplitFullTake(source);
+                    var (clip, leftEnd, rightStart) = SplitSpeech(source);
                     CheckSpeech(clip);
-                    foreach (var item in UnderPlayhead(boundary, true)) Split(item, boundary);
-                    ReplaceSpeech(clip);
+                    var before = Project;
+                    var crossing = UnderPlayhead(rightStart, true);
+                    foreach (var item in crossing)
+                    {
+                        if (item.OwnLength) Split(item, rightStart);
+                        else if (item.Span.Start < leftEnd) Split(item, rightStart, leftEnd);
+                        else Trim(item, TimelineEdge.Start, rightStart);
+                    }
+                    if (leftEnd < rightStart)
+                        foreach (var item in UnderPlayhead(leftEnd, true).Where(item => !item.OwnLength && !crossing.Any(other => other.Id == item.Id)))
+                            Trim(item, TimelineEdge.End, leftEnd);
+                    ReplaceSpeech(clip, before);
                     return "Split all";
                 }
                 case TimelineEdit.Fade fade:
@@ -316,18 +329,20 @@ public static class TimelineEdits
         {
             if (items.Length == 1 && items[0].Id.Type == TimelineItemType.Part && !duplicate && anchor is { } to)
                 return MovePart(items[0].Id.Value, to);
-            var delta = anchor is { } target ? clock.Round(target - items[0].Span.Start) : 0;
+            var delta = anchor is { } target ? clock.Round(target - clock.Round(items[0].Span.Start)) : duplicate ? DuplicateOffset(items) : 0;
             foreach (var item in items)
             {
                 RequireEditable(item);
                 if (delta == 0 && !duplicate) continue;
-                var draft = new Draft(item, clock) { Span = clock.Range(item.Span.Start + delta, item.Span.End + delta), TrackShift = delta };
+                var draft = new Draft(item, clock) { TrackShift = delta };
+                draft.Span = clock.Range(draft.Span.Start + delta, draft.Span.End + delta);
                 if (item.WordLocked) SnapWords(item, draft, null);
+                if (item.WordLocked && !duplicate && draft.Span == item.Span) continue;
                 CheckSpan(item, draft.Span);
-                if (item.Footage) CheckFootageOverlap(item, draft.Span, duplicate);
                 if (duplicate) draft.NewId = Fresh(item.Id.Value, AllIds(item.Id.Type));
                 Write(item, draft);
             }
+            if (items.Any(item => item.Footage)) CheckFootageOverlap();
             return Name(verb, items);
         }
 
@@ -354,7 +369,7 @@ public static class TimelineEdits
             else draft.Span = draft.Span with { End = item.OwnLength ? clock.Round(draft.Span.Start + Local(source, item)) : source };
             if (item.WordLocked) SnapWords(item, draft, edge);
             CheckSpan(item, draft.Span);
-            if (item.Footage) CheckFootageOverlap(item, draft.Span, false);
+            if (item.Footage) CheckFootageOverlap(item, draft.Span);
             var newLength = Length(item, draft.Span);
             if (item.Audio || item.Footage)
             {
@@ -389,7 +404,7 @@ public static class TimelineEdits
             }).ToArray();
         }
 
-        private void Split(TimelineEntry item, double source)
+        private void Split(TimelineEntry item, double source, double? leftEnd = null)
         {
             if (item.Lane == TimelineLane.V1) throw new Refusal("Use Split All to split speech.");
             RequireEditable(item);
@@ -397,17 +412,19 @@ public static class TimelineEdits
             var left = new Draft(item, clock);
             var right = new Draft(item, clock);
             var full = Length(item, left.Span);
-            var offset = item.OwnLength ? Local(source, item) : Length(item, clock.Range(item.Span.Start, source));
-            var rest = clock.Round(full - offset);
+            var leftEdge = leftEnd ?? source;
+            var offset = item.OwnLength ? Local(source, item) : Length(item, clock.Range(item.Span.Start, leftEdge));
+            var skipped = item.OwnLength ? 0 : Length(item, clock.Range(leftEdge, source));
+            var rest = clock.Round(full - offset - skipped);
             var minimum = item.Kind switch { "zoom" => 0.2, "music" => 0.1 + 1 / clock.Plan.SampleRate, "sound" => 0.05, _ => 1 / clock.Plan.SampleRate };
             if (offset < minimum - 1e-9 || rest < minimum - 1e-9 || (!item.OwnLength && !(left.Span.Start < source && source < left.Span.End)))
                 throw new Refusal(TooShort);
-            left.Span = left.Span with { End = item.OwnLength ? clock.Round(left.Span.Start + offset) : source };
+            left.Span = left.Span with { End = item.OwnLength ? clock.Round(left.Span.Start + offset) : leftEdge };
             right.Span = right.Span with { Start = source, End = item.OwnLength ? clock.Round(source + rest) : right.Span.End };
             CheckSpan(item, left.Span); CheckSpan(item, right.Span);
             if (item.Audio || (item.Footage && item.Kind != "screenshot"))
             {
-                right.Offset = MediaOffset(item, offset);
+                right.Offset = MediaOffset(item, offset + skipped);
                 CheckMedia(item, right, item.Footage ? Math.Min(rest, (item.Available ?? 0) - (right.Offset ?? 0)) : rest);
             }
             if (item.Audio) { left.Points = Envelope(item.Points, 0, offset); right.Points = Envelope(item.Points, offset, full); }
@@ -418,12 +435,17 @@ public static class TimelineEdits
             if (item.Id.Type == TimelineItemType.Motion)
             {
                 var cue = Project.MotionCues.First(cue => cue.Id == item.Id.Value);
-                var progress = (source - cue.SourceStart) / (cue.SourceEnd - cue.SourceStart);
-                var pose = MotionCueRendering.Transform(cue, source);
-                MotionKeyframe Frame(double progress) => new(progress, pose.Scale, pose.AnchorX, pose.AnchorY);
+                var duration = cue.SourceEnd - cue.SourceStart;
+                var lower = (leftEdge - cue.SourceStart) / duration;
+                var upper = (source - cue.SourceStart) / duration;
+                MotionKeyframe Frame(double progress, double time)
+                {
+                    var pose = MotionCueRendering.Transform(cue, time);
+                    return new(progress, pose.Scale, pose.AnchorX, pose.AnchorY);
+                }
                 MotionKeyframe Resample(MotionKeyframe key, double from, double to) => key with { Progress = (key.Progress - from) / (to - from) };
-                left.Motion = cue.Keyframes.Where(key => key.Progress < progress).Select(key => Resample(key, 0, progress)).Append(Frame(1)).ToArray();
-                right.Motion = cue.Keyframes.Where(key => key.Progress > progress).Select(key => Resample(key, progress, 1)).Prepend(Frame(0)).ToArray();
+                left.Motion = cue.Keyframes.Where(key => key.Progress < lower).Select(key => Resample(key, 0, lower)).Append(Frame(1, leftEdge)).ToArray();
+                right.Motion = cue.Keyframes.Where(key => key.Progress > upper).Select(key => Resample(key, upper, 1)).Prepend(Frame(0, source)).ToArray();
             }
             right.NewId = Fresh(item.Id.Value, AllIds(item.Id.Type));
             Write(item, right); Write(item, left);
@@ -489,10 +511,36 @@ public static class TimelineEdits
         private int? Nearest(double source, int start, int end, Func<int, double> edge) => end <= start ? null :
             Enumerable.Range(start, end - start).MinBy(index => Math.Abs(clock.Round(edge(index)) - source));
 
-        private void CheckFootageOverlap(TimelineEntry item, TimeRange span, bool duplicate)
+        private double DuplicateOffset(IEnumerable<TimelineEntry> items)
         {
-            if ((Project.Media.Footage ?? []).Any(value => value.ClipId == clock.Scope && (duplicate || value.Id != item.Id.Value) &&
+            var moving = items.Where(item => item.Footage).Select(item => clock.Range(item.Span.Start, item.Span.End)).ToArray();
+            var occupied = (Project.Media.Footage ?? []).Where(value => value.ClipId == clock.Scope).Select(value => clock.Range(value.Start, value.End)).ToArray();
+            var delta = 0.0;
+            while (true)
+            {
+                var next = delta;
+                foreach (var span in moving)
+                {
+                    var candidate = clock.Range(span.Start + delta, span.End + delta);
+                    foreach (var other in occupied)
+                        if (StoryClips.Overlaps(candidate, other)) next = Math.Max(next, clock.Round(other.End - span.Start));
+                }
+                if (next <= delta) return delta;
+                delta = next;
+            }
+        }
+
+        private void CheckFootageOverlap(TimelineEntry item, TimeRange span)
+        {
+            if ((Project.Media.Footage ?? []).Any(value => value.ClipId == clock.Scope && value.Id != item.Id.Value &&
                 StoryClips.Overlaps(clock.Range(value.Start, value.End), span))) throw new Refusal("Place it where no other recording plays.");
+        }
+
+        private void CheckFootageOverlap()
+        {
+            var spans = (Project.Media.Footage ?? []).Where(value => value.ClipId == clock.Scope).OrderBy(value => value.Start).ToArray();
+            if (spans.Zip(spans.Skip(1)).Any(pair => pair.First.End > pair.Second.Start))
+                throw new Refusal("Place it where no other recording plays.");
         }
 
         private IEnumerable<string> AllIds(TimelineItemType type) => type switch
@@ -527,7 +575,11 @@ public static class TimelineEdits
         private ProjectMusic Materialise(ProjectMusic track) => track.Segments is not null ? track :
             clock.Bed(track) is { LengthSeconds: > 0.1 } bed ? track with { Segments = [bed] } : throw new Refusal(Invalid);
 
-        private void StoreTrack(ProjectMusic track) => Project = Project with { Music = Project.Music.Select(value => value.Id == track.Id ? track : value).ToArray() };
+        private void StoreTrack(ProjectMusic track)
+        {
+            if (Project.Music.Any(value => value == track)) return;
+            Project = Project with { Music = Project.Music.Select(value => value.Id == track.Id ? track : value).ToArray() };
+        }
 
         private static IReadOnlyList<Value> Store<Value>(IReadOnlyList<Value> values, Value edited, Func<Value, bool> matches, bool append) =>
             append ? values.Append(edited).ToArray() : values.Select(value => matches(value) ? edited : value).ToArray();
@@ -543,7 +595,8 @@ public static class TimelineEdits
             {
                 case TimelineItemType.Effect:
                 {
-                    var node = JsonNode.Parse(Effect(original).GetRawText())!.AsObject();
+                    var previous = Effect(original);
+                    var node = JsonNode.Parse(previous.GetRawText())!.AsObject();
                     node["id"] = id; node["start"] = draft.Span.Start; node["end"] = draft.Span.End;
                     if (draft.FadeIn is { } fadeIn) node["fadeInSeconds"] = fadeIn;
                     if (draft.FadeOut is { } fadeOut) node["fadeOutSeconds"] = fadeOut;
@@ -556,6 +609,7 @@ public static class TimelineEdits
                         foreach (var sample in samples) sample!["t"] = clock.Round(sample["t"]!.GetValue<double>() + draft.TrackShift);
                     using var document = JsonDocument.Parse(node.ToJsonString());
                     var value = document.RootElement.Clone();
+                    if (JsonElement.DeepEquals(previous, value)) return;
                     if ((append && Project.ClipEffects.Count >= 500) || !ClipEffects.IsValidEntry(value, Project.Id)) throw new Refusal(Invalid);
                     Project = Project with { ClipEffects = Store(Project.ClipEffects, value, entry => entry.GetProperty("id").GetString() == original, append) };
                     break;
@@ -567,6 +621,7 @@ public static class TimelineEdits
                     var edited = value with { Id = id, Start = draft.Span.Start, End = draft.Span.End,
                         Footage = value.Footage with { Start = draft.Offset ?? value.Footage.Start },
                         FadeInSeconds = draft.FadeIn ?? value.FadeInSeconds, FadeOutSeconds = draft.FadeOut ?? value.FadeOutSeconds };
+                    if (edited == value) return;
                     Project = Project with { Media = Project.Media with { Footage = Store(footage, edited, value => value.Id == original, append) } };
                     break;
                 }
@@ -576,6 +631,7 @@ public static class TimelineEdits
                     if (draft.Span.End - draft.Span.Start > 120 + 1e-9 ||
                         (append && Project.MotionCues.Count(value => value.ClipID == cue.ClipID) >= 64)) throw new Refusal(Invalid);
                     var edited = cue with { Id = id, SourceStart = draft.Span.Start, SourceEnd = draft.Span.End, Keyframes = draft.Motion ?? cue.Keyframes };
+                    if (edited == cue) return;
                     Project = Project with { MotionCues = Store(Project.MotionCues, edited, value => value.Id == original, append) };
                     break;
                 }
@@ -589,7 +645,7 @@ public static class TimelineEdits
                         GainDb = draft.Gain ?? segment.GainDb, GainPoints = draft.Points,
                         FadeInSeconds = draft.FadeIn ?? segment.FadeInSeconds, FadeOutSeconds = draft.FadeOut ?? segment.FadeOutSeconds };
                     if (append && segments.Count >= 8) throw new Refusal("A track can have up to 8 segments.");
-                    StoreTrack(track with { Segments = Store(segments, edited, value => value.Id == original, append) });
+                    StoreTrack(edited == segment ? track : track with { Segments = Store(segments, edited, value => value.Id == original, append) });
                     MusicProject.Validate(Project with { SchemaVersion = TimelineEditFields.Version });
                     break;
                 }
@@ -627,9 +683,27 @@ public static class TimelineEdits
             if (StoryClips.LipsyncRefusal(spans, StoryClips.LipsyncWindows(Project)) is { } refusal) throw new Refusal(refusal);
         }
 
-        private void ReplaceSpeech(ClipRange clip)
+        private void ReplaceSpeech(ClipRange clip, Project? snapshot = null)
         {
-            var exists = Project.Edits.Clips.Any(value => value.Id == clip.Id);
+            var index = Project.Edits.Clips.ToList().FindIndex(value => value.Id == clip.Id);
+            var exists = index >= 0;
+            if (exists)
+            {
+                var original = Project.Edits.Clips[index];
+                if (original == clip || (original with { Parts = clip.Parts }) == clip && original.PlayParts.SequenceEqual(clip.PlayParts)) return;
+                var before = StoryClips.Times(original, clock.Words);
+                var after = StoryClips.Times(clip, clock.Words);
+                var whole = Project.VoiceLab.WholeClipRevoices?.Any(record => record.ClipId == clip.Id) == true;
+                var losesLipsync = StoryClips.LipsyncWindows(Project).Any(window => before.Any(span => StoryClips.Overlaps(span, window)) &&
+                    !after.Any(span => StoryClips.Overlaps(span, window)));
+                if (clip.Parts is not null && (whole && !before.SequenceEqual(after) || losesLipsync))
+                {
+                    var title = (original.Title ?? $"Clip {index + 1}") + " story";
+                    var copy = clip with { Id = Fresh(clip.Id + "-story", AllIds(TimelineItemType.Clip)), Title = string.Concat(title.EnumerateRunes().Take(120)) };
+                    Project = CopyScope(clip.Id, copy, snapshot ?? Project);
+                    return;
+                }
+            }
             if (!exists && Project.Edits.Clips.Count >= 64) throw new Refusal(Invalid);
             Project = Project with { Edits = Project.Edits with { Clips = Store(Project.Edits.Clips, clip, value => value.Id == clip.Id, !exists),
                 ActiveClipId = exists ? Project.Edits.ActiveClipId : clip.Id } };
@@ -638,7 +712,8 @@ public static class TimelineEdits
         private ClipRange UpdateHull(ClipRange clip, IReadOnlyList<ClipPart> parts)
         {
             var ranges = StoryClips.Indices(parts.Select(part => (part.StartWordId, part.EndWordId)), clock.Words) ?? throw new Refusal(InsidePart);
-            return clip with { Parts = parts, StartWordId = clock.Words[ranges.Min(range => range.Start)].Id,
+            return clip with { Parts = parts, LeadInSeconds = clip.PlayParts[0].StartWordId == parts[0].StartWordId ? clip.LeadInSeconds : null,
+                StartWordId = clock.Words[ranges.Min(range => range.Start)].Id,
                 EndWordId = clock.Words[ranges.Max(range => range.End)].Id };
         }
 
@@ -658,7 +733,7 @@ public static class TimelineEdits
                 changed[index] = edge == TimelineEdge.Start ? changed[index] with { StartWordId = id } : changed[index] with { EndWordId = id };
                 clip = UpdateHull(clip, changed);
             }
-            else clip = edge == TimelineEdge.Start ? clip with { StartWordId = id } : clip with { EndWordId = id };
+            else clip = edge == TimelineEdge.Start ? clip with { StartWordId = id, LeadInSeconds = clip.StartWordId == id ? clip.LeadInSeconds : null } : clip with { EndWordId = id };
             CheckSpeech(clip); ReplaceSpeech(clip);
             return clip.Parts is null ? "Trim clip" : $"Trim part {index + 1}";
         }
@@ -673,27 +748,70 @@ public static class TimelineEdits
             if (old < 0 || destination < 0) throw new Refusal(InsidePart);
             var value = parts[old];
             parts.RemoveAt(old); parts.Insert(destination, value);
-            clip = clip with { Parts = parts };
+            clip = UpdateHull(clip, parts);
             CheckSpeech(clip); ReplaceSpeech(clip);
             return "Move part";
         }
 
-        private (ClipRange Clip, double Boundary) SplitSpeech(double source)
+        private (ClipRange Clip, double LeftEnd, double RightStart) SplitSpeech(double source)
         {
             var words = clock.Words;
-            if (words.Count == 0) throw new Refusal(TooShort);
-            var clip = clock.Clip ?? new(Fresh("clip", AllIds(TimelineItemType.Clip)), words[0].Id, words[^1].Id, null, ClipOrigin.Manual, null, null, true);
+            var clip = clock.Clip ?? throw new Refusal(TooShort);
             if (clock.PartAt(source) is not { } index || clip.PlayPartIndices(words) is not { } ranges || ranges[index].Start >= ranges[index].End)
                 throw new Refusal(TooShort);
             var range = ranges[index];
             var parts = clip.PlayParts.ToList();
-            if (parts.Count >= 12 || Nearest(source, range.Start + 1, range.End + 1, word => words[word].Start) is not { } next) throw new Refusal(TooShort);
+            if (parts.Count >= 12 || Nearest(source, range.Start + 1, range.End + 1, word => (words[word - 1].End + words[word].Start) / 2) is not { } next)
+                throw new Refusal(TooShort);
             var part = parts[index];
             parts[index] = part with { EndWordId = words[next - 1].Id };
             var partId = Fresh(part.Id, AllIds(TimelineItemType.Part).Concat(parts.Select(part => part.Id)));
             parts.Insert(index + 1, new(partId, words[next].Id, part.EndWordId, part.Reframe));
             clip = UpdateHull(clip, parts);
-            return (clip with { Kind = clip.Kind ?? StoryClipKind.Story }, clock.Round(words[next].Start));
+            var spans = StoryClips.Times(clip, words);
+            var end = clock.Round(spans[index].End);
+            var start = clock.Round(spans[index + 1].Start);
+            if (end > start) throw new Refusal(InsidePart);
+            return (clip with { Kind = clip.Kind ?? StoryClipKind.Story }, end, start);
+        }
+
+        private string SplitFullTake(double source)
+        {
+            if (clock.Words.Count == 0) throw new Refusal(TooShort);
+            var clip = new ClipRange(Fresh("clip", AllIds(TimelineItemType.Clip)), clock.Words[0].Id, clock.Words[^1].Id, null, ClipOrigin.Manual, null, null, true);
+            var reducer = new Reducer(CopyScope(null, clip, Project), clock.Plan, clip.Id);
+            var name = reducer.Apply(new TimelineEdit.SplitAll(source));
+            Project = reducer.Project;
+            return name;
+        }
+
+        private Project CopyScope(string? source, ClipRange clip, Project basis)
+        {
+            if (basis.Edits.Clips.Count >= 64) throw new Refusal(Invalid);
+            var effects = basis.ClipEffects.ToList();
+            var effectIds = effects.Select(value => value.GetProperty("id").GetString()!).ToHashSet(StringComparer.Ordinal);
+            foreach (var effect in Project.ClipEffects.Where(effect => effect.GetProperty("clipId").GetString() == source &&
+                         !ClipEffects.IsCensor(effect.GetProperty("kind").GetString()!)))
+            {
+                var node = JsonNode.Parse(effect.GetRawText())!.AsObject();
+                var id = Fresh(effect.GetProperty("id").GetString()!, effectIds);
+                effectIds.Add(id);
+                node["id"] = id; node["clipId"] = clip.Id;
+                using var document = JsonDocument.Parse(node.ToJsonString());
+                effects.Add(document.RootElement.Clone());
+            }
+            if (effects.Count > 500) throw new Refusal(Invalid);
+            var footage = (basis.Media.Footage ?? []).ToList();
+            foreach (var value in (Project.Media.Footage ?? []).Where(value => value.ClipId == source))
+                footage.Add(value with { Id = Fresh(value.Id, footage.Select(value => value.Id)), ClipId = clip.Id });
+            var cues = basis.MotionCues.ToList();
+            foreach (var cue in Project.MotionCues.Where(cue => cue.ClipID == source))
+                cues.Add(cue with { Id = Fresh(cue.Id, cues.Select(value => value.Id)), ClipID = clip.Id });
+            var music = basis.Music.ToList();
+            if (Project.Music.FirstOrDefault(track => track.ClipId == source) is { } track)
+                music.Add(track with { Id = Fresh(track.Id, music.Select(value => value.Id)), ClipId = clip.Id });
+            return basis with { Edits = basis.Edits with { Clips = basis.Edits.Clips.Append(clip).ToArray(), ActiveClipId = clip.Id },
+                ClipEffects = effects, Media = basis.Media with { Footage = footage.Count == 0 ? null : footage }, MotionCues = cues, Music = music };
         }
 
         private sealed class Draft(TimelineEntry item, TimelineClock clock)

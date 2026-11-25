@@ -51,6 +51,11 @@ public enum TimelineItems {
         return EditingPrimitives.jsRound(source * plan.sampleRate) / plan.sampleRate
     }
 
+    public static func dropHint(at time: Double, axis: TimelineAxis, plan: EditPlan) -> String? {
+        guard axis == .source, plan.cutContaining(sourceAnchor(at: time, axis: axis, plan: plan)) != nil else { return nil }
+        return cutDropCopy
+    }
+
     public static func layout(project: Project, plan: EditPlan, scope: String?, axis: TimelineAxis,
                               playhead: Double? = nil) -> TimelineItemLayout {
         let clock = TimelineClock(project, plan: plan, scope: scope)
@@ -158,7 +163,8 @@ struct TimelineEntries {
             }
             return .init(id: .effect(effect.id), kind: effect.kind.rawValue, lane: lane,
                          span: .init(start: effect.start, end: effect.end), ownLength: effect.kind == .sound,
-                         scoped: effect.clipId == scope, offset: effect.mediaOffsetSeconds, available: effect.sound?.durationSeconds,
+                         scoped: effect.clipId == scope && !effect.kind.usesWords,
+                         offset: effect.mediaOffsetSeconds, available: effect.sound?.durationSeconds,
                          points: effect.gainPoints)
         }
         let durations = project.media.footageDurations
@@ -219,14 +225,18 @@ struct TimelineClock {
     let scope: String?
     let clip: ClipRange?
     let words: [TimedWord]
+    private let cutWordIDs: Set<String>
     let parts: [Part]
     let pieces: [Piece]
+    private let sourcePieces: [Piece]
+    private let partPieces: [[Piece]]
 
     init(_ project: Project, plan: EditPlan, scope: String?) {
         self.plan = plan; self.scope = scope
         let clip = project.edits.clips.first { $0.id == scope }
         let words = project.transcript?.words ?? []
         self.clip = clip; self.words = words
+        cutWordIDs = Set(project.edits.cutWordIds)
         let rate = plan.sampleRate
         let duration = Double(plan.totalSamples) / rate
         let bounds = clip.map { StoryClips.times($0, words: words) } ?? [.init(start: 0, end: duration)]
@@ -235,10 +245,13 @@ struct TimelineClock {
                   range: .init(start: EditingPrimitives.jsRound(bound.start * rate) / rate,
                                end: min(duration, EditingPrimitives.jsRound(bound.end * rate) / rate)))
         }
-        pieces = zip(plan.kept, plan.fadeParts).map { kept, output in
+        let pieces: [Piece] = zip(plan.kept, plan.fadeParts).map { kept, output in
             .init(source: .init(start: Double(kept.startSample) / rate, end: Double(kept.endSample) / rate),
                   edited: .init(start: Double(output.outputStart) / rate, end: Double(output.outputStart + kept.count) / rate))
         }
+        self.pieces = pieces
+        sourcePieces = pieces.sorted { $0.source.start < $1.source.start }
+        partPieces = parts.map { part in pieces.filter { StoryClips.overlaps($0.source, part.range) } }
     }
 
     func round(_ seconds: Double) -> Double { EditingPrimitives.jsRound(seconds * plan.sampleRate) / plan.sampleRate }
@@ -257,15 +270,12 @@ struct TimelineClock {
 
     func edited(at source: Double, part: Int?) -> Double {
         guard let part, parts.count > 1 else { return plan.mapTime(source) }
-        let bound = parts[part].range
-        let owned = pieces.filter { StoryClips.overlaps($0.source, bound) }
+        let owned = partPieces[part]
         if let previous = owned.last(where: { $0.source.start <= source }) {
             return min(previous.edited.end, round(previous.edited.start + source - previous.source.start))
         }
         if let first = owned.first { return first.edited.start }
-        return parts.prefix(part).reversed().lazy.compactMap { earlier in
-            pieces.last { StoryClips.overlaps($0.source, earlier.range) }?.edited.end
-        }.first ?? 0
+        return partPieces.prefix(part).reversed().lazy.compactMap { $0.last?.edited.end }.first ?? 0
     }
 
     func source(at edited: Double) -> Double {
@@ -274,12 +284,27 @@ struct TimelineClock {
     }
 
     func projected(_ span: TimeRange) -> [Piece] {
-        pieces.compactMap { piece in
-            guard StoryClips.overlaps(piece.source, span) else { return nil }
+        guard span.start < span.end else { return [] }
+        var lower = 0, upper = sourcePieces.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if sourcePieces[middle].source.end <= span.start { lower = middle + 1 } else { upper = middle }
+        }
+        return sourcePieces[lower...].prefix { $0.source.start < span.end }.map { piece -> Piece in
             let start = max(piece.source.start, span.start), end = min(piece.source.end, span.end)
             return .init(source: .init(start: start, end: end),
                          edited: range(piece.edited.start + start - piece.source.start, piece.edited.start + end - piece.source.start))
+        }.sorted { $0.edited.start < $1.edited.start }
+    }
+
+    private func allCoveredWordsCut(_ span: TimeRange) -> Bool {
+        guard !cutWordIDs.isEmpty else { return false }
+        var covered = false
+        for word in words.prefix(while: { $0.start < span.end }) where word.end > span.start {
+            if !cutWordIDs.contains(word.id) { return false }
+            covered = true
         }
+        return covered
     }
 
     func display(_ entry: TimelineEntry, axis: TimelineAxis) -> TimelineItem {
@@ -301,7 +326,8 @@ struct TimelineClock {
                     if let first = visible.first, span.start < first.start { visible[0].start = span.start }
                 }
             }
-        } else if !entry.scoped || owner.map({ span.end <= parts[$0].range.end }) == true {
+        } else if (!entry.scoped || owner.map { span.end <= parts[$0].range.end } == true),
+                  entry.lane == .video || !allCoveredWordsCut(span) {
             var remaining = entry.footage && entry.kind != "screenshot" && entry.available != nil
                 ? max(0, round((entry.available ?? 0) - (entry.offset ?? 0))) : .infinity
             for interval in projected(span) {

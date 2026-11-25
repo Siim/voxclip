@@ -102,6 +102,10 @@ public static class TimelineItems
     public static double SourceAnchor(double time, TimelineAxis axis, EditPlan plan) =>
         EditingMath.Round((axis == TimelineAxis.Edited ? plan.SourceTime(time) : time) * plan.SampleRate) / plan.SampleRate;
 
+    /// <summary>Guide copy when the requested source position falls in a cut.</summary>
+    public static string? DropHint(double time, TimelineAxis axis, EditPlan plan) =>
+        axis == TimelineAxis.Source && plan.CutContaining(SourceAnchor(time, axis, plan)) is not null ? CutDropCopy : null;
+
     /// <summary>Project the scope's placements. Null scope selects the full take; playhead uses the requested axis.</summary>
     public static TimelineItemLayout Layout(Project project, EditPlan plan, string? scope, TimelineAxis axis, double? playhead = null)
     {
@@ -193,7 +197,8 @@ internal sealed record TimelineEntry(TimelineItemId Id, string Kind, TimelineLan
                 "colourLook" or "speedForPart" or "freeze" => TimelineLane.FX, _ => TimelineLane.T1
             };
             result.Add(new(new(TimelineItemType.Effect, effect.Id), effect.Kind, lane, new(effect.Start, effect.End),
-                effect.Kind == "sound", effect.ClipId == scope, effect.MediaOffsetSeconds, effect.Sound?.DurationSeconds, effect.GainPoints));
+                effect.Kind == "sound", effect.ClipId == scope && effect.Kind is not ("bleep" or "mute"),
+                effect.MediaOffsetSeconds, effect.Sound?.DurationSeconds, effect.GainPoints));
         }
         foreach (var footage in (project.Media.Footage ?? []).Where(value => value.ClipId == scope))
         {
@@ -238,14 +243,18 @@ internal sealed class TimelineClock
     internal string? Scope { get; }
     internal ClipRange? Clip { get; }
     internal IReadOnlyList<TimedWord> Words { get; }
+    private HashSet<string> CutWordIds { get; }
     internal Part[] Parts { get; }
     private Piece[] Pieces { get; }
+    private Piece[] SourcePieces { get; }
+    private Piece[][] PartPieces { get; }
 
     internal TimelineClock(Project project, EditPlan plan, string? scope)
     {
         Plan = plan; Scope = scope;
         Clip = project.Edits.Clips.FirstOrDefault(clip => clip.Id == scope);
         Words = project.Transcript?.Words ?? [];
+        CutWordIds = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
         var duration = plan.TotalSamples / plan.SampleRate;
         var bounds = Clip is { } clip ? StoryClips.Times(clip, Words) : [new TimeRange(0, duration)];
         Parts = bounds.Select((bound, index) => new Part(Clip?.PlayParts[index].Id,
@@ -258,6 +267,8 @@ internal sealed class TimelineClock
             return new Piece(new(kept.StartSample / plan.SampleRate, kept.EndSample / plan.SampleRate),
                 new(start / plan.SampleRate, output / plan.SampleRate));
         }).ToArray();
+        SourcePieces = Pieces.OrderBy(piece => piece.Source.Start).ToArray();
+        PartPieces = Parts.Select(part => Pieces.Where(piece => StoryClips.Overlaps(piece.Source, part.Range)).ToArray()).ToArray();
     }
 
     internal double Round(double seconds) => EditingMath.Round(seconds * Plan.SampleRate) / Plan.SampleRate;
@@ -274,14 +285,13 @@ internal sealed class TimelineClock
     internal double EditedAt(double source, int? part)
     {
         if (part is not { } index || Parts.Length <= 1) return Plan.MapTime(source);
-        var owned = Pieces.Where(piece => StoryClips.Overlaps(piece.Source, Parts[index].Range)).ToArray();
+        var owned = PartPieces[index];
         for (var previous = owned.Length - 1; previous >= 0; previous--)
             if (owned[previous].Source.Start <= source)
                 return Math.Min(owned[previous].Edited.End, Round(owned[previous].Edited.Start + source - owned[previous].Source.Start));
         if (owned.Length > 0) return owned[0].Edited.Start;
         for (var earlier = index - 1; earlier >= 0; earlier--)
-            for (var piece = Pieces.Length - 1; piece >= 0; piece--)
-                if (StoryClips.Overlaps(Pieces[piece].Source, Parts[earlier].Range)) return Pieces[piece].Edited.End;
+            if (PartPieces[earlier].Length > 0) return PartPieces[earlier][^1].Edited.End;
         return 0;
     }
 
@@ -289,13 +299,35 @@ internal sealed class TimelineClock
 
     internal IEnumerable<Piece> Projected(TimeRange span)
     {
-        foreach (var piece in Pieces)
+        if (span.Start >= span.End) return [];
+        var lower = 0;
+        var upper = SourcePieces.Length;
+        while (lower < upper)
         {
-            if (!StoryClips.Overlaps(piece.Source, span)) continue;
+            var middle = lower + (upper - lower) / 2;
+            if (SourcePieces[middle].Source.End <= span.Start) lower = middle + 1; else upper = middle;
+        }
+        var projected = new List<Piece>();
+        for (var index = lower; index < SourcePieces.Length && SourcePieces[index].Source.Start < span.End; index++)
+        {
+            var piece = SourcePieces[index];
             var start = Math.Max(piece.Source.Start, span.Start);
             var end = Math.Min(piece.Source.End, span.End);
-            yield return new(new(start, end), Range(piece.Edited.Start + start - piece.Source.Start, piece.Edited.Start + end - piece.Source.Start));
+            projected.Add(new(new(start, end), Range(piece.Edited.Start + start - piece.Source.Start, piece.Edited.Start + end - piece.Source.Start)));
         }
+        return Parts.Length > 1 && projected.Count > 1 ? projected.OrderBy(piece => piece.Edited.Start) : projected;
+    }
+
+    private bool AllCoveredWordsCut(TimeRange span)
+    {
+        if (CutWordIds.Count == 0) return false;
+        var covered = false;
+        foreach (var word in Words.TakeWhile(word => word.Start < span.End).Where(word => word.End > span.Start))
+        {
+            if (!CutWordIds.Contains(word.Id)) return false;
+            covered = true;
+        }
+        return covered;
     }
 
     internal TimelineItem Display(TimelineEntry entry, TimelineAxis axis)
@@ -322,7 +354,8 @@ internal sealed class TimelineClock
                 }
             }
         }
-        else if (!entry.Scoped || (owner is { } part && span.End <= Parts[part].Range.End))
+        else if ((!entry.Scoped || (owner is { } part && span.End <= Parts[part].Range.End)) &&
+                 (entry.Lane == TimelineLane.V1 || !AllCoveredWordsCut(span)))
         {
             var remaining = entry.Footage && entry.Kind != "screenshot" && entry.Available is { } available
                 ? Math.Max(0, Round(available - (entry.Offset ?? 0))) : double.PositiveInfinity;
