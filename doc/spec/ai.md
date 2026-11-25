@@ -1929,7 +1929,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 
 ### 16.7 Price
 
-`ClipAutopilotPricing.price` returns the voice estimate, the music estimate and the LLM cost. The voice estimate is `VoiceLabPricing` text-to-speech of the rewrites' whole texts, bridge words included, for the chosen model and candidates. The music estimate prices the picked track's edited length (at the clip's own speed), rounded up to whole seconds, from `music-prices.json`; the price is unknown without that file. The LLM cost is `none` when `VoiceLabCostPresentation.kind` says the send is inline: a CLI on a plan, a local server, or Apple. Otherwise it is `unknown`. `usd` adds voice and music when every present part is priced; the plan's own sends are never part of it. Corrections, the look and the speed cost nothing.
+`ClipAutopilotPricing.price` estimates voice, music and illustrations separately from the LLM send. Voice prices the rewrites' full spoken text, including bridge words. Generated music prices the edited length at the clip's speed, rounded up to whole seconds; a saved track adds no generation cost. Illustrations multiply the number of requested images by the caller's per-image price. The asset total is unknown if any required price is unavailable. The LLM cost is `none` for an inline CLI on a plan, local server or Apple, and `unknown` otherwise. Corrections, looks, speed, companion footage and motion templates cost nothing to apply.
 
 ### 16.8 Tests
 
@@ -1950,7 +1950,9 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 
 `ClipAutopilotLiveEvalTests` runs only with `VOXCLIP_AUTOPILOT_LIVE_EVAL=1`, never in CI. It needs a project (`VOXCLIP_AUTOPILOT_EVAL_PROJECT`) and an output folder under `/tmp/voxclip-autopilot-eval/` (`VOXCLIP_AUTOPILOT_EVAL_OUT`); `VOXCLIP_AUTOPILOT_EVAL_CLIP=start-end` picks the single clip (the best series clip otherwise). Before any send it runs Claude Code's sign-in check and refuses an `authMethod` naming an API key or an `ANTHROPIC_API_KEY` in the environment. It then plans a two-stage series with two extra Claude Code lanes and one single clip, and writes every request, every raw reply, the checked plans, `table.json` and `summary.md` (stage and wall times, picks, finished lengths, corrections, captions, looks, speeds, flags). Nothing it writes is committed. Run it in a clean environment, without the parent's `CLAUDE*` and `ANTHROPIC_*` variables, as the app would start the CLI.
 
-For the v12 benchmark, additionally set `VOXCLIP_LIVE_TESTS=1` to check that a three-clip run includes a story or showreel. Earlier planner timings came from prompt v5; they are not v12 results.
+For the v12 benchmark, additionally set `VOXCLIP_LIVE_TESTS=1` to check that a three-clip run includes a story or showreel.
+
+Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rounds on the 5:48 test clip; prompt v5 kept): the series took 103 s (moments 22 s, four clip plans of 37–71 s, three at once) against 236–338 s for version 1. All four clips finished at 21–34 s; it corrected both misheard product names inside the picks, each citing the right spelling from the names line; the captions were four different styles; one look for the whole series (warm); speed 1.1 on slow delivery. A single clip took 39 s for a 42 s span and 78 s for an 83 s span. A round that told stage 1 never to pad to 20 s made it pick wider spans (clips 36–50 s), so it was reverted.
 
 ### 16.10 Owed
 
