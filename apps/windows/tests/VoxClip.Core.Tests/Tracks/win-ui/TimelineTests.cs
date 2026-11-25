@@ -33,6 +33,20 @@ public sealed class TimelineTests
     }
 
     [Fact]
+    public void StoryPlayheadFollowsThePaddingOnBothSidesOfAPartJoin()
+    {
+        var model = ClipSemanticsTests.Story();
+        var timeline = new TimelineStory(model, TimelineLayout.Plan(model));
+        var seam = Assert.Single(timeline.Seams(true));
+        var tail = seam.Position - 0.02;
+        var lead = seam.Position + 0.02;
+        Assert.True(timeline.SourceAt(tail, true) > model.ClipParts[0].End);
+        Assert.True(timeline.SourceAt(lead, true) < model.ClipParts[1].Start);
+        Assert.Equal(tail, timeline.Display(timeline.SourceAt(tail, true), true), 4);
+        Assert.Equal(lead, timeline.Display(timeline.SourceAt(lead, true), true), 4);
+    }
+
+    [Fact]
     public void StoryTimelineUsesRenderedPartLengthsAndKeepsAnInternalCutThin()
     {
         var model = ClipSemanticsTests.Story();

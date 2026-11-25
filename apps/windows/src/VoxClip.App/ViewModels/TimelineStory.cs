@@ -17,6 +17,7 @@ internal sealed class TimelineStory
 {
     private readonly RenderTimeline rendering;
     private readonly TimeRange[] sources;
+    private readonly TimeRange[] editedSources;
     private readonly TimelinePartBand[] open;
     private readonly TimelinePartBand[] edited;
     private readonly TimelinePartSeam[] openSeams;
@@ -47,6 +48,7 @@ internal sealed class TimelineStory
 
         EditedPieces = new(this.rendering);
         var bands = new List<TimelinePartBand>();
+        var renderedSources = new List<TimeRange>();
         var seams = new List<TimelinePartSeam>();
         for (var index = 0; index < EditedPieces.Pieces.Count; index++)
         {
@@ -57,10 +59,18 @@ internal sealed class TimelineStory
             if (EditedPieces.IsPartSeam(index))
                 seams.Add(new(piece.Edited.Start, piece.Source.Start, part.Number, piece.Source.Start < EditedPieces.Pieces[index - 1].Source.End));
             if (bands.Count > 0 && bands[^1].Part.Id == part.Id)
+            {
                 bands[^1] = bands[^1] with { Range = new(bands[^1].Range.Start, piece.Edited.End) };
-            else bands.Add(new(part, piece.Edited));
+                renderedSources[^1] = new(renderedSources[^1].Start, piece.Source.End);
+            }
+            else
+            {
+                bands.Add(new(part, piece.Edited));
+                renderedSources.Add(piece.Source);
+            }
         }
         edited = bands.ToArray();
+        editedSources = renderedSources.ToArray();
         editedSeams = seams.ToArray();
         OpenPieces = new(new TimelinePieces(legacy).Pieces.Select(piece => (Piece: piece, Section: PartIndex(piece)))
             .Where(item => item.Section >= 0).Select(item =>
@@ -91,11 +101,14 @@ internal sealed class TimelineStory
     {
         var bands = Bands(closesCuts);
         if (bands.Count == 0) return 0;
-        var band = bands.MinBy(item => Math.Max(item.Part.Start - source, Math.Max(0, source - item.Part.End)))!;
+        var ranges = closesCuts ? editedSources : sources;
+        var index = Enumerable.Range(0, ranges.Length).MinBy(index =>
+            Math.Max(ranges[index].Start - source, Math.Max(0, source - ranges[index].End)));
+        var range = ranges[index];
+        var band = bands[index];
         if (closesCuts)
-            return source <= band.Part.Start && band.Part.Number != 1 ? band.Range.Start
-                : source >= band.Part.End ? band.Range.End : Math.Clamp(rendering.MapTime(source), band.Range.Start, band.Range.End);
-        var range = sources[band.Part.Number - 1];
+            return source <= range.Start ? band.Range.Start
+                : source >= range.End ? band.Range.End : Math.Clamp(rendering.MapTime(source), band.Range.Start, band.Range.End);
         return band.Range.Start + Math.Clamp(source - range.Start, 0, range.End - range.Start);
     }
 
