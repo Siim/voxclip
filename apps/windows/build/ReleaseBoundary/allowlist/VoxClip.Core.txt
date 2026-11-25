@@ -6761,7 +6761,7 @@ member VoxClip.Core.Domain.Effects.ClipEffects :: method private Object(System.T
 member VoxClip.Core.Domain.Effects.ClipEffects :: method private Rect(System.Text.Json.JsonElement,bool)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method private RectIsValid(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method private Require(bool)
-member VoxClip.Core.Domain.Effects.ClipEffects :: method private Validate(System.Text.Json.JsonElement,string)
+member VoxClip.Core.Domain.Effects.ClipEffects :: method private Validate(System.Text.Json.JsonElement,string,bool)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method private ValidateWireEntry(System.Text.Json.JsonElement,bool)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public Adding(System.Collections.Generic.IReadOnlyList`1<System.Text.Json.JsonElement>,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public IsCensor(string)
