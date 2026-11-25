@@ -42,13 +42,16 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
             [(new(3, 3.5), new(ReframeSettings.FaceMode, CenterX: .19, CenterY: .45)),
              (new(.5, 1.3), new(ReframeSettings.FaceMode, CenterX: .31, CenterY: .45)),
              (new(2.5, 3), new(ReframeSettings.FaceMode, CenterX: .81, CenterY: .45))] };
-        var snapshot = new ComposeSnapshot(media, plan, null, new(new(100, 180), 30, 2_000_000)) { Clip = style };
+        const ExportAspect aspect = ExportAspect.Portrait;
+        const ExportQuality quality = ExportQuality.Standard;
+        var exportOutput = ClipControlsRendering.Output(media.OrientedSize, media.Video!.FrameRate, aspect, quality, style.Controls);
+        var snapshot = new ComposeSnapshot(media, plan, null, exportOutput) { Clip = style };
         var directory = Directory.CreateTempSubdirectory("voxclip-story-");
         try
         {
             var path = Path.Combine(directory.FullName, mp4 ? "story.mp4" : "story.wav");
             if (mp4)
-                await new Exporter().ExportAsync(new(snapshot, new ExportTarget.Clip("story"), ExportAspect.Portrait, ExportQuality.Standard, path, null)
+                await new Exporter().ExportAsync(new(snapshot, new ExportTarget.Clip("story"), aspect, quality, path, null)
                     { Loudness = VoxClip.Core.Domain.Loudness.ExportLoudness.Off }, null, ct);
             else await EditedAudioReader.WriteWaveAsync(snapshot, path, ct);
             await MediaThread.Run("vc-test-story", () =>
@@ -88,23 +91,28 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
                 using var exported = mp4 ? new VideoDecoder(path, hardware: false) : null;
                 var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot);
                 var centers = new List<byte[]>();
+                var previewSize = new PixelSize(108, 192);
+                var preview = AllocateFrame(previewSize);
+                var reference = AllocateFrame(previewSize);
+                var unencoded = exported is null ? AllocateFrame(exportOutput.Size) : null;
                 foreach (var time in seams.Prepend(0L).Select(sample => sample / (double)Rate))
                 {
                     var sourceTime = timeline.Source(time);
                     var decoded = decoder.ReadAt(sourceTime, false, ct);
-                    var pixels = new PixelBuffer(new byte[100 * 180 * 4], 100, 180, 400);
-                    var final = new PixelBuffer(new byte[100 * 180 * 4], 100, 180, 400);
-                    composer.Compose(decoded, pixels, snapshot, time, true, ct);
-                    composer.Compose(decoded, final, snapshot, time, false, ct);
+                    composer.Compose(decoded, preview, snapshot, time, true, ct);
+                    composer.Compose(decoded, reference, snapshot, time, false, ct);
                     var difference = 0.0;
-                    for (var offset = 0; offset < pixels.Pixels.Length; offset += 4)
+                    for (var offset = 0; offset < preview.Pixels.Length; offset += 4)
                         for (var channel = 0; channel < 3; channel++)
-                            difference += Math.Abs(pixels.Pixels.Span[offset + channel] - final.Pixels.Span[offset + channel]);
-                    Assert.InRange(difference / (100 * 180 * 3), 0, 3);
-                    var pixel = pixels.Pixels.Slice(90 * 400 + 50 * 4, 3).ToArray();
+                            difference += Math.Abs(preview.Pixels.Span[offset + channel] - reference.Pixels.Span[offset + channel]);
+                    Assert.InRange(difference / (previewSize.Width * previewSize.Height * 3), 0, 3);
+                    var pixel = CenterPixel(preview);
                     centers.Add(pixel);
-                    var encoded = exported?.ReadAt(time, false, ct) ?? final;
-                    var actual = encoded.Pixels.Slice(90 * encoded.Stride + 50 * 4, 3).ToArray();
+                    var output = exported?.ReadAt(time, false, ct) ?? unencoded!;
+                    if (exported is null) composer.Compose(decoded, output, snapshot, time, false, ct);
+                    else Assert.InRange(Math.Abs(exported.Position - time), 0, 0.5 / exportOutput.FrameRate);
+                    Assert.Equal(exportOutput.Size, new PixelSize(output.Width, output.Height));
+                    var actual = CenterPixel(output);
                     Assert.All(pixel.Zip(actual), pair => Assert.InRange(Math.Abs(pair.First - pair.Second), 0, 15));
                 }
                 Assert.Equal(3, centers.Select(Convert.ToHexString).Distinct().Count());
@@ -115,6 +123,12 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         }
         finally { directory.Delete(true); }
     }
+
+    private static PixelBuffer AllocateFrame(PixelSize size)
+        => new(new byte[size.Width * size.Height * 4], size.Width, size.Height, size.Width * 4);
+
+    private static byte[] CenterPixel(PixelBuffer frame)
+        => frame.Pixels.Slice((frame.Height / 2) * frame.Stride + (frame.Width / 2) * 4, 3).ToArray();
 
     private static ProjectClipControls Controls(double speed = 1, ClipLook look = ClipLook.Original, double gain = 0, double fadeIn = 0,
         double fadeOut = 0, bool mute = false, bool flip = false, int rotation = 0)

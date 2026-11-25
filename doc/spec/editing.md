@@ -634,6 +634,8 @@ For story clips, `EditPlan.build` / `EditingEngine.BuildPlan` run the ordinary p
 
 On either plan, source-to-edited lookup uses a source-sorted index carrying each span's output offset. A source gap maps to the preceding span's output end in source order, or zero if there is no preceding span. Caption words are mapped per part and shifted by its output offset; layout starts a new page at the next part. `TimelinePieces` exposes play-order seams via `isPartSeam` / `IsPartSeam`; use the Source-axis array for Source-axis indices.
 
+The Windows story render test compares framing at the opening and each part seam on the fixture's 30 fps output grid. It checks the center of each frame at its own resolution, both before encoding and in decoded MP4 output.
+
 ### 7.1 buildSegments
 
 ```text
