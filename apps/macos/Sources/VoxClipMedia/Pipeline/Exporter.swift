@@ -220,12 +220,12 @@ public actor AVExporter: Exporter {
 
     /// The CLI calls this before staging WAV. Export calls the same calculation
     /// after the WAV partial exists, when free space already reflects its bytes.
-    @discardableResult package func preflightCombinedExport(_ job: ExportJob, editedAudioURL: URL) throws -> [URL: ExportSafety.DestinationApproval] {
-        try transactionPreflight(job, additionalOutputs: [], plannedEditedAudioURL: editedAudioURL).approvals
+    @discardableResult package func preflightCombinedExport(_ job: ExportJob, editedAudioURL: URL, includeMusic: Bool = false) throws -> [URL: ExportSafety.DestinationApproval] {
+        try transactionPreflight(job, additionalOutputs: [], plannedEditedAudioURL: editedAudioURL, includeMusic: includeMusic).approvals
     }
 
     private func transactionPreflight(_ job: ExportJob,
-        additionalOutputs: [(partial: URL, destination: URL)], plannedEditedAudioURL: URL?) throws -> TransactionPreflight {
+        additionalOutputs: [(partial: URL, destination: URL)], plannedEditedAudioURL: URL?, includeMusic: Bool = false) throws -> TransactionPreflight {
         let destination = job.outputURL.standardizedFileURL.resolvingSymlinksInPath()
         try ExportSafety.validateDestination(destination)
         let reservedPartial = try ExportSafety.partialURL(for: destination)
@@ -269,6 +269,9 @@ public actor AVExporter: Exporter {
         guard Set(normalized).count == normalized.count, !normalized.contains(source.path) else {
             throw VoxClipError.exportFailed("Export outputs overlap")
         }
+        if let music = job.render.music, normalized.contains(music.assetURL.standardizedFileURL.resolvingSymlinksInPath().path) {
+            throw VoxClipError.exportFailed("The export must not overwrite the music file")
+        }
         if let input = job.render.voiceLab { try Self.preventPaidOverwrite(input, paths: allPaths) }
         if let effects = job.render.effects {
             let assets = Set((Array(effects.imageURLs.values) + Array(effects.soundURLs.values)).map { $0.standardizedFileURL.resolvingSymlinksInPath().path })
@@ -285,7 +288,8 @@ public actor AVExporter: Exporter {
         try ContextDemoCompositionRoute.validate(job.render)
         guard job.render.timeline.outputSamples > 0 else { throw VoxClipError.everythingCut }
         let plannedWAVBytes = try plannedEditedAudioURL.map { _ in
-            try PCMFile.plannedBytes(frames: job.render.timeline.outputSamples, channels: 2, bits: 32)
+            let frames = includeMusic && job.render.music != nil ? job.render.renderedSamples : job.render.timeline.outputSamples
+            return try PCMFile.plannedBytes(frames: frames, channels: 2, bits: 32)
         }
         let estimate = job.render.renderedDuration * (Double(job.render.output.videoBitrate) + 192_000) / 8 * 1.5
         guard estimate.isFinite, estimate > 0, estimate < Double(Int64.max / 4) else {
@@ -806,14 +810,14 @@ public actor AVExporter: Exporter {
         }
     }
 
-    package func stageEditedAudio(_ request: RenderRequest, to destination: URL) async throws -> URL {
+    package func stageEditedAudio(_ request: RenderRequest, to destination: URL, includeMusic: Bool = false) async throws -> URL {
         try await acquire(); defer { release() }
         let id = UUID()
         activeID = id
         defer { activeID = nil; activePumps = nil }
         do {
             return try await withTaskCancellationHandler {
-                try await performEditedAudio(request, to: destination)
+                try await performEditedAudio(request, to: destination, includeMusic: includeMusic && request.music != nil)
             } onCancel: { Task { await self.cancelActive(id) } }
         } catch {
             if error is VoiceLabRenderCapabilityError { throw error }
@@ -827,7 +831,7 @@ public actor AVExporter: Exporter {
         }
     }
 
-    private func performEditedAudio(_ request: RenderRequest, to destination: URL) async throws -> URL {
+    private func performEditedAudio(_ request: RenderRequest, to destination: URL, includeMusic: Bool) async throws -> URL {
         try Task.checkCancellation()
         let destination = destination.standardizedFileURL.resolvingSymlinksInPath()
         try ExportSafety.validateDestination(destination)
@@ -839,7 +843,8 @@ public actor AVExporter: Exporter {
         try Self.preventDemoOverwrite(request, paths: [destination, URL(fileURLWithPath: destination.path + ".partial")])
         let synthetic = request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering == true
         guard request.timeline.outputSamples >= 0 else { throw VoxClipError.diskFull(destination.path) }
-        let bytes = try PCMFile.plannedBytes(frames: request.timeline.outputSamples, channels: 2, bits: 32)
+        let expectedFrames = includeMusic ? request.renderedSamples : request.timeline.outputSamples
+        let bytes = try PCMFile.plannedBytes(frames: expectedFrames, channels: 2, bits: 32)
         var needs = [DiskCapacity.Need(directory: destination.deletingLastPathComponent(),
                                        bytes: try DiskCapacity.checkedAdd(bytes, DiskCapacity.fileBytes(destination), at: destination))]
         if synthetic, let input = request.voiceLab {
@@ -847,12 +852,15 @@ public actor AVExporter: Exporter {
                                bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
         }
         try DiskCapacity.check(needs, provider: capacityProvider)
-        // Edited audio is the clip's voice as recorded: 1×, at its own level, without music.
-        let graph = try await builder.build(request.withoutMusic.withoutClipControls)
-        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease)) {} }
-        guard let track = graph.audioTrack else { throw VoxClipError.noAudioTrack }
+        let graph = try await builder.build(includeMusic ? request : request.withoutMusic.withoutClipControls)
+        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease, graph.effectsLease, graph.clipVoiceLease)) {} }
+        let tracks = includeMusic ? graph.mixedAudioTracks : [graph.audioTrack].compactMap { $0 }
+        guard !tracks.isEmpty else { throw VoxClipError.noAudioTrack }
         let reader = try AVAssetReader(asset: graph.composition)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: MediaSupport.pcm(rate: request.timeline.sampleRate, channels: 2))
+        if includeMusic {
+            reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(value: expectedFrames, timescale: Int32(request.timeline.sampleRate)))
+        }
+        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: MediaSupport.pcm(rate: request.timeline.sampleRate, channels: 2))
         output.audioMix = graph.audioMix; output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)
         let temporary = try ExportSafety.preparePartial(for: destination, registry: cleanupRegistry)
@@ -874,8 +882,10 @@ public actor AVExporter: Exporter {
             }
             try Task.checkCancellation()
             guard reader.status == .completed else { throw VoxClipError.decodeFailed(reader.error?.localizedDescription ?? "Edited audio did not finish") }
-            let deficit = request.timeline.outputSamples - wav.frames
-            if !synthetic, deficit > 0, let last = request.plan.kept.last {
+            let deficit = expectedFrames - wav.frames
+            if includeMusic {
+                try wav.finish(expectedFrames: expectedFrames)
+            } else if !synthetic, deficit > 0, let last = request.plan.kept.last {
                 let sourceEnd = try await decodedSourceAudioEnd(request)
                 let missingTail = max(0, last.endSample - max(last.startSample, sourceEnd))
                 if deficit == missingTail {
@@ -887,8 +897,8 @@ public actor AVExporter: Exporter {
             } else {
                 try wav.finish()
             }
-            guard wav.frames == request.timeline.outputSamples else {
-                throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(request.timeline.outputSamples)")
+            guard wav.frames == expectedFrames else {
+                throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(expectedFrames)")
             }
             prepared = true
             return temporary

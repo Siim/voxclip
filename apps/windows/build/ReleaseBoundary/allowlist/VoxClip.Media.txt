@@ -64,11 +64,11 @@ member VoxClip.Media.Audio.EditedAudioReader :: field private resample
 member VoxClip.Media.Audio.EditedAudioReader :: field private source
 member VoxClip.Media.Audio.EditedAudioReader :: method internal .ctor(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.EditedAudioReader :: method internal Read(System.Span`1<float>,int,System.Threading.CancellationToken)
-member VoxClip.Media.Audio.EditedAudioReader :: method internal WriteWaveAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,string,System.Threading.CancellationToken,bool)
+member VoxClip.Media.Audio.EditedAudioReader :: method internal WriteWaveAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,string,System.Threading.CancellationToken,bool,bool)
 member VoxClip.Media.Audio.EditedAudioReader :: method internal get_TotalFrames()
 member VoxClip.Media.Audio.EditedAudioReader :: method private Fill(System.Threading.CancellationToken)
 member VoxClip.Media.Audio.EditedAudioReader :: method public Dispose()
-member VoxClip.Media.Audio.EditedWaveWriter :: method internal WriteAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,string,System.Threading.CancellationToken,bool,string)
+member VoxClip.Media.Audio.EditedWaveWriter :: method internal WriteAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,string,System.Threading.CancellationToken,bool,string,bool)
 member VoxClip.Media.Audio.EffectAudio :: method internal Decode(string,double,int)
 member VoxClip.Media.Audio.EffectAudio :: method internal Mix(VoxClip.Media.Audio.EffectAudio+Track,System.Span`1<float>,long,int,int)
 member VoxClip.Media.Audio.EffectAudio :: method internal Resample(float[],int,int)

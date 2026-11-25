@@ -90,7 +90,7 @@ final class CLIInterruptTiming: Sendable {
 
     static let configuration = CommandConfiguration(
         commandName: "voxclip-cli", abstract: "Edit video by words. Native, headless VoxClip tools.",
-        discussion: "Primary export: voxclip-cli --open <project-or-media> --export <out.mp4> [options]. Use 'voxclip-cli export --help' for export options.",
+        discussion: "Primary export: voxclip-cli --open <project-or-media> --export <out.mp4> [options]. Choose a bed with --music or --music-file. Use 'voxclip-cli export --help' for export options.",
         version: AppVersion.current,
         subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, Autopilot.self, Check.self, AnalyzeFrames.self, LLMTest.self, Encoders.self, Version.self,
                       HarnessMCP.self, HarnessTranscript.self, HarnessClips.self, HarnessDecisions.self, HarnessFrames.self, HarnessPropose.self] + speakerDiagnostics,
@@ -118,6 +118,9 @@ struct Export: AsyncParsableCommand {
     @Option(parsing: .unconditional, help: "Constant output frame rate.") var fps: String?
     @Option(help: "Destination SRT sidecar.") var srt: String?
     @Option(help: "Also write edited, faded Float32 WAV.") var audioOut: String?
+    @Option(help: "Saved project track ID to mix for this export.") var music: String?
+    @Option(help: "Local audio file to mix for this export.") var musicFile: String?
+    @Flag(help: "Include the music bed in --audio-out.") var withMusic = false
     @Option(help: "social (-14 LUFS, true peak at most -1 dBTP; the default) or off.") var loudness: String?
     @Option(help: "on (the default: a clip with a cover writes <name>-cover.jpg beside the video and embeds it) or off.") var cover: String?
     @Flag(help: "Print one final JSON object on stdout.") var json = false
@@ -125,6 +128,8 @@ struct Export: AsyncParsableCommand {
 
     mutating func validate() throws {
         if (input == nil) != (output == nil) { throw ValidationError("Primary export requires both --open and --export") }
+        if music != nil && musicFile != nil { throw ValidationError("Use either --music or --music-file, not both.") }
+        if withMusic && audioOut == nil { throw ValidationError("--with-music requires --audio-out.") }
         guard ["mp4", "fcpxml"].contains(format) else { throw ValidationError("--format must be mp4 or fcpxml") }
         if format == "fcpxml", let output {
             guard URL(fileURLWithPath: output).pathExtension.lowercased() == "fcpxml" else {
@@ -132,6 +137,9 @@ struct Export: AsyncParsableCommand {
             }
             guard srt == nil, audioOut == nil, loudness == nil, cover == nil else {
                 throw ValidationError("--srt, --audio-out, --loudness and --cover are only available for MP4 export")
+            }
+            guard music == nil, musicFile == nil else {
+                throw ValidationError("--music and --music-file are only available for MP4 export.")
             }
         }
         if let cover, cover != "on", cover != "off" { throw ValidationError("--cover must be on or off") }

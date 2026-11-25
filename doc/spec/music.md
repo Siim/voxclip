@@ -20,6 +20,8 @@ fades out at the end. One volume slider.
 A used track is copied into `<data folder>/Music/<projectId>/music-<slug>-<hash8>.<ext>` and recorded in the project.
 The project never stores audio.
 
+The headless CLI can reuse a saved track or mix a local file without importing it; see [architecture §9](../architecture.md#9-headless-cli-both-platforms).
+
 ## 2. Project contract
 
 `music` is an optional root array of the project document (`shared/schemas/project.schema.json` `$defs.music`,

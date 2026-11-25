@@ -40,6 +40,8 @@ literal "--language"
 literal "--limit"
 literal "--loudness"
 literal "--model"
+literal "--music"
+literal "--music-file"
 literal "--no-cache"
 literal "--no-check"
 literal "--no-dtw"
@@ -66,6 +68,7 @@ literal "--timings"
 literal "--transcript"
 literal "--transcription-model"
 literal "--video-pass"
+literal "--with-music"
 literal "--words"
 literal "Set VOXCLIP_ELEVENLABS_API_KEY to use ElevenLabs."
 literal "VOXCLIP_ANTHROPIC_API_KEY"
@@ -122,6 +125,7 @@ member VoxClip.Cli.CliApplication :: method private BuildCommand(VoxClip.Cli.Exp
 member VoxClip.Cli.CliApplication :: method private Choice(System.CommandLine.Command,string,string,string[])
 member VoxClip.Cli.CliApplication :: method private Command(System.CommandLine.Command,string,string)
 member VoxClip.Cli.CliApplication :: method private CommandName(System.CommandLine.ParseResult)
+member VoxClip.Cli.CliApplication :: method private ExportArguments(string[])
 member VoxClip.Cli.CliApplication :: method private Fail(System.CommandLine.ParseResult,string,string,int,string,VoxClip.Core.Domain.Shared.Redactor)
 member VoxClip.Cli.CliApplication :: method private Flag(System.CommandLine.Command,string,string)
 member VoxClip.Cli.CliApplication :: method private Speech(System.CommandLine.Command,bool)
@@ -129,8 +133,8 @@ member VoxClip.Cli.CliApplication :: method private Stub(System.CommandLine.Comm
 member VoxClip.Cli.CliApplication :: method private WriteJson(VoxClip.Cli.CliEnvelope)
 member VoxClip.Cli.CliAutopilot :: method internal Decision(VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision)
 member VoxClip.Cli.CliAutopilot :: method internal HumanOutput(System.Text.Json.Nodes.JsonObject)
-member VoxClip.Cli.CliAutopilot :: method internal PlanAndApplyAsync(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Transcript.Transcript,System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<VoxClip.Core.Domain.Autopilot.WordSpan,VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment>>,VoxClip.Core.Services.LLM.ILlmConnector,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ILlmConnector>,string,VoxClip.Core.Services.LLM.LlmCatalog,VoxClip.Core.Services.LLM.LlmRunner,string,VoxClip.Core.Domain.Autopilot.ClaudeModeClock,System.Action`1<string>,System.Func`4<VoxClip.Core.Domain.Shared.Project,string,int,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<string>>>,System.Threading.CancellationToken,VoxClip.Media.Frames.VideoFramePass,bool,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.ExportAspect>)
-member VoxClip.Cli.CliAutopilot :: method internal RunAsync(System.CommandLine.ParseResult,System.Func`3<VoxClip.Core.Services.LLM.ConnectorId,VoxClip.Core.Services.LLM.IKeyProvider,VoxClip.Core.Services.LLM.ILlmConnector>,System.Threading.CancellationToken,VoxClip.Cli.ExportInputReader,VoxClip.Cli.ExportPreparer,VoxClip.Cli.CliFrameSources)
+member VoxClip.Cli.CliAutopilot :: method internal PlanAndApplyAsync(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Transcript.Transcript,System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<VoxClip.Core.Domain.Autopilot.WordSpan,VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment>>,VoxClip.Core.Services.LLM.ILlmConnector,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ILlmConnector>,string,VoxClip.Core.Services.LLM.LlmCatalog,VoxClip.Core.Services.LLM.LlmRunner,string,VoxClip.Core.Domain.Autopilot.ClaudeModeClock,System.Action`1<string>,System.Func`4<VoxClip.Core.Domain.Shared.Project,string,int,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<string>>>,System.Threading.CancellationToken,VoxClip.Media.Frames.VideoFramePass,bool,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.ExportAspect>,string)
+member VoxClip.Cli.CliAutopilot :: method internal RunAsync(System.CommandLine.ParseResult,System.Func`3<VoxClip.Core.Services.LLM.ConnectorId,VoxClip.Core.Services.LLM.IKeyProvider,VoxClip.Core.Services.LLM.ILlmConnector>,System.Threading.CancellationToken,VoxClip.Cli.ExportInputReader,VoxClip.Cli.ExportPreparer,VoxClip.Cli.CliFrameSources,string)
 member VoxClip.Cli.CliAutopilot :: method private ExportClipAsync(VoxClip.Core.Domain.Shared.Project,string,int,string,string,bool,VoxClip.Core.Domain.Autopilot.ClaudeModeClock,VoxClip.Cli.CliAutopilot+ClipExportRoute,System.Threading.CancellationToken)
 member VoxClip.Cli.CliAutopilot :: method private IndexOf(VoxClip.Core.Domain.Transcript.Transcript,string)
 member VoxClip.Cli.CliAutopilot :: method private Transcribe(VoxClip.Core.Domain.Shared.MediaInfo,System.CommandLine.ParseResult,VoxClip.Core.Domain.Autopilot.ClaudeModeClock,System.Threading.CancellationToken)
@@ -250,6 +254,10 @@ member VoxClip.Cli.CliFrameSources :: method public set_Text(VoxClip.Core.Domain
 member VoxClip.Cli.CliInputException :: method internal get_Failure()
 member VoxClip.Cli.CliInputException :: method public .ctor(VoxClip.Core.Domain.Shared.VoxClipException)
 member VoxClip.Cli.CliJsonContext :: field private InstanceMemberBindingFlags
+member VoxClip.Cli.CliMusic :: method internal AutopilotTrack(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,string,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>,string)
+member VoxClip.Cli.CliMusic :: method internal Json(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.Cli.CliMusic :: method internal LocalAsync(string,System.Threading.CancellationToken)
+member VoxClip.Cli.CliMusic :: method internal Saved(string,VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Cli.CliOperations :: method internal ApplyExportEdits(VoxClip.Core.Domain.Editing.EditState,bool,bool,string,string,System.Func`3<VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditOperation,VoxClip.Core.Domain.Editing.EditState>)
 member VoxClip.Cli.CliOperations :: method internal Aspect(string)
 member VoxClip.Cli.CliOperations :: method internal AspectText(VoxClip.Core.Domain.Shared.ExportAspect)
@@ -287,7 +295,7 @@ member VoxClip.Cli.CliOperations :: method private State(VoxClip.Core.Domain.Sha
 member VoxClip.Cli.CliOperations :: method private TestLlmAsync(System.CommandLine.ParseResult,System.Threading.CancellationToken)
 member VoxClip.Cli.CliOperations :: method private TranscribeAsync(System.CommandLine.ParseResult,System.Threading.CancellationToken)
 member VoxClip.Cli.CliOperations :: method private TranscribeMediaAsync(VoxClip.Core.Domain.Shared.MediaInfo,System.CommandLine.ParseResult,System.Threading.CancellationToken)
-member VoxClip.Cli.CliOperations :: method private ValidateOutputs(System.CommandLine.ParseResult,string,string,string)
+member VoxClip.Cli.CliOperations :: method private ValidateOutputs(System.CommandLine.ParseResult,string,string,string,string)
 member VoxClip.Cli.CliOperations+CliProgress`1 :: field private lastPercentage
 member VoxClip.Cli.CliOperations+CliProgress`1 :: field private previous
 member VoxClip.Cli.CliOperations+CliProgress`1 :: field private timer
@@ -476,6 +484,7 @@ type VoxClip.Cli.CliError
 type VoxClip.Cli.CliFrameSources
 type VoxClip.Cli.CliInputException
 type VoxClip.Cli.CliJsonContext
+type VoxClip.Cli.CliMusic
 type VoxClip.Cli.CliOperations
 type VoxClip.Cli.CliOperations+CliProgress`1
 type VoxClip.Cli.CliUsageException
