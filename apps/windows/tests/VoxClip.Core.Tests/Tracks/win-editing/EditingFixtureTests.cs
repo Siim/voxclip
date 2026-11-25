@@ -44,6 +44,8 @@ public sealed class EditingFixtureTests
         var voice = new VoiceLabOutputPlan(48_000, 192_000, [first, second], [], VoiceLabOutputScope.Clip("story")) { PartSeams = [24_000] };
         Assert.Equal((24_000L, 48_000L), LipsyncRenderWindow.SavedOutputRange(120_000, 144_000, second, voice));
         Assert.Null(LipsyncRenderWindow.SavedOutputRange(120_000, 145_000, second, voice));
+        var onlyPart = new VoiceLabOutputPlan(48_000, 192_000, [first], [], VoiceLabOutputScope.Clip("story"));
+        Assert.Null(LipsyncRenderWindow.SavedOutputRange(143_999, 168_000, first, onlyPart, restrictToPart: true));
     }
 
     [Fact]

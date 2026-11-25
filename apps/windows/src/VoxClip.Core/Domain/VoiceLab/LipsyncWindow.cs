@@ -77,9 +77,10 @@ public sealed record LipsyncRenderWindow(LipsyncWindow Source, long OutputStartS
     public static long OutputSample(long sample, VoiceLabOutputPlan plan) => Round(plan.MapTime(sample / plan.SampleRate) * plan.SampleRate);
 
     /// <summary>A saved replacement can only use a window contained in the part that owns its voice piece.</summary>
-    public static (long Start, long End)? SavedOutputRange(long start, long end, VoiceLabOutputPiece piece, VoiceLabOutputPlan plan)
+    public static (long Start, long End)? SavedOutputRange(long start, long end, VoiceLabOutputPiece piece, VoiceLabOutputPlan plan,
+        bool restrictToPart = false)
     {
-        if (plan.PartSeams.Count > 0)
+        if (restrictToPart || plan.PartSeams.Count > 0)
         {
             var first = plan.PartSeams.LastOrDefault(seam => seam <= piece.OutputStartSample, 0);
             var last = plan.PartSeams.FirstOrDefault(seam => seam > piece.OutputStartSample, plan.OutputSamples);

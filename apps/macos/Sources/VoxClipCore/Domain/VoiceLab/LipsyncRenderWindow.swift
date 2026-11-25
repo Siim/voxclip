@@ -60,8 +60,9 @@ public struct LipsyncRenderWindow: Sendable, Equatable {
     }
 
     /// A saved replacement can only use a window contained in the part that owns its voice piece.
-    public static func savedOutputRange(start: Int64, end: Int64, piece: VoiceLabOutputPiece, plan: VoiceLabOutputPlan) -> Range<Int64>? {
-        if !plan.partSeams.isEmpty {
+    public static func savedOutputRange(start: Int64, end: Int64, piece: VoiceLabOutputPiece, plan: VoiceLabOutputPlan,
+                                        restrictToPart: Bool = false) -> Range<Int64>? {
+        if restrictToPart || !plan.partSeams.isEmpty {
             let first = plan.partSeams.last { $0 <= piece.outputStartSample } ?? 0
             let last = plan.partSeams.first { $0 > piece.outputStartSample } ?? plan.outputSamples
             guard let head = plan.pieces.first(where: { $0.outputStartSample == first }),

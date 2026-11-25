@@ -78,10 +78,7 @@ public enum FCPXMLExporter {
                               let record = input.project.voiceLab.videoAssets?.first(where: { $0.id == assetID }) else {
                             throw LipsyncError.invalidInput
                         }
-                        guard let window = LipsyncComposition.placement(start: start, end: end, piece: item.piece, plan: plan) else {
-                            if !plan.partSeams.isEmpty { continue }
-                            throw LipsyncError.invalidInput
-                        }
+                        guard let window = try LipsyncComposition.placement(start: start, end: end, piece: item.piece, input: input) else { continue }
                         let first = Double(window.replacement.lowerBound) / plan.sampleRate
                         let last = Double(window.replacement.upperBound) / plan.sampleRate
                         let origin = Double(window.origin) / plan.sampleRate

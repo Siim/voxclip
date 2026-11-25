@@ -31,6 +31,8 @@ import Testing
             captions: [], scope: .clip("story"), partSeams: [24_000])
         #expect(LipsyncRenderWindow.savedOutputRange(start: 120_000, end: 144_000, piece: second, plan: voice) == 24_000..<48_000)
         #expect(LipsyncRenderWindow.savedOutputRange(start: 120_000, end: 145_000, piece: second, plan: voice) == nil)
+        let onlyPart = VoiceLabOutputPlan(sampleRate: 48_000, totalSourceSamples: 192_000, pieces: [first], captions: [], scope: .clip("story"))
+        #expect(LipsyncRenderWindow.savedOutputRange(start: 143_999, end: 168_000, piece: first, plan: onlyPart, restrictToPart: true) == nil)
     }
 
     @Test func storyPlansReplay() throws {

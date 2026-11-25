@@ -25,6 +25,7 @@ internal sealed class LipsyncVideoLayer : IDisposable
         var synced = input.Prepared.SelectedSegmentRecipes.Where(item => item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync).ToArray();
         if (synced.Length == 0) return null;
         var plan = input.Prepared.OutputPlan;
+        var story = plan.Scope.ClipId is { } id && project.Edits.Clips.Any(clip => clip.Id == id && clip.Parts is not null);
         var root = Path.Combine(scratchRoot, "lipsync-render-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratchRoot);
         VoiceConsentPrivacy.CreateDirectory(root);
@@ -36,8 +37,8 @@ internal sealed class LipsyncVideoLayer : IDisposable
             {
                 var recipe = item.Recipe.Video;
                 var asset = project.VoiceLab.VideoAssets?.SingleOrDefault(asset => asset.Id == recipe.AssetId) ?? throw Invalid();
-                var range = LipsyncRenderWindow.SavedOutputRange(recipe.WindowStartSample!.Value, recipe.WindowEndSample!.Value, item.Piece, plan);
-                if (range is null && plan.PartSeams.Count > 0) continue;
+                var range = LipsyncRenderWindow.SavedOutputRange(recipe.WindowStartSample!.Value, recipe.WindowEndSample!.Value, item.Piece, plan, story);
+                if (range is null && story) continue;
                 if (range is not { } mapped || Math.Abs((mapped.End - mapped.Start) / plan.SampleRate - asset.DurationSeconds) > 1 / asset.FrameRate + 1e-6)
                     throw Invalid();
                 var (first, last) = mapped;
