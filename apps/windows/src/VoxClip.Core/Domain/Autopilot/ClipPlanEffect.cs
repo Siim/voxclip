@@ -92,9 +92,14 @@ public sealed class ClipPlanEffect
 
     internal static ClipPlanEffect? ProviderEntry(JsonNode? raw)
     {
-        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key || key is "footage" or "template") return null;
+        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key) return null;
         var projected = new JsonObject();
         foreach (var name in new[] { "kind", "startWord", "endWord", "reason", key }) projected[name] = item[name]?.DeepClone();
+        if (projected["template"] is JsonObject template)
+        {
+            if (AiJson.String(template["name"]) == "counter") template.Remove("text");
+            else { template.Remove("from"); template.Remove("to"); }
+        }
         return Read(projected);
     }
 

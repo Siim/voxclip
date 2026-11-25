@@ -41,6 +41,14 @@ import Testing
 
     // MARK: Shared vectors
 
+    @Test func plannerOffersOrderedMomentParts() throws {
+        let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
+        let fields = prompt.momentsSchema[ai: "properties"][ai: "clips"][ai: "items"][ai: "properties"]
+        #expect(prompt.promptVersion == 12)
+        #expect(fields[ai: "parts"][ai: "maxItems"].aiInt == 10)
+        #expect(prompt.momentsSystem.contains("showreel"))
+    }
+
     @Test func vectorsPinTheCurrentPrompt() throws {
         let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
         #expect(try Self.fixture()[ai: "sources"][ai: "shared/prompts/clip-autopilot.json"].aiString == prompt.sha256,

@@ -187,7 +187,7 @@ public sealed partial class ClipAutopilotPrompt
         if (document["directionalZooms"] is { } directional)
         {
             var direction = AiJson.Get(directional, "directionSchema");
-            if (Int(AiJson.Get(directional, "promptVersion")) is not { } newVersion || newVersion <= version ||
+            if (Int(AiJson.Get(directional, "promptVersion")) is not { } newVersion || newVersion <= 0 ||
                 AiJson.String(AiJson.Get(directional, "section")) is not { Length: > 0 } section ||
                 AiJson.String(AiJson.Get(direction, "type")) != "string" ||
                 !AiJson.Array(AiJson.Get(direction, "enum")).Select(AiJson.String).ToHashSet(StringComparer.Ordinal)
@@ -195,7 +195,7 @@ public sealed partial class ClipAutopilotPrompt
                 AiJson.Get(AiJson.Get(AiJson.Get(schema["properties"], "zooms"), "items"), "properties") is not JsonObject fields ||
                 fields.ContainsKey("direction")) throw Missing();
             fields["direction"] = direction!.DeepClone();
-            clipVersion = newVersion;
+            clipVersion = Math.Max(version, newVersion);
             zoomSection = section;
             templateValues["minDirectionalZoomSeconds"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MinimumDirectionalSeconds);
             templateValues["maxDirectionalZoomSeconds"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MaximumDirectionalSeconds);

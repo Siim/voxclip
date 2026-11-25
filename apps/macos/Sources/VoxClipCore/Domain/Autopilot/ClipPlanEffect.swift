@@ -72,9 +72,14 @@ public struct ClipPlanEffect: Codable, Sendable, Equatable {
     }
 
     static func providerEntry(_ value: JSONValue) -> Self? {
-        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)), kind != .motionTemplate else { return nil }
+        guard let kind = value[ai: "kind"].aiString.flatMap(Kind.init(rawValue:)) else { return nil }
         let keys = ["kind", "startWord", "endWord", "reason", kind.payloadKey]
-        return read(.object(Dictionary(uniqueKeysWithValues: keys.map { ($0, value[ai: $0]) })))
+        var fields = Dictionary(uniqueKeysWithValues: keys.map { ($0, value[ai: $0]) })
+        if kind == .motionTemplate, let template = fields["template"]?.aiObject {
+            let used = template["name"]?.aiString == "counter" ? ["name", "from", "to"] : ["name", "text"]
+            fields["template"] = .object(template.filter { used.contains($0.key) })
+        }
+        return read(.object(fields))
     }
 
     private static func line(_ value: JSONValue, limit: Int) -> String? {

@@ -142,7 +142,7 @@ public struct ClipAutopilotPrompt: Sendable {
         var clipVersion = version
         if directional != .null {
             let direction = directional[ai: "directionSchema"]
-            guard let newVersion = directional[ai: "promptVersion"].aiInt, newVersion > version,
+            guard let newVersion = directional[ai: "promptVersion"].aiInt, newVersion > 0,
                   let section = directional[ai: "section"].aiString, !section.isEmpty,
                   direction[ai: "type"].aiString == "string",
                   Set(direction[ai: "enum"].aiArray.compactMap(\.aiString)) == Set(ClipAutopilotPlan.Zoom.Direction.allCases.map(\.rawValue)),
@@ -156,7 +156,7 @@ public struct ClipAutopilotPrompt: Sendable {
             root["properties"] = .object(properties)
             schema = .object(root)
             guard CanonicalResponseParser.validateSchemaSubset(schema) else { throw VoxClipError.sharedResourcesMissing }
-            clipVersion = newVersion
+            clipVersion = max(version, newVersion)
             zoomSection = section
             templateValues["minDirectionalZoomSeconds"] = String(ClipAutopilotPlan.Zoom.minimumDirectionalSeconds)
             templateValues["maxDirectionalZoomSeconds"] = String(Int(ClipAutopilotPlan.Zoom.maximumDirectionalSeconds))
