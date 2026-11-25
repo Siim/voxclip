@@ -23,7 +23,11 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
 
     /// The input for a clip's render (nil: the full video's), or nil when nothing renders there.
     public static func resolve(project: Project, clipID: String?, dataRoot: URL, shared: SharedResources?) -> ClipEffectsRenderInput? {
-        let effects = ClipEffects.rendered(in: project, clipID: clipID)
+        var effects = ClipEffects.rendered(in: project, clipID: clipID)
+        if project.schemaVersion >= TimelineEditFields.version,
+           let includes = RenderCallerInputs.scopedAnchors(project: project, clipID: clipID) {
+            effects.removeAll { $0.kind == .sound && !includes($0.start) }
+        }
         guard !effects.isEmpty else { return nil }
         var urls: [String: URL] = [:]
         for effect in effects where effect.kind == .sound {
@@ -41,7 +45,11 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
     public var picture: [ClipEffect] { effects.filter { ![.bleep, .mute, .sound, .colourLook, .speedForPart].contains($0.kind) } }
 
     public func look(at sourceTime: Double) -> ClipLook? {
-        effects.last { $0.kind == .colourLook && $0.start <= sourceTime && sourceTime < $0.end }?.look
+        lookEffect(at: sourceTime)?.look
+    }
+
+    public func lookEffect(at sourceTime: Double) -> ClipEffect? {
+        effects.last { $0.kind == .colourLook && $0.start <= sourceTime && sourceTime < $0.end }
     }
 
     public var credits: [String] {

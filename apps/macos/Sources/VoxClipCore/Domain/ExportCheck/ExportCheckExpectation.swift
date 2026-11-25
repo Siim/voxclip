@@ -4,12 +4,22 @@ import Foundation
 /// phrases Voice Lab speaks, the cuts and the caption cards. The export check (ADR-R49) compares the exported file with
 /// these, so they come from the same plan and layout the renderer used, never from the file's pixels.
 public enum ExportCheckExpectation {
+    public struct AudioWindow: Sendable, Equatable {
+        public enum Kind: String, Sendable { case music, sound, gap }
+        public var kind: Kind
+        public var id: String?
+        public var range: Range<Double>
+        public var sourceStart: Double?
+        public var shape: ItemShape?
+    }
+
     public struct Edit: Sendable, Equatable {
         public var words: [ExportCheckInput.Word]
         public var phrases: [ExportCheckInput.Phrase]
         public var cuts: [Double]
         /// The rendered length, seconds.
         public var duration: Double
+        public var audioWindows: [AudioWindow] = []
         public init(words: [ExportCheckInput.Word], phrases: [ExportCheckInput.Phrase], cuts: [Double], duration: Double) {
             self.words = words; self.phrases = phrases; self.cuts = cuts; self.duration = duration
         }
@@ -20,8 +30,46 @@ public enum ExportCheckExpectation {
     /// active clip through the render's plan, corrections applied, as the captions read them. A bleeped or muted word
     /// isn't heard and isn't expected; a kept filler is optional. Nil `state` (no transcript) expects no words.
     public static func edit(render: RenderRequest, state: EditState?) throws -> Edit {
-        try edit(timeline: render.timeline, speed: render.speedTiming, effects: render.effects?.effects ?? [], state: state,
-                 duration: render.renderedDuration)
+        var result = try edit(timeline: render.timeline, speed: render.speedTiming, effects: render.effects?.effects ?? [], state: state,
+                              duration: render.renderedDuration)
+        result.audioWindows = audioWindows(render)
+        return result
+    }
+
+    private static func audioWindows(_ render: RenderRequest) -> [AudioWindow] {
+        let duration = render.renderedDuration
+        let timeline = render.timeline, speed = render.speedTiming
+        func map(_ time: Double) -> Double { speed.rendered(timeline.mapTime(time)) }
+        var windows: [AudioWindow] = []
+        if let entry = render.music?.entry, let segments = entry.segments {
+            let rate = 48_000.0
+            let placements = MusicMix.segmentPieces(segments, trackFrames: Int((entry.asset.durationSeconds * rate).rounded()),
+                                                     outputFrames: Int((duration * rate).rounded()), rate: rate, mapTime: map)
+            var cursor = 0.0
+            for item in placements {
+                let start = Double(item.span.outputStart) / rate
+                let end = min(duration, Double(item.span.outputStart + item.span.count) / rate)
+                guard start < end else { continue }
+                if cursor < start { windows.append(.init(kind: .gap, range: cursor..<start)) }
+                let segment = item.segment
+                windows.append(.init(kind: .music, id: segment.id, range: start..<end, sourceStart: segment.songFromSeconds,
+                                     shape: .init(fadeInSeconds: segment.fadeInSeconds, fadeOutSeconds: segment.fadeOutSeconds,
+                                                  gainPoints: segment.gainPoints)))
+                cursor = max(cursor, end)
+            }
+            if cursor < duration { windows.append(.init(kind: .gap, range: cursor..<duration)) }
+        } else if render.music?.entry.duckDb != nil, duration > 0 {
+            windows.append(.init(kind: .music, range: 0..<duration))
+        }
+        for effect in render.effects?.effects ?? [] where effect.kind == .sound {
+            let start = map(effect.start)
+            let end = min(duration, start + effect.end - effect.start)
+            guard start < end else { continue }
+            windows.append(.init(kind: .sound, id: effect.id, range: start..<end, sourceStart: effect.mediaOffsetSeconds ?? 0,
+                                 shape: .init(fadeInSeconds: effect.fadeInSeconds, fadeOutSeconds: effect.fadeOutSeconds,
+                                              gainPoints: effect.gainPoints)))
+        }
+        return windows.sorted { $0.range.lowerBound < $1.range.lowerBound }
     }
 
     /// `edit(render:state:)` from its parts: the render's timeline, the clip's speed, its effects and its rendered length.

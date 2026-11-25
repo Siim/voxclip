@@ -98,6 +98,8 @@ public struct ExportChecker: Sendable {
                                                  truePeakDbtp: decoded.measurement.truePeakDbtp)
             heardAudio = decoded.wav
         }
+        let timelineAudio = try await timelineAudioLevels(render: render, edit: edit, loudness: loudness,
+                                                          asset: asset, track: audioTrack)
         let measuredAt = clock.now
         var heard: [ExportCheckInput.Heard]?
         var skipped = ExportCheck.noLocalEngine
@@ -110,10 +112,11 @@ public struct ExportChecker: Sendable {
             skipped = "No audio track"
         }
         let heardAt = clock.now
-        let input = ExportCheckInput(expected: edit.words, heard: heard, hearingSkipped: skipped, cuts: edit.cuts, phrases: edit.phrases,
+        var input = ExportCheckInput(expected: edit.words, heard: heard, hearingSkipped: skipped, cuts: edit.cuts, phrases: edit.phrases,
                                      video: videoRange, audio: audioRange, frameSeconds: frameSeconds, loudness: measured,
                                      boxes: ExportCheckExpectation.captionBoxes(render: render) + Self.titleBoxes(render: render),
                                      frame: frame)
+        input.timelineAudio = timelineAudio
         let report = ExportCheck.run(input)
         func seconds(_ duration: Duration) -> Double {
             let parts = duration.components
@@ -123,6 +126,43 @@ public struct ExportChecker: Sendable {
                        hearSeconds: heard == nil ? 0 : seconds(measuredAt.duration(to: heardAt)),
                        totalSeconds: seconds(started.duration(to: clock.now)), engine: heard == nil ? nil : hearing?.plan.engine,
                        model: heard == nil ? nil : hearing?.plan.model)
+    }
+
+    private func timelineAudioLevels(render: RenderRequest, edit: ExportCheckExpectation.Edit, loudness: ExportLoudness,
+                                     asset: AVURLAsset, track: AVAssetTrack?,
+                                     isolation: isolated (any Actor)? = #isolation) async throws -> [ExportCheckInput.TimelineAudioLevel] {
+        let probes = TimelineAudioMeter.probes(for: edit.audioWindows)
+        guard !probes.isEmpty else { return [] }
+        var reference = TimelineAudioMeter(probes)
+        let graph = try await CompositionBuilder(scratchRoot: scratch).build(render)
+        let range = CMTimeRange(start: .zero, duration: CMTime(value: render.renderedSamples, timescale: Int32(render.timeline.sampleRate)))
+        let limit = Int64((edit.duration * TimelineAudioMeter.rate).rounded())
+        if !graph.mixedAudioTracks.isEmpty {
+            let plan = try await AVExporter.socialLoudness(loudness, graph: graph, timeRange: range, sampleLimit: limit)
+            if let decision = plan?.decision {
+                var stage = try ExportLoudnessStage(gainDb: decision.gainDb, limiting: decision.limiting)
+                try await AVExporter.readMix(graph: graph, timeRange: range, sampleLimit: limit) { samples in
+                    try stage.process(samples) { reference.append($0) }
+                }
+                try stage.finish { reference.append($0) }
+            } else {
+                try await AVExporter.readMix(graph: graph, timeRange: range, sampleLimit: limit) { reference.append($0) }
+            }
+        }
+        var decoded = TimelineAudioMeter(probes)
+        if let track {
+            let held = UncheckedAsset(asset: asset, track: track)
+            decoded = try await MediaReadQueue.run {
+                var meter = TimelineAudioMeter(probes)
+                try Self.read(held, settings: MediaSupport.pcm(rate: TimelineAudioMeter.rate, channels: 2)) { data in
+                    data.withUnsafeBytes { meter.append($0.bindMemory(to: Float.self)) }
+                }
+                return meter
+            }
+        }
+        return zip(probes, zip(reference.levels, decoded.levels)).map { probe, pair in
+            .init(time: Double(probe.lowerBound) / TimelineAudioMeter.rate, expectedDb: pair.0, measuredDb: pair.1)
+        }
     }
 
     /// Each title the render draws (Ask Claude's and the hook's), laid out by the compositor's own `titleLayout`, top-left

@@ -22,7 +22,7 @@ public final class EffectFrames: Sendable {
     /// The accent of pointers and the progress bar: VoxClip yellow.
     static let accent = CGColor(srgbRed: 1, green: 0.82, blue: 0.04, alpha: 1)
 
-    func illustration(at time: Double, output: CGSize) -> CIImage? {
+    func illustration(at time: Double, output: CGSize, over background: CIImage) -> CIImage? {
         guard let effect = input.effects.last(where: { $0.kind == .illustration && $0.start <= time && time < $0.end }),
               let url = input.imageURLs[effect.id] else { return nil }
         let key = "illustration|\(url.path)"
@@ -33,7 +33,8 @@ public final class EffectFrames: Sendable {
             return loaded
         }
         guard let image else { return nil }
-        return CompositionFrameGeometry.fill(image, crop: FrameCompositor.centerCrop(source: image.extent, output: output), output: output)
+        let fitted = CompositionFrameGeometry.fill(image, crop: FrameCompositor.centerCrop(source: image.extent, output: output), output: output)
+        return FrameCompositor.dissolve(fitted, over: background, opacity: effect.explicitFadeOpacity(at: time))
     }
 
     // MARK: Picture space
@@ -61,7 +62,8 @@ public final class EffectFrames: Sendable {
             guard let rect = effect.rect(at: time) else { continue }
             let region = mapped(rect).intersection(frame)
             guard !region.isNull, region.width >= 1, region.height >= 1 else { continue }
-            result = Self.censor(result, region: region, pixelate: effect.kind == .pixelate)
+            let covered = Self.censor(result, region: region, pixelate: effect.kind == .pixelate)
+            result = FrameCompositor.dissolve(covered, over: result, opacity: effect.explicitFadeOpacity(at: time))
         }
         for effect in active where effect.kind == .arrow || effect.kind == .circle {
             guard let rect = effect.rect(at: time) else { continue }

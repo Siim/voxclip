@@ -99,6 +99,15 @@ import VoxClipCore
 
     // MARK: Pixel goldens
 
+    @Test func editedFadeInOpacityGolden() throws {
+        var title = Self.effect(.title, text: "Fade in", position: .top)
+        title.fadeInSeconds = 0.8
+        title.fadeOutSeconds = 0
+        let time = title.start + 0.2
+        #expect(abs(title.opacity(at: time) - 0.25) < 1e-12)
+        try Self.expectGolden("edited-title-fade-in", Self.render([title], time: time))
+    }
+
     @Test func blurAndPixelateGoldensCoverOnlyTheirRegion() throws {
         let rect = ClipEffect.Rect(x: 0.5, y: 0.2, width: 0.3, height: 0.4)
         let plain = try Self.render([])
@@ -453,6 +462,31 @@ import VoxClipCore
             let duration = try await MusicBedRenderer.durationSeconds(ClipEffectsRenderInput.bundledSoundURL(id, shared: shared))
             #expect(abs(duration - seconds) < 0.001, "\(id)")
         }
+    }
+
+    @Test func slippedSoundPlacesTheOnsetAtTheExpectedSample() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sound = root.appendingPathComponent("effect.caf")
+        let writer = try MusicCAFWriter(url: sound, channels: 2)
+        let samples = [Float](repeating: 0, count: 2 * 9_600) + [Float](repeating: 0.5, count: 2 * 14_400)
+        try writer.append(samples)
+        writer.close()
+        let source = try await NativeMediaFixtures.shared.file()
+        var effect = ClipEffect(id: "sound", clipId: nil, kind: .sound, start: 0.25, end: 0.45,
+                                sound: .init(source: .bundled, id: "pop", durationSeconds: 0.5, title: "Test", license: "cc0"), gainDb: 0)
+        effect.mediaOffsetSeconds = 0.15
+        effect.fadeInSeconds = 0.1
+        effect.gainPoints = [.init(t: 0, db: -6)]
+        let request = Self.request(source, effects: [effect], soundURLs: [effect.id: sound])
+        let graph = try await CompositionBuilder(scratchRoot: root).build(request)
+        let lease = try #require(graph.effectsLease)
+        let decoded = try MusicBedTests.readBed(lease.url)
+        let onset = try #require(decoded.firstIndex { abs($0) > 1e-6 })
+        #expect(onset == 2 * 14_400)
+        #expect(abs(Double(decoded[onset]) - 0.25 * pow(10, -6.0 / 20)) < 1e-6)
+        #expect(decoded[2 * 21_600] == 0)
     }
 
     // MARK: Vision

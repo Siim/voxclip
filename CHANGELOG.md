@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Claude Code, Codex and Ask Claude can trim, move and shape existing timeline items without spending; Claude does it all can shape the music it picks.
+- On Mac, preview and export play edited music and sounds with their fades and volume changes, B-roll stays at normal speed across cuts, and Final Cut Pro handoff keeps music segments and volume keyframes.
 - Timeline placements on Mac and Windows follow their words through cuts and part reorders; sounds and music can keep playing across a join.
 - Mac and Windows can save timeline fades, sound trims and gain keyframes, and edited music in project format v6; projects without these edits keep their existing format.
 - On Mac, review stories, showreels and stretches with their ordered parts, creative choices and cost; use Change… inline without paying again for assets you keep.
