@@ -104,6 +104,50 @@ public sealed class MusicBedTests(ITestOutputHelper output) : IDisposable
     private static double Db(double ratio) => 20 * Math.Log10(ratio);
 
     [Fact]
+    public void SharedTimelineMusicVectorsReplay()
+    {
+        using var document = FixtureLoader.ReadJson("fixtures/music/music-mix-cases.json");
+        foreach (var item in document.RootElement.GetProperty("timeline").EnumerateArray())
+        {
+            var rate = item.GetProperty("sampleRate").GetInt32();
+            var trackFrames = item.GetProperty("trackFrames").GetInt32();
+            var speed = item.GetProperty("speed").GetDouble();
+            double Map(double anchor) => anchor / speed;
+            const long outputFrames = 1000;
+            var segments = item.GetProperty("segments").Deserialize<MusicSegment[]>(JsonSerializerOptions.Web)!;
+            var placements = MusicMix.SegmentPieces(segments, trackFrames, rate, outputFrames, Map);
+            var starts = item.GetProperty("starts").Deserialize<long[]>()!;
+            Assert.Equal(starts, placements.Select(placement => placement.Span.OutputStart));
+            Assert.Equal(item.GetProperty("fades").Deserialize<long[][]>(), placements.Select(placement => new[] { placement.Span.FadeIn, placement.Span.FadeOut }).ToArray());
+            var expectedPieces = item.GetProperty("pieces").Deserialize<MusicMix.LoopPiece[][]>(JsonSerializerOptions.Web)!;
+            for (var index = 0; index < placements.Count; index++) Assert.Equal(expectedPieces[index], placements[index].Pieces);
+
+            var shape = new ItemShape(segments[0].FadeInSeconds, segments[0].FadeOutSeconds, segments[0].GainPoints);
+            var seconds = item.GetProperty("itemSeconds").Deserialize<double[]>()!;
+            var gains = item.GetProperty("itemGains").Deserialize<double[]>()!;
+            foreach (var (second, gain) in seconds.Zip(gains)) Assert.Equal(gain, MusicMix.ItemGain(second, shape, segments[0].LengthSeconds), 8);
+            Assert.InRange(Math.Abs(item.GetProperty("crossfadeWeight").GetDouble() -
+                MusicMix.Crossfade(item.GetProperty("crossfadeFrame").GetInt64(), placements[1].Span.FadeIn)), 0, 1e-9);
+            var depth = item.GetProperty("depthDb").GetDouble();
+            var ducking = MusicMix.DuckingGainsDb(item.GetProperty("activity").Deserialize<bool[]>()!, true, depth);
+            foreach (var (actual, expected) in ducking.Zip(item.GetProperty("duckingDb").Deserialize<double[]>()!)) Assert.Equal(expected, actual, 8);
+
+            var track = Enumerable.Range(0, trackFrames).SelectMany(frame => new[] { frame < rate ? -0.25f : 0.25f, 0.25f }).ToArray();
+            var entry = Entry(gainDb: 0, duration: trackFrames / (double)rate) with { Segments = segments, DuckDb = depth };
+            var speech = Enumerable.Repeat(-20.0, (int)outputFrames).ToArray();
+            var bed = MusicBed.Create(entry, track, speech, outputFrames, rate, Map);
+            var mix = new float[outputFrames * 2];
+            bed.Mix(mix, 0, (int)outputFrames);
+            var at = (int)(starts[0] + seconds[1] * rate) * 2;
+            var signal = .1 * gains[1] * Math.Pow(10, depth / 20);
+            Assert.Equal(signal, mix[at], 6);
+            Assert.Equal(signal, mix[at + 1], 6);
+            Assert.Equal(0, mix[(starts[0] - 1) * 2]);
+            Assert.Equal(0, mix[^1]);
+        }
+    }
+
+    [Fact]
     public void SharedBedVectorsReplay()
     {
         using var document = FixtureLoader.ReadJson("fixtures/music/music-mix-cases.json");
@@ -216,6 +260,9 @@ public sealed class MusicBedTests(ITestOutputHelper output) : IDisposable
         var bed = new MusicSegment("whole", .5, 1.5, .125, false, FadeInSeconds: .25, FadeOutSeconds: .25);
         var entry = Entry(gainDb: -6, ducking: false, duration: 4) with { Segments = [bed] };
         var path = Track(4);
+        var waveform = File.ReadAllBytes(path);
+        Array.Clear(waveform, 44, Rate);
+        File.WriteAllBytes(path, waveform);
         var split = entry with
         {
             Segments = [bed with { Id = "left", LengthSeconds = .75, FadeOutSeconds = 0 },

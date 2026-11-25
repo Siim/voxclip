@@ -19,9 +19,9 @@ struct MusicMixVectorTests {
     @Test("The file has its keys, its count and the Mac's constants")
     func fileShape() throws {
         let cases = try Self.cases()
-        #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "caseCount"])
+        #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "caseCount"])
         #expect(cases["format"]?.aiString == "voxclip-music-mix-cases/1")
-        #expect(cases["caseCount"]?.aiInt == 35)
+        #expect(cases["caseCount"]?.aiInt == 36)
         let constants = try #require(cases["constants"]?.aiObject)
         let expected: [String: Double] = [
             "frameSeconds": MusicMix.frameSeconds, "duckDb": MusicMix.duckDb, "attackSeconds": MusicMix.attackSeconds,

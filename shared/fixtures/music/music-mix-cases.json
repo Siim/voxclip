@@ -5984,5 +5984,112 @@
    ]
   }
  ],
- "caseCount": 35
+ "timeline": [
+  {
+   "sampleRate": 100,
+   "trackFrames": 400,
+   "speed": 2,
+   "segments": [
+    {
+     "id": "slip",
+     "anchorSeconds": 1,
+     "lengthSeconds": 2.5,
+     "songFromSeconds": 0.5,
+     "loop": false,
+     "gainDb": 0,
+     "fadeInSeconds": 1,
+     "fadeOutSeconds": 0.5,
+     "gainPoints": [
+      {
+       "t": 0.25,
+       "db": -12
+      },
+      {
+       "t": 0.75,
+       "db": 0
+      }
+     ]
+    },
+    {
+     "id": "loop",
+     "anchorSeconds": 5,
+     "lengthSeconds": 6,
+     "songFromSeconds": 1,
+     "loop": true,
+     "gainDb": 0,
+     "fadeInSeconds": 0,
+     "fadeOutSeconds": 0
+    }
+   ],
+   "starts": [
+    50,
+    250
+   ],
+   "fades": [
+    [
+     0,
+     50
+    ],
+    [
+     50,
+     0
+    ]
+   ],
+   "pieces": [
+    [
+     {
+      "sourceStart": 50,
+      "outputStart": 0,
+      "count": 250,
+      "fadeIn": 0,
+      "fadeOut": 0
+     }
+    ],
+    [
+     {
+      "sourceStart": 100,
+      "outputStart": 0,
+      "count": 300,
+      "fadeIn": 0,
+      "fadeOut": 100
+     },
+     {
+      "sourceStart": 0,
+      "outputStart": 200,
+      "count": 400,
+      "fadeIn": 100,
+      "fadeOut": 0
+     }
+    ]
+   ],
+   "itemSeconds": [
+    0.125,
+    0.5,
+    1.75,
+    2.25
+   ],
+   "itemGains": [
+    0.03139858,
+    0.250593617,
+    1.0,
+    0.5
+   ],
+   "crossfadeFrame": 20,
+   "crossfadeWeight": 0.600420225,
+   "activity": [
+    false,
+    true,
+    true,
+    false
+   ],
+   "depthDb": -6,
+   "duckingDb": [
+    -5.6,
+    -6.0,
+    -6.0,
+    -5.85
+   ]
+  }
+ ],
+ "caseCount": 36
 }
