@@ -15,7 +15,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PATH = ROOT / 'shared/schemas/project.schema.json'
 PLAN_PATH = PATH.with_name('clip-plan-effect.schema.json')
-HARNESS_PATH = PATH.with_name('harness-timeline.schema.json')
 
 IDENTIFIER = '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'
 KINDS = ['bleep', 'mute', 'blur', 'pixelate', 'title', 'lowerThird', 'sticker', 'arrow', 'circle', 'progress', 'freeze', 'sound',
@@ -124,14 +123,6 @@ def update_plan_schema():
     PLAN_PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
 
 
-def update_harness_schema():
-    schema = json.loads(HARNESS_PATH.read_text())
-    schema['properties']['effects']['items'] = {'$ref': PLAN_PATH.name}
-    schema['properties']['effects']['description'] = ('Use any clip-plan entry. Footage references a sourceKey from read_clips. '
-                                                       'Asset requests are reviewed in VoxClip; this tool never sends or spends.')
-    HARNESS_PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
-
-
 def main():
     schema = json.loads(PATH.read_text())
     media = schema['properties']['media']['properties']
@@ -169,7 +160,6 @@ def main():
         raise SystemExit('project.schema.json has no v1-3 exclusion rule for v4 root fields')
     PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
     update_plan_schema()
-    update_harness_schema()
 
 
 if __name__ == '__main__':

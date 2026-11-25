@@ -111,7 +111,7 @@ public sealed class HarnessReviewTests
         review.Stage();
         var pending = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
         var changed = pending.ToJson();
-        changed["timeline"]!["title"] = "Not the reviewed title";
+        changed["timelines"]![0]!["title"] = "Not the reviewed title";
         File.WriteAllText(review.Sidecar, changed.ToJsonString());
 
         Assert.Throws<HarnessException>(() => review.Editor.DismissHarnessProposal(pending, review.Path));
@@ -181,6 +181,38 @@ public sealed class HarnessReviewTests
         Assert.Same(review.Original, review.Editor.Project);
         Assert.False(review.Editor.CanUndo);
         Assert.Equal(MusicPanelPhase.Idle, review.Editor.Music.Phase);
+    }
+
+    [Fact]
+    public void SeriesCanKeepAndDismissIndividualTimelinesWithOneUndoEach()
+    {
+        using var review = new ReviewProject();
+        using var cases = FixtureLoader.ReadJson("fixtures/clips-mode/harness-proposal-cases.json");
+        var story = HarnessTimeline.Read(cases.RootElement.GetProperty("story"));
+        var title = HarnessTimeline.Read(JsonSerializer.SerializeToElement(new { clipId = "clip-2f1c", title = "A faster edit", reason = "Clarify the point." }));
+        var series = new HarnessProposal([story, title, title], review.Original);
+        File.WriteAllText(review.Sidecar, series.ToJson().ToJsonString());
+
+        review.Editor.DismissHarnessProposal(series, review.Path, 2);
+        var two = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
+        Assert.Equal(2, two.Timelines.Count);
+        Assert.False(review.Editor.CanUndo);
+        Assert.Equal("Result first", review.Editor.DescribeHarnessProposal(two, FixtureLoader.SharedRoot, 0).ClipTitle);
+        review.Editor.KeepHarnessTimeline(two, review.Path, FixtureLoader.SharedRoot, 1, out _, out _);
+        Assert.Equal("A faster edit", review.Editor.Project.Edits.Clips[0].Title);
+        var one = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
+        Assert.Equal(two.ClipIdAt(0), one.ClipIdAt(0));
+        Assert.Single(one.Timelines);
+
+        review.Editor.KeepHarnessTimeline(one, review.Path, FixtureLoader.SharedRoot, 0, out _, out var rewrites);
+        Assert.Equal("Result first", review.Editor.Project.Edits.Clips.Last().Title);
+        Assert.Single(rewrites);
+        Assert.Null(review.Editor.ReadHarnessProposal(review.Path));
+        review.Editor.Undo();
+        Assert.Equal(2, review.Editor.Project.Edits.Clips.Count);
+        Assert.Equal("A faster edit", review.Editor.Project.Edits.Clips[0].Title);
+        review.Editor.Undo();
+        Assert.Equal(review.Original.Edits.Clips[0].Title, review.Editor.Project.Edits.Clips[0].Title);
     }
 
     private sealed class ReviewProject : IDisposable

@@ -55,3 +55,12 @@ public struct ClipProposal: Codable, Sendable, Equatable {
         case look, speed, hook, title, postText, coverTitle, music, effects, rewrites
     }
 }
+
+extension ClipAutopilotPlan {
+    public func canonicalProposal(clipID: String, in project: Project) -> ClipProposal {
+        let existing = project.edits.clips.first { $0.id == clipID }
+        var proposal = canonicalProposal(clipID: existing?.id)
+        if existing?.parts != nil, orderedParts == nil { proposal.parts = nil }
+        return proposal
+    }
+}

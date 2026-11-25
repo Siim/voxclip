@@ -845,7 +845,7 @@ extension EditorModel {
             return (.effect(id: card.id, previous: previous),
                     MakeItRow(id: operation.id, kind: .choice, text: Self.makeItHookRowText(card.text ?? text, chosenBy: "Claude"),
                               detail: Self.makeItHookDetail, play: clipPlay(clipID, in: project), undoable: true, change: .hook))
-        case .rewrite, .music, .asset:
+        case .rewrite, .music, .asset, .coverTitle:
             return nil
         case .savedMusic(let clipID, _):
             guard makeItStyle.music || plan.kind == .showreel,

@@ -18,6 +18,8 @@ public sealed partial class EditorPage
     private int harnessActionVersion;
     private HarnessProposal? harnessPending;
     private HarnessReviewDetails? harnessDetails;
+    private bool fillingHarnessTimelines;
+    private int harnessTimelineIndex;
     private string? harnessPath;
     private Project? harnessCheckedProject;
     private string? harnessReadIssue;
@@ -27,6 +29,10 @@ public sealed partial class EditorPage
     private bool harnessSubmitted;
     private string? harnessPriceIssue;
     private readonly List<ClipAutopilotAction.Asset> harnessAssets = [];
+    private readonly List<ClipAutopilotOperation> harnessRewrites = [];
+    private string? harnessRewriteClipId;
+    private bool harnessRewriteOpening;
+    private (int Count, bool Opening, string? Blocked)? harnessRewriteDisplay;
     private Project? harnessAssetProject;
     private bool harnessAssetWorking;
     private bool? harnessIllustrationReady;
@@ -63,8 +69,19 @@ public sealed partial class EditorPage
             harnessPending = pending;
             harnessPath = path;
             harnessCheckedProject = ViewModel.Project;
-            harnessDetails = pending is null ? null : ViewModel.DescribeHarnessProposal(pending, App.Services.SharedRoot);
-            if (newProposal) HarnessChanges.IsExpanded = false;
+            if (newProposal)
+            {
+                fillingHarnessTimelines = true;
+                harnessTimelineIndex = 0;
+                var timelines = pending?.Timelines ?? [];
+                HarnessTimelinePicker.ItemsSource = timelines.Select((timeline, index) =>
+                    $"{index + 1}. {timeline.Target.New?.Title ?? ViewModel.Project.Edits.Clips.FirstOrDefault(clip => clip.Id == timeline.Target.ClipId)?.Title ?? "Clip"}").ToArray();
+                HarnessTimelinePicker.SelectedIndex = timelines.Count == 0 ? -1 : 0;
+                HarnessTimelinePicker.Visibility = timelines.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+                fillingHarnessTimelines = false;
+                HarnessChanges.IsExpanded = false;
+            }
+            harnessDetails = pending is null ? null : ViewModel.DescribeHarnessProposal(pending, App.Services.SharedRoot, harnessTimelineIndex);
             ShowHarnessDetails();
         }
         if (harnessReadIssue != issue)
@@ -93,7 +110,7 @@ public sealed partial class EditorPage
     }
 
     private string? HarnessBlock => harnessDetails?.Blocked ?? ViewModel.HarnessKeepBlocked ??
-        (harnessMusic is not null || harnessAssets.Count > 0 ? "Finish or dismiss the previous asset actions first." : null);
+        (harnessMusic is not null || harnessAssets.Count > 0 || harnessRewrites.Count > 0 ? "Finish or dismiss the previous asset actions first." : null);
 
     private void UpdateHarnessButtons()
     {
@@ -104,6 +121,16 @@ public sealed partial class EditorPage
         HarnessKeepReason.Visibility = blocked is null ? Visibility.Collapsed : Visibility.Visible;
         ShowHarnessMusic();
         ShowHarnessAssets();
+        ShowHarnessRewrites();
+    }
+
+    private void HarnessTimelineSelected(object sender, SelectionChangedEventArgs args)
+    {
+        if (fillingHarnessTimelines || harnessPending is not { } pending || HarnessTimelinePicker.SelectedIndex < 0) return;
+        harnessTimelineIndex = HarnessTimelinePicker.SelectedIndex;
+        harnessDetails = ViewModel.DescribeHarnessProposal(pending, App.Services.SharedRoot, harnessTimelineIndex);
+        ShowHarnessDetails();
+        UpdateHarnessButtons();
     }
 
     private bool IsHarnessPath(string path) => string.Equals(owner.ProjectPath, path, StringComparison.OrdinalIgnoreCase);
@@ -121,13 +148,15 @@ public sealed partial class EditorPage
             if (keep)
             {
                 if (HarnessBlock is not null || App.Services.SharedRoot is not { } root) return;
-                harnessMusic = ViewModel.KeepHarnessProposal(pending, path, root, out var assets);
+                harnessMusic = ViewModel.KeepHarnessTimeline(pending, path, root, harnessTimelineIndex, out var assets, out var rewrites);
                 harnessAssets.AddRange(assets);
+                harnessRewrites.AddRange(rewrites);
+                harnessRewriteClipId = pending.ClipIdAt(harnessTimelineIndex);
                 harnessAssetProject = ViewModel.Project;
                 harnessIllustrationReady = null;
                 if (harnessAssets.Any(asset => asset.Kind == "illustration")) _ = CheckHarnessIllustrationKeyAsync();
             }
-            else ViewModel.DismissHarnessProposal(pending, path);
+            else ViewModel.DismissHarnessProposal(pending, path, harnessTimelineIndex);
             harnessPending = null;
             harnessDetails = null;
             HarnessNotice.IsOpen = false;
@@ -138,6 +167,54 @@ public sealed partial class EditorPage
         catch (Exception exception) when (HarnessFileError(exception))
         { Ui.Show(HarnessNotice, "VoxClip couldn't finish this review. Your project is unchanged.", InfoBarSeverity.Warning); }
         _ = RefreshHarnessAsync();
+    }
+
+    private void ShowHarnessRewrites()
+    {
+        var blocked = ViewModel.HarnessKeepBlocked ?? (!ReferenceEquals(harnessAssetProject, ViewModel.Project)
+            ? "The clip changed. Ask for a new rewrite proposal." : rewrite is { IsOpen: true } ? "Finish the open Rewrite first." : null);
+        var display = (harnessRewrites.Count, harnessRewriteOpening, blocked);
+        if (harnessRewriteDisplay == display) return;
+        harnessRewriteDisplay = display;
+        HarnessRewriteRows.Children.Clear();
+        foreach (var operation in harnessRewrites)
+        {
+            if (operation.Action is not ClipAutopilotAction.Rewrite words) continue;
+            var open = new Button { Content = ViewModel.AskClaudePrice(operation), IsEnabled = blocked is null && !harnessRewriteOpening };
+            var dismiss = new Button { Content = "Dismiss", IsEnabled = !harnessRewriteOpening };
+            open.Click += (_, _) => _ = RunAsync(() => OpenHarnessRewriteAsync(operation, words), "Rewrite");
+            dismiss.Click += (_, _) => { harnessRewrites.Remove(operation); UpdateHarnessButtons(); };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            buttons.Children.Add(open);
+            buttons.Children.Add(dismiss);
+            HarnessRewriteRows.Children.Add(Ui.Text($"Proposed rewrite: {words.Text}"));
+            HarnessRewriteRows.Children.Add(buttons);
+            if (blocked is not null) HarnessRewriteRows.Children.Add(Ui.Text(blocked));
+        }
+    }
+
+    private async Task OpenHarnessRewriteAsync(ClipAutopilotOperation operation, ClipAutopilotAction.Rewrite words)
+    {
+        if (disposed || harnessRewriteOpening || harnessRewriteClipId is not { } clipId || rewrite is { IsOpen: true } ||
+            ViewModel.HarnessKeepBlocked is not null || !ReferenceEquals(harnessAssetProject, ViewModel.Project)) return;
+        harnessRewriteOpening = true;
+        ShowHarnessRewrites();
+        var snapshot = ViewModel.Project;
+        try
+        {
+            var session = await OpenMakeItRewriteAsync(new(words.Words.Start, words.Words.End, words.Text, clipId, null));
+            if (session is null) return;
+            if (disposed || !ReferenceEquals(snapshot, ViewModel.Project)) { session.Dispose(); return; }
+            session.Edit(words.Text);
+            if (session.Review is null) { session.Dispose(); return; }
+            ShowRewriteSession(session, null);
+            harnessRewrites.Remove(operation);
+        }
+        finally
+        {
+            harnessRewriteOpening = false;
+            if (!disposed) UpdateHarnessButtons();
+        }
     }
 
     private async Task CheckHarnessIllustrationKeyAsync()

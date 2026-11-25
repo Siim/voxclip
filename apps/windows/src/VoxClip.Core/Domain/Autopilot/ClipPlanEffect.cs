@@ -92,14 +92,9 @@ public sealed class ClipPlanEffect
 
     internal static ClipPlanEffect? ProviderEntry(JsonNode? raw)
     {
-        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key) return null;
+        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key || key is "footage" or "template") return null;
         var projected = new JsonObject();
         foreach (var name in new[] { "kind", "startWord", "endWord", "reason", key }) projected[name] = item[name]?.DeepClone();
-        if (projected["template"] is JsonObject template)
-        {
-            if (AiJson.String(template["name"]) == "counter") template.Remove("text");
-            else { template.Remove("from"); template.Remove("to"); }
-        }
         return Read(projected);
     }
 
@@ -152,15 +147,19 @@ public sealed class ClipPlanEffect
     }
 
     internal ClipAutopilotOperation? Operation(string id, string clipId, WordSpan scope, IReadOnlyList<TimedWord> words,
-        IReadOnlySet<string> cut, IReadOnlySet<int> tightenedAfter, IReadOnlySet<string> stickers, IReadOnlyDictionary<string, double>? sources = null)
+        IReadOnlySet<string> cut, IReadOnlySet<int> tightenedAfter, IReadOnlySet<string> stickers,
+        IReadOnlyDictionary<string, double>? sources = null)
     {
         if (EndWord >= words.Count || tightenedAfter.Any(index => StartWord <= index && index < EndWord)) return null;
-        (double Start, double End)? Anchor(int index) => words[index] is { Kind: WordKind.Word } word &&
-            double.IsFinite(word.Start) && double.IsFinite(word.End) && word.End > word.Start ? (word.Start, word.End) : null;
-        bool IsCut(int index) => cut.Contains(words[index].Id);
-        if (Kind is "bRoll" or "screenshot" or "videoStack")
-            return sources is not null && FootagePlacement(id, clipId, scope, Anchor, IsCut, sources) is { } footage
-                ? new(id, ClipAutopilotDecision.Overlay, new ClipAutopilotAction.Footage(footage), Reason) : null;
-        return Operation(id, clipId, scope, Anchor, IsCut, stickers);
+        if (sources is not null && Kind is "bRoll" or "screenshot" or "videoStack")
+        {
+            var placement = FootagePlacement(id, clipId, scope,
+                index => words[index] is { Kind: WordKind.Word } word ? (word.Start, word.End) : null,
+                index => cut.Contains(words[index].Id), sources);
+            return placement is null ? null : new(id, ClipAutopilotDecision.Overlay, new ClipAutopilotAction.Footage(placement), Reason);
+        }
+        return Operation(id, clipId, scope, index => words[index] is { Kind: WordKind.Word } word &&
+            double.IsFinite(word.Start) && double.IsFinite(word.End) && word.End > word.Start ? (word.Start, word.End) : null,
+            index => cut.Contains(words[index].Id), stickers);
     }
 }

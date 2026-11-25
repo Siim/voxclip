@@ -10,6 +10,7 @@ using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 
 namespace VoxClip.Core.Domain.Autopilot;
 
@@ -23,7 +24,7 @@ public enum ClipAutopilotDecision
 {
 #pragma warning disable CS1591
     Clip, Title, Correction, Cut, PauseCut, Rewrite, Captions, Look, Speed, Zoom, Music, Hook, PostText,
-    Bleep, Blur, Overlay, Freeze, Sound, Stretch, Translate, Duck
+    Bleep, Blur, Overlay, Freeze, Sound, Stretch, Translate, Duck, CoverTitle
 #pragma warning restore CS1591
 }
 
@@ -44,16 +45,18 @@ public abstract record ClipAutopilotAction
     public sealed record Motion(MotionCue Cue, ClipAutopilotZoomDirection? Direction = null) : ClipAutopilotAction;
     /// <summary>The picked track; pending on Windows.</summary>
     public sealed record Music(ClipAutopilotMusicCue Cue) : ClipAutopilotAction;
-    /// <summary>Reuses a track already present in the project.</summary>
+    /// <summary>Reuse a track already saved in the project.</summary>
     public sealed record SavedMusic(string ClipId, string TrackId) : ClipAutopilotAction;
+    /// <summary>Set the title over the clip's cover.</summary>
+    public sealed record CoverTitle(string ClipId, string Text) : ClipAutopilotAction;
+    /// <summary>Place a companion recording already in the project.</summary>
+    public sealed record Footage(ProjectFootage Entry) : ClipAutopilotAction;
     /// <summary>The first 2 seconds' text, applied as the clip's title card.</summary>
     public sealed record Hook(string ClipId, string Text) : ClipAutopilotAction;
     /// <summary>The clip's share text.</summary>
     public sealed record ShareText(string ClipId, string Text) : ClipAutopilotAction;
     /// <summary>An Ask Claude effect (ai.md §18.2), the stored <c>clipEffects</c> entry, already valid.</summary>
     public sealed record Effect(JsonElement Value) : ClipAutopilotAction;
-    /// <summary>Places a companion recording on the clip.</summary>
-    public sealed record Footage(ProjectFootage Entry) : ClipAutopilotAction;
     /// <summary>A timed request for a library sound or generated illustration.</summary>
     public sealed record Asset(string Id, string Kind, string ClipId, double Start, double End, string Text) : ClipAutopilotAction;
     /// <summary>A stretch played at <c>Rate</c> (source seconds). Over a whole clip it sets that clip's speed; over part of one it stays
@@ -81,95 +84,154 @@ public static partial class ClipAutopilotMapping
     /// <summary>The operations for one plan, in review order: the clip, its title, corrections, cuts, pause cuts, rewrites, captions,
     /// look, speed, zooms, music, hook and post text. An existing clip is updated; a new id is added as an AI clip.</summary>
     public static IReadOnlyList<ClipAutopilotOperation> Operations(ClipAutopilotPlan plan, string clipId, Project project,
-        IReadOnlyDictionary<ClipAutopilotFont, string> fonts, IReadOnlySet<string>? stickers = null)
+        IReadOnlyDictionary<ClipAutopilotFont, string> fonts, IReadOnlySet<string>? stickers = null) =>
+        Operations(ClipProposal.FromPlan(plan, clipId, project), clipId, project, fonts, stickers, plan);
+
+    /// <summary>Map canonical proposal intent without saving, contacting providers, or spending.</summary>
+    public static IReadOnlyList<ClipAutopilotOperation> Operations(ClipProposal proposal, string clipId, Project project,
+        IReadOnlyDictionary<ClipAutopilotFont, string> fonts, IReadOnlySet<string>? stickers = null) =>
+        Operations(proposal, clipId, project, fonts, stickers, null);
+
+    private static IReadOnlyList<ClipAutopilotOperation> Operations(ClipProposal proposal, string clipId, Project project,
+        IReadOnlyDictionary<ClipAutopilotFont, string> fonts, IReadOnlySet<string>? stickers, ClipAutopilotPlan? plan)
     {
         if (EditingEngine.FromProject(project) is not { } state) throw ClipAutopilotRequestBuilder.Invalid();
         var words = state.Transcript.Words;
         var existing = state.Clips.FirstOrDefault(clip => clip.Id == clipId);
-        var proposal = plan.CanonicalProposal(existing?.Id);
-        var parts = proposal.Parts ?? [];
-        if (plan.StartWord < 0 || plan.EndWord >= words.Count || plan.StartWord > plan.EndWord || !ClipIdPattern().IsMatch(clipId) ||
-            parts.Count == 0 || parts.Any(part => part.StartWord < plan.StartWord || part.EndWord > plan.EndWord || part.StartWord > part.EndWord))
-            throw ClipAutopilotRequestBuilder.Invalid();
+        if (!ClipIdPattern().IsMatch(clipId) || (existing is null
+            ? proposal.Target.ClipId is not null || proposal.Target.New is null
+            : proposal.Target.ClipId != clipId || proposal.Target.New is not null)) throw ClipAutopilotRequestBuilder.Invalid();
+        var previous = existing?.PlayParts ?? [];
+        var parts = proposal.Parts?.Select((range, index) =>
+        {
+            if (range.StartWord < 0 || range.EndWord >= words.Count || range.StartWord > range.EndWord) throw ClipAutopilotRequestBuilder.Invalid();
+            var start = words[range.StartWord].Id;
+            var end = words[range.EndWord].Id;
+            if (plan?.OrderedParts is not null && previous.FirstOrDefault(candidate =>
+                words.Select((word, position) => (word.Id, position)).Any(word => word.Id == candidate.StartWordId && word.position <= range.StartWord) &&
+                words.Select((word, position) => (word.Id, position)).Any(word => word.Id == candidate.EndWordId && word.position >= range.EndWord)) is { } part)
+                return part with { StartWordId = start, EndWordId = end };
+            var id = "proposal-part-" + (index + 1).ToString(CultureInfo.InvariantCulture);
+            while (previous.Any(part => part.Id == id)) id += "-new";
+            return previous.FirstOrDefault(part => part.StartWordId == start && part.EndWordId == end) ?? new ClipPart(id, start, end);
+        }).ToArray() ?? previous;
+        if (parts.Count is < 1 or > 12 || StoryClips.Indices(parts.Select(part => (part.StartWordId, part.EndWordId)), words) is not { } ranges ||
+            proposal.Target.New is { } create && (create.Kind == "stretch") != (parts.Count == 1))
+            throw new HarnessException("Choose nonoverlapping parts in play order.");
+        var spans = ranges.Select(range => new WordSpan(range.Start, range.End)).ToArray();
+        var startWord = spans.Min(span => span.Start);
+        var endWord = spans.Max(span => span.End);
+        WordSpan? Scope(int start, int end) => start <= end
+            ? spans.Where(span => span.Contains(start) && span.Contains(end)).Select(span => (WordSpan?)span).FirstOrDefault() : null;
+        var strictScope = plan is null || parts.Count > 1;
         var operations = new List<ClipAutopilotOperation>();
         void Add(string id, ClipAutopilotDecision decision, ClipAutopilotAction action, string reason = "") => operations.Add(new(id, decision, action, reason));
-        var title = plan.Title.Length == 0 ? null : plan.Title;
-        var clipParts = parts.Select((part, index) =>
-        {
-            var previous = existing?.PlayParts.FirstOrDefault(candidate =>
-            {
-                var lower = words.ToList().FindIndex(word => word.Id == candidate.StartWordId);
-                var upper = words.ToList().FindIndex(word => word.Id == candidate.EndWordId);
-                return lower >= 0 && lower <= part.StartWord && part.EndWord <= upper;
-            });
-            return new ClipPart(previous?.Id ?? $"part-{(index + 1).ToString(CultureInfo.InvariantCulture)}", words[part.StartWord].Id, words[part.EndWord].Id, previous?.Reframe);
-        }).ToArray();
+        var title = string.IsNullOrEmpty(proposal.Title) ? null : proposal.Title;
         if (existing is not null)
         {
-            var start = words.ToList().FindIndex(word => word.Id == existing.StartWordId);
-            var end = words.ToList().FindIndex(word => word.Id == existing.EndWordId);
-            if (existing.Parts is not null || parts.Count > 1)
+            if (!parts.SequenceEqual(previous))
             {
-                if (!existing.PlayParts.SequenceEqual(clipParts))
-                    Add("clip", ClipAutopilotDecision.Clip, new ClipAutopilotAction.Edit(new EditOperation.SetClipParts(clipId, clipParts)));
+                EditOperation command = parts.Count == 1 && existing.Parts is null
+                    ? new EditOperation.UpdateClip(clipId, startWord, endWord) : new EditOperation.SetClipParts(clipId, parts);
+                if (command is EditOperation.SetClipParts)
+                {
+                    var candidate = EditingEngine.Reduce(state, command, project).Clips.First(clip => clip.Id == clipId);
+                    if (!candidate.PlayParts.Select(part => (part.StartWordId, part.EndWordId)).SequenceEqual(parts.Select(part => (part.StartWordId, part.EndWordId))))
+                        throw new HarnessException("These parts would replace protected work. Propose a new clip instead.");
+                }
+                Add("clip", ClipAutopilotDecision.Clip, new ClipAutopilotAction.Edit(command), proposal.Reason);
             }
-            else if (start != plan.StartWord || end != plan.EndWord) Add("clip", ClipAutopilotDecision.Clip, new ClipAutopilotAction.Edit(new EditOperation.UpdateClip(clipId, plan.StartWord, plan.EndWord)));
             if (title is not null && title != existing.Title) Add("title", ClipAutopilotDecision.Title, new ClipAutopilotAction.Edit(new EditOperation.RenameClip(clipId, title)));
         }
         else
         {
             Add("clip", ClipAutopilotDecision.Clip, new ClipAutopilotAction.Edit(new EditOperation.AddClip(
-                new ClipRange(clipId, words[plan.StartWord].Id, words[plan.EndWord].Id, title, ClipOrigin.Ai, null, null, true,
-                    Parts: parts.Count > 1 ? clipParts : null, Kind: parts.Count > 1 ? plan.Kind == "showreel" ? StoryClipKind.Showreel : StoryClipKind.Story : null))));
+                new ClipRange(clipId, words[startWord].Id, words[endWord].Id,
+                    title ?? (proposal.Target.New?.Title is { Length: > 0 } name ? name : null), ClipOrigin.Ai, null, null, true,
+                    Parts: parts.Count > 1 ? parts : null,
+                    Kind: parts.Count > 1 ? proposal.Target.New?.Kind == "showreel" ? StoryClipKind.Showreel : StoryClipKind.Story : null))), proposal.Reason);
         }
-        for (var index = 0; index < plan.Corrections.Count; index++)
+        var correctionsToApply = proposal.Corrections ?? [];
+        for (var index = 0; index < correctionsToApply.Count; index++)
         {
-            var correction = plan.Corrections[index];
-            if (words[correction.Word].Kind == WordKind.Word)
-                Add("correction-" + index, ClipAutopilotDecision.Correction, new ClipAutopilotAction.Edit(new EditOperation.Correct(words[correction.Word].Id, correction.Text)), correction.Reason);
+            var correction = correctionsToApply[index];
+            if (correction.Word < 0 || correction.Word >= words.Count || strictScope && Scope(correction.Word, correction.Word) is null)
+                throw new HarnessException("A correction is outside the clip.");
+            if (words[correction.Word].Kind != WordKind.Word)
+            {
+                if (plan is not null) continue;
+                throw new HarnessException("A correction is outside the clip or does not name a spoken word.");
+            }
+            Add("correction-" + index, ClipAutopilotDecision.Correction, new ClipAutopilotAction.Edit(new EditOperation.Correct(words[correction.Word].Id, correction.Text)), correction.Reason);
         }
-        for (var index = 0; index < plan.Cuts.Count; index++)
+        var cuts = proposal.Cuts ?? [];
+        var cutIds = state.CutWordIds.ToHashSet(StringComparer.Ordinal);
+        var requestedCuts = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < cuts.Count; index++)
         {
-            var cut = plan.Cuts[index];
-            var ids = new WordSpan(cut.StartWord, cut.EndWord).Indices.Select(position => words[position].Id).Where(id => !state.CutWordIds.Contains(id)).ToArray();
+            var cut = cuts[index];
+            if (cut.StartWord < 0 || cut.EndWord >= words.Count || cut.StartWord > cut.EndWord || strictScope && Scope(cut.StartWord, cut.EndWord) is null)
+                throw new HarnessException("A cut is outside a clip part.");
+            var spoken = new WordSpan(cut.StartWord, cut.EndWord).Indices.Select(position => words[position]).Where(word => plan is not null || word.Kind == WordKind.Word).Select(word => word.Id).ToArray();
+            if (plan is null && (spoken.Length == 0 || requestedCuts.Overlaps(spoken))) throw new HarnessException("Cuts must name distinct spoken words.");
+            requestedCuts.UnionWith(spoken);
+            var ids = spoken.Where(cutIds.Add).ToArray();
             if (ids.Length > 0) Add("cut-" + index, ClipAutopilotDecision.Cut, new ClipAutopilotAction.Edit(new EditOperation.SetWordCuts(ids, true)), cut.Reason);
         }
-        for (var index = 0; index < plan.PauseCuts.Count; index++)
+        if (plan is null && !spans.SelectMany(span => span.Indices).Any(index => words[index].Kind == WordKind.Word && !cutIds.Contains(words[index].Id)))
+            throw new HarnessException("Keep at least one spoken word in the clip.");
+        var tightened = state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => pause.AfterIndex).ToHashSet();
+        var pauses = proposal.PauseCuts ?? [];
+        for (var index = 0; index < pauses.Count; index++)
         {
-            var pause = plan.PauseCuts[index];
-            if (state.Pauses.FirstOrDefault(item => item.AfterIndex == pause.AfterWord) is not { } found || state.CutPauseIds.Contains(found.Id)) continue;
+            var pause = pauses[index];
+            if (strictScope && (Scope(pause.AfterWord, pause.AfterWord) is not { } part || pause.AfterWord >= part.End) ||
+                state.Pauses.FirstOrDefault(item => item.AfterIndex == pause.AfterWord) is not { } found)
+            {
+                if (plan is null) throw new HarnessException("Choose a detected pause inside a clip part.");
+                continue;
+            }
+            if (!tightened.Add(pause.AfterWord)) continue;
             Add("pause-" + index, ClipAutopilotDecision.PauseCut, new ClipAutopilotAction.Edit(new EditOperation.SetPauseCuts([found.Id], true)), pause.Reason);
         }
-        for (var index = 0; index < plan.Rewrites.Count; index++)
+        var rewrites = proposal.Rewrites ?? [];
+        for (var index = 0; index < rewrites.Count; index++)
         {
-            var rewrite = plan.Rewrites[index];
+            var rewrite = rewrites[index];
+            if (rewrite.StartWord < 0 || rewrite.EndWord >= words.Count || rewrite.StartWord > rewrite.EndWord ||
+                strictScope && Scope(rewrite.StartWord, rewrite.EndWord) is null) throw new HarnessException("A rewrite crosses a clip part.");
             Add("rewrite-" + index, ClipAutopilotDecision.Rewrite, new ClipAutopilotAction.Rewrite(new(rewrite.StartWord, rewrite.EndWord), rewrite.Text), rewrite.Reason);
         }
-        var overrides = project.Captions.Overrides.ValueKind == JsonValueKind.Object
-            ? JsonNode.Parse(project.Captions.Overrides.GetRawText())!.AsObject() : new JsonObject();
+        if (proposal.CaptionStyle is not null || proposal.Font is not null || proposal.TextCase is not null || proposal.WordsPerCaption is not null)
+        {
+        var current = plan is null ? ClipCaptionStyles.Settings(project, clipId) : project.Captions;
+        var overrides = current.Overrides.ValueKind == JsonValueKind.Object
+            ? JsonNode.Parse(current.Overrides.GetRawText())!.AsObject() : new JsonObject();
         void Merge(string key, JsonObject values)
         {
             var target = overrides[key] as JsonObject ?? new JsonObject();
             foreach (var (name, value) in values.ToArray()) target[name] = value?.DeepClone();
             overrides[key] = target;
         }
-        var captions = plan.CaptionChoice;
-        Merge("text", new JsonObject { ["transform"] = captions.TextCase.Transform() });
-        Merge("layout", captions.WordsPerCaption == 1 ? new JsonObject { ["maxWords"] = 1, ["maxLines"] = 1 } : new JsonObject { ["maxWords"] = captions.WordsPerCaption });
-        var file = fonts.TryGetValue(captions.Font, out var bundled) ? bundled : null;
-        if (file is not null) Merge("font", new JsonObject { ["file"] = file, ["family"] = captions.Font.Family, ["weight"] = captions.Font.Weight });
+        if (proposal.TextCase is { } textCase) Merge("text", new JsonObject { ["transform"] = textCase.Transform() });
+        if (proposal.WordsPerCaption is { } count)
+            Merge("layout", count == 1 ? new JsonObject { ["maxWords"] = 1, ["maxLines"] = 1 } : new JsonObject { ["maxWords"] = count });
+        var file = proposal.Font is { } wanted && fonts.TryGetValue(wanted, out var bundled) ? bundled : null;
+        if (file is not null && proposal.Font is { } font) Merge("font", new JsonObject { ["file"] = file, ["family"] = font.Family, ["weight"] = font.Weight });
         using var document = JsonDocument.Parse(overrides.ToJsonString());
-        var settings = project.Captions with { StyleId = captions.StyleId, Overrides = document.RootElement.Clone() };
-        Add("captions", ClipAutopilotDecision.Captions, new ClipAutopilotAction.Captions(settings, file is null ? captions.Font : null), captions.Reason);
-        Add("look", ClipAutopilotDecision.Look, new ClipAutopilotAction.Look(clipId, plan.ClipLookChoice), plan.ClipLookChoice.Reason);
-        if (plan.SpeedChoice is { } speed) Add("speed", ClipAutopilotDecision.Speed, new ClipAutopilotAction.Speed(clipId, speed), speed.Reason);
+        var settings = current with { StyleId = proposal.CaptionStyle ?? current.StyleId, Overrides = document.RootElement.Clone() };
+        Add("captions", ClipAutopilotDecision.Captions, new ClipAutopilotAction.Captions(settings, file is null ? proposal.Font : null), plan?.CaptionChoice.Reason ?? "");
+        }
+        if (proposal.Look is { } look) Add("look", ClipAutopilotDecision.Look, new ClipAutopilotAction.Look(clipId, look), look.Reason);
+        if (proposal.Speed is { } speed) Add("speed", ClipAutopilotDecision.Speed, new ClipAutopilotAction.Speed(clipId, speed), speed.Reason);
         var zoomRanges = new List<TimeRange>();
         var corrections = new Dictionary<string, string>(state.Corrections, StringComparer.Ordinal);
-        foreach (var correction in plan.Corrections) corrections[words[correction.Word].Id] = correction.Text;
-        for (var index = 0; index < plan.Zooms.Count; index++)
+        foreach (var correction in correctionsToApply) corrections[words[correction.Word].Id] = correction.Text;
+        var zooms = plan?.Zooms ?? [];
+        for (var index = 0; index < zooms.Count; index++)
         {
-            var zoom = plan.Zooms[index];
-            if (zoom.SourceRange(words, new(plan.StartWord, plan.EndWord)) is not { } range || zoom.Scale is not (>= 1 and <= MaximumZoomScale) ||
+            var zoom = zooms[index];
+            if (Scope(zoom.Word, zoom.UntilWord) is not { } part || zoom.SourceRange(words, part) is not { } range || zoom.Scale is not (>= 1 and <= MaximumZoomScale) ||
                 zoomRanges.Any(other => other.Start < range.End && range.Start < other.End)) continue;
             var key = "zoom-" + index.ToString(CultureInfo.InvariantCulture);
             var cueId = clipId + "-" + key;
@@ -178,7 +240,7 @@ public static partial class ClipAutopilotMapping
             {
                 var phraseSpan = new WordSpan(zoom.Word, zoom.UntilWord);
                 if (!zoom.HasDirectionalSettings || phraseSpan.Indices.Any(position => state.CutWordIds.Contains(words[position].Id)) ||
-                    plan.Cuts.Any(cut => phraseSpan.Overlaps(new(cut.StartWord, cut.EndWord))) ||
+                    cuts.Any(cut => phraseSpan.Overlaps(new(cut.StartWord, cut.EndWord))) ||
                     zoomRanges.Any(other => Math.Abs(other.Start - range.Start) < ClipAutopilotPlan.Zoom.MinimumStartSpacing - ClipAutopilotPlan.Zoom.TimingTolerance)) continue;
                 var phrase = string.Join(" ", phraseSpan.Indices.Select(position => words[position]).Where(word => word.Kind == WordKind.Word)
                     .Select(word => corrections.GetValueOrDefault(word.Id, word.Text)));
@@ -200,46 +262,54 @@ public static partial class ClipAutopilotMapping
             Add(key, ClipAutopilotDecision.Zoom, new ClipAutopilotAction.Motion(cue, zoom.Direction), reason);
             zoomRanges.Add(range);
         }
-        var cutIds = state.CutWordIds.Concat(plan.Cuts.SelectMany(cut => new WordSpan(cut.StartWord, cut.EndWord).Indices
-            .Where(index => index >= 0 && index < words.Count).Select(index => words[index].Id))).ToHashSet(StringComparer.Ordinal);
-        var tightened = plan.PauseCuts.Select(pause => pause.AfterWord).Concat(state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id))
-            .Select(pause => pause.AfterIndex)).ToHashSet();
         var overlayRanges = new List<(double Start, double End)>();
-        var first = parts[0];
-        var opening = new WordSpan(first.StartWord, first.EndWord).Indices.FirstOrDefault(index => !cutIds.Contains(words[index].Id), first.StartWord);
-        var sources = (project.Media.AdditionalSources ?? []).Where(source => source.Video is not null).GroupBy(source => source.FootageKey, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().DurationSeconds, StringComparer.Ordinal);
+        var opening = spans[0].Indices.FirstOrDefault(index => !cutIds.Contains(words[index].Id), spans[0].Start);
         var openingTitle = false;
-        var saved = plan.Effects ?? [];
+        var saved = proposal.Effects ?? [];
+        var sources = (project.Media.AdditionalSources ?? []).Where(source => source.Video is not null)
+            .ToDictionary(source => source.FootageKey, source => source.DurationSeconds, StringComparer.Ordinal);
         for (var index = 0; index < Math.Min(saved.Count, ClipPlanEffect.MaximumEntries); index++)
         {
             var id = $"{clipId[..Math.Min(48, clipId.Length)]}-plan-fx-{index.ToString(CultureInfo.InvariantCulture)}";
-            var entry = saved[index];
-            var part = parts.FirstOrDefault(item => item.StartWord <= entry.StartWord && entry.EndWord <= item.EndWord);
-            if (part is null || entry.Operation(id, clipId, new(part.StartWord, part.EndWord), words, cutIds, tightened,
-                    stickers ?? new HashSet<string>(), sources) is not { } operation) continue;
-            if (part == first && entry.Kind == "motionTemplate" && AiJson.String(entry.ToJson()["template"]?["name"]) is "titleCard" or "logoSting") openingTitle = true;
+            if (Scope(saved[index].StartWord, saved[index].EndWord) is not { } part ||
+                saved[index].Operation(id, clipId, part, words, cutIds, tightened, stickers ?? new HashSet<string>(), sources) is not { } operation)
+            {
+                if (plan is null) throw new HarnessException($"Effect {index + 1} doesn’t fit those kept words or its selected footage.");
+                continue;
+            }
             if (operation.Action is ClipAutopilotAction.Motion { Cue: var cue })
             {
-                if (zoomRanges.Any(other => other.Start < cue.SourceEnd && cue.SourceStart < other.End)) continue;
+                if (zoomRanges.Any(other => other.Start < cue.SourceEnd && cue.SourceStart < other.End))
+                {
+                    if (plan is null) throw new HarnessException("The proposed zooms overlap.");
+                    continue;
+                }
                 zoomRanges.Add(new(cue.SourceStart, cue.SourceEnd));
             }
-            else if (operation.Action is ClipAutopilotAction.Effect { Value: var stored } &&
-                stored.GetProperty("kind").GetString() is "title" or "lowerThird" or "sticker")
+            else if (operation.Action is ClipAutopilotAction.Effect { Value: var entry } &&
+                     entry.GetProperty("kind").GetString() is "title" or "lowerThird" or "sticker")
             {
-                var overlay = ClipEffect.Parse(stored);
-                if (overlayRanges.Any(other => other.Start < overlay.End && overlay.Start < other.End)) continue;
+                var overlay = ClipEffect.Parse(entry);
+                if (overlayRanges.Any(other => other.Start < overlay.End && overlay.Start < other.End))
+                {
+                    if (plan is null) throw new HarnessException("The proposed overlays overlap.");
+                    continue;
+                }
                 overlayRanges.Add((overlay.Start, overlay.End));
-                openingTitle |= overlay.Kind == "title" && overlay.Start < words[opening].Start + 2;
+                openingTitle |= part == spans[0] && overlay.Kind == "title" && overlay.Start < words[opening].Start + 2;
             }
             operations.Add(operation);
         }
-        if (proposal.Music?.TrackId is { } trackId)
-            Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.SavedMusic(clipId, trackId));
-        else if (plan.PickedMusic is { } picked)
-            Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.Music(new(clipId, picked, plan.MusicChoices.Where(item => item != picked).ToArray(), EditedSeconds(plan, state))), picked.Reason);
-        if (plan.Hook.Length > 0 && !openingTitle) Add("hook", ClipAutopilotDecision.Hook, new ClipAutopilotAction.Hook(clipId, plan.Hook));
-        if (plan.PostText.Length > 0) Add("post", ClipAutopilotDecision.PostText, new ClipAutopilotAction.ShareText(clipId, plan.PostText));
+        if (proposal.Music?.TrackId is { } trackId) Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.SavedMusic(clipId, trackId));
+        else if (proposal.Music?.Brief is { } brief)
+        {
+            var picked = plan?.PickedMusic ?? new("Proposed music", "", brief, proposal.Reason, 18);
+            var length = spans.Sum(part => EditedSeconds(part, words, cutIds, state.Pauses, tightened, state.CutPauseIds, state.PauseKeepSeconds));
+            Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.Music(new(clipId, picked, (plan?.MusicChoices ?? []).Where(item => item != picked).ToArray(), length)), picked.Reason);
+        }
+        if (proposal.Hook is { Length: > 0 } hook && !openingTitle && plan?.Kind != "showreel") Add("hook", ClipAutopilotDecision.Hook, new ClipAutopilotAction.Hook(clipId, hook));
+        if (proposal.PostText is { Length: > 0 } post) Add("post", ClipAutopilotDecision.PostText, new ClipAutopilotAction.ShareText(clipId, post));
+        if (plan is null && proposal.CoverTitle is { } cover) Add("cover", ClipAutopilotDecision.CoverTitle, new ClipAutopilotAction.CoverTitle(clipId, cover));
         return operations;
     }
 
@@ -273,7 +343,8 @@ public static partial class ClipAutopilotMapping
     /// a stretch over a whole clip as its speed, translated captions, and ducking music that exists. Stretches over part of a clip,
     /// rewrites and music come back as pending: a clip plays at one speed, a rewrite needs a paid voice, and music needs a source to
     /// fetch from (the App's Music section picks it). Pure: one undo step is the caller's choice.</summary>
-    public static (Project Project, IReadOnlyList<ClipAutopilotOperation> Pending) Apply(IReadOnlyList<ClipAutopilotOperation> operations, Project project)
+    public static (Project Project, IReadOnlyList<ClipAutopilotOperation> Pending) Apply(IReadOnlyList<ClipAutopilotOperation> operations, Project project,
+        (string Id, ClipStyle Style)? clipCaptions = null)
     {
         var result = project;
         var pending = new List<ClipAutopilotOperation>();
@@ -283,9 +354,35 @@ public static partial class ClipAutopilotMapping
             {
                 case ClipAutopilotAction.Edit edit:
                     var state = EditingEngine.FromProject(result) ?? throw ClipAutopilotRequestBuilder.Invalid();
-                    result = EditingEngine.ApplyToProject(result, EditingEngine.Reduce(state, edit.Operation, result.Ai.Results));
+                    result = EditingEngine.ApplyToProject(result, EditingEngine.Reduce(state, edit.Operation, result));
                     break;
-                case ClipAutopilotAction.Captions captions: result = result with { Captions = captions.Settings }; break;
+                case ClipAutopilotAction.Captions captions:
+                    if (clipCaptions is { } target)
+                        result = ClipCaptionStyles.Restoring(result with { ClipStyle = result.ClipStyle ?? target.Style }, target.Id,
+                            new(captions.Settings.StyleId, "") { By = "user", Overrides = captions.Settings.Overrides });
+                    else result = result with { Captions = captions.Settings };
+                    break;
+                case ClipAutopilotAction.SavedMusic saved:
+                    var track = result.Music.FirstOrDefault(entry => entry.Id == saved.TrackId)
+                        ?? throw new HarnessException("Choose a saved music track from this project.");
+                    var taken = result.Music.Where(entry => entry.ClipId != saved.ClipId).Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+                    var id = track.Id;
+                    for (var suffix = 2; taken.Contains(id); suffix++) id = string.Create(CultureInfo.InvariantCulture, $"{track.Id}-{suffix}");
+                    result = MusicProject.Setting(track with { Id = id, ClipId = saved.ClipId }, saved.ClipId, result);
+                    break;
+                case ClipAutopilotAction.CoverTitle cover:
+                    var firstId = result.Edits.Clips.FirstOrDefault(clip => clip.Id == cover.ClipId)?.PlayParts[0].StartWordId;
+                    if (result.Transcript?.Words.FirstOrDefault(word => word.Id == firstId) is not { } first ||
+                        ClipControlsProject.Controls(cover.ClipId, result) is not { } controls || ClipHookTitle.Text(cover.Text) != cover.Text)
+                        throw new HarnessException("Choose a short, single-line cover title.");
+                    result = ClipControlsProject.Setting(controls with { CoverTitle = cover.Text, CoverSeconds = controls.CoverSeconds ?? first.Start }, result);
+                    break;
+                case ClipAutopilotAction.Footage footage:
+                    var placements = result.Media.Footage ?? [];
+                    if (placements.Any(existing => existing.Id == footage.Entry.Id ||
+                        (existing.ClipId == footage.Entry.ClipId && existing.Start < footage.Entry.End && footage.Entry.Start < existing.End))) pending.Add(operation);
+                    else result = result with { SchemaVersion = Math.Max(4, result.SchemaVersion), Media = result.Media with { Footage = [.. placements, footage.Entry] } };
+                    break;
                 case ClipAutopilotAction.Motion motion:
                     if (AddingMotionCue(motion.Cue, result) is { } withCue) result = withCue;
                     else pending.Add(operation);
@@ -301,22 +398,6 @@ public static partial class ClipAutopilotMapping
                     else pending.Add(operation);
                     break;
                 case ClipAutopilotAction.Effect effect: result = ClipEffects.Adding([effect.Value], result); break;
-                case ClipAutopilotAction.Footage { Entry: var footage }:
-                    var placements = result.Media.Footage ?? [];
-                    if (placements.Any(item => item.Id != footage.Id && item.ClipId == footage.ClipId && item.Start < footage.End && footage.Start < item.End))
-                        pending.Add(operation);
-                    else result = result with { SchemaVersion = Math.Max(4, result.SchemaVersion), Media = result.Media with { Footage = [.. placements.Where(item => item.Id != footage.Id), footage] } };
-                    break;
-                case ClipAutopilotAction.SavedMusic saved:
-                    var track = result.Music.FirstOrDefault(item => item.Id == saved.TrackId);
-                    if (track is null) { pending.Add(operation); break; }
-                    if (track.ClipId == saved.ClipId) break;
-                    var prefix = saved.ClipId[..Math.Min(saved.ClipId.Length, 48)] + "-music";
-                    var trackKey = prefix;
-                    for (var suffix = 2; result.Music.Any(item => item.Id == trackKey && item.ClipId != saved.ClipId); suffix++)
-                        trackKey = prefix + "-" + suffix.ToString(CultureInfo.InvariantCulture);
-                    result = MusicProject.Setting(track with { Id = trackKey, ClipId = saved.ClipId }, saved.ClipId, result);
-                    break;
                 case ClipAutopilotAction.Stretch stretch:
                     if (ClipControlsProject.WholeClip(stretch.ClipId, stretch.Start, stretch.End, result) is { } whole) result = ClipControlsProject.SettingSpeed(stretch.Rate, whole, result);
                     else pending.Add(operation);

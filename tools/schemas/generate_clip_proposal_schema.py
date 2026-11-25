@@ -77,8 +77,11 @@ def main():
     legacy_edits = {key: edits[key] for key in ("cuts", "captionStyle", "title", "effects")} | legacy_music
     legacy = {**obj({"clipId": clip_id, "reason": reason, **legacy_edits}, ["clipId", "reason"]),
               "anyOf": [requires(key) for key in legacy_edits], "not": requires(*legacy_music)}
+    harness_edits = {**edits, "effects": {**edits["effects"], "description": (
+        "Use any clip-plan entry. Footage references a sourceKey from read_clips. "
+        "Asset requests are reviewed in VoxClip; this tool never sends or spends.")}}
     write("harness-timeline", "VoxClip harness timeline v2", {
-        **obj({"clipId": clip_id, "newClip": new_clip, "reason": reason, **edits, **legacy_music}, ["reason"]),
+        **obj({"clipId": clip_id, "newClip": new_clip, "reason": reason, **harness_edits, **legacy_music}, ["reason"]),
         **one_of("clipId", "newClip"), "anyOf": [requires(key) for key in edits | legacy_music],
         "allOf": [parts_for_new(requires("newClip"), "newClip"),
                   {"not": {"anyOf": [requires(first, second) for first, second in (

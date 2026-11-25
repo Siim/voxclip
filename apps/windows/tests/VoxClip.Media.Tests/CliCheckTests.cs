@@ -177,7 +177,8 @@ public sealed class CliCheckTests : IDisposable
                 var (start, end) = (int.Parse(span.Groups[1].Value), int.Parse(span.Groups[2].Value));
                 reply = new JsonObject
                 {
-                    ["startWord"] = start, ["endWord"] = end, ["title"] = "Planned " + start, ["hook"] = "We ship every week", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
+                    ["parts"] = new JsonArray(new JsonObject { ["startWord"] = start, ["endWord"] = end }), ["not_in_take"] = "", ["musicTrackId"] = "",
+                    ["title"] = "Planned " + start, ["hook"] = "We ship every week", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
                     ["corrections"] = new JsonArray(), ["rewrites"] = new JsonArray(), ["captionStyle"] = "vox-highlight", ["captionFont"] = "Roboto", ["captionWeight"] = 900,
                     ["captionCase"] = "upper", ["wordsPerCaption"] = 3, ["captionReason"] = "", ["look"] = "original", ["lookReason"] = "", ["speed"] = 1, ["speedReason"] = "",
                     ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",

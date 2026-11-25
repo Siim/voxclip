@@ -7,6 +7,7 @@ using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.ViewModels;
 
@@ -438,7 +439,7 @@ public sealed partial class EditorViewModel
             if (services.SharedRoot is not { } root) throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "fonts");
             operations = ClipAutopilotMapping.Operations(plan, run.ClipId, project, ClipAutopilotFonts.Load(root), AskClaudePrompt.Load(root).Stickers);
         }
-        catch (Exception exception) when (exception is VoxClipException or VoiceLabException)
+        catch (Exception exception) when (exception is VoxClipException or VoiceLabException or HarnessException)
         {
             Fail(run, "This plan no longer fits the clip. Nothing was changed.");
             return;
@@ -460,7 +461,7 @@ public sealed partial class EditorViewModel
             MakeItRow? row;
             MakeItInverse? inverse;
             try { (inverse, row) = MakeItStep(operation, plan, run.ClipId, ref next, style); }
-            catch (Exception exception) when (exception is VoxClipException or VoiceLabException) { continue; }
+            catch (Exception exception) when (exception is VoxClipException or VoiceLabException or HarnessException) { continue; }
             if (inverse is not null) run.Inverses[operation.Id] = inverse;
             if (operation.Decision == ClipAutopilotDecision.Hook) hookRow = row;
             else if (row is not null) rows.Add(row);

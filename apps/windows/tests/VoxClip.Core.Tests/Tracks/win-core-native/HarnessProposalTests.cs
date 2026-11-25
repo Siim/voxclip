@@ -1,5 +1,7 @@
 using System.Text.Json;
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 using VoxClip.Tests.Support;
@@ -9,6 +11,47 @@ namespace VoxClip.Core.Tests.Tracks.WinCoreNative;
 
 public sealed class HarnessProposalTests
 {
+    [Fact]
+    public void AStoryKeepsPartsInPlayOrderWithoutRenderingARewrite()
+    {
+        using var input = FixtureLoader.ReadJson("fixtures/clips-mode/harness-proposal-cases.json");
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip"));
+        var proposal = new HarnessProposal(HarnessTimeline.Read(input.RootElement.GetProperty("story")), project);
+
+        var result = proposal.Review(project, FixtureLoader.SharedRoot);
+        var candidate = result.Project;
+
+        var story = Assert.Single(candidate.Edits.Clips, clip => clip.Title == "Result first");
+        Assert.Equal(StoryClipKind.Story, story.Kind);
+        Assert.Equal(new[] { project.Transcript!.Words[14].Id, project.Transcript.Words[9].Id },
+            story.PlayParts.Select(part => part.StartWordId));
+        Assert.Equal(project.VoiceLab.Segments.ToArray(), candidate.VoiceLab.Segments.ToArray());
+        Assert.Empty(candidate.VoiceLab.Assets ?? []);
+        Assert.IsType<ClipAutopilotAction.Rewrite>(Assert.Single(result.Pending).Action);
+    }
+
+    [Fact]
+    public void HarnessAndAutopilotProduceTheSameOperations()
+    {
+        using var input = FixtureLoader.ReadJson("fixtures/clips-mode/harness-proposal-cases.json");
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip"));
+        var staged = new HarnessProposal(HarnessTimeline.Read(input.RootElement.GetProperty("equivalentPlan")), project);
+        var plan = new ClipAutopilotPlan
+        {
+            StartWord = 9, EndWord = 16, Title = "A faster edit", Hook = "Edit faster",
+            Cuts = [new(11, 11, ClipAutopilotCutKind.Other, "Remove the aside.")],
+            CaptionChoice = new("vox-bold", new("DM Sans", 700), ClipAutopilotCaptionCase.Upper, 4),
+            ClipLookChoice = new(ClipLook.Warm, "Warm the footage."), SpeedChoice = new(1.1, "Keep the pacing brisk."),
+            PostText = "A simpler way to make an edit.", Score = 90, Verdict = ClipAutopilotVerdict.Post,
+        };
+        var mapped = ClipAutopilotMapping.Operations(plan, "clip-2f1c", project, ClipAutopilotFonts.Load(FixtureLoader.SharedRoot));
+        var proposed = staged.Review(project, FixtureLoader.SharedRoot).Operations;
+        Assert.Equal(mapped.Select(Signature), proposed.Select(Signature));
+
+        static string Signature(ClipAutopilotOperation operation) =>
+            $"{operation.Id}:{operation.Decision}:{operation.Reason}:{JsonSerializer.Serialize(operation.Action, operation.Action.GetType())}";
+    }
+
     [Theory]
     [InlineData("titleCard")]
     [InlineData("kineticCaption")]
