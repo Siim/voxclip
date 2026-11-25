@@ -1,6 +1,8 @@
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Music;
+using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.ViewModels;
 
@@ -133,7 +135,7 @@ public sealed class MusicPanelModel(EditorViewModel editor)
 
     /// <summary>Use: stores the track in the project's music folder and sets it under the open clip (or the full video) as one undo
     /// step. A generated candidate is made first; its priced button is the approval and a failure is never retried.</summary>
-    public Task UseAsync(MusicCandidate candidate, double? gainDb = null, string? forClipId = null)
+    public Task UseAsync(MusicCandidate candidate, double? gainDb = null, string? forClipId = null, ClipPlanMusicShape? timelineShape = null)
     {
         if (editor.IsReadOnly || Services is not { } services || (Phase == MusicPanelPhase.Using && UsingId == candidate.Id)) return Task.CompletedTask;
         StopAudition();
@@ -150,6 +152,11 @@ public sealed class MusicPanelModel(EditorViewModel editor)
             var seconds = await services.Duration(stored.Path, token);
             var entry = MusicAssetStore.Entry(candidate, stored, seconds, clipId);
             if (gainDb is { } gain) entry = entry with { GainDb = Math.Round(Math.Clamp(gain, -40, 0) * 2) / 2 };
+            if (timelineShape is not null)
+            {
+                try { entry = timelineShape.Place(entry, editor.Project, clipId); }
+                catch (Exception exception) when (exception is HarnessException or VoxClipException) { }
+            }
             token.ThrowIfCancellationRequested();
             editor.SetMusic(entry, clipId, "Add music");
             Phase = MusicPanelPhase.Idle; UsingId = null;

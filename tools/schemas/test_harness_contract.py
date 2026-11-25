@@ -122,6 +122,38 @@ class HarnessContract(unittest.TestCase):
         self.assertEqual(cli.returncode, 0, cli.stderr)
         self.assertEqual(json.loads(cli.stdout)["proposal"]["timelines"], [self.timeline])
 
+    def test_edits_use_timeline_decisions_without_spending(self):
+        clip = "clip-2f1c"
+        listing, decisions = self.replay({"jsonrpc": "2.0", "id": 20, "method": "tools/list"},
+                                         self.call("read_decisions", clipId=clip))
+        layout = decisions["structuredContent"]["timeline"]
+        speech = next(item for item in layout["items"] if item["kind"] == "clip")
+        self.assertEqual(speech["lane"], "V1")
+        self.assertFalse(speech["paid"])
+        self.assertTrue(speech["editedIntervals"])
+        self.assertTrue(layout["snapTargets"])
+        edit = {"op": "trim", "item": speech["id"], "edge": "start", "toWord": speech["startWord"] + 1}
+        timeline = {"clipId": clip, "reason": "Start on the next word.", "edits": [edit]}
+        schema = next(tool["inputSchema"] for tool in listing["tools"] if tool["name"] == "propose_timeline")
+        jsonschema.validate(timeline, schema)
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.validate(dict(timeline, edits=[dict(edit, pay=True)]), schema)
+        proposed, = self.replay(self.call("propose_timeline", **timeline))
+        staged = proposed["structuredContent"]
+        self.assertEqual(staged["pricedActions"], [])
+        proposal_validator().validate(staged["proposal"])
+        self.assertEqual(staged["proposal"]["timelines"], [timeline])
+        self.pending.unlink()
+
+        refused = dict(timeline, edits=[edit, {"op": "delete", "items": ["missing"]}], generateMusic="A quiet instrumental")
+        response = self.run_cli("propose-timeline", json.dumps(refused))
+        self.assertEqual(response.returncode, 0, response.stderr)
+        staged = json.loads(response.stdout)
+        self.assertEqual(staged["pricedActions"], [])
+        self.assertEqual(staged["refusals"], [{"timelineIndex": 0, "reason": "Select an item on this timeline."}])
+        self.assertEqual(json.loads(self.pending.read_text()), staged["proposal"])
+        self.assertEqual(self.project.read_bytes(), self.original)
+
     def test_stages_a_story_series_without_editing_or_sending(self):
         story = json.loads((ROOT / "shared/fixtures/clips-mode/harness-proposal-cases.json").read_text())["story"]
         series = {"timelines": [story, self.timeline]}

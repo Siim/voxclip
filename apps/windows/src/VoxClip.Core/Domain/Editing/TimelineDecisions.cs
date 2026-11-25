@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
@@ -8,7 +9,7 @@ namespace VoxClip.Core.Domain.Editing;
 public static class TimelineDecisions
 {
     /// <summary>Return the edited-axis decisions and stable edit targets for a scope.</summary>
-    public static object Read(Project project, string? scope)
+    public static JsonObject Read(Project project, string? scope)
     {
         var plan = RenderCallerInputs.PlacementPlan(project, scope);
         var layout = TimelineItems.Layout(project, plan, scope, TimelineAxis.Edited);
@@ -27,12 +28,12 @@ public static class TimelineDecisions
             }
             return null;
         }
-        static Dictionary<string, object?> Shape(double? fadeIn, double? fadeOut, double? gain = null, IReadOnlyList<GainPoint>? points = null) =>
+        static JsonObject Shape(double? fadeIn, double? fadeOut, double? gain = null, IReadOnlyList<GainPoint>? points = null) =>
             new() { ["fadeIn"] = fadeIn, ["fadeOut"] = fadeOut, ["gainDb"] = gain,
-                ["gainPoints"] = (points ?? []).Select(point => new { t = point.T, db = point.Db }).ToArray() };
+                ["gainPoints"] = new JsonArray((points ?? []).Select(point => (JsonNode)new JsonObject { ["t"] = point.T, ["db"] = point.Db }).ToArray()) };
         var items = layout.Items.Select(item =>
         {
-            Dictionary<string, object?> shape = [];
+            var shape = new JsonObject();
             var paid = item.Id.Type == TimelineItemType.Voice;
             switch (item.Id.Type)
             {
@@ -57,14 +58,18 @@ public static class TimelineDecisions
                     break;
             }
             var end = entries.FirstOrDefault(entry => entry.Id == item.Id)?.Span.End ?? item.SourceAnchor;
-            return new { id = Id(item.Id, project, scope), kind = item.Kind, lane = item.Lane.ToString(), row = item.Row,
-                partId = item.PartId, sourceAnchor = item.SourceAnchor, startWord = Word(item.SourceAnchor), endWord = Word(end, end: true),
-                editedIntervals = item.EditedIntervals.Select(interval => new { start = interval.Start, end = interval.End }).ToArray(),
-                hidden = item.Hidden, marker = item.Marker, reason = item.Reason, seamNotches = item.SeamNotches, paid, shape };
+            return (JsonNode)new JsonObject { ["id"] = Id(item.Id, project, scope), ["kind"] = item.Kind, ["lane"] = item.Lane.ToString(), ["row"] = item.Row,
+                ["partId"] = item.PartId, ["sourceAnchor"] = item.SourceAnchor, ["startWord"] = Word(item.SourceAnchor), ["endWord"] = Word(end, end: true),
+                ["editedIntervals"] = new JsonArray(item.EditedIntervals.Select(interval => (JsonNode)new JsonObject { ["start"] = interval.Start, ["end"] = interval.End }).ToArray()),
+                ["hidden"] = item.Hidden, ["marker"] = item.Marker, ["reason"] = item.Reason,
+                ["seamNotches"] = new JsonArray(item.SeamNotches.Select(time => (JsonNode?)JsonValue.Create(time)).ToArray()), ["paid"] = paid, ["shape"] = shape };
         }).ToArray();
-        return new { items, rowCounts = layout.RowCounts.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value),
-            snapTargets = layout.SnapTargets.Select(target => new { time = target.Time, kind = JsonKey(target.Kind.ToString()),
-                item = target.Item is { } id ? Id(id, project, scope) : null }).ToArray() };
+        var rows = new JsonObject();
+        foreach (var (lane, count) in layout.RowCounts) rows[lane.ToString()] = count;
+        return new() { ["items"] = new JsonArray(items), ["rowCounts"] = rows,
+            ["snapTargets"] = new JsonArray(layout.SnapTargets.Select(target => (JsonNode)new JsonObject {
+                ["time"] = target.Time, ["kind"] = JsonKey(target.Kind.ToString()),
+                ["item"] = target.Item is { } id ? Id(id, project, scope) : null }).ToArray()) };
     }
 
     internal static string Id(TimelineItemId item, Project project, string? scope) => item.Type == TimelineItemType.Music

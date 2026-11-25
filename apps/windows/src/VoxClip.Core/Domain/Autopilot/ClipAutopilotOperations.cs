@@ -24,7 +24,7 @@ public enum ClipAutopilotDecision
 {
 #pragma warning disable CS1591
     Clip, Title, Correction, Cut, PauseCut, Rewrite, Captions, Look, Speed, Zoom, Music, Hook, PostText,
-    Bleep, Blur, Overlay, Freeze, Sound, Stretch, Translate, Duck, CoverTitle
+    Bleep, Blur, Overlay, Freeze, Sound, Stretch, Translate, Duck, CoverTitle, Timeline
 #pragma warning restore CS1591
 }
 
@@ -33,6 +33,8 @@ public abstract record ClipAutopilotAction
 {
     /// <summary>An editor operation applied as it is: corrections, cuts, pause cuts, the clip and its title.</summary>
     public sealed record Edit(EditOperation Operation) : ClipAutopilotAction;
+    /// <summary>Existing timeline placements to edit together.</summary>
+    public sealed record Timeline(string? ClipId, IReadOnlyList<TimelineEditRequest> Edits) : ClipAutopilotAction;
     /// <summary>A Rewrite proposal for the words: needs a voice, a quote and a paid step, so it stays pending.</summary>
     public sealed record Rewrite(WordSpan Words, string Text) : ClipAutopilotAction;
     /// <summary>The project's caption settings; <c>PendingFont</c> names an unbundled font.</summary>
@@ -46,7 +48,11 @@ public abstract record ClipAutopilotAction
     /// <summary>The picked track; pending on Windows.</summary>
     public sealed record Music(ClipAutopilotMusicCue Cue) : ClipAutopilotAction;
     /// <summary>Reuse a track already saved in the project.</summary>
-    public sealed record SavedMusic(string ClipId, string TrackId) : ClipAutopilotAction;
+    public sealed record SavedMusic(string ClipId, string TrackId) : ClipAutopilotAction
+    {
+        /// <summary>Optional timeline shaping when placing the track.</summary>
+        public ClipPlanMusicShape? Shape { get; init; }
+    }
     /// <summary>Set the title over the clip's cover.</summary>
     public sealed record CoverTitle(string ClipId, string Text) : ClipAutopilotAction;
     /// <summary>Place a companion recording already in the project.</summary>
@@ -58,7 +64,15 @@ public abstract record ClipAutopilotAction
     /// <summary>An Ask Claude effect (ai.md §18.2), the stored <c>clipEffects</c> entry, already valid.</summary>
     public sealed record Effect(JsonElement Value) : ClipAutopilotAction;
     /// <summary>A timed request for a library sound or generated illustration.</summary>
-    public sealed record Asset(string Id, string Kind, string ClipId, double Start, double End, string Text) : ClipAutopilotAction;
+    public sealed record Asset(string Id, string Kind, string ClipId, double Start, double End, string Text) : ClipAutopilotAction
+    {
+        /// <summary>Fades and volume points to place with the asset.</summary>
+        public ItemShape Shape { get; init; } = new();
+        /// <summary>Optional sound level in dB.</summary>
+        public double? GainDb { get; init; }
+        /// <summary>Optional start within the downloaded sound.</summary>
+        public double? SoundFrom { get; init; }
+    }
     /// <summary>A stretch played at <c>Rate</c> (source seconds). Over a whole clip it sets that clip's speed; over part of one it stays
     /// pending and the editor offers the speed for the whole clip.</summary>
     public sealed record Stretch(string? ClipId, double Start, double End, double Rate) : ClipAutopilotAction;
@@ -301,10 +315,12 @@ public static partial class ClipAutopilotMapping
             }
             operations.Add(operation);
         }
-        if (proposal.Music?.TrackId is { } trackId) Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.SavedMusic(clipId, trackId));
+        if (proposal.Music?.TrackId is { } trackId) Add("music", ClipAutopilotDecision.Music,
+            new ClipAutopilotAction.SavedMusic(clipId, trackId) { Shape = proposal.Music.Shape });
         else if (proposal.Music?.Brief is { } brief)
         {
             var picked = plan?.PickedMusic ?? new("Proposed music", "", brief, proposal.Reason, 18);
+            if (proposal.Music.Shape is { } shape) picked = picked with { TimelineShape = shape };
             var length = spans.Sum(part => EditedSeconds(part, words, cutIds, state.Pauses, tightened, state.CutPauseIds, state.PauseKeepSeconds));
             Add("music", ClipAutopilotDecision.Music, new ClipAutopilotAction.Music(new(clipId, picked, (plan?.MusicChoices ?? []).Where(item => item != picked).ToArray(), length)), picked.Reason);
         }
@@ -369,7 +385,8 @@ public static partial class ClipAutopilotMapping
                     var taken = result.Music.Where(entry => entry.ClipId != saved.ClipId).Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
                     var id = track.Id;
                     for (var suffix = 2; taken.Contains(id); suffix++) id = string.Create(CultureInfo.InvariantCulture, $"{track.Id}-{suffix}");
-                    result = MusicProject.Setting(track with { Id = id, ClipId = saved.ClipId }, saved.ClipId, result);
+                    track = track with { Id = id, ClipId = saved.ClipId };
+                    result = MusicProject.Setting(saved.Shape?.Place(track, result, saved.ClipId) ?? track, saved.ClipId, result);
                     break;
                 case ClipAutopilotAction.CoverTitle cover:
                     var firstId = result.Edits.Clips.FirstOrDefault(clip => clip.Id == cover.ClipId)?.PlayParts[0].StartWordId;
@@ -382,7 +399,8 @@ public static partial class ClipAutopilotMapping
                     var placements = result.Media.Footage ?? [];
                     if (placements.Any(existing => existing.Id == footage.Entry.Id ||
                         (existing.ClipId == footage.Entry.ClipId && existing.Start < footage.Entry.End && footage.Entry.Start < existing.End))) pending.Add(operation);
-                    else result = result with { SchemaVersion = Math.Max(4, result.SchemaVersion), Media = result.Media with { Footage = [.. placements, footage.Entry] } };
+                    else result = TimelineEditFields.Promoting(result with { SchemaVersion = Math.Max(4, result.SchemaVersion),
+                        Media = result.Media with { Footage = [.. placements, footage.Entry] } });
                     break;
                 case ClipAutopilotAction.Motion motion:
                     if (AddingMotionCue(motion.Cue, result) is { } withCue) result = withCue;

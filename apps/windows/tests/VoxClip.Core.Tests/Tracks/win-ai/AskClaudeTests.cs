@@ -63,7 +63,7 @@ public sealed class AskClaudeTests
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(bytes)), Text(Fixture(), "promptSha256"));
         Assert.Equal(Text(Fixture(), "promptSha256"), Prompt().Sha256);
         Assert.Equal("voxclip-ask-claude/1", Text(Fixture(), "format"));
-        Assert.Equal(27, Prompt().Kinds.Count);
+        Assert.Contains("timelineEdit", Prompt().Kinds);
         Assert.Equal(1, Prompt().PromptVersion);
         // Stickers are exactly the bundled emoji images, so every sticker renders from the app's own files.
         var bundled = Directory.GetFiles(Path.Combine(Root, "fonts", "noto-emoji", "png128"), "emoji_u*.png").Select(path =>
@@ -159,6 +159,10 @@ public sealed class AskClaudeTests
                                     translate.Language == Text(want, "language") && translate.Text == Text(want, "text"), label);
                         break;
                     }
+                    case ClipAutopilotAction.Timeline timeline:
+                        Assert.DoesNotContain(operation, answer.Paid);
+                        Assert.Equal("w2", Assert.Single(timeline.Edits).Apply(project, timeline.ClipId).Project.Edits.Clips[0].StartWordId);
+                        break;
                     default: Assert.Fail("Unexpected action in " + label + ": " + operation.Action); break;
                 }
             }

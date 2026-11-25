@@ -115,6 +115,18 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public var prompt: String
         public var reason: String
         public var underVoiceDb: Double
+        public var fadeIn: Double? = nil
+        public var fadeOut: Double? = nil
+        public var duckDb: Double? = nil
+        public var segments: [ClipPlanMusicShape.Segment]? = nil
+        public var timelineShape: ClipPlanMusicShape? {
+            guard fadeIn != nil || fadeOut != nil || duckDb != nil || segments?.isEmpty == false else { return nil }
+            return .init(fadeIn: fadeIn, fadeOut: fadeOut, duckDb: duckDb, segments: segments)
+        }
+        mutating func setShape(_ shape: ClipPlanMusicShape?) {
+            fadeIn = shape?.fadeIn; fadeOut = shape?.fadeOut; duckDb = shape?.duckDb
+            segments = shape?.segments.flatMap { $0.isEmpty ? nil : $0 }
+        }
         public init(title: String, mood: String, prompt: String, reason: String, underVoiceDb: Double) {
             self.title = title; self.mood = mood; self.prompt = prompt; self.reason = reason; self.underVoiceDb = underVoiceDb
         }
@@ -340,7 +352,12 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         proposal.captionStyle = captions.styleId; proposal.font = captions.font; proposal.textCase = captions.textCase
         proposal.wordsPerCaption = captions.wordsPerCaption; proposal.look = look; proposal.speed = speed
         proposal.hook = hook; proposal.title = title; proposal.postText = postText; proposal.coverTitle = coverTitle ?? frames?.cover?.title
-        proposal.music = savedMusicTrackId.map(ClipProposal.Music.init(trackId:)) ?? pickedMusic.map { .init(brief: $0.prompt) }
+        proposal.music = savedMusicTrackId.map(ClipProposal.Music.init(trackId:)) ?? pickedMusic.map { music in
+            var choice = ClipProposal.Music(brief: music.prompt)
+            choice.fadeIn = music.fadeIn; choice.fadeOut = music.fadeOut
+            choice.duckDb = music.duckDb; choice.segments = music.segments
+            return choice
+        }
         proposal.effects = effects; proposal.rewrites = rewrites
         return proposal
     }

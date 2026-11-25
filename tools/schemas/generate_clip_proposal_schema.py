@@ -55,6 +55,15 @@ def timeline_commands(index):
     return array({"oneOf": variants}, 30)
 
 
+def music_shape(index):
+    def number(minimum, maximum):
+        return {"type": "number", "minimum": minimum, "maximum": maximum}
+    fades = {"fadeIn": number(0, 10), "fadeOut": number(0, 10)}
+    segment = obj({"startWord": index, "endWord": index, "songFrom": number(0, 1800),
+                   "loop": {"type": "boolean"}, "gainDb": number(-40, 12), **fades}, ["startWord", "endWord"])
+    return {**fades, "duckDb": number(-24, 0), "segments": array(segment, 8, minimum=0)}
+
+
 def write(name, title, body):
     filename = f"{name}.schema.json"
     schema = {"$schema": "https://json-schema.org/draft/2020-12/schema", "$id": BASE + filename,
@@ -81,7 +90,7 @@ def main():
         "look": obj({"id": {"enum": ["original", "muted", "warm", "bw"]}, "reason": reason}, ["id"]),
         "speed": obj({"rate": {"type": "number", "minimum": 0.5, "maximum": 2}, "reason": reason}, ["rate"]),
         "hook": text(80), "title": text(120), "postText": text(500), "coverTitle": text(80),
-        "music": {**obj({"trackId": text(), "brief": text(500)}), **one_of("trackId", "brief")},
+        "music": {**obj({"trackId": text(), "brief": text(500), **music_shape(index)}), **one_of("trackId", "brief")},
         "effects": array({"$ref": "clip-plan-effect.schema.json"}, 12),
         "rewrites": array(obj({**span, "text": text(2000), "reason": reason}, [*span, "text", "reason"]), 12),
     }

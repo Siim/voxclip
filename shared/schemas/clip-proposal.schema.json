@@ -287,6 +287,67 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 500
+        },
+        "fadeIn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "fadeOut": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "duckDb": {
+          "type": "number",
+          "minimum": -24,
+          "maximum": 0
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "startWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "endWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "songFrom": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1800
+              },
+              "loop": {
+                "type": "boolean"
+              },
+              "gainDb": {
+                "type": "number",
+                "minimum": -40,
+                "maximum": 12
+              },
+              "fadeIn": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "fadeOut": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              }
+            },
+            "required": [
+              "startWord",
+              "endWord"
+            ]
+          }
         }
       },
       "oneOf": [

@@ -95,6 +95,49 @@
     },
     "template": {
       "$ref": "motion-template.schema.json"
+    },
+    "fadeIn": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "fadeOut": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "gainDb": {
+      "type": "number",
+      "minimum": -30,
+      "maximum": 6
+    },
+    "soundFrom": {
+      "type": "number",
+      "minimum": 0
+    },
+    "volume": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "word",
+          "db"
+        ],
+        "properties": {
+          "word": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "db": {
+            "type": "number",
+            "minimum": -60,
+            "maximum": 12
+          }
+        }
+      }
     }
   },
   "allOf": [
@@ -113,7 +156,15 @@
         "required": [
           "scale"
         ],
-        "maxProperties": 5
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "scale"
+          ]
+        }
       }
     },
     {
@@ -132,22 +183,16 @@
         "required": [
           "text"
         ],
-        "maxProperties": 5
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "kind": {
-            "const": "emojiPop"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "text": {
-            "maxLength": 16
-          }
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "text",
+            "fadeIn",
+            "fadeOut"
+          ]
         }
       }
     },
@@ -163,7 +208,20 @@
         "required": [
           "query"
         ],
-        "maxProperties": 5
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "query",
+            "fadeIn",
+            "fadeOut",
+            "gainDb",
+            "soundFrom",
+            "volume"
+          ]
+        }
       }
     },
     {
@@ -178,7 +236,17 @@
         "required": [
           "prompt"
         ],
-        "maxProperties": 5
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "prompt",
+            "fadeIn",
+            "fadeOut"
+          ]
+        }
       }
     },
     {
@@ -193,7 +261,17 @@
         "required": [
           "look"
         ],
-        "maxProperties": 5
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "look",
+            "fadeIn",
+            "fadeOut"
+          ]
+        }
       }
     },
     {
@@ -208,7 +286,15 @@
         "required": [
           "rate"
         ],
-        "maxProperties": 5
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "rate"
+          ]
+        }
       }
     },
     {
@@ -227,7 +313,29 @@
         "required": [
           "footage"
         ],
-        "maxProperties": 5
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "footage",
+            "fadeIn",
+            "fadeOut"
+          ]
+        },
+        "properties": {
+          "fadeIn": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "fadeOut": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          }
+        }
       }
     },
     {
@@ -242,7 +350,33 @@
         "required": [
           "template"
         ],
-        "maxProperties": 5
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "template",
+            "fadeIn",
+            "fadeOut"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "emojiPop"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "text": {
+            "maxLength": 16
+          }
+        }
       }
     }
   ]

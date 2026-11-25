@@ -18,7 +18,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         /// Ask Claude's toolbox (ai.md §18): a bleep or mute, a blur or pixelate, an overlay (title, lower third, sticker,
         /// arrow, circle, progress bar), a freeze frame, a sound effect, a stretch played faster or slower, translated
         /// captions and ducking the music. Additive: the planner's decisions above keep their meaning.
-        case bleep, blur, overlay, freeze, sound, stretch, translate, duck
+        case bleep, blur, overlay, freeze, sound, stretch, translate, duck, timeline
     }
 
     public enum Action: Sendable, Equatable {
@@ -26,6 +26,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         /// (`cutSelection` of ids none of which is cut yet, so it always cuts), the clip range (`addClip` or `updateClip`)
         /// and its title (`renameClip`).
         case edit(EditCommand)
+        case timeline(clipID: String?, edits: [TimelineEditRequest])
         /// A Rewrite proposal for the selection: the creator's voice re-records `text` over `scope` (`RewriteScope.selection`).
         /// It needs a voice, a quote and a paid click, so `apply` leaves it pending.
         case rewrite(scope: RewriteScope, text: String)
@@ -40,7 +41,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case motion(MotionCue)
         /// The music package's input; `apply` leaves it pending.
         case music(ClipAutopilotMusicCue)
-        case savedMusic(clipID: String, trackID: String)
+        case savedMusic(clipID: String, trackID: String, shape: ClipPlanMusicShape? = nil)
         case coverTitle(clipID: String, text: String)
         /// The first-2-seconds on-screen text: `apply` adds it as the clip's title card (`ClipHookTitle`, design.md §6.7).
         case hook(clipID: String, text: String)
@@ -299,9 +300,10 @@ public enum ClipAutopilotMapping {
             operations.append(operation)
         }
         if let trackID = proposal.music?.trackId {
-            add("music", .music, .savedMusic(clipID: clipID, trackID: trackID))
+            add("music", .music, .savedMusic(clipID: clipID, trackID: trackID, shape: proposal.music?.shape))
         } else if let brief = proposal.music?.brief {
-            let picked = plan?.pickedMusic ?? .init(title: "Proposed music", mood: "", prompt: brief, reason: proposal.reason, underVoiceDb: 18)
+            var picked = plan?.pickedMusic ?? .init(title: "Proposed music", mood: "", prompt: brief, reason: proposal.reason, underVoiceDb: 18)
+            if let shape = proposal.music?.shape { picked.setShape(shape) }
             let seconds = spans.reduce(0.0) { total, span in
                 total + editedSeconds(span: span, words: words, cut: cutIDs, pauses: state.pauses, tightened: tightened,
                                        cutPauseIDs: state.cutPauseIds, keepSeconds: state.pauseKeepSeconds)
@@ -372,12 +374,13 @@ public enum ClipAutopilotMapping {
             case .effect(let effect): effects.append(effect)
             case .footage(let entry):
                 if !result.media.setFootage(entry) { pending.append(operation) }
-                else { result.schemaVersion = max(4, result.schemaVersion) }
-            case .savedMusic(let clipID, let trackID):
+                else { result.schemaVersion = max(4, result.schemaVersion); result = try TimelineEditFields.promoting(result) }
+            case .savedMusic(let clipID, let trackID, let shape):
                 guard var track = savedTracks.first(where: { $0.id == trackID }) ?? result.music.first(where: { $0.id == trackID }) else {
                     throw HarnessError.invalid("Choose a saved music track from this project.")
                 }
                 track.clipId = clipID
+                if let shape { track = try shape.placing(track, in: result, clipID: clipID) }
                 result = try MusicProject.setting(MusicProject.unique(track, in: result), clipId: clipID, in: result)
             case .coverTitle(let clipID, let text):
                 guard let clip = result.edits.clips.first(where: { $0.id == clipID }), let words = result.transcript?.words,
@@ -403,7 +406,7 @@ public enum ClipAutopilotMapping {
             case .translateCaptions(let clipID, let start, let end, let language, let text):
                 // The captions of those words in another language (ai.md §18.2); the voice and transcript stay.
                 result = try CaptionTranslations.translating(start...end, clipID: clipID, language: language, text: text, in: result)
-            case .rewrite, .music, .asset: pending.append(operation)
+            case .rewrite, .music, .asset, .timeline: pending.append(operation)
             }
         }
         result = try ClipEffects.adding(effects, to: result)

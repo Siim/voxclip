@@ -28,8 +28,12 @@ public struct ClipPlanAssets: Sendable {
 
     public func sound(_ request: ClipPlanAsset, projectID: String, root: URL) async throws -> ClipEffect? {
         let length = request.end - request.start
+        let offset = request.soundFrom ?? 0
         let results = try await openverse.searchPage(request.text, sound: true).candidates
-        guard let candidate = results.first(where: { ($0.durationSeconds ?? .infinity) <= length }) else { return nil }
+        guard let candidate = results.first(where: {
+            guard let duration = $0.durationSeconds else { return false }
+            return duration <= length + offset && duration - offset >= 0.05
+        }) else { return nil }
         let ext = candidate.fileExtension
         let bytes = try await openverse.download(candidate)
         guard bytes.count <= 16 * 1024 * 1024 else { return nil }
@@ -39,11 +43,15 @@ public struct ClipPlanAssets: Sendable {
         let asset = AVURLAsset(url: file)
         guard let track = try await MediaSupport.audioTrack(in: asset) else { return nil }
         let actual = try await track.load(.timeRange).duration.seconds
-        guard actual.isFinite, actual > 0, actual <= min(length + 1e-9, ClipEffect.maximumSoundSeconds) else { return nil }
+        guard actual.isFinite, actual - offset >= 0.05, actual <= min(length + offset + 1e-9, ClipEffect.maximumSoundSeconds) else { return nil }
         let sound = ClipEffect.Sound(source: .library, file: relative, sha256: hash, durationSeconds: actual, title: candidate.title,
                                     creator: candidate.creator, license: candidate.license.rawValue, attribution: candidate.attribution,
                                     sourceUrl: candidate.sourceUrl)
-        return ClipEffect(id: request.id, clipId: request.clipID, kind: .sound, start: request.start, end: request.end, sound: sound, gainDb: -15)
+        let shaped = request.soundFrom != nil || request.shape != ItemShape()
+        let end = shaped ? min(request.end, request.start + actual - offset) : request.end
+        return ClipEffect(id: request.id, clipId: request.clipID, kind: .sound, start: request.start, end: end, sound: sound,
+                          gainDb: request.gainDb ?? -15, fadeInSeconds: request.shape.fadeInSeconds, fadeOutSeconds: request.shape.fadeOutSeconds,
+                          mediaOffsetSeconds: request.soundFrom, gainPoints: request.shape.gainPoints)
     }
 
     public func savedIllustration(_ request: ClipPlanAsset, projectID: String, root: URL, quote: ClipIllustrationQuote) -> ClipEffect? {
@@ -86,7 +94,8 @@ public struct ClipPlanAssets: Sendable {
     }
 
     private static func picture(_ request: ClipPlanAsset, path: String) -> ClipEffect {
-        ClipEffect(id: request.id, clipId: request.clipID, kind: .illustration, start: request.start, end: request.end, imageFile: path)
+        ClipEffect(id: request.id, clipId: request.clipID, kind: .illustration, start: request.start, end: request.end, imageFile: path,
+                   fadeInSeconds: request.shape.fadeInSeconds, fadeOutSeconds: request.shape.fadeOutSeconds)
     }
 
     private static func hash(_ bytes: Data) -> String { SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined() }

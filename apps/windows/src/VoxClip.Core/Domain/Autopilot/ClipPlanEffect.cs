@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 
@@ -24,12 +25,23 @@ public sealed class ClipPlanEffect
     public string Reason { get; }
     private readonly string payloadKey;
     private readonly JsonNode payload;
+    private readonly JsonObject shape;
+    private double? FadeIn => AiJson.Number(shape["fadeIn"]);
+    private double? FadeOut => AiJson.Number(shape["fadeOut"]);
 
-    private ClipPlanEffect(string kind, int startWord, int endWord, string reason, string payloadKey, JsonNode payload)
+    private ClipPlanEffect(string kind, int startWord, int endWord, string reason, string payloadKey, JsonNode payload, JsonObject shape)
     {
         Kind = kind; StartWord = startWord; EndWord = endWord; Reason = reason;
         this.payloadKey = payloadKey; this.payload = payload.DeepClone();
+        this.shape = shape;
     }
+
+    private static string[] ShapeKeys(string kind) => kind switch
+    {
+        "zoom" or "punchIn" or "speedForPart" => [],
+        "soundEffect" => ["fadeIn", "fadeOut", "gainDb", "soundFrom", "volume"],
+        _ => ["fadeIn", "fadeOut"],
+    };
 
     private static string? PayloadKey(string? kind) => kind switch
     {
@@ -42,10 +54,13 @@ public sealed class ClipPlanEffect
     };
 
     /// <summary>The canonical plan entry, with just the payload for its kind.</summary>
-    public JsonObject ToJson() => new()
+    public JsonObject ToJson()
     {
-        ["kind"] = Kind, ["startWord"] = StartWord, ["endWord"] = EndWord, ["reason"] = Reason, [payloadKey] = payload.DeepClone()
-    };
+        var result = (JsonObject)shape.DeepClone();
+        result["kind"] = Kind; result["startWord"] = StartWord; result["endWord"] = EndWord;
+        result["reason"] = Reason; result[payloadKey] = payload.DeepClone();
+        return result;
+    }
 
     private static string? Line(JsonNode? value, int limit) => AiJson.String(value) is { Length: > 0 } text && text == text.Trim() &&
         text.EnumerateRunes().Count() <= limit && !text.EnumerateRunes().Any(rune => Rune.GetUnicodeCategory(rune) is
@@ -54,10 +69,33 @@ public sealed class ClipPlanEffect
     /// <summary>Reads a valid canonical entry, or null for a malformed proposal.</summary>
     public static ClipPlanEffect? Read(JsonNode? raw)
     {
-        if (raw is not JsonObject { Count: 5 } item || AiJson.String(item["kind"]) is not { } kind ||
+        if (raw is not JsonObject item || AiJson.String(item["kind"]) is not { } kind ||
             PayloadKey(kind) is not { } key || item[key] is not { } payload ||
             AiJson.Integer(item["startWord"]) is not { } start || start < 0 ||
             AiJson.Integer(item["endWord"]) is not { } end || end < start || Line(item["reason"], 240) is not { } reason) return null;
+        var shape = new JsonObject();
+        var allowed = ShapeKeys(kind);
+        var fadeLimit = kind is "bRoll" or "screenshot" or "videoStack" ? 2 : 5;
+        foreach (var (name, value) in item)
+        {
+            if (name == key || name is "kind" or "startWord" or "endWord" or "reason") continue;
+            if (!allowed.Contains(name) || value is null) return null;
+            if (name is "fadeIn" or "fadeOut" && !(AiJson.Number(value) is >= 0 and var fade && fade <= fadeLimit)) return null;
+            if (name == "gainDb" && AiJson.Number(value) is not (>= -30 and <= 6)) return null;
+            if (name == "soundFrom" && !(AiJson.Number(value) is >= 0 and var offset && double.IsFinite(offset))) return null;
+            if (name == "volume")
+            {
+                if (value is not JsonArray { Count: >= 1 and <= ItemShape.MaximumGainPoints } points) return null;
+                var previous = -1;
+                foreach (var node in points)
+                {
+                    if (node is not JsonObject { Count: 2 } point || AiJson.Integer(point["word"]) is not { } word ||
+                        word < start || word > end || word <= previous || AiJson.Number(point["db"]) is not (>= -60 and <= 12)) return null;
+                    previous = word;
+                }
+            }
+            shape[name] = value.DeepClone();
+        }
         var valid = kind switch
         {
             "zoom" or "punchIn" => AiJson.Number(payload) is >= 1.05 and <= ClipAutopilotMapping.MaximumZoomScale,
@@ -71,7 +109,7 @@ public sealed class ClipPlanEffect
             "bRoll" or "screenshot" or "videoStack" => Footage(payload) is not null,
             _ => false
         };
-        return valid ? new(kind, start, end, reason, key, payload) : null;
+        return valid ? new(kind, start, end, reason, key, payload, shape) : null;
     }
 
     private static FootageSelection? Footage(JsonNode value) => value is JsonObject { Count: 2 } fields &&
@@ -86,15 +124,16 @@ public sealed class ClipPlanEffect
             !sources.TryGetValue(selection.SourceKey, out var length) || StartWord < scope.Start || EndWord > scope.End ||
             anchor(StartWord) is not { } first || anchor(EndWord) is not { } last ||
             last.End - first.Start is not (>= 0.1 and <= 60) || Enumerable.Range(StartWord, EndWord - StartWord + 1).Any(isCut)) return null;
-        var placement = new ProjectFootage(id, clipId, Kind, first.Start, last.End, selection);
+        var placement = new ProjectFootage(id, clipId, Kind, first.Start, last.End, selection) { FadeInSeconds = FadeIn, FadeOutSeconds = FadeOut };
         return placement.Fits(length) ? placement : null;
     }
 
     internal static ClipPlanEffect? ProviderEntry(JsonNode? raw)
     {
-        if (raw is not JsonObject item || PayloadKey(AiJson.String(item["kind"])) is not { } key) return null;
+        if (raw is not JsonObject item || AiJson.String(item["kind"]) is not { } kind || PayloadKey(kind) is not { } key) return null;
         var projected = new JsonObject();
         foreach (var name in new[] { "kind", "startWord", "endWord", "reason", key }) projected[name] = item[name]?.DeepClone();
+        foreach (var name in ShapeKeys(kind)) if (item[name] is { } value) projected[name] = value.DeepClone();
         if (projected["template"] is JsonObject template)
         {
             if (AiJson.String(template["name"]) == "counter") template.Remove("text");
@@ -122,15 +161,24 @@ public sealed class ClipPlanEffect
         {
             var timed = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["kind"] = Kind, ["start"] = first.Start,
                 ["end"] = last.End, [payloadKey] = payload.DeepClone() };
+            WriteFades(timed);
             using var document = JsonDocument.Parse(timed.ToJsonString());
             return new(id, Kind == "colourLook" ? ClipAutopilotDecision.Look : ClipAutopilotDecision.Stretch,
                 new ClipAutopilotAction.Effect(document.RootElement.Clone()), Reason);
         }
         if (Kind is "soundEffect" or "illustration")
+        {
+            var volume = shape["volume"] as JsonArray;
+            GainPoint[]? points = volume?.Select(point => anchor(AiJson.Integer(point!["word"])!.Value) is { } position
+                ? new GainPoint(position.Start - first.Start, AiJson.Number(point["db"])!.Value) : new(double.NaN, 0)).ToArray();
+            if (points is not null && !ItemShape.ValidGainPoints(points)) return null;
             return new(id, Kind == "soundEffect" ? ClipAutopilotDecision.Sound : ClipAutopilotDecision.Overlay,
-                new ClipAutopilotAction.Asset(id, Kind, clipId, first.Start, last.End, AiJson.String(payload)!), Reason);
+                new ClipAutopilotAction.Asset(id, Kind, clipId, first.Start, last.End, AiJson.String(payload)!) {
+                    Shape = new(FadeIn, FadeOut, points), GainDb = AiJson.Number(shape["gainDb"]), SoundFrom = AiJson.Number(shape["soundFrom"]) }, Reason);
+        }
         if (Kind is not ("motionTitle" or "lowerThird" or "emojiPop" or "motionTemplate")) return null;
         var overlay = new JsonObject { ["id"] = id, ["clipId"] = clipId, ["start"] = first.Start, ["end"] = last.End };
+        WriteFades(overlay);
         if (Kind == "motionTemplate")
         {
             overlay["kind"] = Kind;
@@ -149,6 +197,12 @@ public sealed class ClipPlanEffect
         }
         using var stored = JsonDocument.Parse(overlay.ToJsonString());
         return new(id, ClipAutopilotDecision.Overlay, new ClipAutopilotAction.Effect(stored.RootElement.Clone()), Reason);
+    }
+
+    private void WriteFades(JsonObject target)
+    {
+        if (FadeIn is { } fadeIn) target["fadeInSeconds"] = fadeIn;
+        if (FadeOut is { } fadeOut) target["fadeOutSeconds"] = fadeOut;
     }
 
     internal ClipAutopilotOperation? Operation(string id, string clipId, WordSpan scope, IReadOnlyList<TimedWord> words,

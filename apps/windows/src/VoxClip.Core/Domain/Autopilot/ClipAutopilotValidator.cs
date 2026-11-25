@@ -673,7 +673,10 @@ public static partial class ClipAutopilotValidator
             }
             var mood = Text(AiJson.Get(item, "mood"), limits.MaxTitleScalars, field + ".mood", log);
             var reason = Text(AiJson.Get(item, "reason"), limits.MaxReasonScalars, field + ".reason", log);
-            accepted.Add(new(title, mood, prompt, reason, level));
+            ClipPlanMusicShape? shape = null;
+            try { shape = ClipPlanMusicShape.Read(item, provider: true); }
+            catch (System.Text.Json.JsonException) { log.Repair(field + ".shape", "invalid music shape; use the whole track"); }
+            accepted.Add(new(title, mood, prompt, reason, level) { TimelineShape = shape });
             replyIndex.Add(index);
         }
         if (accepted.Count == 0)

@@ -164,6 +164,11 @@ public sealed class ClipAutopilotTests
             var stored = ClipAutopilotPlan.FromJson(checkedPlan.ToJson()).CanonicalProposal();
             Assert.Equal(proposal.Parts!, stored.Parts!);
             Assert.Equal(proposal.Target, stored.Target);
+            if (expected["musicShape"] is { } shape)
+            {
+                Assert.True(JsonNode.DeepEquals(shape, Assert.IsType<ClipPlanMusicShape>(proposal.Music?.Shape).Write(new JsonObject())));
+                Assert.True(JsonNode.DeepEquals(shape, Assert.IsType<ClipPlanMusicShape>(stored.Music?.Shape).Write(new JsonObject())));
+            }
         }
     }
 

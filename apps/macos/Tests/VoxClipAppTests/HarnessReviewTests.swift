@@ -62,6 +62,30 @@ struct HarnessReviewTests {
         #expect(editor.project.edits == project.edits)
         #expect(editor.project.clipEffects == project.clipEffects)
 
+        let edit = #"{"op":"trim","edge":"start","item":"clip:clip-2f1c","toWord":10}"#
+        func editProposal(_ edits: String) throws -> HarnessProposal {
+            let value = try JSONDecoder().decode(JSONValue.self, from: Data("""
+                {"clipId":"clip-2f1c","reason":"Trim the opening.","edits":[\(edits)]}
+                """.utf8))
+            return try HarnessProposal(timeline: HarnessTimeline.read(value), project: editor.project)
+        }
+        let refused = try editProposal(edit + #",{"op":"delete","items":["missing"]}"#)
+        try HarnessInbox.stage(refused, for: url)
+        #expect(throws: TimelineEditRefusal("Select an item on this timeline.")) { try editor.keepHarnessProposal(refused, at: url) }
+        #expect(editor.project.edits == project.edits)
+        #expect(try HarnessInbox.read(for: url) == refused)
+        try HarnessInbox.dismiss(refused, for: url)
+
+        let trim = try editProposal(edit)
+        try HarnessInbox.stage(trim, for: url)
+        undo.beginUndoGrouping()
+        #expect(try editor.keepHarnessProposal(trim, at: url).isEmpty)
+        undo.endUndoGrouping()
+        #expect(editor.project.edits.clips.first?.startWordId == "w11")
+        #expect(undo.undoActionName == "Keep timeline proposal")
+        undo.undo()
+        #expect(editor.project.edits == project.edits)
+
         let cases = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/clips-mode/harness-proposal-cases.json")))
         let story = try HarnessTimeline.read(#require(cases["story"]))
         let series = try HarnessProposal(timelines: [story, timeline, timeline], project: editor.project)

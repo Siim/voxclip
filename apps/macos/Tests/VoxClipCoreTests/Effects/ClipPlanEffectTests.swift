@@ -41,6 +41,8 @@ import Testing
                 let overlayKind: String?; let position: String?; let animation: String?
                 let look: String?; let rate: Double?
                 let asset: String?
+                let fadeIn: Double?; let fadeOut: Double?; let gainDb: Double?; let soundFrom: Double?
+                let points: [GainPoint]?
             }
             let id: String; let entry: JSONValue; let placement: Placement?; let cutWords: [Int]?; let invalid: Bool?
         }
@@ -68,12 +70,15 @@ import Testing
                 #expect(effect.start == expected.start && effect.end == expected.end)
                 #expect(effect.kind.rawValue == expected.overlayKind && effect.position?.rawValue == expected.position)
                 #expect(effect.animation?.rawValue == expected.animation)
+                #expect(effect.fadeInSeconds == expected.fadeIn && effect.fadeOutSeconds == expected.fadeOut)
                 let data = try JSONEncoder().encode(effect)
                 #expect(try JSONDecoder().decode(ClipEffect.self, from: data) == effect)
                 let stored = try JSONDecoder().decode(JSONValue.self, from: data)
                 #expect(stored[ai: "look"].aiString == expected.look && stored[ai: "rate"].aiDouble == expected.rate)
             case .asset(let asset):
                 #expect(asset.start == expected.start && asset.end == expected.end && asset.text == expected.asset)
+                #expect(asset.shape == ItemShape(fadeInSeconds: expected.fadeIn, fadeOutSeconds: expected.fadeOut, gainPoints: expected.points))
+                #expect(asset.gainDb == expected.gainDb && asset.soundFrom == expected.soundFrom)
             default: Issue.record("unexpected operation for \(vector.id)")
             }
         }

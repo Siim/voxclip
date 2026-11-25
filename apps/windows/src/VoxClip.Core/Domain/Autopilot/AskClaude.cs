@@ -10,6 +10,7 @@ using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 
 namespace VoxClip.Core.Domain.Autopilot;
 
@@ -264,6 +265,18 @@ public sealed class AskClaudePrompt
                 if (cut.Contains(words[index].Id)) lines.Add(Line("jumpCut", words[index].Start, words[index].End, " [" + Int(index) + "]"));
             }
         }
+        try
+        {
+            var timeline = TimelineDecisions.Read(project, scope.ClipId);
+            foreach (var item in timeline["items"]!.AsArray().Take(100))
+            {
+                var shape = item!["shape"]!.AsObject();
+                var detail = shape.Count > 0 ? " " + shape.ToJsonString() : "";
+                lines.Add($"Timeline item {item["id"]!.GetValue<string>()} ({item["kind"]!.GetValue<string>()}), " +
+                    $"words [{item["startWord"]?.GetValue<int>() ?? -1}–{item["endWord"]?.GetValue<int>() ?? -1}]{detail}");
+            }
+        }
+        catch (Exception exception) when (exception is VoxClipException or VoiceLabException) { }
         return lines;
     }
 
@@ -344,6 +357,12 @@ public sealed partial class AskClaudeValidator(AskClaudePrompt prompt, AskClaude
                 if (note is not null) choices[id] = note;
             }
             void Drop(string why) => repairs.Add("Left out " + (kind.Length == 0 ? "a change" : kind) + ": " + why + ".");
+            if (kind == "timelineEdit")
+            {
+                try { Add(ClipAutopilotDecision.Timeline, new ClipAutopilotAction.Timeline(scope.ClipId, TimelineEditRequest.ProviderEdits(AiJson.Get(item, "edits")))); }
+                catch (HarnessException) { Drop("needs supported timeline edits"); }
+                continue;
+            }
             var wordAnchored = AiJson.String(AiJson.Get(item, "target")) == "planEffect";
             if (kind is "punchIn" or "motionTitle" or "emojiPop" or "soundEffect" or "illustration" or "colourLook" or "speedForPart" ||
                 wordAnchored && kind is ("zoom" or "lowerThird"))

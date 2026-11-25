@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 
@@ -17,14 +18,12 @@ public sealed class TimelineEditRequest
         _ = Command(name => new(TimelineItemType.Effect, name), (index, _) => index);
     }
 
-    internal static TimelineEditRequest[] ProviderEdits(System.Text.Json.Nodes.JsonNode? value)
+    internal static TimelineEditRequest[] ProviderEdits(JsonNode? value)
     {
-        if (value is not System.Text.Json.Nodes.JsonArray edits || edits.Count is < 1 or > Maximum) throw Invalid();
+        if (value is not JsonArray edits || edits.Count is < 1 or > Maximum) throw Invalid();
         return edits.Select(entry =>
         {
-            var fields = JsonSerializer.SerializeToElement(entry);
-            if (fields.ValueKind != JsonValueKind.Object || !fields.TryGetProperty("op", out var op) || op.ValueKind != JsonValueKind.String) throw Invalid();
-            var operation = op.GetString();
+            if (entry is not JsonObject fields || fields["op"] is not JsonValue op || !op.TryGetValue<string>(out var operation)) throw Invalid();
             var keys = new HashSet<string>(StringComparer.Ordinal) { "op" };
             keys.UnionWith(operation switch
             {
@@ -32,15 +31,17 @@ public sealed class TimelineEditRequest
                 "fade" => ["edge", "seconds"], "setGain" => ["db"], "addGainPoint" => ["atWord", "db"],
                 "moveGainPoint" => ["fromSeconds", "toWord", "db"], "removeGainPoint" => ["atSeconds"],
                 "slip" => ["bySeconds"], "setLoop" => ["enabled"], "setDuck" => ["track", "db"],
-                "nudge" => fields.TryGetProperty("words", out var words) && (!fields.TryGetProperty("frames", out _) ||
-                    words.ValueKind != JsonValueKind.Number || words.GetDouble() != 0) ? ["words"] : ["frames"],
-                "duplicate" when fields.TryGetProperty("toWord", out var word) && word.ValueKind == JsonValueKind.Number && word.GetDouble() >= 0 => ["toWord"],
+                "nudge" => fields.ContainsKey("words") && (!fields.ContainsKey("frames") ||
+                    fields["words"] is not JsonValue words || !words.TryGetValue<double>(out var count) || count != 0) ? ["words"] : ["frames"],
+                "duplicate" when fields["toWord"] is JsonValue word && word.TryGetValue<double>(out var target) && target >= 0 => ["toWord"],
                 _ => [],
             });
             if (operation is not ("splitAll" or "setDuck"))
-                keys.Add(fields.TryGetProperty("item", out var item) && item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } ? "item" : "items");
-            return new TimelineEditRequest(JsonSerializer.SerializeToElement(fields.EnumerateObject().Where(field => keys.Contains(field.Name))
-                .ToDictionary(field => field.Name, field => field.Value, StringComparer.Ordinal)));
+                keys.Add(fields["item"] is JsonValue item && item.TryGetValue<string>(out var itemId) && itemId is { Length: > 0 } ? "item" : "items");
+            var projected = new JsonObject();
+            foreach (var (key, field) in fields) if (keys.Contains(key)) projected[key] = field?.DeepClone();
+            using var document = JsonDocument.Parse(projected.ToJsonString());
+            return new TimelineEditRequest(document.RootElement);
         }).ToArray();
     }
 

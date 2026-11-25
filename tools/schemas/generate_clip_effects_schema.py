@@ -120,10 +120,27 @@ def update_plan_schema():
     if 'motionTemplate' not in kinds:
         kinds.insert(kinds.index('emojiPop') + 1, 'motionTemplate')
     fields['template'] = {'$ref': 'motion-template.schema.json'}
-    rule = {'if': {'properties': {'kind': {'const': 'motionTemplate'}}},
-            'then': {'required': ['template'], 'maxProperties': 5}}
-    if rule not in schema['allOf']:
-        schema['allOf'].append(rule)
+    shape = {'fadeIn': number(0, 5), 'fadeOut': number(0, 5)}
+    sound = {'gainDb': number(-30, 6), 'soundFrom': number(0), 'volume': {
+        'type': 'array', 'minItems': 1, 'maxItems': 64,
+        'items': obj({'word': {'type': 'integer', 'minimum': 0}, 'db': number(-60, 12)})}}
+    fields.update(shape | sound)
+    payloads = [('scale', ['zoom', 'punchIn']), ('text', ['motionTitle', 'lowerThird', 'emojiPop']),
+                ('query', ['soundEffect']), ('prompt', ['illustration']), ('look', ['colourLook']),
+                ('rate', ['speedForPart']), ('footage', ['bRoll', 'screenshot', 'videoStack']), ('template', ['motionTemplate'])]
+    schema['allOf'] = []
+    for payload, applicable in payloads:
+        optional = {} if payload in ('scale', 'rate') else (
+            {'fadeIn': number(0, 2), 'fadeOut': number(0, 2)} if payload == 'footage' else shape)
+        if payload == 'query':
+            optional = optional | sound
+        match = {'enum': applicable} if len(applicable) > 1 else {'const': applicable[0]}
+        schema['allOf'].append({'if': {'properties': {'kind': match}}, 'then': {'required': [payload],
+            'propertyNames': {'enum': ['kind', 'startWord', 'endWord', 'reason', payload, *optional]}}})
+        if payload == 'footage':
+            schema['allOf'][-1]['then']['properties'] = optional
+    schema['allOf'].append({'if': {'properties': {'kind': {'const': 'emojiPop'}}},
+                            'then': {'properties': {'text': {'maxLength': 16}}}})
     PLAN_PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
 
 

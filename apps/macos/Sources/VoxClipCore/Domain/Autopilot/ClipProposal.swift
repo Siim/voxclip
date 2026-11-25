@@ -24,6 +24,14 @@ public struct ClipProposal: Codable, Sendable, Equatable {
     public struct Music: Codable, Sendable, Equatable {
         public let trackId: String?
         public let brief: String?
+        public var fadeIn: Double? = nil
+        public var fadeOut: Double? = nil
+        public var duckDb: Double? = nil
+        public var segments: [ClipPlanMusicShape.Segment]? = nil
+        var shape: ClipPlanMusicShape? {
+            guard fadeIn != nil || fadeOut != nil || duckDb != nil || segments?.isEmpty == false else { return nil }
+            return .init(fadeIn: fadeIn, fadeOut: fadeOut, duckDb: duckDb, segments: segments)
+        }
         public init(trackId: String) { self.trackId = trackId; brief = nil }
         public init(brief: String) { trackId = nil; self.brief = brief }
     }

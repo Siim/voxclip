@@ -188,6 +188,15 @@ public struct AskClaudePrompt: Sendable {
                 if cut.contains(words[index].id) { lines.append(line("jumpCut", words[index].start, words[index].end, " [\(index)]")) }
             }
         }
+        if let timeline = try? TimelineDecisions.read(project: project, scope: scope.clipID) {
+            for item in timeline[ai: "items"].aiArray.prefix(100) {
+                let id = item[ai: "id"].aiString ?? "", kind = item[ai: "kind"].aiString ?? ""
+                let start = item[ai: "startWord"].aiInt ?? -1, end = item[ai: "endWord"].aiInt ?? -1
+                let shape = item[ai: "shape"]
+                let detail = shape.aiObject?.isEmpty == false ? " " + ((try? shape.aiEncoded()).flatMap { String(data: $0, encoding: .utf8) } ?? "") : ""
+                lines.append("Timeline item \(id) (\(kind)), words [\(start)–\(end)]\(detail)")
+            }
+        }
         return lines
     }
 
@@ -267,6 +276,13 @@ public struct AskClaudeValidator: Sendable {
                 if let note { answer.choices[id] = note }
             }
             func drop(_ why: String) { answer.repairs.append("Left out \(kind.isEmpty ? "a change" : kind): \(why).") }
+            if kind == "timelineEdit" {
+                guard let edits = try? TimelineEditRequest.providerEdits(item[ai: "edits"]) else {
+                    drop("needs supported timeline edits"); continue
+                }
+                add(.timeline, .timeline(clipID: scope.clipID, edits: edits))
+                continue
+            }
             let wordAnchored = item[ai: "target"].aiString == "planEffect"
             if ["punchIn", "motionTitle", "emojiPop", "soundEffect", "illustration", "colourLook", "speedForPart"].contains(kind) ||
                 (wordAnchored && ["zoom", "lowerThird"].contains(kind)) {

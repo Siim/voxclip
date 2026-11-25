@@ -1,10 +1,27 @@
 #if WIN_UI_TESTS
 using Xunit;
+using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Shared;
+using VoxClip.Tests.Support;
 
 namespace VoxClip.Ui.Tests;
 
 public sealed class NativeHarnessContractTests
 {
+    [Fact]
+    public void TimelineDecisionsExposeTheReducerIdsAndEditedGeometry()
+    {
+        var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures/projects/clip-from-long-take.voxclip")));
+        const string clip = "clip-2f1c";
+        var read = TimelineDecisions.Read(project, clip);
+        var layout = TimelineItems.Layout(project, RenderCallerInputs.PlacementPlan(project, clip), clip, TimelineAxis.Edited);
+        var item = Assert.Single(read["items"]!.AsArray());
+        Assert.Equal($"clip:{clip}", item!["id"]!.GetValue<string>());
+        Assert.Equal("V1", item["lane"]!.GetValue<string>());
+        Assert.Equal(9, item["startWord"]!.GetValue<int>());
+        Assert.Equal(Assert.Single(layout.Items).EditedIntervals.Count, item["editedIntervals"]!.AsArray().Count);
+    }
+
     [Fact]
     public void TranscriptDecorationGateRemovesGlyphInkAndRejectsMissingPaint()
     {

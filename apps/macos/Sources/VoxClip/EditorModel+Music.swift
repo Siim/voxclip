@@ -324,7 +324,7 @@ struct MusicPanelServices: Sendable {
 
     /// Use: stores the track in the project's music folder and sets it under the open clip (or the full video). A
     /// generated candidate is made first; its priced button is the approval and a failure is never retried.
-    func use(_ candidate: MusicCandidate, model: EditorModel) {
+    func use(_ candidate: MusicCandidate, model: EditorModel, timelineShape: ClipPlanMusicShape? = nil) {
         guard model.capabilities.edit else { return }
         guard !isBusy else { return }
         let scope = QuoteScope(model)
@@ -359,6 +359,7 @@ struct MusicPanelServices: Sendable {
                     entry.gainDb = current.gainDb; entry.ducking = current.ducking
                     entry.fadeInSeconds = current.fadeInSeconds; entry.fadeOutSeconds = current.fadeOutSeconds
                 }
+                if let timelineShape, let shaped = try? timelineShape.placing(entry, in: model.project, clipID: clipId) { entry = shaped }
                 try self.apply(entry, clipId: clipId, model: model, name: "Add music")
                 self.phase = .idle
             } catch is CancellationError {

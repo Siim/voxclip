@@ -9,7 +9,7 @@ namespace VoxClip.App.ViewModels;
 internal sealed record HarnessReviewDetails(string ClipTitle, string Reason, IReadOnlyList<string> Changes, string? MusicPrompt,
     string? MusicEstimate, string? Blocked);
 
-internal sealed record HarnessMusicAction(string ClipId, string SourceKey, string Prompt);
+internal sealed record HarnessMusicAction(string ClipId, string SourceKey, string Prompt, ClipPlanMusicShape? TimelineShape = null);
 
 public sealed partial class EditorViewModel
 {
@@ -81,7 +81,7 @@ public sealed partial class EditorViewModel
         assets = pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Asset>().ToArray();
         rewrites = pending.Where(operation => operation.Action is ClipAutopilotAction.Rewrite).ToArray();
         return pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Music>().FirstOrDefault() is { } music
-            ? new(music.Cue.ClipId, next.Media.Source.ContentKey, music.Cue.Picked.Prompt) : null;
+            ? new(music.Cue.ClipId, next.Media.Source.ContentKey, music.Cue.Picked.Prompt, music.Cue.Picked.TimelineShape) : null;
     }
 
     internal async Task<bool> ApplyHarnessAssetAsync(ClipAutopilotAction.Asset asset, Project snapshot, decimal? price, CancellationToken ct)

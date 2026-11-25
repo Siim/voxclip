@@ -95,6 +95,8 @@ def parts_vectors():
     showreel = [[48, 55], [12, 19], [32, 39], [0, 7]]
     opener = effect('motionTemplate', 48, 49, template={'name': 'logoSting', 'text': 'Vox', 'from': 0, 'to': 0})
     valid_showreel = {'parts': ranges(showreel), 'effects': [opener], 'musicTrackId': 'saved-bed'}
+    music_shape = {'fadeIn': 0.5, 'fadeOut': 1, 'duckDb': -8,
+                   'segments': [{'startWord': 14, 'endWord': 18, 'songFrom': 2, 'loop': False, 'gainDb': -3}]}
     return {
         'schema': 'voxclip-autopilot-parts/1', 'sources': {'shared/prompts/clip-autopilot.json': prompt_sha()},
         'transcript': {'words': [{'id': f'w{index}', 'text': f'beat{index}', 'start': index / 2, 'end': (index + 1) / 2}
@@ -128,6 +130,11 @@ def parts_vectors():
              'expect': {'kind': 'showreel', 'parts': showreel, 'seconds': 16, 'effects': ['motionTemplate'], 'musicTrackId': 'saved-bed'}},
             {'id': 'showreel-without-music', 'kind': 'showreel', 'offered': ranges(showreel),
              'reply': {**valid_showreel, 'musicTrackId': 'unknown'}, 'expect': None},
+            {'id': 'music-shape-on-the-picked-track',
+             'reply': {'startWord': 12, 'endWord': 19, 'musicPick': 0, 'music': [
+                 {'title': 'Warm pulse', 'mood': 'focused', 'prompt': 'Instrumental warm synth at 100 BPM',
+                  'reason': 'Leave room for the words.', 'underVoiceDb': 18, **music_shape}]},
+             'expect': {'kind': 'stretch', 'parts': [[12, 19]], 'seconds': 4, 'effects': [], 'musicShape': music_shape}},
             {'id': 'legacy-span', 'reply': {'startWord': 12, 'endWord': 19},
              'expect': {'kind': 'stretch', 'parts': [[12, 19]], 'seconds': 4, 'effects': []}},
         ],

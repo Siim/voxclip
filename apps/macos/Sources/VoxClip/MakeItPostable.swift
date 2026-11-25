@@ -975,9 +975,9 @@ extension EditorModel {
             return (.effect(id: card.id, previous: previous),
                     MakeItRow(id: operation.id, kind: .choice, text: Self.makeItHookRowText(card.text ?? text, chosenBy: "Claude"),
                               detail: Self.makeItHookDetail, play: clipPlay(clipID, in: project), undoable: true, change: .hook))
-        case .rewrite, .music, .asset, .coverTitle:
+        case .rewrite, .music, .asset, .coverTitle, .timeline:
             return nil
-        case .savedMusic(let clipID, _):
+        case .savedMusic(let clipID, _, _):
             guard makeItStyle.music || plan.kind == .showreel,
                   let changed = try? ClipAutopilotMapping.apply([operation], to: project, savedTracks: run.paidMusic).project,
                   let entry = MusicProject.entry(for: clipID, in: changed), changed != project else { return (nil, nil) }
@@ -1138,6 +1138,7 @@ extension EditorModel {
             if let kept { return kept }
             var entry = track
             if let pick { entry.gainDb = ((-pick.underVoiceDb).clamped(to: ProjectMusic.gainRange) * 2).rounded() / 2 }
+            if let shape = pick?.timelineShape, let shaped = try? shape.placing(entry, in: project, clipID: clipID) { entry = shaped }
             entry = MusicProject.unique(entry, in: project)
             replace(try MusicProject.setting(entry, clipId: clipID, in: project), name: "Add music")
             run.inverses["music"] = .music(added: entry)

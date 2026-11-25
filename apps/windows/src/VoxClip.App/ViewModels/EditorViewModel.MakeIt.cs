@@ -707,7 +707,7 @@ public sealed partial class EditorViewModel
         if (candidate is null || MakeItStopped(run))
             return row with { Kind = MakeItRowKind.Note, Text = $"No free track fit “{cue.Picked.Mood}”",
                 Detail = panel.Notes.Count > 0 ? panel.Notes[0] + " Change to pick one." : "A generated track would pass this clip's cap. Change to pick one." };
-        await panel.UseAsync(candidate, -cue.Picked.UnderVoiceDb, run.ClipId);
+        await panel.UseAsync(candidate, -cue.Picked.UnderVoiceDb, run.ClipId, cue.Picked.TimelineShape);
         if (Core.Domain.Music.MusicProject.Entry(run.ClipId, project) is not { } entry || entry == previous)
         {
             var reason = panel.Failure ?? "";

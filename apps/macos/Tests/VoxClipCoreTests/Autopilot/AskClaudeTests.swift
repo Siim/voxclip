@@ -46,7 +46,7 @@ import Testing
         let sha = SHA256.hash(data: try FixtureLoader.data("prompts/ask-claude.json")).map { String(format: "%02x", $0) }.joined()
         #expect(try Self.fixture()[ai: "promptSha256"].aiString == sha)
         #expect(try Self.fixture()[ai: "format"].aiString == "voxclip-ask-claude/1")
-        #expect(try Self.prompt().kinds.count == 27)
+        #expect(try Self.prompt().kinds.contains("timelineEdit"))
         // Stickers are exactly the bundled emoji images, so every sticker renders from the app's own files.
         let folder = try Self.shared().root.appendingPathComponent("fonts/noto-emoji/png128")
         let bundled = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix("emoji_u") }.map { name in
@@ -124,6 +124,11 @@ import Testing
                     let stored = try ClipAutopilotMapping.apply([operation], to: project).project.captionTranslations
                     let expected = try JSONDecoder().decode(CaptionTranslation.self, from: want[ai: "translation"].aiEncoded())
                     #expect(stored == [expected], "\(label): \(stored)")
+                case .timeline(let clipID, let edits):
+                    let edit = try #require(edits.first)
+                    #expect(!answer.paid.contains(operation))
+                    let trimmed = try edit.applying(to: project, scope: clipID)
+                    #expect(trimmed.project.edits.clips.first?.startWordId == "w2")
                 default: Issue.record("Unexpected action in \(label): \(operation.action)")
                 }
             }

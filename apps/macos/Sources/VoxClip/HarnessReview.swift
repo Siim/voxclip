@@ -41,6 +41,7 @@ extension EditorModel {
         let sourceKey: String
         let prompt: String
         let estimate: String?
+        let timelineShape: ClipPlanMusicShape?
     }
 
     private struct Review {
@@ -196,7 +197,7 @@ extension EditorModel {
                 HStack {
                     Button(price.map { "Generate music · \($0)" } ?? action.estimate.map { "Generate music · about \($0)" } ?? "Generate music") {
                         guard let candidate, !model.isLeaving, model.renderedActiveClipID == action.clipId, !panel.isBusy else { return }
-                        panel.use(candidate, model: model)
+                        panel.use(candidate, model: model, timelineShape: action.timelineShape)
                         submitted = true
                     }
                     .disabled(price == nil || !model.capabilities.edit || panel.isBusy)
@@ -267,10 +268,10 @@ extension EditorModel {
                 illustrationKeyAvailable = nil
                 Task { illustrationKeyAvailable = (try? await model.app.secrets.key(for: "fal"))?.isEmpty == false }
             }
-            if let prompt = proposal.timelines[index].generateMusic {
+            if let pick = operations.compactMap({ if case .music(let cue) = $0.action { cue.picked } else { nil } }).first {
                 submitted = false
                 paid = PaidMusic(clipId: clipID, sourceKey: model.project.media.source.contentKey,
-                                 prompt: prompt, estimate: reviews[index]?.estimate)
+                                 prompt: pick.prompt, estimate: reviews[index]?.estimate, timelineShape: pick.timelineShape)
             }
             actionError = nil
             refresh()

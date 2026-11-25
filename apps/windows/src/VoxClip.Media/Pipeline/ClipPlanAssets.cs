@@ -34,21 +34,27 @@ public sealed class ClipPlanAssets(IMusicHttp http)
     public async Task<JsonElement?> SoundAsync(ClipAutopilotAction.Asset request, string projectId, string root, CancellationToken ct)
     {
         var length = request.End - request.Start;
+        var offset = request.SoundFrom ?? 0;
         var results = await openverse.SearchAsync(request.Text, new HashSet<string>(), 0, ct, sound: true).ConfigureAwait(false);
-        if (results.FirstOrDefault(candidate => candidate.DurationSeconds <= length) is not { } candidate) return null;
+        if (results.FirstOrDefault(candidate => candidate.DurationSeconds <= length + offset && candidate.DurationSeconds - offset >= 0.05) is not { } candidate) return null;
         var bytes = await openverse.DownloadAsync(candidate, ct).ConfigureAwait(false);
         if (bytes.Length > 16 * 1024 * 1024) return null;
         var hash = Hash(bytes);
         var relative = $"{projectId}/sfx-{hash[..48]}.{candidate.FileExtension}";
         var path = Save(bytes, relative, projectId, ClipEffectsRenderInput.SoundRoot(root));
         var probe = await new FfmpegMediaProbe().ProbeAsync(path, ct).ConfigureAwait(false);
-        if (probe.Audio is null || !double.IsFinite(probe.DurationSeconds) || probe.DurationSeconds <= 0 || probe.DurationSeconds > length + 1e-9) return null;
+        if (probe.Audio is null || !double.IsFinite(probe.DurationSeconds) || probe.DurationSeconds - offset < 0.05 || probe.DurationSeconds > length + offset + 1e-9) return null;
         var effect = Entry(request, "sound");
+        if (request.Shape != new VoxClip.Core.Domain.Editing.ItemShape() || request.SoundFrom is not null)
+            effect["end"] = Math.Min(request.End, request.Start + probe.DurationSeconds - offset);
         effect["sound"] = new JsonObject { ["source"] = "library", ["file"] = relative, ["sha256"] = hash,
             ["durationSeconds"] = probe.DurationSeconds, ["title"] = candidate.Title, ["creator"] = candidate.Creator,
             ["license"] = candidate.License switch { MusicLicense.By => "by", MusicLicense.Pdm => "pdm", _ => "cc0" },
             ["attribution"] = candidate.Attribution, ["sourceUrl"] = candidate.SourceUrl };
-        effect["gainDb"] = -15;
+        effect["gainDb"] = request.GainDb ?? -15;
+        if (request.SoundFrom is { } from) effect["mediaOffsetSeconds"] = from;
+        if (request.Shape.GainPoints is { } points) effect["gainPoints"] = new JsonArray(points.Select(point =>
+            (JsonNode)new JsonObject { ["t"] = point.T, ["db"] = point.Db }).ToArray());
         return JsonSerializer.SerializeToElement(effect);
     }
 
@@ -82,10 +88,14 @@ public sealed class ClipPlanAssets(IMusicHttp http)
         return Picture(request, relative);
     }
 
-    private static JsonObject Entry(ClipAutopilotAction.Asset request, string kind) => new()
+    private static JsonObject Entry(ClipAutopilotAction.Asset request, string kind)
     {
-        ["id"] = request.Id, ["clipId"] = request.ClipId, ["kind"] = kind, ["start"] = request.Start, ["end"] = request.End
-    };
+        var effect = new JsonObject { ["id"] = request.Id, ["clipId"] = request.ClipId, ["kind"] = kind,
+            ["start"] = request.Start, ["end"] = request.End };
+        if (request.Shape.FadeInSeconds is { } fadeIn) effect["fadeInSeconds"] = fadeIn;
+        if (request.Shape.FadeOutSeconds is { } fadeOut) effect["fadeOutSeconds"] = fadeOut;
+        return effect;
+    }
 
     private static JsonElement Picture(ClipAutopilotAction.Asset request, string relative)
     {

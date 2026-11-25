@@ -89,6 +89,10 @@ import Testing
             #expect(checked.seconds == wanted[ai: "seconds"].aiDouble, id)
             #expect((proposal.effects ?? []).map { $0.kind.rawValue } == wanted[ai: "effects"].aiArray.compactMap(\.aiString), id)
             #expect(proposal.music?.trackId == wanted[ai: "musicTrackId"].aiString, id)
+            if wanted[ai: "musicShape"] != .null {
+                let shape = try #require(proposal.music?.shape, id)
+                #expect(try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(shape)) == wanted[ai: "musicShape"], id)
+            }
             if wanted[ai: "cuts"] != .null {
                 #expect(checked.cuts.map { [$0.startWord, $0.endWord] } == expected(wanted[ai: "cuts"]), id)
                 #expect(checked.corrections.map(\.word) == wanted[ai: "corrections"].aiArray.compactMap(\.aiInt), id)

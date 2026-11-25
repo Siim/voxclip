@@ -623,9 +623,12 @@ public enum ClipAutopilotValidator {
             else if !(limits.minUnderVoiceDb...limits.maxUnderVoiceDb).contains(level) {
                 level = min(max(level, limits.minUnderVoiceDb), limits.maxUnderVoiceDb); log.repair(field + ".underVoiceDb", "clamped to \(level)")
             }
-            accepted.append(.init(title: title, mood: text(item[ai: "mood"], limit: limits.maxTitleScalars, field: field + ".mood", log: &log),
+            var choice = ClipAutopilotPlan.Music(title: title, mood: text(item[ai: "mood"], limit: limits.maxTitleScalars, field: field + ".mood", log: &log),
                 prompt: prompt, reason: text(item[ai: "reason"], limit: limits.maxReasonScalars, field: field + ".reason", log: &log),
-                underVoiceDb: level))
+                underVoiceDb: level)
+            do { choice.setShape(try ClipPlanMusicShape.read(item, provider: true)) }
+            catch { log.repair(field + ".shape", "invalid music shape; use the whole track") }
+            accepted.append(choice)
             replyIndex.append(index)
         }
         guard !accepted.isEmpty else {

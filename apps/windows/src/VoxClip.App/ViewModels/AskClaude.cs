@@ -61,6 +61,7 @@ public sealed class AskClaudeRun(string instruction, AskClaudeSelection selectio
 #pragma warning restore CS1591
     /// <summary>The project before the answer applied: Undo reads previous corrections, cuts, ducking and speed from it.</summary>
     public Project? Base { get; set; }
+    internal Dictionary<string, VoxClip.Core.Domain.Editing.TimelineEditUndo> TimelineUndo { get; } = [];
     /// <summary>Rows in the project now.</summary>
     public int AppliedCount => Rows.Count(row => row.Status == AskClaudeRowStatus.Applied);
 }

@@ -9,7 +9,11 @@ public sealed record ClipProposal(ClipProposal.TargetChoice Target, string Reaso
     public sealed record Part(int StartWord, int EndWord);
     public sealed record NewClip(string Kind, string Title);
     public sealed record TargetChoice(string? ClipId = null, NewClip? New = null);
-    public sealed record MusicChoice(string? TrackId = null, string? Brief = null);
+    public sealed record MusicChoice(string? TrackId = null, string? Brief = null)
+    {
+        /// <summary>Optional timeline placement and audio shaping.</summary>
+        public ClipPlanMusicShape? Shape { get; init; }
+    }
 
     public IReadOnlyList<Part>? Parts { get; init; }
     public IReadOnlyList<ClipAutopilotPlan.Cut>? Cuts { get; init; }

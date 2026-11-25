@@ -10,6 +10,7 @@ using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.ViewModels;
 
@@ -292,10 +293,34 @@ public sealed partial class EditorViewModel
         var run = new AskClaudeRun(instruction, selection, AskClaude.Label) { Summary = answer.Summary, Repairs = answer.Repairs, Base = project };
         var paid = answer.Paid.Select(operation => operation.Id).ToHashSet(StringComparer.Ordinal);
         HashSet<string> pending;
+        var refusals = new Dictionary<string, string>();
+        var timelineNames = new Dictionary<string, string>();
         try
         {
-            var (next, left) = ClipAutopilotMapping.Apply(answer.Operations.Where(operation => !paid.Contains(operation.Id)).ToArray(), project);
+            var (next, left) = ClipAutopilotMapping.Apply(answer.Operations.Where(operation => !paid.Contains(operation.Id) &&
+                operation.Action is not ClipAutopilotAction.Timeline).ToArray(), project);
             pending = left.Select(operation => operation.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var operation in answer.Operations)
+            {
+                if (operation.Action is not ClipAutopilotAction.Timeline timeline) continue;
+                var candidate = next;
+                try
+                {
+                    foreach (var edit in timeline.Edits)
+                    {
+                        var change = edit.Apply(candidate, timeline.ClipId);
+                        candidate = change.Project;
+                        if (timeline.Edits.Count == 1) timelineNames[operation.Id] = change.UndoName;
+                    }
+                    if (candidate == next) refusals[operation.Id] = "The timeline doesn't change the project.";
+                    else
+                    {
+                        run.TimelineUndo[operation.Id] = new(next, candidate);
+                        next = candidate;
+                    }
+                }
+                catch (HarnessException refusal) { refusals[operation.Id] = refusal.Message; }
+            }
             if (!ReferenceEquals(next, project) && !ReplaceProject(next, "Ask Claude")) throw new InvalidOperationException("Ask Claude");
         }
         catch (Exception exception) when (exception is VoxClipException or VoiceLabException or InvalidOperationException or KeyNotFoundException)
@@ -306,11 +331,13 @@ public sealed partial class EditorViewModel
         }
         foreach (var operation in answer.Operations)
         {
-            var title = AskClaudeRowTitle(operation);
+            var title = timelineNames.GetValueOrDefault(operation.Id) ?? AskClaudeRowTitle(operation);
             var detail = AskClaudeRowDetail(operation);
             var choice = answer.Choices.GetValueOrDefault(operation.Id);
             AskClaudeRow row;
-            if (operation.Action is ClipAutopilotAction.Asset)
+            if (refusals.TryGetValue(operation.Id, out var refusal))
+                row = new(operation, AskClaudeRowStatus.Later, title, detail, choice) { Reason = refusal };
+            else if (operation.Action is ClipAutopilotAction.Asset)
                 row = new(operation, AskClaudeRowStatus.Asset, title, detail, choice);
             else if (paid.Contains(operation.Id))
                 row = AskClaudePrice(operation) is { Length: > 0 } price
@@ -363,6 +390,7 @@ public sealed partial class EditorViewModel
             case ClipAutopilotAction.TranslateCaptions translate: return "Captions in " + LanguageName(translate.Language);
             case ClipAutopilotAction.Music: return "Music change";
             case ClipAutopilotAction.MusicDucking: return "Duck the music";
+            case ClipAutopilotAction.Timeline: return "Edit timeline";
             default:
                 var decision = operation.Decision.ToString();
                 return decision;
@@ -515,8 +543,8 @@ public sealed partial class EditorViewModel
     {
         if (AskClaude.Run is not { } run || run.Rows.FirstOrDefault(row => row.Id == id) is not { Status: AskClaudeRowStatus.Applied } row) return false;
         Project next;
-        try { next = AskClaudeUndone([row.Operation], run.Base, project); }
-        catch (Exception exception) when (exception is VoxClipException or VoiceLabException) { return false; }
+        try { next = AskClaudeUndone([row.Operation], run.Base, project, run.TimelineUndo); }
+        catch (Exception exception) when (exception is VoxClipException or VoiceLabException or HarnessException) { return false; }
         if (!ReferenceEquals(next, project) && !ReplaceProject(next, "Undo " + row.Title)) return false;
         row.Status = AskClaudeRowStatus.Undone;
         if (AskClaude.Adjusting == id) AskClaude.Adjusting = null;
@@ -532,8 +560,8 @@ public sealed partial class EditorViewModel
         var applied = run.Rows.Where(row => row.Status == AskClaudeRowStatus.Applied).ToArray();
         if (applied.Length == 0) return false;
         Project next;
-        try { next = AskClaudeUndone(applied.Select(row => row.Operation).ToArray(), run.Base, project); }
-        catch (Exception exception) when (exception is VoxClipException or VoiceLabException) { return false; }
+        try { next = AskClaudeUndone(applied.Select(row => row.Operation).ToArray(), run.Base, project, run.TimelineUndo); }
+        catch (Exception exception) when (exception is VoxClipException or VoiceLabException or HarnessException) { return false; }
         if (!ReferenceEquals(next, project) && !ReplaceProject(next, "Undo Ask Claude")) return false;
         foreach (var row in applied) row.Status = AskClaudeRowStatus.Undone;
         AskClaude.Adjusting = null;
@@ -544,9 +572,12 @@ public sealed partial class EditorViewModel
 
     /// <summary><paramref name="snapshot"/> with <paramref name="operations"/> taken out: their effects removed, corrections, cuts, ducking,
     /// translated captions and a clip's speed back to <paramref name="before"/>.</summary>
-    public static Project AskClaudeUndone(IReadOnlyList<ClipAutopilotOperation> operations, Project? before, Project snapshot)
+    public static Project AskClaudeUndone(IReadOnlyList<ClipAutopilotOperation> operations, Project? before, Project snapshot,
+        IReadOnlyDictionary<string, TimelineEditUndo>? timelineUndo = null)
     {
         var next = snapshot;
+        foreach (var operation in operations.Reverse())
+            if (timelineUndo?.TryGetValue(operation.Id, out var undo) == true) next = undo.Restore(next);
         var effects = new HashSet<string>(StringComparer.Ordinal);
         var cues = new HashSet<string>(StringComparer.Ordinal);
         foreach (var operation in operations)

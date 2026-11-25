@@ -75,6 +75,21 @@ Use inclusive transcript indices from the current project. List nonoverlapping p
 
 Timeline fields mirror the [shared clip proposal vocabulary](../shared/schemas/clip-proposal.schema.json), including caption font, case and word count, pause cuts, corrections, hook, speed, cover title and post text. `music: {"trackId":"…"}` reuses a saved track; `music: {"brief":"…"}` proposes generating a track. The legacy `musicTrackId` and `generateMusic` fields still work. The tool returns `pricedActions` and `freeActions` with zero-based `timelineIndex` values. A `rewrite` quote is a local list-price estimate for one voice take, not the final price. Rewrites, illustrations and generated music require approval in VoxClip; **Find sound · free** needs its own click. No tool sends an asset request.
 
+### Edit existing timeline items
+
+Call `read_decisions` for the clip. Its `timeline` has the editor's item IDs, lanes and rows, word anchors, edited intervals, hidden markers, seam notches, snap targets and current shape. An item's `paid` flag describes the existing asset, not the cost of editing it. Copy the item IDs as returned; use `shape.track` for `setDuck`.
+
+```json
+{"clipId":"clip-2f1c","reason":"Start on the next word and let the music trail off.","edits":[
+  {"op":"trim","item":"clip:clip-2f1c","edge":"start","toWord":10},
+  {"op":"fade","item":"music:music-bed/seg-1","edge":"out","seconds":1.5}
+]}
+```
+
+Use `toWord` or `atWord` for positions: a trim to an `end` uses the end of that word; other anchors use its start. `fromSeconds` and `atSeconds` identify existing gain points by their item-local time in `shape.gainPoints`. `bySeconds` slips the media under the item. See the [timeline schema](../shared/schemas/harness-timeline.schema.json) for all commands. VoxClip applies them in order as one **Keep timeline proposal** undo step. If any edit is refused, the exact reason appears on that proposal row and none of its changes apply. The CLI also returns the reason in `refusals`. Edits never appear in `pricedActions`.
+
+For new placements, use `fadeIn` and `fadeOut` on supported effects. A sound can also set `gainDb`, `soundFrom` (seconds into the sound), and `volume` points as `[{"word":14,"db":-6}]`. In `music`, either a saved `trackId` or a paid `brief` can set `fadeIn`, `fadeOut`, `duckDb` (zero turns it off) and `segments`, for example `[{"startWord":10,"endWord":15,"songFrom":4,"loop":true}]`. Omit `segments` for the usual continuous bed.
+
 ### Motion templates
 
 Add a `motionTemplate` to `effects` with a `template` object, for example:
@@ -101,7 +116,7 @@ Text must be a single nonempty line with no leading or trailing whitespace. The 
 
 ## Run the offline contract replay
 
-On macOS, install the `jsonschema` Python dependency, then run `python3 tools/schemas/test_harness_contract.py`. It uses the Mac CLI build above and denies network access to every CLI subprocess. To test the Windows CLI built with .NET on macOS, run:
+On macOS, install the `jsonschema` Python dependency, then run `python3 tools/schemas/test_harness_contract.py`. It uses the Mac CLI build above and denies network access to every CLI subprocess. To replay only the `edits` timeline, append `HarnessContract.test_edits_use_timeline_decisions_without_spending`. To test the Windows CLI built with .NET on macOS, run:
 
 ```sh
 dotnet build apps/windows/src/VoxClip.Cli -c Release -m:2

@@ -154,7 +154,16 @@ public sealed record ClipAutopilotPlan
     /// <summary>The whole clip played at <c>Rate</c>, never 1.</summary>
     public sealed record Speed(double Rate, string Reason);
     /// <summary>A background track suggestion, instrumental.</summary>
-    public sealed record Music(string Title, string Mood, string Prompt, string Reason, double UnderVoiceDb);
+    public sealed record Music(string Title, string Mood, string Prompt, string Reason, double UnderVoiceDb)
+    {
+        /// <summary>Optional timeline placement and audio shaping for this suggestion.</summary>
+        public ClipPlanMusicShape? TimelineShape { get; init; }
+        internal JsonObject ToJson()
+        {
+            var result = new JsonObject { ["title"] = Title, ["mood"] = Mood, ["prompt"] = Prompt, ["reason"] = Reason, ["underVoiceDb"] = UnderVoiceDb };
+            return TimelineShape?.Write(result) ?? result;
+        }
+    }
     /// <summary>A punch-in from <c>Word</c> to <c>UntilWord</c> at <c>Scale</c>.</summary>
     public sealed record Zoom(int Word, int UntilWord, double Scale, string Reason, ClipAutopilotZoomDirection? Direction = null)
     {
@@ -287,7 +296,7 @@ public sealed record ClipAutopilotPlan
         Font = CaptionChoice.Font, TextCase = CaptionChoice.TextCase, WordsPerCaption = CaptionChoice.WordsPerCaption,
         Look = ClipLookChoice, Speed = SpeedChoice, Hook = Hook, Title = Title, PostText = PostText,
         CoverTitle = CoverTitle ?? Frames?.CoverChoice?.Title,
-        Music = SavedMusicTrackId is { } id ? new(TrackId: id) : PickedMusic is { } music ? new(Brief: music.Prompt) : null,
+        Music = SavedMusicTrackId is { } id ? new(TrackId: id) : PickedMusic is { } music ? new(Brief: music.Prompt) { Shape = music.TimelineShape } : null,
         Effects = Effects, Rewrites = Rewrites
     };
 
@@ -308,7 +317,7 @@ public sealed record ClipAutopilotPlan
                 ["case"] = CaptionChoice.TextCase.Name(), ["wordsPerCaption"] = CaptionChoice.WordsPerCaption, ["reason"] = CaptionChoice.Reason
             },
             ["look"] = new JsonObject { ["id"] = ClipLookChoice.Id.Name(), ["reason"] = ClipLookChoice.Reason },
-            ["music"] = Array(MusicChoices, item => new JsonObject { ["title"] = item.Title, ["mood"] = item.Mood, ["prompt"] = item.Prompt, ["reason"] = item.Reason, ["underVoiceDb"] = item.UnderVoiceDb }),
+            ["music"] = Array(MusicChoices, item => item.ToJson()),
             ["zooms"] = Array(Zooms, item =>
             {
                 var zoom = new JsonObject { ["word"] = item.Word, ["untilWord"] = item.UntilWord, ["scale"] = item.Scale, ["reason"] = item.Reason };
@@ -371,7 +380,8 @@ public sealed record ClipAutopilotPlan
                     ClipAutopilotWire.CaptionCase(S(captions["case"])) ?? throw new JsonException(), I(captions["wordsPerCaption"]), captions["reason"] is null ? "" : S(captions["reason"])),
                 ClipLookChoice = look is null ? Look.Original : new(ClipAutopilotWire.Look(S(look["id"])) ?? throw new JsonException(), look["reason"] is null ? "" : S(look["reason"])),
                 SpeedChoice = json["speed"] is { } speed ? new(speed["rate"]!.GetValue<double>(), S(speed["reason"])) : null,
-                MusicChoices = Items(json["music"]).Select(item => new Music(S(item["title"]), S(item["mood"]), S(item["prompt"]), S(item["reason"]), item["underVoiceDb"]!.GetValue<double>())).ToArray(),
+                MusicChoices = Items(json["music"]).Select(item => new Music(S(item["title"]), S(item["mood"]), S(item["prompt"]), S(item["reason"]),
+                    item["underVoiceDb"]!.GetValue<double>()) { TimelineShape = ClipPlanMusicShape.Read(item) }).ToArray(),
                 MusicPick = json["musicPick"] is { } pick ? pick.GetValue<int>() : null,
                 Zooms = Items(json["zooms"]).Select(item => new Zoom(I(item["word"]), I(item["untilWord"]), item["scale"]!.GetValue<double>(), S(item["reason"]),
                     item["direction"] is { } direction ? ClipAutopilotWire.ZoomDirection(S(direction)) ?? throw new JsonException() : null)).ToArray(),

@@ -12,6 +12,31 @@ namespace VoxClip.Ui.Tests;
 public sealed class HarnessReviewTests
 {
     [Fact]
+    public void ARefusedTimelineEditBlocksTheRowAndKeepsTheWholeProjectUnchanged()
+    {
+        using var review = new ReviewProject();
+        const string edit = """{"op":"trim","item":"clip:clip-2f1c","edge":"start","toWord":10}""";
+        review.Stage($$"""{"clipId":"clip-2f1c","reason":"Trim the opening.","edits":[{{edit}},{"op":"delete","items":["missing"]}]}""");
+        var pending = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
+        const string refusal = "Select an item on this timeline.";
+        Assert.Equal(refusal, review.Editor.DescribeHarnessProposal(pending, FixtureLoader.SharedRoot).Blocked);
+        Assert.Equal(refusal, Assert.Throws<HarnessTimelineEditException>(() =>
+            review.Editor.KeepHarnessProposal(pending, review.Path, FixtureLoader.SharedRoot)).Message);
+        Assert.Same(review.Original, review.Editor.Project);
+        Assert.False(review.Editor.CanUndo);
+        Assert.True(pending.Matches(review.Editor.ReadHarnessProposal(review.Path)));
+        review.Editor.DismissHarnessProposal(pending, review.Path);
+
+        review.Stage($$"""{"clipId":"clip-2f1c","reason":"Trim the opening.","edits":[{{edit}}]}""");
+        var trim = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
+        Assert.Null(review.Editor.KeepHarnessProposal(trim, review.Path, FixtureLoader.SharedRoot));
+        Assert.Equal("w11", review.Editor.Project.Edits.Clips[0].StartWordId);
+        review.Editor.Undo();
+        Assert.Equal(review.Original.Edits.Clips[0], review.Editor.Project.Edits.Clips[0]);
+        Assert.False(review.Editor.CanUndo);
+    }
+
+    [Fact]
     public async Task KeepingAnIllustrationDoesNotSendAndOnlyItsQuotedClickCanGenerate()
     {
         using var review = new ReviewProject();

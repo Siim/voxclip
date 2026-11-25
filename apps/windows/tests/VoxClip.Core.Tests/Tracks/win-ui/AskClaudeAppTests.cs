@@ -62,6 +62,24 @@ public sealed class AskClaudeAppTests
 
     internal static string Reply(params JsonObject[] ops) => new JsonObject { ["summary"] = "Done as asked.", ["ops"] = new JsonArray(ops) }.ToJsonString();
 
+    [Fact]
+    public async Task TimelineRowsApplyAndUndoWithoutApplyingARefusedEdit()
+    {
+        var (editor, _) = Open(Reply(
+            Op("timelineEdit", ("edits", JsonNode.Parse("""[{"op":"trim","item":"clip:c1","edge":"start","toWord":11}]""")!)),
+            Op("timelineEdit", ("edits", JsonNode.Parse("""[{"op":"delete","items":["missing"]}]""")!))));
+        editor.SetScope("c1");
+        Assert.True(editor.OpenAskClaudeOnClip("c1"));
+        var original = editor.Project.Edits.Clips[0];
+        await AskAsync(editor, "Trim the start");
+        var rows = Assert.IsType<AskClaudeRun>(editor.AskClaude.Run).Rows;
+        Assert.Equal(AskClaudeRowStatus.Applied, rows[0].Status);
+        Assert.Equal("Select an item on this timeline.", rows[1].Reason);
+        Assert.Equal(editor.Project.Transcript!.Words[11].Id, editor.Project.Edits.Clips[0].StartWordId);
+        Assert.True(editor.UndoAskClaudeRow(rows[0].Id));
+        Assert.Equal(original, editor.Project.Edits.Clips[0]);
+    }
+
     /// <summary>The 80-word editor with clip c1 on words 10–40, the real Ask Claude service on <paramref name="fake"/>, and prices.</summary>
     internal static (EditorViewModel Editor, Fake Fake) Open(string? reply = null, IAskClaudeVision? vision = null, bool available = true)
     {

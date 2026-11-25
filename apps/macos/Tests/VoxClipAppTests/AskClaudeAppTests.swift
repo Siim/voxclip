@@ -66,6 +66,30 @@ private actor AskFixtureConnector: LLMConnector {
         editor.selectedWordIDs = Set(editor.words[range].map(\.id))
     }
 
+    @Test func timelineRowsUseTheReducerAndUndoIndependently() async throws {
+        let (_, editor, _, undo) = try await open()
+        defer { editor.close() }
+        let shared = try SharedResources.locate()
+        let fixture = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/ask-claude/ask-claude-cases.json")))
+        let project = try JSONProjectStore.decode(fixture[ai: "project"].aiEncoded())
+        undo.beginUndoGrouping(); editor.replace(project, name: "Open fixture"); undo.endUndoGrouping()
+        let selection = AskClaudeSelection(scope: .clip("clip-main"), clipID: "clip-main")
+        let scope = try AskClaudeScope.resolve(selection, in: project)
+        let validator = AskClaudeValidator(prompt: try AskClaudePrompt.load(shared: shared), scope: scope, project: project, detections: [])
+        let reply = try #require(fixture[ai: "replies"].aiArray.last)[ai: "reply"]
+        var fields = try #require(reply.aiObject)
+        let bad = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"kind":"timelineEdit","edits":[{"op":"delete","items":["missing"]}]}"#.utf8))
+        fields["ops"] = .array(reply[ai: "ops"].aiArray + [bad])
+        let answer = validator.answer(.object(fields))
+        undo.beginUndoGrouping(); editor.applyAskClaude(answer, instruction: "Trim the opening", selection: selection); undo.endUndoGrouping()
+        let rows = try #require(editor.askClaude.run).rows
+        #expect(rows.map(\.status) == [.applied, .later("Select an item on this timeline.")])
+        #expect(editor.project.edits.clips.first?.startWordId == "w2")
+        let kept = try #require(rows.first)
+        undo.beginUndoGrouping(); editor.undoAskClaudeRow(kept.id); undo.endUndoGrouping()
+        #expect(editor.project.edits.clips == project.edits.clips)
+    }
+
     @Test func theSelectionBarOpensOneInlineFieldAndChipsOnlyFillIt() async throws {
         let (shell, editor, fake, _) = try await open()
         defer { editor.close() }

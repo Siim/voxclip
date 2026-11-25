@@ -347,7 +347,7 @@ public sealed partial class EditorPage
             ViewModel.Project.Edits.ActiveClipId != action.ClipId || ViewModel.HarnessKeepBlocked is not null ||
             CurrentHarnessQuote is not { Estimate: { } estimate } candidate || MusicPricing.Label(estimate) is null) return;
         harnessSubmitted = true;
-        var making = ViewModel.Music.UseAsync(candidate, forClipId: action.ClipId);
+        var making = ViewModel.Music.UseAsync(candidate, forClipId: action.ClipId, timelineShape: action.TimelineShape);
         ShowHarnessMusic();
         await making;
         if (!disposed) ShowHarnessMusic();

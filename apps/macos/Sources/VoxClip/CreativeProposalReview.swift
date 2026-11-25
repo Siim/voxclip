@@ -107,7 +107,7 @@ import VoxClipCore
             case .blur, .pixelate, .freeze, .colourLook, .speedForPart: .picture
             case .sound, .illustration, .bleep, .mute: .extras
             }
-        case .edit, .shareText: nil
+        case .edit, .timeline, .shareText: nil
         }
     }
 
@@ -136,7 +136,7 @@ import VoxClipCore
             }
         case .motion(let cue): return cue.keyframes.allSatisfy { $0.scale == cue.keyframes.first?.scale } ? "Punch-in" : applied?.text ?? "Zoom"
         case .music(let cue): return "Brief: “\(cue.picked.prompt)”"
-        case .savedMusic(_, let id): return "Saved music: \(project.music.first { $0.id == id }?.title ?? id)"
+        case .savedMusic(_, let id, _): return "Saved music: \(project.music.first { $0.id == id }?.title ?? id)"
         case .asset(let asset): return applied?.text ?? "\(Self.rowTitle(operation)): \(asset.text)"
         case .rewrite(_, let text): return applied?.text ?? "Rewrite “\(text)”"
         default: return applied?.text ?? Self.rowTitle(operation)

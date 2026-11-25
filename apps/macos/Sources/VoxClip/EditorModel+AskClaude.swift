@@ -37,6 +37,7 @@ struct AskClaudeRow: Identifiable, Equatable {
     var repairs: [String] = []
     /// The project before the answer applied; Undo reads the previous values of corrections and ducking from it.
     @ObservationIgnored var base: Project?
+    @ObservationIgnored var timelineUndo: [String: TimelineEditUndo] = [:]
     init(instruction: String, selection: AskClaudeSelection, label: String) { self.instruction = instruction; self.selection = selection; self.label = label }
     var appliedCount: Int { rows.filter { $0.status == .applied }.count }
 }
@@ -224,25 +225,48 @@ extension EditorModel {
         run.repairs = answer.repairs
         run.base = project
         let paid = Set(answer.paid.map(\.id))
-        let free = answer.operations.filter { !paid.contains($0.id) }
+        let free = answer.operations.filter {
+            if case .timeline = $0.action { return false }
+            return !paid.contains($0.id)
+        }
         var pending = Set<String>()
+        var refused: [String: String] = [:]
+        var timelineNames: [String: String] = [:]
         if let applied = try? ClipAutopilotMapping.apply(free, to: project) {
             pending = Set(applied.pending.map(\.id))
-            if applied.project != project { replace(applied.project, name: "Ask Claude") }
+            var next = applied.project
+            for operation in answer.operations {
+                guard case .timeline(let clipID, let edits) = operation.action else { continue }
+                var candidate = next
+                do {
+                    for edit in edits {
+                        let change = try edit.applying(to: candidate, scope: clipID)
+                        candidate = change.project
+                        if edits.count == 1 { timelineNames[operation.id] = change.undoName }
+                    }
+                    if candidate == next { refused[operation.id] = "The timeline doesn't change the project." }
+                    else {
+                        run.timelineUndo[operation.id] = TimelineEditUndo(before: next, after: candidate)
+                        next = candidate
+                    }
+                } catch { refused[operation.id] = error.localizedDescription }
+            }
+            if next != project { replace(next, name: "Ask Claude") }
         } else {
             askClaude.error = "Claude's changes could not be applied. Try different wording."
             return
         }
         run.rows = answer.operations.map { operation in
             let status: AskClaudeRow.Status
-            if case .asset(let asset) = operation.action { status = askAssetStatus(asset) }
+            if let refusal = refused[operation.id] { status = .later(refusal) }
+            else if case .asset(let asset) = operation.action { status = askAssetStatus(asset) }
             else if paid.contains(operation.id) { status = .paid(price: askClaudePrice(operation)) }
             else if pending.contains(operation.id), case .stretch = operation.action, let clip = Self.stretchClip(operation, in: project) {
                 status = .wholeClip(clipID: clip)
             }
             else if pending.contains(operation.id) { status = .later(Self.laterReason(operation)) }
             else { status = .applied }
-            return AskClaudeRow(operation: operation, status: status, title: Self.rowTitle(operation), detail: rowDetail(operation),
+            return AskClaudeRow(operation: operation, status: status, title: timelineNames[operation.id] ?? Self.rowTitle(operation), detail: rowDetail(operation),
                                 choice: answer.choices[operation.id])
         }
         askClaude.run = run
@@ -297,6 +321,7 @@ extension EditorModel {
         case .music: return "Music change"
         case .asset(let asset): return asset.kind == .sound ? "Sound effect" : "Illustration"
         case .musicDucking: return "Duck the music"
+        case .timeline: return "Edit timeline"
         default: return operation.decision.rawValue.capitalized
         }
     }
@@ -425,7 +450,7 @@ extension EditorModel {
     /// Takes one applied row out as its own undo step; the other rows stay.
     func undoAskClaudeRow(_ id: String) {
         guard let run = askClaude.run, let index = run.rows.firstIndex(where: { $0.id == id }), run.rows[index].status == .applied,
-              let next = try? undone([run.rows[index].operation], base: run.base, from: project) else { return }
+              let next = try? undone([run.rows[index].operation], base: run.base, from: project, timelineUndo: run.timelineUndo) else { return }
         replace(next, name: "Undo \(run.rows[index].title)")
         run.rows[index].status = .undone
         if askClaude.adjusting == id { askClaude.adjusting = nil }
@@ -436,7 +461,7 @@ extension EditorModel {
     func undoAllAskClaude() {
         guard let run = askClaude.run else { return }
         let applied = run.rows.filter { $0.status == .applied }
-        guard !applied.isEmpty, let next = try? undone(applied.map(\.operation), base: run.base, from: project) else { return }
+        guard !applied.isEmpty, let next = try? undone(applied.map(\.operation), base: run.base, from: project, timelineUndo: run.timelineUndo) else { return }
         replace(next, name: "Undo Ask Claude")
         for index in run.rows.indices where run.rows[index].status == .applied { run.rows[index].status = .undone }
         askClaude.adjusting = nil
@@ -444,8 +469,12 @@ extension EditorModel {
     }
 
     /// `project` with `operations` taken out: their effects and zooms removed, corrections, cuts and ducking back to `base`.
-    func undone(_ operations: [ClipAutopilotOperation], base: Project?, from project: Project) throws -> Project {
+    func undone(_ operations: [ClipAutopilotOperation], base: Project?, from project: Project,
+                timelineUndo: [String: TimelineEditUndo] = [:]) throws -> Project {
         var next = project
+        for operation in operations.reversed() {
+            if let undo = timelineUndo[operation.id] { next = try undo.restoring(in: next) }
+        }
         var effects = Set<String>(), cues: [MotionCue] = []
         for operation in operations {
             switch operation.action {

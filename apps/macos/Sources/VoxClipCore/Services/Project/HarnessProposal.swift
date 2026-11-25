@@ -59,7 +59,10 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
         guard [track, brief, fields["music"]].compactMap({ $0 }).count <= 1 else { throw invalid }
         if let track { fields["music"] = .object(["trackId": track]) }
         if let brief { fields["music"] = .object(["brief": brief]) }
-        if let music = fields["music"] { _ = try requireObject(music, keys: ["trackId", "brief"]) }
+        if let music = fields["music"] {
+            _ = try requireObject(music, keys: ClipPlanMusicShape.keys.union(["trackId", "brief"]))
+            _ = try ClipPlanMusicShape.read(music)
+        }
         if let font = fields["font"] { _ = try requireObject(font, keys: ["family", "weight"]) }
         for (key, allowed) in [("look", Set(["id", "reason"])), ("speed", Set(["rate", "reason"]))] {
             if let item = fields[key] {

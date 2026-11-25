@@ -1,7 +1,7 @@
 {
   "schema": "voxclip-autopilot-parts/1",
   "sources": {
-    "shared/prompts/clip-autopilot.json": "33f52c46767c50d615b14ecc373f4edb35c38f618ea02faca6cd17b13a1426b1"
+    "shared/prompts/clip-autopilot.json": "100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672"
   },
   "transcript": {
     "words": [
@@ -886,6 +886,60 @@
         "musicTrackId": "unknown"
       },
       "expect": null
+    },
+    {
+      "id": "music-shape-on-the-picked-track",
+      "reply": {
+        "startWord": 12,
+        "endWord": 19,
+        "musicPick": 0,
+        "music": [
+          {
+            "title": "Warm pulse",
+            "mood": "focused",
+            "prompt": "Instrumental warm synth at 100 BPM",
+            "reason": "Leave room for the words.",
+            "underVoiceDb": 18,
+            "fadeIn": 0.5,
+            "fadeOut": 1,
+            "duckDb": -8,
+            "segments": [
+              {
+                "startWord": 14,
+                "endWord": 18,
+                "songFrom": 2,
+                "loop": false,
+                "gainDb": -3
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "kind": "stretch",
+        "parts": [
+          [
+            12,
+            19
+          ]
+        ],
+        "seconds": 4,
+        "effects": [],
+        "musicShape": {
+          "fadeIn": 0.5,
+          "fadeOut": 1,
+          "duckDb": -8,
+          "segments": [
+            {
+              "startWord": 14,
+              "endWord": 18,
+              "songFrom": 2,
+              "loop": false,
+              "gainDb": -3
+            }
+          ]
+        }
+      }
     },
     {
       "id": "legacy-span",

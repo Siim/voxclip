@@ -69,10 +69,13 @@ public sealed class HarnessTimeline
         if (create is not null && (create.Kind == "stretch" ? parts?.Count != 1 : (parts?.Count ?? 0) < 2)) throw InvalidTimeline();
         var track = Text(wire, "musicTrackId");
         var brief = Text(wire, "generateMusic", 500);
+        ClipPlanMusicShape? shape = null;
         if (wire.TryGetProperty("music", out var music))
         {
             if (track is not null || brief is not null) throw InvalidTimeline();
-            RequireObject(music, ["trackId", "brief"]);
+            RequireObject(music, ["trackId", "brief", .. ClipPlanMusicShape.Keys]);
+            try { shape = ClipPlanMusicShape.Read(JsonNode.Parse(music.GetRawText())); }
+            catch (JsonException exception) { throw new HarnessException(exception.Message); }
             track = Text(music, "trackId");
             brief = Text(music, "brief", 500);
             if ((track is null) == (brief is null)) throw InvalidTimeline();
@@ -116,7 +119,7 @@ public sealed class HarnessTimeline
                 "asSaid" => ClipAutopilotCaptionCase.AsSaid, _ => throw InvalidTimeline()
             },
             Hook = Text(wire, "hook", 80), Title = Text(wire, "title", 120), PostText = Text(wire, "postText", 500),
-            CoverTitle = Text(wire, "coverTitle", 80), Music = track is not null || brief is not null ? new(track, brief) : null,
+            CoverTitle = Text(wire, "coverTitle", 80), Music = track is not null || brief is not null ? new(track, brief) { Shape = shape } : null,
             Cuts = ReadItems(wire, "cuts", 30, ["startWord", "endWord", "kind", "reason"], ReadCut),
             PauseCuts = ReadItems(wire, "pauseCuts", 30, ["afterWord", "reason"], entry => new ClipAutopilotPlan.PauseCut(Anchor(entry, "afterWord"), Reason(entry))),
             Corrections = ReadItems(wire, "corrections", 30, ["word", "heard", "text", "reason"], entry => new ClipAutopilotPlan.Correction(Anchor(entry, "word"),
