@@ -71,7 +71,7 @@ public actor JSONProjectStore: ProjectStore {
     }
 
     public static func encode(_ project: Project) throws -> Data {
-        var snapshot = try StoryClips.forWriting(pruneAIResults(cleanReferences(project).project))
+        var snapshot = try ProjectMigrations.forWriting(pruneAIResults(cleanReferences(project).project))
         let words = snapshot.transcript?.words ?? []
         let pauses = try detectPauses(words, thresholdSeconds: snapshot.edits.pauseThresholdSeconds)
         let cutWords = Set(snapshot.edits.cutWordIds), cutPauses = Set(snapshot.edits.cutPauseIds)

@@ -4,8 +4,8 @@ public struct ClipFootage: Codable, Sendable, Equatable, Identifiable {
     public enum Kind: String, Codable, Sendable { case bRoll, screenshot, videoStack }
 
     public struct Selection: Codable, Sendable, Equatable {
-        public let sourceKey: String
-        public let start: Double
+        public var sourceKey: String
+        public var start: Double
 
         static func read(_ value: JSONValue) -> Self? {
             guard let fields = value.aiObject, Set(fields.keys) == ["sourceKey", "start"],
@@ -15,17 +15,27 @@ public struct ClipFootage: Codable, Sendable, Equatable, Identifiable {
         }
     }
 
-    public let id: String
-    public let clipID: String
-    public let kind: Kind
-    public let start: Double
-    public let end: Double
-    public let footage: Selection
+    public var id: String
+    public var clipID: String
+    public var kind: Kind
+    public var start: Double
+    public var end: Double
+    public var footage: Selection
+    public var fadeInSeconds: Double? = nil
+    public var fadeOutSeconds: Double? = nil
 
-    public func fits(duration: Double) -> Bool {
+    var usesTimelineEditFields: Bool { fadeInSeconds != nil || fadeOutSeconds != nil }
+
+    public func fits(duration: Double, editedLength: Double? = nil) -> Bool {
+        let length = editedLength ?? (end - start)
+        return hasPlayableSource(duration: duration) && length.isFinite && length > 0 &&
+            (kind == .screenshot || length <= duration - footage.start)
+    }
+
+    func hasPlayableSource(duration: Double) -> Bool {
         start.isFinite && end.isFinite && start >= 0 && end > start && duration.isFinite &&
         footage.start.isFinite && footage.start >= 0 && footage.start < duration &&
-        (kind == .screenshot || footage.start + (end - start) <= duration)
+        [fadeInSeconds, fadeOutSeconds].compactMap { $0 }.allSatisfy { (0...2).contains($0) }
     }
 
     func renderInput(clipID: String, span: ClosedRange<Double>, sources: [MediaReference],
@@ -53,9 +63,14 @@ extension ProjectMedia {
         Dictionary(additionalSources.filter { $0.video != nil }.map { ($0.footageKey, $0.durationSeconds) }, uniquingKeysWith: { first, _ in first })
     }
 
-    public mutating func setFootage(_ entry: ClipFootage) -> Bool {
+    public mutating func setFootage(_ entry: ClipFootage, editedLength: Double? = nil) -> Bool {
+        storeFootage(entry, editedLength: editedLength, allowShortSource: false)
+    }
+
+    mutating func storeFootage(_ entry: ClipFootage, editedLength: Double? = nil, allowShortSource: Bool) -> Bool {
         guard let recording = additionalSources.first(where: { $0.footageKey == entry.footage.sourceKey && $0.video != nil }),
-              entry.end <= source.durationSeconds, entry.fits(duration: recording.durationSeconds),
+              entry.end <= source.durationSeconds,
+              (allowShortSource ? entry.hasPlayableSource(duration: recording.durationSeconds) : entry.fits(duration: recording.durationSeconds, editedLength: editedLength)),
               !footage.contains(where: { $0.id != entry.id && $0.clipID == entry.clipID && $0.start < entry.end && entry.start < $0.end }) else { return false }
         footage.removeAll { $0.id == entry.id }
         footage.append(entry)

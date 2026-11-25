@@ -10,7 +10,7 @@ public enum ContextDemoProject {
     }
 
     public static func validate(_ project: Project) throws {
-        guard (1...5).contains(project.schemaVersion) else { throw ContextDemoError.unsupportedVersion }
+        guard (1...TimelineEditFields.version).contains(project.schemaVersion) else { throw ContextDemoError.unsupportedVersion }
         guard project.schemaVersion >= 4 || (project.contextDemo == nil && project.motionCues.isEmpty) else {
             throw ContextDemoError.unsupportedVersion
         }

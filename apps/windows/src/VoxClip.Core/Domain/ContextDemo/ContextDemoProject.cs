@@ -8,7 +8,7 @@ public static class ContextDemoProject
 {
     public static void Validate(Project project)
     {
-        ContextDemoValidation.Require(project.SchemaVersion is >= 1 and <= 5, ContextDemoError.UnsupportedVersion);
+        ContextDemoValidation.Require(project.SchemaVersion is >= 1 and <= Editing.TimelineEditFields.Version, ContextDemoError.UnsupportedVersion);
         ContextDemoValidation.Require(project.SchemaVersion >= 4 || (project.ContextDemo is null && project.MotionCues.Count == 0),
             ContextDemoError.UnsupportedVersion);
         if (project.ContextDemo is { } document)

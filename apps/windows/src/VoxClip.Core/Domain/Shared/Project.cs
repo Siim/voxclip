@@ -110,13 +110,24 @@ public sealed record FootageSelection(string SourceKey, double Start);
 /// <param name="Start">Start in primary-source seconds.</param>
 /// <param name="End">End in primary-source seconds.</param>
 /// <param name="Footage">The companion source and its start time.</param>
+/// <param name="FadeInSeconds">Optional dissolve from the speaker.</param>
+/// <param name="FadeOutSeconds">Optional dissolve back to the speaker.</param>
 public sealed record ProjectFootage(string Id, [property: JsonPropertyName("clipID")] string ClipId,
-    string Kind, double Start, double End, FootageSelection Footage)
+    string Kind, double Start, double End, FootageSelection Footage,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? FadeInSeconds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? FadeOutSeconds = null)
 {
     /// <summary>Whether the selection fits inside its companion source.</summary>
-    public bool Fits(double duration) => double.IsFinite(Start) && double.IsFinite(End) && Start >= 0 && End > Start &&
+    public bool Fits(double duration, double? editedLength = null)
+    {
+        var length = editedLength ?? (End - Start);
+        return HasPlayableSource(duration) && double.IsFinite(length) && length > 0 &&
+            (Kind == "screenshot" || length <= duration - Footage.Start);
+    }
+
+    internal bool HasPlayableSource(double duration) => double.IsFinite(Start) && double.IsFinite(End) && Start >= 0 && End > Start &&
         double.IsFinite(duration) && double.IsFinite(Footage.Start) && Footage.Start >= 0 && Footage.Start < duration &&
-        (Kind == "screenshot" || Footage.Start + (End - Start) <= duration);
+        FadeInSeconds is null or (>= 0 and <= 2) && FadeOutSeconds is null or (>= 0 and <= 2);
 }
 
 /// <summary>Relinkable media reference; editing §10.3. Source content key does not change after a move.</summary>

@@ -85,6 +85,41 @@ private actor SettingsDebounceClock {
         #expect(project.schemaVersion == 4)
         #expect(project.edits.cutWordIds == cuts)
     }
+
+    @Test func timelineFieldsPromoteOnlyWhenWritten() throws {
+        var story = try project()
+        let opening = ClipPart(id: "opening", startWordId: "w1", endWordId: "w2")
+        let closing = ClipPart(id: "closing", startWordId: "w4", endWordId: "w4")
+        try story.applyEditing(.addClip(ClipRange(id: "story", startWordId: "w1", endWordId: "w4", parts: [opening, closing])))
+        let original = try JSONProjectStore.encode(story)
+        let untouched = try JSONProjectStore.decode(original)
+        #expect(untouched.schemaVersion == 5)
+        #expect(try JSONProjectStore.encode(untouched) == original)
+
+        let title = ClipEffect(id: "timeline-title", clipId: "story", kind: .title, start: 0, end: 1, text: "Opening", position: .top)
+        story = try ClipEffects.adding([title], to: story)
+        let withTitle = try JSONProjectStore.encode(story)
+        var document = try #require(JSONSerialization.jsonObject(with: withTitle) as? [String: Any])
+        var effects = try #require(document["clipEffects"] as? [[String: Any]])
+        effects[0]["fadeInSeconds"] = 0
+        document["clipEffects"] = effects
+        #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: document)) }
+        document["schemaVersion"] = 6
+        let edited = try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: document))
+        #expect(edited.schemaVersion == 6)
+        #expect(edited.edits.clips == story.edits.clips)
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(edited)) == edited)
+        let raw = try JSONDecoder().decode(JSONValue.self, from: JSONProjectStore.encode(edited))
+        #expect(throws: VoxClipError.projectTooNew) { try ProjectMigrations.checkVersion(raw, maximumSupportedVersion: 5) }
+
+        var faded = title
+        faded.fadeInSeconds = 0
+        let promoted = try ClipEffects.adding([faded], to: story)
+        #expect(promoted == edited)
+        story.clipEffects = [faded]
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(story)) == promoted)
+        #expect(try ClipEffects.removing([faded.id], from: promoted).schemaVersion == 6)
+    }
     @Test func fiveQuestionsRedesignFixture() throws {
         let fixture = try project("five-questions")
         #expect(fixture.title == "Five questions")
@@ -130,7 +165,7 @@ private actor SettingsDebounceClock {
             else { #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data) } }
         }
         var changed = root; changed["unexpected"] = .bool(true); try rejected(changed)
-        changed = root; changed["schemaVersion"] = .number(6); try rejected(changed, error: .projectTooNew)
+        changed = root; changed["schemaVersion"] = .number(7); try rejected(changed, error: .projectTooNew)
         changed = root; changed["schemaVersion"] = .number(0); try rejected(changed)
         changed = root; changed["format"] = .string("another"); try rejected(changed)
         changed = root; changed["id"] = .string("not-uuid"); try rejected(changed)

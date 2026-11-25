@@ -11,6 +11,7 @@ It also registers the named motion template in the shared clip-plan schema. Run 
 """
 import json
 from pathlib import Path
+from generate_timeline_edit_schema import FADES, SOUND_SHAPE, fades, gain_points, number
 
 ROOT = Path(__file__).resolve().parents[2]
 PATH = ROOT / 'shared/schemas/project.schema.json'
@@ -88,16 +89,19 @@ def definitions():
         'animation': {'enum': ['rise', 'pop'], 'description': 'Optional entrance on title, lowerThird or sticker.'},
         'look': {'enum': ['original', 'muted', 'warm', 'bw']},
         'rate': {'type': 'number', 'minimum': 0.5, 'maximum': 2},
-        'imageFile': {'type': 'string', 'pattern': '^[0-9a-f-]{36}/illustration-[0-9a-f]{64}\\.png$'}}
+        'imageFile': {'type': 'string', 'pattern': '^[0-9a-f-]{36}/illustration-[0-9a-f]{64}\\.png$'},
+        **fades(5), 'mediaOffsetSeconds': number(0), 'gainPoints': gain_points()}
     entry = {'description': 'One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes '
                             'id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the '
-                            'clip and words exist, a freeze is at most 5 s, a sound spans its own length, a sticker is at '
+                            'clip and words exist, a freeze is at most 5 s, a sound fits its available media, a sticker is at '
                             'most 16 scalars and a progress bar sits at the top or bottom.',
              'type': 'object', 'additionalProperties': False, 'required': COMMON, 'properties': properties}
     entry['allOf'] = [
         {'if': {'properties': {'kind': {'const': kind}}},
          'then': {'required': COMMON + KIND_KEYS[kind],
-                  'propertyNames': {'enum': COMMON + KIND_KEYS[kind] + (['animation'] if kind in ('title', 'lowerThird', 'sticker') else [])},
+                  'propertyNames': {'enum': COMMON + KIND_KEYS[kind] + (['animation'] if kind in ('title', 'lowerThird', 'sticker') else [])
+                                    + (list(FADES) if kind not in ('bleep', 'mute', 'speedForPart', 'freeze') else [])
+                                    + (list(SOUND_SHAPE) if kind == 'sound' else [])},
                   **({'properties': {'animation': {'const': 'pop' if kind == 'sticker' else 'rise'}}}
                      if kind in ('title', 'lowerThird', 'sticker') else {}),
                   **({'properties': {'clipId': {'type': 'string'}}}
@@ -137,7 +141,7 @@ def main():
                        'start': {'type': 'number', 'minimum': 0}, 'end': {'type': 'number', 'minimum': 0},
                        'footage': {'type': 'object', 'additionalProperties': False, 'required': ['sourceKey', 'start'],
                                    'properties': {'sourceKey': {'type': 'string', 'pattern': '^[0-9a-f]{64}$'},
-                                                  'start': {'type': 'number', 'minimum': 0}}}}}
+                                                  'start': {'type': 'number', 'minimum': 0}}}, **fades(2)}}
     for name, value in definitions().items():
         schema['$defs'][name] = value
     schema['properties']['clipEffects'] = {

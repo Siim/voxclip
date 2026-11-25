@@ -53,7 +53,7 @@ enum StoryClips {
     static func validate(_ project: Project) throws {
         let words = project.transcript?.words ?? []
         let stories = project.edits.clips.filter { $0.parts != nil }
-        try ProjectValidation.require((project.schemaVersion == 5) == !stories.isEmpty, "Invalid story clip project version")
+        try ProjectValidation.require(project.schemaVersion >= 6 || (project.schemaVersion == 5) == !stories.isEmpty, "Invalid story clip project version")
         for clip in project.edits.clips {
             try ProjectValidation.require(valid(clip, words: words), "Invalid story clip parts or source hull")
             if clip.parts != nil { try validatePlacement(clip, project: project, words: words) }

@@ -16,12 +16,19 @@ import Testing
         let vectors = try JSONDecoder().decode([JSONValue].self, from: FixtureLoader.data("fixtures/clip-effects/footage-cases.json"))
         for raw in vectors {
             let fields = try #require(raw.aiObject)
-            let entry = ClipPlanEffect.read(.object(fields.filter { !["duration", "placement", "invalid"].contains($0.key) }))
+            let entry = ClipPlanEffect.read(.object(fields.filter { !["duration", "placement", "invalid", "editedLength", "editedFits"].contains($0.key) }))
             #expect((entry == nil) == (fields["invalid"] == .bool(true)))
             let operation = entry?.operation(id: "extra", clipID: "clip", scope: 0...1,
                 anchor: { Double($0) / 2..<(Double($0) / 2 + 0.5) }, stickers: [],
                 sources: ["demo": fields["duration"]?.aiDouble ?? 0])
             #expect((operation != nil) == (fields["placement"] == .bool(true)))
+            if let editedLength = fields["editedLength"]?.aiDouble {
+                let selection = try #require(fields["footage"].flatMap(ClipFootage.Selection.read))
+                let kind = try #require(fields["kind"]?.aiString.flatMap(ClipFootage.Kind.init(rawValue:)))
+                let footprint = ClipFootage(id: "extra", clipID: "clip", kind: kind, start: 0, end: 1, footage: selection)
+                let duration = try #require(fields["duration"]?.aiDouble)
+                #expect(footprint.fits(duration: duration, editedLength: editedLength) == (fields["editedFits"] == .bool(true)))
+            }
             if let entry { #expect(try JSONDecoder().decode(ClipPlanEffect.self, from: JSONEncoder().encode(entry)) == entry) }
         }
     }

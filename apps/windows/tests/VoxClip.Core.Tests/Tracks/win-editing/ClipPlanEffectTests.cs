@@ -63,7 +63,7 @@ public sealed class ClipPlanEffectTests
         foreach (var item in vectors.Select(item => item!.AsObject()))
         {
             var valid = (bool?)item["invalid"] != true;
-            var entry = new JsonObject(item.Where(pair => pair.Key is not ("invalid" or "duration" or "placement"))
+            var entry = new JsonObject(item.Where(pair => pair.Key is not ("invalid" or "duration" or "placement" or "editedLength" or "editedFits"))
                 .Select(pair => KeyValuePair.Create(pair.Key, pair.Value?.DeepClone())));
             var parsed = ClipPlanEffect.Read(entry);
             Assert.Equal(valid, parsed is not null);
@@ -72,6 +72,13 @@ public sealed class ClipPlanEffectTests
             var placement = parsed?.FootagePlacement("extra", "clip", new(0, 1), index => (index / 2.0, index / 2.0 + 0.5),
                 _ => false, new Dictionary<string, double> { ["demo"] = (double?)item["duration"] ?? 0 });
             Assert.Equal((bool?)item["placement"] == true, placement is not null);
+            if (item["editedLength"] is { } length)
+            {
+                var selection = item["footage"]!;
+                var footprint = new ProjectFootage("extra", "clip", item["kind"]!.GetValue<string>(), 0, 1,
+                    new(selection["sourceKey"]!.GetValue<string>(), selection["start"]!.GetValue<double>()));
+                Assert.Equal(item["editedFits"]!.GetValue<bool>(), footprint.Fits(item["duration"]!.GetValue<double>(), length.GetValue<double>()));
+            }
         }
     }
 

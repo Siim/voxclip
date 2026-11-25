@@ -18,12 +18,12 @@ def part_array(definition):
 
 def main():
     schema = json.loads(SCHEMA.read_text())
-    schema['title'] = 'VoxClip project file (.voxclip), schemaVersion 1, 2, 3, 4 or 5'
-    schema['properties']['schemaVersion']['enum'] = [1, 2, 3, 4, 5]
+    schema['title'] = 'VoxClip project file (.voxclip), schemaVersion 1, 2, 3, 4, 5 or 6'
+    schema['properties']['schemaVersion']['enum'] = [1, 2, 3, 4, 5, 6]
     for rule in schema['allOf']:
         versions = rule['if']['properties']['schemaVersion'].get('enum')
-        if versions == [3, 4]:
-            versions.append(5)
+        if versions in ([3, 4], [3, 4, 5]):
+            versions[:] = [3, 4, 5, 6]
 
     defs = schema['$defs']
     words = {key: {'$ref': '#/$defs/wordId'} for key in ('startWordId', 'endWordId')}
@@ -42,12 +42,16 @@ def main():
     rule = {
         'if': {'properties': {'schemaVersion': {'const': 5}}},
         'then': {'properties': {'edits': {'properties': {'clips': story_clips}}}},
-        'else': {'properties': {
+        'else': {'if': {'properties': {'schemaVersion': {'maximum': 4}}}, 'then': {'properties': {
             'edits': {'properties': {'clips': legacy_clips}},
             'ai': {'properties': {'results': legacy_ai_results}},
-        }},
+        }}},
     }
-    if rule not in schema['allOf']:
+    for index, existing in enumerate(schema['allOf']):
+        if existing['if']['properties']['schemaVersion'].get('const') == 5:
+            schema['allOf'][index] = rule
+            break
+    else:
         schema['allOf'].append(rule)
     SCHEMA.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
 

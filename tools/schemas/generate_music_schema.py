@@ -9,6 +9,7 @@ Idempotent: running it twice leaves the same bytes. Run from anywhere; it rewrit
 """
 import json
 from pathlib import Path
+from generate_timeline_edit_schema import fades, gain_points, number
 
 ROOT = Path(__file__).resolve().parents[2]
 PATH = ROOT / 'shared/schemas/project.schema.json'
@@ -53,8 +54,16 @@ def music_definitions():
         'fadeInSeconds': {'type': 'number', 'minimum': 0, 'maximum': 10},
         'fadeOutSeconds': {'type': 'number', 'minimum': 0, 'maximum': 10},
         'startOffsetSeconds': {'type': 'number', 'minimum': 0}},
-        'One background track; doc/spec/music.md section 2. Every key is written, null where a source has no value. '
+        'One background track; doc/spec/music.md section 2. Legacy keys are written even when null. '
         'Runtime also checks that the file folder is the project id, the clip exists and the offset is inside the track.')
+    entry['properties'].update(duckDb=number(-24, 0), segments={
+        'type': 'array', 'minItems': 1, 'maxItems': 8, 'items': {'$ref': '#/$defs/musicSegment'},
+    })
+    segment = obj({'id': {'type': 'string', 'pattern': IDENTIFIER}, 'anchorSeconds': number(0),
+                   'lengthSeconds': {'type': 'number', 'exclusiveMinimum': 0.1}, 'songFromSeconds': number(0),
+                   'loop': {'type': 'boolean'}, 'gainDb': {**number(-40, 12), 'default': 0}, **fades(10)},
+                  'One music segment on the edited clock. Runtime checks that non-looping segments fit the asset.')
+    segment['properties']['gainPoints'] = gain_points()
     entry['allOf'] = [
         {'if': {'properties': {'source': {'const': 'library'}}},
          'then': {'properties': {'license': {'enum': ['cc0', 'by', 'pdm']}, 'sourceUrl': {'type': 'string'}, 'prompt': {'type': 'null'}}}},
@@ -63,14 +72,15 @@ def music_definitions():
         {'if': {'properties': {'source': {'const': 'file'}}},
          'then': {'properties': {'license': {'const': 'own'}, 'prompt': {'type': 'null'}}}},
         {'if': {'properties': {'license': {'const': 'by'}}}, 'then': {'properties': {'attribution': {'type': 'string'}}}}]
-    return asset, entry
+    return asset, entry, segment
 
 
 def main():
     schema = json.loads(PATH.read_text())
-    asset, entry = music_definitions()
+    asset, entry, segment = music_definitions()
     schema['$defs']['musicAsset'] = asset
     schema['$defs']['music'] = entry
+    schema['$defs']['musicSegment'] = segment
     schema['properties']['music'] = {
         'type': 'array', 'minItems': 1, 'maxItems': 65, 'items': {'$ref': '#/$defs/music'},
         'description': 'Schema-v4 background tracks under clips; omit when empty. Versions 1-3 never carry it.'}

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/project.schema.json",
-  "title": "VoxClip project file (.voxclip), schemaVersion 1, 2, 3, 4 or 5",
+  "title": "VoxClip project file (.voxclip), schemaVersion 1, 2, 3, 4, 5 or 6",
   "description": "One portable UTF-8 JSON document per project, identical on macOS and Windows. It references the source media (never embeds it) and stores the transcript, the edits (cut set, corrections, clip range layer), caption choices, export choices, share captions and cached AI clip results. Caches (levels, thumbnails, proxies) live in the app support directory, never here. Secrets never appear in this file. Semantics that JSON Schema cannot express are normative in doc/spec/editing.md section 10. The apps do not run a JSON Schema engine at runtime; they decode strictly into typed models (doc/architecture.md section 2.1), and tests validate every file the apps write against this schema.",
   "type": "object",
   "additionalProperties": false,
@@ -32,7 +32,8 @@
         2,
         3,
         4,
-        5
+        5,
+        6
       ]
     },
     "id": {
@@ -238,7 +239,8 @@
             "enum": [
               3,
               4,
-              5
+              5,
+              6
             ]
           }
         }
@@ -374,52 +376,142 @@
         }
       },
       "else": {
+        "if": {
+          "properties": {
+            "schemaVersion": {
+              "maximum": 4
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "edits": {
+              "properties": {
+                "clips": {
+                  "items": {
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "parts"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "ai": {
+              "properties": {
+                "results": {
+                  "items": {
+                    "properties": {
+                      "clips": {
+                        "items": {
+                          "not": {
+                            "anyOf": [
+                              {
+                                "required": [
+                                  "parts"
+                                ]
+                              },
+                              {
+                                "required": [
+                                  "notInTake"
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
         "properties": {
-          "edits": {
+          "schemaVersion": {
+            "maximum": 5
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "clipEffects": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "fadeInSeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "fadeOutSeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "mediaOffsetSeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "gainPoints"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "music": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "duckDb"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "segments"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "media": {
             "properties": {
-              "clips": {
+              "footage": {
                 "items": {
                   "not": {
                     "anyOf": [
                       {
                         "required": [
-                          "parts"
+                          "fadeInSeconds"
                         ]
                       },
                       {
                         "required": [
-                          "kind"
+                          "fadeOutSeconds"
                         ]
                       }
                     ]
-                  }
-                }
-              }
-            }
-          },
-          "ai": {
-            "properties": {
-              "results": {
-                "items": {
-                  "properties": {
-                    "clips": {
-                      "items": {
-                        "not": {
-                          "anyOf": [
-                            {
-                              "required": [
-                                "parts"
-                              ]
-                            },
-                            {
-                              "required": [
-                                "notInTake"
-                              ]
-                            }
-                          ]
-                        }
-                      }
-                    }
                   }
                 }
               }
@@ -3341,7 +3433,7 @@
       }
     },
     "music": {
-      "description": "One background track; doc/spec/music.md section 2. Every key is written, null where a source has no value. Runtime also checks that the file folder is the project id, the clip exists and the offset is inside the track.",
+      "description": "One background track; doc/spec/music.md section 2. Legacy keys are written even when null. Runtime also checks that the file folder is the project id, the clip exists and the offset is inside the track.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -3473,6 +3565,19 @@
         "startOffsetSeconds": {
           "type": "number",
           "minimum": 0
+        },
+        "duckDb": {
+          "type": "number",
+          "minimum": -24,
+          "maximum": 0
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/musicSegment"
+          }
         }
       },
       "allOf": [
@@ -3761,7 +3866,7 @@
       ]
     },
     "clipEffect": {
-      "description": "One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the clip and words exist, a freeze is at most 5 s, a sound spans its own length, a sticker is at most 16 scalars and a progress bar sits at the top or bottom.",
+      "description": "One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the clip and words exist, a freeze is at most 5 s, a sound fits its available media, a sticker is at most 16 scalars and a progress bar sits at the top or bottom.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -3910,6 +4015,28 @@
         "imageFile": {
           "type": "string",
           "pattern": "^[0-9a-f-]{36}/illustration-[0-9a-f]{64}\\.png$"
+        },
+        "fadeInSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "fadeOutSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "mediaOffsetSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gainPoints": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/gainPoint"
+          },
+          "description": "Relative dB points in strictly increasing item-local time; checked at runtime."
         }
       },
       "allOf": [
@@ -3999,7 +4126,9 @@
                 "end",
                 "rect",
                 "tracking",
-                "track"
+                "track",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4032,7 +4161,9 @@
                 "end",
                 "rect",
                 "tracking",
-                "track"
+                "track",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4064,7 +4195,9 @@
                 "end",
                 "text",
                 "position",
-                "animation"
+                "animation",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             },
             "properties": {
@@ -4101,7 +4234,9 @@
                 "end",
                 "text",
                 "position",
-                "animation"
+                "animation",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             },
             "properties": {
@@ -4140,7 +4275,9 @@
                 "text",
                 "position",
                 "scale",
-                "animation"
+                "animation",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             },
             "properties": {
@@ -4174,7 +4311,9 @@
                 "kind",
                 "start",
                 "end",
-                "rect"
+                "rect",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4203,7 +4342,9 @@
                 "kind",
                 "start",
                 "end",
-                "rect"
+                "rect",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4232,7 +4373,9 @@
                 "kind",
                 "start",
                 "end",
-                "position"
+                "position",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4290,7 +4433,11 @@
                 "start",
                 "end",
                 "sound",
-                "gainDb"
+                "gainDb",
+                "fadeInSeconds",
+                "fadeOutSeconds",
+                "mediaOffsetSeconds",
+                "gainPoints"
               ]
             }
           }
@@ -4319,7 +4466,9 @@
                 "kind",
                 "start",
                 "end",
-                "look"
+                "look",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             },
             "properties": {
@@ -4387,7 +4536,9 @@
                 "kind",
                 "start",
                 "end",
-                "imageFile"
+                "imageFile",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             },
             "properties": {
@@ -4421,7 +4572,9 @@
                 "kind",
                 "start",
                 "end",
-                "template"
+                "template",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4816,6 +4969,16 @@
               "minimum": 0
             }
           }
+        },
+        "fadeInSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "fadeOutSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
         }
       }
     },
@@ -4933,6 +5096,85 @@
         },
         "reframe": {
           "$ref": "#/$defs/clipControls/properties/reframe"
+        }
+      }
+    },
+    "gainPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "t",
+        "db"
+      ],
+      "properties": {
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "db": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 12
+        }
+      }
+    },
+    "musicSegment": {
+      "description": "One music segment on the edited clock. Runtime checks that non-looping segments fit the asset.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "anchorSeconds",
+        "lengthSeconds",
+        "songFromSeconds",
+        "loop",
+        "gainDb",
+        "fadeInSeconds",
+        "fadeOutSeconds"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "anchorSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lengthSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0.1
+        },
+        "songFromSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "gainDb": {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 12,
+          "default": 0
+        },
+        "fadeInSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "fadeOutSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "gainPoints": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/gainPoint"
+          },
+          "description": "Relative dB points in strictly increasing item-local time; checked at runtime."
         }
       }
     }

@@ -82,18 +82,34 @@ import Testing
         media["footage"] = .array(placements)
         media["additionalSources"] = .array([companion, companion])
         #expect(throws: (any Error).self) { try JSONProjectStore.decode(data(media)) }
+
+        media["additionalSources"] = .array([companion])
+        let edited = placements + (try #require(vectors["v6Valid"]?.aiArray))
+        media["footage"] = .array(edited)
+        #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data(media)) }
+        document["schemaVersion"] = .number(6)
+        let editedProject = try JSONProjectStore.decode(data(media))
+        let saved = try JSONProjectStore.encode(editedProject)
+        #expect(try JSONDecoder().decode(JSONValue.self, from: saved).aiObject?["media"] == .object(media))
+        var firstEdit = project
+        firstEdit.media.footage[0].fadeInSeconds = 0
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(firstEdit)).schemaVersion == 6)
+        for invalid in try #require(vectors["v6Invalid"]?.aiArray) {
+            media["footage"] = .array(edited + [invalid])
+            #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data(media)) }
+        }
     }
 
-    @Test func validCorpusRoundTripsAtV4AndWritesOnlyEachKindsKeys() throws {
+    @Test func validCorpusRoundTripsAndWritesOnlyEachKindsKeys() throws {
         for item in try cases().valid {
             let input = try data(item)
             let project = try ProjectJSON.decode(input)
-            #expect(project.schemaVersion == 4, "\(item.id)")
             let encoded = try ProjectJSON.encode(project)
             #expect(try ProjectJSON.decode(encoded) == project, "\(item.id)")
             #expect(try JSONProjectStore.decode(JSONProjectStore.encode(project)) == project, "\(item.id)")
             let raw = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
             let original = try #require(JSONSerialization.jsonObject(with: input) as? [String: Any])
+            #expect(project.schemaVersion == original["schemaVersion"] as? Int, "\(item.id)")
             if project.clipEffects.isEmpty { #expect(raw["clipEffects"] == nil, "\(item.id)") }
             // Saved unchanged: the same entries, key for key, as the file that was opened.
             #expect(NSDictionary(dictionary: ["e": raw["clipEffects"] ?? NSNull()]) == NSDictionary(dictionary: ["e": original["clipEffects"] ?? NSNull()]), "\(item.id)")

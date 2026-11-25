@@ -54,19 +54,17 @@ import Testing
         #expect(try cases().format == "voxclip-music-wire-cases/1")
     }
 
-    @Test func validCorpusRoundTripsAtV4AndOmitsEmptyMusic() throws {
+    @Test func validCorpusRoundTripsAndOmitsEmptyMusic() throws {
         for item in try cases().valid {
-            let project = try ProjectJSON.decode(data(item))
-            #expect(project.schemaVersion == 4, "\(item.id)")
+            let input = try data(item)
+            let original = try #require(JSONDecoder().decode(JSONValue.self, from: input).aiObject)
+            let project = try ProjectJSON.decode(input)
+            #expect(original["schemaVersion"] == .number(Double(project.schemaVersion)), "\(item.id)")
             let encoded = try ProjectJSON.encode(project)
             #expect(try ProjectJSON.decode(encoded) == project, "\(item.id)")
             #expect(try JSONProjectStore.decode(JSONProjectStore.encode(project)) == project, "\(item.id)")
-            let raw = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-            if project.music.isEmpty { #expect(raw["music"] == nil, "\(item.id)") }
-            for entry in (raw["music"] as? [[String: Any]]) ?? [] {
-                // Every key is written, null included, so both Cores read each entry the same way.
-                #expect(entry.count == 15, "\(item.id)")
-            }
+            let raw = try #require(JSONDecoder().decode(JSONValue.self, from: encoded).aiObject)
+            #expect(raw["music"] == original["music"], "\(item.id)")
         }
     }
 
@@ -94,6 +92,9 @@ import Testing
         var promoted = try MusicProject.setting(track, clipId: nil, in: original)
         #expect(promoted.schemaVersion == 4 && promoted.music == [track])
         #expect(try ProjectJSON.decode(ProjectJSON.encode(promoted)) == promoted)
+        var edited = track
+        edited.duckDb = -24
+        #expect(try MusicProject.setting(edited, clipId: nil, in: promoted).schemaVersion == 6)
         promoted = try MusicProject.setting(nil, clipId: nil, in: promoted)
         #expect(promoted.music.isEmpty && promoted.schemaVersion == 4)
         var legacy = original

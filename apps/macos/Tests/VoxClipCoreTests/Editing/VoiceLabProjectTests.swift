@@ -20,7 +20,7 @@ import Testing
         #expect(v2.schemaVersion == 2 && v2.voiceLab.segments.count == 1)
         #expect(try JSONProjectStore.decode(JSONProjectStore.encode(v2)) == v2)
         var future = try #require(JSONSerialization.jsonObject(with: v1Data) as? [String: Any])
-        future["schemaVersion"] = 6
+        future["schemaVersion"] = 7
         #expect(throws: VoxClipError.projectTooNew) { try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: future)) }
         var unknown = v2; unknown.extensions = ["example.keep": .object(["nested": .array([.number(7)])])]
         #expect(try JSONProjectStore.decode(JSONProjectStore.encode(unknown)).extensions == unknown.extensions)

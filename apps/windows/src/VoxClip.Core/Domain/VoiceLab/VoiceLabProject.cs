@@ -126,7 +126,7 @@ public static class VoiceLabProject
             return;
         }
         WholeClipRevoice.Validate(project);
-        Require(project.SchemaVersion is 2 or 3 or 4 or 5 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
+        Require(project.SchemaVersion is >= 2 and <= Editing.TimelineEditFields.Version && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 2) Require(project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null &&
             project.VoiceLab.Segments.All(segment => segment.Scope is null && segment.GroupId is null && segment.Provenance.Region is null && segment.Candidates.All(candidate => candidate.Recipe is null)), VoiceLabProjectErrorCode.InvalidSegment);
         Require(VoiceLabAssetNaming.IsSafeProjectId(project.Id), VoiceLabProjectErrorCode.UnsafePath);

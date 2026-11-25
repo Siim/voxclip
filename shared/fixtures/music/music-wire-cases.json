@@ -137,9 +137,1094 @@
           "value": 10
         }
       ]
+    },
+    {
+      "id": "nonlooping-segment-at-song-tail",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "/music/0/duckDb",
+          "value": -24
+        }
+      ]
+    },
+    {
+      "id": "eight-looping-segments",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/duckDb",
+          "value": 0
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "segment-0",
+              "anchorSeconds": 0,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-1",
+              "anchorSeconds": 1,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-2",
+              "anchorSeconds": 2,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-3",
+              "anchorSeconds": 3,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-4",
+              "anchorSeconds": 4,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-5",
+              "anchorSeconds": 5,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-6",
+              "anchorSeconds": 6,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-7",
+              "anchorSeconds": 7,
+              "lengthSeconds": 900,
+              "songFromSeconds": 220,
+              "loop": true,
+              "gainDb": 12,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "duck-depth-without-segments",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/duckDb",
+          "value": -12
+        }
+      ]
     }
   ],
   "invalid": [
+    {
+      "id": "duck-depth-before-v6",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/duckDb",
+          "value": -12
+        }
+      ]
+    },
+    {
+      "id": "segments-before-v6",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "duck-depth-invalid-0",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/duckDb",
+          "value": -24.01
+        }
+      ]
+    },
+    {
+      "id": "duck-depth-invalid-1",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/duckDb",
+          "value": 0.01
+        }
+      ]
+    },
+    {
+      "id": "duck-depth-invalid-2",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/duckDb",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "duck-depth-invalid-3",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/duckDb",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "empty-segments",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "null-segments",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "too-many-segments",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "segment-0",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-1",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-2",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-3",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-4",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-5",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-6",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-7",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "segment-8",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "duplicate-segment-id",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            },
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-anchorSeconds-10",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": -0.001,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-lengthSeconds-11",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 0.1,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-lengthSeconds-12",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2.001,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-songFromSeconds-13",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": -0.001,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-songFromSeconds-14",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 222,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-loop-15",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": 1,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-gainDb-16",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40.01,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-gainDb-17",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": 12.01,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-fadeInSeconds-18",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": -0.01,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-fadeOutSeconds-19",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10.01,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-gainPoints-20",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-gainPoints-21",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 1,
+                  "db": 0
+                },
+                {
+                  "t": 1,
+                  "db": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-unknown-22",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "loop": false,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ],
+              "unknown": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "segment-missing-loop",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/music/0/segments",
+          "value": [
+            {
+              "id": "opening",
+              "anchorSeconds": 0,
+              "lengthSeconds": 2,
+              "songFromSeconds": 220,
+              "gainDb": -40,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 10,
+              "gainPoints": [
+                {
+                  "t": 0,
+                  "db": -60
+                },
+                {
+                  "t": 1,
+                  "db": 12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
     {
       "id": "unknown-entry-field",
       "schemaValid": false,
@@ -708,7 +1793,7 @@
       "patches": [
         {
           "path": "/schemaVersion",
-          "value": 6
+          "value": 7
         }
       ],
       "tooNew": true

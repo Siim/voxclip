@@ -73,6 +73,36 @@ def generated():
     def reject(identity, patches, schema_valid=False):
         invalid.append({'id': identity, 'schemaValid': schema_valid, 'patches': patches})
 
+    v6 = set_value('/schemaVersion', 6)
+    points = [{'t': index / 256, 'db': -60 if index % 2 == 0 else 12} for index in range(64)]
+    valid.extend([
+        {'id': 'overlay-and-look-fades', 'patches': [v6, set_value('/clipEffects/3/fadeInSeconds', 0),
+            set_value('/clipEffects/12/fadeOutSeconds', 5), set_value('/clipEffects/14/fadeInSeconds', 0.75)]},
+        {'id': 'trimmed-sound-with-fades-and-envelope', 'patches': [v6, set_value('/clipEffects/10/end', 2.85),
+            set_value('/clipEffects/10/mediaOffsetSeconds', 0.10), set_value('/clipEffects/10/fadeInSeconds', 0.03),
+            set_value('/clipEffects/10/fadeOutSeconds', 0), set_value('/clipEffects/10/gainPoints', points)]},
+        {'id': 'sound-at-minimum-length', 'patches': [v6, set_value('/clipEffects/10/end', 2.65)]},
+    ])
+    reject('fade-before-v6', [set_value('/clipEffects/3/fadeInSeconds', 0)])
+    for index, kind in [(0, 'bleep'), (9, 'freeze'), (11, 'mute'), (13, 'speed')]:
+        reject(f'{kind}-refuses-fades', [v6, set_value(f'/clipEffects/{index}/fadeOutSeconds', 0)])
+    for index, fade in enumerate([-0.01, 5.01, None, True]):
+        reject(f'invalid-fade-{index}', [v6, set_value('/clipEffects/3/fadeInSeconds', fade)])
+    for key in ('mediaOffsetSeconds', 'gainPoints'):
+        reject(f'only-sound-allows-{key}', [v6, set_value(f'/clipEffects/3/{key}', 0 if key == 'mediaOffsetSeconds' else [])])
+    reject('sound-negative-offset', [v6, set_value('/clipEffects/10/mediaOffsetSeconds', -0.01)])
+    reject('sound-null-offset', [v6, set_value('/clipEffects/10/mediaOffsetSeconds', None)])
+    reject('sound-offset-exhausts-asset', [v6, set_value('/clipEffects/10/mediaOffsetSeconds', 0.35)], True)
+    reject('sound-overrun-after-offset', [v6, set_value('/clipEffects/10/mediaOffsetSeconds', 0.01)], True)
+    reject('sound-below-minimum-length', [v6, set_value('/clipEffects/10/end', 2.649)], True)
+    for name, envelope, schema_valid in [
+        ('descending', [points[1], points[0]], True), ('duplicate-time', [points[0], points[0]], True),
+        ('too-many', points + [{'t': 1, 'db': 0}], False), ('negative-time', [{'t': -0.1, 'db': 0}], False),
+        ('low-db', [{'t': 0, 'db': -60.1}], False), ('high-db', [{'t': 0, 'db': 12.1}], False),
+        ('extra-field', [{'t': 0, 'db': 0, 'unknown': 1}], False), ('null', None, False),
+    ]:
+        reject(f'gain-points-{name}', [v6, set_value('/clipEffects/10/gainPoints', envelope)], schema_valid)
+
     reject('unknown-field', [set_value('/clipEffects/0/unexpected', True)])
     reject('field-of-another-kind', [set_value('/clipEffects/0/rect', rect)])
     reject('missing-clip-id', [remove('/clipEffects/0/clipId')])
@@ -126,7 +156,7 @@ def generated():
     reject('other-project-illustration-folder', [set_value('/clipEffects/14/imageFile', f'00000000-0000-0000-0000-000000000001/illustration-{"a" * 64}.png')], True)
     for version in (1, 2, 3):
         reject(f'v{version}-effects', [set_value('/schemaVersion', version)])
-    reject('future-project', [set_value('/schemaVersion', 6)])
+    reject('future-project', [set_value('/schemaVersion', 7)])
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-clip-effects-wire-cases/1', 'project': 'fixtures/clip-effects/effects-project.voxclip',
              'valid': valid, 'invalid': invalid}

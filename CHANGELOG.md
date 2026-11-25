@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Mac and Windows can save timeline fades, sound trims and gain keyframes, and edited music in project format v6; projects without these edits keep their existing format.
 - On Mac, review stories, showreels and stretches with their ordered parts, creative choices and cost; use Change… inline without paying again for assets you keep.
 - On Mac, add, trim, reorder and remove story clip parts in the Outline, see their joins in the timeline, and make ordinary clips from parts for voice edits.
 - Mac video exports keep licensed sound-effect credits in the MP4, including on macOS 26.

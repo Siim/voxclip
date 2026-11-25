@@ -14,6 +14,16 @@
     {"id":"angle-1","clipID":"clip-main","kind":"videoStack","start":0,"end":2,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":1}},
     {"id":"still-1","clipID":"clip-main","kind":"screenshot","start":2,"end":3,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":3.9}}
   ],
+  "v6Valid": [
+    {"id":"short-cutaway","clipID":"clip-main","kind":"bRoll","start":3,"end":5,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":3.5},"fadeInSeconds":0,"fadeOutSeconds":2}
+  ],
+  "v6Invalid": [
+    {"id":"negative-fade","clipID":"clip-main","kind":"bRoll","start":3,"end":4,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0},"fadeInSeconds":-0.01},
+    {"id":"long-fade","clipID":"clip-main","kind":"bRoll","start":3,"end":4,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0},"fadeOutSeconds":2.01},
+    {"id":"null-fade","clipID":"clip-main","kind":"bRoll","start":3,"end":4,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0},"fadeInSeconds":null},
+    {"id":"outside-source","clipID":"clip-main","kind":"bRoll","start":3,"end":4,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":4},"fadeInSeconds":1},
+    {"id":"overlap-after-fade","clipID":"clip-main","kind":"bRoll","start":4,"end":5,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0},"fadeOutSeconds":1}
+  ],
   "invalid": [
     {"id":"angle-1","clipID":"clip-main","kind":"bRoll","start":3,"end":4,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0}},
     {"id":"broll-1","clipID":"clip-main","kind":"bRoll","start":1,"end":2,"footage":{"sourceKey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","start":0}},

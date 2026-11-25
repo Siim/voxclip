@@ -24,7 +24,8 @@ enum ProjectValidation {
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
         let wireVersion = try map(raw)["schemaVersion"]
-        let isV5 = wireVersion == .number(5)
+        let isV6 = wireVersion == .number(6)
+        let isV5 = isV6 || wireVersion == .number(5)
         let isV4 = isV5 || wireVersion == .number(4)
         let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""))
         if let clipStyle = root["clipStyle"] {
@@ -55,8 +56,11 @@ enum ProjectValidation {
             let entries = try array(footage)
             try require(!entries.isEmpty, "Empty companion placement list")
             for raw in entries {
-                let fields = try object(raw, required: "id clipID kind start end footage")
+                let fields = try object(raw, required: "id clipID kind start end footage", optional: isV6 ? "fadeInSeconds fadeOutSeconds" : "")
                 _ = try object(fields["footage"], required: "sourceKey start")
+                for key in ["fadeInSeconds", "fadeOutSeconds"] where fields[key] != nil {
+                    guard case .number(let fade) = fields[key], (0...2).contains(fade) else { try fail("Invalid footage fade") }
+                }
             }
         }
         if root["transcript"] != .null {
@@ -159,8 +163,8 @@ enum ProjectValidation {
             try require(root["id"] == .string(document.projectId) && media["source"]?[ai: "contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
         }
         if let cues = root["motionCues"] { try validateMotionCues(cues) }
-        if let music = root["music"] { try MusicProject.validateWire(music) }
-        if let effects = root["clipEffects"] { try ClipEffects.validateWire(effects) }
+        if let music = root["music"] { try MusicProject.validateWire(music, timelineEdits: isV6) }
+        if let effects = root["clipEffects"] { try ClipEffects.validateWire(effects, timelineEdits: isV6) }
         if let controls = root["clipControls"] { try ClipControlsProject.validateWire(controls) }
         if let translations = root["captionTranslations"] { try CaptionTranslations.validateWire(translations) }
         try validateDates(raw)
@@ -285,7 +289,7 @@ enum ProjectValidation {
             try text(entry.id, pattern: idPattern)
             try text(entry.clipID, pattern: idPattern)
             try text(entry.footage.sourceKey, pattern: hashPattern)
-            try require(placementIDs.insert(entry.id).inserted && media.setFootage(entry), "Invalid companion footage placement")
+            try require(placementIDs.insert(entry.id).inserted && media.storeFootage(entry, allowShortSource: project.schemaVersion == 6), "Invalid companion footage placement")
         }
         if let transcript = project.transcript {
             try require(transcript.schemaVersion == 1 && transcript.pipelineVersion >= 1, "Invalid transcript version")

@@ -49,7 +49,7 @@ internal static class StoryClips
     internal static void Validate(Project project)
     {
         var words = project.Transcript?.Words ?? [];
-        Require((project.SchemaVersion == 5) == project.Edits.Clips.Any(clip => clip.Parts is not null), "Invalid story clip project version.");
+        Require(project.SchemaVersion >= TimelineEditFields.Version || (project.SchemaVersion == 5) == project.Edits.Clips.Any(clip => clip.Parts is not null), "Invalid story clip project version.");
         foreach (var clip in project.Edits.Clips)
         {
             Require(Valid(clip, words), "Invalid story clip parts or source hull.");

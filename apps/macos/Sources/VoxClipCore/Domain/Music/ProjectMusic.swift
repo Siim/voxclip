@@ -38,8 +38,26 @@ public struct MusicAsset: Codable, Sendable, Equatable {
     public static let extensions: Set<String> = ["mp3", "m4a", "wav", "aif", "aiff", "flac"]
 }
 
+public struct MusicSegment: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var anchorSeconds: Double
+    public var lengthSeconds: Double
+    public var songFromSeconds: Double
+    public var loop: Bool
+    public var gainDb: Double
+    public var fadeInSeconds: Double
+    public var fadeOutSeconds: Double
+    public var gainPoints: [GainPoint]?
+
+    public init(id: String, anchorSeconds: Double, lengthSeconds: Double, songFromSeconds: Double, loop: Bool,
+                gainDb: Double = 0, fadeInSeconds: Double, fadeOutSeconds: Double, gainPoints: [GainPoint]? = nil) {
+        self.id = id; self.anchorSeconds = anchorSeconds; self.lengthSeconds = lengthSeconds
+        self.songFromSeconds = songFromSeconds; self.loop = loop; self.gainDb = gainDb
+        self.fadeInSeconds = fadeInSeconds; self.fadeOutSeconds = fadeOutSeconds; self.gainPoints = gainPoints
+    }
+}
+
 /// One background track under a clip (or the full video when `clipId` is nil); doc/spec/music.md §2.
-/// Every key is written, with null where a source has no value, so both Cores read each entry the same way.
 public struct ProjectMusic: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     /// The clip this track plays under; nil plays under the full-video export.
@@ -63,6 +81,10 @@ public struct ProjectMusic: Codable, Sendable, Equatable, Identifiable {
     public var fadeOutSeconds: Double
     /// Where in the track the clip's music starts.
     public var startOffsetSeconds: Double
+    public var duckDb: Double?
+    public var segments: [MusicSegment]?
+
+    var usesTimelineEditFields: Bool { duckDb != nil || segments != nil }
 
     public static let defaultGainDb = -20.0
     public static let gainRange = -40.0...0.0
@@ -71,19 +93,22 @@ public struct ProjectMusic: Codable, Sendable, Equatable, Identifiable {
     public static let fadeRange = 0.0...10.0
     public static let maximumDuration = 1_800.0
     public static let maximumEntries = 65
+    public static let maximumSegments = 8
 
     public init(id: String, clipId: String?, asset: MusicAsset, source: MusicSource, title: String, creator: String? = nil,
                 license: MusicLicense, attribution: String? = nil, sourceUrl: String? = nil, prompt: String? = nil,
                 gainDb: Double = ProjectMusic.defaultGainDb, ducking: Bool = true, fadeInSeconds: Double = ProjectMusic.defaultFadeIn,
-                fadeOutSeconds: Double = ProjectMusic.defaultFadeOut, startOffsetSeconds: Double = 0) {
+                fadeOutSeconds: Double = ProjectMusic.defaultFadeOut, startOffsetSeconds: Double = 0,
+                duckDb: Double? = nil, segments: [MusicSegment]? = nil) {
         self.id = id; self.clipId = clipId; self.asset = asset; self.source = source; self.title = title; self.creator = creator
         self.license = license; self.attribution = attribution; self.sourceUrl = sourceUrl; self.prompt = prompt; self.gainDb = gainDb
         self.ducking = ducking; self.fadeInSeconds = fadeInSeconds; self.fadeOutSeconds = fadeOutSeconds; self.startOffsetSeconds = startOffsetSeconds
+        self.duckDb = duckDb; self.segments = segments
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, clipId, asset, source, title, creator, license, attribution, sourceUrl, prompt, gainDb, ducking
-        case fadeInSeconds, fadeOutSeconds, startOffsetSeconds
+        case fadeInSeconds, fadeOutSeconds, startOffsetSeconds, duckDb, segments
     }
 
     public init(from decoder: any Decoder) throws {
@@ -103,6 +128,8 @@ public struct ProjectMusic: Codable, Sendable, Equatable, Identifiable {
         fadeInSeconds = try values.decode(Double.self, forKey: .fadeInSeconds)
         fadeOutSeconds = try values.decode(Double.self, forKey: .fadeOutSeconds)
         startOffsetSeconds = try values.decode(Double.self, forKey: .startOffsetSeconds)
+        duckDb = try values.decodeIfPresent(Double.self, forKey: .duckDb)
+        segments = try values.decodeIfPresent([MusicSegment].self, forKey: .segments)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -122,6 +149,8 @@ public struct ProjectMusic: Codable, Sendable, Equatable, Identifiable {
         try values.encode(fadeInSeconds, forKey: .fadeInSeconds)
         try values.encode(fadeOutSeconds, forKey: .fadeOutSeconds)
         try values.encode(startOffsetSeconds, forKey: .startOffsetSeconds)
+        try values.encodeIfPresent(duckDb, forKey: .duckDb)
+        try values.encodeIfPresent(segments, forKey: .segments)
     }
 
     /// The line the post text carries for this track, or nil when its terms need none (own files).
@@ -169,6 +198,7 @@ public enum MusicProject {
         var identities = Set<String>()
         var scopes = Set<String>()
         for entry in project.music {
+            guard project.schemaVersion >= TimelineEditFields.version || !entry.usesTimelineEditFields else { throw MusicProjectError.unsupportedVersion }
             try validate(entry, projectId: project.id)
             guard identities.insert(entry.id).inserted else { throw MusicProjectError.duplicateIdentity }
             if let clipId = entry.clipId, !clips.contains(clipId) { throw MusicProjectError.unknownClip }
@@ -195,10 +225,25 @@ public enum MusicProject {
         try require(entry.fadeInSeconds.isFinite && ProjectMusic.fadeRange.contains(entry.fadeInSeconds), "fade-in")
         try require(entry.fadeOutSeconds.isFinite && ProjectMusic.fadeRange.contains(entry.fadeOutSeconds), "fade-out")
         try require(entry.startOffsetSeconds.isFinite && entry.startOffsetSeconds >= 0 && entry.startOffsetSeconds < duration, "start offset")
+        try require(entry.duckDb.map { (-24...0).contains($0) } ?? true, "ducking depth")
+        if let segments = entry.segments {
+            try require((1...ProjectMusic.maximumSegments).contains(segments.count), "segment count")
+            var identities = Set<String>()
+            for segment in segments {
+                try require(matches(segment.id, identifier) && identities.insert(segment.id).inserted, "segment id")
+                try require(segment.anchorSeconds.isFinite && segment.anchorSeconds >= 0, "segment anchor")
+                try require(segment.songFromSeconds >= 0 && segment.songFromSeconds < duration, "segment song offset")
+                try require(segment.lengthSeconds.isFinite && segment.lengthSeconds > 0.1 &&
+                            (segment.loop || segment.lengthSeconds <= duration - segment.songFromSeconds), "segment length")
+                try require((-40...12).contains(segment.gainDb), "segment gain")
+                try require(ProjectMusic.fadeRange.contains(segment.fadeInSeconds) && ProjectMusic.fadeRange.contains(segment.fadeOutSeconds), "segment fade")
+                try require(segment.gainPoints.map(ItemShape.validGainPoints) ?? true, "segment gain points")
+            }
+        }
     }
 
     /// Strict wire shape before decoding: exact keys and JSON types, so a number never stands in for a string or a bool.
-    static func validateWire(_ value: JSONValue) throws {
+    static func validateWire(_ value: JSONValue, timelineEdits: Bool) throws {
         // Absent when empty: an explicit empty list is not a saved shape.
         guard case .array(let entries) = value, !entries.isEmpty, entries.count <= ProjectMusic.maximumEntries else {
             throw MusicProjectError.invalidEntry("not a list")
@@ -206,7 +251,8 @@ public enum MusicProject {
         let keys: Set<String> = ["id", "clipId", "asset", "source", "title", "creator", "license", "attribution", "sourceUrl", "prompt",
                                  "gainDb", "ducking", "fadeInSeconds", "fadeOutSeconds", "startOffsetSeconds"]
         for entry in entries {
-            guard case .object(let object) = entry, Set(object.keys) == keys,
+            guard case .object(let object) = entry,
+                  Set(object.keys) == keys.union(timelineEdits ? ["duckDb", "segments"].filter { object[$0] != nil } : []),
                   case .object(let asset) = object["asset"], Set(asset.keys) == ["file", "sha256", "durationSeconds"] else {
                 throw MusicProjectError.invalidEntry("unknown or missing field")
             }
@@ -223,6 +269,21 @@ public enum MusicProject {
                 throw MusicProjectError.invalidEntry("field type")
             }
             guard case .bool = object["ducking"] else { throw MusicProjectError.invalidEntry("ducking") }
+            if let depth = object["duckDb"], !number(depth) { throw MusicProjectError.invalidEntry("ducking depth") }
+            if let raw = object["segments"] {
+                guard case .array(let segments) = raw, (1...ProjectMusic.maximumSegments).contains(segments.count) else {
+                    throw MusicProjectError.invalidEntry("segment count")
+                }
+                let numeric = ["anchorSeconds", "lengthSeconds", "songFromSeconds", "gainDb", "fadeInSeconds", "fadeOutSeconds"]
+                let required = Set(numeric + ["id", "loop"])
+                for segment in segments {
+                    guard case .object(let fields) = segment, Set(fields.keys) == required.union(fields["gainPoints"] == nil ? [] : ["gainPoints"]),
+                          string(fields["id"]), case .bool = fields["loop"], numeric.allSatisfy({ number(fields[$0]) }),
+                          fields["gainPoints"].map(ItemShape.validGainPointsWire) ?? true else {
+                        throw MusicProjectError.invalidEntry("segment fields")
+                    }
+                }
+            }
         }
     }
 
@@ -234,6 +295,7 @@ public enum MusicProject {
             guard entry.clipId == clipId else { throw MusicProjectError.invalidEntry("clip") }
             result = try ContextDemoProject.upgradeToV4(result)
             result.music.append(entry)
+            result = try TimelineEditFields.promoting(result)
         }
         try validate(result)
         return result

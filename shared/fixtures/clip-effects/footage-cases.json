@@ -1,8 +1,8 @@
 [
-  {"kind":"bRoll","startWord":0,"endWord":1,"reason":"Show the demonstration","footage":{"sourceKey":"demo","start":2},"duration":4,"placement":true},
+  {"kind":"bRoll","startWord":0,"endWord":1,"reason":"Show the demonstration","footage":{"sourceKey":"demo","start":2},"duration":4,"placement":true,"editedLength":2.1,"editedFits":false},
   {"kind":"screenshot","startWord":0,"endWord":1,"reason":"Show the screen","footage":{"sourceKey":"demo","start":3.9},"duration":4,"placement":true},
   {"kind":"videoStack","startWord":0,"endWord":1,"reason":"Show both angles","footage":{"sourceKey":"demo","start":3},"duration":4,"placement":true},
-  {"kind":"bRoll","startWord":0,"endWord":1,"reason":"Ends outside recording","footage":{"sourceKey":"demo","start":3.5},"duration":4,"placement":false},
+  {"kind":"bRoll","startWord":0,"endWord":1,"reason":"Ends outside recording","footage":{"sourceKey":"demo","start":3.5},"duration":4,"placement":false,"editedLength":0.5,"editedFits":true},
   {"kind":"videoStack","startWord":0,"endWord":1,"reason":"Recording not offered","footage":{"sourceKey":"other","start":0},"duration":4,"placement":false},
   {"kind":"bRoll","startWord":0,"endWord":1,"reason":"Not a media locator","footage":{"sourceKey":"/tmp/demo.mov","start":0},"invalid":true},
   {"kind":"screenshot","startWord":0,"endWord":1,"reason":"Negative time","footage":{"sourceKey":"demo","start":-1},"invalid":true}

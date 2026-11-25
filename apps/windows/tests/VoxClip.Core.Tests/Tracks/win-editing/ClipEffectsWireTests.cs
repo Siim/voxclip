@@ -57,6 +57,23 @@ public sealed class ClipEffectsWireTests
         }
         media["additionalSources"]!.AsArray().Add(vectors["companion"]!.DeepClone());
         Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        media["additionalSources"]!.AsArray().RemoveAt(1);
+        var edited = media["footage"]!.AsArray();
+        foreach (var placement in vectors["v6Valid"]!.AsArray()) edited.Add(placement!.DeepClone());
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        document["schemaVersion"] = 6;
+        var editedProject = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.True(JsonNode.DeepEquals(media, JsonNode.Parse(ProjectSerialization.Serialize(editedProject))!["media"]));
+        var firstEdit = project with { Media = project.Media with {
+            Footage = project.Media.Footage!.Select(placement => placement with { FadeInSeconds = 0 }).ToArray()
+        } };
+        Assert.Equal(6, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(firstEdit)).SchemaVersion);
+        foreach (var invalid in vectors["v6Invalid"]!.AsArray())
+        {
+            edited.Add(invalid!.DeepClone());
+            Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+            edited.RemoveAt(edited.Count - 1);
+        }
     }
 
     [Fact]
@@ -67,7 +84,7 @@ public sealed class ClipEffectsWireTests
             var id = item!["id"]!.GetValue<string>();
             var input = Applied(item);
             var project = ProjectSerialization.Deserialize(input.ToJsonString());
-            Assert.Equal(4, project.SchemaVersion);
+            Assert.Equal(input["schemaVersion"]!.GetValue<int>(), project.SchemaVersion);
             var encoded = ProjectSerialization.Serialize(project);
             Assert.Equal(encoded, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(encoded)));
             var saved = JsonNode.Parse(encoded)!.AsObject();

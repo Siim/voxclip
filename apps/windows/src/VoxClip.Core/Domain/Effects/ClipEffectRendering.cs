@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 
@@ -75,6 +76,18 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
     public double? Rate { get; init; }
     /// <summary>Project-relative PNG of a generated illustration.</summary>
     public string? ImageFile { get; init; }
+    /// <summary>Explicit entrance fade, if set.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? FadeInSeconds { get; init; }
+    /// <summary>Explicit exit fade, if set.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? FadeOutSeconds { get; init; }
+    /// <summary>For sounds, where playback starts in the asset.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? MediaOffsetSeconds { get; init; }
+    /// <summary>For sounds, relative gain in strictly increasing item-local time.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<GainPoint>? GainPoints { get; init; }
 
     /// <summary>bleep, mute, blur and pixelate render wherever their range plays.</summary>
     public bool IsCensor => ClipEffects.IsCensor(Kind);
@@ -97,7 +110,9 @@ public sealed record ClipEffect(string Id, string? ClipId, string Kind, double S
             entry.GetProperty("kind").GetString()!, entry.GetProperty("start").GetDouble(), entry.GetProperty("end").GetDouble())
         {
             Text = Text("text"), Position = Text("position"), Tracking = Text("tracking"), Scale = Number("scale"), GainDb = Number("gainDb"),
-            Animation = Text("animation"), Look = Text("look"), Rate = Number("rate"), ImageFile = Text("imageFile")
+            Animation = Text("animation"), Look = Text("look"), Rate = Number("rate"), ImageFile = Text("imageFile"),
+            FadeInSeconds = Number("fadeInSeconds"), FadeOutSeconds = Number("fadeOutSeconds"), MediaOffsetSeconds = Number("mediaOffsetSeconds"),
+            GainPoints = entry.TryGetProperty("gainPoints", out var points) ? ItemShape.ReadGainPoints(points) : null
         };
         if (entry.TryGetProperty("wordIds", out var words)) effect = effect with { WordIds = words.EnumerateArray().Select(word => word.GetString()!).ToArray() };
         if (entry.TryGetProperty("template", out var template)) effect = effect with { Template = MotionTemplate.Read(template) };

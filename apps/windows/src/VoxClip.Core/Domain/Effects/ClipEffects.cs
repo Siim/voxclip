@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Effects;
@@ -51,13 +52,25 @@ public static class ClipEffects
         Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     /// <summary>Strict wire shape: a non-empty list (absent when empty), exact keys per kind and JSON types.</summary>
-    internal static void ValidateWire(JsonElement value)
+    internal static bool UsesTimelineEditFields(JsonElement entry)
     {
-        Require(value.ValueKind == JsonValueKind.Array && value.GetArrayLength() is >= 1 and <= 500);
-        foreach (var entry in value.EnumerateArray()) ValidateWireEntry(entry);
+        if (entry.ValueKind != JsonValueKind.Object) return false;
+        if (new[] { "fadeInSeconds", "fadeOutSeconds", "mediaOffsetSeconds", "gainPoints" }.Any(key => entry.TryGetProperty(key, out _))) return true;
+        return entry.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "sound" &&
+            entry.TryGetProperty("sound", out var sound) && sound.ValueKind == JsonValueKind.Object &&
+            sound.TryGetProperty("durationSeconds", out var duration) && TimelineEditFields.IsNumber(duration) &&
+            entry.TryGetProperty("start", out var start) && TimelineEditFields.IsNumber(start) &&
+            entry.TryGetProperty("end", out var end) && TimelineEditFields.IsNumber(end) &&
+            Math.Abs(end.GetDouble() - start.GetDouble() - duration.GetDouble()) >= 1e-6;
     }
 
-    private static void ValidateWireEntry(JsonElement entry)
+    internal static void ValidateWire(JsonElement value, bool timelineEdits)
+    {
+        Require(value.ValueKind == JsonValueKind.Array && value.GetArrayLength() is >= 1 and <= 500);
+        foreach (var entry in value.EnumerateArray()) ValidateWireEntry(entry, timelineEdits);
+    }
+
+    private static void ValidateWireEntry(JsonElement entry, bool timelineEdits = true)
     {
         {
             Require(entry.ValueKind == JsonValueKind.Object);
@@ -70,6 +83,26 @@ public static class ClipEffects
             {
                 Require(animation.ValueKind == JsonValueKind.String && animation.GetString() == (kind == "sticker" ? "pop" : "rise"));
                 fields = fields.Append("animation");
+            }
+            if (timelineEdits && kind is not ("bleep" or "mute" or "speedForPart" or "freeze"))
+                foreach (var key in new[] { "fadeInSeconds", "fadeOutSeconds" })
+                    if (entry.TryGetProperty(key, out var fade))
+                    {
+                        Require(TimelineEditFields.IsNumber(fade) && fade.GetDouble() is >= 0 and <= 5);
+                        fields = fields.Append(key);
+                    }
+            if (timelineEdits && kind == "sound")
+            {
+                if (entry.TryGetProperty("mediaOffsetSeconds", out var offset))
+                {
+                    Require(TimelineEditFields.IsNumber(offset));
+                    fields = fields.Append("mediaOffsetSeconds");
+                }
+                if (entry.TryGetProperty("gainPoints", out var points))
+                {
+                    Require(ItemShape.ValidGainPointsWire(points) && ItemShape.ValidGainPoints(ItemShape.ReadGainPoints(points)));
+                    fields = fields.Append("gainPoints");
+                }
             }
             Object(entry, fields);
             Require(entry.GetProperty("id").ValueKind == JsonValueKind.String);
@@ -119,7 +152,8 @@ public static class ClipEffects
         var identities = new HashSet<string>(StringComparer.Ordinal);
         foreach (var effect in project.ClipEffects)
         {
-            ValidateWireEntry(effect);
+            ValidateWireEntry(effect, project.SchemaVersion >= TimelineEditFields.Version);
+            Require(project.SchemaVersion >= TimelineEditFields.Version || !UsesTimelineEditFields(effect));
             Validate(effect, project.Id);
             Require(identities.Add(effect.GetProperty("id").GetString()!));
             var clip = effect.GetProperty("clipId");
@@ -184,7 +218,15 @@ public static class ClipEffects
             var duration = sound.GetProperty("durationSeconds").GetDouble();
             var title = sound.GetProperty("title").GetString()!;
             var license = sound.GetProperty("license").GetString();
-            Require(gain is >= -30 and <= 6 && duration is > 0 and <= 10 && Math.Abs(end - start - duration) < 1e-6 && title.Length is >= 1 and <= 200);
+            Require(gain is >= -30 and <= 6 && duration is > 0 and <= 10 && title.Length is >= 1 and <= 200);
+            var length = end - start;
+            if (UsesTimelineEditFields(effect))
+            {
+                var offset = effect.TryGetProperty("mediaOffsetSeconds", out var mediaOffset) ? mediaOffset.GetDouble() : 0;
+                var tolerance = Math.Min(1e-9, Math.BitIncrement(end) - end);
+                Require(offset >= 0 && offset < duration && length >= 0.05 - tolerance && length <= duration - offset + tolerance);
+            }
+            else Require(Math.Abs(length - duration) < 1e-6);
             if (sound.GetProperty("source").GetString() == "bundled")
                 Require(BundledSounds.Contains(sound.GetProperty("id").GetString()) && license == "cc0");
             else
@@ -232,6 +274,7 @@ public static class ClipEffects
             if (index >= 0) list[index] = effect.Clone(); else list.Add(effect.Clone());
         }
         result = result with { ClipEffects = list };
+        result = TimelineEditFields.Promoting(result);
         Validate(result);
         return result;
     }

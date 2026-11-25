@@ -2130,8 +2130,8 @@ words' translated captions (`CaptionTranslations.translating`, below).
 | `duck` | Sound | start, end | `musicDucking` |
 | `sound` | Sound | start, sound | `ClipEffect` with a bundled `sound` |
 
-**Project contract.** Effects are stored as the root `clipEffects` array, project schema v4 only, omitted when empty;
-adding the first effect promotes a project to v4. `ClipEffect` has `id` (`fx-<kind>-<n>`), optional `clipId`,
+**Project contract.** Effects are stored as the root `clipEffects` array, project schema v4 and later, omitted when empty;
+adding the first legacy effect promotes an older project to v4. `ClipEffect` has `id` (`fx-<kind>-<n>`), optional `clipId`,
 `kind`, `start` and `end` (source seconds, at most 600 s long) and exactly the keys of its kind:
 
 - `bleep`, `mute`: `wordIds`. `blur`, `pixelate`: `rect`, `tracking` (`none`, `face` or `saliency`), `track`.
@@ -2140,6 +2140,16 @@ adding the first effect promotes a project to v4. `ClipEffect` has `id` (`fx-<ki
 - `freeze`: no more (≤5 s). `sound`: `sound` (`bundled` with `id` whoosh, pop or ding, or `library` with `file`,
   `sha256`, `title`, `creator`, `license` of `cc0`, `by` or `pdm`, `attribution` and `sourceUrl`; ≤10 s) and `gainDb`.
 - A `rect` is normalized, top-left, inside the frame. A `track` sample is `{t, x, y, width, height}`.
+
+In v6, effects can write `fadeInSeconds` and `fadeOutSeconds` (0…5 s), except `bleep`, `mute`, `speedForPart` and
+`freeze`. Omitted fades keep the existing 0.12 s overlay fades or zero for sound; colour looks blend the grade.
+`bleep` and `mute` keep their fixed 10 ms ramps. Only `sound` may write `mediaOffsetSeconds` (nonnegative seconds into
+the asset) and optional `gainPoints`. An edited sound's `end − start` is its played length on the edited clock, at least
+0.05 s and no greater than the asset's remaining duration after the offset (default 0). A legacy sound spans its full
+asset. Gain points follow [ADR-R53](../adr/R53-edit-connected-items-on-the-timeline.md). Companion `media.footage` entries
+may write fades of 0…2 s. These fields are omitted when unset, not written as null; the first edit using them promotes
+the project to v6. Trimming and splitting illustrations preserves the shared `imageFile`; deleting an item removes only
+its reference.
 
 At most 500 entries, unique ids. The JSON Schema `$defs` (`clipEffect`, `clipEffectRect`, `clipEffectTrackSample`,
 `clipEffectBundledSound`, `clipEffectLibrarySound`) come from `tools/schemas/generate_clip_effects_schema.py`.

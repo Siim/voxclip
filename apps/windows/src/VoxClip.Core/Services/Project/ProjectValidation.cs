@@ -20,14 +20,15 @@ internal static class ProjectValidation
         var root = document.RootElement;
         RejectDuplicateKeys(root);
         Require(root.ValueKind == JsonValueKind.Object);
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 5)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > TimelineEditFields.Version)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         var schemaVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var supported) ? supported : 0;
         var supportsContext = schemaVersion >= 4;
-        var supportsStories = schemaVersion == 5;
+        var supportsStories = schemaVersion >= 5;
+        var supportsTimelineEdits = schemaVersion >= TimelineEditFields.Version;
         Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""));
         String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, 5, true);
+        Number(root.GetProperty("schemaVersion"), 1, TimelineEditFields.Version, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
@@ -58,17 +59,25 @@ internal static class ProjectValidation
         {
             Array(footage, placement =>
             {
-                Object(placement, "id clipID kind start end footage");
+                Object(placement, "id clipID kind start end footage", supportsTimelineEdits ? "fadeInSeconds fadeOutSeconds" : "");
                 String(placement.GetProperty("id"), Id); String(placement.GetProperty("clipID"), Id);
                 Choice(placement.GetProperty("kind"), "bRoll", "screenshot", "videoStack");
                 Number(placement.GetProperty("start"), 0); Number(placement.GetProperty("end"), 0);
                 var selected = placement.GetProperty("footage"); Object(selected, "sourceKey start");
                 String(selected.GetProperty("sourceKey"), Hash); Number(selected.GetProperty("start"), 0);
+                double? Fade(string key)
+                {
+                    if (!placement.TryGetProperty(key, out var fade)) return null;
+                    Number(fade, 0, 2);
+                    return fade.GetDouble();
+                }
                 var entry = new ProjectFootage(placement.GetProperty("id").GetString()!, placement.GetProperty("clipID").GetString()!,
                     placement.GetProperty("kind").GetString()!, placement.GetProperty("start").GetDouble(), placement.GetProperty("end").GetDouble(),
-                    new FootageSelection(selected.GetProperty("sourceKey").GetString()!, selected.GetProperty("start").GetDouble()));
+                    new FootageSelection(selected.GetProperty("sourceKey").GetString()!, selected.GetProperty("start").GetDouble()),
+                    Fade("fadeInSeconds"), Fade("fadeOutSeconds"));
                 Require(placementIds.Add(entry.Id) && entry.End <= source.GetProperty("durationSeconds").GetDouble() &&
-                    companionDurations.TryGetValue(entry.Footage.SourceKey, out var duration) && entry.Fits(duration) &&
+                    companionDurations.TryGetValue(entry.Footage.SourceKey, out var duration) &&
+                    (supportsTimelineEdits ? entry.HasPlayableSource(duration) : entry.Fits(duration)) &&
                     !placements.Any(other => other.ClipId == entry.ClipId && other.Start < entry.End && entry.Start < other.End));
                 placements.Add(entry);
             });
@@ -245,8 +254,8 @@ internal static class ProjectValidation
             Require(context.ProjectId == root.GetProperty("id").GetString() && context.SourceContentKey == source.GetProperty("contentKey").GetString());
         }
         if (root.TryGetProperty("motionCues", out var cues)) MotionCue.ValidateWire(cues);
-        if (root.TryGetProperty("music", out var music)) VoxClip.Core.Domain.Music.MusicProject.ValidateWire(music);
-        if (root.TryGetProperty("clipEffects", out var effects)) VoxClip.Core.Domain.Effects.ClipEffects.ValidateWire(effects);
+        if (root.TryGetProperty("music", out var music)) VoxClip.Core.Domain.Music.MusicProject.ValidateWire(music, supportsTimelineEdits);
+        if (root.TryGetProperty("clipEffects", out var effects)) VoxClip.Core.Domain.Effects.ClipEffects.ValidateWire(effects, supportsTimelineEdits);
         if (root.TryGetProperty("clipControls", out var controls)) ClipControlsProject.ValidateWire(controls);
         if (root.TryGetProperty("captionTranslations", out var translations)) VoxClip.Core.Domain.Captions.CaptionTranslations.ValidateWire(translations);
     }

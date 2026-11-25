@@ -60,6 +60,35 @@ def generated():
     def reject(identity, patches, schema_valid=False):
         invalid.append({'id': identity, 'schemaValid': schema_valid, 'patches': patches})
 
+    v6 = set_value('/schemaVersion', 6)
+    segment = {'id': 'opening', 'anchorSeconds': 0, 'lengthSeconds': 2, 'songFromSeconds': 220, 'loop': False,
+               'gainDb': -40, 'fadeInSeconds': 0, 'fadeOutSeconds': 10, 'gainPoints': [{'t': 0, 'db': -60}, {'t': 1, 'db': 12}]}
+    segments_path = '/music/0/segments'
+    valid.extend([
+        {'id': 'nonlooping-segment-at-song-tail', 'patches': [v6, set_value(segments_path, [segment]), set_value('/music/0/duckDb', -24)]},
+        {'id': 'eight-looping-segments', 'patches': [v6, set_value('/music/0/duckDb', 0), set_value(segments_path, [
+            {**segment, 'id': f'segment-{index}', 'anchorSeconds': index, 'loop': True, 'lengthSeconds': 900, 'gainDb': 12}
+            for index in range(8)])]},
+        {'id': 'duck-depth-without-segments', 'patches': [v6, set_value('/music/0/duckDb', -12)]},
+    ])
+    reject('duck-depth-before-v6', [set_value('/music/0/duckDb', -12)])
+    reject('segments-before-v6', [set_value(segments_path, [segment])])
+    for index, depth in enumerate([-24.01, 0.01, None, True]):
+        reject(f'duck-depth-invalid-{index}', [v6, set_value('/music/0/duckDb', depth)])
+    reject('empty-segments', [v6, set_value(segments_path, [])])
+    reject('null-segments', [v6, set_value(segments_path, None)])
+    reject('too-many-segments', [v6, set_value(segments_path, [{**segment, 'id': f'segment-{index}'} for index in range(9)])])
+    reject('duplicate-segment-id', [v6, set_value(segments_path, [segment, segment])], True)
+    for key, value, schema_valid in [
+        ('anchorSeconds', -0.001, False), ('lengthSeconds', 0.1, False), ('lengthSeconds', 2.001, True),
+        ('songFromSeconds', -0.001, False), ('songFromSeconds', 222, True), ('loop', 1, False),
+        ('gainDb', -40.01, False), ('gainDb', 12.01, False), ('fadeInSeconds', -0.01, False),
+        ('fadeOutSeconds', 10.01, False), ('gainPoints', None, False),
+        ('gainPoints', [{'t': 1, 'db': 0}, {'t': 1, 'db': 2}], True), ('unknown', 1, False),
+    ]:
+        reject(f'segment-{key}-{len(invalid)}', [v6, set_value(segments_path, [{**segment, key: value}])], schema_valid)
+    reject('segment-missing-loop', [v6, set_value(segments_path, [{key: value for key, value in segment.items() if key != 'loop'}])])
+
     reject('unknown-entry-field', [set_value('/music/0/unexpected', True)])
     reject('unknown-asset-field', [set_value('/music/0/asset/unexpected', True)])
     for key in ['clipId', 'creator', 'attribution', 'sourceUrl', 'prompt', 'ducking', 'startOffsetSeconds']:
@@ -103,7 +132,7 @@ def generated():
     reject('offset-past-track', [set_value('/music/1/startOffsetSeconds', 8)], True)
     for version in (1, 2, 3):
         reject(f'v{version}-music', [set_value('/schemaVersion', version)])
-    reject('future-project', [set_value('/schemaVersion', 6)])
+    reject('future-project', [set_value('/schemaVersion', 7)])
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-music-wire-cases/1', 'project': 'fixtures/music/music-project.voxclip',
              'valid': valid, 'invalid': invalid}
