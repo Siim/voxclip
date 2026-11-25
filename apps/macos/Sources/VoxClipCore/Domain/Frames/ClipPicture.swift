@@ -164,9 +164,14 @@ public enum ClipPicture {
 
     /// The reply's pick among the cover candidates, or the best measured one when it named none. Nil without candidates.
     public static func cover(_ project: Project, clipID: String, frames: ClipAutopilotFrames, plan: ClipAutopilotPlan) -> (project: Project, cover: Cover)? {
-        let named = plan.frames?.cover.flatMap { frames.coverCandidate($0.id) }
+        var candidates = frames.cover
+        if let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == clipID }), clip.parts != nil {
+            guard let first = StoryClips.times(clip, words: transcript.words).first else { return nil }
+            candidates = candidates.filter { first.start <= $0.time && $0.time < first.end }
+        }
+        let named = plan.frames?.cover.flatMap { choice in candidates.first { $0.id == choice.id } }
         let title = named == nil || plan.frames?.cover?.fallback == true ? nil : plan.frames?.cover?.title.flatMap(ClipHookTitle.text)
-        guard let candidate = named ?? frames.cover.first, let controls = ClipControlsProject.controls(for: clipID, in: project),
+        guard let candidate = named ?? candidates.first, let controls = ClipControlsProject.controls(for: clipID, in: project),
               let next = settingControls(clipID, in: project, { $0.coverSeconds = candidate.time; $0.coverTitle = title }) else { return nil }
         let reason = named == nil ? nil : plan.frames?.cover.flatMap { $0.fallback || $0.reason.isEmpty ? nil : $0.reason }
         return (next, Cover(candidate: candidate, named: named != nil, reason: reason, previous: controls.coverSeconds,

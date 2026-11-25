@@ -201,8 +201,15 @@ public static class ClipPicture
     /// <summary>The reply's pick among the cover candidates, or the best measured one when it named none. Null without candidates.</summary>
     public static (Project Project, Cover Cover)? CoverOf(Project project, string clipId, ClipAutopilotFrames frames, ClipAutopilotPlan plan)
     {
-        var named = plan.Frames?.CoverChoice is { } choice ? frames.CoverCandidateFor(choice.Id) : null;
-        if ((named ?? frames.Cover.FirstOrDefault()) is not { } candidate || ClipControlsProject.Controls(clipId, project) is not { } controls) return null;
+        IEnumerable<ClipAutopilotFrames.CoverCandidate> candidates = frames.Cover;
+        if (project.Transcript is { } transcript && project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { Parts: not null } story)
+        {
+            if (StoryClips.Times(story, transcript.Words) is not { Count: > 0 } spans) return null;
+            var first = spans[0];
+            candidates = candidates.Where(candidate => first.Start <= candidate.Time && candidate.Time < first.End);
+        }
+        var named = plan.Frames?.CoverChoice is { } choice ? candidates.FirstOrDefault(candidate => candidate.Id == choice.Id) : null;
+        if ((named ?? candidates.FirstOrDefault()) is not { } candidate || ClipControlsProject.Controls(clipId, project) is not { } controls) return null;
         var title = named is not null && plan.Frames?.CoverChoice is { Fallback: false, Title: { } text } ? ClipHookTitle.Text(text) : null;
         if (SettingControls(clipId, project, current => current with { CoverSeconds = candidate.Time, CoverTitle = title }) is not { } next) return null;
         var reason = named is null ? null : plan.Frames?.CoverChoice is { Fallback: false, Reason.Length: > 0 } picked ? picked.Reason : null;

@@ -29,9 +29,8 @@ public sealed class FrameClip
     /// in it is kept.</summary>
     public static FrameClip? Make(VoxClip.Core.Domain.Transcript.Transcript transcript, ClipRange clip, IReadOnlySet<string> cutWordIds)
     {
-        var first = IndexOf(transcript.Words, clip.StartWordId);
-        var last = IndexOf(transcript.Words, clip.EndWordId);
-        return first < 0 || last < 0 || first > last ? null : Make(transcript.Words, first, last, cutWordIds);
+        if (clip.PlayPartIndices(transcript.Words) is not { Count: > 0 } parts) return null;
+        return Make(transcript.Words, parts[0].Start, parts[0].End, cutWordIds);
     }
 
     /// <summary>The clip from item <paramref name="first"/> to <paramref name="last"/>; null when the range is out of bounds or
@@ -67,11 +66,6 @@ public sealed class FrameClip
         }
     }
 
-    private static int IndexOf(IReadOnlyList<TimedWord> words, string id)
-    {
-        for (var index = 0; index < words.Count; index++) if (words[index].Id == id) return index;
-        return -1;
-    }
 }
 
 /// <summary>One sentence's frame: its source time and the kept words it stands for.</summary>

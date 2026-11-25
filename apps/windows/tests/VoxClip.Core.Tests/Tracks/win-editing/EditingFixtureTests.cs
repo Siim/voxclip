@@ -1,7 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Nodes;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.Transcript;
@@ -14,6 +17,35 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 
 public sealed class EditingFixtureTests
 {
+    [Fact]
+    public void StoryOpeningStartsInPlaybackOrder()
+    {
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/story-clips/story-project.voxclip"));
+        var clip = Assert.Single(project.Edits.Clips);
+        var opening = Assert.IsType<FrameClip>(ClipPicture.OpeningClip(project, clip.Id));
+        var candidates = Assert.IsType<FrameClip>(FrameClip.Make(project.Transcript!, clip, new HashSet<string>()));
+        Assert.Equal(clip.PlayParts[0].StartWordId, opening.Words[opening.First].Id);
+        Assert.Equal(clip.PlayParts[0].EndWordId, opening.Words[opening.Last].Id);
+        Assert.Equal(opening.Kept, candidates.Kept);
+    }
+
+    [Fact]
+    public void StoryEffectsAndSavedLipSyncStopAtTheOwningPart()
+    {
+        var legacy = new RenderTimeline.Legacy(new EditPlan(48_000, 192_000, [],
+            [new(144_000, 168_000), new(120_000, 144_000)], 48_000, []) { PartSeams = [24_000] });
+        var effect = new ClipEffect("speed", "story", "speedForPart", 2.5, 3) { Rate = 2 };
+        var timing = ClipSpeedTiming.ForEffects(1, legacy.MapTime, [effect], legacy.MapEndTime);
+        Assert.Equal(.5, timing.Rendered(.5));
+        Assert.Equal(.75, timing.Rendered(1));
+
+        var second = new VoiceLabOutputPiece(VoiceLabOutputPieceKind.Synth, 120_000, 144_000, 24_000, 48_000, "speech", null, null);
+        var first = new VoiceLabOutputPiece(VoiceLabOutputPieceKind.Source, 144_000, 168_000, 0, 24_000, null, null, null);
+        var voice = new VoiceLabOutputPlan(48_000, 192_000, [first, second], [], VoiceLabOutputScope.Clip("story")) { PartSeams = [24_000] };
+        Assert.Equal((24_000L, 48_000L), LipsyncRenderWindow.SavedOutputRange(120_000, 144_000, second, voice));
+        Assert.Null(LipsyncRenderWindow.SavedOutputRange(120_000, 145_000, second, voice));
+    }
+
     [Fact]
     public void StoryPlansReplay()
     {
