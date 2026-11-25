@@ -134,6 +134,7 @@ public sealed class TimelineView : UserControl
     private IReadOnlyList<TimelineCaptions.Page> captionPages = [];
     private IReadOnlyList<TimelineCue> captionCues = [];
     private Project? captionSnapshot;
+    private RenderTimeline? storyRendering;
     private Action? hideCommand;
     private Action? maximizeCommand;
     private bool updatingControls;
@@ -432,6 +433,7 @@ public sealed class TimelineView : UserControl
         if (model is null || !ReferenceEquals(model.Project, expectedProject)) return;
         var attached = model;
         captionSnapshot = expectedProject;
+        storyRendering = model.IsStoryClip ? mapping : null;
         captionPages = value is null ? [] : value.Pages.Select(page =>
         {
             var start = mapping.SourceTime(page.Start); var end = mapping.SourceTime(page.End);
@@ -443,7 +445,8 @@ public sealed class TimelineView : UserControl
             return new TimelineCaptions.Page(new(page.Start, page.End), new(start, end),
                 string.Join(" ", page.Words.Select(index => value.Words[index].Text)));
         }).ToArray();
-        RefreshCues(); Draw();
+        if (storyRendering is not null) Rebuild(false);
+        else { RefreshCues(); Draw(); }
     }
     private void RefreshCues()
     {
@@ -463,14 +466,14 @@ public sealed class TimelineView : UserControl
     {
         if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; }
         disposed = true; CancelTrim(); ClearFilmstrip(); waveformRequest?.Cancel();
-        model = null; plan = null; envelope = null; captionPages = []; captionCues = []; captionSnapshot = null;
+        model = null; plan = null; envelope = null; captionPages = []; captionCues = []; captionSnapshot = null; storyRendering = null; story = null;
         scene.Tiles.Clear(); geometryCache.Clear(); attachedSource = null;
         animation.Stop(); Ui.EffectsChanged -= EffectsChanged;
     }
     private void Changed(object? sender, EventArgs args)
     {
         CancelTrim();
-        if (!ReferenceEquals(captionSnapshot, model?.Project)) { captionPages = []; captionCues = []; captionSnapshot = null; }
+        if (!ReferenceEquals(captionSnapshot, model?.Project)) { captionPages = []; captionCues = []; captionSnapshot = null; storyRendering = null; }
         Rebuild(false);
     }
     private void SelectionChanged(object? sender, EventArgs args) => Draw();
@@ -515,14 +518,18 @@ public sealed class TimelineView : UserControl
             attachedSource = model.Project.Media.Source; scene.Tiles.Clear(); geometryCache.Clear();
         }
         renderingBlocked = false;
-        try { model.RequireLegacyRendering(model.State is { } state ? state with { ActiveClipId = null } : null); }
-        catch (VoiceLabProjectException) { renderingBlocked = true; }
+        if (!model.IsStoryClip)
+        {
+            try { model.RequireLegacyRendering(model.State is { } state ? state with { ActiveClipId = null } : null); }
+            catch (VoiceLabProjectException) { renderingBlocked = true; }
+        }
         viewport.Reset(model);
         if (AutomationProperties.GetName(startHandle) != viewport.StartName) AutomationProperties.SetName(startHandle, viewport.StartName);
         if (AutomationProperties.GetName(endHandle) != viewport.EndName) AutomationProperties.SetName(endHandle, viewport.EndName);
         plan = TimelineLayout.Plan(model);
         var wasStory = story is not null;
-        story = model.IsStoryClip ? new(model, plan) : null;
+        var showingWholeStory = story is not null && view.Duration >= AxisDuration - .001;
+        story = model.IsStoryClip ? new(model, plan, storyRendering) : null;
         if (mode.Items[1] is CommunityToolkit.WinUI.Controls.SegmentedItem showCuts)
             showCuts.Content = story is null ? "Source" : "Show cuts";
         viewport.Prepare(plan);
@@ -536,7 +543,7 @@ public sealed class TimelineView : UserControl
         {
             animationStart = view; animationEnd = next; animationClock.Restart(); animation.Start();
         }
-        else if (changedScope || forceZoom || scene.BuildVersion == 0) view = next;
+        else if (changedScope || forceZoom || showingWholeStory || scene.BuildVersion == 0) view = next;
         else view = TimelineLayout.Clamp(view, AxisDuration);
         RefreshCues();
         Draw();

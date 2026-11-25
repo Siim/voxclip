@@ -31,6 +31,35 @@ public sealed class TimelineTests
         Assert.Equal(0.36, timeline.SourceAt(0.655, false), 4);
         Assert.Empty(new TimelineTileCache().Get(plan, null, new(0, plan.Duration), 600, true, timeline).Seams);
     }
+
+    [Fact]
+    public void StoryTimelineUsesRenderedPartLengthsAndKeepsAnInternalCutThin()
+    {
+        var model = ClipSemanticsTests.Story();
+        model.SelectPart("second");
+        model.Select(2);
+        model.SetClipEdgeAtCaret(false);
+        Assert.True(model.Apply(new EditOperation.SetWordCuts(["w2"], true)));
+        var plan = TimelineLayout.Plan(model);
+        var offset = (long)(plan.SampleRate / 2);
+        var pieces = new TimelinePieces(new RenderTimeline.Legacy(plan)).Pieces.Select((piece, index) => new VoiceLabOutputPiece(
+            index == 0 ? VoiceLabOutputPieceKind.Synth : VoiceLabOutputPieceKind.Source,
+            (long)Math.Round(piece.Source.Start * plan.SampleRate), (long)Math.Round(piece.Source.End * plan.SampleRate),
+            (long)Math.Round(piece.Edited.Start * plan.SampleRate) + (index == 0 ? 0 : offset),
+            (long)Math.Round(piece.Edited.End * plan.SampleRate) + offset, null, null, null)).ToArray();
+        var rendering = new RenderTimeline.VoiceLab(new(plan.SampleRate, plan.TotalSamples, pieces, [], VoiceLabOutputScope.Clip("clip-main"))
+        { PartSeams = plan.PartSeams.Select(seam => seam + offset).ToArray() });
+        var story = new TimelineStory(model, plan, rendering);
+
+        Assert.Equal(0.975, Assert.Single(story.Seams(true)).Position, 4);
+        Assert.Equal(rendering.Duration, story.Duration(true), 4);
+        Assert.Equal(0.18, story.SourceAt(0.975, true), 4);
+        Assert.InRange(story.Display(3.3, true), 0.30, 0.32);
+        var cut = Assert.Single(new TimelineTileCache().Get(plan, null, new(0, rendering.Duration), 600, true, story).Seams);
+        Assert.Equal(1, cut.Width);
+        Assert.True(cut.X > 600 * 0.975 / rendering.Duration);
+        Assert.Single(story.OpenCuts);
+    }
     [Theory]
     [InlineData(100, 20, 30, 18.5, 31.5)]
     [InlineData(100, 20, 60, 17, 63)]

@@ -23,6 +23,20 @@ public sealed class TranscriptV2Tests
             proposal ?? TranscriptProposalPresentation.Empty, selectedFirst, selectedLast);
 
     [Fact]
+    public void StoryTranscriptMarksPartsInSourceOrderUsingTheirPlayOrderNumbers()
+    {
+        var model = ClipSemanticsTests.Story();
+        var words = model.Words;
+        var pieces = TranscriptParagraphPresentation.Build(words, 0, words.Count,
+            index => new(words[index].Text, false, false, true, index), new HashSet<string>(), new HashSet<string>(),
+            new Dictionary<int, Pause>(), 0, 6, false, true, new HashSet<string>(), TranscriptProposalPresentation.Empty,
+            parts: model.ClipParts);
+
+        Assert.Equal([2, 2, 0, 0, 0, 1, 1, 0, 0], pieces.Select(piece => piece.Part));
+        Assert.All(pieces, piece => Assert.Equal(piece.Part == 0, piece.Outside));
+    }
+
+    [Fact]
     public void ConsecutiveFillersAndAPauseHaveOneFoldAndOriginalIdsStayUntouched()
     {
         var words = Words("include,", "uh,", "um,", "source");

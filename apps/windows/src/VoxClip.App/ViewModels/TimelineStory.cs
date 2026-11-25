@@ -15,23 +15,24 @@ internal sealed record TimelinePartSeam(double Position, double TakeTime, int Pa
 
 internal sealed class TimelineStory
 {
-    private readonly EditPlan plan;
+    private readonly RenderTimeline rendering;
     private readonly TimeRange[] sources;
     private readonly TimelinePartBand[] open;
     private readonly TimelinePartBand[] edited;
     private readonly TimelinePartSeam[] openSeams;
     private readonly TimelinePartSeam[] editedSeams;
-    private readonly TimelinePieces editedPieces;
+    internal TimelinePieces EditedPieces { get; }
     internal TimelinePieces OpenPieces { get; }
     internal IReadOnlyList<TimelinePartBand> Overview { get; }
     internal IReadOnlyList<TimeRange> OpenCuts { get; }
-    internal double Duration(bool closesCuts) => closesCuts ? plan.Duration : open.LastOrDefault()?.Range.End ?? 0;
+    internal double Duration(bool closesCuts) => closesCuts ? rendering.Duration : open.LastOrDefault()?.Range.End ?? 0;
     internal IReadOnlyList<TimelinePartBand> Bands(bool closesCuts) => closesCuts ? edited : open;
     internal IReadOnlyList<TimelinePartSeam> Seams(bool closesCuts) => closesCuts ? editedSeams : openSeams;
 
-    internal TimelineStory(EditorViewModel model, EditPlan plan)
+    internal TimelineStory(EditorViewModel model, EditPlan plan, RenderTimeline? rendering = null)
     {
-        this.plan = plan;
+        var legacy = new RenderTimeline.Legacy(plan);
+        this.rendering = rendering ?? legacy;
         var parts = model.ClipParts;
         Overview = parts.Select(part => new TimelinePartBand(part, new(part.Start, part.End))).ToArray();
         sources = parts.Select((part, index) =>
@@ -44,27 +45,29 @@ internal sealed class TimelineStory
         openSeams = open.Skip(1).Select((band, index) => new TimelinePartSeam(band.Range.Start, band.Part.Start,
             band.Part.Number, band.Part.Start < open[index].Part.End)).ToArray();
 
-        editedPieces = new(new RenderTimeline.Legacy(plan));
+        EditedPieces = new(this.rendering);
         var bands = new List<TimelinePartBand>();
         var seams = new List<TimelinePartSeam>();
-        var openPieces = new List<TimelinePiece>();
-        for (var index = 0; index < editedPieces.Pieces.Count; index++)
+        for (var index = 0; index < EditedPieces.Pieces.Count; index++)
         {
-            var piece = editedPieces.Pieces[index];
-            var section = Array.FindIndex(sources, source => source.Start < piece.Source.End && source.End > piece.Source.Start);
+            var piece = EditedPieces.Pieces[index];
+            var section = PartIndex(piece);
             if (section < 0) continue;
             var part = parts[section];
-            var offset = open[section].Range.Start - sources[section].Start;
-            openPieces.Add(piece with { Edited = new(piece.Source.Start + offset, piece.Source.End + offset) });
-            if (editedPieces.IsPartSeam(index))
-                seams.Add(new(piece.Edited.Start, piece.Source.Start, part.Number, piece.Source.Start < editedPieces.Pieces[index - 1].Source.End));
+            if (EditedPieces.IsPartSeam(index))
+                seams.Add(new(piece.Edited.Start, piece.Source.Start, part.Number, piece.Source.Start < EditedPieces.Pieces[index - 1].Source.End));
             if (bands.Count > 0 && bands[^1].Part.Id == part.Id)
                 bands[^1] = bands[^1] with { Range = new(bands[^1].Range.Start, piece.Edited.End) };
             else bands.Add(new(part, piece.Edited));
         }
         edited = bands.ToArray();
         editedSeams = seams.ToArray();
-        OpenPieces = new(openPieces);
+        OpenPieces = new(new TimelinePieces(legacy).Pieces.Select(piece => (Piece: piece, Section: PartIndex(piece)))
+            .Where(item => item.Section >= 0).Select(item =>
+            {
+                var offset = open[item.Section].Range.Start - sources[item.Section].Start;
+                return item.Piece with { Edited = new(item.Piece.Source.Start + offset, item.Piece.Source.End + offset) };
+            }));
         var cuts = new List<TimeRange>();
         for (var index = 0; index < sources.Length; index++)
         {
@@ -78,6 +81,10 @@ internal sealed class TimelineStory
             }
         }
         OpenCuts = cuts;
+
+        int PartIndex(TimelinePiece piece) => Array.FindIndex(sources, source =>
+            source.Start <= piece.Source.Start && source.End > piece.Source.Start ||
+            source.Start < piece.Source.End && source.End > piece.Source.Start);
     }
 
     internal double Display(double source, bool closesCuts)
@@ -87,7 +94,7 @@ internal sealed class TimelineStory
         var band = bands.MinBy(item => Math.Max(item.Part.Start - source, Math.Max(0, source - item.Part.End)))!;
         if (closesCuts)
             return source <= band.Part.Start && band.Part.Number != 1 ? band.Range.Start
-                : source >= band.Part.End ? band.Range.End : Math.Clamp(plan.MapTime(source), band.Range.Start, band.Range.End);
+                : source >= band.Part.End ? band.Range.End : Math.Clamp(rendering.MapTime(source), band.Range.Start, band.Range.End);
         var range = sources[band.Part.Number - 1];
         return band.Range.Start + Math.Clamp(source - range.Start, 0, range.End - range.Start);
     }
@@ -96,8 +103,8 @@ internal sealed class TimelineStory
     {
         var bands = Bands(closesCuts);
         if (bands.Count == 0) return 0;
-        if (position >= Duration(closesCuts)) return closesCuts ? editedPieces.Pieces[^1].Source.End : sources[^1].End;
-        if (closesCuts) return plan.SourceTime(position);
+        if (position >= Duration(closesCuts)) return closesCuts ? EditedPieces.Pieces[^1].Source.End : sources[^1].End;
+        if (closesCuts) return rendering.SourceTime(position);
         var band = bands.First(item => position < item.Range.End);
         return sources[band.Part.Number - 1].Start + Math.Max(0, position - band.Range.Start);
     }

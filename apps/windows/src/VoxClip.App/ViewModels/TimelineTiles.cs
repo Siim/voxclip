@@ -49,7 +49,7 @@ internal sealed class TimelineTileCache
         var peaks = new List<TimelineMark>(); var core = new List<TimelineMark>();
         var ghostPeaks = new List<TimelineMark>(); var ghostCore = new List<TimelineMark>();
         var gaps = new List<TimelineMark>(); var seams = new List<TimelineMark>();
-        var tilePieces = !edited && story is not null ? story.OpenPieces : pieces;
+        var tilePieces = story is null ? pieces : edited ? story.EditedPieces : story.OpenPieces;
         var axis = edited || story is not null ? TimelineAxis.Edited : TimelineAxis.Source;
         var visible = tilePieces.Indices(new(window.Start, window.End), axis);
         var column = Math.Max(1, width / 2048);
@@ -61,8 +61,9 @@ internal sealed class TimelineTileCache
             var right = Math.Clamp(window.X(range.End, width), 0, width);
             if (right <= left) continue;
             video.Add(new(left, 0, right - left, 30));
-            if (edited && pieces.IsSeam(index) && (story is null || !pieces.IsPartSeam(index))) seams.Add(new(left, 0, 1, 30));
-            Wave(left, right, piece.Source.Start - range.Start, peaks, core);
+            if (edited && tilePieces.IsSeam(index) && (story is null || !tilePieces.IsPartSeam(index))) seams.Add(new(left, 0, 1, 30));
+            var scale = (piece.Source.End - piece.Source.Start) / (range.End - range.Start);
+            Wave(left, right, piece.Source.Start - range.Start * scale, peaks, core, scale);
         }
         if (!edited && story is not null)
         {
@@ -95,13 +96,15 @@ internal sealed class TimelineTileCache
                 Wave(left, right, 0, ghostPeaks, ghostCore);
             }
         }
-        void Wave(double left, double right, double offset, List<TimelineMark> peakMarks, List<TimelineMark> coreMarks)
+        void Wave(double left, double right, double offset, List<TimelineMark> peakMarks, List<TimelineMark> coreMarks, double scale = 1)
         {
             if (waveform is null) return;
             for (var horizontal = left; horizontal < right; horizontal += column)
             {
                 var end = Math.Min(right, horizontal + column);
-                var amplitude = waveform.Query(window.Time(horizontal, width) + offset, window.Time(end, width) + offset);
+                var startTime = window.Time(horizontal, width);
+                var endTime = window.Time(end, width);
+                var amplitude = waveform.Query(startTime * scale + offset, endTime * scale + offset);
                 if (amplitude.Peak <= 0) continue;
                 var peakHeight = Math.Min(28, amplitude.Peak * Math.Sqrt(2) * 30);
                 var rmsHeight = Math.Min(peakHeight, amplitude.Rms * 30);
