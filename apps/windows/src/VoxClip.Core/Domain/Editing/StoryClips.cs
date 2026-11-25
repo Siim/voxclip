@@ -79,18 +79,26 @@ internal static class StoryClips
     internal static void ValidatePlacement(ClipRange clip, Project project, IReadOnlyList<TimedWord> words)
     {
         var spans = Times(clip, words);
-        foreach (var window in LipsyncWindows(project))
-            for (var index = 0; index < spans.Count; index++)
-                Require(!Overlaps(spans[index], window) || Contains(spans[index], window),
-                    $"Part {index + 1} cuts through a lip-synced stretch. Include all of {Clock(window.Start)}–{Clock(window.End)} or none of it.");
+        if (LipsyncRefusal(spans, LipsyncWindows(project)) is { } refusal) Require(false, refusal);
+        if (project.SchemaVersion >= TimelineEditFields.Version) return;
         foreach (var effect in project.ClipEffects.Where(effect => effect.GetProperty("clipId").GetString() == clip.Id))
             Require(spans.Any(span => Contains(span, new(effect.GetProperty("start").GetDouble(), effect.GetProperty("end").GetDouble()))),
                 "Place it inside one part.");
     }
 
+    internal static string? LipsyncRefusal(IReadOnlyList<TimeRange> spans, IEnumerable<TimeRange> windows)
+    {
+        var saved = windows.ToArray();
+        for (var index = 0; index < spans.Count; index++)
+            foreach (var window in saved)
+                if (Overlaps(spans[index], window) && !Contains(spans[index], window))
+                    return $"Part {index + 1} cuts through a lip-synced stretch. Include all of {Clock(window.Start)}–{Clock(window.End)} or none of it.";
+        return null;
+    }
+
     internal static bool Overlaps(TimeRange span, TimeRange window) => span.Start < window.End && window.Start < span.End;
     private static bool Contains(TimeRange span, TimeRange window) => span.Start <= window.Start && window.End <= span.End;
-    private static string Clock(double seconds) => $"{(long)seconds / 60}:{(long)seconds % 60:00}";
+    internal static string Clock(double seconds) => $"{(long)seconds / 60}:{(long)seconds % 60:00}";
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, message);
