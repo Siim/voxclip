@@ -4,6 +4,27 @@ import Testing
 
 /// Replays shared/fixtures/music/music-wire-cases.json; the C# twin replays the same file.
 @Suite(.offlineFixtures) struct MusicProjectWireTests {
+    @Test func resolvedMusicKeepsTheAnchorOnTheRoundedFirstSample() throws {
+        var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/music/music-project.voxclip"))
+        let clipID = "clip-main"
+        let clip = try #require(project.edits.clips.first { $0.id == clipID })
+        let track = try #require(project.music.firstIndex { $0.clipId == clipID })
+        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+        let word = try #require(project.transcript?.words.firstIndex { $0.id == clip.startWordId })
+        project.transcript?.words[word].start += 0.25 / rate
+        let words = try #require(project.transcript?.words)
+        let part = try #require(StoryClips.times(clip, words: words).first)
+        let start = EditingPrimitives.jsRound(part.start * rate) / rate
+        var segment = MusicSegment(id: "edge", anchorSeconds: start, lengthSeconds: 0.5, songFromSeconds: 0,
+                                   loop: true, fadeInSeconds: 0, fadeOutSeconds: 0)
+        project.music[track].segments = [segment]
+        segment.id = "trimmed-out"
+        segment.anchorSeconds = start - 1 / rate
+        project.music[track].segments?.append(segment)
+        let input = try #require(MusicRenderInput.resolve(project: project, clipId: clipID, dataRoot: URL(fileURLWithPath: "/test")))
+        #expect(input.entry.segments?.map(\.id) == ["edge"])
+    }
+
     private struct Patch: Decodable {
         let path: String
         let value: JSONValue?

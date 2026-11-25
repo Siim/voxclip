@@ -342,12 +342,8 @@ public struct MusicRenderInput: Sendable, Equatable {
     /// The input for a clip's (or with nil the full video's) track, or nil without one.
     public static func resolve(project: Project, clipId: String?, dataRoot: URL) -> MusicRenderInput? {
         guard var entry = MusicProject.entry(for: clipId, in: project) else { return nil }
-        if let segments = entry.segments, let clip = project.edits.clips.first(where: { $0.id == clipId }),
-           let words = project.transcript?.words {
-            let parts = StoryClips.times(clip, words: words)
-            entry.segments = segments.filter { segment in
-                parts.contains { $0.start <= segment.anchorSeconds && segment.anchorSeconds < $0.end }
-            }
+        if let segments = entry.segments, let includes = RenderCallerInputs.scopedAnchors(project: project, clipID: clipId) {
+            entry.segments = segments.filter { includes($0.anchorSeconds) }
         }
         return MusicRenderInput(entry: entry, assetURL: url(for: entry.asset, dataRoot: dataRoot))
     }
