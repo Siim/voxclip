@@ -336,7 +336,7 @@ public enum FCPXML {
                     let weight = fade * MusicMix.pieceWeight(span, at: frame) * MusicMix.pieceWeight(piece, at: frame - localStart)
                     let db = base + MusicMix.envelopeDb(at: localTime, points: points) + 20 * log10(max(1e-6, weight))
                     let time = source + Double(frame - localStart) / rate
-                    append("keyframe", ["time": seconds(time), "value": volume(max(-96, db)), "interp": "linear"], to: animation)
+                    append("keyframe", ["time": seconds(time), "value": volume(max(-96, db)), "interp": "linear", "curve": "linear"], to: animation)
                 }
             }
         }

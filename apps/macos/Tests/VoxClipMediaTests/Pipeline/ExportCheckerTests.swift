@@ -61,7 +61,8 @@ extension HeavyMediaTests {
             stereo.append(contentsOf: [sample, sample])
         }
         try MusicBedTests.caf(stereo, channels: 2, to: song)
-        let plan = EditPlan(sampleRate: 48_000, totalSamples: Int64(frames))
+        let sampleCount = Int64(frames)
+        let plan = EditPlan(sampleRate: 48_000, totalSamples: sampleCount, kept: [.init(startSample: 0, endSample: sampleCount)])
         var render = RenderRequest(sourceURL: camera, plan: plan,
                                    output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
         var entry = ProjectMusic(id: "music", clipId: nil, asset: .init(file: "tone.caf", sha256: "", durationSeconds: 2),

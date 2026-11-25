@@ -76,6 +76,9 @@ struct ClipExportReview: Identifiable {
         case (.words, .warning): result.items.count == 1 ? "1 word sounds different" : "\(result.items.count) words need review"
         case (.words, .skipped): "Spoken words"
         case (.sync, _): "Voice and picture timing"
+        case (.loudness, _) where result.items.contains(where: { $0.kind == .timelineAudioLevel || $0.kind == .timelineAudioGap }):
+            "Edited soundtrack"
+        case (.loudness, .ok) where result.integratedLufs == nil: "Edited soundtrack"
         case (.loudness, _): "Feed loudness"
         case (.captions, _): "Captions on screen"
         }

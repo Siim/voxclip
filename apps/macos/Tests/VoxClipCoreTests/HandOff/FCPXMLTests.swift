@@ -18,7 +18,8 @@ import VoxClipCore
         request.music = .init(entry: entry, assetURL: URL(fileURLWithPath: "/Media/bed.wav"))
         let xml = try XMLDocument(data: FCPXML.document(name: "Segmented music", render: request, source: source, musicAudio: source.audio))
         for (path, values) in vector.expected.sorted(by: { $0.key < $1.key }) {
-            #expect(try xml.nodes(forXPath: path).compactMap(\.stringValue) == values, "\(path)")
+            let actual = try xml.nodes(forXPath: path).compactMap(\.stringValue)
+            #expect(actual == values, "\(path)")
         }
         try validateWithAppleDTD(xml)
         var title = ClipEffect(id: "title", clipId: nil, kind: .title, start: 0, end: 1, text: "Title")
