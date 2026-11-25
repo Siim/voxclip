@@ -473,7 +473,7 @@ private actor HookFixtureConnector: LLMConnector {
         editor.select("w12")
         editor.rewriteShortcut()
         #expect(editor.lastAnnouncement == reason)
-        #expect(editor.rewriteOpenTask == nil)
+        #expect(editor.rewriteOpenTask == nil && editor.rewriteInstruction.isEmpty)
         let metadata = StoryClipPresentation.metadata(story, editedDuration: 65)
         #expect(metadata.badge == "reel" && metadata.length == "1:05")
     }
