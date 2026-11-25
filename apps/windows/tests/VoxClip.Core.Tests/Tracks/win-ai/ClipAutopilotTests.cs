@@ -84,6 +84,14 @@ public sealed class ClipAutopilotTests
     /// <summary>A version 1 vector reply with the later fields every send must carry, set to change nothing.</summary>
     internal static JsonObject Sendable(JsonObject reply)
     {
+        if (reply["startWord"] is { } start && reply["endWord"] is { } end)
+        {
+            reply["parts"] = new JsonArray(new JsonObject { ["startWord"] = start.DeepClone(), ["endWord"] = end.DeepClone() });
+            reply.Remove("startWord");
+            reply.Remove("endWord");
+        }
+        reply["not_in_take"] ??= "";
+        reply["musicTrackId"] ??= "";
         var neutral = new JsonObject { ["corrections"] = new JsonArray(), ["lengthReason"] = "", ["captionReason"] = "", ["look"] = "original", ["lookReason"] = "",
             ["speed"] = 1, ["speedReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
             ["frames"] = new JsonObject { ["blur"] = new JsonArray(), ["cover"] = new JsonObject { ["id"] = "", ["reason"] = "" } } };
@@ -111,6 +119,48 @@ public sealed class ClipAutopilotTests
     }
 
     // MARK: Prompt file
+
+    [Fact]
+    public void ReplaysPartsThroughTheCanonicalReader()
+    {
+        var fixture = Fixture("plan-parts-cases.json");
+        var context = Context(Transcript(fixture, 30), Range(fixture["scope"])) with
+        {
+            MusicTrackIds = new HashSet<string> { fixture["musicTrackId"]!.GetValue<string>() },
+            FootageSources = fixture["footageSources"]!.AsObject().ToDictionary(pair => pair.Key, pair => pair.Value!.GetValue<double>())
+        };
+        Assert.Equal(context.Prompt.Sha256, fixture["sources"]!["shared/prompts/clip-autopilot.json"]!.GetValue<string>());
+        static int[][] Bounds(IEnumerable<ClipProposal.Part> parts) => parts.Select(part => new[] { part.StartWord, part.EndWord }).ToArray();
+        static int[][] ExpectedParts(JsonNode? node) => node!.AsArray().Select(part => new[] { part![0]!.GetValue<int>(), part[1]!.GetValue<int>() }).ToArray();
+        foreach (var vector in fixture["moments"]!.AsArray())
+        {
+            var moments = ClipAutopilotValidator.Moments(vector!["reply"], context).Moments;
+            var expected = vector["expect"]!.AsArray();
+            Assert.Equal(expected.Select(item => item!["kind"]!.GetValue<string>()), moments.Select(moment => moment.Kind));
+            for (var index = 0; index < moments.Count; index++)
+                Assert.Equal(ExpectedParts(expected[index]!["parts"]), Bounds(moments[index].Parts));
+        }
+        foreach (var vector in fixture["plans"]!.AsArray())
+        {
+            var scoped = context with
+            {
+                Kind = vector!["kind"]?.GetValue<string>(),
+                OfferedParts = vector["offered"]?.AsArray().Select(part => new ClipProposal.Part(part!["startWord"]!.GetValue<int>(), part["endWord"]!.GetValue<int>())).ToArray()
+            };
+            var checkedPlan = ClipAutopilotValidator.Plan(vector["reply"], scoped);
+            if (vector["expect"] is not { } expected) { Assert.Null(checkedPlan); continue; }
+            Assert.NotNull(checkedPlan);
+            var proposal = checkedPlan.CanonicalProposal();
+            Assert.Equal(expected["kind"]!.GetValue<string>(), proposal.Target.New!.Kind);
+            Assert.Equal(ExpectedParts(expected["parts"]), Bounds(proposal.Parts!));
+            Assert.Equal(expected["seconds"]!.GetValue<double>(), checkedPlan.Seconds);
+            Assert.Equal(expected["effects"]!.AsArray().Select(item => item!.GetValue<string>()), (proposal.Effects ?? []).Select(effect => effect.Kind));
+            Assert.Equal(expected["musicTrackId"]?.GetValue<string>(), proposal.Music?.TrackId);
+            var stored = ClipAutopilotPlan.FromJson(checkedPlan.ToJson()).CanonicalProposal();
+            Assert.Equal(proposal.Parts!, stored.Parts!);
+            Assert.Equal(proposal.Target, stored.Target);
+        }
+    }
 
     [Fact]
     public void PromptFileFillsItsLimitsAndEveryFixturePinsIt()
@@ -619,7 +669,8 @@ public sealed class ClipAutopilotTests
     [Fact]
     public async Task ServiceSeriesDropsTypeInvalidMomentsAndPlansTheRest()
     {
-        var moment = new JsonObject { ["startWord"] = 0, ["endWord"] = 29, ["title"] = "Coffee", ["idea"] = "Sleep wins.", ["captionStyle"] = "karaoke", ["captionReason"] = "",
+        var moment = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["startWord"] = 0, ["endWord"] = 29 }),
+            ["kind"] = "stretch", ["not_in_take"] = "", ["title"] = "Coffee", ["idea"] = "Sleep wins.", ["captionStyle"] = "karaoke", ["captionReason"] = "",
             ["score"] = 8, ["verdict"] = "post", ["scoreReason"] = "" };
         var reply = new JsonObject { ["clips"] = new JsonArray(new JsonObject { ["startWord"] = "x" }, moment) };
         var stub = Stub(reply.ToJsonString(), Sendable(Reply("valid-clip")).ToJsonString());
@@ -657,7 +708,7 @@ public sealed class ClipAutopilotTests
             reply["startWord"] = int.Parse(span.Groups[1].Value, CultureInfo.InvariantCulture);
             reply["endWord"] = int.Parse(span.Groups[2].Value, CultureInfo.InvariantCulture);
             reply["score"] = reply["startWord"]!.GetValue<int>() == 0 ? 6 : 9;
-            return new(reply.ToJsonString(), null, model, new StopKind.Complete(), null, null);
+            return new(Sendable(reply).ToJsonString(), null, model, new StopKind.Complete(), null, null);
         }
         var lanes = Enumerable.Range(0, 4).Select(_ => new ScriptedConnector(ConnectorId.Ollama, Respond)).ToArray();
         var progress = new List<ClipAutopilotProgress>();

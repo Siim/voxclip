@@ -43,7 +43,7 @@ public sealed class ClipAutopilotMotionTests
         var (document, hash) = ClipAutopilotPrompt.ReadShared(Root, ClipAutopilotPrompt.Path);
         document.Remove("directionalZooms");
         var original = new ClipAutopilotPrompt(document, hash);
-        Assert.Equal(9, original.PromptVersion);
+        Assert.Equal(12, original.PromptVersion);
         Assert.Contains("from 1.05 to 1.35", original.System, StringComparison.Ordinal);
         Assert.Null(original.Schema["properties"]!["zooms"]!["items"]!["properties"]!["direction"]);
         var series = service.Request(new(Transcript(), Edits(), new ClipAutopilotMode.Series(null)), ConnectorId.Codex);

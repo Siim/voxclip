@@ -44,7 +44,8 @@ public sealed partial class CliAutopilotTests
                 var rewrite = $"{words[start + 2]} really {words[start + 4]}";
                 reply = new JsonObject
                 {
-                    ["startWord"] = start, ["endWord"] = end, ["title"] = "Planned " + start, ["hook"] = "A hook", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
+                    ["parts"] = new JsonArray(new JsonObject { ["startWord"] = start, ["endWord"] = end }), ["not_in_take"] = "", ["musicTrackId"] = "",
+                    ["title"] = "Planned " + start, ["hook"] = "A hook", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
                     ["corrections"] = new JsonArray(), ["rewrites"] = new JsonArray(new JsonObject { ["startWord"] = start + 2, ["endWord"] = start + 4, ["text"] = rewrite, ["reason"] = "a stumble" }),
                     ["captionStyle"] = "vox-bold", ["captionFont"] = "Roboto", ["captionWeight"] = 900, ["captionCase"] = "upper", ["wordsPerCaption"] = 3, ["captionReason"] = "",
                     ["look"] = "original", ["lookReason"] = "", ["speed"] = 1, ["speedReason"] = "", ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",

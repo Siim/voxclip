@@ -28,11 +28,13 @@ private actor PictureStub: LLMConnector {
         }
         planImages += request.images.count
         var reply: [String: Any] = [:]
-        let numbers: [String: Int] = ["startWord": start, "endWord": end, "captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 8]
+        let numbers: [String: Int] = ["captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 8]
         let texts: [String: String] = ["title": "Ship day", "hook": "", "lengthReason": "", "captionStyle": "vox-bold", "captionReason": "punchy",
                                        "captionFont": "Roboto", "captionCase": "upper", "look": "original", "lookReason": "", "speedReason": "",
                                        "postText": "We ship.", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]
         for (key, value) in numbers { reply[key] = value }
+        reply["parts"] = [["startWord": start, "endWord": end]]
+        reply["not_in_take"] = ""; reply["musicTrackId"] = ""
         for (key, value) in texts { reply[key] = value }
         for key in ["corrections", "cuts", "pauseCuts", "rewrites", "zooms", "music", "questions"] { reply[key] = [Any]() }
         reply["frames"] = ["blur": [["id": "B1", "blur": true, "reason": "It shows calendar entries with names"]],

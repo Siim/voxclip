@@ -61,9 +61,12 @@ import Testing
     /// key), set to change nothing.
     static func sendable(_ reply: JSONValue) throws -> JSONValue {
         guard case .object(var object) = reply else { throw VoiceLabError.invalidInput }
+        if let start = object.removeValue(forKey: "startWord"), let end = object.removeValue(forKey: "endWord") {
+            object["parts"] = .array([.object(["startWord": start, "endWord": end])])
+        }
         let neutral: [String: JSONValue] = ["corrections": .array([]), "lengthReason": .string(""), "captionReason": .string(""),
                                             "look": .string("original"), "lookReason": .string(""), "speed": .number(1), "speedReason": .string(""),
-                                            "tone": .string("none"), "toneSummary": .string(""),
+                                            "tone": .string("none"), "toneSummary": .string(""), "not_in_take": .string(""), "musicTrackId": .string(""),
                                             "frames": .object(["blur": .array([]), "cover": .object(["id": .string(""), "reason": .string("")])])]
         for (key, value) in neutral where object[key] == nil { object[key] = value }
         return .object(object)
@@ -305,7 +308,8 @@ import Testing
 
     @Test func serviceSeriesDropsTypeInvalidMomentsAndPlansTheRest() async throws {
         let valid = try Self.sendable(try Self.reply("valid-clip"))
-        let moment = JSONValue.object(["startWord": .number(0), "endWord": .number(29), "title": .string("Coffee"), "idea": .string("Sleep wins."),
+        let moment = JSONValue.object(["parts": .array([.object(["startWord": .number(0), "endWord": .number(29)])]), "kind": .string("stretch"),
+            "not_in_take": .string(""), "title": .string("Coffee"), "idea": .string("Sleep wins."),
             "captionStyle": .string("karaoke"), "captionReason": .string(""), "score": .number(8), "verdict": .string("post"), "scoreReason": .string("")])
         let reply = JSONValue.object(["clips": .array([.object(["startWord": .string("x")]), moment])])
         let stub = AutopilotStub(replies: [try reply.aiCompact(), try valid.aiCompact()])

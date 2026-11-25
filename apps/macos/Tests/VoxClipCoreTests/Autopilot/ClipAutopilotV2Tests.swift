@@ -49,6 +49,51 @@ import Testing
         #expect(prompt.momentsSystem.contains("showreel"))
     }
 
+    @Test func replaysPartsThroughTheCanonicalReader() throws {
+        let fixture = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/autopilot/plan-parts-cases.json"))
+        let words = try fixture[ai: "transcript"][ai: "words"].aiArray.map { item in
+            TimedWord(id: try #require(item[ai: "id"].aiString), text: try #require(item[ai: "text"].aiString), kind: .word,
+                      start: try #require(item[ai: "start"].aiDouble), end: try #require(item[ai: "end"].aiDouble))
+        }
+        let shared = try ClipAutopilotTests.shared()
+        let prompt = try ClipAutopilotPrompt(shared: shared)
+        #expect(fixture[ai: "sources"][ai: "shared/prompts/clip-autopilot.json"].aiString == prompt.sha256)
+        var context = ClipAutopilotContext(words: words, scope: try ClipAutopilotTests.range(fixture[ai: "scope"]),
+            styleIDs: [prompt.defaults.styleID], fonts: try ClipAutopilotFonts.load(shared: shared), prompt: prompt,
+            footageSources: try #require(fixture[ai: "footageSources"].aiObject).compactMapValues(\.aiDouble))
+        context.musicTrackIDs = [try #require(fixture[ai: "musicTrackId"].aiString)]
+        func bounds(_ parts: [ClipProposal.Part]) -> [[Int]] { parts.map { [$0.startWord, $0.endWord] } }
+        func expected(_ value: JSONValue) -> [[Int]] { value.aiArray.map { $0.aiArray.compactMap(\.aiInt) } }
+        for vector in fixture[ai: "moments"].aiArray {
+            let moments = ClipAutopilotValidator.moments(vector[ai: "reply"], context: context).moments
+            let wanted = vector[ai: "expect"].aiArray
+            #expect(moments.map { $0.kind.rawValue } == wanted.compactMap { $0[ai: "kind"].aiString })
+            #expect(moments.map { bounds($0.parts) } == wanted.map { expected($0[ai: "parts"]) })
+        }
+        for vector in fixture[ai: "plans"].aiArray {
+            let id = Comment(rawValue: vector[ai: "id"].aiString ?? "")
+            var scoped = context
+            scoped.kind = vector[ai: "kind"].aiString.flatMap(ClipProposal.NewClip.Kind.init(rawValue:))
+            if vector[ai: "offered"] != .null {
+                scoped.offeredParts = try vector[ai: "offered"].aiArray.map {
+                    .init(startWord: try #require($0[ai: "startWord"].aiInt), endWord: try #require($0[ai: "endWord"].aiInt))
+                }
+            }
+            let plan = ClipAutopilotValidator.plan(vector[ai: "reply"], context: scoped)
+            let wanted = vector[ai: "expect"]
+            if wanted == .null { #expect(plan == nil, id); continue }
+            let checked = try #require(plan, id)
+            let proposal = checked.canonicalProposal()
+            #expect(proposal.target.new?.kind.rawValue == wanted[ai: "kind"].aiString, id)
+            #expect(bounds(proposal.parts ?? []) == expected(wanted[ai: "parts"]), id)
+            #expect(checked.seconds == wanted[ai: "seconds"].aiDouble, id)
+            #expect((proposal.effects ?? []).map { $0.kind.rawValue } == wanted[ai: "effects"].aiArray.compactMap(\.aiString), id)
+            #expect(proposal.music?.trackId == wanted[ai: "musicTrackId"].aiString, id)
+            let stored = try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(checked))
+            #expect(stored.canonicalProposal() == proposal, id)
+        }
+    }
+
     @Test func vectorsPinTheCurrentPrompt() throws {
         let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
         #expect(try Self.fixture()[ai: "sources"][ai: "shared/prompts/clip-autopilot.json"].aiString == prompt.sha256,
@@ -185,7 +230,8 @@ import Testing
 
     static func momentsReply(_ spans: [(Int, Int, String)]) throws -> String {
         try JSONValue.object(["clips": .array(spans.enumerated().map { index, span in
-            .object(["startWord": .number(Double(span.0)), "endWord": .number(Double(span.1)), "title": .string("Moment \(index + 1)"),
+            .object(["parts": .array([.object(["startWord": .number(Double(span.0)), "endWord": .number(Double(span.1))])]),
+                     "kind": .string("stretch"), "not_in_take": .string(""), "title": .string("Moment \(index + 1)"),
                      "idea": .string("Idea \(index + 1)."), "captionStyle": .string(span.2), "captionReason": .string("fits \(index + 1)"),
                      "score": .number(Double(8 - index)), "verdict": .string(index == 0 ? "postFirst" : "post"), "scoreReason": .string("")])
         })]).aiCompact()
@@ -202,7 +248,7 @@ import Testing
         reply["tone"] = .string("none"); reply["toneSummary"] = .string("")
         // Prompt version 8 requires the frames object.
         reply["frames"] = .object(["blur": .array([]), "cover": .object(["id": .string(""), "reason": .string("")])])
-        return try JSONValue.object(reply).aiCompact()
+        return try ClipAutopilotTests.sendable(.object(reply)).aiCompact()
     }
 
     @Test(.timeLimit(.minutes(1)))

@@ -98,12 +98,14 @@ private actor LatencyStub: LLMConnector {
         if Task.isCancelled { throw LLMError.cancelled }
         // A plan with nothing to cut, built in typed parts so it type-checks quickly.
         var reply: [String: Any] = [:]
-        let numbers: [String: Int] = ["startWord": start, "endWord": end, "captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 9 - rank]
+        let numbers: [String: Int] = ["captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 9 - rank]
         let texts: [String: String] = ["title": "Clip \(rank)", "hook": "Hook \(rank)", "lengthReason": "", "captionStyle": "vox-bold", "captionReason": "punchy",
                                        "captionFont": "Roboto", "captionCase": "upper", "look": "original", "lookReason": "", "speedReason": "",
                                        "postText": "Post \(rank).", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]
         let lists = ["corrections", "cuts", "pauseCuts", "rewrites", "zooms", "music", "questions"]
         for (key, value) in numbers { reply[key] = value }
+        reply["parts"] = [["startWord": start, "endWord": end]]
+        reply["not_in_take"] = ""; reply["musicTrackId"] = ""
         for (key, value) in texts { reply[key] = value }
         for key in lists { reply[key] = [Any]() }
         reply["music"] = [["title": "Pulse", "mood": "driven", "prompt": "Instrumental, 120 BPM", "reason": "pace", "underVoiceDb": 18]]

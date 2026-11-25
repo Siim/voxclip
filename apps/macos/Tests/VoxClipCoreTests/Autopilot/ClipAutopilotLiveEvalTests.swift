@@ -64,6 +64,10 @@ func clipAutopilotLiveEvaluation() async throws {
         try clipRequests.enumerated().map { "## Moment \($0.offset + 1)\n\n" + text($0.element) }.joined(separator: "\n\n=====\n\n")
             .write(to: output.appendingPathComponent("request-series-clips.txt"), atomically: true, encoding: .utf8)
         seriesPlans = result.series.plans
+        if environment["VOXCLIP_LIVE_TESTS"] == "1" {
+            #expect(seriesPlans.count == 3)
+            #expect(seriesPlans.contains { $0.kind != .stretch })
+        }
         report += "\n## Series: \(result.series.plans.count) clips in \(Int(total.rounded())) s (moments \(Int(timeline.momentsSeconds.rounded())) s; "
             + "clip plans " + timeline.clipSeconds.map { "\(Int($0.rounded())) s" }.joined(separator: ", ") + "), answered by \(result.model)"
             + "\(result.usedFallback ? ", fallback" : "")\n\n### Moments picked (stage 1, rank order)\n"

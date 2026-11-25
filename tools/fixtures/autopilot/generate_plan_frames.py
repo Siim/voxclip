@@ -84,9 +84,55 @@ def generated(prompt):
         'cases': cases}
 
 
+def parts_vectors():
+    def ranges(parts):
+        return [{'startWord': start, 'endWord': end} for start, end in parts]
+
+    def effect(kind, start, end, **payload):
+        return dict(kind=kind, startWord=start, endWord=end, reason='Make this beat land.', **payload)
+
+    story = [[36, 43], [0, 7], [24, 31]]
+    showreel = [[48, 55], [12, 19], [32, 39], [0, 7]]
+    opener = effect('motionTemplate', 48, 49, template={'name': 'logoSting', 'text': 'Vox', 'from': 0, 'to': 0})
+    valid_showreel = {'parts': ranges(showreel), 'effects': [opener], 'musicTrackId': 'saved-bed'}
+    return {
+        'schema': 'voxclip-autopilot-parts/1', 'sources': {'shared/prompts/clip-autopilot.json': prompt_sha()},
+        'transcript': {'words': [{'id': f'w{index}', 'text': f'beat{index}', 'start': index / 2, 'end': (index + 1) / 2}
+                                 for index in range(60)]},
+        'scope': [0, 59], 'footageSources': {'companion': 12}, 'musicTrackId': 'saved-bed',
+        'moments': [
+            {'reply': {'clips': [{'kind': 'story', 'parts': ranges(story), 'not_in_take': 'The slogan was not spoken.'},
+                                {'kind': 'stretch', 'parts': ranges([[8, 23]])},
+                                {'kind': 'stretch', 'parts': ranges([[1, 20]])}]},
+             'expect': [{'kind': 'story', 'parts': story}, {'kind': 'stretch', 'parts': [[8, 23]]}]},
+            {'reply': {'clips': [{'kind': 'showreel', 'parts': ranges(showreel)}]},
+             'expect': [{'kind': 'showreel', 'parts': showreel}]},
+        ],
+        'plans': [
+            {'id': 'effect-seam-and-footage', 'offered': ranges(story),
+             'reply': {'parts': ranges(story), 'effects': [effect('motionTitle', 6, 25, text='Crosses the seam'),
+                        effect('bRoll', 36, 37, footage={'sourceKey': 'companion', 'start': 1}),
+                        effect('screenshot', 0, 1, footage={'sourceKey': 'companion', 'start': 2}),
+                        effect('videoStack', 24, 25, footage={'sourceKey': 'companion', 'start': 3}),
+                        effect('bRoll', 2, 3, footage={'sourceKey': 'not-offered', 'start': 1})]},
+             'expect': {'kind': 'story', 'parts': story, 'seconds': 12, 'effects': ['bRoll', 'screenshot', 'videoStack']}},
+            {'id': 'can-tighten-drop-and-reorder', 'offered': ranges(story), 'reply': {'parts': ranges([[1, 6], [26, 31]])},
+             'expect': {'kind': 'story', 'parts': [[1, 6], [26, 31]], 'seconds': 6, 'effects': []}},
+            {'id': 'cannot-extend-into-gap', 'offered': ranges(story), 'reply': {'parts': ranges([[35, 43]])}, 'expect': None},
+            {'id': 'showreel-with-saved-bed', 'kind': 'showreel', 'offered': ranges(showreel), 'reply': valid_showreel,
+             'expect': {'kind': 'showreel', 'parts': showreel, 'seconds': 16, 'effects': ['motionTemplate'], 'musicTrackId': 'saved-bed'}},
+            {'id': 'showreel-without-music', 'kind': 'showreel', 'offered': ranges(showreel),
+             'reply': {**valid_showreel, 'musicTrackId': 'unknown'}, 'expect': None},
+            {'id': 'legacy-span', 'reply': {'startWord': 12, 'endWord': 19},
+             'expect': {'kind': 'stretch', 'parts': [[12, 19]], 'seconds': 4, 'effects': []}},
+        ],
+    }
+
+
 def main():
     prompt = json.loads(PROMPT.read_text())
     (FIXTURES / 'plan-frames-cases.json').write_text(json.dumps(generated(prompt), indent=2, ensure_ascii=False) + '\n')
+    (FIXTURES / 'plan-parts-cases.json').write_text(json.dumps(parts_vectors(), indent=2, ensure_ascii=False) + '\n')
     sha = prompt_sha()
     for name in HAND_DERIVED:
         path = FIXTURES / name
