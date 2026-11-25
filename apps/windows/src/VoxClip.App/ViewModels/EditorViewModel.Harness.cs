@@ -20,30 +20,41 @@ public sealed partial class EditorViewModel
         : IsLeaving || Busy || undoGroup is { OwnsEdits: true } || Music.Phase is MusicPanelPhase.Searching or MusicPanelPhase.Using
             ? "Finish the current action before keeping this timeline." : null;
 
-    internal HarnessReviewDetails DescribeHarnessProposal(HarnessProposal proposal, string? sharedRoot)
+    internal HarnessReviewDetails DescribeHarnessProposal(HarnessProposal proposal, string? sharedRoot, int index = 0)
     {
-        var timeline = proposal.Timeline;
-        var clipId = timeline.GetProperty("clipId").GetString();
-        var clipTitle = project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId)?.Title ?? "Clip";
+        var timeline = proposal.TimelineAt(index);
+        var intent = proposal.Timelines[index];
+        var clipId = proposal.ClipIdAt(index);
+        var clipTitle = intent.Target.New?.Title ?? project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId)?.Title ?? "Clip";
         var changes = new List<string>();
+        if (intent.Parts is { } parts) changes.Add("Parts: " + string.Join(" → ", parts.Select(part => $"{part.StartWord}–{part.EndWord}")));
         if (timeline.TryGetProperty("title", out var title)) changes.Add($"Title: {title.GetString()}");
         if (timeline.TryGetProperty("captionStyle", out var caption)) changes.Add($"Captions: {caption.GetString()}");
-        if (timeline.TryGetProperty("musicTrackId", out var track))
+        if (intent.Music?.TrackId is { } trackId)
         {
-            var trackId = track.GetString();
             changes.Add($"Reuse music: {project.Music.FirstOrDefault(item => item.Id == trackId)?.Title ?? trackId}");
         }
         if (timeline.TryGetProperty("cuts", out var cuts))
             changes.AddRange(cuts.EnumerateArray().Select(change => DescribeCut(change)));
         if (timeline.TryGetProperty("effects", out var effects))
             changes.AddRange(effects.EnumerateArray().Select(effect => $"{EffectLabel(effect)}: {effect.GetProperty("reason").GetString()}"));
-        var prompt = timeline.TryGetProperty("generateMusic", out var music) ? music.GetString() : null;
+        var prompt = intent.Music?.Brief;
         string? estimate = null;
         string? blocked = null;
         if (sharedRoot is null) blocked = "VoxClip can't read its timeline resources.";
         else
         {
-            try { estimate = proposal.EstimatedMusicPrice(proposal.Applying(project, sharedRoot), sharedRoot); }
+            try
+            {
+                var review = proposal.Review(project, sharedRoot, index);
+                estimate = proposal.EstimatedMusicPrice(review.Project, sharedRoot, index);
+                foreach (var operation in review.Operations.Where(operation =>
+                    operation.Decision is not (ClipAutopilotDecision.Clip or ClipAutopilotDecision.Title or ClipAutopilotDecision.Cut or
+                        ClipAutopilotDecision.Music or ClipAutopilotDecision.Zoom or ClipAutopilotDecision.Overlay) &&
+                    (operation.Decision != ClipAutopilotDecision.Captions || intent.CaptionStyle is null ||
+                        intent.Font is not null || intent.WordsPerCaption is not null || intent.TextCase is not null)))
+                    changes.Add(string.IsNullOrEmpty(operation.Reason) ? $"{operation.Decision}" : $"{operation.Decision}: {operation.Reason}");
+            }
             catch (HarnessException exception) { blocked = exception.Message; }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or VoxClipException)
             { blocked = "VoxClip can't validate this timeline. Your project is unchanged."; }
@@ -56,14 +67,19 @@ public sealed partial class EditorViewModel
 
     internal HarnessMusicAction? KeepHarnessProposal(HarnessProposal proposal, string projectPath, string sharedRoot,
         out IReadOnlyList<ClipAutopilotAction.Asset> assets)
+        => KeepHarnessTimeline(proposal, projectPath, sharedRoot, 0, out assets, out _);
+
+    internal HarnessMusicAction? KeepHarnessTimeline(HarnessProposal proposal, string projectPath, string sharedRoot, int index,
+        out IReadOnlyList<ClipAutopilotAction.Asset> assets, out IReadOnlyList<ClipAutopilotOperation> rewrites)
     {
         if (HarnessKeepBlocked is { } blocked) throw new HarnessException(blocked);
-        var (next, actions) = proposal.Evaluate(project, sharedRoot);
-        DismissHarnessProposal(proposal, projectPath);
+        var (next, _, pending) = proposal.Review(project, sharedRoot, index);
+        HarnessInbox.Resolve(proposal, proposal.Remaining(index, next), projectPath);
         if (!ReferenceEquals(next, project)) ReplaceProject(next, "Keep timeline proposal");
-        assets = actions;
-        return proposal.Timeline.TryGetProperty("generateMusic", out var prompt)
-            ? new(proposal.Timeline.GetProperty("clipId").GetString()!, next.Media.Source.ContentKey, prompt.GetString()!) : null;
+        assets = pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Asset>().ToArray();
+        rewrites = pending.Where(operation => operation.Action is ClipAutopilotAction.Rewrite).ToArray();
+        return pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Music>().FirstOrDefault() is { } music
+            ? new(music.Cue.ClipId, next.Media.Source.ContentKey, music.Cue.Picked.Prompt) : null;
     }
 
     internal async Task<bool> ApplyHarnessAssetAsync(ClipAutopilotAction.Asset asset, Project snapshot, decimal? price, CancellationToken ct)
@@ -74,10 +90,10 @@ public sealed partial class EditorViewModel
         return effect is { } value && Current() && ReplaceProject(ClipEffects.Adding([value], project), "Place timeline asset");
     }
 
-    internal void DismissHarnessProposal(HarnessProposal proposal, string projectPath)
+    internal void DismissHarnessProposal(HarnessProposal proposal, string projectPath, int index = 0)
     {
         if (IsLeaving) throw new HarnessException("The pending timeline changed. Review it again.");
-        HarnessInbox.Dismiss(proposal, projectPath);
+        HarnessInbox.Resolve(proposal, proposal.Discarding(index), projectPath);
     }
 
     private string DescribeCut(JsonElement change)

@@ -100,7 +100,8 @@ struct HarnessProject {
                 guard review.project != project || !review.pending.isEmpty else { throw HarnessError.invalid("The timeline doesn't change the project.") }
                 let approval: JSONValue = .string("In VoxClip only; the app confirms the price for the open clip.")
                 let position: JSONValue = .number(Double(index))
-                for operation in review.pending {
+                let music = review.pending.filter { $0.decision == .music }
+                for operation in music + review.pending.filter({ $0.decision != .music }) {
                     switch operation.action {
                     case .music(let cue):
                         let price = try proposal.estimatedMusicPrice(in: review.project, shared: shared, at: index)
@@ -114,7 +115,10 @@ struct HarnessProject {
                     case .asset(let asset):
                         free.append(.object(["kind": .string("findSound"), "query": .string(asset.text), "timelineIndex": position]))
                     case .rewrite(_, let text):
-                        actions.append(.object(["kind": .string("rewrite"), "text": .string(text), "price": .null,
+                        let estimate = try VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: "eleven_multilingual_v2",
+                            units: Double(VoiceLabTextLength.length(text)), catalog: VoiceLabPriceCatalog.load(shared: shared))
+                        let price = estimate.usd.map(VoiceLabCostPresentation.format)
+                        actions.append(.object(["kind": .string("rewrite"), "text": .string(text), "price": price.map(JSONValue.string) ?? .null,
                                                 "approval": approval, "timelineIndex": position]))
                     default: break
                     }

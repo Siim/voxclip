@@ -215,7 +215,7 @@ public enum ClipAutopilotMapping {
             if let direction = zoom.direction {
                 guard zoom.hasDirectionalSettings,
                       !(zoom.word...zoom.untilWord).contains(where: { state.cutWordIds.contains(words[$0].id) }),
-                      !plan.cuts.contains(where: { $0.startWord <= zoom.untilWord && zoom.word <= $0.endWord }),
+                      !(proposal.cuts ?? []).contains(where: { $0.startWord <= zoom.untilWord && zoom.word <= $0.endWord }),
                       !zoomRanges.contains(where: { abs($0.lowerBound - range.lowerBound) < ClipAutopilotPlan.Zoom.minimumStartSpacing - 1e-9 }) else { continue }
                 let phrase = words[zoom.word...zoom.untilWord].filter { $0.kind == .word }
                     .map { corrections[$0.id] ?? $0.text }.joined(separator: " ")

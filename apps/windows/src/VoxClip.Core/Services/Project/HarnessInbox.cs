@@ -36,11 +36,25 @@ public static class HarnessInbox
     }
 
     /// <summary>Consumes only the proposal the editor actually reviewed.</summary>
-    public static void Dismiss(HarnessProposal proposal, string projectPath)
+    public static void Dismiss(HarnessProposal proposal, string projectPath) => Resolve(proposal, null, projectPath);
+
+    /// <summary>Atomically replace the reviewed sidecar with the timelines still pending, or dismiss it.</summary>
+    public static void Resolve(HarnessProposal proposal, HarnessProposal? remaining, string projectPath)
     {
         var path = CanonicalLocalPath(projectPath, allowLinks: true) + ".proposal.json";
         if (!proposal.Matches(ReadSidecar(path))) throw new HarnessException("The pending timeline changed. Review it again.");
-        File.Delete(path);
+        if (remaining is null) { File.Delete(path); return; }
+        var temporary = path + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            var options = new FileStreamOptions { Access = FileAccess.Write, Mode = FileMode.CreateNew };
+            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            using (var stream = new FileStream(temporary, options))
+            using (var writer = new Utf8JsonWriter(stream)) remaining.ToJson().WriteTo(writer);
+            if (!proposal.Matches(ReadSidecar(path))) throw new HarnessException("The pending timeline changed. Review it again.");
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally { File.Delete(temporary); }
     }
 
     /// <summary>Resolve the local project or source path, rejecting links when rechecking a previously pinned path.</summary>

@@ -115,6 +115,7 @@
                     <Border x:Name="HarnessReviewCard" Visibility="Collapsed" Padding="12" Background="{ThemeResource VcBgMutedBrush}"
                             AutomationProperties.AutomationId="voxclip.harness.review">
                         <StackPanel Spacing="6">
+                            <ComboBox x:Name="HarnessTimelinePicker" Visibility="Collapsed" Header="Timeline" SelectionChanged="HarnessTimelineSelected"/>
                             <TextBlock x:Name="HarnessReviewTitle" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap"/>
                             <TextBlock x:Name="HarnessReviewReason" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"/>
                             <Expander x:Name="HarnessChanges" Header="Proposed changes" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
@@ -142,6 +143,7 @@
                         </StackPanel>
                     </Border>
                     <StackPanel x:Name="HarnessAssetRows" Spacing="6"/>
+                    <StackPanel x:Name="HarnessRewriteRows" Spacing="6"/>
                     <InfoBar x:Name="HarnessNotice" Severity="Warning" IsOpen="False"/>
                 </StackPanel>
                 <controls:TranscriptView x:Name="Transcript" Grid.Row="2"/>

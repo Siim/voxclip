@@ -44,7 +44,7 @@ The executable finds `shared/` in its checkout or app bundle. If you relocate it
 
 You might ask: “Read the clips and the transcript. For the clip about editing faster, propose a punch-in on the strongest sentence and a short on-screen title. Don't generate anything.”
 
-The [timeline schema](../shared/schemas/harness-timeline.schema.json) is also the proposal tool's input schema. For example:
+The proposal tool takes a [timeline](../shared/schemas/harness-timeline.schema.json) or an object with `timelines` containing one to six timelines. To update an existing clip, use its `clipId`:
 
 ```json
 {
@@ -60,7 +60,20 @@ The [timeline schema](../shared/schemas/harness-timeline.schema.json) is also th
 }
 ```
 
-Use inclusive transcript indices from the current project. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and use the complete [clip-plan entry schema](../shared/schemas/clip-plan-effect.schema.json), including `bRoll`, `screenshot`, `videoStack`, `illustration`, `soundEffect`, `colourLook` and `speedForPart`. Footage entries refer to a `sourceKey` returned by `read_clips`, with a source start in seconds. `musicTrackId` reuses a saved track; `generateMusic` instead describes a new track and returns a local estimate. `pricedActions` and `freeActions` describe asset requests. Keep applies local edits only; generating an illustration or music needs a separate priced click in VoxClip, and **Find sound · free** needs its own click. No tool sends an asset request.
+To make a new clip, use `newClip` instead of `clipId`. For example, this story plays the later moment first:
+
+```json
+{"timelines":[{
+  "newClip":{"kind":"story","title":"Start with the result"},
+  "parts":[{"startWord":140,"endWord":164},{"startWord":23,"endWord":51}],
+  "reason":"Lead with the result, then explain how we got there.",
+  "look":{"id":"warm"},"captionStyle":"vox-bold"
+}]}
+```
+
+Use inclusive transcript indices from the current project. List nonoverlapping parts in play order: one for a `stretch`, two to twelve for a `story` or `showreel`. `read_clips` returns `kind` and `parts` in that order. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and use the complete [clip-plan entry schema](../shared/schemas/clip-plan-effect.schema.json), including `bRoll`, `screenshot`, `videoStack`, `illustration`, `soundEffect`, `colourLook` and `speedForPart`. Footage uses a `sourceKey` from `read_clips`, with a source start in seconds.
+
+Timeline fields mirror the [shared clip proposal vocabulary](../shared/schemas/clip-proposal.schema.json), including caption font, case and word count, pause cuts, corrections, hook, speed, cover title and post text. `music: {"trackId":"…"}` reuses a saved track; `music: {"brief":"…"}` proposes generating a track. The legacy `musicTrackId` and `generateMusic` fields still work. The tool returns `pricedActions` and `freeActions` with zero-based `timelineIndex` values. A `rewrite` quote is a local list-price estimate for one voice take, not the final price. Rewrites, illustrations and generated music require approval in VoxClip; **Find sound · free** needs its own click. No tool sends an asset request.
 
 ### Motion templates
 
@@ -82,9 +95,9 @@ Text must be a single nonempty line with no leading or trailing whitespace. The 
 ## Review in VoxClip on Mac or Windows
 
 - Save edits before asking the agent to propose. The server reads the saved file, not unsaved edits in the editor.
-- The open project shows **Timeline proposal** above its transcript. Expand **Proposed changes** to see what the agent wants to do. **Keep** applies the free changes as one edit; **Undo** dismisses the proposal without changing the project. After Keep, ⌘Z on Mac or Ctrl+Z on Windows undoes the edit as usual.
+- The open project shows **Timeline proposal** above its transcript. Expand **Proposed changes** to see the agent's edits and reasons. Each timeline has its own **Keep** and **Undo**. Keep applies that timeline's local changes as one edit; Undo dismisses only that timeline. After Keep, ⌘Z on Mac or Ctrl+Z on Windows undoes the edit as usual.
 - Keeping the timeline doesn't send anything. If it includes music generation, open the proposed clip and use **Get price** if needed. The separate **Generate music · $…** button sends the brief to Eleven Music. The estimate returned to the agent isn't approval. Voice consent stays in the app's existing flows and can't be requested or recorded through these tools.
-- There's one pending proposal per saved project. Finish reviewing it before staging another. If the app says the project changed, dismiss the old proposal, save, and have the agent read the current project again. If an externally edited proposal can't be read, remove only the neighboring `Talk.voxclip.proposal.json` file; leave `Talk.voxclip` in place.
+- There's one pending proposal per saved project. New sidecars use the version 2 `timelines` array; VoxClip still reads version 1 sidecars with a single `timeline`. Finish reviewing the series before staging another. If the app says the project changed, dismiss the old proposal, save, and have the agent read the current project again. If an externally edited proposal can't be read, remove only the neighboring `Talk.voxclip.proposal.json` file; leave `Talk.voxclip` in place.
 
 ## Run the offline contract replay
 

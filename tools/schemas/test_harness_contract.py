@@ -113,14 +113,33 @@ class HarnessContract(unittest.TestCase):
         proposal_validator().validate(staged["proposal"])
         self.assertEqual(json.loads(self.pending.read_text()), staged["proposal"])
         self.assertEqual(stat.S_IMODE(self.pending.stat().st_mode), 0o600)
-        self.assertEqual(staged["proposal"]["timeline"], self.timeline)
+        self.assertEqual(staged["proposal"]["timelines"], [self.timeline])
         self.assertRegex(staged["pricedActions"][0]["price"], r"^\$\d+\.\d\d$")
         self.assertTrue(second["isError"])
         self.assertEqual(self.project.read_bytes(), self.original)
         self.pending.unlink()
         cli = self.run_cli("propose-timeline", json.dumps(self.timeline))
         self.assertEqual(cli.returncode, 0, cli.stderr)
-        self.assertEqual(json.loads(cli.stdout)["proposal"]["timeline"], self.timeline)
+        self.assertEqual(json.loads(cli.stdout)["proposal"]["timelines"], [self.timeline])
+
+    def test_stages_a_story_series_without_editing_or_sending(self):
+        story = json.loads((ROOT / "shared/fixtures/clips-mode/harness-proposal-cases.json").read_text())["story"]
+        series = {"timelines": [story, self.timeline]}
+        listing, clips, reply = self.replay({"method": "tools/list"}, self.call("read_clips"), self.call("propose_timeline", **series))
+        tool = next(tool for tool in listing["tools"] if tool["name"] == "propose_timeline")
+        jsonschema.validate(series, tool["inputSchema"])
+        clip = clips["structuredContent"]["clips"][0]
+        self.assertEqual(clip["kind"], "stretch")
+        self.assertEqual(clip["parts"], [{"startWord": clip["startWord"], "endWord": clip["endWord"]}])
+        self.assertFalse(reply.get("isError", False), reply)
+        staged = reply["structuredContent"]
+        proposal_validator().validate(staged["proposal"])
+        self.assertEqual(staged["proposal"]["timelines"], series["timelines"])
+        self.assertEqual([(action["timelineIndex"], action["kind"]) for action in staged["pricedActions"]],
+                         [(0, "rewrite"), (1, "generateMusic")])
+        self.assertTrue(all("$" in action["price"] for action in staged["pricedActions"]))
+        self.assertEqual(json.loads(self.pending.read_text()), staged["proposal"])
+        self.assertEqual(self.project.read_bytes(), self.original)
 
     def test_places_local_motion_templates_through_mcp_and_cli(self):
         for effect in TEMPLATES:
@@ -133,7 +152,7 @@ class HarnessContract(unittest.TestCase):
                 jsonschema.validate(timeline, schema)
                 staged = result["structuredContent"]
                 proposal_validator().validate(staged["proposal"])
-                self.assertEqual(staged["proposal"]["timeline"], timeline)
+                self.assertEqual(staged["proposal"]["timelines"], [timeline])
                 self.assertEqual(staged["pricedActions"], [])
                 self.assertEqual(json.loads(self.pending.read_text()), staged["proposal"])
                 self.pending.unlink()
@@ -141,7 +160,7 @@ class HarnessContract(unittest.TestCase):
                 self.assertEqual(cli.returncode, 0, cli.stderr)
                 cli_staged = json.loads(cli.stdout)
                 proposal_validator().validate(cli_staged["proposal"])
-                self.assertEqual(cli_staged["proposal"]["timeline"], timeline)
+                self.assertEqual(cli_staged["proposal"]["timelines"], [timeline])
                 self.assertEqual(cli_staged["pricedActions"], [])
                 self.assertEqual(json.loads(self.pending.read_text()), cli_staged["proposal"])
                 self.pending.unlink()
@@ -204,7 +223,7 @@ class HarnessContract(unittest.TestCase):
                 self.assertEqual(cli.returncode, 0, cli.stderr)
                 result = json.loads(cli.stdout)
             proposal_validator().validate(result["proposal"])
-            self.assertEqual(result["proposal"]["timeline"], timeline)
+            self.assertEqual(result["proposal"]["timelines"], [timeline])
             self.assertEqual([action["kind"] for action in result["pricedActions"]], ["generateMusic", "generateIllustration"])
             self.assertEqual(result["pricedActions"][0]["price"], "$0.02")
             self.assertTrue(result["pricedActions"][1]["price"].startswith("$"))

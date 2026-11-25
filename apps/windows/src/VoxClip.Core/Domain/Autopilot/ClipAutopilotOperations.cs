@@ -345,7 +345,7 @@ public static partial class ClipAutopilotMapping
                 case ClipAutopilotAction.Captions captions:
                     if (clipCaptions is { } target)
                         result = ClipCaptionStyles.Restoring(result with { ClipStyle = result.ClipStyle ?? target.Style }, target.Id,
-                            new(captions.Settings.StyleId, "") { ByUser = true, Overrides = captions.Settings.Overrides });
+                            new(captions.Settings.StyleId, "") { By = "user", Overrides = captions.Settings.Overrides });
                     else result = result with { Captions = captions.Settings };
                     break;
                 case ClipAutopilotAction.SavedMusic saved:

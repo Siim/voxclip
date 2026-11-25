@@ -7,17 +7,30 @@ struct HarnessProposalTests {
     @Test func newStoryPreservesPartOrderAndLeavesRewritesPending() throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))
-        let value = try JSONDecoder().decode(JSONValue.self, from: Data("""
-            {"newClip":{"kind":"story","title":"Result first"},"reason":"Lead with the result.",
-             "parts":[{"startWord":14,"endWord":15},{"startWord":9,"endWord":11}],
-             "rewrites":[{"startWord":9,"endWord":11,"text":"A different opening","reason":"Try a new opening."}]}
-            """.utf8))
-        let proposal = try HarnessProposal(timeline: HarnessTimeline.read(value), project: project)
-        let kept = try proposal.applying(to: project, shared: shared)
+        let cases = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/clips-mode/harness-proposal-cases.json")))
+        let proposal = try HarnessProposal(timeline: HarnessTimeline.read(#require(cases["story"])), project: project)
+        let result = try proposal.review(project, shared: shared)
+        let kept = result.project
         let story = try #require(kept.edits.clips.last)
         #expect(story.playParts.map(\.startWordId) == ["w15", "w10"])
         #expect(story.kind == .story)
         #expect(kept.voiceLab == project.voiceLab)
+        #expect(result.pending.map(\.decision) == [.rewrite])
+    }
+
+    @Test func harnessAndAutopilotProduceTheSameOperations() throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))
+        let cases = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/clips-mode/harness-proposal-cases.json")))
+        let timeline = try HarnessTimeline.read(#require(cases["equivalentPlan"]))
+        let staged = try HarnessProposal(timeline: timeline, project: project)
+        let plan = ClipAutopilotPlan(startWord: 9, endWord: 16, title: "A faster edit", hook: "Edit faster",
+            cuts: [.init(startWord: 11, endWord: 11, kind: .other, reason: "Remove the aside.")],
+            captions: .init(styleId: "vox-bold", font: .init(family: "DM Sans", weight: 700), textCase: .upper, wordsPerCaption: 4),
+            look: .init(id: .warm, reason: "Warm the footage."), speed: .init(rate: 1.1, reason: "Keep the pacing brisk."),
+            postText: "A simpler way to make an edit.", score: 90, verdict: .post)
+        let mapped = try ClipAutopilotMapping.operations(for: plan, clipID: timeline.clipId, project: project, fonts: ClipAutopilotFonts.load(shared: shared))
+        #expect(try staged.review(project, shared: shared).operations == mapped)
     }
 
     @Test(.enabled(if: SchemaPython.enabled, SchemaPython.skipReason))

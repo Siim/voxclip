@@ -22,49 +22,107 @@ public sealed class HarnessException(string message) : Exception(message);
 /// <summary>Validated local edit intent in the shared harness timeline format.</summary>
 public sealed class HarnessTimeline
 {
-    private static readonly string[] Keys = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"];
-    private static readonly string[] CutKeys = ["startWord", "endWord", "kind", "reason"];
+    private static readonly string[] LegacyKeys = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"];
+    private static readonly string[] Keys = [.. LegacyKeys, "newClip", "parts", "pauseCuts", "corrections", "font", "case",
+        "wordsPerCaption", "look", "speed", "hook", "postText", "coverTitle", "music", "rewrites"];
 
-    private HarnessTimeline(JsonElement wire, string clipId, string? title, string? captionStyle, string? musicTrackId,
-        string? generateMusic, IReadOnlyList<WordSpan> cuts, IReadOnlyList<ClipPlanEffect> effects)
-    {
-        Wire = wire.Clone();
-        ClipId = clipId;
-        Title = title;
-        CaptionStyle = captionStyle;
-        MusicTrackId = musicTrackId;
-        GenerateMusic = generateMusic;
-        Cuts = cuts;
-        Effects = effects;
-    }
+    private HarnessTimeline(JsonElement wire, ClipProposal proposal) { Wire = wire.Clone(); Proposal = proposal; }
 
     internal JsonElement Wire { get; }
-    internal string ClipId { get; }
-    internal string? Title { get; }
-    internal string? CaptionStyle { get; }
-    internal string? MusicTrackId { get; }
+    internal ClipProposal Proposal { get; }
+    internal bool UsesFootage => Proposal.Effects?.Any(effect => effect.Kind is "bRoll" or "screenshot" or "videoStack") == true;
+
     /// <summary>The optional music brief, for estimating only.</summary>
-    public string? GenerateMusic { get; }
-    internal IReadOnlyList<WordSpan> Cuts { get; }
-    internal IReadOnlyList<ClipPlanEffect> Effects { get; }
-    internal bool UsesFootage => Effects.Any(effect => effect.Kind is "bRoll" or "screenshot" or "videoStack");
+    public string? GenerateMusic => Proposal.Music?.Brief;
 
     /// <summary>Reject unknown fields and unsupported entries before resolving any anchors.</summary>
-    public static HarnessTimeline Read(JsonElement wire)
+    public static HarnessTimeline Read(JsonElement wire) => Read(wire, legacy: false);
+
+    /// <summary>Read one timeline or an envelope containing up to six timelines.</summary>
+    public static IReadOnlyList<HarnessTimeline> ReadSeries(JsonElement wire)
     {
-        RequireObject(wire, Keys);
-        var clipId = Text(wire, "clipId");
-        var title = Text(wire, "title", EditingLimits.MaxClipTitleCodePoints);
-        var captionStyle = Text(wire, "captionStyle");
-        var musicTrackId = Text(wire, "musicTrackId");
-        var generateMusic = Text(wire, "generateMusic", 500);
-        var cuts = Items(wire, "cuts", 30).Select(ReadCut).ToArray();
-        var effects = Items(wire, "effects", ClipPlanEffect.MaximumEntries).Select(ReadEffect).ToArray();
-        if (clipId is null || Text(wire, "reason", 240) is null || (musicTrackId is not null && generateMusic is not null) ||
-            (title is null && captionStyle is null && musicTrackId is null && generateMusic is null && cuts.Length == 0 && effects.Length == 0))
-            throw InvalidTimeline();
-        return new(wire, clipId, title, captionStyle, musicTrackId, generateMusic, cuts, effects);
+        if (wire.ValueKind != JsonValueKind.Object || !wire.TryGetProperty("timelines", out _)) return [Read(wire)];
+        RequireObject(wire, ["timelines"]);
+        return Items(wire, "timelines", 6).Select(Read).ToArray();
     }
+
+    internal static HarnessTimeline Read(JsonElement wire, bool legacy)
+    {
+        RequireObject(wire, legacy ? LegacyKeys : Keys);
+        var clipId = Text(wire, "clipId");
+        ClipProposal.NewClip? create = null;
+        if (wire.TryGetProperty("newClip", out var newClip))
+        {
+            RequireObject(newClip, ["kind", "title"]);
+            var kind = Text(newClip, "kind");
+            if (kind is not ("stretch" or "story" or "showreel")) throw InvalidTimeline();
+            create = new(kind, Text(newClip, "title", 120) ?? throw InvalidTimeline());
+        }
+        if ((clipId is null) == (create is null) || wire.EnumerateObject().Count() < 3) throw InvalidTimeline();
+        var parts = ReadItems(wire, "parts", 12, ["startWord", "endWord"], part => new ClipProposal.Part(Anchor(part, "startWord"), Anchor(part, "endWord")));
+        if (create is not null && (create.Kind == "stretch" ? parts?.Count != 1 : (parts?.Count ?? 0) < 2)) throw InvalidTimeline();
+        var track = Text(wire, "musicTrackId");
+        var brief = Text(wire, "generateMusic", 500);
+        if (wire.TryGetProperty("music", out var music))
+        {
+            if (track is not null || brief is not null) throw InvalidTimeline();
+            RequireObject(music, ["trackId", "brief"]);
+            track = Text(music, "trackId");
+            brief = Text(music, "brief", 500);
+            if ((track is null) == (brief is null)) throw InvalidTimeline();
+        }
+        else if (track is not null && brief is not null) throw InvalidTimeline();
+
+        ClipAutopilotFont? font = null;
+        if (wire.TryGetProperty("font", out var fontChoice))
+        {
+            RequireObject(fontChoice, ["family", "weight"]);
+            var weight = Anchor(fontChoice, "weight");
+            if (weight is < 100 or > 900) throw InvalidTimeline();
+            font = new(Text(fontChoice, "family", 80) ?? throw InvalidTimeline(), weight);
+        }
+        ClipAutopilotPlan.Look? look = null;
+        if (wire.TryGetProperty("look", out var lookChoice))
+        {
+            RequireObject(lookChoice, ["id", "reason"]);
+            look = new(Text(lookChoice, "id") switch
+            {
+                "original" => ClipLook.Original, "muted" => ClipLook.Muted, "warm" => ClipLook.Warm, "bw" => ClipLook.Bw,
+                _ => throw InvalidTimeline()
+            }, Text(lookChoice, "reason", 240) ?? "");
+        }
+        ClipAutopilotPlan.Speed? speed = null;
+        if (wire.TryGetProperty("speed", out var speedChoice))
+        {
+            RequireObject(speedChoice, ["rate", "reason"]);
+            if (!speedChoice.TryGetProperty("rate", out var rate) || rate.ValueKind != JsonValueKind.Number || rate.GetDouble() is not (>= 0.5 and <= 2))
+                throw InvalidTimeline();
+            speed = new(rate.GetDouble(), Text(speedChoice, "reason", 240) ?? "");
+        }
+        var words = wire.TryGetProperty("wordsPerCaption", out _) ? Index(wire, "wordsPerCaption") ?? throw InvalidTimeline() : (int?)null;
+        if (words is < 1 or > 12) throw InvalidTimeline();
+        return new(wire, new(new(ClipId: clipId, New: create), Reason(wire))
+        {
+            Parts = parts, CaptionStyle = Text(wire, "captionStyle"), Font = font, WordsPerCaption = words, Look = look, Speed = speed,
+            TextCase = Text(wire, "case") switch
+            {
+                null => null, "upper" => ClipAutopilotCaptionCase.Upper, "lower" => ClipAutopilotCaptionCase.Lower,
+                "asSaid" => ClipAutopilotCaptionCase.AsSaid, _ => throw InvalidTimeline()
+            },
+            Hook = Text(wire, "hook", 80), Title = Text(wire, "title", 120), PostText = Text(wire, "postText", 500),
+            CoverTitle = Text(wire, "coverTitle", 80), Music = track is not null || brief is not null ? new(track, brief) : null,
+            Cuts = ReadItems(wire, "cuts", 30, ["startWord", "endWord", "kind", "reason"], ReadCut),
+            PauseCuts = ReadItems(wire, "pauseCuts", 30, ["afterWord", "reason"], entry => new ClipAutopilotPlan.PauseCut(Anchor(entry, "afterWord"), Reason(entry))),
+            Corrections = ReadItems(wire, "corrections", 30, ["word", "heard", "text", "reason"], entry => new ClipAutopilotPlan.Correction(Anchor(entry, "word"),
+                Text(entry, "heard", 120) ?? throw InvalidTimeline(), Text(entry, "text", 120) ?? throw InvalidTimeline(), Reason(entry))),
+            Rewrites = ReadItems(wire, "rewrites", 12, ["startWord", "endWord", "text", "reason"], entry => new ClipAutopilotPlan.Rewrite(Anchor(entry, "startWord"),
+                Anchor(entry, "endWord"), Text(entry, "text", 2000) ?? throw InvalidTimeline(), Reason(entry))),
+            Effects = wire.TryGetProperty("effects", out _) ? Items(wire, "effects", ClipPlanEffect.MaximumEntries).Select(ReadEffect).ToArray() : null,
+        });
+    }
+
+    private static IReadOnlyList<T>? ReadItems<T>(JsonElement wire, string key, int maximum, string[] keys, Func<JsonElement, T> read) =>
+        wire.TryGetProperty(key, out _) ? Items(wire, key, maximum).Select(item => { RequireObject(item, keys); return read(item); }).ToArray() : null;
 
     /// <summary>Accept only a JSON object with named, non-null, non-duplicate arguments.</summary>
     public static void RequireObject(JsonElement value, IReadOnlyCollection<string> keys)
@@ -75,14 +133,15 @@ public sealed class HarnessTimeline
             throw new HarnessException("Unexpected or null argument.");
     }
 
-    private static WordSpan ReadCut(JsonElement cut)
+    private static ClipAutopilotPlan.Cut ReadCut(JsonElement cut) => new(Anchor(cut, "startWord"), Anchor(cut, "endWord"), Text(cut, "kind") switch
     {
-        RequireObject(cut, CutKeys);
-        if (Text(cut, "kind") is not ("filler" or "stumble" or "repeat" or "falseStart" or "tangent" or "other") ||
-            Text(cut, "reason", 240) is null || Index(cut, "startWord") is not { } start || Index(cut, "endWord") is not { } end)
-            throw InvalidTimeline();
-        return new(start, end);
-    }
+        "filler" => ClipAutopilotCutKind.Filler, "stumble" => ClipAutopilotCutKind.Stumble, "repeat" => ClipAutopilotCutKind.Repeat,
+        "falseStart" => ClipAutopilotCutKind.FalseStart, "tangent" => ClipAutopilotCutKind.Tangent, "other" => ClipAutopilotCutKind.Other,
+        _ => throw InvalidTimeline()
+    }, Reason(cut));
+
+    private static int Anchor(JsonElement entry, string key) => Index(entry, key) ?? throw InvalidTimeline();
+    private static string Reason(JsonElement entry) => Text(entry, "reason", 240) ?? throw InvalidTimeline();
 
     private static ClipPlanEffect ReadEffect(JsonElement item)
     {
@@ -115,7 +174,7 @@ public sealed class HarnessTimeline
         return field.EnumerateArray();
     }
 
-    private static HarnessException InvalidTimeline() => new("Invalid timeline. Give a clip, a reason and at least one supported change.");
+    private static HarnessException InvalidTimeline() => new("Invalid timeline. Give a clip or new clip, a reason and at least one supported change.");
 }
 
 /// <summary>A versioned sidecar proposal pinned to a project and its editable revision.</summary>
@@ -123,162 +182,150 @@ public sealed class HarnessProposal
 {
     /// <summary>Byte limit for one request or sidecar.</summary>
     public const int MaximumBytes = 128 * 1024;
-    private readonly HarnessTimeline timeline;
+    private readonly int version;
+    private readonly IReadOnlyList<HarnessTimeline> timelines;
     private Guid Id { get; }
     private string ProjectId { get; }
     private string BaseRevision { get; }
 
-    /// <summary>Pin validated proposed changes to the saved base snapshot.</summary>
-    public HarnessProposal(HarnessTimeline timeline, Domain.Shared.Project project)
-        : this(Guid.NewGuid(), project.Id, Revision(project, timeline), timeline) { }
+    /// <summary>Pin one timeline to the saved base snapshot.</summary>
+    public HarnessProposal(HarnessTimeline timeline, Domain.Shared.Project project) : this([timeline], project) { }
 
-    private HarnessProposal(Guid id, string projectId, string baseRevision, HarnessTimeline timeline)
+    /// <summary>Pin a series of timelines to the saved base snapshot.</summary>
+    public HarnessProposal(IReadOnlyList<HarnessTimeline> timelines, Domain.Shared.Project project) : this(Guid.NewGuid(), timelines, project) { }
+
+    private HarnessProposal(Guid id, IReadOnlyList<HarnessTimeline> timelines, Domain.Shared.Project project)
+        : this(2, id, project.Id, Revision(project, timelines, 2), timelines) { }
+
+    private HarnessProposal(int version, Guid id, string projectId, string baseRevision, IReadOnlyList<HarnessTimeline> timelines)
     {
+        if (timelines.Count is < 1 or > 6) throw new HarnessException("Propose one to six timelines.");
+        this.version = version;
         Id = id;
         ProjectId = projectId;
         BaseRevision = baseRevision;
-        this.timeline = timeline;
+        this.timelines = timelines.ToArray();
     }
 
-    /// <summary>The validated intent shown in the review, with the agent's original reasons.</summary>
-    public JsonElement Timeline => timeline.Wire;
+    /// <summary>The first timeline's original wire intent.</summary>
+    public JsonElement Timeline => timelines[0].Wire;
+
+    /// <summary>The validated canonical intent for each timeline.</summary>
+    public IReadOnlyList<ClipProposal> Timelines => timelines.Select(timeline => timeline.Proposal).ToArray();
+
+    /// <summary>The existing clip ID, or a stable ID for the clip to be created.</summary>
+    public string ClipIdAt(int index)
+    {
+        var timeline = timelines[index];
+        if (timeline.Proposal.Target.ClipId is { } existing) return existing;
+        using var bytes = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(bytes)) WriteCanonical(JsonNode.Parse(timeline.Wire.GetRawText()), writer);
+        return $"harness-{Id:D}-{Convert.ToHexStringLower(SHA256.HashData(bytes.GetBuffer().AsSpan(0, (int)bytes.Length)))[..12]}";
+    }
+
+    /// <summary>The original wire intent for a timeline's review.</summary>
+    public JsonElement TimelineAt(int index) => timelines[index].Wire;
 
     internal static HarnessProposal Read(JsonElement wire)
     {
-        HarnessTimeline.RequireObject(wire, ["version", "id", "projectId", "baseRevision", "timeline"]);
-        if (!wire.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.Number || version.GetDouble() != 1 ||
+        HarnessTimeline.RequireObject(wire, ["version", "id", "projectId", "baseRevision", "timeline", "timelines"]);
+        if (!wire.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.Number || version.GetDouble() is not (1 or 2) ||
             !wire.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String || !Guid.TryParseExact(id.GetString(), "D", out var proposalId) ||
             !wire.TryGetProperty("projectId", out var project) || project.ValueKind != JsonValueKind.String || project.GetString() is not { Length: > 0 } projectId ||
             !wire.TryGetProperty("baseRevision", out var revision) || revision.ValueKind != JsonValueKind.String || revision.GetString() is not { Length: 64 } digest ||
-            digest.Any(character => character is not (>= '0' and <= '9' or >= 'a' and <= 'f')) || !wire.TryGetProperty("timeline", out var changes))
+            digest.Any(character => character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
             throw new HarnessException("This timeline proposal can't be read.");
-        return new(proposalId, projectId, digest, HarnessTimeline.Read(changes));
+        var legacy = wire.TryGetProperty("timeline", out var change);
+        var series = wire.TryGetProperty("timelines", out var changes);
+        return version.GetDouble() switch
+        {
+            1 when legacy && !series => new(1, proposalId, projectId, digest, [HarnessTimeline.Read(change, legacy: true)]),
+            2 when !legacy && series && changes.ValueKind == JsonValueKind.Array && changes.GetArrayLength() is >= 1 and <= 6 =>
+                new(2, proposalId, projectId, digest, changes.EnumerateArray().Select(HarnessTimeline.Read).ToArray()),
+            _ => throw new HarnessException("This timeline proposal can't be read.")
+        };
     }
 
     /// <summary>Whether this is the same staged proposal, including all of its content.</summary>
     public bool Matches(HarnessProposal? other) => other is not null && Id == other.Id && ProjectId == other.ProjectId &&
-        BaseRevision == other.BaseRevision && JsonElement.DeepEquals(timeline.Wire, other.timeline.Wire);
+        version == other.version && BaseRevision == other.BaseRevision && timelines.Count == other.timelines.Count &&
+        timelines.Zip(other.timelines).All(pair => JsonElement.DeepEquals(pair.First.Wire, pair.Second.Wire));
 
     /// <summary>The shared proposal envelope, with no applied edits or approval.</summary>
     public JsonObject ToJson() => new()
     {
-        ["version"] = 1, ["id"] = Id.ToString("D"), ["projectId"] = ProjectId, ["baseRevision"] = BaseRevision,
-        ["timeline"] = JsonNode.Parse(timeline.Wire.GetRawText())
+        ["version"] = version, ["id"] = Id.ToString("D"), ["projectId"] = ProjectId, ["baseRevision"] = BaseRevision,
+        [version == 1 ? "timeline" : "timelines"] = version == 1 ? JsonNode.Parse(Timeline.GetRawText()) :
+            new JsonArray(timelines.Select(timeline => JsonNode.Parse(timeline.Wire.GetRawText())).ToArray())
     };
 
+    /// <summary>Pin the remaining timelines after Keep, to the resulting revision.</summary>
+    public HarnessProposal? Remaining(int index, Domain.Shared.Project project) => timelines.Count == 1 ? null :
+        new(Id, Without(index), project);
+
+    /// <summary>Remove a timeline without authorizing any changes to the base revision.</summary>
+    public HarnessProposal? Discarding(int index) => timelines.Count == 1 ? null : new(version, Id, ProjectId, BaseRevision, Without(index));
+
+    private HarnessTimeline[] Without(int index) => timelines.Where((_, position) => index != position).ToArray();
+
     /// <summary>Validate the edit against the matching revision and return an in-memory candidate, without saving it.</summary>
-    public Domain.Shared.Project Applying(Domain.Shared.Project snapshot, string sharedRoot) => Evaluate(snapshot, sharedRoot).Project;
+    public Domain.Shared.Project Applying(Domain.Shared.Project snapshot, string sharedRoot) => Review(snapshot, sharedRoot).Project;
 
     /// <summary>Return a validated local edit and asset actions that still require a click in VoxClip.</summary>
     public (Domain.Shared.Project Project, IReadOnlyList<ClipAutopilotAction.Asset> Assets) Evaluate(Domain.Shared.Project snapshot, string sharedRoot)
     {
-        if (snapshot.Id != ProjectId || BaseRevision != Revision(snapshot, timeline))
-            throw new HarnessException("The project changed. Ask for a new timeline proposal.");
-        if (EditingEngine.FromProject(snapshot) is not { } state ||
-            snapshot.Edits.Clips.FirstOrDefault(clip => clip.Id == timeline.ClipId) is not { } clip)
-            throw new HarnessException("Choose an existing clip with a transcript.");
-        var words = state.Transcript.Words;
-        var indices = words.Select((word, index) => (word.Id, index)).ToDictionary(item => item.Id, item => item.index, StringComparer.Ordinal);
-        if (!indices.TryGetValue(clip.StartWordId, out var start) || !indices.TryGetValue(clip.EndWordId, out var end) || start > end)
-            throw new HarnessException("Choose an existing clip with a transcript.");
-        var scope = new WordSpan(start, end);
-        var cuts = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var cut in timeline.Cuts)
-        {
-            if (cut.Start < scope.Start || cut.End > scope.End || cut.Start > cut.End)
-                throw new HarnessException("A cut is outside the clip.");
-            var ids = cut.Indices.Select(index => words[index]).Where(word => word.Kind == WordKind.Word).Select(word => word.Id).ToArray();
-            if (ids.Length == 0 || ids.Any(id => !cuts.Add(id)))
-                throw new HarnessException("Cuts must name distinct spoken words.");
-        }
-        var uncut = cuts.Except(state.CutWordIds).Order(StringComparer.Ordinal).ToArray();
-        if (uncut.Length != 0) state = EditingEngine.Reduce(state, new EditOperation.CutSelection(uncut));
-        if (!cuts.IsSubsetOf(state.CutWordIds) || !scope.Indices.Any(index => words[index].Kind == WordKind.Word && !state.CutWordIds.Contains(words[index].Id)))
-            throw new HarnessException("Keep at least one spoken word in the clip.");
-        var rename = timeline.Title is { } title && title != clip.Title;
-        if (rename) state = EditingEngine.Reduce(state, new EditOperation.RenameClip(clip.Id, timeline.Title));
-        var next = uncut.Length != 0 || rename ? EditingEngine.ApplyToProject(snapshot, state) : snapshot;
+        var result = Review(snapshot, sharedRoot);
+        return (result.Project, result.Pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Asset>().ToArray());
+    }
 
-        if (timeline.CaptionStyle is { } style)
+    /// <summary>Validate the revision and map a single timeline through the shared operation apply path.</summary>
+    public (Domain.Shared.Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending)
+        Review(Domain.Shared.Project snapshot, string sharedRoot, int index = 0)
+    {
+        if (snapshot.Id != ProjectId || BaseRevision != Revision(snapshot, timelines, version))
+            throw new HarnessException("The project changed. Ask for a new timeline proposal.");
+        var proposal = timelines[index].Proposal;
+        var clipId = ClipIdAt(index);
+        if (proposal.CaptionStyle is { } style && style != "off" && CaptionStyleLibrary.Load(sharedRoot).Find(style) is null)
+            throw new HarnessException("Choose a bundled caption style or off.");
+        var fonts = proposal.Font is null ? new Dictionary<ClipAutopilotFont, string>() : ClipAutopilotFonts.Load(sharedRoot);
+        if (proposal.Font is { } font && !fonts.ContainsKey(font)) throw new HarnessException("Choose a bundled caption font.");
+        var stickers = proposal.Effects is null ? null : AskClaudePrompt.Load(sharedRoot).Stickers;
+        var operations = ClipAutopilotMapping.Operations(proposal, clipId, snapshot, fonts, stickers);
+        var clipStyle = operations.Any(operation => operation.Decision == ClipAutopilotDecision.Captions)
+            ? snapshot.ClipStyle ?? ClipStyleCatalog.Load(sharedRoot).Initial(null) : null;
+        var result = ClipAutopilotMapping.Apply(operations, snapshot, clipStyle is null ? null : (clipId, clipStyle));
+        if (!result.Project.Edits.Clips.Any(clip => clip.Id == clipId))
+            throw new HarnessException("The proposed clip duplicates an existing clip or doesn't have valid parts.");
+        if (result.Pending.Any(operation => operation.Action is not (ClipAutopilotAction.Asset or ClipAutopilotAction.Music or ClipAutopilotAction.Rewrite)))
+            throw new HarnessException("A proposed change overlaps a cut or an existing effect, or doesn't fit the clip.");
+        _ = ProjectSerialization.Serialize(result.Project);
+        if (BaseRevision == Revision(result.Project, timelines, version))
         {
-            if (style != "off" && CaptionStyleLibrary.Load(sharedRoot).Find(style) is null)
-                throw new HarnessException("Choose a bundled caption style or off.");
-            if (next.ClipStyle is null)
-            {
-                var catalog = ClipStyleCatalog.Load(sharedRoot);
-                next = next with { ClipStyle = catalog.Initial(null) };
-            }
-            next = ClipCaptionStyles.Choosing(next, clip.Id, style);
+            if (result.Pending.Count == 0) throw new HarnessException("The timeline doesn't change the project.");
+            return (snapshot, operations, result.Pending);
         }
-        if (timeline.MusicTrackId is { } trackId)
-        {
-            var track = snapshot.Music.FirstOrDefault(entry => entry.Id == trackId)
-                ?? throw new HarnessException("Choose a saved music track from this project.");
-            var taken = next.Music.Where(entry => entry.ClipId != clip.Id).Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-            var id = track.Id;
-            for (var suffix = 2; taken.Contains(id); suffix++) id = string.Create(CultureInfo.InvariantCulture, $"{track.Id}-{suffix}");
-            next = MusicProject.Setting(track with { Id = id, ClipId = clip.Id }, clip.Id, next);
-        }
-        var assets = new List<ClipAutopilotAction.Asset>();
-        if (timeline.Effects.Count != 0)
-        {
-            var stickers = AskClaudePrompt.Load(sharedRoot).Stickers;
-            var tightened = state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => pause.AfterIndex).ToHashSet();
-            var sources = (next.Media.AdditionalSources ?? []).Where(source => source.Video is not null)
-                .ToDictionary(source => source.FootageKey, source => source.DurationSeconds, StringComparer.Ordinal);
-            for (var index = 0; index < timeline.Effects.Count; index++)
-            {
-                var entry = timeline.Effects[index];
-                var effectId = string.Create(CultureInfo.InvariantCulture, $"harness-{Id:D}-{index}");
-                if (entry.Kind is "bRoll" or "screenshot" or "videoStack")
-                {
-                    var footage = entry.FootagePlacement(effectId, clip.Id, scope,
-                        wordIndex => words[wordIndex] is { Kind: WordKind.Word } word ? (word.Start, word.End) : null,
-                        wordIndex => state.CutWordIds.Contains(words[wordIndex].Id), sources);
-                    var placements = next.Media.Footage ?? [];
-                    if (footage is null || tightened.Any(pause => entry.StartWord <= pause && pause < entry.EndWord) ||
-                        placements.Any(existing => existing.ClipId == clip.Id && existing.Start < footage.End && footage.Start < existing.End))
-                        throw new HarnessException($"Effect {index + 1} overlaps or exceeds available footage.");
-                    next = next with { SchemaVersion = Math.Max(4, next.SchemaVersion), Media = next.Media with { Footage = [.. placements, footage] } };
-                    continue;
-                }
-                var effect = entry.Operation(effectId, clip.Id, scope, words, state.CutWordIds, tightened, stickers);
-                if (effect?.Action is ClipAutopilotAction.Asset asset) { assets.Add(asset); continue; }
-                next = effect?.Action switch
-                {
-                    ClipAutopilotAction.Motion motion => ClipAutopilotMapping.AddingMotionCue(motion.Cue, next) ??
-                        throw new HarnessException($"Effect {index + 1} overlaps a cut or another zoom."),
-                    ClipAutopilotAction.Effect overlay => ClipEffects.Adding([overlay.Value], next),
-                    _ => throw new HarnessException($"Effect {index + 1} is not supported on those words. Use a kept span of 0.1–5 seconds.")
-                };
-            }
-        }
-        if (BaseRevision == Revision(next, timeline))
-        {
-            if (timeline.GenerateMusic is null && assets.Count == 0) throw new HarnessException("The timeline doesn't change the project.");
-            next = snapshot;
-        }
-        _ = ProjectSerialization.Serialize(next);
-        return (next, assets);
+        return (result.Project, operations, result.Pending);
     }
 
     /// <summary>Look up an estimate for the candidate clip without contacting a provider.</summary>
-    public string? EstimatedMusicPrice(Domain.Shared.Project candidate, string sharedRoot)
+    public string? EstimatedMusicPrice(Domain.Shared.Project candidate, string sharedRoot, int index = 0)
     {
-        if (timeline.GenerateMusic is null || EditingEngine.FromProject(candidate) is not { } state) return null;
+        if (timelines[index].GenerateMusic is null || EditingEngine.FromProject(candidate) is not { } state) return null;
+        var clipId = ClipIdAt(index);
         var source = candidate.Media.Source;
-        state = state with { ActiveClipId = timeline.ClipId };
+        state = state with { ActiveClipId = clipId };
         var rate = source.Audio?.SampleRate ?? 48_000;
         var edit = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, rate, state.PauseKeepSeconds);
-        var speed = ClipControlsProject.Controls(timeline.ClipId, candidate)?.Speed ?? 1;
+        var speed = ClipControlsProject.Controls(clipId, candidate)?.Speed ?? 1;
         RenderTimeline rendered = new RenderTimeline.Legacy(edit);
-        if (candidate.SchemaVersion >= 3 && VoiceLabOutputPlanner.Build(candidate, VoiceLabOutputScope.Clip(timeline.ClipId)) is
+        if (candidate.SchemaVersion >= 3 && VoiceLabOutputPlanner.Build(candidate, VoiceLabOutputScope.Clip(clipId)) is
             { RequiresSyntheticRendering: true } reviewed) rendered = new RenderTimeline.VoiceLab(reviewed);
-        var timing = ClipSpeedTiming.ForEffects(speed, rendered.MapTime, ClipEffects.Rendered(candidate, timeline.ClipId));
+        var timing = ClipSpeedTiming.ForEffects(speed, rendered.MapTime, ClipEffects.Rendered(candidate, clipId));
         return MusicPricing.Label(MusicPricing.Estimate(MusicPricing.LengthSeconds(timing.Rendered(rendered.Duration)), VoiceLabPrices.Load(sharedRoot)));
     }
 
-    private static string Revision(Domain.Shared.Project snapshot, HarnessTimeline timeline)
+    private static string Revision(Domain.Shared.Project snapshot, IReadOnlyList<HarnessTimeline> timelines, int version)
     {
         var edits = snapshot.Edits with
         {
@@ -293,12 +340,17 @@ public sealed class HarnessProposal
             ["transcript"] = Take("transcript"), ["edits"] = Take("edits"), ["captions"] = Take("captions"),
             ["clipStyle"] = Take("clipStyle"), ["controls"] = Take("clipControls") ?? new JsonArray(),
             ["motion"] = Take("motionCues") ?? new JsonArray(), ["effects"] = Take("clipEffects") ?? new JsonArray(),
-            ["reuseMusic"] = timeline.MusicTrackId is not null ? Take("music") ?? new JsonArray() : null
+            ["reuseMusic"] = version == 2 || timelines.Any(timeline => timeline.Proposal.Music?.TrackId is not null) ? Take("music") ?? new JsonArray() : null
         };
-        if (timeline.UsesFootage)
+        if (version == 2 || timelines.Any(timeline => timeline.UsesFootage))
         {
             inputs["footageSources"] = stored["media"]?["additionalSources"]?.DeepClone() ?? new JsonArray();
             inputs["footage"] = stored["media"]?["footage"]?.DeepClone() ?? new JsonArray();
+        }
+        if (version == 2)
+        {
+            inputs["postText"] = stored["share"]?["captions"]?.DeepClone();
+            inputs["voiceLab"] = Take("voiceLab");
         }
         using var bytes = new MemoryStream();
         using (var writer = new Utf8JsonWriter(bytes)) WriteCanonical(inputs, writer);
