@@ -48,7 +48,7 @@ public sealed partial class TranscriptView : UserControl
         }
     }
     public bool CorrectionOpen => inlineEditor is not null;
-    internal bool CanRewrite => RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true };
+    internal bool CanRewrite => RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true, IsStoryClip: false };
     internal int InsertionAfterIndex => -1;
     internal void RequestRewrite()
     {
@@ -133,6 +133,7 @@ public sealed partial class TranscriptView : UserControl
             () => model?.CutSelection(true), RequestRewrite);
         selectionFlyout.Tones = () => model is { ShowsToneStrip: true } editor ? editor.RewriteStripItems : [];
         selectionFlyout.RewriteAs = item => model?.RewriteSelectionAs(item);
+        selectionFlyout.MakePart = () => model?.MakeClipsOfParts(model.SelectedPart?.Id);
         selectionFlyout.CanAskClaude = () => model?.CanAskClaude == true;
         selectionFlyout.AskClaude = () => model?.OpenAskClaudeOnSelection();
         AutomationProperties.SetAutomationId(this, "Editor.Transcript");
@@ -309,8 +310,8 @@ public sealed partial class TranscriptView : UserControl
             || model.State!.Pauses.Any(pause => pause.AfterIndex >= model.SelectionStart && pause.AfterIndex < model.SelectionEnd && model.State.CutPauseIds.Contains(pause.Id));
         selectionFlyout.Show(new(first.X, top, Math.Max(1, first.Width), bottom - top), below, keyboard, !model.IsReadOnly && !model.Busy,
             cut, RewriteRequested is not null, CanRewrite,
-            model.Clips.FirstOrDefault(clip => model.Index(clip.Clip.StartWordId) == model.SelectionStart && model.Index(clip.Clip.EndWordId) == model.SelectionEnd) is { } existing
-                ? $"Clip {existing.Number} already covers these words." : null);
+            model.Clips.FirstOrDefault(clip => clip.Clip.Parts is null && model.Index(clip.Clip.StartWordId) == model.SelectionStart && model.Index(clip.Clip.EndWordId) == model.SelectionEnd) is { } existing
+                ? $"Clip {existing.Number} already covers these words." : null, model.StoryVoice());
     }
 
     private void SelectionKeyDown(object sender, KeyRoutedEventArgs args)
@@ -507,6 +508,11 @@ public sealed partial class TranscriptView : UserControl
         if (RewriteRequested is not null)
         {
             Add("Rewrite…", RequestRewrite, CanRewrite, "Ctrl+R");
+            if (model?.StoryVoice() is { } story)
+            {
+                Add(story.RewriteReason, () => { }, false);
+                Add(story.MakeSelected, () => model.MakeClipsOfParts(model.SelectedPart?.Id), model.CanEditParts);
+            }
         }
         Add("Cut", () => model?.CutSelection());
 #if DEBUG

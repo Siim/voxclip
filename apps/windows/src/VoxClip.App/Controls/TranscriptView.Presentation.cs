@@ -130,12 +130,22 @@ public sealed partial class TranscriptView
         var pauses = new List<PauseRun>();
         var displays = new List<DisplayRun>();
         var extent = ClipExtent();
+        var parts = model.IsStoryClip ? model.ClipParts : null;
         var pieces = TranscriptParagraphPresentation.Build(model.Words, item.StartIndex, item.Count, model.PresentedWord,
             state.CutWordIds, state.CutPauseIds, pausesByIndex, extent.First, extent.Last, showCuts, showPauses, expandedCuts, proposal,
-            model.HasSelection ? model.SelectionStart : -1, model.HasSelection ? model.SelectionEnd : -1);
+            model.HasSelection ? model.SelectionStart : -1, model.HasSelection ? model.SelectionEnd : -1, parts);
         var actionsAfter = pieces.LastOrDefault(piece => piece.Change?.Ordinal == focusedChange);
+        var partLabels = new HashSet<int>();
         foreach (var piece in pieces)
         {
+            if (piece.Part > 0 && parts is not null && parts[piece.Part - 1].First >= item.StartIndex && partLabels.Add(piece.Part))
+            {
+                var label = new TextBlock { Text = $"{piece.Part}", FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Margin = new(3, 0, 4, 0), Foreground = Brush("VcTextPrimaryBrush") };
+                AutomationProperties.SetName(label, $"Part {piece.Part}");
+                paragraph.Inlines.Add(new InlineUIContainer { Child = new Border { Child = label, BorderThickness = new(1),
+                    CornerRadius = new(4), BorderBrush = StoryPartStyle.Brush(this, piece.Part), Margin = new(0, 0, 4, 0) } });
+            }
             Inline inline;
             if (piece.Kind == TranscriptPieceKind.Fold)
             {
@@ -194,7 +204,8 @@ public sealed partial class TranscriptView
         rich.PointerCaptureLost -= CaptureLost; rich.PointerCaptureLost += CaptureLost;
         rich.DoubleTapped -= DoubleTappedWord; rich.DoubleTapped += DoubleTappedWord;
         rich.RightTapped -= WordContextRequested; rich.RightTapped += WordContextRequested;
-        AutomationProperties.SetName(rich, string.Join(" ", pieces.Select(piece => piece.Kind == TranscriptPieceKind.Fold ? piece.FoldName :
+        var partNames = partLabels.Count == 0 ? "" : string.Join(", ", partLabels.Select(number => $"Part {number}")) + ". ";
+        AutomationProperties.SetName(rich, partNames + string.Join(" ", pieces.Select(piece => piece.Kind == TranscriptPieceKind.Fold ? piece.FoldName :
             piece.Change is { } hunk ? $"Proposed change {hunk.Ordinal} of {proposal.TotalCount}{hunk.Reviewed}: {piece.Text}" : piece.Text)));
         // Narrator's form of the Mac's custom actions on the focused change: WinUI has none, so the keys are in the paragraph's help. A
         // kept or left-out change has no thread to talk in.
@@ -217,7 +228,15 @@ public sealed partial class TranscriptView
         visual.Overlay.Clear(visual.Text.ActualWidth, visual.Text.ActualHeight);
         var covered = visual.Display.Where(display => display.Piece.First >= 0 && display.Piece.Last >= extent.First && display.Piece.First <= extent.Last)
             .SelectMany(display => visual.Overlay.Rectangles(display.Inline)).ToArray();
-        if (covered.Length > 0 && state.ActiveClipId is not null)
+        if (model.IsStoryClip)
+        {
+            foreach (var group in visual.Display.Where(display => display.Piece.Part > 0).GroupBy(display => display.Piece.Part))
+            {
+                var color = StoryPartStyle.Brush(this, group.Key).Color;
+                foreach (var rect in group.SelectMany(display => visual.Overlay.Rectangles(display.Inline))) visual.Overlay.PartBand(rect, color);
+            }
+        }
+        else if (covered.Length > 0 && state.ActiveClipId is not null)
         {
             var rtl = visual.Text.FlowDirection == FlowDirection.RightToLeft;
             visual.Overlay.Band(covered.Min(rect => rect.Top), covered.Max(rect => rect.Bottom), visual.Text.ActualWidth, rtl);
@@ -316,18 +335,20 @@ public sealed partial class TranscriptView
         if (model is null || model.Words.Count == 0 || overview.ActualHeight <= 0) return;
         var duration = Math.Max(0.001, model.Words[^1].End);
         var extent = ClipExtent();
-        if (extent.First >= 0 && extent.Last >= extent.First) Mark(extent.First, extent.Last, "VcClipLabelBrush", 1);
+        if (model.IsStoryClip)
+            foreach (var part in model.ClipParts) Mark(part.First, part.Last, "VcClipLabelBrush", 1, StoryPartStyle.Brush(this, part.Number));
+        else if (extent.First >= 0 && extent.Last >= extent.First) Mark(extent.First, extent.Last, "VcClipLabelBrush", 1);
         if (model.HasSelection) Mark(model.SelectionStart, model.SelectionEnd, "VcAccentTextBrush", 4);
         foreach (var hunk in proposal.Hunks.Where(hunk => hunk.State != TranscriptChangeState.Kept)) Mark(hunk.First >= 0 ? hunk.First : hunk.Anchor, hunk.Last >= 0 ? hunk.Last : hunk.Anchor, "VcChangeAddBrush", 6);
         foreach (var segment in model.Project.VoiceLab.Segments.Where(segment => segment.Enabled))
             Mark(model.Index(segment.Replace.FirstWordId), model.Index(segment.Replace.LastWordId), "VcAiWaveBrush", 8);
 
-        void Mark(int first, int last, string key, double left)
+        void Mark(int first, int last, string key, double left, Brush? fill = null)
         {
             if (first < 0 || last < first || last >= model.Words.Count) return;
             var top = model.Words[first].Start / duration * overview.ActualHeight;
             var bottom = model.Words[last].End / duration * overview.ActualHeight;
-            var marker = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 2, Height = Math.Max(2, bottom - top), Fill = Brush(key) };
+            var marker = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 2, Height = Math.Max(2, bottom - top), Fill = fill ?? Brush(key) };
             Canvas.SetLeft(marker, left); Canvas.SetTop(marker, top);
             overview.Children.Add(marker);
         }

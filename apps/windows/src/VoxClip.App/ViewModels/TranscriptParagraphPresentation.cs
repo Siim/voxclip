@@ -7,7 +7,7 @@ internal enum TranscriptPieceKind { Source, Pause, Fold, Inserted, Comma }
 
 internal sealed record TranscriptPiece(TranscriptPieceKind Kind, string Text, int First, int Last, bool Outside = false,
     bool Removed = false, bool Ai = false, TranscriptProposalHunk? Change = null,
-    IReadOnlyList<string>? WordIds = null, IReadOnlyList<string>? PauseIds = null, bool Filler = false)
+    IReadOnlyList<string>? WordIds = null, IReadOnlyList<string>? PauseIds = null, bool Filler = false, int Part = 0)
 {
     internal bool Selectable => Kind == TranscriptPieceKind.Source;
     internal string FoldName => $"{WordIds?.Count ?? 0} cut: {Text}";
@@ -18,7 +18,8 @@ internal static class TranscriptParagraphPresentation
     internal static IReadOnlyList<TranscriptPiece> Build(IReadOnlyList<TimedWord> words, int start, int count,
         Func<int, TranscriptSpeechWord> speech, IReadOnlySet<string> cuts, IReadOnlySet<string> cutPauses,
         IReadOnlyDictionary<int, Pause> pauses, int clipFirst, int clipLast, bool showCuts, bool showPauses,
-        IReadOnlySet<string> expanded, TranscriptProposalPresentation proposal, int selectionFirst = -1, int selectionLast = -1)
+        IReadOnlySet<string> expanded, TranscriptProposalPresentation proposal, int selectionFirst = -1, int selectionLast = -1,
+        IReadOnlyList<ClipPartRow>? parts = null)
     {
         List<TranscriptPiece> pieces = [];
         var end = Math.Min(words.Count, checked(start + count));
@@ -27,18 +28,19 @@ internal static class TranscriptParagraphPresentation
             var presented = speech(index);
             if (!presented.Visible) continue;
             var word = words[index];
-            var outside = presented.LastSourceIndex < clipFirst || index > clipLast;
+            var part = parts?.FirstOrDefault(part => index <= part.Last && presented.LastSourceIndex >= part.First);
+            var outside = parts is not null ? part is null : presented.LastSourceIndex < clipFirst || index > clipLast;
             var change = outside ? null : proposal.At(index);
             var changes = change?.ShowsNewWords == true;
             if (!outside) AddInsertions(index, true);
             var cut = !presented.AiModified && cuts.Contains(word.Id);
             var bridge = change?.Hunk.BridgeWordIds.Contains(word.Id) == true;
             pieces.Add(new(TranscriptPieceKind.Source, presented.Text + " ", index, presented.LastSourceIndex, outside,
-                !outside && (cut || changes && !bridge), presented.AiModified, change, [word.Id], [], EditingAlgorithms.IsFillerText(presented.Text)));
+                !outside && (cut || changes && !bridge), presented.AiModified, change, [word.Id], [], EditingAlgorithms.IsFillerText(presented.Text), part?.Number ?? 0));
             if (!outside) AddInsertions(index, false);
-            if (!outside && showPauses && pauses.TryGetValue(presented.LastSourceIndex, out var pause))
+            if (!outside && showPauses && (part is null || presented.LastSourceIndex < part.Last) && pauses.TryGetValue(presented.LastSourceIndex, out var pause))
                 pieces.Add(new(TranscriptPieceKind.Pause, TranscriptWordDecoration.VisiblePause(pause.Label), index,
-                    presented.LastSourceIndex, Removed: cutPauses.Contains(pause.Id), PauseIds: [pause.Id]));
+                    presented.LastSourceIndex, Removed: cutPauses.Contains(pause.Id), PauseIds: [pause.Id], Part: part?.Number ?? 0));
 
             void AddInsertions(int sourceIndex, bool before)
             {
@@ -53,10 +55,10 @@ internal static class TranscriptParagraphPresentation
             var piece = pieces[index];
             if (!CanFold(piece)) { folded.Add(piece); continue; }
             List<TranscriptPiece> removed = [piece];
-            while (index + 1 < pieces.Count && CanFold(pieces[index + 1])) removed.Add(pieces[++index]);
+            while (index + 1 < pieces.Count && pieces[index + 1].Part == piece.Part && CanFold(pieces[index + 1])) removed.Add(pieces[++index]);
             var previous = folded.LastOrDefault();
             var wordsRemoved = removed.Where(item => item.Kind == TranscriptPieceKind.Source).ToArray();
-            if (previous is { Kind: TranscriptPieceKind.Source, Outside: false })
+            if (previous is { Kind: TranscriptPieceKind.Source, Outside: false } && previous.Part == piece.Part)
             {
                 var previousText = previous.Text.TrimEnd();
                 if (wordsRemoved.Length > 0 && wordsRemoved.All(item => item.Filler)) previousText = previousText.TrimEnd(',');
@@ -65,7 +67,7 @@ internal static class TranscriptParagraphPresentation
             folded.Add(new(TranscriptPieceKind.Fold, string.Join(" ", removed.Select(item => item.Kind == TranscriptPieceKind.Pause
                 ? "pause " + item.Text.TrimEnd().TrimEnd('s').Trim() + " seconds" : item.Text.Trim())), removed[0].First, removed[^1].Last,
                 WordIds: removed.SelectMany(item => item.WordIds ?? []).ToArray(),
-                PauseIds: removed.SelectMany(item => item.PauseIds ?? []).ToArray()));
+                PauseIds: removed.SelectMany(item => item.PauseIds ?? []).ToArray(), Part: piece.Part));
         }
         return OpenCommas(folded);
 
