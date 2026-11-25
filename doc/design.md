@@ -363,6 +363,8 @@ How it is built:
 
 ### 3.4 Sidebar rows
 
+**Story clips (Mac).** The Clips list shows `6 parts` (the actual count) for a story, or `reel` for a showreel, followed by the edited length after cuts. The Outline replaces its paragraph list with parts in play order: drag grip, numbered colour badge, first words, monospaced `m:ss–m:ss` take range and ×. Its header reads `Clip 2 · 6 parts`. A single stretch keeps the paragraph Outline.
+
 **macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline, Suggested, Voices and Exports. Voices is hidden entirely when Voice Lab is off, in every build. Each disclosure has an uppercase 11 pt semibold heading and a spoken name such as "Clips, 2 items". The take heading is the project title with no visible count; VoiceOver reads "{title}, 1 item". Clips and Suggested show counts, while Outline shows the open tab’s `scopeName` as trailing context when it fits. Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested`, `.voices`, `.exports` and `.recent`; this never edits the project. Starting Find Clips or Hook, or focusing a suggestion, expands Suggested. Moving selection to a hidden clip row expands its owning Clips or Suggested section. Home shows Home and Recent.
 
 **Voices and Exports (macOS V2b).** These sections stay at the Explorer bottom, collapsed by default, with counts and the same 28 pt uppercase disclosure headers. Expanded library rows are 40 pt per f14 and the V2b review decision (one-line navigation rows remain 28 pt); their two lines are a 13 pt title and 11 pt metadata, each truncated at the tail. Help and VoiceOver carry the complete text. A long expanded library scrolls within a bounded area. The section's VoiceOver group name is “Voices, {n} items” or “Exports, {n} items” (singular “1 item”).
@@ -700,6 +702,8 @@ On Mac, a single editable source word shows **Edit word** first, then **✦ Rewr
 - The time is a live region, updated at most once a second for screen readers.
 
 ### 5.2 Timeline strip (72)
+
+**Story clips (Mac).** A numbered transcript band marks each part in its Outline colour. On the edited timeline, a part seam is a 3 pt white line with ↶ (back) or ↷ (ahead) and the take time it jumps to, such as `↶ 8:04`; cuts within parts remain 1 pt lines. The overview shows each coloured part at its original position in the take. **Show cuts** puts the parts side by side in play order on their own take ranges, with cuts open inside each part. Captions, effects and a single continuous music bed follow the edit. For a cross-seam effect, say “Place it inside one part.” For a cross-seam translation, say “Translate inside one part.”
 
 Layout, left to right:
 
@@ -1084,6 +1088,10 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
 **Claude's pick.** While the clip style's captions are Auto (§6.6), a line under the style row reads "✦ Claude picked {style} · {reason}" for the active clip, 12 `text.secondary` with the name in 600, wrapping. When clips have no pick yet, a borderless "✦ Pick styles for {n} clips" button follows. It sends through the inline connector confirmation (§6.3), with the verb "Pick styles", and never opens a sheet. While it runs, the line reads "Picking caption styles…" with Cancel. A failure shows as an inline notice in the same place. Choosing a tile in the gallery fixes the clip style's captions to that style, so the line and the button disappear.
 
 ### 6.2 Clips (sidebar)
+
+**Editing parts (Mac).** Select a part and press I or O to set its edge at the selected word. Drag the grip (an accent line shows the destination), press ⌥⌘↑/↓, or choose **Move Up** / **Move Down**. Remove a part with ×, ⌫ or **Remove Part**. The row menu also has **Play Part 2** (the actual number), **Show in Take**, and **Make Clip of This Part**. **Add Selection as Part** appends the selected words. With no usable selection, say “Select words outside the clip's parts to add them.” A last part cannot be removed: “A clip needs one part. Remove Clip instead.” The undo names are “Move part”, “Remove part”, “Add part” and “Trim part”. Announce the result, for example “Part 2 moved to 3 of 6”.
+
+**Voice on story clips.** **Rewrite as ▾** and **Only the changed phrases** remain visible, disabled: “Voice changes work on one part at a time. Make a clip of the part first.” **The whole clip in your voice, lip-synced** and **Revoice Whole Clip** remain visible with their price, disabled: “Lip sync can't run across the 5 seams of a story clip yet. Make a clip of the part first.” Use the actual seam count. Under the action: “Not available on a story clip yet. Phrases you already revoiced still play in their parts.” **Make Clip of Part 2** and **Make Clips of All 6 Parts** (actual part number and count) are free, inline actions that make ordinary clips with the same words and cuts. A part edit that would lose paid work makes a story copy and announces it. For a boundary inside a paid lip-sync window, say “Part 3 cuts through a lip-synced stretch. Include all of 2:40–2:57 or none of it.”
 
 The sidebar list is the clip range layer (editing §2.5 and §10.6), presented as in §2 and §3.4.
 

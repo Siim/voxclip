@@ -455,6 +455,27 @@ private actor HookFixtureConnector: LLMConnector {
 
     // MARK: Rewrite and Ask
 
+    @Test func storyRewriteStaysVisibleWithTheReasonAndDoesNotRun() async throws {
+        var project = try fiveQuestions()
+        let parts = [ClipPart(id: "second", startWordId: "w12", endWordId: "w14"),
+                     ClipPart(id: "first", startWordId: "w2", endWordId: "w4")]
+        let story = ClipRange(id: "story", startWordId: "w2", endWordId: "w14", parts: parts, kind: .showreel)
+        try project.applyEditing(.addClip(story))
+        let (shell, editor, _, bar) = try await open(project)
+        defer { bar.tearDown(); editor.close() }
+        shell.choose(.clip(story.id))
+        bar.render()
+        let reason = "Voice changes work on one part at a time. Make a clip of the part first."
+        #expect(shows(bar.rewrite) && !bar.rewrite.isEnabled && !bar.rewriteAvailable)
+        #expect(bar.rewrite.toolTip == reason)
+        editor.select("w12")
+        editor.rewriteShortcut()
+        #expect(editor.lastAnnouncement == reason)
+        #expect(editor.rewriteOpenTask == nil)
+        let metadata = StoryClipPresentation.metadata(story, editedDuration: 65)
+        #expect(metadata.badge == "reel" && metadata.length == "1:05")
+    }
+
     /// Rewrite and Return in the Ask field run V13's Rewrite on the scope now with the field's text: the tab's clip with
     /// no selection, the selection when there is one, Full Take on its tab. Text Rewrite needs no Voice Lab.
     @Test func rewriteRunsTheScopeNowWithTheFieldAsItsInstruction() async throws {

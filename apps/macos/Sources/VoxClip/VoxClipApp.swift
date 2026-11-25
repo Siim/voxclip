@@ -68,6 +68,8 @@ import VoxClipCore
                     } else if CommandLine.arguments.contains("-spacingCaptures") {
                         // Offscreen spacing captures (DebugSpacing.swift), on the -layoutAudit launch path.
                         results = try await DebugSpacing.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-storyClipCaptures") {
+                        results = try await DebugStoryClips.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-timelinePerformanceAudit") {
                         // Headless counterpart of the timeline portion of -uiPerformanceTest.
                         // Keep -layoutAudit so AppModel uses the test-session launch path.

@@ -228,6 +228,36 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.playhead == 0)
     }
 
+    @Test func storyTimelineLabelsBackwardJoinsAndOpensCutsInsideEachPart() throws {
+        let app = try app()
+        var story = try project()
+        story.edits.clips = [ClipRange(id: "clip-1", startWordId: "t10", endWordId: "t29", parts: [
+            ClipPart(id: "later", startWordId: "t25", endWordId: "t29"),
+            ClipPart(id: "earlier", startWordId: "t10", endWordId: "t18")
+        ], kind: .story)]
+        let model = editor(app, project: story)
+        defer { model.close() }
+        let canvas = TimelineCanvasView(model: model)
+        defer { canvas.tearDown() }
+        canvas.frame = NSRect(x: 0, y: 0, width: 1056, height: TimelineMetrics.height)
+        canvas.layoutSubtreeIfNeeded()
+        canvas.renderContent()
+        #expect(canvas.content.partMarkers.map(\.label) == ["1 · 0:25", "2 · 0:10"])
+        #expect(canvas.content.partMarkers.compactMap(\.seamLabel) == ["↶ 0:10"])
+        #expect(canvas.content.clips.map(\.source.lowerBound) == [25, 10])
+        let join = try #require(canvas.content.partMarkers.last?.range.lowerBound)
+        #expect(model.timelineSeamGap(near: join, within: 0.01) == nil)
+        model.showsCuts = true
+        canvas.renderContent()
+        let markers = canvas.content.partMarkers
+        #expect(markers.count == 2)
+        #expect(markers[0].range.upperBound == markers[1].range.lowerBound)
+        #expect(abs(model.timelineSourceTime(markers[1].range.lowerBound + 0.1, on: .source) - 10) < 1e-6)
+        #expect(canvas.content.removed.count == 1)
+        let cut = try #require(canvas.content.removed.first)
+        #expect(cut.lowerBound > markers[1].range.lowerBound && cut.upperBound < markers[1].range.upperBound)
+    }
+
     @Test func showCutsOpensTakeTimeAtTheEditedZoomFromTheClip() throws {
         let app = try app()
         let model = editor(app, project: try project())

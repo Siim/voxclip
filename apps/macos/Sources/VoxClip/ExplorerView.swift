@@ -215,6 +215,11 @@ import VoxClipCore
     let section: ExplorerSection
     let count: Int
     private var title: String { section == .take ? shell.projectTitle : section.title }
+    private func outlineScope(_ editor: EditorModel) -> String {
+        let name = editor.scopeName(shell.tabs.active.clipID)
+        guard let parts = editor.activeClip?.parts else { return name }
+        return "\(name) · \(parts.count) parts"
+    }
     var accessibilityName: String { section.accessibilityLabel(count: count, title: title) }
     var body: some View {
         Button { shell.setExplorerExpanded(section, !shell.explorerExpanded(section)) } label: {
@@ -226,8 +231,8 @@ import VoxClipCore
                 Spacer(minLength: 0)
                 if section == .outline, let editor = shell.editor {
                     ViewThatFits(in: .horizontal) {
-                        Text(editor.scopeName(shell.tabs.active.clipID)).font(.system(size: 11)).fixedSize()
-                            .columnLayoutEvidence("explorer.header.trailing.outline", text: editor.scopeName(shell.tabs.active.clipID))
+                        Text(outlineScope(editor)).font(.system(size: 11)).fixedSize()
+                            .columnLayoutEvidence("explorer.header.trailing.outline", text: outlineScope(editor))
                         Color.clear.frame(width: 0, height: 0)
                     }
                 } else if section != .take {
