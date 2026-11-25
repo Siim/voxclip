@@ -628,6 +628,7 @@ public sealed partial class EditorViewModel : ObservableObject
         var sameSource = next.Project.Media.Source.ContentKey == project.Media.Source.ContentKey &&
             next.Project.Media.Source.SizeBytes == project.Media.Source.SizeBytes;
         project = project with { Edits = next.Project.Edits, Captions = next.Project.Captions, ClipStyle = next.Project.ClipStyle, VoiceLab = next.Project.VoiceLab,
+            Media = sameSource ? next.Project.Media with { Source = project.Media.Source } : project.Media,
             ContextDemo = sameSource ? next.Project.ContextDemo : null, MotionCues = sameSource ? next.Project.MotionCues : [],
             Music = next.Project.Music, ClipEffects = next.Project.ClipEffects, ClipControls = next.Project.ClipControls,
             CaptionTranslations = next.Project.CaptionTranslations, SchemaVersion = next.Project.SchemaVersion, ModifiedAt = next.Project.ModifiedAt };
