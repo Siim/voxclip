@@ -704,6 +704,8 @@ extension EditorModel {
               let plan = run.plan, var request = run.proposalInput else { return }
         let saved = run.paidMusic.filter { FileManager.default.fileExists(atPath: MusicRenderInput.url(for: $0.asset, dataRoot: app.locations.root).path) }
         var prior = plan
+        prior.orderedParts = plan.parts
+        prior.shape = plan.kind
         if let track = run.proposalMusic, saved.contains(track) { prior.savedMusicTrackId = track.id }
         request.note = nil
         request.selectedKind = plan.kind

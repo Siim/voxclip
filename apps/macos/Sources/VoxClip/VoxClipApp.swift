@@ -65,6 +65,8 @@ import VoxClipCore
                     } else if CommandLine.arguments.contains("-makeItCaptures") {
                         // Offscreen Make it postable states (DebugMakeIt.swift), on the -layoutAudit launch path.
                         results = try await DebugMakeIt.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-creativeProposalCaptures") {
+                        results = try await DebugCreativeProposals.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-spacingCaptures") {
                         // Offscreen spacing captures (DebugSpacing.swift), on the -layoutAudit launch path.
                         results = try await DebugSpacing.run(app: model, directory: directory)

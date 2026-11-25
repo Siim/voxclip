@@ -334,7 +334,7 @@ private struct RefusingAssetHTTP: MusicHTTP {
         #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch eleven-1"])
     }
 
-    @Test func undoThenChangeReusesPaidMusicAndKeepsTheOriginalCap() async throws {
+    @Test(arguments: [true, false]) func undoThenChangeReusesPaidMusicAndKeepsTheOriginalCap(reuseByID: Bool) async throws {
         let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [Self.generated("0.001")])
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
         let first = try await run(fixture)
@@ -348,7 +348,7 @@ private struct RefusingAssetHTTP: MusicHTTP {
             #expect(request.musicTracks[track.id] == track.title)
             var revised = try #require(request.revision?.plan)
             revised.title = "A revised title"
-            revised.savedMusicTrackId = track.id
+            revised.savedMusicTrackId = reuseByID ? track.id : nil
             return ClipAutopilotSeries(plans: [revised])
         }
         fixture.editor.reviseCreativeProposal(first, instruction: "Change the title")

@@ -152,6 +152,31 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.statusClipStyle?.text == "✦ Claude does it all · top 3 · ≤$2")
     }
 
+    @Test func claudeModeReviewsAStoryInPlayOrderWithDecisionReasons() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        var story = MakeItPostableTestsPlan.main
+        story.orderedParts = [.init(startWord: 6, endWord: 7), .init(startWord: 2, endWord: 4)]
+        story.rewrites = []
+        story.cuts = []
+        story.pauseCuts = []
+        editor.makeIt.services?.plan = { request, _, _, _ in
+            #expect(request.creativeShapes)
+            return ClipAutopilotSeries(plans: [story])
+        }
+        editor.makeTopPostable(1, budget: MakeItBudget(cap: 2), onlyClipIDs: ["clip-main"])
+        await editor.makeIt.waitForQueue()
+        let run = try #require(editor.makeIt.run(for: "clip-main"))
+        let card = try #require(editor.creativeProposalData(run))
+        #expect(card.source == "Story · made by Claude")
+        #expect(card.parts.map(\.start) == [editor.words[6].start, editor.words[2].start])
+        #expect(card.groups.map(\.id) == CreativeProposalGroup.Section.allCases)
+        #expect(card.groups.first(where: { $0.id == .picture })?.items.contains { !$0.reason.isEmpty } == true)
+        #expect(card.cost?.contains("of your $2 limit") == true)
+        #expect(editor.project.edits.clips.first(where: { $0.id == run.clipID })?.kind == .story)
+    }
+
     /// Through the real Find Clips on a newly opened video: a scripted Claude Code on its plan answers, Find Clips sends with
     /// no click, and once its task has ended (and released the AI lease) the run starts by itself.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))

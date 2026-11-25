@@ -280,6 +280,28 @@ import Testing
 
     // MARK: Service
 
+    @Test func creativeRevisionSendsThePriorPlanAndKeepsTheNewPartsInPlayOrder() async throws {
+        let transcript = try Self.transcript()
+        let original = try #require(ClipAutopilotValidator.plan(try Self.reply("valid-clip"), context: Self.context(scope: 0...29)))
+        var request = ClipAutopilotRequest(transcript: transcript, mode: .clip(0...29))
+        request.creativeShapes = true
+        request.revision = .init(instruction: "End on the beginning instead", plan: original)
+        var reply = try #require(try Self.sendable(Self.reply("valid-clip")).aiObject)
+        reply["kind"] = .string("story")
+        reply["parts"] = .array([.object(["startWord": .number(18), "endWord": .number(24)]),
+                                 .object(["startWord": .number(2), "endWord": .number(7)])])
+        let stub = AutopilotStub(replies: [try JSONValue.object(reply).aiCompact()])
+        let service = ClipAutopilotService(runner: try Self.runner(), shared: try Self.shared())
+        let result = try await service.plan(request, connector: stub, model: "fixture")
+        let plan = try #require(result.plan)
+        let sent = try #require(await stub.requests.first)
+        #expect(sent.instruction.contains("The creator asked: \"End on the beginning instead\". Here is the plan you made:"))
+        #expect(sent.instruction.contains(original.title))
+        #expect(sent.schema[ai: "required"].aiArray.contains(.string("kind")))
+        #expect(plan.kind == .story)
+        #expect(plan.parts.count == 2 && plan.parts[0].startWord > plan.parts[1].endWord)
+    }
+
     @Test func missingMusicDoesNotDiscardOrResendAnOtherwiseValidPlan() async throws {
         var reply = try #require(try Self.sendable(Self.reply("valid-clip")).aiObject)
         reply.removeValue(forKey: "music"); reply.removeValue(forKey: "musicPick")

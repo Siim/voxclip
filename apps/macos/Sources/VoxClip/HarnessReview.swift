@@ -45,6 +45,7 @@ extension EditorModel {
 
     private struct Review {
         let operations: [ClipAutopilotOperation]
+        let result: Project?
         let estimate: String?
         let issue: String?
     }
@@ -61,6 +62,9 @@ extension EditorModel {
                 ForEach(pending.timelines.indices, id: \.self) { index in review(pending, at: index) }
             }
             else if let issue { InlineNotice(text: issue) }
+            if paid != nil || !assets.isEmpty || !rewrites.isEmpty {
+                Text("After Keep").font(VCType.small.font().weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading)
+            }
             if let paid { music(paid) }
             ForEach(assets, id: \.id) { asset in assetAction(asset) }
             ForEach(rewrites) { operation in rewriteAction(operation) }
@@ -86,51 +90,15 @@ extension EditorModel {
         let timeline = proposal.timelines[index]
         let detail = reviews[index]
         let blocked = issue ?? detail?.issue ?? unavailable
-        let name = timeline.proposal.target.new?.title ?? model.scopeName(timeline.clipId)
+        let clip = (try? proposal.clipID(at: index)).flatMap { id in detail?.result?.edits.clips.first { $0.id == id } }
+        let data = model.harnessCreativeData(timeline, clip: clip, result: detail?.result, operations: detail?.operations ?? [], estimate: detail?.estimate)
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Timeline proposal · \(name)").font(.headline)
-            Text(verbatim: timeline.reason).lineLimit(3)
-            DisclosureGroup("Proposed changes") {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let parts = timeline.proposal.parts {
-                            Text(parts.map { "\($0.startWord)–\($0.endWord)" }.joined(separator: " → "))
-                        }
-                        ForEach(detail?.operations ?? []) { operation in
-                            Text(operationLabel(operation))
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }.frame(maxHeight: 120)
-            }
-            if let prompt = timeline.generateMusic {
-                Text("Music: \(prompt)").lineLimit(2)
-                Text(detail?.estimate.map { "About \($0) to generate music. Keeping the timeline doesn't send anything." }
-                     ?? "Keeping the timeline doesn't generate music.").foregroundStyle(.secondary)
-            }
-            if timeline.effects?.contains(where: { $0.kind == .illustration || $0.kind == .soundEffect }) == true {
-                Text("Keeping the timeline doesn't request illustrations or sounds.").foregroundStyle(.secondary)
-            }
-            if let blocked { Text(blocked).foregroundStyle(.secondary) }
-            HStack {
-                Button("Keep") { keep(proposal, at: index) }.disabled(blocked != nil)
-                    .accessibilityIdentifier("voxclip.harness.keep")
-                Button("Undo") { dismiss(proposal, at: index) }
-                    .accessibilityIdentifier("voxclip.harness.undo")
-            }
+            Text("Timeline proposal").font(.headline)
+            HarnessCreativeProposal(data: data, blocked: blocked, keep: { keep(proposal, at: index) }, undo: { dismiss(proposal, at: index) })
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(DesignValues.color("bg.muted"))
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("voxclip.harness.review")
-    }
-
-    private func operationLabel(_ operation: ClipAutopilotOperation) -> String {
-        let label: String = switch operation.action {
-        case .edit(.renameClip(_, let title)): "Title: \(title ?? "")"
-        case .captions(let settings, _): "Captions: \(settings.styleId)"
-        case .savedMusic(_, let id): "Reuse music: \(model.project.music.first { $0.id == id }?.title ?? id)"
-        default: EditorModel.rowTitle(operation)
-        }
-        return operation.reason.isEmpty ? label : "\(label) · \(operation.reason)"
     }
 
     private func rewriteAction(_ operation: ClipAutopilotOperation) -> some View {
@@ -273,9 +241,9 @@ extension EditorModel {
                     do {
                         let candidate = try next.review(model.project, shared: shared, at: index)
                         let estimate = try? next.estimatedMusicPrice(in: candidate.project, shared: shared, at: index)
-                        reviews[index] = Review(operations: candidate.operations, estimate: estimate, issue: nil)
+                        reviews[index] = Review(operations: candidate.operations, result: candidate.project, estimate: estimate, issue: nil)
                     } catch {
-                        reviews[index] = Review(operations: [], estimate: nil, issue: error.localizedDescription)
+                        reviews[index] = Review(operations: [], result: nil, estimate: nil, issue: error.localizedDescription)
                     }
                 }
             } else if next != nil { issue = "VoxClip can't read its timeline resources." }

@@ -171,8 +171,8 @@ import VoxClipCore
                     if editor.clipError == EditorModel.noClipsMatched { NoMatchRow(editor: editor).selectionDisabled() }
                     if suggestions.count > 1, editor.capabilities.ai { MakeTopRow(editor: editor, count: min(3, suggestions.count)).selectionDisabled() }
                     ForEach(suggestions, id: \.id) { clip in
-                        ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: listFocused && editor.focusedSuggestion == clip.id,
-                                selectedFocused: shell.selection == .clip(clip.id) && listFocused)
+                        SuggestedClipCard(shell: shell, editor: editor, clip: clip, focused: listFocused && editor.focusedSuggestion == clip.id,
+                                          selectedFocused: shell.selection == .clip(clip.id) && listFocused)
                             .tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
                     }
                 }
@@ -394,12 +394,71 @@ import VoxClipCore
 
     /// A suggestion's reason and score, "8/10 · Strong hook, one idea"; the planner's score once Make it postable ran.
     private var reason: String {
-        guard let resultID = clip.aiResultId, let index = clip.aiClipIndex,
-              let result = editor.project.ai.results.first(where: { $0.id == resultID }), index < result.clips.count else { return "" }
-        let found = result.clips[index]
-        return "\(editor.suggestionScore(clip) ?? found.score)/10 · \(found.reason)" + (found.notInTake.map { "\nNot in this take: \($0)" } ?? "")
+        guard let found = editor.foundSuggestion(clip) else { return "" }
+        return "\(editor.suggestionScore(clip) ?? found.score)/10 · \(found.reason)"
     }
 
+}
+
+@MainActor struct SuggestedClipCard: View {
+    let shell: WorkspaceShell
+    let editor: EditorModel
+    let clip: ClipRange
+    var focused = false
+    var selectedFocused = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if let details = editor.suggestedCardDetails(clip) {
+                Text(details.badge).font(DesignValues.mono(10).weight(.semibold))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(DesignValues.color("ai.tint").opacity(0.15), in: Capsule())
+                    .columnLayoutEvidence("suggested.shape", text: details.badge)
+                clipRow
+                Text(details.summary).foregroundStyle(.secondary)
+                ProposalPartsStrip(parts: details.parts)
+                if !details.reason.isEmpty { Text(details.reason).fixedSize(horizontal: false, vertical: true) }
+                if let missing = details.missing {
+                    Text(missing).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .columnLayoutEvidence("suggested.notInTake", text: missing)
+                }
+                if focused || shell.selection == .clip(clip.id) { actions }
+            } else { clipRow }
+        }
+        .font(VCType.small.font())
+        .padding(.vertical, 6)
+        .columnLayoutEvidence("suggested.card")
+    }
+
+    private var clipRow: some View {
+        ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: focused, selectedFocused: selectedFocused)
+    }
+
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Button("Keep") { editor.keep(clip.id) }.buttonStyle(.borderedProminent).disabled(!editor.capabilities.edit)
+                Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
+            }
+            Button(editor.makeItTitle(clipID: clip.id)) { editor.makeItPostable(clip.id) }
+                .disabled(!editor.canMakeItPostable(clip.id))
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+}
+
+@MainActor extension EditorModel {
+    func suggestedCardDetails(_ clip: ClipRange) -> (badge: String, summary: String, parts: [ProposalStripPart], reason: String, missing: String?)? {
+        guard let found = foundSuggestion(clip), let ranges = clip.playPartIndices(in: words) else { return nil }
+        let parts = ProposalStripPart.from(ranges.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }, words: words)
+        let kind: ClipProposal.NewClip.Kind = parts.count == 1 ? .stretch : clip.kind == .showreel ? .showreel : .story
+        let score = suggestionScore(clip) ?? found.score
+        let locations = parts.count > 1 ? "in your order, from \(parts.count) places in the take" : parts.first.map { "\(durationLabel($0.start))–\(durationLabel($0.start + $0.duration))" }
+        let summary = [durationLabel(editedDuration(clip)), "\(score)/10", locations].compactMap { $0 }.joined(separator: " · ")
+        let missing = found.notInTake.flatMap { $0.isEmpty ? nil : "Not in this take: \($0)" }
+        return (kind.cardLabel(parts: parts.count), summary, parts.count > 1 ? parts : [], found.reason, missing)
+    }
 }
 
 /// One menu definition for the native List and the standalone DEBUG rows.

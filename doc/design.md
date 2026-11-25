@@ -1980,7 +1980,7 @@ One small card decides how clips are made: who makes them (the mode), caption ty
 
 **Who makes the clips (the mode).** User, 2026-11-05: "it should always be clear / understandable to select if we want that opus does the full loop of clipping and rewriting since i don't wanna click the options all the time". One remembered choice, Settings `clips.mode`:
 
-- **"✦ Claude does it all"** (`claude`): every newly opened video runs the whole loop with no clicks (§6.7, "Claude does it all"). Its two settings are `clips.autopilot.count` (Top 1 / 3 / 5 per video, default 3) and `clips.autopilot.capUSD` (up to $0 / $1 / $2 / $5 per video, default $2). The cap is the approval for paid voice and generated music; $0 means none (fixes are cuts and wording only).
+- **"✦ Claude does it all"** (`claude`): every newly opened video runs the whole loop with no clicks (§6.7, "Claude does it all"). Its two settings are `clips.autopilot.count` (Top 1 / 3 / 5 per video, default 3) and `clips.autopilot.capUSD` (up to $0 / $1 / $2 / $5 per video, default $2). The cap covers generated illustrations, music, and voice work (including lip sync). $0 means no paid steps. On Mac the creative proposal card shows actual spend against that allowance; changing a proposal does not reset it.
 - **"I'll pick"** (`pick`): Claude suggests clips, and the creator presses ✦ Make it postable on the ones they want, as before.
 - **Not chosen** (the key is missing): card A asks once.
 
@@ -2051,7 +2051,7 @@ User, 2026-11-04: "still too hard. too many click to actually use it. claude cod
 **Before the click.**
 
 - **On drop,** transcription starts when the chosen engine is free (on this Mac), as before. When it finishes, Find Clips starts by itself if the AI is free too: a CLI on its plan, a local server or Apple on-device. An API-key connector still waits for Find Clips and asks inline first.
-- **Suggested** ranks its rows by score, best first: the planner's once it scored the clip, else Find Clips' own. Each idle suggestion shows its score in `ai.tint` mono before its length.
+- **Suggested** ranks its rows by score, best first: the planner's once it scored the clip, else Find Clips' own. On Mac each suggestion shows its shape, length, score and reason. A story has a duration-weighted parts strip in play order, labeled with source times where they fit. When Custom finds that something isn't said, show **Not in this take: …** separately from the reason. A stretch shows its source range.
 
 **Ways in.**
 
@@ -2077,10 +2077,12 @@ A suggestion is kept first, in the same undo step as everything the run applies.
 
 **Undo.** The whole run, the keep included, is **one undo step** named "Make it postable". Each decision also has its own Undo in the review, which takes back only that one as its own step: cuts restore, the clip and title go back, captions return to before, the look or the speed goes back to the clip's before the run (the other clip controls stay), the zoom and post text go, the hook's title card goes (the post text keeps the hook), the music goes back to the previous track, and a voiced rewrite's segment is turned off, its paid take kept. **Undo All** takes back every decision still applied as one step.
 
-**The review** (one panel, no pop-ups):
+**The review** (one panel, no pop-ups). On Mac, Claude does it all and Make it postable use the same creative proposal card. Claude can pick a single stretch, a story, or a music-led showreel inside the offered material. The card shows the shape, title, length, score, ordered parts and cuts. **Opens**, **Picture**, **On screen**, **Extras**, **Captions** and **Music** each expand to explain Claude's reasons. Free and paid asset chips sit above the spend line ("$0.39 of your $2 limit"). **▶ Play** starts with the first part in play order.
 
-- **Headline:** "Ready to post · 0:46 · score 8/10": the length the export renders, the clip's edited length (voiced phrases at their takes' length) divided by its speed. Under it are the verdict and Claude's reason ("Worth posting · One clear idea with a payoff"); "Claude's cut: 0:42 finished at 1.1×" from `plan.seconds`; each of `plan.flags` as "⚠ {detail}"; "⚠ Longer than this clip style's 45 s" when the clip is; and "Spent $0.02 of up to $0.06".
-- **One line per decision,** with its reason, then ▶ (jump 1–1.5 s before it and play), Undo, and Change where they act:
+**Keep** accepts the proposal (the run is one editor undo step). **Undo** takes back its decisions and leaves the card available for **Change…**, without deleting paid files. **Change…** opens a field and chips directly under the card ("Shorter", "Calmer music", "No graphics", "End on the telecom deal", "Make it a story instead"). Return sends the existing revise template with the previous plan; Esc closes. The new card marks changed rows. Existing paid assets are reused when still requested; anything new uses the same allowance. No sheet or alert opens.
+
+- **Length and score** use the length the export renders: the clip's edited length (voiced phrases at their takes' length) divided by its speed. The verdict has Claude's reason ("Worth posting · One clear idea with a payoff").
+- **Decision controls** on Mac (or the original per-decision review on Windows) show each decision with its reason, then ▶ (jump 1–1.5 s before it and play), Undo, and Change where they act:
   - "Cut “uh”"; "Tightened a pause"; "Tightened the clip to 0:46";
   - "Claude chose the title “…” · Change" (inline rename);
   - "Corrected “Tvilio” → “Twilio”", with ▶ and Undo;
@@ -2094,7 +2096,7 @@ A suggestion is kept first, in the same undo step as everything the run applies.
 - **A question** shows "Claude chose “X”" with Change. Change shows the other answers as chips in the row. Picking one takes this clip's decisions back and plans it again with that answer as the note.
 - **Post text** (with the music's credit line) shows in a read-only field with **Copy**. It opens with the hook on its own line unless the post already says it, and keeps it after the card's Undo.
 - **Top clips** (after ✦ Make top 3 postable): rank, title, "8/10 · Worth posting", and Waiting, Making…, Ready, Stopped or Failed. A row shows that clip's review.
-- **The footer always names the next step:** "Next: wait, or Stop to keep what's done." · "Next: Export. The post text is copied with it." · "Next: wait for the export." · "Next: try again, or edit the clip yourself." Its primary is **Export · 16:9 + 9:16** (the clip style's shapes) with Undo All, Stop while it runs, or Try Again after a failure.
+- **The footer names the next step:** "Next: wait, or Stop to keep what's done." · "Next: Export. The post text is copied with it." · "Next: wait for the export." · "Next: try again, or edit the clip yourself." Its primary is **Export · 16:9 + 9:16** (the clip style's shapes), Stop while it runs, or Try Again after a failure. On Mac, Undo for a finished clip is on its proposal card.
 
 **Export** is one click. The clip renders once per shape of the clip style (`beginExport(targets:folder:aspects:)`) into the export folder. The post text, including the music credit, is copied as the export starts.
 
@@ -2289,6 +2291,8 @@ Windows also preserves `colorAdjustments` when opening, saving or editing a Mac 
 ---
 
 ### 6.10 Harness proposal assets
+
+Mac uses the same creative proposal card as §6.7 for each harness timeline, with **Keep**, **Undo**, and a visible, disabled **Change…**. The message names the terminal agent when known, otherwise "Ask Claude Code or Codex in your terminal to change it." Undo dismisses just that timeline. Free local edits apply on Keep; priced actions are shown separately under **After Keep**. The terminal agent cannot spend.
 
 Keeping a timeline proposal applies its local edits without sending requests. On Mac, asset rows read **Proposed illustration** or **Proposed sound effect**; Windows shows the prompt or query inline. **Find sound · free**, **Place saved illustration** or **Generate illustration · up to $X** is a separate click beside **Dismiss**. If pricing or a key is missing, keep **Generate illustration** disabled and show **Illustration pricing isn't available.** or **Add a fal.ai key in Settings to generate an illustration.** While checking, show **Checking for a fal.ai key…**. A changed project disables the action with **The edit changed. Ask for a new timeline proposal.** See [harness.md](harness.md) for the proposal and music review contracts.
 

@@ -22,6 +22,20 @@ import Testing
         return (shell, editor)
     }
 
+    @Test func suggestedStoryShowsItsOwnPartsAndSeparatesMissingMaterialFromTheReason() async throws {
+        let (_, editor) = try await open()
+        defer { editor.close() }
+        let next = try DebugCreativeProposals.suggestedStory(in: editor.project)
+        editor.document.replaceProject(next)
+        editor.refresh()
+        let clip = try #require(editor.suggestedClips.first { $0.id == DebugCreativeProposals.suggestedID })
+        let details = try #require(editor.suggestedCardDetails(clip))
+        #expect(details.badge == "Story · 3 parts")
+        #expect(details.parts.map(\.start) == [editor.words[29].start, editor.words[9].start, editor.words[0].start])
+        #expect(details.reason == "The outcome first, then the steps that led to it.")
+        #expect(details.missing == "Not in this take: You don't say “set me free”.")
+    }
+
     @Test func headlessDebugChecksUseTheProductionOutlineAndMetrics() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
