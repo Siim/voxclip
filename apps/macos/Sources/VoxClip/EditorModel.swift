@@ -42,6 +42,10 @@ struct EditorRenderSnapshot {
     }
     var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope() } } }
     var previewStop: Double?
+    var storyPartPlaybackEnd: Double?
+    var selectedStoryPartID: String?
+    var draggedStoryPartID: String?
+    var storyPartError: String?
     var playhead: Double = 0
     var sourceTime: Double = 0
     var isPlaying = false
@@ -199,6 +203,7 @@ struct EditorRenderSnapshot {
     /// in R1, or in R0 when no AI is chosen. The open session on this tab sends again when it has the same scope;
     /// another scope replaces it. Text Rewrite needs no Voice Lab.
     func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil, verb: String = "Rewrite") {
+        if let reason = storyRewriteReason(for: requested ?? rewriteScopeNow) { announce(reason); return }
         let replacingPendingSend = sendConfirmation.isPresented
         guard !transcription.isRunning, let scope = requested ?? rewriteScopeNow,
               RewriteEntryPolicy.canRun(editable: capabilities.edit && (capabilities.ai || replacingPendingSend), scope: scope) else { return }
@@ -602,6 +607,8 @@ struct EditorRenderSnapshot {
     var cutWordIDs: Set<String> = []
     var cutPauseIDs: Set<String> = []
     var scopeBounds: ClosedRange<Int>?
+    private(set) var scopePartBounds: [ClosedRange<Int>]?
+    private(set) var storyTimeline: StoryTimelineLayout?
     var editingAvailable = false
     var waveform: WaveformData?
     var waveformKey: WaveformCache.Key? {
@@ -822,6 +829,7 @@ struct EditorRenderSnapshot {
                 case .time(let edited, let source):
                     playhead = edited; sourceTime = source
                     if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
+                    if let stop = storyPartPlaybackEnd, edited >= stop { preview.pause(); storyPartPlaybackEnd = nil }
                 case .playing(let playing): isPlaying = playing
                 case .failed(let error, let reason):
                     if let reason { await previewFailed(reason) } else { previewError = await app.safeError(error, context: .preview) }
@@ -933,6 +941,12 @@ struct EditorRenderSnapshot {
         let editChanged = renderedEdits != edits
         guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedMusic != project.music || renderedClipControls != project.clipControls || renderedEdits == nil else { return }
         let clipsChanged = renderedEdits?.clips != edits.clips
+        if renderedEdits?.activeClipId != edits.activeClipId {
+            selectedStoryPartID = nil
+            draggedStoryPartID = nil
+            storyPartError = nil
+            storyPartPlaybackEnd = nil
+        }
         if transcribed != (project.transcript != nil) { transcribed = project.transcript != nil }
         projectRevision += 1
         scopeDurations.removeAll(keepingCapacity: true)
@@ -960,6 +974,7 @@ struct EditorRenderSnapshot {
         let activeClip = edits.clips.first { $0.id == edits.activeClipId }
         if let clip = activeClip, let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper { scopeBounds = lower...upper }
         else { scopeBounds = nil }
+        scopePartBounds = activeClip?.playPartIndices(in: words)
         fillerIDs = fillerCandidateIDs.subtracting(cutWordIDs).filter { id in
             guard let scopeBounds else { return true }
             return wordIndex[id].map(scopeBounds.contains) ?? false
@@ -1004,6 +1019,7 @@ struct EditorRenderSnapshot {
             previewError = UserMessages.message(error)
             Task { await app.logFailure(error, context: .preview) }
         }
+        storyTimeline = StoryTimelineLayout(model: self)
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
         renderedContextDemo = project.contextDemo; renderedMotionCues = project.motionCues; renderedMusic = project.music; renderedClipControls = project.clipControls
@@ -1320,6 +1336,10 @@ struct EditorRenderSnapshot {
         apply(.updateClip(id: clip.id, startIndex: start ? min(upper, max(0, lower + offset)) : lower, endIndex: start ? upper : max(lower, min(words.count - 1, upper + offset))), name: "Nudge clip edge")
     }
     func setClipEdge(start: Bool) {
+        if activeClip?.parts != nil {
+            if let id = selectedIDs.first, let caret = index(id) { trimStoryPart(start: start, at: caret) }
+            return
+        }
         guard let clip = activeClip, let id = selectedIDs.first, let caret = index(id), let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return }
         guard start ? caret <= upper : caret >= lower else { return }
         apply(.updateClip(id: clip.id, startIndex: start ? caret : lower, endIndex: start ? upper : caret), name: "Set clip edge")
@@ -1347,6 +1367,12 @@ struct EditorRenderSnapshot {
         apply(.updateClip(id: clip.id, startIndex: nextStart, endIndex: nextEnd), name: "Trim clip")
     }
     func adjustTrim(start: Bool, offset: Int) {
+        if let parts = activeClip?.parts {
+            let part = parts[selectedStoryPartIndex]
+            guard let current = index(start ? part.startWordId : part.endWordId) else { return }
+            trimStoryPart(start: start, at: current + offset)
+            return
+        }
         guard let clip = activeClip, let current = index(start ? clip.startWordId : clip.endWordId) else { return }
         trimClip(clip, start: start, index: current + offset)
     }
@@ -1579,6 +1605,7 @@ struct EditorRenderSnapshot {
         }
     }
     func transport(_ key: String, shift: Bool = false) {
+        storyPartPlaybackEnd = nil
         if [" ", "l", "p"].contains(key.lowercased()) { rewrite?.takePlan?.stopAudition() }
         // Saving an open correction pauses (`apply`), so Space and L toggle from the state before the save.
         let wasPlaying = isPlaying

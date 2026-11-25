@@ -120,6 +120,7 @@ extension EditorModel {
     /// rewrite, and media that is not waiting to be found.
     var showsScopeToneStrip: Bool {
         transcribed && capabilities.edit && capabilities.ai && mediaReadOnlyNote == nil && rewriteToneCatalogLoaded
+            && storyRewriteReason() == nil
             && RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: rewriteScopeNow)
     }
     var rewriteToneCatalogLoaded: Bool { app.rewriteToneCatalog != nil }

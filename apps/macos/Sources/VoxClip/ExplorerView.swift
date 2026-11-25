@@ -87,6 +87,9 @@ import VoxClipCore
                 }
                 Divider()
                 Button("Keep Tab Open") { shell.pinExplorerRows(rows) }
+            } else if rows.count == 1, case .outline(let position) = rows.first,
+                      let editor = shell.editor, let entry = shell.outlineEntries.first(where: { $0.id == position }), entry.partID != nil {
+                StoryOutlineMenu(shell: shell, editor: editor, entry: entry)
             }
         } primaryAction: { rows in shell.pinExplorerRows(rows) }
         .focused($listFocused)
@@ -110,13 +113,28 @@ import VoxClipCore
                 shell.sidebarOverlay = false
                 return .handled
             }
-            .onKeyPress(keys: [.upArrow, .downArrow]) { _ in
+            .onKeyPress(keys: [.upArrow, .downArrow]) { key in
+                if key.modifiers == [.option, .command], let editor = shell.editor,
+                   case .outline = shell.selection, let parts = editor.activeClip?.parts {
+                    let position = editor.selectedStoryPartIndex
+                    let destination = position + (key.key == .upArrow ? -1 : 1)
+                    if parts.indices.contains(destination) {
+                        editor.moveStoryPart(parts[position].id, to: destination)
+                        if editor.selectedStoryPartIndex == destination { shell.choose(.outline(destination), byClick: false) }
+                    }
+                    return .handled
+                }
                 guard shell.renaming == nil, let id = shell.editor?.focusedSuggestion, shell.editor?.isSuggestion(id) == true else { return .ignored }
                 shell.selection = .clip(id)
                 return .handled
             }
             .onDeleteCommand {
-                guard shell.renaming == nil, let editor = shell.editor, !editor.actOnFocusedSuggestion(keep: false), case .clip(let id) = shell.selection else { return }
+                guard shell.renaming == nil, let editor = shell.editor else { return }
+                if case .outline = shell.selection, let parts = editor.activeClip?.parts {
+                    editor.removeStoryPart(parts[editor.selectedStoryPartIndex].id)
+                    return
+                }
+                guard !editor.actOnFocusedSuggestion(keep: false), case .clip(let id) = shell.selection else { return }
                 if editor.isSuggestion(id) { editor.dismiss(id) } else { editor.removeClip(id) }
             }
     }
@@ -157,9 +175,15 @@ import VoxClipCore
             Section {
                 if shell.explorerExpanded(.outline) {
                     ForEach(outline) { entry in
-                        ExplorerOutlineRow(entry: entry, selectedFocused: shell.selection == .outline(entry.id) && listFocused)
-                            .tag(SidebarItem.outline(entry.id)).id(SidebarItem.outline(entry.id))
+                        Group {
+                            if entry.partID != nil {
+                                StoryOutlineRow(shell: shell, editor: editor, entry: entry)
+                            } else {
+                                ExplorerOutlineRow(entry: entry, selectedFocused: shell.selection == .outline(entry.id) && listFocused)
+                            }
+                        }.tag(SidebarItem.outline(entry.id)).id(SidebarItem.outline(entry.id))
                     }
+                    if editor.activeClip != nil { StoryOutlineAdd(editor: editor).selectionDisabled() }
                 }
             } header: { ExplorerHeader(shell: shell, section: .outline, count: outline.count) }
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.outline.accessibilityLabel(count: outline.count))
@@ -299,6 +323,7 @@ import VoxClipCore
         let number = editor.clipNumber(clip.id) ?? 0
         let emphasized = selectedFocused && activeState == .key
         let duration = editor.editedDuration(clip)
+        let metadata = StoryClipPresentation.metadata(clip, editedDuration: duration)
         let exportStatus: ClipExportStatus = suggested ? .none : editor.exportRowStatus(clip.id)
         HStack(spacing: 8) {
             Text("\(number)").font(DesignValues.mono(10)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize().frame(minWidth: 13).accessibilityHidden(true)
@@ -313,8 +338,15 @@ import VoxClipCore
                     .columnLayoutEvidence("explorer.clipTitle", text: title)
             }
             Spacer(minLength: 0)
+            if let badge = metadata.badge {
+                Text(badge).font(DesignValues.mono(10)).fixedSize()
+                    .foregroundStyle(SidebarStyle.meta(emphasized))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(.secondary.opacity(0.13), in: RoundedRectangle(cornerRadius: 4))
+                    .columnLayoutEvidence("explorer.clipParts", text: badge)
+            }
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
-            if showsActions {
+            if showsActions, metadata.badge == nil {
                 HStack(spacing: 2) {
                     if editor.canMakeItPostable(clip.id) {
                         MakeItRowButton(model: editor, clipID: clip.id) { editor.makeItPostable(clip.id) }
@@ -336,7 +368,7 @@ import VoxClipCore
                 }
                 .fixedSize().foregroundStyle(SidebarStyle.meta(emphasized))
                 .columnLayoutEvidence("explorer.clipActions")
-            } else if let state = editor.claudeClipState(clip.id) {
+            } else if metadata.badge == nil, let state = editor.claudeClipState(clip.id) {
                 // Claude mode's pill stands in for the score and length while Claude makes this clip, and after.
                 ClaudeClipPill(state: state)
             } else {
@@ -345,8 +377,8 @@ import VoxClipCore
                         .help("Score \(score)/10").accessibilityHidden(true)
                         .columnLayoutEvidence("explorer.clipScore", text: "\(score)")
                 }
-                Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
-                    .columnLayoutEvidence("explorer.clipDuration", text: durationLabel(duration))
+                Text(metadata.length).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
+                    .columnLayoutEvidence("explorer.clipDuration", text: metadata.length)
             }
         }
         .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
@@ -418,9 +450,18 @@ import VoxClipCore
                 RewriteAsMenuItems(model: editor, place: "explorerMenu.\(clip.id)") { shell.rewriteExplorerClip(clip.id, as: $0) }
             }
         }
-        Button("Revoice Whole Clip, with Lip Sync") { editor.openExplorerWholeClipVoice(clip.id) }
+        if let parts = clip.parts {
+            Button("Rewrite As") {}.disabled(true).help(StoryClipPresentation.rewriteReason)
+            Button("Revoice Whole Clip, with Lip Sync") {}.disabled(true)
+                .help(StoryClipPresentation.lipSyncReason(partCount: parts.count))
+            Button("Voice Options") { editor.openExplorerWholeClipVoice(clip.id) }
+        } else {
+            Button("Revoice Whole Clip, with Lip Sync") { editor.openExplorerWholeClipVoice(clip.id) }
+        }
         Button("Voice Only the Changed Phrases") { editor.openExplorerWholeClipVoice(clip.id, whole: false) }
+            .disabled(clip.parts != nil).help(clip.parts == nil ? "" : StoryClipPresentation.rewriteReason)
         Button("Redo Voice and Lip Sync") { editor.openExplorerWholeClipVoice(clip.id) }
+            .disabled(clip.parts != nil).help(clip.parts.map { StoryClipPresentation.lipSyncReason(partCount: $0.count) } ?? "")
             .disabled(!WholeClipRevoice.isRevoiced(clipId: clip.id, in: editor.project))
         // ✦ Ask Claude on the whole clip (design.md §6.8): the clip opens and the right panel takes the request.
         // Offered only when it can act: an editable project with an AI, on a kept clip.

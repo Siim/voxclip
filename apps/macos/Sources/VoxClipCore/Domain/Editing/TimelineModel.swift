@@ -91,6 +91,10 @@ public struct TimelinePieces: Sendable, Equatable {
         pieces.indices.contains(index) && partSeams.contains(pieces[index].edited.lowerBound)
     }
 
+    public func isBackwardPartSeam(at index: Int) -> Bool {
+        index > 0 && isPartSeam(at: index) && pieces[index].source.lowerBound < pieces[index - 1].source.upperBound
+    }
+
     /// Where each seam is on Edited: the start of every piece that starts one.
     public var seams: [Double] { pieces.indices.filter(isSeam(at:)).map { pieces[$0].edited.lowerBound } }
 

@@ -30,6 +30,26 @@ import Testing
         #expect(checks.allSatisfy { $0.passed })
     }
 
+    @Test func storyOutlineFollowsPlayOrderAndPartEditsUndo() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let parts = [ClipPart(id: "late", startWordId: "w12", endWordId: "w14"),
+                     ClipPart(id: "early", startWordId: "w2", endWordId: "w4")]
+        var project = editor.project
+        try project.applyEditing(.addClip(ClipRange(id: "story", startWordId: "w2", endWordId: "w14", parts: parts, kind: .story)))
+        editor.replace(project, name: "Set up story")
+        shell.choose(.clip("story"))
+        #expect(shell.outlineEntries.map(\.words) == [11..<14, 1..<4])
+        #expect(shell.outlineEntries.allSatisfy { $0.time.contains("–") })
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); editor.moveStoryPart("late", to: 1); undo.endUndoGrouping()
+        #expect(shell.outlineEntries.map(\.words) == [1..<4, 11..<14])
+        #expect(editor.lastAnnouncement == "Part 1 moved to 2 of 2")
+        #expect(undo.undoActionName == "Move part")
+        undo.undo()
+        #expect(shell.outlineEntries.map(\.words) == [11..<14, 1..<4])
+    }
+
     @Test(arguments: ["selected", "focused", "hovered", "idle", "suggested", "suggestedIdle"], [176.0, 196.0, 200.0, 224.0])
     func clipRowActionsReplaceDurationOnSelectedHoveredOrFocusedRows(_ state: String, width: Double) async throws {
         let (shell, editor) = try await open()

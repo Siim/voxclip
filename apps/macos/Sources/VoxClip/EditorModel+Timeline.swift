@@ -8,7 +8,7 @@ extension EditorModel {
     var timelineAxis: TimelineAxis { showsCuts ? .source : .edited }
 
     /// The playhead on `axis`: the scope's output time on Edited, take time on Source.
-    func timelinePlayhead(on axis: TimelineAxis) -> Double { axis == .edited ? playhead : sourceTime }
+    func timelinePlayhead(on axis: TimelineAxis) -> Double { timelineTime(source: sourceTime, on: axis, edited: playhead) }
 
     /// The scope's pieces, from the plan the preview and export use.
     var timelinePieces: TimelinePieces { renderTimeline.map(TimelinePieces.init) ?? TimelinePieces([]) }
@@ -29,27 +29,32 @@ extension EditorModel {
     }
 
     /// How long the axis runs: the scope's output on Edited, the take on Source.
-    func timelineLength(on axis: TimelineAxis) -> Double { axis == .edited ? duration : sourceDuration }
+    func timelineLength(on axis: TimelineAxis) -> Double { axis == .edited ? duration : storyTimeline?.length ?? sourceDuration }
 
     func timelineDisplayRange(on axis: TimelineAxis) -> ClosedRange<Double> {
+        if storyTimeline != nil { return 0...max(0, timelineLength(on: axis)) }
         if axis == .source, focusesClip, let scopeSourceRange { return scopeSourceRange }
         return 0...max(0, timelineLength(on: axis))
     }
 
     var timelineOverviewRange: ClosedRange<Double> {
-        focusesClip ? scopeSourceRange ?? 0...max(0, sourceDuration) : 0...max(0, sourceDuration)
+        focusesClip && storyTimeline == nil ? scopeSourceRange ?? 0...max(0, sourceDuration) : 0...max(0, sourceDuration)
     }
 
     /// The playhead slider's spoken value (design §5.2), on the axis the timeline shows.
     var timelineAccessibilityValue: String {
         let edited = timelineAxis == .edited
         let cuts: Int = summary.cutWordCount + summary.cutPauseCount
-        return timelineValueText(time: edited ? playhead : sourceTime, total: edited ? duration : sourceDuration, cuts: cuts, edited: edited)
+        return timelineValueText(time: timelinePlayhead(on: timelineAxis), total: timelineLength(on: timelineAxis), cuts: cuts, edited: edited)
     }
 
     /// The take time at `time` on `axis`. An Edited time maps through the scope's plan,
     /// right-continuously across a closed cut, and stays inside the open clip.
     func timelineSourceTime(_ time: Double, on axis: TimelineAxis) -> Double {
+        if let storyTimeline {
+            if axis == .source { return storyTimeline.sourceTime(time) }
+            return renderTimeline?.sourceTime(time.clamped(to: 0...max(0, duration))) ?? storyTimeline.sourceTime(time)
+        }
         guard axis == .edited else { return time.clamped(to: 0...max(0, sourceDuration)) }
         if time <= 0 { return scopeBounds.map { words[$0.lowerBound].start } ?? 0 }
         if time >= duration { return scopeBounds.map { words[$0.upperBound].end } ?? sourceDuration }
@@ -60,8 +65,8 @@ extension EditorModel {
 
     /// The time on `axis` of the take time `source`: itself on Source, its place in the
     /// scope's output on Edited.
-    func timelineTime(source: Double, on axis: TimelineAxis) -> Double {
-        axis == .edited ? renderTimeline?.mapTime(source) ?? source : source
+    func timelineTime(source: Double, on axis: TimelineAxis, edited: Double? = nil) -> Double {
+        axis == .edited ? edited ?? renderTimeline?.mapTime(source) ?? source : storyTimeline?.time(forSource: source) ?? source
     }
 
     /// The open clip's opening lead-in (ADR-R48), if it has one.
@@ -77,6 +82,7 @@ extension EditorModel {
     /// The open clip's In and Out on `axis` (notes.md §6), or nil on Full Take. Edited runs
     /// from the scope's first output sample to its last.
     func timelineInOut(on axis: TimelineAxis) -> ClosedRange<Double>? {
+        if storyTimeline != nil { return 0...max(0, timelineLength(on: axis)) }
         guard let source = scopeSourceRange else { return nil }
         return axis == .edited ? 0...max(0, duration) : source
     }
@@ -115,6 +121,18 @@ extension EditorModel {
     /// The selection on `axis`, or nil when nothing is selected.
     func timelineSelection(on axis: TimelineAxis) -> ClosedRange<Double>? {
         guard let source = selectionSourceRange else { return nil }
+        if let storyTimeline {
+            let spans = storyTimeline.parts.compactMap { part -> ClosedRange<Double>? in
+                let lower = max(source.lowerBound, part.take.lowerBound), upper = min(source.upperBound, part.take.upperBound)
+                guard lower <= upper else { return nil }
+                if axis == .source { return (lower - part.offset)...(upper - part.offset) }
+                guard let edited = part.edited else { return nil }
+                let start = lower <= part.take.lowerBound ? edited.lowerBound : timelineTime(source: lower, on: .edited)
+                let end = upper >= part.take.upperBound ? edited.upperBound : timelineTime(source: upper, on: .edited)
+                return min(start, end)...max(start, end)
+            }
+            return spans.first.flatMap { first in spans.last.map { first.lowerBound...max(first.lowerBound, $0.upperBound) } }
+        }
         let lower = timelineTime(source: source.lowerBound, on: axis), upper = timelineTime(source: source.upperBound, on: axis)
         return lower...max(lower, upper)
     }
@@ -130,6 +148,10 @@ extension EditorModel {
 
     /// The scope's start and end as the timeline seeks to them (Home and End).
     func seekTimelineBoundary(end: Bool) {
+        if storyTimeline != nil {
+            seekTimeline(end ? duration : 0, on: .edited)
+            return
+        }
         let source: Double
         if let bounds = scopeBounds { source = end ? words[bounds.upperBound].end : words[bounds.lowerBound].start }
         else { source = end ? sourceDuration : 0 }
@@ -150,6 +172,7 @@ extension EditorModel {
         let limit = max(0, timelineLength(on: axis))
         let lower = min(anchor, head).clamped(to: 0...limit)
         let upper = max(anchor, head).clamped(to: 0...limit)
+        if let storyTimeline { return selectStoryTimeline(lower...upper, on: axis, layout: storyTimeline, snap: snap) }
         let sourceLower = timelineSourceTime(lower, on: axis)
         // An Edited seam is right-continuous for seeking. A selection ending at it owns
         // the word on the left, not the first word after the closed cut.
@@ -180,6 +203,31 @@ extension EditorModel {
         selectedWordIDs = Set(words[span].map(\.id))
         selectedPauseIDs = Set(span.dropLast().compactMap { pauses[$0]?.id })
         return snap ? timelineSelection(on: axis) : lower...upper
+    }
+
+    private func selectStoryTimeline(_ selection: ClosedRange<Double>, on axis: TimelineAxis, layout: StoryTimelineLayout, snap: Bool) -> ClosedRange<Double>? {
+        let words = words, pauses = pauseByAfterIndex
+        guard let bounds = scopePartBounds else { return nil }
+        let epsilon = 1 / (renderTimeline?.sampleRate ?? 48_000)
+        var ids: Set<String> = [], pauseIDs: Set<String> = []
+        for part in layout.parts {
+            guard let span = axis == .source ? part.display : part.edited else { continue }
+            let lower = max(selection.lowerBound, span.lowerBound), upper = min(selection.upperBound, span.upperBound)
+            guard lower < upper || (selection.lowerBound == selection.upperBound && span.contains(lower) && lower == upper) else { continue }
+            let last = max(lower, upper - epsilon)
+            let start = axis == .source ? lower + part.offset : timelineSourceTime(lower, on: axis)
+            let end = axis == .source ? last + part.offset : timelineSourceTime(last, on: axis)
+            let indices = bounds[part.position]
+            let selected = indices.filter { words[$0].end > start && words[$0].start <= end }
+            if let first = selected.first, let last = selected.last {
+                ids.formUnion(words[first...last].map(\.id))
+                pauseIDs.formUnion((first..<last).compactMap { pauses[$0]?.id })
+            } else if let pause = pause(at: start), end <= pause.end, indices.contains(pause.afterIndex), indices.contains(pause.afterIndex + 1) {
+                pauseIDs.insert(pause.id)
+            }
+        }
+        selectedWordIDs = ids; selectedPauseIDs = pauseIDs
+        return snap ? timelineSelection(on: axis) : selection
     }
 
     private func timelineSelectionBoundary(source: Double, start: Bool, on axis: TimelineAxis) -> Int? {
@@ -238,8 +286,9 @@ extension EditorModel {
     func restoreCut(at time: Double, on axis: TimelineAxis, tolerance: Double) {
         var ids: [String] = []
         if axis == .source {
-            if let word = word(at: time), cutWordIDs.contains(word.id) { ids.append(word.id) }
-            if let pause = pause(at: time), cutPauseIDs.contains(pause.id) { ids.append(pause.id) }
+            let source = timelineSourceTime(time, on: axis)
+            if let word = word(at: source), cutWordIDs.contains(word.id) { ids.append(word.id) }
+            if let pause = pause(at: source), cutPauseIDs.contains(pause.id) { ids.append(pause.id) }
         } else if let gap = timelineSeamGap(near: time, within: tolerance) {
             ids = cutIDs(overlapping: gap)
         }
@@ -257,7 +306,7 @@ extension EditorModel {
         for index in pieces.indices(overlapping: (time - tolerance)..<(time + tolerance), on: .edited).dropFirst() {
             let before = pieces.pieces[index - 1], after = pieces.pieces[index]
             let distance = abs(after.edited.lowerBound - time)
-            guard distance <= tolerance, pieces.isSeam(at: index),
+            guard distance <= tolerance, pieces.isSeam(at: index), !pieces.isPartSeam(at: index), before.source.upperBound <= after.source.lowerBound,
                   nearest.map({ distance < $0.distance }) ?? true else { continue }
             nearest = (distance, before.source.upperBound..<after.source.lowerBound)
         }
@@ -333,12 +382,14 @@ extension EditorModel {
     /// Explorer order.
     var timelineOverviewClips: [TimelineOverviewClip] {
         let open = activeClip?.id
-        return sortedClips.compactMap { clip in
-            if focusesClip && clip.id != open { return nil }
-            guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper,
-                  let number = clipNumber(clip.id) else { return nil }
-            return TimelineOverviewClip(id: clip.id, source: words[lower].start...max(words[lower].start, words[upper].end), number: number,
-                                        open: clip.id == open, proposal: isSuggestion(clip.id))
+        return sortedClips.flatMap { clip -> [TimelineOverviewClip] in
+            if (focusesClip || storyTimeline != nil) && clip.id != open { return [] }
+            guard let number = clipNumber(clip.id), let parts = clip.playPartIndices(in: words) else { return [] }
+            return parts.enumerated().map { position, bounds in
+                let start = words[bounds.lowerBound].start, end = max(start, words[bounds.upperBound].end)
+                return TimelineOverviewClip(id: clip.id, source: start...end, number: clip.parts == nil ? number : position + 1,
+                                            open: clip.id == open, proposal: isSuggestion(clip.id), partIndex: clip.parts == nil ? nil : position)
+            }
         }
     }
 }
@@ -352,4 +403,5 @@ struct TimelineOverviewClip: Equatable {
     let open: Bool
     /// A suggestion not yet kept: drawn dashed.
     let proposal: Bool
+    var partIndex: Int? = nil
 }

@@ -5,6 +5,20 @@ import Testing
 /// The v2 timeline's media-free rules (ux/v2 notes.md §2 and §6, impl-plan V7a): the pieces a
 /// scope plays, the ruler's ticks and labels, Resolve's timecode and the overview's rows.
 @Suite(.offlineFixtures) struct TimelineModelTests {
+    @Test func aBackwardStoryJoinIsDistinctFromACut() {
+        let plan = EditPlan(sampleRate: 100, totalSamples: 2_000, cuts: [], kept: [
+            MediaInterval(startSample: 1_000, endSample: 1_100),
+            MediaInterval(startSample: 1_200, endSample: 1_300),
+            MediaInterval(startSample: 200, endSample: 400),
+            MediaInterval(startSample: 900, endSample: 1_000)
+        ], partSeams: [200, 400])
+        let pieces = TimelinePieces(.legacy(plan))
+        #expect(pieces.isSeam(at: 1) && !pieces.isPartSeam(at: 1))
+        #expect(pieces.isPartSeam(at: 2) && pieces.isBackwardPartSeam(at: 2))
+        #expect(pieces.isPartSeam(at: 3) && !pieces.isBackwardPartSeam(at: 3))
+        #expect(!pieces.isBackwardPartSeam(at: 0))
+    }
+
     // MARK: Pieces
 
     @Test func legacyPlanPiecesButtInOutputOrder() {
