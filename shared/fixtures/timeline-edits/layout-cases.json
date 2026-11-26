@@ -1,0 +1,3724 @@
+{
+  "sampleRate": 48000,
+  "bases": {
+    "connected": {
+      "format": "voxclip-project",
+      "schemaVersion": 6,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "clipEffects": [
+        {
+          "id": "title",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2,
+          "end": 3,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "title-next",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2.25,
+          "end": 3.5,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "sound",
+          "clipId": "clip-main",
+          "kind": "sound",
+          "start": 2,
+          "end": 3,
+          "gainDb": -6,
+          "sound": {
+            "source": "bundled",
+            "id": "whoosh",
+            "durationSeconds": 2,
+            "title": "Whoosh",
+            "license": "cc0"
+          },
+          "mediaOffsetSeconds": 0.125,
+          "gainPoints": [
+            {
+              "t": 0.25,
+              "db": -8
+            },
+            {
+              "t": 0.75,
+              "db": -12
+            }
+          ]
+        }
+      ]
+    },
+    "split-range": {
+      "format": "voxclip-project",
+      "schemaVersion": 4,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "clipEffects": [
+        {
+          "id": "title",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 1.5,
+          "end": 3.5,
+          "text": "Day 1",
+          "position": "top"
+        }
+      ]
+    },
+    "silence-under-cut-words": {
+      "format": "voxclip-project",
+      "schemaVersion": 4,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 9,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 8.0,
+            "end": 8.5,
+            "rawStart": 8.0,
+            "rawEnd": 8.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 8.5,
+            "end": 9.0,
+            "rawStart": 8.5,
+            "rawEnd": 9.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [
+          "w5"
+        ],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "clipEffects": [
+        {
+          "id": "title",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2,
+          "end": 3.5,
+          "text": "Day 1",
+          "position": "top"
+        }
+      ]
+    },
+    "trimmed": {
+      "format": "voxclip-project",
+      "schemaVersion": 6,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w8",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "clipEffects": [
+        {
+          "id": "title",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2,
+          "end": 3,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "title-next",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2.25,
+          "end": 3.5,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "sound",
+          "clipId": "clip-main",
+          "kind": "sound",
+          "start": 2,
+          "end": 3,
+          "gainDb": -6,
+          "sound": {
+            "source": "bundled",
+            "id": "whoosh",
+            "durationSeconds": 2,
+            "title": "Whoosh",
+            "license": "cc0"
+          },
+          "mediaOffsetSeconds": 0.125,
+          "gainPoints": [
+            {
+              "t": 0.25,
+              "db": -8
+            },
+            {
+              "t": 0.75,
+              "db": -12
+            }
+          ]
+        }
+      ]
+    },
+    "story": {
+      "format": "voxclip-project",
+      "schemaVersion": 6,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true,
+            "kind": "story",
+            "parts": [
+              {
+                "id": "first",
+                "startWordId": "w1",
+                "endWordId": "w8"
+              },
+              {
+                "id": "second",
+                "startWordId": "w9",
+                "endWordId": "w16"
+              }
+            ]
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "clipEffects": [
+        {
+          "id": "title",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2,
+          "end": 3,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "title-next",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2.25,
+          "end": 3.5,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "sound",
+          "clipId": "clip-main",
+          "kind": "sound",
+          "start": 2,
+          "end": 3,
+          "gainDb": -6,
+          "sound": {
+            "source": "bundled",
+            "id": "whoosh",
+            "durationSeconds": 2,
+            "title": "Whoosh",
+            "license": "cc0"
+          },
+          "mediaOffsetSeconds": 0.125,
+          "gainPoints": [
+            {
+              "t": 0.25,
+              "db": -8
+            },
+            {
+              "t": 0.75,
+              "db": -12
+            }
+          ]
+        }
+      ],
+      "music": [
+        {
+          "id": "music-main",
+          "clipId": "clip-main",
+          "asset": {
+            "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm-intro.mp3",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "durationSeconds": 222
+          },
+          "source": "library",
+          "title": "Synthetic calm intro",
+          "creator": "Synthetic artist",
+          "license": "by",
+          "attribution": "\"Synthetic calm intro\" by Synthetic artist is licensed under CC BY 3.0.",
+          "sourceUrl": "https://example.com/track/1",
+          "prompt": null,
+          "gainDb": -20,
+          "ducking": true,
+          "fadeInSeconds": 0.5,
+          "fadeOutSeconds": 1.5,
+          "startOffsetSeconds": 0,
+          "segments": [
+            {
+              "id": "music",
+              "anchorSeconds": 3.5,
+              "lengthSeconds": 2,
+              "songFromSeconds": 0.5,
+              "loop": true,
+              "gainDb": 0,
+              "fadeInSeconds": 0.25,
+              "fadeOutSeconds": 0.125,
+              "gainPoints": [
+                {
+                  "t": 0.25,
+                  "db": -8
+                },
+                {
+                  "t": 0.75,
+                  "db": -12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "reordered": {
+      "format": "voxclip-project",
+      "schemaVersion": 6,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true,
+            "kind": "story",
+            "parts": [
+              {
+                "id": "second",
+                "startWordId": "w9",
+                "endWordId": "w16"
+              },
+              {
+                "id": "first",
+                "startWordId": "w1",
+                "endWordId": "w8"
+              }
+            ]
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "clipEffects": [
+        {
+          "id": "title",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2,
+          "end": 3,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "title-next",
+          "clipId": "clip-main",
+          "kind": "title",
+          "start": 2.25,
+          "end": 3.5,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "id": "sound",
+          "clipId": "clip-main",
+          "kind": "sound",
+          "start": 2,
+          "end": 3,
+          "gainDb": -6,
+          "sound": {
+            "source": "bundled",
+            "id": "whoosh",
+            "durationSeconds": 2,
+            "title": "Whoosh",
+            "license": "cc0"
+          },
+          "mediaOffsetSeconds": 0.125,
+          "gainPoints": [
+            {
+              "t": 0.25,
+              "db": -8
+            },
+            {
+              "t": 0.75,
+              "db": -12
+            }
+          ]
+        }
+      ],
+      "music": [
+        {
+          "id": "music-main",
+          "clipId": "clip-main",
+          "asset": {
+            "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm-intro.mp3",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "durationSeconds": 222
+          },
+          "source": "library",
+          "title": "Synthetic calm intro",
+          "creator": "Synthetic artist",
+          "license": "by",
+          "attribution": "\"Synthetic calm intro\" by Synthetic artist is licensed under CC BY 3.0.",
+          "sourceUrl": "https://example.com/track/1",
+          "prompt": null,
+          "gainDb": -20,
+          "ducking": true,
+          "fadeInSeconds": 0.5,
+          "fadeOutSeconds": 1.5,
+          "startOffsetSeconds": 0,
+          "segments": [
+            {
+              "id": "music",
+              "anchorSeconds": 3.5,
+              "lengthSeconds": 2,
+              "songFromSeconds": 0.5,
+              "loop": true,
+              "gainDb": 0,
+              "fadeInSeconds": 0.25,
+              "fadeOutSeconds": 0.125,
+              "gainPoints": [
+                {
+                  "t": 0.25,
+                  "db": -8
+                },
+                {
+                  "t": 0.75,
+                  "db": -12
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "short-recording": {
+      "format": "voxclip-project",
+      "schemaVersion": 6,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        },
+        "additionalSources": [
+          {
+            "absolutePath": "/Users/alex/Movies/VoxClip/overhead.mov",
+            "relativePath": "overhead.mov",
+            "sizeBytes": 100000,
+            "durationSeconds": 1.25,
+            "contentKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "recordingHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "video": {
+              "width": 1080,
+              "height": 1920,
+              "frameRate": 30,
+              "rotationDegrees": 0
+            },
+            "audio": null
+          }
+        ],
+        "footage": [
+          {
+            "id": "bRoll",
+            "kind": "bRoll",
+            "clipID": "clip-main",
+            "start": 2,
+            "end": 3,
+            "footage": {
+              "sourceKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "start": 0.5
+            }
+          }
+        ]
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {}
+    },
+    "context": {
+      "format": "voxclip-project",
+      "schemaVersion": 4,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic context demo wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 7,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.3,
+            "end": 0.6,
+            "rawStart": 0.34,
+            "rawEnd": 0.57,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "um,",
+            "kind": "word",
+            "start": 0.7,
+            "end": 1,
+            "rawStart": 0.74,
+            "rawEnd": 0.97,
+            "conf": 0.81,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "today",
+            "kind": "word",
+            "start": 1.1,
+            "end": 1.5,
+            "rawStart": 1.14,
+            "rawEnd": 1.47,
+            "conf": 0.98,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "we",
+            "kind": "word",
+            "start": 2.6,
+            "end": 2.75,
+            "rawStart": 2.64,
+            "rawEnd": 2.72,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "ship",
+            "kind": "word",
+            "start": 2.8,
+            "end": 3.1,
+            "rawStart": 2.84,
+            "rawEnd": 3.07,
+            "conf": 0.97,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "uh",
+            "kind": "word",
+            "start": 3.2,
+            "end": 3.4,
+            "rawStart": 3.24,
+            "rawEnd": 3.37,
+            "conf": 0.77,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "the",
+            "kind": "word",
+            "start": 3.5,
+            "end": 3.6,
+            "rawStart": 3.54,
+            "rawEnd": 3.57,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "clipper.",
+            "kind": "word",
+            "start": 3.65,
+            "end": 4.2,
+            "rawStart": 3.69,
+            "rawEnd": 4.17,
+            "conf": 0.96,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "Thanks",
+            "kind": "word",
+            "start": 5.5,
+            "end": 5.9,
+            "rawStart": 5.54,
+            "rawEnd": 5.87,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {
+          "w5": "shipped"
+        },
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w9",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "motionCues": [
+        {
+          "id": "motion-a",
+          "clipID": "clip-main",
+          "sourceStart": 1,
+          "sourceEnd": 2,
+          "keyframes": [
+            {
+              "progress": 0,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 1,
+              "scale": 1.1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            }
+          ]
+        }
+      ],
+      "contextDemo": {
+        "format": "voxclip-context-demo",
+        "version": 1,
+        "projectId": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+        "planId": "plan-a",
+        "revision": 0,
+        "sourceContentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "narration": {
+          "sampleRate": 48000,
+          "outputSamples": 336000,
+          "pieces": [
+            {
+              "source": {
+                "start": 0,
+                "end": 7
+              },
+              "output": {
+                "start": 0,
+                "end": 7
+              },
+              "synthetic": false
+            }
+          ]
+        },
+        "assets": [
+          {
+            "id": "demo-a",
+            "requestId": "request-a",
+            "target": {
+              "kind": "webPage",
+              "displayName": "Synthetic example",
+              "locator": "https://example.com/demo"
+            },
+            "relativePath": "context-demo/5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/demo-a.mp4",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "durationSeconds": 2,
+            "pixelWidth": 1280,
+            "pixelHeight": 720,
+            "byteSize": 4096,
+            "createdAt": "2026-11-02T00:00:00.000Z"
+          }
+        ],
+        "placements": [
+          {
+            "id": "placement-a",
+            "assetId": "demo-a",
+            "source": {
+              "start": 0,
+              "end": 1
+            },
+            "editedStartSeconds": 1
+          }
+        ]
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "cut anchor and hide covered words",
+      "base": "connected",
+      "plan": {
+        "kept": [
+          [
+            0,
+            96000
+          ],
+          [
+            144000,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [],
+          "axis": [],
+          "hidden": true,
+          "marker": 2,
+          "notches": [],
+          "reason": "Hidden · its words are cut"
+        },
+        {
+          "id": [
+            "effect",
+            "title-next"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2.25,
+          "edited": [
+            [
+              2,
+              2.5
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              2.5
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        },
+        {
+          "id": [
+            "clip",
+            "clip-main"
+          ],
+          "kind": "clip",
+          "lane": "V1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 0,
+          "edited": [
+            [
+              0,
+              2
+            ],
+            [
+              2,
+              7
+            ]
+          ],
+          "axis": [
+            [
+              0,
+              2
+            ],
+            [
+              2,
+              7
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [
+            2
+          ],
+          "reason": null
+        },
+        {
+          "id": [
+            "effect",
+            "sound"
+          ],
+          "kind": "sound",
+          "lane": "S1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [
+            [
+              2,
+              3
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              3
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        }
+      ],
+      "rows": {
+        "T1": 1
+      },
+      "snaps": [
+        [
+          2,
+          "word",
+          null
+        ],
+        [
+          2,
+          "playhead",
+          null
+        ],
+        [
+          2.25,
+          "gainPoint",
+          [
+            "effect",
+            "sound"
+          ]
+        ],
+        [
+          7,
+          "scopeEdge",
+          null
+        ]
+      ],
+      "missing": [],
+      "playhead": 2,
+      "allItems": true
+    },
+    {
+      "name": "restore both placements and stack overlaps",
+      "base": "connected",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [
+            [
+              2,
+              3
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              3
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        },
+        {
+          "id": [
+            "effect",
+            "title-next"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 1,
+          "part": "clip-main",
+          "anchor": 2.25,
+          "edited": [
+            [
+              2.25,
+              3.5
+            ]
+          ],
+          "axis": [
+            [
+              2.25,
+              3.5
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        },
+        {
+          "id": [
+            "effect",
+            "sound"
+          ],
+          "kind": "sound",
+          "lane": "S1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [
+            [
+              2,
+              3
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              3
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        }
+      ],
+      "rows": {
+        "T1": 2,
+        "CC": 1,
+        "M1": 1
+      },
+      "snaps": [
+        [
+          3,
+          "item",
+          [
+            "effect",
+            "sound"
+          ]
+        ],
+        [
+          2.75,
+          "gainPoint",
+          [
+            "effect",
+            "sound"
+          ]
+        ]
+      ],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "source axis keeps cut word targets",
+      "base": "connected",
+      "plan": {
+        "kept": [
+          [
+            0,
+            96000
+          ],
+          [
+            144000,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "source",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [],
+          "axis": [],
+          "hidden": true,
+          "marker": 2,
+          "notches": [],
+          "reason": "Hidden · its words are cut"
+        },
+        {
+          "id": [
+            "effect",
+            "sound"
+          ],
+          "kind": "sound",
+          "lane": "S1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [
+            [
+              2,
+              3
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              4
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        }
+      ],
+      "rows": {},
+      "snaps": [
+        [
+          2.5,
+          "word",
+          null
+        ],
+        [
+          3.25,
+          "gainPoint",
+          [
+            "effect",
+            "sound"
+          ]
+        ]
+      ],
+      "missing": [],
+      "playhead": null,
+      "allItems": false,
+      "drop": {
+        "time": 2.5,
+        "anchor": 2.5,
+        "hint": "Lands on a cut · plays at the seam"
+      }
+    },
+    {
+      "name": "edited axis omits fully cut word targets",
+      "base": "connected",
+      "plan": {
+        "kept": [
+          [
+            0,
+            96000
+          ],
+          [
+            144000,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [],
+      "rows": {},
+      "snaps": [],
+      "missing": [
+        [
+          2.25,
+          "word",
+          null
+        ]
+      ],
+      "playhead": null,
+      "allItems": false,
+      "drop": {
+        "time": 2,
+        "anchor": 3,
+        "hint": null
+      }
+    },
+    {
+      "name": "covered range keeps a cut notch",
+      "base": "split-range",
+      "plan": {
+        "kept": [
+          [
+            0,
+            96000
+          ],
+          [
+            144000,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 1.5,
+          "edited": [
+            [
+              1.5,
+              2
+            ],
+            [
+              2,
+              2.5
+            ]
+          ],
+          "axis": [
+            [
+              1.5,
+              2
+            ],
+            [
+              2,
+              2.5
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [
+            2
+          ],
+          "reason": null
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "title whose only word is cut stays hidden over remaining silence",
+      "base": "silence-under-cut-words",
+      "plan": {
+        "kept": [
+          [
+            0,
+            96000
+          ],
+          [
+            124800,
+            432000
+          ]
+        ],
+        "seams": [],
+        "total": 432000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [],
+          "axis": [],
+          "hidden": true,
+          "marker": 2,
+          "notches": [],
+          "reason": "Hidden · its words are cut"
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "clip trim keeps the original placements hidden",
+      "base": "trimmed",
+      "plan": {
+        "kept": [
+          [
+            168000,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": null,
+          "anchor": 2,
+          "edited": [],
+          "axis": [],
+          "hidden": true,
+          "marker": 0,
+          "notches": [],
+          "reason": "Hidden · outside this clip"
+        },
+        {
+          "id": [
+            "effect",
+            "sound"
+          ],
+          "kind": "sound",
+          "lane": "S1",
+          "row": 0,
+          "part": null,
+          "anchor": 2,
+          "edited": [],
+          "axis": [],
+          "hidden": true,
+          "marker": 0,
+          "notches": [],
+          "reason": "Hidden · outside this clip"
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "music plays through a story join",
+      "base": "story",
+      "plan": {
+        "kept": [
+          [
+            0,
+            192000
+          ],
+          [
+            192000,
+            384000
+          ]
+        ],
+        "seams": [
+          192000
+        ],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "first",
+          "anchor": 2,
+          "edited": [
+            [
+              2,
+              3
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              3
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        },
+        {
+          "id": [
+            "music",
+            "music"
+          ],
+          "kind": "music",
+          "lane": "M1",
+          "row": 0,
+          "part": "first",
+          "anchor": 3.5,
+          "edited": [
+            [
+              3.5,
+              5.5
+            ]
+          ],
+          "axis": [
+            [
+              3.5,
+              5.5
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        }
+      ],
+      "rows": {},
+      "snaps": [
+        [
+          4,
+          "partSeam",
+          null
+        ]
+      ],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "reorder carries connected items with their part",
+      "base": "reordered",
+      "plan": {
+        "kept": [
+          [
+            192000,
+            384000
+          ],
+          [
+            0,
+            192000
+          ]
+        ],
+        "seams": [
+          192000
+        ],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "title"
+          ],
+          "kind": "title",
+          "lane": "T1",
+          "row": 0,
+          "part": "first",
+          "anchor": 2,
+          "edited": [
+            [
+              6,
+              7
+            ]
+          ],
+          "axis": [
+            [
+              6,
+              7
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        },
+        {
+          "id": [
+            "effect",
+            "sound"
+          ],
+          "kind": "sound",
+          "lane": "S1",
+          "row": 0,
+          "part": "first",
+          "anchor": 2,
+          "edited": [
+            [
+              6,
+              7
+            ]
+          ],
+          "axis": [
+            [
+              6,
+              7
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        },
+        {
+          "id": [
+            "music",
+            "music"
+          ],
+          "kind": "music",
+          "lane": "M1",
+          "row": 0,
+          "part": "first",
+          "anchor": 3.5,
+          "edited": [
+            [
+              7.5,
+              8
+            ]
+          ],
+          "axis": [
+            [
+              7.5,
+              8
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "cut anchor uses its reordered part seam",
+      "base": "reordered",
+      "plan": {
+        "kept": [
+          [
+            192000,
+            384000
+          ],
+          [
+            0,
+            96000
+          ],
+          [
+            144000,
+            192000
+          ]
+        ],
+        "seams": [
+          192000
+        ],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "effect",
+            "sound"
+          ],
+          "kind": "sound",
+          "lane": "S1",
+          "row": 0,
+          "part": "first",
+          "anchor": 2,
+          "edited": [
+            [
+              6,
+              7
+            ]
+          ],
+          "axis": [
+            [
+              6,
+              7
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "b-roll runs continuously and hatches its short tail",
+      "base": "short-recording",
+      "plan": {
+        "kept": [
+          [
+            0,
+            108000
+          ],
+          [
+            120000,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "footage",
+            "bRoll"
+          ],
+          "kind": "bRoll",
+          "lane": "B1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [
+            [
+              2,
+              2.25
+            ],
+            [
+              2.25,
+              2.75
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              2.25
+            ],
+            [
+              2.25,
+              2.75
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [
+            2.25
+          ],
+          "reason": null
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "restoring the cut exposes the recording limit",
+      "base": "short-recording",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "scope": "clip-main",
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "footage",
+            "bRoll"
+          ],
+          "kind": "bRoll",
+          "lane": "B1",
+          "row": 0,
+          "part": "clip-main",
+          "anchor": 2,
+          "edited": [
+            [
+              2,
+              2.75
+            ]
+          ],
+          "axis": [
+            [
+              2,
+              2.75
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": "The recording ends here."
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    },
+    {
+      "name": "context-demo placement uses its edited clock",
+      "base": "context",
+      "plan": {
+        "kept": [
+          [
+            24000,
+            336000
+          ]
+        ],
+        "seams": [],
+        "total": 336000
+      },
+      "scope": null,
+      "axis": "edited",
+      "items": [
+        {
+          "id": [
+            "contextDemo",
+            "placement-a"
+          ],
+          "kind": "contextDemo",
+          "lane": "B1",
+          "row": 0,
+          "part": null,
+          "anchor": 1.5,
+          "edited": [
+            [
+              1,
+              2
+            ]
+          ],
+          "axis": [
+            [
+              1,
+              2
+            ]
+          ],
+          "hidden": false,
+          "marker": null,
+          "notches": [],
+          "reason": null
+        }
+      ],
+      "rows": {},
+      "snaps": [],
+      "missing": [],
+      "playhead": null,
+      "allItems": false
+    }
+  ]
+}

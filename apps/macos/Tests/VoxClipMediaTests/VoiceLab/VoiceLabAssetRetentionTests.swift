@@ -135,6 +135,29 @@ import VoxClipCore
         #expect(try close([], days: 100).isEmpty)
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(take.file).path))
     }
+    /// A take Use put in and Undo took out again is in the session's history (`references`) but not in the project as it
+    /// closes (`inUse`): its asset stays, and so does its journal entry, so a later Rewrite adopts it for its word check.
+    /// The close used to end the entry against the whole history, and the same words were paid for again after a relaunch.
+    /// Once the project as it closes uses the take, its entry goes.
+    @Test func aTakeUndoneBeforeTheCloseKeepsItsJournalEntry() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = UUID().uuidString.lowercased(), date = Date(timeIntervalSince1970: 1_800_000_000)
+        let take = try VoiceLabAssetStore.write(pcm16: Data([0, 1]), sampleRate: 24000, projectId: project, assetId: "take", paidRoot: root, createdAt: date)
+        try journal(take, project: project, root: root, createdAt: date)
+        func close(inUse: Set<String>, days: Double) throws -> [String] {
+            try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [take.file], inUse: inUse,
+                now: date.addingTimeInterval(days * 86400), observation: .init(session: "test", monotonicSeconds: days * 86400))
+        }
+        func entries() -> [String] { VoiceLabTakeJournal.list(projectID: project, paidRoot: root).map(\.assetFile) }
+        #expect(try close(inUse: [], days: 0).isEmpty)
+        #expect(entries() == [take.file], "Undo took it out of the project: its entry stays")
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(take.file).path))
+        #expect(try close(inUse: [take.file], days: 1).isEmpty)
+        #expect(entries().isEmpty, "the project as it closes uses it: its entry goes")
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(take.file).path))
+    }
     /// An entry the project never used stays 60 days, then goes at a real close (never at launch's discovery); its asset
     /// is kept and from then on follows the ordinary rules. An entry whose asset is gone goes at once.
     @Test func unusedJournalEntriesAgeOutAfterSixtyDays() throws {
@@ -178,12 +201,7 @@ import VoxClipCore
         let (quote, job) = try await LipsyncImportFixture.submit(root: root, provider: provider, model: provider.models[0], seconds: 4, fps: 30)
         let result = try await LipsyncResultImporter().importResult(provider: provider, job: job, quote: quote, projectID: project,
                                                                    paidRoot: root, sourceWidth: 1_920, sourceHeight: 1_080)
-        let attempts = root.appendingPathComponent(project).appendingPathComponent("lipsync-attempts")
-        let indexed = try FileManager.default.contentsOfDirectory(atPath: attempts.path).filter { $0.hasSuffix(".json") }.compactMap { name in
-            let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-            return try? decoder.decode(LipsyncAttempt.self, from: Data(contentsOf: attempts.appendingPathComponent(name))).importedAsset
-        }
-        #expect(indexed == [result.asset])
+        #expect(LipsyncAttemptStore.importedAssets(inProject: project, paidRoot: root) == [result.asset.file])
         let control = result.url.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString.lowercased()).mp4")
         try FileManager.default.copyItem(at: result.url, to: control)
         try own(result.url); try own(control)

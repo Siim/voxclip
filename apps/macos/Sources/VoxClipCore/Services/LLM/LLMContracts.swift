@@ -34,6 +34,7 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case captionPick
     /// Ask Claude on a selection, clip or time range (AI §18, design.md §6.8): toolbox operations for one instruction.
     case askClaude
+    case postingHelp
     case test
 }
 
@@ -78,6 +79,7 @@ public struct LLMRequest: Sendable, Equatable {
     public var timeout: Duration
     public var language: String?
     public var tag: String
+    var allowsCodexModelRedirect = true
     /// Small frames for a connector that takes images (ai.md §19.3). A connector whose catalogue entry has no
     /// `images.supported` sends none; the instruction then carries the frames' text summary alone. Empty by default, and a
     /// request without images is sent exactly as before.
@@ -221,6 +223,7 @@ public protocol LLMConnector: Sendable {
     func knownCLIAuthMethod() async -> String?
     func models(refresh: Bool) async throws -> [LLMModel]
     func contextTokens(model: String) async -> Int?
+    func hasSessionModelFallback(for model: String) async -> Bool
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion
     /// Whether `send` passes a request's images on, as the catalogue declares (`connectors[].images.supported`). A
     /// connector that does not drops them, so a caller always puts the frames' text summary in the instruction.
@@ -228,6 +231,7 @@ public protocol LLMConnector: Sendable {
 }
 extension LLMConnector {
     public func knownCLIAuthMethod() async -> String? { nil }
+    public func hasSessionModelFallback(for model: String) async -> Bool { false }
     public func supportsImages() async -> Bool { false }
 }
 /// Dependency-injected secrets; architecture §2.1, §9.4 and AI §8.1. No persistence requirement.
@@ -244,7 +248,8 @@ public actor LLMRunner {
     let log: any Redacting
     private var active = false
     public init(keys: any KeyProvider, catalog: LLMCatalog, log: any Redacting) { self.keys = keys; self.catalog = catalog; self.log = log }
-    public func run(_ request: LLMRequest, on connector: any LLMConnector, model: String) async throws -> LLMResult {
+    public func run(_ request: LLMRequest, on connector: any LLMConnector, model: String,
+                    captureOnce: (@Sendable (RawCompletion) async throws -> Void)? = nil) async throws -> LLMResult {
         guard !active else { throw LLMError.unavailable(reason: "An AI request is already running.") }
         active = true
         defer { active = false }
@@ -260,10 +265,16 @@ public actor LLMRunner {
                 catch LLMError.cancelled { throw LLMError.cancelled }
                 catch { throw LLMError.missingKey }
             }
-            do { return try await validated(request, connector: connector, model: model, fallback: false) }
+            do { return try await validated(request, connector: connector, model: model, fallback: false, captureOnce: captureOnce) }
             catch let failure as LLMError {
-                guard permitsFallback(failure, id: connector.id), let fallback = catalog.fallback(for: connector.id, model: model) else { throw failure }
-                return try await validated(request, connector: connector, model: fallback, fallback: true)
+                guard captureOnce == nil, permitsFallback(failure, id: connector.id),
+                      let fallback = catalog.fallback(for: connector.id, model: model) else { throw failure }
+                if connector.id == .codex {
+                    guard await !connector.hasSessionModelFallback(for: model) else { throw failure }
+                }
+                var retry = request
+                if connector.id == .codex { retry.allowsCodexModelRedirect = false }
+                return try await validated(retry, connector: connector, model: fallback, fallback: true)
             }
         } catch {
             let failure = try await logFailure(error, connector: connector, feature: request.feature, model: model)
@@ -319,18 +330,21 @@ public actor LLMRunner {
         }
     }
 
-    private func validated(_ request: LLMRequest, connector: any LLMConnector, model: String, fallback: Bool) async throws -> LLMResult {
+    private func validated(_ request: LLMRequest, connector: any LLMConnector, model: String, fallback: Bool,
+                           captureOnce: (@Sendable (RawCompletion) async throws -> Void)? = nil) async throws -> LLMResult {
         var current = request
         for correction in 0...1 {
             try Task.checkCancellation()
             let raw = try await connector.send(current, model: model)
+            try await captureOnce?(raw)
             try Task.checkCancellation()
             do {
                 let parsed = try CanonicalResponseParser.validate(raw, schema: request.schema,
                     allowingMissing: request.feature == .clipAutopilot ? ["music", "musicPick"] : [])
-                return LLMResult(object: parsed.object, droppedItems: parsed.droppedItems, model: raw.model, usedFallback: fallback || nativeFallback(connector: connector.id, requested: model, actual: raw.model), usage: raw.usage, requestID: raw.requestID)
+                let redirected = connector.id == .codex && raw.model != model
+                return LLMResult(object: parsed.object, droppedItems: parsed.droppedItems, model: raw.model, usedFallback: fallback || redirected || nativeFallback(connector: connector.id, requested: model, actual: raw.model), usage: raw.usage, requestID: raw.requestID)
             } catch LLMError.invalidOutput(let reason) {
-                guard correction == 0 else { throw LLMError.invalidOutput(reason: reason) }
+                guard captureOnce == nil, correction == 0 else { throw LLMError.invalidOutput(reason: reason) }
                 current.instruction += "\n\nYour previous reply was not valid JSON for the required schema (\(reason)). Reply with only the JSON object."
             }
         }
@@ -379,6 +393,9 @@ public actor StubLLMConnector: LLMConnector {
         return await cli.lastAuthMethod
     }
     public func models(refresh: Bool) async throws -> [LLMModel] { try await resolve().models(refresh: refresh) }
+    public func hasSessionModelFallback(for model: String) async -> Bool {
+        await implementation?.hasSessionModelFallback(for: model) ?? false
+    }
     public func contextTokens(model: String) async -> Int? {
         guard let connector = try? resolve() else { return nil }
         return await connector.contextTokens(model: model)

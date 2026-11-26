@@ -20,7 +20,6 @@ import WebKit
     private var preparationRelease: TestContinuation<Void>?
     private var projectID = ""
 
-    func checkAvailability() { events.append("check-access") }
     func unavailableReason(for kind: ContextDemoTargetKind) -> String? { nil }
     func targets() async throws -> [ContextDemoCaptureTarget] { [] }
     func prepare(target: ContextDemoTarget, window: ContextDemoCaptureTarget?, duration: Double,
@@ -83,7 +82,7 @@ struct ContextDemoWebActionFlowTests {
         model.mediaResolved = true
         model.refresh()
         let backend = ContextDemoWebFlowProbe()
-        let session = ContextDemoSession(model: model, backend: backend)
+        let session = ContextDemoSession(model: model, backend: backend, permissions: ContextDemoPermissionProbe())
         model.contextDemoSession = session
         session.setURL("https://example.test/demo?mode=preview#intro")
         session.setCaptureSeconds(30)

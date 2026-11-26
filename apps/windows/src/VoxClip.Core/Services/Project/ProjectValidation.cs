@@ -20,12 +20,15 @@ internal static class ProjectValidation
         var root = document.RootElement;
         RejectDuplicateKeys(root);
         Require(root.ValueKind == JsonValueKind.Object);
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 4)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > TimelineEditFields.Version)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-        var supportsContext = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion == 4;
+        var schemaVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var supported) ? supported : 0;
+        var supportsContext = schemaVersion >= 4;
+        var supportsStories = schemaVersion >= 5;
+        var supportsTimelineEdits = schemaVersion >= TimelineEditFields.Version;
         Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""));
         String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, 4, true);
+        Number(root.GetProperty("schemaVersion"), 1, TimelineEditFields.Version, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
@@ -33,20 +36,71 @@ internal static class ProjectValidation
         var saved = root.GetProperty("savedBy");
         Object(saved, "app version platform"); String(saved.GetProperty("app"), "VoxClip");
         String(saved.GetProperty("version"), "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?"); Choice(saved.GetProperty("platform"), "macos", "windows");
-        var media = root.GetProperty("media"); Object(media, "source");
-        var source = media.GetProperty("source"); Object(source, "absolutePath relativePath sizeBytes durationSeconds contentKey video audio");
-        Text(source.GetProperty("absolutePath"), 1, 4096);
-        Nullable(source.GetProperty("relativePath"), value => { Text(value, 1, 4096); Require(!value.GetString()!.Contains('\\')); });
-        Number(source.GetProperty("sizeBytes"), 0, long.MaxValue, true); Number(source.GetProperty("durationSeconds"), 0); String(source.GetProperty("contentKey"), Hash);
-        Nullable(source.GetProperty("video"), video =>
+        var media = root.GetProperty("media"); Object(media, "source", supportsContext ? "additionalSources footage" : "");
+        var source = media.GetProperty("source");
+        ValidateSource(source);
+        var sourceKeys = new HashSet<string>(StringComparer.Ordinal) { FootageKey(source) };
+        var companionDurations = new Dictionary<string, double>(StringComparer.Ordinal);
+        if (media.TryGetProperty("additionalSources", out var additionalSources))
         {
-            Object(video, "width height frameRate rotationDegrees"); Number(video.GetProperty("width"), 1, int.MaxValue, true); Number(video.GetProperty("height"), 1, int.MaxValue, true);
-            Number(video.GetProperty("frameRate"), double.Epsilon); Require(video.GetProperty("rotationDegrees").TryGetInt32(out var rotation) && rotation is 0 or 90 or 180 or 270);
-        });
-        Nullable(source.GetProperty("audio"), audio =>
+            Array(additionalSources, reference =>
+            {
+                ValidateSource(reference);
+                var key = FootageKey(reference);
+                Require(sourceKeys.Add(key));
+                if (reference.GetProperty("video").ValueKind == JsonValueKind.Object)
+                    companionDurations.Add(key, reference.GetProperty("durationSeconds").GetDouble());
+            });
+            Require(additionalSources.GetArrayLength() > 0);
+        }
+        var placements = new List<ProjectFootage>();
+        var placementIds = new HashSet<string>(StringComparer.Ordinal);
+        if (media.TryGetProperty("footage", out var footage))
         {
-            Object(audio, "sampleRate channels"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
-        });
+            Array(footage, placement =>
+            {
+                Object(placement, "id clipID kind start end footage", supportsTimelineEdits ? "fadeInSeconds fadeOutSeconds" : "");
+                String(placement.GetProperty("id"), Id); String(placement.GetProperty("clipID"), Id);
+                Choice(placement.GetProperty("kind"), "bRoll", "screenshot", "videoStack");
+                Number(placement.GetProperty("start"), 0); Number(placement.GetProperty("end"), 0);
+                var selected = placement.GetProperty("footage"); Object(selected, "sourceKey start");
+                String(selected.GetProperty("sourceKey"), Hash); Number(selected.GetProperty("start"), 0);
+                double? Fade(string key)
+                {
+                    if (!placement.TryGetProperty(key, out var fade)) return null;
+                    Number(fade, 0, 2);
+                    return fade.GetDouble();
+                }
+                var entry = new ProjectFootage(placement.GetProperty("id").GetString()!, placement.GetProperty("clipID").GetString()!,
+                    placement.GetProperty("kind").GetString()!, placement.GetProperty("start").GetDouble(), placement.GetProperty("end").GetDouble(),
+                    new FootageSelection(selected.GetProperty("sourceKey").GetString()!, selected.GetProperty("start").GetDouble()),
+                    Fade("fadeInSeconds"), Fade("fadeOutSeconds"));
+                Require(placementIds.Add(entry.Id) && entry.End <= source.GetProperty("durationSeconds").GetDouble() &&
+                    companionDurations.TryGetValue(entry.Footage.SourceKey, out var duration) &&
+                    (supportsTimelineEdits ? entry.HasPlayableSource(duration) : entry.Fits(duration)) &&
+                    !placements.Any(other => other.ClipId == entry.ClipId && other.Start < entry.End && entry.Start < other.End));
+                placements.Add(entry);
+            });
+            Require(placements.Count > 0);
+        }
+        static string FootageKey(JsonElement reference) => (reference.TryGetProperty("recordingHash", out var hash) ? hash : reference.GetProperty("contentKey")).GetString()!;
+        void ValidateSource(JsonElement reference)
+        {
+            Object(reference, "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", supportsContext ? "recordingHash" : "");
+            if (reference.TryGetProperty("recordingHash", out var hash)) String(hash, Hash);
+            Text(reference.GetProperty("absolutePath"), 1, 4096);
+            Nullable(reference.GetProperty("relativePath"), value => { Text(value, 1, 4096); Require(!value.GetString()!.Contains('\\')); });
+            Number(reference.GetProperty("sizeBytes"), 0, long.MaxValue, true); Number(reference.GetProperty("durationSeconds"), 0); String(reference.GetProperty("contentKey"), Hash);
+            Nullable(reference.GetProperty("video"), video =>
+            {
+                Object(video, "width height frameRate rotationDegrees"); Number(video.GetProperty("width"), 1, int.MaxValue, true); Number(video.GetProperty("height"), 1, int.MaxValue, true);
+                Number(video.GetProperty("frameRate"), double.Epsilon); Require(video.GetProperty("rotationDegrees").TryGetInt32(out var rotation) && rotation is 0 or 90 or 180 or 270);
+            });
+            Nullable(reference.GetProperty("audio"), audio =>
+            {
+                Object(audio, "sampleRate channels"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
+            });
+        }
         Nullable(root.GetProperty("transcript"), value => Transcript(value, normalizeWordText));
         var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId");
         Number(edits.GetProperty("pauseThresholdSeconds"), double.Epsilon, 10); Number(edits.GetProperty("pauseKeepSeconds"), 0, 1);
@@ -55,7 +109,20 @@ internal static class ProjectValidation
         Array(edits.GetProperty("clips"), clip =>
         {
             // leadInSeconds: schema v4 only, above 0 and at most the 0.6 s opening scan (ADR-R48 part 2).
-            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsContext ? "leadInSeconds" : "");
+            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "");
+            if (clip.TryGetProperty("kind", out var kind))
+                Require(clip.TryGetProperty("parts", out _) && kind.ValueKind == JsonValueKind.String && kind.GetString() is "story" or "showreel");
+            if (clip.TryGetProperty("parts", out var parts)) Array(parts, part =>
+            {
+                Object(part, "id startWordId endWordId", "reframe");
+                if (part.TryGetProperty("reframe", out var reframe))
+                {
+                    Object(reframe, "mode zoom centerX centerY");
+                    Require(reframe.GetProperty("mode").ValueKind == JsonValueKind.String && reframe.GetProperty("mode").GetString() == "face");
+                    Number(reframe.GetProperty("zoom"), 1, 1);
+                    Number(reframe.GetProperty("centerX"), 0, 1); Number(reframe.GetProperty("centerY"), 0, 1);
+                }
+            });
             if (clip.TryGetProperty("leadInSeconds", out var leadIn)) { Number(leadIn, double.Epsilon, 0.6 + 1e-9); }
             foreach (var key in new[] { "id", "startWordId", "endWordId" }) String(clip.GetProperty(key), Id);
             Nullable(clip.GetProperty("title"), value => Text(value, 0, 120)); Choice(clip.GetProperty("origin"), "manual", "ai");
@@ -95,7 +162,10 @@ internal static class ProjectValidation
             Nullable(result.GetProperty("instructions"), value => Text(value, 0, 500)); Nullable(result.GetProperty("language"), value => Text(value, 0, 35)); String(result.GetProperty("inputSha256"), Hash);
             Array(result.GetProperty("clips"), clip =>
             {
-                Object(clip, "title reason score startWordId endWordId"); Text(clip.GetProperty("title"), 1, 120); Text(clip.GetProperty("reason"), 0, 300);
+                Object(clip, "title reason score startWordId endWordId", supportsStories ? "parts notInTake" : "");
+                if (clip.TryGetProperty("parts", out var parts)) Array(parts, part => Object(part, "startWordId endWordId"));
+                if (clip.TryGetProperty("notInTake", out var note)) Text(note, 0, 200);
+                Text(clip.GetProperty("title"), 1, 120); Text(clip.GetProperty("reason"), 0, 300);
                 Number(clip.GetProperty("score"), 1, 10, true); String(clip.GetProperty("startWordId"), Id); String(clip.GetProperty("endWordId"), Id);
             });
         });
@@ -184,8 +254,8 @@ internal static class ProjectValidation
             Require(context.ProjectId == root.GetProperty("id").GetString() && context.SourceContentKey == source.GetProperty("contentKey").GetString());
         }
         if (root.TryGetProperty("motionCues", out var cues)) MotionCue.ValidateWire(cues);
-        if (root.TryGetProperty("music", out var music)) VoxClip.Core.Domain.Music.MusicProject.ValidateWire(music);
-        if (root.TryGetProperty("clipEffects", out var effects)) VoxClip.Core.Domain.Effects.ClipEffects.ValidateWire(effects);
+        if (root.TryGetProperty("music", out var music)) VoxClip.Core.Domain.Music.MusicProject.ValidateWire(music, supportsTimelineEdits);
+        if (root.TryGetProperty("clipEffects", out var effects)) VoxClip.Core.Domain.Effects.ClipEffects.ValidateWire(effects, supportsTimelineEdits);
         if (root.TryGetProperty("clipControls", out var controls)) ClipControlsProject.ValidateWire(controls);
         if (root.TryGetProperty("captionTranslations", out var translations)) VoxClip.Core.Domain.Captions.CaptionTranslations.ValidateWire(translations);
     }
@@ -222,7 +292,8 @@ internal static class ProjectValidation
         Choice(video.GetProperty("mode"), "source", "cut", "retimed", "zoomCover", "lipsync");
         Choice(recipe.GetProperty("voiceSource"), "own", "stock");
         var qa = recipe.GetProperty("qa");
-        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory");
+        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory outputSpeakerCheckSkipped");
+        if (qa.TryGetProperty("outputSpeakerCheckSkipped", out var skipped)) Require(skipped.ValueKind == JsonValueKind.True);
         if (qa.TryGetProperty("joinAdvisory", out var advisory))
         {
             Object(advisory, "seams acceptedAt");

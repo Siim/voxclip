@@ -28,7 +28,7 @@ struct ContextDemoAccessibilityElement: Hashable {
     private var retained: [AXUIElement] = []
 
     func availability() -> ContextDemoAccessibilityAvailability {
-        AXIsProcessTrusted() ? .available : .accessibilityPermissionRequired
+        ContextDemoSystemPermissions.shared.status(for: .accessibility) == .granted ? .available : .accessibilityPermissionRequired
     }
 
     func processMatches(_ identity: ContextDemoDesktopIdentity) -> Bool {

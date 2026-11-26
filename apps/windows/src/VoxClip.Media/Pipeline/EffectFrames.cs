@@ -19,6 +19,7 @@ internal sealed class EffectFrames : IDisposable
     private readonly string? sharedRoot;
     private readonly ConcurrentDictionary<string, Overlay?> overlays = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, EffectTextFont?> fonts = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Lazy<SKImage?>> illustrations = new(StringComparer.Ordinal);
 
     internal EffectFrames(ClipEffectsRenderInput input, string? sharedRoot)
     {
@@ -32,6 +33,26 @@ internal sealed class EffectFrames : IDisposable
     internal bool HasPicture => Picture.Count > 0;
 
     internal sealed record Overlay(SKImage Image, SKRectI Box);
+
+    internal unsafe void DrawIllustration(PixelBuffer frame, double time)
+    {
+        var effect = Picture.LastOrDefault(effect => effect.Kind == "illustration" && effect.Start <= time && time < effect.End);
+        if (effect is null || !Input.Images.TryGetValue(effect.Id, out var path)) return;
+        var opacity = effect.ExplicitFadeOpacityAt(time);
+        if (opacity <= 0) return;
+        var image = illustrations.GetOrAdd(path, key => new(() => File.Exists(key) ? SKImage.FromEncodedData(key) : null)).Value;
+        if (image is null) return;
+        using var pin = frame.Pixels.Pin();
+        using var surface = SKSurface.Create(new SKImageInfo(frame.Width, frame.Height, SKColorType.Bgra8888, SKAlphaType.Premul), (IntPtr)pin.Pointer, frame.Stride);
+        if (surface is null) return;
+        var scale = Math.Max(frame.Width / (float)image.Width, frame.Height / (float)image.Height);
+        var width = image.Width * scale;
+        var height = image.Height * scale;
+        using var paint = opacity < 1 ? new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(opacity * 255)) } : null;
+        surface.Canvas.DrawImage(image, SKRect.Create((frame.Width - width) / 2, (frame.Height - height) / 2, width, height),
+            new SKSamplingOptions(SKCubicResampler.Mitchell), paint);
+        surface.Canvas.Flush();
+    }
 
     /// <summary>Blurs, pixelates and points at regions of <paramref name="frame"/>, the output frame filled from <paramref name="crop"/>
     /// of the oriented source picture (<paramref name="sourceWidth"/> × <paramref name="sourceHeight"/>, after the controls' flip and
@@ -60,7 +81,7 @@ internal sealed class EffectFrames : IDisposable
             if (effect.RectAt(time) is not { } rect) continue;
             var region = SKRectI.Intersect(Mapped(rect), bounds);
             if (region.Width < 1 || region.Height < 1) continue;
-            Censor(frame, region, effect.Kind == "pixelate");
+            Censor(frame, region, effect.Kind == "pixelate", effect.ExplicitFadeOpacityAt(time));
         }
         var pointers = active.Where(effect => effect.Kind is "arrow" or "circle").ToArray();
         if (pointers.Length == 0) return;
@@ -82,9 +103,9 @@ internal sealed class EffectFrames : IDisposable
     /// and edited output time <paramref name="outputTime"/>; <paramref name="mapTime"/> maps source to edited seconds. A title or lower
     /// third that can't be drawn is left out and <paramref name="overlayFailed"/> runs (a sticker with no bundled emoji is not a failure).</summary>
     internal unsafe void DrawFrame(PixelBuffer frame, double time, double outputTime, Func<double, double> mapTime, CancellationToken ct,
-        Action? overlayFailed = null)
+        Action? overlayFailed = null, Func<double, double>? mapEndTime = null)
     {
-        var active = Picture.Where(effect => effect.UsesPosition && time >= effect.Start && time < effect.End).ToArray();
+        var active = Picture.Where(effect => (effect.UsesPosition || effect.Kind == "motionTemplate") && time >= effect.Start && time < effect.End).ToArray();
         if (active.Length == 0) return;
         using var pin = frame.Pixels.Pin();
         using var surface = SKSurface.Create(new SKImageInfo(frame.Width, frame.Height, SKColorType.Bgra8888, SKAlphaType.Premul), (IntPtr)pin.Pointer, frame.Stride)
@@ -95,21 +116,69 @@ internal sealed class EffectFrames : IDisposable
             ct.ThrowIfCancellationRequested();
             var opacity = effect.OpacityAt(time);
             if (opacity <= 0) continue;
-            if (effect.Kind == "progress")
+            if (effect.Kind == "motionTemplate")
+            {
+                if (!DrawMotionTemplate(canvas, effect, frame.Width, frame.Height, time, opacity)) overlayFailed?.Invoke();
+            }
+            else if (effect.Kind == "progress")
             {
                 var start = mapTime(effect.Start);
-                var end = mapTime(effect.End);
+                var end = (mapEndTime ?? mapTime)(effect.End);
                 var fraction = end > start ? Math.Clamp((outputTime - start) / (end - start), 0, 1) : 1;
                 WithOpacity(canvas, opacity, target => DrawProgress(target, fraction, effect.Position ?? "bottom", frame.Width, frame.Height));
             }
             else if (OverlayFor(effect, frame.Width, frame.Height) is { } overlay)
             {
                 using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255)) };
+                var (scale, down) = effect.OverlayPoseAt(time);
+                canvas.Save();
+                canvas.Translate(0, (float)(frame.Height * down));
+                canvas.Scale((float)scale, (float)scale, overlay.Box.MidX, overlay.Box.MidY);
                 canvas.DrawImage(overlay.Image, overlay.Box.Left, overlay.Box.Top, paint);
+                canvas.Restore();
             }
-            else if (effect.Kind is "title" or "lowerThird") overlayFailed?.Invoke();
+            else if (effect.Kind is "title" or "lowerThird" || effect.Animation == "pop") overlayFailed?.Invoke();
         }
         canvas.Flush();
+    }
+
+    private bool DrawMotionTemplate(SKCanvas canvas, ClipEffect effect, int width, int height, double time, double opacity)
+    {
+        if (effect.Template is not { } template || effect.End <= effect.Start) return false;
+        var progress = (time - effect.Start) / (effect.End - effect.Start);
+        var (text, scale, down) = template.Presentation(progress);
+        var isCard = template.Name == "titleCard";
+        var position = template.Name == "kineticCaption" ? "bottom" : "center";
+        var (ink, paper) = template.Name switch
+        {
+            "titleCard" => (SKColors.White, SKColors.Transparent),
+            "logoSting" => (SKColors.Black, Accent),
+            "counter" => (Accent, new SKColor(0, 0, 0, 209)),
+            _ => (SKColors.White, new SKColor(0, 0, 0, 209))
+        };
+        Overlay? DrawText() => Title(text, position, width, height, ink, paper, 0.012);
+        var dynamic = template.Name is "kineticCaption" or "counter";
+        var overlay = dynamic ? DrawText() : overlays.GetOrAdd($"template|{effect.Id}|{width}x{height}", _ => DrawText());
+        if (overlay is null) return false;
+        using var temporary = dynamic ? overlay.Image : null;
+        WithOpacity(canvas, opacity, target =>
+        {
+            if (isCard)
+            {
+                using var paint = new SKPaint { Color = new SKColor(12, 15, 22) };
+                target.DrawRect(0, 0, width, height, paint);
+                paint.Color = Accent;
+                var barHeight = Math.Max(2, height * 0.006f);
+                target.DrawRect(width * 0.39f, height * 0.68f - barHeight,
+                    (float)(width * 0.22 * Math.Min(1, progress / 0.65)), barHeight, paint);
+            }
+            target.Save();
+            target.Translate(0, (float)(height * down));
+            target.Scale((float)scale, (float)scale, overlay.Box.MidX, overlay.Box.MidY);
+            target.DrawImage(overlay.Image, overlay.Box.Left, overlay.Box.Top);
+            target.Restore();
+        });
+        return true;
     }
 
     private static void WithOpacity(SKCanvas canvas, double opacity, Action<SKCanvas> draw)
@@ -126,7 +195,11 @@ internal sealed class EffectFrames : IDisposable
     /// <summary>A strong blur, or large square pixels, over <paramref name="region"/>. Both scale with the region, so a small face
     /// and a whole screen are equally unreadable. Edges clamp to the frame, as Core Image's clampedToExtent does.</summary>
     internal static unsafe void Censor(PixelBuffer frame, SKRectI region, bool pixelate)
+        => Censor(frame, region, pixelate, 1);
+
+    private static unsafe void Censor(PixelBuffer frame, SKRectI region, bool pixelate, double opacity)
     {
+        if (opacity <= 0) return;
         var side = Math.Min(region.Width, region.Height);
         var block = pixelate ? Math.Max(8, Math.Round(side / 8.0, MidpointRounding.AwayFromZero)) : 0;
         var sigma = pixelate ? block / 2 : Math.Min(80, Math.Max(10, side * 0.2));
@@ -161,7 +234,10 @@ internal sealed class EffectFrames : IDisposable
                         y = Math.Clamp((int)Math.Floor(region.Bottom - (blockY + 0.5) * block), 0, frame.Height - 1);
                     }
                     var from = ((Math.Clamp(y, area.Top, area.Bottom - 1) - area.Top) * area.Width + Math.Clamp(x, area.Left, area.Right - 1) - area.Left) * 4;
-                    blurred.AsSpan(from, 4).CopyTo(pixels.Slice(row * frame.Stride + column * 4, 4));
+                    var target = pixels.Slice(row * frame.Stride + column * 4, 4);
+                    if (opacity >= 1) blurred.AsSpan(from, 4).CopyTo(target);
+                    else for (var channel = 0; channel < 4; channel++)
+                        target[channel] = (byte)Math.Round(target[channel] + (blurred[from + channel] - target[channel]) * opacity);
                 }
         }
         finally { ArrayPool<byte>.Shared.Return(blurred); }
@@ -266,19 +342,20 @@ internal sealed class EffectFrames : IDisposable
 
     /// <summary>Big centred text on a dark rounded box: top, centre or bottom of the frame, a long one in up to three balanced
     /// lines (<see cref="EffectTitleLayout"/>).</summary>
-    internal Overlay? Title(string text, string position, int width, int height)
+    internal Overlay? Title(string text, string position, int width, int height, SKColor? textColor = null,
+        SKColor? background = null, double minimumFontFraction = 0.05)
     {
         if (TextFont(TitleFontPath) is not { } font) return null;
-        var layout = EffectTitleLayout.Make(font, text, position, width, height);
+        var layout = EffectTitleLayout.Make(font, text, position, width, height, minimumFontFraction);
         var box = layout.Box;
         var radius = (layout.LineHeight + layout.PadY * 2) * 0.22f;
         return Raster(box, width, height, canvas =>
         {
-            using var fill = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 158) };
+            using var fill = new SKPaint { IsAntialias = true, Color = background ?? new SKColor(0, 0, 0, 158) };
             canvas.DrawRoundRect(new SKRect(box.Left, box.Top, box.Right, box.Bottom), radius, radius, fill);
             canvas.Save();
             canvas.ClipRect(new SKRect(box.Left + layout.PadX * 0.5f, box.Top, box.Right - layout.PadX * 0.5f, box.Bottom));
-            using var ink = new SKPaint { IsAntialias = true, Color = SKColors.White };
+            using var ink = new SKPaint { IsAntialias = true, Color = textColor ?? SKColors.White };
             if (layout.Lines.Count == 1)
             {
                 var line = layout.Lines[0];
@@ -353,5 +430,7 @@ internal sealed class EffectFrames : IDisposable
         overlays.Clear();
         foreach (var font in fonts.Values) font?.Dispose();
         fonts.Clear();
+        foreach (var image in illustrations.Values) if (image.IsValueCreated) image.Value?.Dispose();
+        illustrations.Clear();
     }
 }

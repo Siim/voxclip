@@ -61,7 +61,8 @@ public sealed record VoiceLabJoinAdvisory(IReadOnlyList<VoiceLabJoinAdvisorySeam
 public sealed record VoiceLabRenderQa(int? TranscriptTokens, bool? TranscriptExact, double? TranscriptMatch, double LufsJumpLu,
     double PeakDbfs, double? SpeakerScore, double? SpeakerThreshold, string? SpeakerModel, bool? SpeakerPassed,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabShortSpeechEvidence? ShortSpeech = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabJoinAdvisory? JoinAdvisory = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabJoinAdvisory? JoinAdvisory = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? OutputSpeakerCheckSkipped = null);
 public sealed record VoiceLabCost(string QuoteId, double? Usd);
 public sealed record VoiceLabRenderRecipe(VoiceLabAudio Audio, IReadOnlyList<VoiceLabWord>? Words, double OutDuration, uint Seed, IReadOnlyList<VoiceLabChunk> Chunks,
     VoiceLabRoomTone? RoomTone, VoiceLabSeams Seams, VoiceLabVideoRecipe Video, VoiceLabRenderQa Qa,

@@ -3,7 +3,7 @@
 # ElevenLabs, offscreen, and checks the panel after every step. Run it before every handed-over test build.
 #
 #   apps/macos/scripts/rewrite-smoke.sh [<VoxClip.app | debug executable | build directory>] [--keep <dir>]
-#       [--only S1,S4] [--lengths realistic|exact|both] [--known-failing I2,I7]
+#       [--only S1,S4] [--lengths realistic|exact|both] [--known-failing I2,I7] [--crash-recovery]
 #
 # Takes are as long as the fixture's speaker would say them (realistic) and, in a second pass, fill each slot exactly
 # ("S4-exact"); --lengths picks one pass. With no path it builds the DEBUG app (swift build --product VoxClip) in
@@ -20,19 +20,21 @@ keep=""
 only=""
 known=""
 lengths=both
+crash_recovery=0
 while (( $# > 0 )); do
     case $1 in
         --keep) keep=$2; shift 2 ;;
         --only) only=$2; shift 2 ;;
         --lengths) lengths=$2; shift 2 ;;
         --known-failing) known=$2; shift 2 ;;
+        --crash-recovery) crash_recovery=1; shift ;;
         -h|--help) sed -n 2,13p "$0"; exit 0 ;;
         *) target=$1; shift ;;
     esac
 done
 
 if [[ -z $target ]]; then
-    (cd "$package" && nice -n 10 swift build --product VoxClip >&2)
+    (cd "$package" && nice -n 10 swift build --jobs 2 --product VoxClip >&2)
     executable=$package/.build/debug/VoxClip
 elif [[ -d $target && -x $target/Contents/MacOS/VoxClip ]]; then
     executable=$target/Contents/MacOS/VoxClip
@@ -47,15 +49,32 @@ work=$(mktemp -d /tmp/voxclip-rewrite-smoke.XXXXXX)
 output=${keep:-$work/out}
 mkdir -p "$output" "$work/data"
 arguments=(-ApplePersistenceIgnoreState YES -NSQuitAlwaysKeepsWindows NO -rewriteSmoke "$output" -rewriteSmokeLengths "$lengths")
+if (( crash_recovery )); then
+    only=S-revoice-whole-fal-short
+    arguments=(-ApplePersistenceIgnoreState YES -NSQuitAlwaysKeepsWindows NO -rewriteSmoke "$output" -rewriteSmokeLengths realistic)
+fi
 [[ -n $only ]] && arguments+=(-rewriteSmokeOnly "$only")
 [[ -n $known ]] && arguments+=(-rewriteSmokeKnownFailing "$known")
 
 # A clean environment: no provider keys or tokens reach the app, the data folder is temporary and nothing downloads.
-result=0
-env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
+run_smoke() {
+    env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
     VOXCLIP_SHARED_DIR="${package:h:h}/shared" VOXCLIP_DATA_DIR="$work/data" VOXCLIP_NO_KEYCHAIN=1 \
     VOXCLIP_LIVE_TESTS=0 VOXCLIP_TEST_DOWNLOAD=0 \
-    "$executable" "${arguments[@]}" > "$work/app.log" 2>&1 || result=$?
+    "$executable" "${arguments[@]}" "$@"
+}
+result=0
+if (( crash_recovery )); then
+    run_smoke -rewriteSmokeRecovery interrupt > "$work/interrupted.log" 2>&1 || result=$?
+    if [[ $result != 137 || ! -s $work/data/accepted-job ]]; then
+        print -u2 "Expected the fixture process to be killed after acceptance; exit $result. Log: $work/interrupted.log"
+        exit 1
+    fi
+    result=0
+    run_smoke -rewriteSmokeRecovery reopen > "$work/app.log" 2>&1 || result=$?
+else
+    run_smoke > "$work/app.log" 2>&1 || result=$?
+fi
 rm -rf "${work:?}/data"
 
 if [[ -f $output/summary.txt ]]; then

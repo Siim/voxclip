@@ -22,7 +22,9 @@ mode writes outside its output directory, apart from `check`'s temporary files.
   preparation, snapping, clip finalisation, window packing, schema validation,
   and the M2 cut-only verifier.
 - `requests.mjs`: data-driven request text and all nine connector renderers,
-  token budgets, Apple logical schema mapping and Codex TOML escaping.
+  token budgets, Apple logical schema mapping and Codex TOML escaping. Compact
+  schemas embedded in strings put structural keywords before bound keywords
+  and list properties in required-field order, then optional fields by name.
 - `vectors.mjs`: independently transcribed §13.2–§13.6 expectations, synthetic
   transcript recipes and the specified deterministic PRNG.
 - `voicelab.mjs`: the Voice Lab rewrite and Fix with AI requests, rendered from
@@ -40,7 +42,9 @@ Inputs are the worktree's `shared/prompts/{clip-finder,ai-tighten}.json`,
 `shared/fixtures/editing/pauses/label-to-fixed.json`, plus
 `shared/prompts/voice-rewrite.json` for `voice-rewrite-requests.json` and `cli-replies.json`, and
 `shared/prompts/patch-rewrite.json` for `patch-rewrite-requests.json`. Both rewrite prompts also supply
-their production schemas to the Codex output-file regressions in `connector-requests.json`. Prompt/catalog
+their production schemas to the Codex output-file regressions in `connector-requests.json`, as do Autopilot v12's
+moments and plan schemas from `shared/prompts/clip-autopilot.json`. The Autopilot cases exercise connector output
+with representative excerpts, not the full planner request. Prompt/catalog
 SHA-256s are recorded in every output after normalizing source-file CRLF to LF
 (a Voice Lab request file records only its own prompt); there are no
 absolute checkout paths or timestamps. Scoped `.gitattributes` files pin both

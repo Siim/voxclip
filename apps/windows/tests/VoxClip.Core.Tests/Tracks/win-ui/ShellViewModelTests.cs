@@ -1,4 +1,5 @@
 #if WIN_UI_TESTS
+using System.Collections.Specialized;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
@@ -108,15 +109,20 @@ public sealed class ShellViewModelTests
         var shell = new ShellViewModel();
         shell.Update(editor, false, [], null);
         var before = shell.Rows.ToArray();
-        var changes = 0;
-        shell.Rows.CollectionChanged += (_, _) => changes++;
+        var changes = new List<NotifyCollectionChangedEventArgs>();
+        shell.Rows.CollectionChanged += (_, change) => changes.Add(change);
         shell.Update(editor, false, [], null);
         Assert.Equal(before, shell.Rows);
-        Assert.Equal(0, changes);
+        Assert.Empty(changes);
         editor.Select(0); editor.Select(2, true);
-        Assert.NotNull(editor.MakeClip());
+        var newClip = editor.MakeClip();
+        Assert.NotNull(newClip);
         shell.Update(editor, false, [], null);
-        Assert.Equal(1, changes);
+        Assert.Equal(2, changes.Count);
+        Assert.All(changes, change => Assert.Equal(NotifyCollectionChangedAction.Add, change.Action));
+        var added = changes.Select(change => Assert.Single(change.NewItems!.Cast<SidebarRow>())).ToArray();
+        Assert.Contains(added, row => row.Kind == SidebarKind.Clip && row.ClipId == newClip);
+        Assert.Contains(added, row => row.Key == "action:add-part" && !row.IsEnabled);
         Assert.All(before, row => Assert.Contains(row, shell.Rows));
         var numbers = shell.Rows.Where(row => row.Kind is SidebarKind.Clip or SidebarKind.Suggestion).Select(row => row.Number);
         Assert.Equal(["1", "2", "3"], numbers);

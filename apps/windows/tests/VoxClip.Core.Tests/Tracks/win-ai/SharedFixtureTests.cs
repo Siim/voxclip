@@ -84,10 +84,18 @@ public sealed partial class SharedFixtureTests
             case "finalize-clips":
                 var words = WordsFrom(input["words"]!);
                 var preset = Enum.Parse<ClipPreset>(Text(input, "preset"), true);
-                var candidates = input["candidates"]!.AsArray().Select(candidate => new RawClip(Text(candidate!, "title"), Text(candidate!, "reason"), Number(candidate!["score"]!), Number(candidate["start_word"]!), Number(candidate["end_word"]!))).ToArray();
+                var candidates = input["candidates"]!.AsArray().Select(candidate => new RawClip(Text(candidate!, "title"), Text(candidate!, "reason"), Number(candidate!["score"]!),
+                    candidate["start_word"] is { } start ? Number(start) : -1, candidate["end_word"] is { } end ? Number(end) : -1,
+                    candidate["parts"]?.AsArray().Select(part => new RawClipPart(Number(part!["start_word"]!), Number(part["end_word"]!))).ToArray(), candidate["not_in_take"]?.GetValue<string>())).ToArray();
                 var lines = input["lines"] is { } supplied ? supplied.AsArray().Select(line => ReadLine(line!).Line).ToArray() : ClipText.Lines(ClipText.Entries(words, new Dictionary<string, string>())).Select(line => line.Line).ToArray();
                 var result = ClipValidation.FinalizeClips(new(candidates, words, prompts.Rules(preset), lines, Strings(input["cutWordIds"]), Integer(input, "windowCount", 1), input["snap"]?.GetValue<bool>() ?? false));
-                actual = Array(result.Clips.Select(clip => (JsonNode)new JsonObject { ["title"] = clip.Title, ["reason"] = clip.Reason, ["score"] = clip.Score, ["startWord"] = clip.Start, ["endWord"] = clip.End }));
+                actual = Array(result.Clips.Select(clip =>
+                {
+                    var value = new JsonObject { ["title"] = clip.Title, ["reason"] = clip.Reason, ["score"] = clip.Score, ["startWord"] = clip.Start, ["endWord"] = clip.End };
+                    if (clip.Parts is { } parts) value["parts"] = Array(parts.Select(part => new JsonArray(part.Start, part.End)));
+                    if (clip.NotInTake is { } missing) value["notInTake"] = missing;
+                    return value;
+                }));
                 break;
             case "snap-pair":
                 var pair = input["pair"]!.AsArray();
@@ -143,7 +151,7 @@ public sealed partial class SharedFixtureTests
     private static HashSet<string> Strings(JsonNode? node) => node?.AsArray().Select(value => value!.GetValue<string>()).ToHashSet(StringComparer.Ordinal) ?? [];
     private static JsonArray Array(IEnumerable<JsonNode> values) => new(values.ToArray());
     private static IReadOnlyList<ClipWord> Entries(JsonNode node) => node.AsArray().Select(entry => new ClipWord(Integer(entry!, "index"), Text(entry!, "text"), Number(entry!["start"]!), Number(entry["end"]!))).ToArray();
-    private static TimedWord[] WordsFrom(JsonNode node)
+    internal static TimedWord[] WordsFrom(JsonNode node)
     {
         if (node is JsonObject recipe)
         {

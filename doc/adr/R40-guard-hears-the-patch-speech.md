@@ -2,6 +2,8 @@
 
 Date: 2026-11-05. Status: accepted lead decision (package v2-rewrite-unstick).
 
+**ADR-R51 (2026-11-24) changes output QA only.** A selected, authorized own voice skips the generated-speaker comparison on Mac and Windows. That does not authorize the source speech. The per-phrase use-time check still runs before a paid request or reuse of a paid take, with the same threshold and no override.
+
 ## Context
 
 The user's own car video (road noise, long pauses) failed the use-time guard (voice-lab §6.9) on every phrase of a Rewrite, and the footer then offered Get Price and Make Takes again, which failed the same way. The guard embedded 10 s of raw source centred on the phrase: silence and road noise as well as speech. §6.9 asked for "the project's speech nearest the patch" and a cache "per (project `contentKey`, `recordId`)". The code cached on the audio as well, so each phrase was judged on its own window.

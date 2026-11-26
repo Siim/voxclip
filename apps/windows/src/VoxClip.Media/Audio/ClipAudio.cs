@@ -1,7 +1,9 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.VoiceLab;
@@ -166,7 +168,7 @@ internal static class EffectAudio
         if (snapshot.Clip?.Effects is not { } input) return [];
         var timeline = snapshot.Timeline;
         return input.Audio.Where(effect => effect.UsesWords)
-            .Select(effect => (Start: timeline.MapTime(effect.Start), End: timeline.MapTime(effect.End)))
+            .Select(effect => (Start: timeline.MapTime(effect.Start), End: timeline.MapEndTime(effect.End)))
             .Where(range => range.End > range.Start).OrderBy(range => range.Start).ToArray();
     }
 
@@ -201,7 +203,8 @@ internal static class EffectAudio
         var speed = snapshot.Speed;
         double Map(double source) => speed.Rendered(timeline.MapTime(source));
         var outputFrames = (long)Math.Round(snapshot.RenderedDuration * rate, MidpointRounding.AwayFromZero);
-        var tones = input.Audio.Where(effect => effect.Kind == "bleep").Select(effect => (Start: Map(effect.Start), End: Map(effect.End)))
+        var tones = input.Audio.Where(effect => effect.Kind == "bleep")
+            .Select(effect => (Start: Map(effect.Start), End: speed.Rendered(timeline.MapEndTime(effect.End))))
             .Where(range => range.End > range.Start).ToArray();
         var sounds = new List<PlacedSound>();
         foreach (var effect in input.Audio.Where(effect => effect.Kind == "sound"))
@@ -210,7 +213,23 @@ internal static class EffectAudio
                 throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VoxClip's bundled sound effects are missing. Reinstall VoxClip. Your edits are saved.");
             var start = (long)Math.Round(Map(effect.Start) * rate, MidpointRounding.AwayFromZero);
             if (start >= outputFrames) continue;
-            var samples = Decode(path, effect.Sound?.DurationSeconds ?? ClipEffect.MaximumSoundSeconds, rate);
+            var assetLength = effect.Sound?.DurationSeconds ?? ClipEffect.MaximumSoundSeconds;
+            var length = effect.End - effect.Start;
+            var edited = effect.MediaOffsetSeconds.HasValue || effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue ||
+                effect.GainPoints is not null || Math.Abs(length - assetLength) >= 1e-6;
+            var samples = edited ? Decode(path, length, rate, effect.MediaOffsetSeconds ?? 0) : Decode(path, assetLength, rate);
+            if (edited)
+            {
+                var frames = Math.Min(samples.Length / 2, (int)Math.Round(length * rate, MidpointRounding.AwayFromZero));
+                if (frames < samples.Length / 2) Array.Resize(ref samples, frames * 2);
+                var shape = new ItemShape(effect.FadeInSeconds, effect.FadeOutSeconds, effect.GainPoints);
+                for (var frame = 0; frame < frames; frame++)
+                {
+                    var gain = (float)MusicMix.ItemGain(frame / (double)rate, shape, length);
+                    samples[frame * 2] *= gain;
+                    samples[frame * 2 + 1] *= gain;
+                }
+            }
             sounds.Add(new(start, samples, (float)Math.Pow(10, (effect.GainDb ?? 0) / 20)));
         }
         return new(tones, sounds.ToArray());
@@ -254,7 +273,9 @@ internal static class EffectAudio
 
     /// <summary>A sound file as interleaved stereo floats at <paramref name="rate"/>, at most <paramref name="seconds"/> long. WAV is
     /// read directly (the bundled sounds); other formats go through FFmpeg.</summary>
-    internal static float[] Decode(string path, double seconds, int rate)
+    internal static float[] Decode(string path, double seconds, int rate) => Decode(path, seconds, rate, 0);
+
+    private static float[] Decode(string path, double seconds, int rate, double offset)
     {
         if (!File.Exists(path))
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, $"Export stopped: the sound effect {Path.GetFileName(path)} is missing. Your edits are saved.");
@@ -264,12 +285,13 @@ internal static class EffectAudio
         {
             var wave = VoiceLabWavePcm.Parse(File.ReadAllBytes(path));
             sourceRate = wave.Rate;
-            var frames = (int)Math.Min(wave.Frames, Math.Ceiling(seconds * sourceRate));
+            var first = Math.Min(wave.Frames, (int)Math.Round(offset * sourceRate, MidpointRounding.AwayFromZero));
+            var frames = (int)Math.Min(wave.Frames - first, Math.Ceiling(seconds * sourceRate));
             stereo = new float[frames * 2];
             for (var frame = 0; frame < frames; frame++)
             {
-                stereo[frame * 2] = (float)wave.Sample(frame, 0);
-                stereo[frame * 2 + 1] = (float)wave.Sample(frame, Math.Min(1, wave.Channels - 1));
+                stereo[frame * 2] = (float)wave.Sample(first + frame, 0);
+                stereo[frame * 2 + 1] = (float)wave.Sample(first + frame, Math.Min(1, wave.Channels - 1));
             }
         }
         else
@@ -279,6 +301,7 @@ internal static class EffectAudio
             sourceRate = decoder.SampleRate;
             var frames = (int)Math.Ceiling(seconds * sourceRate);
             stereo = new float[frames * 2];
+            if (offset > 0) decoder.Seek((long)Math.Round(offset * sourceRate, MidpointRounding.AwayFromZero));
             decoder.Read(stereo, frames, CancellationToken.None);
         }
         return sourceRate == rate ? stereo : Resample(stereo, sourceRate, rate);
@@ -316,6 +339,9 @@ internal sealed class RenderedAudioReader : IDisposable
     private readonly int rate;
     private readonly (double Start, double End)[] silenced;
     private readonly WsolaStretcher? stretcher;
+    private readonly (long InputEnd, long OutputEnd, double Rate)[] sections = [];
+    private WsolaStretcher? sectionStretch;
+    private int sectionIndex;
     private readonly ProjectClipControls? gain;
     private readonly EffectAudio.Track effects;
     private readonly MusicBed? music;
@@ -342,8 +368,8 @@ internal sealed class RenderedAudioReader : IDisposable
 
     /// <summary>The edited voice alone for the edited WAV (Mac withoutClipControls + withoutAudio): 1×, no clip levels, bleeps and
     /// mutes silent, no tones or sounds.</summary>
-    internal static RenderedAudioReader OpenEditedVoice(ComposeSnapshot snapshot, int rate, VoiceLabRenderSession? session, CancellationToken ct)
-        => Open(EditedVoiceSnapshot(snapshot), rate, 0, session, false, ct, null);
+    internal static RenderedAudioReader OpenEditedVoice(ComposeSnapshot snapshot, int rate, VoiceLabRenderSession? session, CancellationToken ct, double start = 0)
+        => Open(EditedVoiceSnapshot(snapshot), rate, start, session, false, ct, null);
 
     /// <summary>The snapshot the edited WAV reads: no controls, no sounds, bleeps and mutes kept.</summary>
     internal static ComposeSnapshot EditedVoiceSnapshot(ComposeSnapshot snapshot) => snapshot with { Clip = snapshot.Clip?.ForEditedAudio };
@@ -351,9 +377,23 @@ internal sealed class RenderedAudioReader : IDisposable
     private static RenderedAudioReader Open(ComposeSnapshot snapshot, int rate, double startEdited, VoiceLabRenderSession? session, bool effectsTrack,
         CancellationToken ct, MusicBed? music)
     {
+        if (snapshot.Media.Audio is null)
+        {
+            var timeline = snapshot.Timeline;
+            var start = Math.Clamp(Native.Round(startEdited * timeline.SampleRate), 0, timeline.OutputSamples);
+            var frames = Native.Round((timeline.OutputSamples - start) * rate / timeline.SampleRate);
+            return new(snapshot, rate, startEdited, ReadSilence, null, frames, effectsTrack, music);
+        }
         var reader = new EditedAudioReader(snapshot, rate, startEdited, session, ct);
         try { return new(snapshot, rate, startEdited, reader.Read, reader, reader.TotalFrames, effectsTrack, music); }
         catch { reader.Dispose(); throw; }
+    }
+
+    private static int ReadSilence(Span<float> target, int frames, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        target[..(frames * 2)].Clear();
+        return frames;
     }
 
     internal RenderedAudioReader(ComposeSnapshot snapshot, int rate, double startEdited, StereoRead edited, IDisposable? owner, long editedFrames,
@@ -369,13 +409,20 @@ internal sealed class RenderedAudioReader : IDisposable
         renderedStart = speed.Rendered(startEdited);
         renderedDuration = snapshot.RenderedDuration;
         renderedFirstFrame = (long)Math.Round(renderedStart * rate, MidpointRounding.AwayFromZero);
-        if (speed.Speed != 1)
+        if (speed.Spans.Count > 0)
+        {
+            long Frames(double seconds) => (long)Math.Round(seconds * rate, MidpointRounding.AwayFromZero);
+            TotalFrames = Math.Max(0, Frames(renderedDuration) - renderedFirstFrame);
+            sections = speed.Segments(startEdited, snapshot.Timeline.Duration).Select(span =>
+                (Frames(span.End - startEdited), Frames(speed.Rendered(span.End)) - renderedFirstFrame, span.Rate)).ToArray();
+        }
+        else if (speed.Speed != 1)
         {
             stretcher = new(Silenced, speed.Speed, rate);
             TotalFrames = Math.Max(0, (long)Math.Round(renderedDuration * rate, MidpointRounding.AwayFromZero) - renderedFirstFrame);
         }
         else TotalFrames = editedFrames;
-        passthrough = stretcher is null && gain is null && silenced.Length == 0 && effects.IsEmpty && music is null;
+        passthrough = sections.Length == 0 && stretcher is null && gain is null && silenced.Length == 0 && effects.IsEmpty && music is null;
     }
 
     internal int Read(Span<float> target, int frames, CancellationToken ct)
@@ -389,7 +436,8 @@ internal sealed class RenderedAudioReader : IDisposable
             return count;
         }
         var voice = target[..(frames * 2)];
-        if (stretcher is not null) stretcher.Read(voice, frames, ct);
+        if (sections.Length > 0) ReadSections(voice, frames, ct);
+        else if (stretcher is not null) stretcher.Read(voice, frames, ct);
         else
         {
             var count = Silenced(voice, frames, ct);
@@ -406,6 +454,35 @@ internal sealed class RenderedAudioReader : IDisposable
         music?.Mix(voice, renderedFirstFrame + produced, frames);
         produced += frames;
         return frames;
+    }
+
+    private void ReadSections(Span<float> target, int frames, CancellationToken ct)
+    {
+        var writeOffset = 0;
+        Span<float> discard = stackalloc float[2048];
+        while (writeOffset < frames && sectionIndex < sections.Length)
+        {
+            var section = sections[sectionIndex];
+            var count = (int)Math.Min(frames - writeOffset, section.OutputEnd - (produced + writeOffset));
+            if (count > 0)
+            {
+                var output = target.Slice(writeOffset * 2, count * 2);
+                if (section.Rate == 1) output[(ReadSectionSource(output, count, ct) * 2)..].Clear();
+                else (sectionStretch ??= new(ReadSectionSource, section.Rate, rate)).Read(output, count, ct);
+                writeOffset += count;
+            }
+            if (produced + writeOffset < section.OutputEnd) break;
+            while (ReadSectionSource(discard, discard.Length / 2, ct) > 0) { }
+            sectionStretch = null;
+            sectionIndex++;
+        }
+        target[(writeOffset * 2)..].Clear();
+    }
+
+    private int ReadSectionSource(Span<float> target, int frames, CancellationToken ct)
+    {
+        var count = (int)Math.Min(frames, sections[sectionIndex].InputEnd - editedRead);
+        return count > 0 ? Silenced(target, count, ct) : 0;
     }
 
     /// <summary>The edited voice with bleeps and mutes silenced on the edited clock.</summary>

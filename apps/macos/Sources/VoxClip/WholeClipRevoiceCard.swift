@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import VoxClipCore
 
@@ -7,9 +8,38 @@ import VoxClipCore
     let model: EditorModel?
 
     var body: some View {
-        if let rewrite = model?.openRewrite, let session = rewrite.wholeClip {
-            WholeClipRevoiceContent(rewrite: rewrite, session: session)
+        if let model, let rewrite = model.openRewrite {
+            if let story = model.storyClip(for: rewrite.rewriteScope) {
+                StoryVoiceOptions(model: model, clip: story)
+            } else if let session = rewrite.wholeClip {
+                WholeClipRevoiceContent(rewrite: rewrite, session: session)
+            }
         }
+    }
+}
+
+@MainActor private struct SavedVoicePreview: View {
+    let rewrite: RewriteSession
+    @State private var playing = false
+    @State private var failed = false
+
+    var body: some View {
+        PanelButton(action: PanelAction(id: "wholeClipPlaySavedVoice", title: playing ? "Stop Preview" : "Play Saved Voice") {
+            failed = false; playing.toggle()
+        }, kind: .bordered)
+        .task(id: playing) {
+            guard playing else { return }
+            do {
+                try await rewrite.previewSavedVoice { wav in
+                    let player = try AVAudioPlayer(data: wav)
+                    guard player.play() else { throw VoiceLabError.invalidAudio }
+                    defer { player.stop() }
+                    while player.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+                }
+            } catch { if !Task.isCancelled { failed = true } }
+            if !Task.isCancelled { playing = false }
+        }
+        if failed { Text("Couldn’t play the saved voice. Nothing was sent.").foregroundStyle(DesignValues.color("status.warning")) }
     }
 }
 
@@ -20,12 +50,13 @@ import VoxClipCore
     var body: some View {
         VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
             switch session.phase {
-            case .choose: choose
+            case .choose:
+                if let record = rewrite.usedWholeClip { used(record) } else { choose }
             case .running: running
             case .review: review
-            case .used: Text(session.usedVoiceOnly ? "✓ The whole clip's voice is in your clip, without lip sync. Undo takes it back."
-                                                   : "✓ Whole clip revoiced and in your clip. Undo takes it back.")
-                    .foregroundStyle(DesignValues.color("text.secondary"))
+            case .used:
+                if let record = rewrite.usedWholeClip { used(record) }
+                else { Text("✓ Your voice is in the take, without lip sync.").foregroundStyle(DesignValues.color("text.secondary")) }
             case .stopped(let line): stopped(line)
             }
         }
@@ -48,62 +79,54 @@ import VoxClipCore
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("Voice").font(VCType.body.font(.semibold))
             if let quote {
-                Text("Clip \(quote.clipNumber) · \(WholeClipRevoiceSession.clock(quote.clipSeconds)) · \(quote.spokenWords) words")
+                let scope = rewrite.wholeClipID == nil ? "Full Take" : "Clip \(quote.clipNumber)"
+                Text("\(scope) · \(WholeClipRevoiceSession.clock(quote.clipSeconds))")
                     .foregroundStyle(DesignValues.color("text.secondary"))
+            } else {
+                Text(rewrite.wholeClipID == nil ? "Full Take" : "Clip").foregroundStyle(DesignValues.color("text.secondary"))
             }
         }
     }
 
     @ViewBuilder private var choose: some View {
-        if rewrite.wholeClipCompact { compact } else { full }
-    }
-
-    /// After the patch was picked: one row, so the whole clip stays findable and redoable.
-    @ViewBuilder private var compact: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if let action = rewrite.wholeClipInsteadAction() { PanelButton(action: action, kind: .bordered) }
-            Spacer(minLength: 0)
-        }
-        if session.keyAvailable {
-            Text("Says the whole clip again in one voice and lip syncs it. Sends the clip's new words to ElevenLabs and its video to fal.ai with your keys.")
-                .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary")).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    @ViewBuilder private var full: some View {
         header
+        Text("How should it sound?").font(VCType.callout.font(.semibold))
+        option(whole: false, title: "Only the changed phrases", price: quote?.patchUSD,
+               available: rewrite.changedPhrasesUnavailable == nil,
+               lines: [rewrite.changedPhrasesUnavailable ?? "\(phrases) in your voice · your recording stays"])
+        option(whole: true, title: "The whole take in your voice, lip-synced", price: quote?.wholeUSD,
+               available: rewrite.wholeClipUnavailable == nil, lines: wholeLines)
+        if session.wholeSelected, rewrite.wholeClipUnavailable == nil, let quote {
+            let seconds = WholeClipRevoiceSession.clock(quote.clipSeconds)
+            Text("Sends the script to ElevenLabs, then \(seconds) of video and the new voice to fal.ai.")
+                .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+        }
+        cardButton(rewrite.wholeClipPrimary(), id: "wholeClipRevoice",
+                   title: session.wholeSelected ? "Revoice Whole Take" : "Make Takes",
+                   kind: .primary, unavailable: rewrite.wholeClipPrimaryUnavailable)
         if let reason = quote?.reason {
             VStack(alignment: .leading, spacing: 6) {
                 Text(WholeClipRevoice.callout(reason)).fixedSize(horizontal: false, vertical: true)
-                if let action = rewrite.wholeClipChipAction() {
-                    ExpressionFlow(spacing: VCTokens.spacingChipGap) {
-                        PanelButton(action: action, kind: .bordered)
-                        if let fewer = rewrite.changeFewerWordsAction() { PanelButton(action: fewer, kind: .bordered) }
-                    }
-                }
+                if let fewer = rewrite.changeFewerWordsAction() { PanelButton(action: fewer, kind: .bordered) }
             }
             .padding(8).frame(maxWidth: .infinity, alignment: .leading)
             .background(DesignValues.color("bg.muted"), in: RoundedRectangle(cornerRadius: 6))
         }
-        Text("How should it sound?").font(VCType.callout.font(.semibold))
-        option(whole: false, title: "Only the changed phrases", price: quote?.patchUSD,
-               lines: ["Your recording stays. \(phrases) in your voice, joined to it."])
-        option(whole: true, title: "The whole clip in one voice, with lip sync", price: quote?.wholeUSD, lines: wholeLines)
-        if let primary = rewrite.wholeClipPrimary() { PanelButton(action: primary, kind: .primary) }
     }
 
     private var phrases: String { (quote?.phrases ?? 0) == 1 ? "1 phrase" : "\(quote?.phrases ?? 0) phrases" }
 
     private var wholeLines: [String] {
-        guard let quote else { return [] }
-        let voice = quote.voiceName + (quote.voiceNote.isEmpty ? "" : " (\(quote.voiceNote))")
+        if let reason = rewrite.wholeClipUnavailable { return [reason] }
+        guard let quote else { return ["One voice for all your words, as edited."] }
         let seconds = WholeClipRevoiceSession.clock(quote.clipSeconds)
-        let sends = "Sends the clip's new words to ElevenLabs (\(quote.voiceUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), and its \(seconds) of video with the new audio to fal.ai \(WholeClipRevoice.Lipsync.standard.name) (\(quote.lipsyncUSD.map(VoiceLabCostPresentation.format) ?? "price unknown")), with your keys. Exports say “\(WholeClipRevoice.disclosureLine)”"
-        return ["All \(seconds) said again in \(voice), fitted to the clip's length, then lip synced. No seams.", sends]
+        let voice = quote.voicePassUSD.map(VoiceLabCostPresentation.format) ?? "price unknown"
+        let lip = quote.lipsyncUSD.map(VoiceLabCostPresentation.format) ?? "price unknown"
+        return ["One voice for all \(seconds), no seams · voice \(voice) + lip sync \(lip)"]
     }
 
-    private func option(whole: Bool, title: String, price: Decimal?, lines: [String]) -> some View {
-        Button { session.wholeSelected = whole } label: {
+    private func option(whole: Bool, title: String, price: Decimal?, available: Bool = true, lines: [String]) -> some View {
+        Button { rewrite.selectWholeClipMode(whole) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: session.wholeSelected == whole ? "largecircle.fill.circle" : "circle")
                     .foregroundStyle(DesignValues.color(session.wholeSelected == whole ? "tint.default" : "text.tertiary"))
@@ -111,12 +134,15 @@ import VoxClipCore
                     HStack(alignment: .firstTextBaseline) {
                         Text(title).font(VCType.callout.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
                         Spacer(minLength: 8)
-                        Text(price.map(VoiceLabCostPresentation.format) ?? "Get Price").monospacedDigit()
-                            .foregroundStyle(DesignValues.color("text.primary"))
+                        if available {
+                            Text(price.map(VoiceLabCostPresentation.format) ?? "Get Price").monospacedDigit()
+                                .foregroundStyle(DesignValues.color("text.primary"))
+                        }
                     }
                     ForEach(lines, id: \.self) { line in
                         Text(line).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                             .fixedSize(horizontal: false, vertical: true)
+                            .columnLayoutEvidence(whole ? "voice.wholeTake.option.line" : "voice.changedPhrases.option.line", text: line)
                     }
                 }
             }
@@ -125,8 +151,59 @@ import VoxClipCore
             .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(DesignValues.color(session.wholeSelected == whole ? "tint.default" : "line.default"), lineWidth: 1) }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(title + (price.map { ", " + VoiceLabCostPresentation.format($0) } ?? ""))
+        .opacity(available ? 1 : 0.55)
+        .disabled(!available)
+        .accessibilityLabel(([title] + (available ? price.map { [VoiceLabCostPresentation.format($0)] } ?? [] : lines)).joined(separator: ", "))
         .accessibilityAddTraits(session.wholeSelected == whole ? .isSelected : [])
+    }
+
+    @ViewBuilder private func used(_ record: WholeClipRevoiceRecord) -> some View {
+        header
+        VStack(alignment: .leading, spacing: 4) {
+            Text("✓ Whole take in your voice, lip-synced").font(VCType.callout.font(.semibold))
+            Text(usedDetails(record)).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+            Button("Play It") { rewrite.playUsedWholeClip(original: false) }
+            Button("Compare with Your Recording") { rewrite.playUsedWholeClip(original: true) }
+        }
+        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignValues.color("bg.muted"), in: RoundedRectangle(cornerRadius: 6))
+        ExpressionFlow(spacing: VCTokens.spacingChipGap) {
+            cardButton(rewrite.wholeClipPrimary(), id: "wholeClipRevoice", title: "Redo Voice and Lip Sync",
+                       kind: .bordered, unavailable: rewrite.wholeClipPrimaryUnavailable)
+            cardButton(rewrite.wholeClipLipRedo(), id: "wholeClipLipRedo", title: "Redo Lip Sync Only",
+                       kind: .bordered, unavailable: rewrite.wholeClipLipRedoUnavailable)
+            let back = rewrite.backToMyRecordingUnavailable
+            let restore = back == nil ? PanelAction(id: "wholeClipBackToRecording", title: "Back to My Recording") {
+                rewrite.backToMyRecording()
+            } : nil
+            cardButton(restore, id: "wholeClipBackToRecording", title: "Back to My Recording", kind: .bordered,
+                       unavailable: back ?? "Your recording isn’t available.")
+        }
+        Text("Redo makes a new version. The one you have stays until you click Use on the new one.")
+            .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+    }
+
+    private func usedDetails(_ record: WholeClipRevoiceRecord) -> String {
+        let spent = record.usd.map { VoiceLabCostPresentation.format(Decimal($0)) + " spent" }
+        let used = "used " + record.createdAt.formatted(date: .abbreviated, time: .shortened)
+        let model = WholeClipRevoice.Lipsync(rawValue: record.lipsyncModel)?.name ?? record.lipsyncModel
+        return [model, spent, used].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    @ViewBuilder private func cardButton(_ action: PanelAction?, id: String, title: String, kind: PanelButton.Kind,
+                                        unavailable: @autoclosure () -> String) -> some View {
+        if let action {
+            PanelButton(action: action, kind: kind)
+        } else {
+            let reason = unavailable()
+            VStack(alignment: .leading, spacing: 4) {
+                Button {} label: { Text(title).modifier(PanelButtonEvidence(id: id, title: title)) }
+                    .disabled(true).accessibilityHint(reason)
+                Text(reason).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .columnLayoutEvidence("voice.action.reason.\(id)", text: reason)
+            }
+        }
     }
 
     @ViewBuilder private var running: some View {
@@ -212,14 +289,9 @@ import VoxClipCore
             Text(WholeClipRevoiceCardLines.matchLine(match, voice: rewrite.wholeClipAnchorName)).font(VCType.small.font())
                 .foregroundStyle(DesignValues.color("text.secondary")).fixedSize(horizontal: false, vertical: true)
         }
-        if let note = session.upgradeNote {
-            Text(note).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true)
-        }
-        if let upgrade = rewrite.wholeClipUpgradeAction() {
-            PanelButton(action: upgrade, kind: .bordered)
-        }
         HStack {
-            Text("Undo keeps your original audio and video.").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+            Text(rewrite.usedWholeClip == nil ? "Undo keeps your original audio and video." : "Undo keeps the earlier version.")
+                .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
             Spacer()
             PanelButton(action: PanelAction(id: "wholeClipUndo", title: "Undo") { [weak rewrite] in rewrite?.discardWholeClip() }, kind: .bordered)
             PanelButton(action: PanelAction(id: "wholeClipUse", title: "Use Whole Clip") { [weak rewrite] in rewrite?.useWholeClip() }, kind: .primary)
@@ -234,6 +306,7 @@ import VoxClipCore
             Text(restored).fixedSize(horizontal: false, vertical: true)
                 .columnLayoutEvidence("director.wholeClip.restored", text: restored)
         }
+        if rewrite.canPlaySavedWholeClipVoice { SavedVoicePreview(rewrite: rewrite) }
         if session.voice != nil, !session.stoppedForInputs {
             Text("Your whole-clip voice take is kept in this session. Switching to changed phrases gives up this take and starts a separate voice workflow.")
                 .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
@@ -249,7 +322,7 @@ import VoxClipCore
 
     private var evidence: String {
         switch session.phase {
-        case .choose: "choose"
+        case .choose: rewrite.wholeClipUnavailable.map { "choose: " + $0 } ?? "choose"
         case .running: "running"
         case .review: "review"
         case .used: "used"

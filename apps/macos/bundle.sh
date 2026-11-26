@@ -11,7 +11,8 @@ BUNDLE_ID="com.voxconvo.voxclip"
 INFO_PLIST="Sources/VoxClip/Info.plist"
 ASSET_CATALOG="Resources/Assets.xcassets"
 ENTITLEMENTS="VoxClip.entitlements"
-DIST="$PWD/dist"
+# VOXCLIP_DIST_DIR builds elsewhere, so a running copy in dist/ is never replaced under it.
+DIST="${VOXCLIP_DIST_DIR:-$PWD/dist}"
 APP_BUNDLE="$DIST/VoxClip.app"
 DMG="$DIST/VoxClip-macOS.dmg"
 ZIP="$DIST/VoxClip-macOS.zip"
@@ -128,6 +129,9 @@ if [ "$MODE" = upload-only ]; then
 fi
 if [ "$MODE" = release ]; then
     release_preflight
+    if [ "$ALLOW_DIRTY" = true ]; then
+        DMG="$DIST/VoxClip-macOS-$VERSION-${BUILD_COMMIT:0:9}.dmg"
+    fi
 fi
 [ "$(uname -m)" = arm64 ] || die "Build on Apple silicon; v1 ships arm64 only."
 # Debug and profile builds are ad-hoc signed; every other build mode needs the Developer ID.

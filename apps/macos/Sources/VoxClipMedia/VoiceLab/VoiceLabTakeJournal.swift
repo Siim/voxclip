@@ -16,12 +16,14 @@ public struct VoiceLabTakeJournalKey: Sendable, Hashable {
     public let previousText: String
     public let nextText: String
     public let pace: Double
+    public let redoVersion: String?
 
     public init(recordID: String, voiceID: String, modelID: String, language: String, requestText: String,
-                previousText: String, nextText: String, pace: Double?) {
+                previousText: String, nextText: String, pace: Double?, redoVersion: String? = nil) {
         self.recordID = recordID; self.voiceID = voiceID; self.modelID = modelID; self.language = language
         self.requestText = requestText; self.previousText = previousText; self.nextText = nextText
         self.pace = VoiceLabPace.rounded(pace)
+        self.redoVersion = redoVersion
     }
 
     /// The key of `input`'s take `take` in the clone `voiceID`.
@@ -29,7 +31,7 @@ public struct VoiceLabTakeJournalKey: Sendable, Hashable {
         let options = input.options(take: take)
         self.init(recordID: input.recordID, voiceID: voiceID, modelID: input.modelID, language: input.language,
                   requestText: input.requestText, previousText: options.previousText ?? "", nextText: options.nextText ?? "",
-                  pace: options.pace)
+                  pace: options.pace, redoVersion: input.redoVersion)
     }
 }
 
@@ -110,6 +112,7 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
     /// The synthesis request's quoted price in US dollars, as a decimal string; nil when it was unknown.
     public let estimateUSD: String?
     public let createdAt: Date
+    public let redoVersion: String?
 
     public init(assetFile: String, assetSha256: String, requestID: UUID, providerRequestID: String?, key: VoiceLabTakeJournalKey,
                 seed: UInt32, sampleRate: Int, frames: Int, alignment: Alignment?, checks: Checks? = nil, receipt: Receipt,
@@ -123,16 +126,20 @@ public struct VoiceLabTakeJournalEntry: Codable, Sendable, Equatable {
         self.checks = checks; self.receipt = receipt
         self.estimateUSD = estimateUSD.map { NSDecimalNumber(decimal: $0).stringValue }
         self.createdAt = createdAt
+        redoVersion = key.redoVersion
     }
 
     public var key: VoiceLabTakeJournalKey {
         VoiceLabTakeJournalKey(recordID: recordID, voiceID: voiceID, modelID: modelID, language: language, requestText: requestText,
-                               previousText: previousText, nextText: nextText, pace: pace)
+                               previousText: previousText, nextText: nextText, pace: pace, redoVersion: redoVersion)
     }
     /// The asset's ID, the journal file's name.
     public var assetID: String { String((assetFile.split(separator: "/").last ?? "").dropLast(".wav".count)) }
     /// False once a check failed in a way the same audio repeats (`Checks.hardFailures`).
     public var adoptable: Bool { checks?.hardFailures.isEmpty ?? true }
+    public var adoptableForSelectedVoice: Bool {
+        adoptable || (checks?.hardFailures == [VoiceLabTakeQAFailure.speaker.rawValue] && checks?.words != .failed)
+    }
     var timing: [VoiceLabCharacterTiming]? {
         alignment.map { $0.characters.map { VoiceLabCharacterTiming(character: $0.character, start: $0.start, end: $0.end) } }
     }
@@ -194,14 +201,28 @@ public enum VoiceLabTakeJournal {
         (try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { takes in entries(takes, projectID: projectID) }) ?? []
     }
 
-    /// The newest adoptable entry over `key` (no check failed it) whose asset is still there with its frame count and
+    /// The newest entry over `key` that meets the flow's adoption rules and still has its frame count and
     /// SHA-256, leaving out the asset files in `claimed` (already taken by a live run); nil when none.
     public static func match(_ key: VoiceLabTakeJournalKey, projectID: String, paidRoot: URL,
-                             excluding claimed: Set<String> = []) -> VoiceLabTakeJournalEntry? {
+                             excluding claimed: Set<String> = [], forSelectedVoice: Bool = false) -> VoiceLabTakeJournalEntry? {
         let candidates = list(projectID: projectID, paidRoot: paidRoot)
-            .filter { $0.key == key && $0.adoptable && !claimed.contains($0.assetFile) && $0.sampleRate == 24_000 }
+            .filter { $0.key == key && (forSelectedVoice ? $0.adoptableForSelectedVoice : $0.adoptable)
+                && !claimed.contains($0.assetFile) && $0.sampleRate == 24_000 }
             .sorted { $0.createdAt == $1.createdAt ? $0.assetFile > $1.assetFile : $0.createdAt > $1.createdAt }
         return candidates.first { (try? pcm(of: $0, projectID: projectID, paidRoot: paidRoot)) != nil }
+    }
+
+    package static func previewAdoptions(_ keys: [VoiceLabTakeJournalKey], projectID: String, paidRoot: URL) -> Set<Int> {
+        var excluded = VoiceLabTakeJournalClaims.shared.claimed(under: paidRoot, except: nil)
+        var matched = Set<Int>()
+        for (index, key) in keys.enumerated() {
+            guard !Task.isCancelled else { return [] }
+            if let entry = match(key, projectID: projectID, paidRoot: paidRoot, excluding: excluded, forSelectedVoice: true) {
+                excluded.insert(entry.assetFile)
+                matched.insert(index)
+            }
+        }
+        return matched
     }
 
     /// Drops the entry of `assetID`; its asset stays.
@@ -270,6 +291,12 @@ public enum VoiceLabTakeJournal {
     /// The asset's PCM, when the file is a regular file of this user holding exactly the canonical mono PCM16 header for the
     /// entry's frames and rate, then the frames, and its SHA-256 is the entry's.
     private static func pcm(of entry: VoiceLabTakeJournalEntry, projectID: String, paidRoot: URL) throws -> Data {
+        let wave = try verifiedWave(of: entry, projectID: projectID, paidRoot: paidRoot)
+        return wave.subdata(in: 44..<wave.count)
+    }
+
+    package static func verifiedWave(of entry: VoiceLabTakeJournalEntry, projectID: String, paidRoot: URL) throws -> Data {
+        try validate(entry, projectID: projectID)
         let root = try VoiceLabPaidRoot.open(paidRoot)
         defer { Darwin.close(root) }
         let project = openat(root, projectID, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -287,7 +314,7 @@ public enum VoiceLabTakeJournal {
               bytes.prefix(44) == VoiceLabAssetStore.wavHeader(frames: entry.frames, sampleRate: entry.sampleRate) else {
             throw VoiceLabAssetError.altered(entry.assetFile)
         }
-        return bytes.subdata(in: 44..<bytes.count)
+        return bytes
     }
 
     private static func entries(_ takes: Int32, projectID: String) -> [VoiceLabTakeJournalEntry] {
@@ -373,7 +400,7 @@ final class VoiceLabTakeJournalClaims: Sendable {
         owners.withLock { owners in owners = owners.filter { $0.value != owner } }
     }
     /// The asset files under `paidRoot` that runs other than `owner` hold.
-    func claimed(under paidRoot: URL, except owner: UUID) -> Set<String> {
+    func claimed(under paidRoot: URL, except owner: UUID?) -> Set<String> {
         let prefix = paidRoot.standardizedFileURL.path + "/"
         return owners.withLock { owners in
             Set(owners.compactMap { $0.value != owner && $0.key.hasPrefix(prefix) ? String($0.key.dropFirst(prefix.count)) : nil })

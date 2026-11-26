@@ -446,6 +446,16 @@ import Testing
         print("Candidate selection parity: \(accepted) accepted, \(refused) refused; no reverse gap")
     }
 
+    @Test func selectedVoiceRoundTripsWithoutAFalseSpeakerMeasurement() throws {
+        let project = try fixture("selected-voice-render-v3")
+        let reopened = try ProjectJSON.decode(ProjectJSON.encode(project))
+        let prepared = try VoiceLabRenderContract.prepare(reopened, scope: .full, labelPosition: .topRight)
+        let qa = try #require(prepared.selectedSegmentRecipes.first?.recipe.qa)
+        #expect(qa.outputSpeakerCheckSkipped == true)
+        #expect(qa.speakerScore == nil && qa.speakerThreshold == nil && qa.speakerModel == nil && qa.speakerPassed == nil)
+        #expect(qa.shortSpeech == nil)
+    }
+
     @Test func halfUpAndRequestBinding() throws {
         let cases = try JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/render-cases.json")) as! [String: [String: Any]]
         let vector = cases["sample-grid-half-up"]!
@@ -469,7 +479,7 @@ import Testing
         project.voiceLab.segments[0].audio.assetId = "missing"
         #expect(throws: VoiceLabProjectError.danglingAsset) { try VoiceLabProject.validate(project) }
         var future = try #require(JSONSerialization.jsonObject(with: ProjectJSON.encode(fixture())) as? [String: Any])
-        future["schemaVersion"] = 5
+        future["schemaVersion"] = 7
         #expect(throws: VoxClipError.projectTooNew) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: future)) }
         var extended = try fixture(); extended.extensions = ["example.keep": .object(["value": .number(7)])]
         #expect(try ProjectJSON.decode(ProjectJSON.encode(extended)).extensions == extended.extensions)

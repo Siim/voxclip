@@ -138,6 +138,32 @@ func verifyVoiceCallerAudio(_ output: URL, expected: VoiceLabOutputPlan) async t
 extension HeavyMediaTests {
 @Suite("voice-lab-callers", .serialized, .offlineFixtures)
 struct VoiceLabCallerTests {
+    @Test(.timeLimit(.minutes(2))) func editableTimelinePublishesReviewedVoiceAsSeparateAudio() async throws {
+        let directory = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let project = try await voiceCallerFixture(in: directory)
+        let input = directory.appendingPathComponent("caller.voxclip")
+        let output = directory.appendingPathComponent("reviewed.fcpxml")
+        let result = try runCLI(["--open", input.path, "--clip", "included", "--format", "fcpxml", "--export", output.path, "--json"],
+            directory: directory, timeout: 60)
+        try #require(result.status == 0, "CLI exit \(result.status): \(String(decoding: result.stdout, as: UTF8.self)) \(result.stderr)")
+        let xml = try XMLDocument(contentsOf: output)
+        if let dtdPath = ProcessInfo.processInfo.environment["VOXCLIP_FCPXML_DTD"] {
+            xml.dtd = try XMLDTD(contentsOf: URL(fileURLWithPath: dtdPath))
+            xml.dtd?.name = "fcpxml"
+            try xml.validate()
+        }
+        let audio = try xml.nodes(forXPath: "//audio[@role='dialogue']/@ref").compactMap(\.stringValue)
+        #expect(!audio.isEmpty && Set(audio) == ["rendered-voice"])
+        #expect(try xml.nodes(forXPath: "//asset-clip[@srcEnable='video']").count > 0)
+        let uri = try #require(xml.nodes(forXPath: "//asset[@id='rendered-voice']/media-rep/@src").first?.stringValue)
+        let voiceURL = try #require(URL(string: uri))
+        #expect(voiceURL.deletingLastPathComponent().standardizedFileURL == output.deletingLastPathComponent().standardizedFileURL)
+        let voice = try await AVMediaProbe().probe(voiceURL)
+        let expected = try VoiceLabOutputPlanner.build(project, scope: .clip("included"))
+        #expect(voice.audio != nil && abs(voice.durationSeconds - expected.duration) < 0.04)
+    }
+
     @Test(.timeLimit(.minutes(3)), arguments: ["full", "clip", "off", "dormant-cuts", "source-only"])
     func cliExportsReviewedRecipe(_ route: String) async throws {
         let directory = try cliDirectory()

@@ -2,8 +2,92 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Editing;
 
+internal readonly record struct SourceMapEntry(MediaInterval Source, long OutputStart, long OutputEnd);
+
 internal static class EditingPlanner
 {
+    internal static SourceMapEntry[] SourceIndex(IReadOnlyList<MediaInterval> kept)
+    {
+        long output = 0;
+        return kept.Select(span => new SourceMapEntry(span, output, output += span.EndSample - span.StartSample))
+            .OrderBy(entry => entry.Source.StartSample).ToArray();
+    }
+
+    internal static int FindSource<T>(IReadOnlyList<T> entries, long sample, Func<T, long> start)
+    {
+        var lower = 0;
+        var upper = entries.Count;
+        while (lower < upper)
+        {
+            var middle = lower + (upper - lower) / 2;
+            if (start(entries[middle]) <= sample) lower = middle + 1; else upper = middle;
+        }
+        return lower - 1;
+    }
+
+    internal static IEnumerable<ClipRange> SinglePartClips(ClipRange clip) => clip.PlayParts.Select((part, index) => clip with
+    {
+        StartWordId = part.StartWordId, EndWordId = part.EndWordId, Parts = null, Kind = null,
+        LeadInSeconds = index == 0 ? clip.LeadInSeconds : null
+    });
+
+    internal static EditPlan BuildStoryPlan(EditState state, ClipRange clip, double duration, double rate)
+    {
+        if (clip.Parts is null || !StoryClips.Valid(clip, state.Transcript.Words))
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Invalid story clip parts or source hull.");
+        var plans = SinglePartClips(clip).Select(part => EditingEngine.BuildPlan(state with { Clips = [part], ActiveClipId = part.Id }, duration, rate)).ToArray();
+        var kept = new List<MediaInterval>();
+        var seams = new List<long>();
+        long output = 0;
+        foreach (var plan in plans.Where(plan => plan.Kept.Count > 0))
+        {
+            if (output > 0) seams.Add(output);
+            kept.AddRange(plan.Kept);
+            output += plan.OutputSamples;
+        }
+        var sorted = kept.OrderBy(span => span.StartSample).ToArray();
+        if (sorted.Zip(sorted.Skip(1)).Any(pair => pair.First.EndSample > pair.Second.StartSample))
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Story parts overlap on the source sample grid.");
+        return new EditPlan(rate, plans[0].TotalSamples, Complement(sorted, plans[0].TotalSamples), kept, output, []) { PartSeams = seams };
+    }
+
+    private static MediaInterval[] Complement(IEnumerable<MediaInterval> ordered, long total)
+    {
+        var cuts = new List<MediaInterval>();
+        long cursor = 0;
+        foreach (var span in ordered)
+        {
+            if (cursor < span.StartSample) cuts.Add(new(cursor, span.StartSample));
+            cursor = span.EndSample;
+        }
+        if (cursor < total) cuts.Add(new(cursor, total));
+        return cuts.ToArray();
+    }
+
+    internal static IReadOnlyList<CaptionWord> StoryCaptions(IReadOnlyList<EditSegment> segments, EditPlan plan)
+    {
+        var result = new List<CaptionWord>();
+        long offset = 0, position = 0;
+        var index = 0;
+        foreach (var end in plan.PartSeams.Append(plan.OutputSamples))
+        {
+            var kept = new List<MediaInterval>();
+            while (index < plan.Kept.Count && position < end)
+            {
+                var span = plan.Kept[index++];
+                kept.Add(span);
+                position += span.EndSample - span.StartSample;
+            }
+            var part = new EditPlan(plan.SampleRate, plan.TotalSamples, Complement(kept, plan.TotalSamples), kept, position - offset, []);
+            result.AddRange(ShiftCaptions(EditingEngine.CaptionCopy(segments, part), offset, plan.SampleRate, result.Count > 0));
+            offset = end;
+        }
+        return result;
+    }
+
+    internal static IEnumerable<CaptionWord> ShiftCaptions(IReadOnlyList<CaptionWord> captions, long offset, double rate, bool startsPart) =>
+        captions.Select((word, index) => word with { Start = word.Start + offset / rate, End = word.End + offset / rate,
+            StartsPart = index == 0 && startsPart ? true : word.StartsPart });
     internal static bool Valid(EditSegment segment) => double.IsFinite(segment.Start) && double.IsFinite(segment.End) && segment.End > segment.Start;
 
     internal static TimeRange CutRange(IReadOnlyList<EditSegment> segments, int index, double duration, double pauseKeep)

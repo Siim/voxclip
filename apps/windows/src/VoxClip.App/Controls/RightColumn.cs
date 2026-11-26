@@ -78,6 +78,18 @@ internal sealed class RightColumn : Grid
         rewrite = panel;
         ShowDirector();
     }
+    /// <summary>Brings the open Rewrite's own panel forward so it can ask its question (another Rewrite asked for over its paid
+    /// takes). A job open in its place closes first when it may; one that stays keeps the column, and the Rewrite and its takes are
+    /// never closed for it (unlike <see cref="ShowRewrite"/>, whose refused panel is a new one). False when it can't come forward.</summary>
+    internal bool RevealRewrite(RewritePanel panel)
+    {
+        if (!ReferenceEquals(rewrite, panel) || !CloseJob()) return false;
+        ShowDirector();
+        return true;
+    }
+    /// <summary>The label of the job that holds the column ("Export", "Find clips"), which the user finishes or closes to see Rewrite
+    /// again; null when none is open.</summary>
+    internal string? HeldJobLabel => job?.JobLabel;
     internal void CloseRewrite()
     {
         rewrite = null;
@@ -97,18 +109,22 @@ internal sealed class RightColumn : Grid
     }
     private void ShowVoice()
     {
-        if (!App.Services.VoiceLabEnabled || !CloseJob()) return;
-        director.Show(new DirectorVoiceSteps()); surface.Child = director; heading.Text = "Voice"; RefreshHeader();
+        if ((!App.Services.VoiceLabEnabled && !captions.Editor.IsStoryClip) || !CloseJob()) return;
+        director.Show(new DirectorVoiceSteps(captions.Editor)); surface.Child = director; heading.Text = "Voice"; RefreshHeader();
     }
     private void EditorChanged(object? sender, EventArgs args)
     {
-        if (!App.Services.VoiceLabEnabled && heading.Text == "Voice") ShowCaptions();
+        if (heading.Text == "Voice")
+        {
+            if (!App.Services.VoiceLabEnabled && !captions.Editor.IsStoryClip) ShowCaptions();
+            else if (director.Content is DirectorVoiceSteps voice && voice.ShowsStory != captions.Editor.IsStoryClip) ShowVoice();
+        }
         RefreshHeader();
     }
     private void RefreshHeader()
     {
         rewriteTab.IsEnabled = rewrite?.IsSessionOpen == true;
-        voiceTab.Visibility = App.Services.VoiceLabEnabled ? Visibility.Visible : Visibility.Collapsed;
+        voiceTab.Visibility = App.Services.VoiceLabEnabled || captions.Editor.IsStoryClip ? Visibility.Visible : Visibility.Collapsed;
         context.Text = captions.Editor.Project.Edits.ActiveClipId is { } id
             ? "Clip " + captions.Editor.Clips.FirstOrDefault(clip => clip.Id == id)?.Number : "Full Take";
     }

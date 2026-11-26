@@ -159,6 +159,7 @@ import VoxClipCore
     let service: DesktopReviewServiceProbe
     let capture: ContextDemoCaptureService
     let recorder: ContextDemoLocalRecorder
+    let permissions = ContextDemoPermissionProbe()
     let clock: DesktopReviewClock
     let events: DesktopReviewEvents
     let root: URL
@@ -177,7 +178,7 @@ import VoxClipCore
         capture = ContextDemoCaptureService(backend: native, inspector: DesktopReviewInspector(), timing: clock,
             store: ContextDemoAssetStore(rootURL: root))
         recorder = ContextDemoLocalRecorder(capture: capture, desktopReview: review)
-        session = ContextDemoSession(model: model, backend: recorder, desktopReview: review)
+        session = ContextDemoSession(model: model, backend: recorder, permissions: permissions, desktopReview: review)
         model.contextDemoSession = session
         undo.groupsByEvent = false
         model.undoManager = undo
@@ -193,13 +194,11 @@ import VoxClipCore
     }
     func selectWindow() async throws {
         session.chooseKind(.desktopApp)
-        session.checkCaptureAccess()
         session.refreshWindows()
         try await eventually { !self.session.loadingWindows }
         session.chooseWindow(42)
     }
     func inspect() {
-        session.checkDesktopAccess()
         session.inspectDesktopWindow()
     }
     func ready() async throws {
@@ -239,24 +238,43 @@ struct ContextDemoDesktopReviewTests {
         defer { fixture.close() }
         #expect(fixture.driver.accessChecks == 0 && fixture.driver.inspections.isEmpty)
         try await fixture.selectWindow()
-        fixture.session.inspectDesktopWindow()
         #expect(fixture.driver.accessChecks == 0 && fixture.driver.inspections.isEmpty)
-        fixture.session.checkDesktopAccess()
-        #expect(fixture.driver.accessChecks == 1 && fixture.driver.inspections.isEmpty)
         fixture.session.inspectDesktopWindow()
         let target = try #require(fixture.session.selectedWindow)
         #expect(fixture.driver.inspections == [ContextDemoDesktopIdentity(window: target.binding, processLaunchDate: target.processLaunchDate)])
         #expect(fixture.driver.performed.isEmpty && fixture.native.begins == 0 && fixture.service.approvals.isEmpty)
     }
 
+    @Test func inspectRequestsAccessibilityOnceThenResumesWithoutRunningActions() async throws {
+        let fixture = try await open()
+        defer { fixture.close() }
+        try await fixture.selectWindow()
+        fixture.permissions.states[.accessibility] = .notAsked
+
+        fixture.inspect()
+        fixture.inspect()
+        fixture.session.becameActive()
+        #expect(fixture.permissions.requests == [.accessibility])
+        #expect(!fixture.session.canInspectDesktopWindow && fixture.driver.inspections.isEmpty)
+        #expect(fixture.session.permissionNotice?.title == "Open Accessibility Settings")
+        #expect(fixture.session.permissionNotice?.url == fixture.permissions.settingsURL(for: .accessibility))
+
+        fixture.permissions.states[.accessibility] = .granted
+        fixture.session.becameActive()
+        fixture.session.becameActive()
+        #expect(fixture.session.permissionNotice == nil && fixture.review.snapshot != nil)
+        #expect(fixture.driver.inspections.count == 1 && fixture.driver.performed.isEmpty)
+        #expect(fixture.service.approvals.isEmpty && fixture.native.begins == 0)
+    }
+
     @Test func deniedAccessNeverInspectsOrBlocksManualReview() async throws {
         let fixture = try await open()
         defer { fixture.close() }
         try await fixture.selectWindow()
-        fixture.driver.access = .accessibilityPermissionRequired
+        fixture.permissions.states[.accessibility] = .denied
         fixture.inspect()
-        #expect(!fixture.review.canInspect && fixture.driver.inspections.isEmpty)
-        #expect(fixture.review.message?.contains("No prompt") == true)
+        #expect(fixture.permissions.requests.isEmpty && fixture.driver.inspections.isEmpty)
+        #expect(!fixture.session.canInspectDesktopWindow && fixture.session.permissionNotice?.title == "Open Accessibility Settings")
         fixture.session.review()
         try await fixture.eventually { fixture.session.phase == .ready }
         #expect(fixture.service.approvals.isEmpty && fixture.native.begins == 0)

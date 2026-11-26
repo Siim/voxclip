@@ -246,6 +246,18 @@ func cliDirectory() throws -> URL {
     return directory
 }
 
+@Test(arguments: [
+    (["--with-music"], "--with-music requires --audio-out."),
+    (["--music", "bed", "--music-file", "bed.wav"], "Use either --music or --music-file, not both.")
+])
+func musicFlagsRejectInvalidCombinationsBeforeOpeningInput(flags: [String], message: String) throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let result = try runCLI(["export", "--open", "missing.mp4", "--export", "unused.mp4", "--json"] + flags, directory: directory)
+    #expect(result.status == 2)
+    #expect(try (result.json["error"] as? [String: Any])?["message"] as? String == message)
+}
+
 private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdits = ProjectEdits()) async throws -> Project {
     let probe = try await AVMediaProbe().probe(source)
     let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
@@ -257,6 +269,30 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test(.timeLimit(.minutes(1))) func cliExportsStoryClipCaptionsInPartOrder() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+    let source = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/fillers-chirp.mp4")
+    var clip = try #require(fixture.edits.clips.first)
+    clip.parts = clip.playParts + [.init(id: "third", startWordId: "w4", endWordId: "w5")]
+    let project = try await cliProject(source: source, transcript: fixture.transcript, edits: .init(clips: [clip]))
+    let input = directory.appendingPathComponent("story.voxclip")
+    let output = directory.appendingPathComponent("story.mp4")
+    let srt = directory.appendingPathComponent("story.srt")
+    try await JSONProjectStore(appVersion: "9.8.7").save(project, to: input)
+    let invocation = try runCLI(["export", "--open", input.path, "--clip", clip.id, "--export", output.path,
+        "--srt", srt.path, "--style", "vox-bold", "--loudness", "off", "--json", "--quiet"], directory: directory)
+    try #require(invocation.status == 0, "CLI exit \(invocation.status): \(invocation.stderr)")
+    let cues = try String(contentsOf: srt, encoding: .utf8).components(separatedBy: "\n\n")
+        .compactMap { cue -> String? in
+            let lines = cue.split(separator: "\n")
+            return lines.count >= 3 ? lines.dropFirst(2).joined(separator: " ") : nil
+        }
+    #expect(cues.joined(separator: " ") == "uh the So um, we ship")
+    #expect(!cues.contains { $0.contains("the So") || $0.contains("um, we") })
+}
+
 @Test(.timeLimit(.minutes(1)), arguments: ["clip", "range", "stored", "media"])
 func cliSelectsExportScopeBeforeCuttingFillers(_ scope: String) async throws {
     let directory = try cliDirectory()

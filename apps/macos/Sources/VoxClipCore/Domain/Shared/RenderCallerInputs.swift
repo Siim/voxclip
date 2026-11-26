@@ -1,7 +1,28 @@
 import Foundation
 
 public enum RenderCallerInputs {
+    static func scopedAnchors(project: Project, clipID: String?) -> ((Double) -> Bool)? {
+        guard let clipID, let clip = project.edits.clips.first(where: { $0.id == clipID }),
+              let words = project.transcript?.words else { return nil }
+        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+        let parts = StoryClips.times(clip, words: words).map {
+            TimeRange(start: EditingPrimitives.jsRound($0.start * rate), end: EditingPrimitives.jsRound($0.end * rate))
+        }
+        return { seconds in
+            let sample = EditingPrimitives.jsRound(seconds * rate)
+            return parts.contains { $0.start <= sample && sample < $0.end }
+        }
+    }
+
     public static func timeline(project: Project, clipID: String? = nil) throws -> RenderTimeline {
+        if project.schemaVersion >= 3, project.transcript != nil {
+            let output = try VoiceLabOutputPlanner.build(project, scope: clipID.map(VoiceLabOutputScope.clip) ?? .full)
+            if output.requiresSyntheticRendering { return .voiceLab(output) }
+        }
+        return .legacy(try editPlan(project: project, clipID: clipID))
+    }
+
+    public static func editPlan(project: Project, clipID: String? = nil) throws -> EditPlan {
         let clip: ClipRange?
         if let clipID {
             guard let selected = project.edits.clips.first(where: { $0.id == clipID }) else {
@@ -21,12 +42,8 @@ public enum RenderCallerInputs {
                 throw VoiceLabProjectError.invalidScope
             }
             let total = Int64(totalSamples)
-            return .legacy(EditPlan(sampleRate: rate, totalSamples: total,
-                kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : []))
-        }
-        if project.schemaVersion >= 3 {
-            let output = try VoiceLabOutputPlanner.build(project, scope: clipID.map(VoiceLabOutputScope.clip) ?? .full)
-            if output.requiresSyntheticRendering { return .voiceLab(output) }
+            return EditPlan(sampleRate: rate, totalSamples: total,
+                kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
         }
         let edits = project.edits
         let state = EditState(transcript: transcript,
@@ -34,11 +51,12 @@ public enum RenderCallerInputs {
             pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
             cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds),
             corrections: edits.corrections, clips: edits.clips, activeClipId: clipID)
-        return .legacy(try EditPlan.build(transcript: transcript, editState: state, activeClip: clip,
-            duration: source.durationSeconds, sampleRate: rate))
+        return try EditPlan.build(transcript: transcript, editState: state, activeClip: clip,
+            duration: source.durationSeconds, sampleRate: rate)
     }
 
     public static func prepare(_ request: RenderRequest, project: Project, clipID: String?, dataRoot: URL,
+                               shared: SharedResources? = nil, resolveFootageURL: (URL) -> URL = { $0 },
                                reduceMotion: Bool = false,
                                isCancelled: @Sendable () -> Bool = { false }) throws -> RenderRequest {
         guard !isCancelled() else { throw CancellationError() }
@@ -51,8 +69,21 @@ public enum RenderCallerInputs {
         result.motionClipID = clipID
         result.motionCues = clipID.map { selected in project.motionCues.filter { $0.clipID == selected } } ?? []
         result.music = MusicRenderInput.resolve(project: project, clipId: clipID, dataRoot: dataRoot)
-        result.effects = ClipEffectsRenderInput.resolve(project: project, clipID: clipID, dataRoot: dataRoot, shared: try? SharedResources.locate())
+        result.effects = ClipEffectsRenderInput.resolve(project: project, clipID: clipID, dataRoot: dataRoot, shared: shared)
+        result.footage = []
+        if let clipID, let span = ClipControlsProject.sourceSpan(of: clipID, in: project) {
+            result.footage = project.media.footage.compactMap {
+                $0.renderInput(clipID: clipID, span: span, sources: project.media.additionalSources, resolveURL: resolveFootageURL)
+            }
+        }
         result.clipControls = ClipControlsProject.controls(for: clipID, in: project).flatMap { $0.isDefault ? nil : $0 }
+        result.partReframes = []
+        if let clipID, let words = project.transcript?.words,
+           let clip = project.edits.clips.first(where: { $0.id == clipID }), let parts = clip.parts {
+            result.partReframes = zip(StoryClips.times(clip, words: words), parts).compactMap { source, part in
+                part.reframe.map { StoryPartReframe(source: source, reframe: $0) }
+            }
+        }
         result.reduceMotion = request.forPreview && reduceMotion
         result.contextDemo = nil
         result.contextDemoRoot = nil
@@ -83,7 +114,7 @@ public enum RenderCallerInputs {
                 scope: scope, expectedRevision: document.revision, isCancelled: isCancelled)
             try prepared.verifyRenderedTimeline(request.timeline)
             result.contextDemo = prepared
-            result.contextDemoRoot = dataRoot.standardizedFileURL.resolvingSymlinksInPath()
+            result.contextDemoRoot = dataRoot.standardizedFileURL
         }
         guard !isCancelled() else { throw CancellationError() }
         return result

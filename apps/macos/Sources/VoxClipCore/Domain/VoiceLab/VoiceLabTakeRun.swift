@@ -26,6 +26,8 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public var pauseProfile: VoiceLabPauseProfile? = nil
     /// Set for a whole-clip revoice's parts: the take is laid out on the clip as edited.
     public var editedLayout: VoiceLabEditedLayout? = nil
+    package var redoVersion: String? = nil
+    public var checksGeneratedSpeaker: Bool
     public let contentKey: String
     /// The source frames the run reads, at `sourceSampleRate`.
     public let source: VoiceLabSourceExcerpt
@@ -43,17 +45,20 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
                 source: [Float], sourceSampleRate: Int, items: [TimedWord], cutWordIDs: Set<String> = [],
                 window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
-                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, hardJoinSmoothing: Bool = true, audioTags: [VoiceLabAudioTag] = []) {
+                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, hardJoinSmoothing: Bool = true,
+                audioTags: [VoiceLabAudioTag] = [], checksGeneratedSpeaker: Bool = true) {
         self.init(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
                   source: VoiceLabSourceExcerpt(whole: source), sourceEnvelope: VoiceLabTakeProcessing.envelope(source, sampleRate: sourceSampleRate),
                   sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs, window: window, incomingSilence: incomingSilence,
-                  outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn, providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags)
+                  outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn, providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing,
+                  audioTags: audioTags, checksGeneratedSpeaker: checksGeneratedSpeaker)
     }
     /// A source of any length, of which only `source`'s regions are held.
     public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
                 source: VoiceLabSourceExcerpt, sourceEnvelope: AudioEnvelope, sourceSampleRate: Int, items: [TimedWord],
                 cutWordIDs: Set<String> = [], window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
-                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, hardJoinSmoothing: Bool = true, audioTags: [VoiceLabAudioTag] = []) {
+                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, hardJoinSmoothing: Bool = true,
+                audioTags: [VoiceLabAudioTag] = [], checksGeneratedSpeaker: Bool = true) {
         self.audioTags = VoiceLabAudioTags.validated(audioTags, text: text)
         self.text = text; self.modelID = modelID; self.recordID = recordID; self.language = language; self.seed = seed
         self.contentKey = contentKey; self.source = source; self.sourceEnvelope = sourceEnvelope; self.sourceSampleRate = sourceSampleRate; self.items = items
@@ -61,32 +66,42 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         self.cleanAudioOn = cleanAudioOn; self.providerConsent = providerConsent
         self.pace = pace
         self.hardJoinSmoothing = hardJoinSmoothing
+        self.checksGeneratedSpeaker = checksGeneratedSpeaker
     }
     /// The same input on another speech model: a phrase's later takes can use a model the user picked after its first run.
     public func replacingModel(_ id: String) -> VoiceLabTakeInput {
         var input = VoiceLabTakeInput(text: text, modelID: id, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
-            providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags)
+            providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags,
+            checksGeneratedSpeaker: checksGeneratedSpeaker)
         input.pauseProfile = pauseProfile
         input.editedLayout = editedLayout
+        input.redoVersion = redoVersion
         return input
     }
     public func options(take: Int) -> VoiceLabSpeechOptions {
+        let context = Self.speechContext(items: items, cutWordIDs: cutWordIDs, window: window, sourceSampleRate: sourceSampleRate)
+        return VoiceLabSpeechOptions(seed: seed &+ UInt32(truncatingIfNeeded: take), previousText: context.previous, nextText: context.next, pace: pace)
+    }
+    package static func speechContext(items: [TimedWord], cutWordIDs: Set<String>, window: VoiceLabWindow,
+                                      sourceSampleRate: Int) -> (previous: String, next: String) {
         let kept = items.filter { $0.kind == .word && !cutWordIDs.contains($0.id) }
         // Before and after the window on the source grid (§10.1).
         let grid = VoiceLabSampleGrid(rate: Double(sourceSampleRate))
         let previous = kept.filter { grid.sample($0.end) <= Double(window.startSample) }.map(\.text).joined(separator: " ")
         let next = kept.filter { grid.sample($0.start) >= Double(window.endSample) }.map(\.text).joined(separator: " ")
-        return VoiceLabSpeechOptions(seed: seed &+ UInt32(truncatingIfNeeded: take), previousText: previous, nextText: next, pace: pace)
+        return (previous, next)
     }
     public func replacingPace(_ value: Double?) -> VoiceLabTakeInput {
         var input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
-            providerConsent: providerConsent, pace: value, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags)
+            providerConsent: providerConsent, pace: value, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags,
+            checksGeneratedSpeaker: checksGeneratedSpeaker)
         input.pauseProfile = pauseProfile
         input.editedLayout = editedLayout
+        input.redoVersion = redoVersion
         return input
     }
 }
@@ -358,7 +373,7 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     /// Passing voice copy depends on the whole row, including its independent words check.
     public var shortPhraseCopy: String? {
         switch voiceCheck {
-        case .perTake: return nil
+        case .perTake, .selectedVoice: return nil
         case .waiting: return "waiting for the voice check"
         case .shortSpeech(let evidence):
             guard evidence.valid else { return nil }

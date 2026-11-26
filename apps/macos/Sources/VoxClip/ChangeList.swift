@@ -185,9 +185,27 @@ extension RewriteSession {
             case .choose, .used: break
             }
         }
+        if let replacement = wholeClipReplacement, wholeClip?.phase != .used {
+            let undo = undoRevoiceAction(replacement)
+            let getPrice = showsVoiceLab && generation == nil && !wholeClipVoiceHunks.isEmpty
+                ? PanelAction(id: "makeTakes", title: "Get Price") { [weak self] in self?.makeTakes() }
+                : nil
+            if let card = wholeClipCard() {
+                return ProposalContent(set: set, headline: headline, cards: [card, .changes(set)],
+                    footer: PanelFooter(primary: undo), askAgain: askAgain)
+            }
+            let line = getPrice == nil ? RewriteReplacement.undoCopy : "The earlier revoice stays in your clip until you use the new one."
+            return ProposalContent(set: set, headline: headline, cards: [.text(line), .changes(set)],
+                footer: PanelFooter(link: getPrice == nil ? nil : undo, primary: getPrice ?? undo), askAgain: askAgain)
+        }
         guard !items.isEmpty else {
+            let voiceCards = wholeClipCard().map { [$0] } ?? []
+            if voicePanelAsEdited {
+                return ProposalContent(set: set, headline: PanelHeadline(text: "Voice"), cards: voiceCards,
+                                       footer: PanelFooter(), askAgain: nil)
+            }
             return ProposalContent(set: set, headline: headline,
-                                   cards: [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],
+                                   cards: voiceCards + [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],
                                    footer: PanelFooter(primary: askForSomethingElse), askAgain: askAgain)
         }
         var footer = proposalFooter(set)
@@ -253,7 +271,12 @@ extension RewriteSession {
         // A matching voice for this video (voice-lab §6.13): the one-time question, or what the video's voice is doing.
         if set.voiceCount > 0, let steps = videoVoiceSteps() { cards.insert(.nextSteps(steps), at: 0) }
         // "How should it sound?" (ADR-R46): once per clip, at the price step.
-        if set.voiceCount > 0, let card = wholeClipCard() { cards.insert(card, at: cards.firstIndex { if case .nextSteps(let steps) = $0 { steps.id == "videoVoice" } else { false } }.map { $0 + 1 } ?? 0) }
+        if let card = wholeClipCard() {
+            cards.insert(card, at: 0)
+            if wholeClip?.wholeSelected == false, footer.footer.primary?.id == pricedTakeAction()?.id {
+                footer.footer.primary = nil
+            }
+        }
         return ProposalContent(set: set, headline: headline, cards: cards, footer: footer.footer, askAgain: askAgain)
     }
 
@@ -392,6 +415,18 @@ extension RewriteSession {
                 return PanelFooter(note: note, link: all,
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
+            if autoFix.work == nil, let phrase = takePlan.phrases.first(where: {
+                !$0.leftOut && $0.selected?.row.selectable != true && takePlan.stoppedForRepeatedWords(phrase: $0.id)
+            }) {
+                let index = phrase.id
+                let action = ownWordsEditing == index
+                    ? PanelAction(id: "keepFailedWordsFooter.\(index)", title: "Keep Original Words") { [weak self] in
+                        self?.keepOriginal(phrase: index)
+                    }
+                    : editFailedWordsAction(phrase: index, footer: true)
+                return PanelFooter(note: "Phrase \(index + 1): " + ClipTakePlan.repeatedWordCheckCopy + "\n" + takeSpendLine,
+                                   primary: action)
+            }
             if let blocker = takePlan.acceptanceBlocker {
                 return PanelFooter(note: blocker + " " + takeSpendLine, primary: acceptanceForward(takePlan))
             }
@@ -424,6 +459,12 @@ extension RewriteSession {
         }
         return PanelFooter(note: unpaid + " " + takeSendLine, link: keepAll,
             primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(priceableVoiceCount)) { [weak self] in self?.makeTakes() })
+    }
+
+    func editFailedWordsAction(phrase: Int, footer: Bool = false) -> PanelAction {
+        PanelAction(id: footer ? "editFailedWordsFooter.\(phrase)" : "editFailedWords.\(phrase)", title: "Edit the Words") { [weak self] in
+            self?.chooseWording(.ownWords, phrase: phrase)
+        }
     }
 
     /// The footer's title for a duration choice the take allows (the phrase card's radio, as a primary).

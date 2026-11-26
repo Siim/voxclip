@@ -57,7 +57,7 @@ public static class ExportCheckExpectation
                 for (var index = 1; index < plan.Pieces.Count; index++)
                 {
                     var (previous, next) = (plan.Pieces[index - 1], plan.Pieces[index]);
-                    if (previous.Kind != next.Kind || next.Kind == VoiceLabOutputPieceKind.Synth || next.SourceStartSample != previous.SourceEndSample)
+                    if (plan.PartSeams.Contains(next.OutputStartSample) || previous.Kind != next.Kind || next.Kind == VoiceLabOutputPieceKind.Synth || next.SourceStartSample != previous.SourceEndSample)
                         cuts.Add(speed.Rendered(next.OutputStartSample / rate));
                 }
                 return new(words, phrases, cuts, duration);

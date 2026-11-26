@@ -7,8 +7,14 @@ public struct CaptionInputWord: Codable, Sendable, Equatable {
     public var end: Double
     public var emphasis: Bool?
     public var emoji: String?
-    public init(id: String, text: String, start: Double, end: Double, emphasis: Bool? = nil, emoji: String? = nil) {
+    public var startsPart: Bool?
+    public init(id: String, text: String, start: Double, end: Double, emphasis: Bool? = nil, emoji: String? = nil, startsPart: Bool? = nil) {
         self.id = id; self.text = text; self.start = start; self.end = end; self.emphasis = emphasis; self.emoji = emoji
+        self.startsPart = startsPart
+    }
+
+    public init(_ word: CaptionWord) {
+        self.init(id: word.id, text: word.text, start: word.start, end: word.end, startsPart: word.startsPart ? true : nil)
     }
 }
 
@@ -278,8 +284,12 @@ public enum CaptionLayoutEngine {
             let lines = breakLines(widths: widths, gap: gap, balanced: style.layout.balance == .balanced, fits: fits)
             return lines.count <= style.layout.maxLines && (indices.count == 1 || lines.allSatisfy { fits(lineUnits($0, widths, gap)) })
         }
+        let partStarts = input.words.indices.filter { input.words[$0].startsPart == true }
+        func partBreak(_ index: Int) -> Bool {
+            index > 0 && partStarts.contains { words[index - 1].sourceIndex < $0 && $0 <= words[index].sourceIndex }
+        }
         let groups = pageGroups(count: words.count, layout: style.layout, raw: { words[$0].raw }, start: { words[$0].input.start },
-                                end: { words[$0].input.end }, fits: pageFits)
+                                end: { words[$0].input.end }, startsPart: partBreak, fits: pageFits)
         var paletteIndex = 0
         var previousEmoji: String?
         var pages: [CaptionPageLayout] = []
@@ -307,7 +317,8 @@ public enum CaptionLayoutEngine {
             }
             previousEmoji = emoji?.1
             let start = words[indices[0]].input.start
-            let next = pageIndex + 1 < groups.count ? words[groups[pageIndex + 1][0]].input.start : Double.infinity
+            let nextIndex = pageIndex + 1 < groups.count ? groups[pageIndex + 1][0] : nil
+            let next = nextIndex.map { partBreak($0) ? words[indices.last!].input.end : words[$0].input.start } ?? .infinity
             let end = pageEnd(start: start, lastEnd: words[indices.last!].input.end, next: next, layout: style.layout, duration: input.duration)
             let widths = indices.map { emphasised.keys.contains($0) ? words[$0].emphasisShaped!.units : words[$0].shaped.units }
             let lines = breakLines(widths: widths, gap: gap, balanced: style.layout.balance == .balanced, fits: fits)
@@ -341,11 +352,11 @@ public enum CaptionLayoutEngine {
     /// Captions §6.1 paging over normalised words. `fits` is the §6.2 page fit test; caption cards, which have no
     /// glyph widths yet, pass one that always fits (design §5.4.2).
     static func pageGroups(count: Int, layout: CaptionLayout, raw: (Int) -> String, start: (Int) -> Double, end: (Int) -> Double,
-                           fits: ([Int]) -> Bool) -> [[Int]] {
+                           startsPart: (Int) -> Bool = { _ in false }, fits: ([Int]) -> Bool) -> [[Int]] {
         var groups: [[Int]] = [], current: [Int] = []
         for index in 0..<count {
             if let previous = current.last, let first = current.first {
-                let split = current.count >= layout.maxWords ||
+                let split = startsPart(index) || current.count >= layout.maxWords ||
                     (layout.breakOnSentence && CaptionTextRules.sentenceEnd(raw(previous))) ||
                     (layout.breakOnComma && current.count >= 2 && CaptionTextRules.clauseEnd(raw(previous))) ||
                     layout.breakOnGapSec.map { start(index) - end(previous) >= $0 } == true ||

@@ -61,7 +61,8 @@ public sealed partial class EditorPage : Page
     private double previewDuration;
     /// <summary>The previewed clip's speed: the transport shows rendered time, positions stay edited (design §6.9).</summary>
     private Core.Domain.Clips.ClipSpeedTiming previewSpeed = new(1);
-    private double? previewStop;
+    private (double Time, bool OnEditedAxis)? previewStop;
+    private double? previewStoryEnd;
     /// <summary>Play/Pause reads the playing state from before an open correction is saved (design §4.2).</summary>
     private readonly PlaybackToggle playback = new();
     private string? previewClipId;
@@ -112,7 +113,7 @@ public sealed partial class EditorPage : Page
         App.Services.ExportLedger.Changed += LedgerChanged;
         LocateMedia.Visibility = ViewModel.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
         // A leave never starts over the open Rewrite's paid takes (Mac WorkspaceShell.leave): the notice says how to go on.
-        leave = new(ViewModel) { HoldsPaidWork = () => rewrite is { IsOpen: true, HasPaidTakes: true } };
+        leave = new(ViewModel) { HoldsPaidWork = () => rewrite is { IsOpen: true, HoldsPaidWork: true } };
         FindClips = new(ViewModel, lifetime.Token);
         FindClips.Announcement += (_, text) => Transcript.Announce(text);
         previewStage = new((level, category, message) => App.Services.Log.Write(level, category, message), text => Transcript.Announce(text));
@@ -175,6 +176,7 @@ public sealed partial class EditorPage : Page
         }
         if (mediaPath is null || demo) ViewModel.Notice = EditorMediaPresentation.Notice(mediaState, EditorMediaPresentation.FileName(project.Media.Source.AbsolutePath));
         ready = true;
+        StartHarnessReview();
         InitializeShell();
         projectWrites.Mark(ViewModel.Project);
         UpdateAiTag();
@@ -190,6 +192,7 @@ public sealed partial class EditorPage : Page
                 var snapshot = await SnapshotAsync(ct);
                 if (!ReferenceEquals(capturedProject, ViewModel.Project)) return;
                 previewDuration = snapshot.Timeline.Duration;
+                RememberStoryEnd(snapshot.Timeline);
                 previewSpeed = snapshot.Speed;
                 previewStage.Cleared();
                 await preview.LoadAsync(snapshot, null, ct);
@@ -241,7 +244,7 @@ public sealed partial class EditorPage : Page
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
         catch (Exception exception)
         {
-            App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "waveform", UiError.Message(exception, "Waveform"));
+            UiError.WriteFailure(exception, "Waveform");
         }
         finally
         {
@@ -284,13 +287,19 @@ public sealed partial class EditorPage : Page
         var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = voice?.CaptureSnapshot(snapshot) ?? snapshot;
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md, design §6.9).
-        return snapshot with { ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, App.Services.Data.Root) };
+        return snapshot with
+        {
+            ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, App.Services.Data.Root),
+            Footage = await FootageRendering.ResolveAsync(project, snapshot, App.Services.Projects, owner.ProjectPath ?? source.Path, ct),
+        };
     }
     private void PositionChanged(PreviewPosition position)
     {
         if (disposed) return;
         var sourceTime = position.SourceTime;
-        if (ViewModel.State?.ActiveClipId is { } clipId && position.EditedTime >= previewDuration &&
+        if (position.EditedTime >= previewDuration && previewStoryEnd is { } storyEnd)
+            sourceTime = storyEnd;
+        else if (ViewModel.State?.ActiveClipId is { } clipId && position.EditedTime >= previewDuration &&
             ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } active &&
             ViewModel.Words.FirstOrDefault(word => word.Id == active.Clip.EndWordId) is { } endWord)
             sourceTime = endWord.End;
@@ -303,11 +312,11 @@ public sealed partial class EditorPage : Page
         AutomationProperties.SetName(PreviewPlay, PlaybackPresentation.Name(position.IsPlaying));
         ToolTipService.SetToolTip(PreviewPlay, PlaybackPresentation.Hint(position.IsPlaying));
         Timeline.SetTransport(elapsed, total, position.IsPlaying);
-        Timeline.Position(position.SourceTime);
+        Timeline.Position(sourceTime);
         viewerHost?.SetPlayback(position.EditedTime, position.IsPlaying, timelineVisible);
         CaptionDrag.Position(position.EditedTime);
         captions?.UpdatePosition(position.EditedTime, sourceTime);
-        if (previewStop is { } stop && sourceTime >= stop && preview is not null)
+        if (previewStop is { } stop && (stop.OnEditedAxis ? position.EditedTime : sourceTime) >= stop.Time && preview is not null)
         { previewStop = null; _ = RunAsync(() => SourceTransportAsync(token => preview.PauseAsync(token)), "Preview"); }
         if (changed) Transcript.RefreshVisuals();
     }
@@ -332,7 +341,7 @@ public sealed partial class EditorPage : Page
         LocateMedia.Visibility = Visibility.Visible;
         captions?.MediaUnavailable();
         ViewModel.Notice = EditorMediaPresentation.Notice(mediaState, EditorMediaPresentation.FileName(ViewModel.Project.Media.Source.AbsolutePath));
-        App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "preview", UiError.Message(exception, "Preview"));
+        UiError.WriteFailure(exception, "Preview");
         SizeStage();
         pendingStandIn = RenderUnavailableCaptionsAsync();
         UpdateExport();
@@ -358,6 +367,7 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateRewriteCommand()
     {
+        AutomationProperties.SetHelpText(RewriteCommand, ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : "");
         if (shellInitialized && shellJobs is not null)
         {
             RewriteCommand.Visibility = Visibility.Visible;
@@ -365,7 +375,7 @@ public sealed partial class EditorPage : Page
             return;
         }
         RewriteCommand.Visibility = Visibility.Visible;
-        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript;
+        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript && !ViewModel.IsStoryClip;
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -392,7 +402,7 @@ public sealed partial class EditorPage : Page
             image.Invalidate(); PreviewImage.Source = image;
         }
         catch (OperationCanceledException) { }
-        catch (Exception exception) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "preview-card", UiError.Message(exception, "Preview")); }
+        catch (Exception exception) { UiError.WriteFailure(exception, "Preview card"); }
     }
     private void ModelChanged(object? sender, EventArgs args)
     {
@@ -436,6 +446,7 @@ public sealed partial class EditorPage : Page
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
         captions?.RefreshSamples();
+        if (ViewModel.Music.Services is not null) ViewModel.Music.LoadFolder();
         var next = App.Services.Get("editing.pauseBreath", "natural");
         if (next == pauseBreath) return;
         pauseBreath = next;
@@ -517,6 +528,8 @@ public sealed partial class EditorPage : Page
             var clipChanged = previewClipId != state?.ActiveClipId;
             previewClipId = state?.ActiveClipId;
             previewDuration = snapshot.Timeline.Duration;
+            RememberStoryEnd(snapshot.Timeline);
+            if (clipChanged) previewStop = null;
             previewSpeed = snapshot.Speed;
             // A load or plan swap that works clears the stage's line; a failure while drawing it sets the line again.
             previewStage.Cleared();
@@ -597,11 +610,15 @@ public sealed partial class EditorPage : Page
     {
         await RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
     }
-    private async Task OpenRewriteAsync(bool insertion, string? instruction = null)
+    private async Task OpenRewriteAsync(bool insertion, string? instruction = null, WholeClipIntent? wholeClipIntent = null)
     {
-if (insertion ||
+        if (insertion || ViewModel.IsStoryClip ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
 !ViewModel.HasTranscript) return;
+        if (wholeClipIntent is { } existingIntent && rewrite is { IsOpen: true } existing && rewritePanel is { } existingPanel &&
+            existing.Scope.ClipId == ViewModel.Project.Edits.ActiveClipId && existing.GenerationIsCurrent && rightContent.RevealRewrite(existingPanel))
+        { SetViewerVisible(true); existingPanel.FocusWholeClip(existingIntent); return; }
+        if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction, wholeClipIntent))) return;
         RetireRewrite();
         var opening = ++rewriteOpenRevision;
         ViewModel.CaptionDrag.Cancel();
@@ -620,20 +637,49 @@ if (insertion ||
         var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
         if (!CurrentOpening()) return;
         var selectedConnector = entry is null ? null : App.Services.Connector(entry.Id);
-        if (entry is not null) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
         var connector = entry is null ? null : new RewriteConnector(selectedConnector!,
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
         var connectorWireId = App.Services.Get("llm.connector", "");
         if (!CurrentOpening()) return;
-        rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
+        var session = new RewriteSession(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
             prices: VoiceLabPrices.Load(),
             connectorIsCurrent: () => App.Services.Get("llm.connector", "") == connectorWireId &&
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model),
-            scope: ViewModel.HasSelection ? null : project.Edits.ActiveClipId is { } scopeClip ? RewriteScope.Clip(scopeClip) : RewriteScope.FullTake);
-        if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite);
-        ShowRewriteSession(rewrite, instruction);
-        await rewrite.SetInstructionAsync(instruction ?? "");
+            scope: ViewModel.HasSelection && wholeClipIntent is null ? null : project.Edits.ActiveClipId is { } scopeClip ? RewriteScope.Clip(scopeClip) : RewriteScope.FullTake);
+        var restored = !demo && session.ConfigureSavedProposal(Path.Combine(App.Services.Data.Root, "VoiceLab"));
+        if (entry is not null && (!restored || entry.Cli)) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
+        if (!CurrentOpening() || !session.IsOpen) { session.Dispose(); return; }
+        rewrite = session;
+        if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(session);
+        var prompt = restored && (string.IsNullOrWhiteSpace(instruction) || instruction == ViewModel.RewriteStripItems.FirstOrDefault()?.Instruction)
+            ? session.Instruction : instruction ?? "";
+        ShowRewriteSession(session, prompt);
+        await session.SetInstructionAsync(prompt);
+        if (wholeClipIntent is { } intent && ReferenceEquals(rewrite, session)) rewritePanel?.FocusWholeClip(intent);
+    }
+    /// <summary>Another Rewrite would replace the open one while it holds paid takes not used or discarded yet (Mac
+    /// <c>askBeforeReplacing</c>, design.md R2 "Closing Rewrite"): nothing is retired unasked. The open one's panel comes forward and
+    /// asks "Start a new Rewrite and discard 3 paid takes?" with Keep Working, the default, and Discard and Rewrite, which disposes the
+    /// takes and runs <paramref name="replay"/> (the press again). When the panel can't come forward, the editor's notice says how to
+    /// go on. True when it asked or refused, so nothing opens now.</summary>
+    private bool AskBeforeReplacingRewrite(Func<Task> replay)
+    {
+        if (rewrite is not { IsOpen: true, HoldsPaidWork: true } open) return false;
+        if (rightContent is not null && rewritePanel is { } panel && ReferenceEquals(panel.Session, open))
+        {
+            SetViewerVisible(true);
+            if (rightContent.RevealRewrite(panel))
+            {
+                SizeStage();
+                panel.AskBeforeReplacing(() => RunAsync(replay, "Rewrite"));
+                return true;
+            }
+        }
+        EditorNotice.Severity = InfoBarSeverity.Warning;
+        // The job that keeps the column is named, so the way to Rewrite is clear: finish or close it first.
+        ViewModel.Notice = RewriteSession.ReplaceHeldNotice(rightContent?.HeldJobLabel);
+        return true;
     }
     /// <summary>Shows <paramref name="rewrite"/> in the Rewrite panel: a new one, or Make it postable's with paid takes.</summary>
     private void ShowRewriteSession(RewriteSession rewrite, string? instruction)
@@ -673,6 +719,7 @@ if (insertion ||
         }
         session.ConfigureGenerationFactory(index => CreateRewriteGeneration(session, index));
         ConfigureRewriteMicrophone(session);
+        ConfigureWholeClip(session);
     }
     /// <summary>Say it myself (design.md §6.3.8): the WASAPI microphone, a lead-in through headphones or a count-in, and on-device
     /// recognition from the installed Whisper models. Its takes are written to the project's Voice Lab folders; nothing is sent.</summary>
@@ -715,6 +762,7 @@ if (insertion ||
             ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log) == region;
         var backend = new RewriteGenerationBackend(App.Services.Data, App.Services.Keys, App.Services.Log,
             VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi, App.Services.LocalTiming);
+        backend.Runner.PaidAudioSaved = (request, record, usd) => OnUi(() => session.PaidTakeSaved(request, record, usd));
         IVoiceLabTakeRunner runner = backend.Runner;
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
         var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? "", VoiceLabSourceAudio.RewriteSourceAsync);
@@ -878,7 +926,7 @@ if (insertion ||
         ViewModel.SetScope(clipId);
         if (!keepSelection && clipId is not null && ViewModel.State?.ActiveClipId == clipId && ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } row)
         {
-            ViewModel.Select(ViewModel.Index(row.Clip.StartWordId));
+            ViewModel.Select(ViewModel.Index(row.Clip.PlayParts[0].StartWordId));
             Transcript.RevealWord(ViewModel.SelectionStart);
         }
     }
@@ -903,7 +951,7 @@ if (insertion ||
         await SourceTransportAsync(async token =>
         {
             await SeekSourceCoreAsync(range.Start, token);
-            previewStop = range.End;
+            previewStop = (range.End, false);
             if (preview is not null && !ViewModel.IsReadOnly) await preview.PlayAsync(token);
         });
     }
@@ -1164,6 +1212,9 @@ if (insertion ||
     {
         AiModified.Visibility = ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId) ? Visibility.Visible : Visibility.Collapsed;
     }
+    /// <summary>The open Rewrite holds paid takes not used or discarded yet, so a leave (a close, another project, a restart) never
+    /// starts: <see cref="TrySaveBeforeLeavingAsync"/> says so in the editor and returns false without saving.</summary>
+    internal bool LeaveHeldByPaidWork => leave.HoldsPaidWork?.Invoke() == true;
     internal async Task<bool> TrySaveBeforeLeavingAsync()
     {
         if (ViewModel.Busy)
@@ -1223,6 +1274,7 @@ if (insertion ||
     {
         if (disposed) return;
         disposed = true; autosave?.Cancel();
+        harnessTimer?.Stop();
         // Work still reading the entry, such as a waveform load, holds its own lease.
         cacheLease?.Dispose();
         await lifetime.CancelAsync();

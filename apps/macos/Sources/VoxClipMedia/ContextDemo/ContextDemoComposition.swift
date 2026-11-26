@@ -10,8 +10,20 @@ struct CompositionVideoSpan: Sendable {
     let zoom: Double
     let anchorX: Double
     let anchorY: Double
+    var partReframe: ReframeSettings?
 
     static func build(_ request: RenderRequest) throws -> [CompositionVideoSpan] {
+        let spans = try baseSpans(request)
+        guard !request.partReframes.isEmpty else { return spans }
+        return spans.map { span in
+            var result = span
+            let source = span.source.start.seconds + span.source.duration.seconds / 2
+            result.partReframe = request.partReframes.first { $0.source.start <= source && source < $0.source.end }?.reframe
+            return result
+        }
+    }
+
+    private static func baseSpans(_ request: RenderRequest) throws -> [CompositionVideoSpan] {
         let timeline = request.timeline
         guard timeline.sampleRate.isFinite, timeline.sampleRate >= 1,
               timeline.sampleRate <= Double(Int32.max), timeline.sampleRate.rounded() == timeline.sampleRate,

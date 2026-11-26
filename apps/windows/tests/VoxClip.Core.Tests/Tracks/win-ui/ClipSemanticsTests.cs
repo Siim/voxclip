@@ -3,6 +3,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.VoiceLab;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -11,14 +12,124 @@ namespace VoxClip.Ui.Tests;
 /// line; design §2, §3.5 and §6.2. The core reducer is unchanged.</summary>
 public sealed class ClipSemanticsTests
 {
-    private static Project Fixture(string name)
+    private static Project Fixture(string name, string group = "projects")
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
-            var path = Path.Combine(directory.FullName, "shared", "fixtures", "projects", name);
+            var path = Path.Combine(directory.FullName, "shared", "fixtures", group, name);
             if (File.Exists(path)) return ProjectSerialization.Deserialize(File.ReadAllText(path));
         }
         throw new FileNotFoundException("Shared project fixture not found.", name);
+    }
+
+    internal static EditorViewModel Story() => new(Fixture("story-project.voxclip", "story-clips"));
+
+    [Fact]
+    public void StoryOutlineFollowsPlayOrderAndMovesOnePartInAnUndoStep()
+    {
+        var model = Story();
+        var shell = new ShellViewModel();
+        shell.Update(model, false, [], null);
+        Assert.Equal("2 parts", Assert.Single(model.Clips).PartsBadge);
+        Assert.Equal("0:01", Assert.Single(model.Clips).Duration);
+        Assert.Equal(["uh the", "So um,"], shell.Rows.Where(row => row.PartId is not null).Select(row => row.Title));
+        Assert.Equal("0:03–0:04", model.ClipParts[0].TakeTime);
+        Assert.Equal("Select words outside the clip's parts to add them.", shell.Rows.Single(row => row.Key == "action:add-part").Detail);
+        Assert.False(shell.Rows.Single(row => row.Key == "action:add-part").IsEnabled);
+
+        string? announcement = null;
+        model.Announcement += (_, text) => announcement = text;
+        Assert.True(model.MovePart("first", 1));
+        Assert.Equal("Part 1 moved to 2 of 2", announcement);
+        Assert.Equal("Move part", model.UndoActionName);
+        Assert.Equal(["second", "first"], model.ClipParts.Select(part => part.Id));
+        model.Undo();
+        Assert.Equal(["first", "second"], model.ClipParts.Select(part => part.Id));
+    }
+
+    [Fact]
+    public void StoryOutlineDropTargetsTheSpaceBeforeOrAfterAPart()
+    {
+        var model = Story();
+        model.Select(8);
+        Assert.True(model.AddSelectionAsPart());
+        var added = model.SelectedPart!.Id;
+
+        Assert.Null(model.PartDropIndex("first", "second", after: false));
+        var destination = model.PartDropIndex("first", "second", after: true);
+        Assert.Equal(1, destination);
+        Assert.True(model.MovePart("first", destination!.Value));
+        Assert.Equal(["second", "first", added], model.ClipParts.Select(part => part.Id));
+
+        destination = model.PartDropIndex(added, "second", after: false);
+        Assert.Equal(0, destination);
+        Assert.True(model.MovePart(added, destination!.Value));
+        Assert.Equal([added, "second", "first"], model.ClipParts.Select(part => part.Id));
+    }
+
+    [Fact]
+    public void StoryVoiceExplainsBothBlocksAndOffersFreeOrdinaryClips()
+    {
+        var model = Story();
+        Assert.True(model.SelectPart("second"));
+        var voice = model.StoryVoice(prices: VoiceLabPrices.Load())!;
+        Assert.Equal("Voice changes work on one part at a time. Make a clip of the part first.", voice.RewriteReason);
+        Assert.Equal("Lip sync can't run across the 1 seams of a story clip yet. Make a clip of the part first.", voice.LipSyncReason);
+        Assert.Equal("Make Clip of Part 2", voice.MakeSelected);
+        Assert.Equal("Make Clips of All 2 Parts", voice.MakeAll);
+        Assert.True(voice.VoiceAndLipSync > 0);
+        Assert.True(voice.LipSync > 0);
+        Assert.True(model.MakeClipsOfParts(model.SelectedPart!.Id));
+        var ordinary = Assert.Single(model.Clips, clip => clip.Id != "clip-main");
+        Assert.Null(ordinary.Clip.Parts);
+        Assert.Equal(("w1", "w2"), (ordinary.Clip.StartWordId, ordinary.Clip.EndWordId));
+        Assert.Equal("Make clip of part", model.UndoActionName);
+        model.Undo();
+        Assert.True(model.Apply(new EditOperation.Toggle("w2")));
+        Assert.True(model.MakeClipsOfParts());
+        Assert.Equal("Make clips of all parts", model.UndoActionName);
+        var parts = model.Clips.Where(clip => clip.Id != "clip-main").ToArray();
+        Assert.Equal(2, parts.Length);
+        Assert.All(parts, part => Assert.Null(part.Clip.Parts));
+        Assert.Contains("w2", model.Project.Edits.CutWordIds);
+        Assert.Null(model.StoryVoice());
+        model.Undo();
+        Assert.Single(model.Clips);
+    }
+
+    [Fact]
+    public void ShowreelBadgeKeepsTheEditedLength()
+    {
+        var project = Story().Project;
+        var clip = Assert.Single(project.Edits.Clips) with { Kind = StoryClipKind.Showreel };
+        var model = new EditorViewModel(project with { Edits = project.Edits with { Clips = [clip] } });
+        var row = Assert.Single(model.Clips);
+        Assert.Equal("reel", row.PartsBadge);
+        Assert.Equal("0:01", row.Duration);
+    }
+
+    [Fact]
+    public void StoryAddsOnlyAnOutsideSelectionAndTrimsTheSelectedPart()
+    {
+        var model = Story();
+        model.Select(1);
+        Assert.False(model.AddSelectionAsPart());
+        Assert.Equal("Select words outside the clip's parts to add them.", model.AddPartHelp);
+        model.Select(8);
+        Assert.True(model.AddSelectionAsPart());
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Equal(8, model.SelectedPart!.First);
+        Assert.True(model.SelectPart("second"));
+        model.Select(2);
+        model.SetClipEdgeAtCaret(false);
+        Assert.Equal("Trim part", model.UndoActionName);
+        Assert.Equal(["w7", "w3", "w9"], model.ClipParts.Select(part => part.Part.EndWordId));
+        Assert.True(model.RemovePart(model.ClipParts[2].Id));
+        Assert.Equal("Remove part", model.UndoActionName);
+        Assert.True(model.RemovePart("first"));
+        Assert.False(model.IsStoryClip);
+        Assert.False(model.RemovePart(model.SelectedPart!.Id));
+        Assert.Equal("A clip needs one part. Remove Clip instead.", model.RemovePartHelp);
     }
 
     /// <summary>The long take with no clips, no cuts and no earlier clip-finding runs.</summary>

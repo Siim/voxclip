@@ -1,0 +1,37 @@
+[
+  {
+    "name": "unavailable model",
+    "failures": ["modelNotFound"],
+    "requests": 1,
+    "retrySeconds": [],
+    "action": "settings"
+  },
+  {
+    "name": "signed out",
+    "failures": ["cliSignedOut"],
+    "requests": 1,
+    "retrySeconds": [],
+    "action": "settings"
+  },
+  {
+    "name": "out of quota",
+    "failures": ["quotaExceeded"],
+    "requests": 1,
+    "retrySeconds": [],
+    "action": "retry"
+  },
+  {
+    "name": "network stays down",
+    "failures": ["network", "timeout", "network", "timeout"],
+    "requests": 4,
+    "retrySeconds": [2, 8, 30],
+    "action": "retry"
+  },
+  {
+    "name": "recovers after a timeout",
+    "failures": ["timeout"],
+    "requests": 2,
+    "retrySeconds": [2],
+    "action": "done"
+  }
+]

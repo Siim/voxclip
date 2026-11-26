@@ -3,9 +3,38 @@ import Observation
 import VoxClipCore
 import VoxClipMedia
 
+@MainActor @Observable final class RewriteWordCheckFailures {
+    private struct Key: Hashable {
+        let firstWord: String
+        let lastWord: String
+        let text: String
+        let voice: String
+
+        init(_ input: VoiceLabTakeInput) {
+            firstWord = input.window.firstWordId
+            lastWord = input.window.lastWordId
+            text = input.text
+            voice = input.recordID
+        }
+    }
+
+    private var failedTakes: [Key: Set<UUID>] = [:]
+
+    func record(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput) {
+        guard row.qa?.failures.contains(.transcript) == true, let receipt = row.receipt else { return }
+        let key = Key(input)
+        guard failedTakes[key, default: []].count < 2 else { return }
+        failedTakes[key, default: []].insert(receipt.requestID)
+    }
+
+    func stops(_ input: VoiceLabTakeInput) -> Bool {
+        failedTakes[Key(input), default: []].count >= 2
+    }
+}
+
 @MainActor private final class ClipTakeVoicePool {
     let session = VoiceLabVoiceCheckSession()
-    var value = VoiceLabShortTakePool()
+    var value: VoiceLabShortTakePool?
 }
 
 @MainActor @Observable final class ClipTakePlan {
@@ -57,10 +86,7 @@ import VoxClipMedia
         var selected: Take? { takes.first { $0.id == selectedID } }
         var originalLength: Double { window.end - window.start }
         var lengthDifference: Double? { selected?.length.map { $0 - originalLength } }
-        var nextTakeNumber: Int {
-            guard takes.count == 3 else { return takes.count + 1 }
-            return takes.filter { $0.id != selectedID }.min { ($0.row.score ?? -1) < ($1.row.score ?? -1) }?.number ?? 3
-        }
+        var nextTakeNumber: Int { (takes.map(\.number).max() ?? 0) + 1 }
     }
     enum Failure: Error, Equatable {
         /// `index` is the refused hunk's index in the plan's hunks.
@@ -190,14 +216,15 @@ import VoxClipMedia
             }
             approve = { batch, indices, continuing in
                 if !continuing {
-                    pool.value = VoiceLabShortTakePool(session: pool.session, retryPhrase: indices.count == 1 ? indices.first : nil)
+                    pool.value = batch.windows.contains { $0.input.checksGeneratedSpeaker }
+                        ? VoiceLabShortTakePool(session: pool.session, retryPhrase: indices.count == 1 ? indices.first : nil) : nil
                 }
                 try await VoiceLabTakeBatchRun(runs: indices.map { runs[$0] }).approve(batch)
             }
             execute = { batch, index, phrase, progress in
                 try await runs[phrase].execute(batch.windows[index].quote, approved: true, keepingPreviousTakes: true, shortTakePool: pool.value, phraseID: phrase, progress: progress)
             }
-            finishVoice = { await pool.value.finish() }
+            finishVoice = { await pool.value?.finish() ?? [:] }
             discard = { for run in runs { await run.cancel(keepingTakes: true) } }
             release = { indices in for index in indices { await runs[index].cancel(keepingTakes: true) } }
             invalidate = {
@@ -272,8 +299,6 @@ import VoxClipMedia
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
     let audition: VoiceLabAudition
     let lipsync = RewriteLipsyncSession()
-    /// Automatic fixes and expression changes add takes beside the old ones: a fourth take never replaces a paid one.
-    var keepsEveryTake = false
     @ObservationIgnored private var auditionTurn = UUID()
     @ObservationIgnored private var receivedInBatch: Set<UUID> = []
     @ObservationIgnored private var fatalPhrases: Set<Int> = []
@@ -310,6 +335,7 @@ import VoxClipMedia
     /// What the later parts of the held run add to `batch`'s estimate.
     private var laterEstimates: [CostEstimate] { laterParts.map(\.priced.estimate) }
     private var lastVoicePrices: [Int: CostEstimate] = [:]
+    private let wordCheckFailures: RewriteWordCheckFailures
     /// "Pricing phrase 12 of 34…" while a price is prepared, nil otherwise.
     private(set) var preparationStep: String?
     @ObservationIgnored private var progress: VoiceLabTakeBatchProgress?
@@ -326,6 +352,13 @@ import VoxClipMedia
     var stillCurrent: Bool { !retired && isCurrent() && contextIsCurrent() }
     var isRetired: Bool { retired }
     var approvalID: UUID? { batch?.id }
+    /// How many phrases of the held run adopt a paid take from the journal, so pay only its word check (voice-lab §3.4):
+    /// those of `batch` and its later parts whose quote names an adopted asset. Nil while nothing is priced.
+    var adoptedPhraseCount: Int? {
+        guard let batch else { return nil }
+        let windows = batch.windows + laterParts.flatMap(\.priced.windows)
+        return windows.filter { window in window.quote.takes.contains { $0.adoptedAsset != nil } }.count
+    }
     static let minimumGeneratedSpeechSeconds = Double(SpeakerAudio.windowSize) / 16_000
     private var videoChoices: [UUID: VoiceLabVideoMode] {
         Dictionary(uniqueKeysWithValues: phrases.compactMap { phrase in
@@ -510,7 +543,8 @@ import VoxClipMedia
          makeInput: @escaping @MainActor (Phrase) async throws -> VoiceLabTakeInput,
          readCap: @escaping @MainActor () async throws -> VoiceLabMonthlyCap? = { nil },
          isCurrent: @escaping @MainActor () -> Bool = { true }, audition: VoiceLabAudition = VoiceLabAudition(),
-         acceptedChargesChanged: @escaping @MainActor () async -> Void = {}) throws {
+         acceptedChargesChanged: @escaping @MainActor () async -> Void = {},
+         wordCheckFailures: RewriteWordCheckFailures = RewriteWordCheckFailures()) throws {
         var final = project
         for id in hunks.filter({ $0.kind == .cut }).flatMap(\.sourceWordIds) where !final.edits.cutWordIds.contains(id) {
             final.edits.cutWordIds.append(id)
@@ -518,6 +552,7 @@ import VoxClipMedia
         self.project = final; self.scope = scope; self.makeInput = makeInput; self.readCap = readCap; self.isCurrent = isCurrent
         self.audition = audition
         self.acceptedChargesChanged = acceptedChargesChanged
+        self.wordCheckFailures = wordCheckFailures
         phrases = try Self.preparePlan(project: project, scope: scope, envelope: envelope, hunks: hunks)
     }
 
@@ -729,6 +764,12 @@ import VoxClipMedia
         phrases.map(\.id).filter { automaticTake(phrase: $0) == nil }
     }
 
+    func stoppedForRepeatedWords(phrase index: Int) -> Bool {
+        inputs.indices.contains(index) && wordCheckFailures.stops(inputs[index])
+    }
+
+    static let repeatedWordCheckCopy = "The word check failed twice for these words with this voice."
+
     /// The whole clip's parts (RewriteWholeClip.swift): paid takes that arrived while the plan was not current were made
     /// from the plan's own inputs, so once it is current again (an Undo) they are the parts' takes like any other, chosen
     /// automatically and never paid for again. A phrase plan keeps them for the user's click (`madeBeforeEdit`).
@@ -823,7 +864,6 @@ import VoxClipMedia
         phrases[index].beforeExpression.formUnion(phrases[index].takes.map(\.id))
         if phrases[index].selectedID != nil { clearPreparedVideo() }
         phrases[index].selectedID = nil; phrases[index].videoChoice = nil; phrases[index].explicitlySelected = false
-        keepsEveryTake = true
         await prepareQuote(indices: spent.units > 0 ? [index] : phrases.map(\.id), decoding: true, candidates: 1)
     }
     /// Whether a take's own length fits its slot with the source video or a cut, selected or not: a take that failed its
@@ -853,7 +893,7 @@ import VoxClipMedia
             return left.distance != right.distance ? left.distance < right.distance : left.score > right.score
         }.map(\.take)
     }
-    /// The take chosen automatically (ADR-R37, ADR-R39): only measured passing takes, never one made before the expression
+    /// The take chosen automatically (ADR-R37, ADR-R39, ADR-R51): a measured pass or a passing take in the selected voice, never one made before the expression
     /// changed or before an edit (`madeBeforeEdit`). Among usable takes the best score wins, as before; when no duration
     /// can carry any of them, the one closest to the slot, so the automatic fixes reword from the nearest take. A take
     /// whose only issue is a join advisory is chosen when it ranks best, after any clean take at the same rank (ADR-R39:
@@ -861,12 +901,13 @@ import VoxClipMedia
     func automaticTake(phrase index: Int) -> Take? {
         guard phrases.indices.contains(index) else { return nil }
         let phrase = phrases[index]
-        let measured = phrase.takes.filter {
-            $0.row.selectable && $0.row.qa?.values.speakerScore?.isFinite == true && !phrase.beforeExpression.contains($0.id)
+        let candidates = phrase.takes.filter {
+            $0.row.selectable && ($0.row.voiceCheck == .selectedVoice || $0.row.qa?.values.speakerScore?.isFinite == true)
+                && !phrase.beforeExpression.contains($0.id)
                 && !phrase.madeBeforeEdit.contains($0.id)
                 && (!$0.row.requiresJoinAdvisoryAcceptance || (try? $0.row.acceptingJoinAdvisory(at: Date())) != nil)
         }
-        let order = ranked(measured, phrase: index)
+        let order = ranked(candidates, phrase: index)
         let usable = order.filter { durationAvailable(take: $0) }
         let pool = usable.isEmpty ? order : usable
         return pool.first { !$0.row.hasJoinAdvisory } ?? pool.first
@@ -950,10 +991,11 @@ import VoxClipMedia
                             sourceEnvelope: input.sourceEnvelope, sourceSampleRate: input.sourceSampleRate, items: input.items,
                             cutWordIDs: input.cutWordIDs, window: input.window, incomingSilence: input.incomingSilence,
                             outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: pace,
-                            hardJoinSmoothing: input.hardJoinSmoothing, audioTags: input.audioTags)
+                            hardJoinSmoothing: input.hardJoinSmoothing, audioTags: input.audioTags, checksGeneratedSpeaker: input.checksGeneratedSpeaker)
                         nextSeeds[index] &+= UInt32(candidates)
                         inputs[index].pauseProfile = input.pauseProfile
                         inputs[index].editedLayout = input.editedLayout
+                        inputs[index].redoVersion = input.redoVersion
                     }
                 }
                 try validate(inputs.map(\.window))
@@ -979,6 +1021,7 @@ import VoxClipMedia
                     indices = indices.filter { phrases[$0].blocked == nil }
                     preparationStep = nil
                 }
+                indices.removeAll { stoppedForRepeatedWords(phrase: $0) }
                 // Every phrase settled as blocked: the inputs serve Say it myself, and there is nothing to price.
                 if indices.isEmpty {
                     if revision == version { preparing = false; preparationStep = nil }
@@ -1290,6 +1333,7 @@ import VoxClipMedia
     private func receive(_ rows: [VoiceLabTakeRow], phrase: Int, batch: VoiceLabTakeBatch, version: Int) async {
         for row in rows {
             if takeInputs[row.id] == nil, inputs.indices.contains(phrase) { takeInputs[row.id] = inputs[phrase] }
+            if let input = takeInputs[row.id] { wordCheckFailures.record(row, input: input) }
             let newIDs = row.acceptedRequestIDs.subtracting(sent)
             if !newIDs.isEmpty {
                 charges.append(batch.estimate(of: newIDs)); sent.formUnion(newIDs)
@@ -1320,22 +1364,8 @@ import VoxClipMedia
             guard receivedInBatch.insert(row.id).inserted else { continue }
             guard !phrases[phrase].takes.contains(where: { $0.id == row.id }) else { continue }
             if stale { phrases[phrase].madeBeforeEdit.insert(row.id) }
-            // A stale plan replaces no take: every paid one stays until the user discards them.
             let number = phrases[phrase].nextTakeNumber
-            if phrases[phrase].takes.count >= 3, !keepsEveryTake, !stale,
-               let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
-                let evicted = phrases[phrase].takes[replaced].id
-                await backend?.retire(phrase, evicted)
-                guard (revision == version || stopping), !retired else {
-                    await backend?.retire(phrase, row.id)
-                    continue
-                }
-                if !isCurrent() { phrases[phrase].madeBeforeEdit.insert(row.id) }
-                phrases[phrase].takes[replaced] = Take(number: number, row: row)
-            } else {
-                let number = (phrases[phrase].takes.map(\.number).max() ?? 0) + 1
-                phrases[phrase].takes.append(Take(number: number, row: row))
-            }
+            phrases[phrase].takes.append(Take(number: number, row: row))
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
         guard !lipsync.blocksMutation(phrase) else { return }
@@ -1508,7 +1538,6 @@ import VoxClipMedia
             return false
         }
         stopAudition()
-        keepsEveryTake = true
         microphoneTakes[take.row.id] = take; takeInputs[take.row.id] = take.input
         if let replacing, replacing != phrases[index].selectedID, microphoneTakes[replacing] != nil,
            let at = phrases[index].takes.firstIndex(where: { $0.id == replacing }) {
@@ -1516,7 +1545,7 @@ import VoxClipMedia
             let old = microphoneTakes.removeValue(forKey: replacing); takeInputs[replacing] = nil
             Task { await old?.scratch.invalidate() }
         } else {
-            let number = (phrases[index].takes.map(\.number).max() ?? 0) + 1
+            let number = phrases[index].nextTakeNumber
             phrases[index].takes.append(Take(number: number, row: take.row, source: .microphone))
         }
         if case .generating = phrases[index].status {} else { phrases[index].status = .ready }

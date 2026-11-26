@@ -52,6 +52,26 @@ public sealed record TranscriptionRequest(TranscriptionPlan Plan, ExtractedAudio
 {
     /// <summary>Request-local billing evidence, delivered synchronously before UI retirement checks.</summary>
     public Action<TranscriptionEvidence>? Observe { get; init; }
+    /// <summary>Receives the local retry once cloud words are ready to align.</summary>
+    public Action<TranscriptionAlignmentRetry>? AlignmentReady { get; init; }
+}
+
+/// <summary>Finishes a retained cloud transcription without contacting its provider.</summary>
+public sealed class TranscriptionAlignmentRetry
+{
+    private readonly Func<CancellationToken, Task<Transcript>> finish;
+    /// <summary>The transcription identifier returned with the retained words, if present.</summary>
+    public string? ProviderRequestId { get; }
+
+    internal TranscriptionAlignmentRetry(string? providerRequestId, Func<CancellationToken, Task<Transcript>> finish)
+    {
+        ProviderRequestId = providerRequestId;
+        this.finish = finish;
+    }
+
+    /// <summary>Runs only local alignment using the retained words and original timing inputs.</summary>
+    public async Task<Transcript> FinishAsync(CancellationToken ct) =>
+        (await finish(ct).ConfigureAwait(false)) with { FromCache = true };
 }
 /// <summary>Actual cache/transport evidence, not an assertion that a displayed estimate was billed.</summary>
 public enum TranscriptionEvidenceKind

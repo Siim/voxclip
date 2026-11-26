@@ -133,23 +133,15 @@ public sealed class TranscriptionService : ITranscriptionService
                         engine.Engine == TranscriptEngine.Elevenlabs ? CancellationToken.None : ct).ConfigureAwait(false) && engine is ElevenLabsTranscriber cacheEngine)
                         cacheEngine.WarnCacheUnavailable();
                 }
+                if (request.Plan.Engine == TranscriptEngine.Elevenlabs && raw.Tokens.Any(token => token.Kind is null or WordKind.Word) &&
+                    request.AlignmentReady is { } alignmentReady)
+                {
+                    var alignmentRequest = request with { Observe = null, AlignmentReady = null };
+                    alignmentReady(new(raw.ProviderRequestId, token => AlignAsync(raw, alignmentRequest, envelope, resolveEnvelope, rawKey, token)));
+                }
                 ct.ThrowIfCancellationRequested();
                 reporting.Report(new(TranscriptionStage.Aligning, 0));
-                if (resolveEnvelope)
-                    envelope = envelopeProvider is null ? await ReadEnvelopeAsync(request.ContentKey, ct).ConfigureAwait(false)
-                        : await envelopeProvider(request, ct).ConfigureAwait(false);
-                var shifted = raw with
-                {
-                    Tokens = raw.Tokens.Select(token => token with
-                    {
-                        Start = token.Start + request.Audio.TimelineStart, End = token.End + request.Audio.TimelineStart
-                    }).ToArray()
-                };
-                var result = await Task.Run(() => TranscriptPostProcessor.Process(shifted, request.Audio.DurationSeconds,
-                    envelope, rawKey, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
-                ct.ThrowIfCancellationRequested();
-                if (!result.Words.Any(word => word.Kind == WordKind.Word))
-                    throw new VoxClipException(VoxClipErrorCode.NoSpeech, "We didn't hear any words. Check the audio track or choose the language.");
+                var result = await AlignAsync(raw, request, envelope, resolveEnvelope, rawKey, ct).ConfigureAwait(false);
                 await reporting.CompleteAsync(new(TranscriptionStage.Aligning, 1), ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
                 return result with { FromCache = fromCache };
@@ -157,6 +149,28 @@ public sealed class TranscriptionService : ITranscriptionService
             finally { Queues.Release(onDevice, cachePath); }
         }
         finally { projectJob.Release(); }
+    }
+
+    private async Task<Transcript> AlignAsync(RawTranscript raw, TranscriptionRequest request, AudioEnvelope? envelope,
+        bool resolveEnvelope, string rawKey, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (resolveEnvelope)
+            envelope = envelopeProvider is null ? await ReadEnvelopeAsync(request.ContentKey, ct).ConfigureAwait(false)
+                : await envelopeProvider(request, ct).ConfigureAwait(false);
+        var shifted = raw with
+        {
+            Tokens = raw.Tokens.Select(token => token with
+            {
+                Start = token.Start + request.Audio.TimelineStart, End = token.End + request.Audio.TimelineStart
+            }).ToArray()
+        };
+        var result = await Task.Run(() => TranscriptPostProcessor.Process(shifted, request.Audio.DurationSeconds,
+            envelope, rawKey, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        if (!result.Words.Any(word => word.Kind == WordKind.Word))
+            throw new VoxClipException(VoxClipErrorCode.NoSpeech, "We didn't hear any words. Check the audio track or choose the language.");
+        return result;
     }
 
     internal static byte[] CacheKey(TranscriptionRequest request, TranscriptionModel? model)

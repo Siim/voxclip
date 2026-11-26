@@ -61,9 +61,12 @@ import Testing
     /// key), set to change nothing.
     static func sendable(_ reply: JSONValue) throws -> JSONValue {
         guard case .object(var object) = reply else { throw VoiceLabError.invalidInput }
+        if let start = object.removeValue(forKey: "startWord"), let end = object.removeValue(forKey: "endWord") {
+            object["parts"] = .array([.object(["startWord": start, "endWord": end])])
+        }
         let neutral: [String: JSONValue] = ["corrections": .array([]), "lengthReason": .string(""), "captionReason": .string(""),
                                             "look": .string("original"), "lookReason": .string(""), "speed": .number(1), "speedReason": .string(""),
-                                            "tone": .string("none"), "toneSummary": .string(""),
+                                            "tone": .string("none"), "toneSummary": .string(""), "not_in_take": .string(""), "musicTrackId": .string(""),
                                             "frames": .object(["blur": .array([]), "cover": .object(["id": .string(""), "reason": .string("")])])]
         for (key, value) in neutral where object[key] == nil { object[key] = value }
         return .object(object)
@@ -73,7 +76,7 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothStagesInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 10)
+        #expect(prompt.promptVersion == 12)
         for system in [prompt.system, prompt.momentsSystem] {
             #expect(!system.contains("{") && !system.contains("}"))
             #expect(system.contains("Length: 20 to 45 seconds after cuts. Up to 60 s only when the idea cannot land in less"))
@@ -86,7 +89,8 @@ import Testing
         #expect(prompt.momentsSystem.contains("Your task: pick the moments") && !prompt.system.contains("Your task: pick the moments"))
         #expect(prompt.looks == [.original, .muted, .warm, .bw])
         #expect(CanonicalResponseParser.validateSchemaSubset(prompt.schema))
-        #expect(prompt.schema[ai: "required"].aiArray.count == prompt.schema[ai: "properties"].aiObject?.count)
+        let required = Set(prompt.schema[ai: "required"].aiArray.compactMap(\.aiString))
+        #expect(Set(prompt.schema[ai: "properties"].aiObject?.keys.map { $0 } ?? []).subtracting(required) == ["effects"])
         let moment = prompt.momentsSchema[ai: "properties"][ai: "clips"][ai: "items"]
         #expect(moment[ai: "required"].aiArray.count == moment[ai: "properties"].aiObject?.count)
         #expect(prompt.limits.maxTargetSeconds == 45 && prompt.limits.maxReasonedSeconds == 60 && prompt.limits.minTargetSeconds == 20)
@@ -116,6 +120,19 @@ import Testing
         sections["role"] = .string("Use {unknownLimit} rewrites.")
         root["sections"] = .object(sections)
         #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(root), sha256: "") }
+    }
+
+    @Test func plannerKeepsOnlySupportedEffectsOnKeptWords() throws {
+        var reply = try #require(Self.sendable(Self.reply("valid-clip")).aiObject)
+        reply["effects"] = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            [{"kind":"motionTitle","startWord":3,"endWord":4,"text":"Coffee first","scale":0,"reason":"Name the subject."},
+             {"kind":"punchIn","startWord":0,"endWord":2,"text":"","scale":1.2,"reason":"Crosses a cut."},
+             {"kind":"illustration","startWord":3,"endWord":4,"prompt":"Cup of coffee","reason":"Show the subject."}]
+            """.utf8))
+        let plan = try #require(ClipAutopilotValidator.plan(.object(reply), context: Self.context(scope: 0...29)))
+        #expect(plan.effects?.map(\.kind) == [.motionTitle, .illustration])
+        #expect(plan.effects?.first?.reason == "Name the subject.")
+        #expect(plan.repairs.filter { $0.field.hasPrefix("effects[") }.map(\.field) == ["effects[1]"])
     }
 
     // MARK: Request
@@ -263,6 +280,28 @@ import Testing
 
     // MARK: Service
 
+    @Test func creativeRevisionSendsThePriorPlanAndKeepsTheNewPartsInPlayOrder() async throws {
+        let transcript = try Self.transcript()
+        let original = try #require(ClipAutopilotValidator.plan(try Self.reply("valid-clip"), context: Self.context(scope: 0...29)))
+        var request = ClipAutopilotRequest(transcript: transcript, mode: .clip(0...29))
+        request.creativeShapes = true
+        request.revision = .init(instruction: "End on the beginning instead", plan: original)
+        var reply = try #require(try Self.sendable(Self.reply("valid-clip")).aiObject)
+        reply["kind"] = .string("story")
+        reply["parts"] = .array([.object(["startWord": .number(18), "endWord": .number(24)]),
+                                 .object(["startWord": .number(2), "endWord": .number(7)])])
+        let stub = AutopilotStub(replies: [try JSONValue.object(reply).aiCompact()])
+        let service = ClipAutopilotService(runner: try Self.runner(), shared: try Self.shared())
+        let result = try await service.plan(request, connector: stub, model: "fixture")
+        let plan = try #require(result.plan)
+        let sent = try #require(await stub.requests.first)
+        #expect(sent.instruction.contains("The creator asked: \"End on the beginning instead\". Here is the plan you made:"))
+        #expect(sent.instruction.contains(original.title))
+        #expect(sent.schema[ai: "required"].aiArray.contains(.string("kind")))
+        #expect(plan.kind == .story)
+        #expect(plan.parts.count == 2 && plan.parts[0].startWord > plan.parts[1].endWord)
+    }
+
     @Test func missingMusicDoesNotDiscardOrResendAnOtherwiseValidPlan() async throws {
         var reply = try #require(try Self.sendable(Self.reply("valid-clip")).aiObject)
         reply.removeValue(forKey: "music"); reply.removeValue(forKey: "musicPick")
@@ -282,7 +321,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 10 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 12 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })
@@ -291,7 +330,8 @@ import Testing
 
     @Test func serviceSeriesDropsTypeInvalidMomentsAndPlansTheRest() async throws {
         let valid = try Self.sendable(try Self.reply("valid-clip"))
-        let moment = JSONValue.object(["startWord": .number(0), "endWord": .number(29), "title": .string("Coffee"), "idea": .string("Sleep wins."),
+        let moment = JSONValue.object(["parts": .array([.object(["startWord": .number(0), "endWord": .number(29)])]), "kind": .string("stretch"),
+            "not_in_take": .string(""), "title": .string("Coffee"), "idea": .string("Sleep wins."),
             "captionStyle": .string("karaoke"), "captionReason": .string(""), "score": .number(8), "verdict": .string("post"), "scoreReason": .string("")])
         let reply = JSONValue.object(["clips": .array([.object(["startWord": .string("x")]), moment])])
         let stub = AutopilotStub(replies: [try reply.aiCompact(), try valid.aiCompact()])

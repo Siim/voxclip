@@ -7,6 +7,11 @@ namespace VoxClip.Core.Domain.VoiceLab;
 /// deterministic parts both apps share, as the Mac <c>WholeClipRevoice.swift</c>.</summary>
 public static partial class WholeClipRevoice
 {
+    /// <summary>The stored scope identifier for a revoice of Full Take.</summary>
+    public const string FullTakeId = "voxclip-full-take";
+    /// <summary>Resolve a stored revoice scope without creating a clip.</summary>
+    public static VoiceLabOutputScope OutputScope(string scopeId) =>
+        scopeId == FullTakeId ? VoiceLabOutputScope.Full : VoiceLabOutputScope.Clip(scopeId);
     /// <summary>The burned-in chip of an export holding a whole-clip revoice (voice-lab §11).</summary>
     public const string DisclosureChip = "Voice and lip movement generated with AI";
     /// <summary>The post text line of an export holding a whole-clip revoice (voice-lab §11).</summary>
@@ -36,7 +41,7 @@ public static partial class WholeClipRevoice
         foreach (var record in records)
         {
             if (record is null || !IdShape(record.Id) || !ids.Add(record.Id) || !IdShape(record.ClipId) ||
-                !project.Edits.Clips.Any(clip => clip.Id == record.ClipId) ||
+                (record.ClipId != FullTakeId && !project.Edits.Clips.Any(clip => clip.Id == record.ClipId)) ||
                 record.SegmentIds is not { Count: > 0 } || string.IsNullOrEmpty(record.Script) ||
                 record.Script.EnumerateRunes().Count() > MaximumScriptScalars || string.IsNullOrEmpty(record.ConsentRecordId) ||
                 WholeClipLipsyncValues.FromRawValue(record.LipsyncModel) is null ||
@@ -66,7 +71,7 @@ public static partial class WholeClipRevoice
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var tts = project.VoiceLab.Segments.Where(segment => segment.Kind == VoiceLabSegmentKind.Tts).Select(segment => segment.Id)
             .ToHashSet(StringComparer.Ordinal);
-        var kept = records.Where(record => record is not null && clips.Contains(record.ClipId) && record.SegmentIds is { Count: > 0 } ids &&
+        var kept = records.Where(record => record is not null && (record.ClipId == FullTakeId || clips.Contains(record.ClipId)) && record.SegmentIds is { Count: > 0 } ids &&
             ids.All(id => id is not null && tts.Contains(id))).ToArray();
         if (kept.Length == records.Count) return project;
         return project with { VoiceLab = project.VoiceLab with { WholeClipRevoices = kept.Length == 0 ? null : kept } };
@@ -100,13 +105,12 @@ public static partial class WholeClipRevoice
     private static bool IdShape(string? value) => value is not null && VoiceLabProject.Matches(value, "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}");
 }
 
-/// <summary>The lip-sync models a whole clip may use (the user's decision, 2026-11-07): lipsync-2 by default, sync-3 as the priced
-/// upgrade on Review that re-runs only the lip sync. The raw value is the fal model id the record stores.</summary>
+/// <summary>The lip-sync models accepted in whole-clip records. New whole-clip jobs use sync-3.</summary>
 public enum WholeClipLipsync
 {
-    /// <summary><c>fal-ai/sync-lipsync/v2:lipsync-2</c>, the standard.</summary>
+    /// <summary><c>fal-ai/sync-lipsync/v2:lipsync-2</c>, kept for saved work.</summary>
     Lipsync2,
-    /// <summary><c>fal-ai/sync-lipsync/v3</c>, the upgrade.</summary>
+    /// <summary><c>fal-ai/sync-lipsync/v3</c>, the standard.</summary>
     Sync3
 }
 
@@ -114,7 +118,7 @@ public enum WholeClipLipsync
 public static class WholeClipLipsyncValues
 {
     /// <summary>The standard model.</summary>
-    public const WholeClipLipsync Standard = WholeClipLipsync.Lipsync2;
+    public const WholeClipLipsync Standard = WholeClipLipsync.Sync3;
     /// <summary>Every model, in the Mac's <c>allCases</c> order.</summary>
     public static IReadOnlyList<WholeClipLipsync> All { get; } = [WholeClipLipsync.Lipsync2, WholeClipLipsync.Sync3];
 
@@ -133,9 +137,6 @@ public static class WholeClipLipsyncValues
         "fal-ai/sync-lipsync/v3" => WholeClipLipsync.Sync3,
         _ => null
     };
-    /// <summary>The model as a fal lip-sync capability.</summary>
-    public static Services.LLM.LipsyncModel LipsyncModel(this WholeClipLipsync model)
-        => new("fal", model.RawValue(), model == WholeClipLipsync.Sync3 ? Services.LLM.LipsyncTier.Best : Services.LLM.LipsyncTier.Quality, true);
 }
 
 /// <summary>A used whole-clip revoice, saved in the project (<c>voiceLab.wholeClipRevoices</c>, schema v3 and v4). Its segments are

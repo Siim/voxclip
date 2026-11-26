@@ -154,7 +154,16 @@ public sealed record ClipAutopilotPlan
     /// <summary>The whole clip played at <c>Rate</c>, never 1.</summary>
     public sealed record Speed(double Rate, string Reason);
     /// <summary>A background track suggestion, instrumental.</summary>
-    public sealed record Music(string Title, string Mood, string Prompt, string Reason, double UnderVoiceDb);
+    public sealed record Music(string Title, string Mood, string Prompt, string Reason, double UnderVoiceDb)
+    {
+        /// <summary>Optional timeline placement and audio shaping for this suggestion.</summary>
+        public ClipPlanMusicShape? TimelineShape { get; init; }
+        internal JsonObject ToJson()
+        {
+            var result = new JsonObject { ["title"] = Title, ["mood"] = Mood, ["prompt"] = Prompt, ["reason"] = Reason, ["underVoiceDb"] = UnderVoiceDb };
+            return TimelineShape?.Write(result) ?? result;
+        }
+    }
     /// <summary>A punch-in from <c>Word</c> to <c>UntilWord</c> at <c>Scale</c>.</summary>
     public sealed record Zoom(int Word, int UntilWord, double Scale, string Reason, ClipAutopilotZoomDirection? Direction = null)
     {
@@ -198,7 +207,7 @@ public sealed record ClipAutopilotPlan
         public sealed record Blur(string Id, bool Blurred, string Reason);
         /// <summary>A cover candidate's id (<c>C1</c>…<c>C3</c>); <c>Fallback</c> when the reply named no listed candidate and the
         /// local best (<c>C1</c>) was taken.</summary>
-        public sealed record Cover(string Id, string Reason, bool Fallback = false);
+        public sealed record Cover(string Id, string Reason, bool Fallback = false, string? Title = null);
         /// <summary>Equal when the decisions are.</summary>
         public bool Equals(FrameChoices? other) => other is not null && BlurChoices.SequenceEqual(other.BlurChoices) && Equals(CoverChoice, other.CoverChoice);
         /// <inheritdoc />
@@ -235,6 +244,8 @@ public sealed record ClipAutopilotPlan
     public int? MusicPick { get; init; }
     /// <summary>Punch-ins.</summary>
     public IReadOnlyList<Zoom> Zooms { get; init; } = [];
+    /// <summary>Declarative effect entries; absent in saved plans predating the vocabulary.</summary>
+    public IReadOnlyList<ClipPlanEffect>? Effects { get; init; }
     /// <summary>Short X/LinkedIn post text.</summary>
     public required string PostText { get; init; }
     /// <summary>1...10.</summary>
@@ -259,9 +270,35 @@ public sealed record ClipAutopilotPlan
     public FrameChoices? Frames { get; init; }
 
     /// <summary>The picked music, when there is one.</summary>
-    public Music? PickedMusic => MusicPick is { } pick && pick >= 0 && pick < MusicChoices.Count ? MusicChoices[pick] : null;
+    public Music? PickedMusic => SavedMusicTrackId is null && MusicPick is { } pick && pick >= 0 && pick < MusicChoices.Count ? MusicChoices[pick] : null;
     /// <summary>The clip's span.</summary>
     public WordSpan Span => new(StartWord, EndWord);
+    /// <summary>Explicit source ranges in playback order; null for a legacy span.</summary>
+    public IReadOnlyList<ClipProposal.Part>? OrderedParts { get; init; }
+    /// <summary>An explicit showreel shape, otherwise inferred from the parts.</summary>
+    public string? Shape { get; init; }
+    /// <summary>The wording or beat the take did not contain.</summary>
+    public string? MissingFromTake { get; init; }
+    /// <summary>The optional short title for the cover.</summary>
+    public string? CoverTitle { get; init; }
+    /// <summary>An offered project track to reuse without generation.</summary>
+    public string? SavedMusicTrackId { get; init; }
+    /// <summary>The ordered source ranges, including the legacy single-span fallback.</summary>
+    public IReadOnlyList<ClipProposal.Part> Parts => OrderedParts ?? [new(StartWord, EndWord)];
+    /// <summary>The clip shape that these parts form.</summary>
+    public string Kind => Shape ?? (Parts.Count > 1 ? "story" : "stretch");
+
+    /// <summary>Converts the checked provider reply to the shared proposal contract.</summary>
+    public ClipProposal CanonicalProposal(string? clipId = null) => new(
+        clipId is null ? new(New: new(Kind, Title)) : new(ClipId: clipId), ScoreReason)
+    {
+        Parts = Parts, Cuts = Cuts, PauseCuts = PauseCuts, Corrections = Corrections, CaptionStyle = CaptionChoice.StyleId,
+        Font = CaptionChoice.Font, TextCase = CaptionChoice.TextCase, WordsPerCaption = CaptionChoice.WordsPerCaption,
+        Look = ClipLookChoice, Speed = SpeedChoice, Hook = Hook, Title = Title, PostText = PostText,
+        CoverTitle = CoverTitle ?? Frames?.CoverChoice?.Title,
+        Music = SavedMusicTrackId is { } id ? new(TrackId: id) : PickedMusic is { } music ? new(Brief: music.Prompt) { Shape = music.TimelineShape } : null,
+        Effects = Effects, Rewrites = Rewrites
+    };
 
     /// <summary>The plan's JSON, in the Mac encoder's keys; null optionals are omitted.</summary>
     public JsonObject ToJson()
@@ -280,7 +317,7 @@ public sealed record ClipAutopilotPlan
                 ["case"] = CaptionChoice.TextCase.Name(), ["wordsPerCaption"] = CaptionChoice.WordsPerCaption, ["reason"] = CaptionChoice.Reason
             },
             ["look"] = new JsonObject { ["id"] = ClipLookChoice.Id.Name(), ["reason"] = ClipLookChoice.Reason },
-            ["music"] = Array(MusicChoices, item => new JsonObject { ["title"] = item.Title, ["mood"] = item.Mood, ["prompt"] = item.Prompt, ["reason"] = item.Reason, ["underVoiceDb"] = item.UnderVoiceDb }),
+            ["music"] = Array(MusicChoices, item => item.ToJson()),
             ["zooms"] = Array(Zooms, item =>
             {
                 var zoom = new JsonObject { ["word"] = item.Word, ["untilWord"] = item.UntilWord, ["scale"] = item.Scale, ["reason"] = item.Reason };
@@ -294,11 +331,22 @@ public sealed record ClipAutopilotPlan
         };
         if (SpeedChoice is { } speed) json["speed"] = new JsonObject { ["rate"] = speed.Rate, ["reason"] = speed.Reason };
         if (MusicPick is { } pick) json["musicPick"] = pick;
+        if (OrderedParts is { } parts) json["parts"] = Array(parts, item => new JsonObject { ["startWord"] = item.StartWord, ["endWord"] = item.EndWord });
+        if (Shape is not null) json["kind"] = Shape;
+        if (MissingFromTake is not null) json["not_in_take"] = MissingFromTake;
+        if (CoverTitle is not null) json["coverTitle"] = CoverTitle;
+        if (SavedMusicTrackId is not null) json["savedMusicTrackId"] = SavedMusicTrackId;
+        if (Effects is { } effects) json["effects"] = Array(effects, effect => effect.ToJson());
         if (ToneChoice is { } tone) json["tone"] = new JsonObject { ["id"] = tone.Id, ["title"] = tone.Title, ["summary"] = tone.Summary };
         if (Frames is { } frames)
         {
             var choices = new JsonObject { ["blur"] = Array(frames.BlurChoices, item => new JsonObject { ["id"] = item.Id, ["blur"] = item.Blurred, ["reason"] = item.Reason }) };
-            if (frames.CoverChoice is { } cover) choices["cover"] = new JsonObject { ["id"] = cover.Id, ["reason"] = cover.Reason, ["fallback"] = cover.Fallback };
+            if (frames.CoverChoice is { } cover)
+            {
+                var pickCover = new JsonObject { ["id"] = cover.Id, ["reason"] = cover.Reason, ["fallback"] = cover.Fallback };
+                if (cover.Title is { } title) pickCover["title"] = title;
+                choices["cover"] = pickCover;
+            }
             json["frames"] = choices;
         }
         return json;
@@ -321,6 +369,9 @@ public sealed record ClipAutopilotPlan
             return new ClipAutopilotPlan
             {
                 StartWord = I(json["startWord"]), EndWord = I(json["endWord"]), Title = S(json["title"]), Hook = S(json["hook"]),
+                OrderedParts = json["parts"] is { } parts ? Items(parts).Select(item => new ClipProposal.Part(I(item["startWord"]), I(item["endWord"]))).ToArray() : null,
+                Shape = json["kind"]?.GetValue<string>(), MissingFromTake = json["not_in_take"]?.GetValue<string>(),
+                CoverTitle = json["coverTitle"]?.GetValue<string>(), SavedMusicTrackId = json["savedMusicTrackId"]?.GetValue<string>(),
                 Cuts = Items(json["cuts"]).Select(item => new Cut(I(item["startWord"]), I(item["endWord"]), ClipAutopilotWire.CutKind(S(item["kind"])) ?? throw new JsonException(), S(item["reason"]))).ToArray(),
                 PauseCuts = Items(json["pauseCuts"]).Select(item => new PauseCut(I(item["afterWord"]), S(item["reason"]))).ToArray(),
                 Corrections = json["corrections"] is null ? [] : Items(json["corrections"]).Select(item => new Correction(I(item["word"]), S(item["heard"]), S(item["text"]), S(item["reason"]))).ToArray(),
@@ -329,10 +380,12 @@ public sealed record ClipAutopilotPlan
                     ClipAutopilotWire.CaptionCase(S(captions["case"])) ?? throw new JsonException(), I(captions["wordsPerCaption"]), captions["reason"] is null ? "" : S(captions["reason"])),
                 ClipLookChoice = look is null ? Look.Original : new(ClipAutopilotWire.Look(S(look["id"])) ?? throw new JsonException(), look["reason"] is null ? "" : S(look["reason"])),
                 SpeedChoice = json["speed"] is { } speed ? new(speed["rate"]!.GetValue<double>(), S(speed["reason"])) : null,
-                MusicChoices = Items(json["music"]).Select(item => new Music(S(item["title"]), S(item["mood"]), S(item["prompt"]), S(item["reason"]), item["underVoiceDb"]!.GetValue<double>())).ToArray(),
+                MusicChoices = Items(json["music"]).Select(item => new Music(S(item["title"]), S(item["mood"]), S(item["prompt"]), S(item["reason"]),
+                    item["underVoiceDb"]!.GetValue<double>()) { TimelineShape = ClipPlanMusicShape.Read(item) }).ToArray(),
                 MusicPick = json["musicPick"] is { } pick ? pick.GetValue<int>() : null,
                 Zooms = Items(json["zooms"]).Select(item => new Zoom(I(item["word"]), I(item["untilWord"]), item["scale"]!.GetValue<double>(), S(item["reason"]),
                     item["direction"] is { } direction ? ClipAutopilotWire.ZoomDirection(S(direction)) ?? throw new JsonException() : null)).ToArray(),
+                Effects = json["effects"] is { } effects ? Items(effects).Select(effect => ClipPlanEffect.Read(effect) ?? throw new JsonException()).ToArray() : null,
                 PostText = S(json["postText"]), Score = I(json["score"]), Verdict = ClipAutopilotWire.Verdict(S(json["verdict"])) ?? throw new JsonException(),
                 ScoreReason = S(json["scoreReason"]), LengthReason = json["lengthReason"] is null ? "" : S(json["lengthReason"]),
                 Seconds = json["seconds"]?.GetValue<double>() ?? 0,
@@ -341,7 +394,8 @@ public sealed record ClipAutopilotPlan
                 Flags = json["flags"] is null ? [] : Items(json["flags"]).Select(item => new Flag(S(item["kind"]), S(item["detail"]))).ToArray(),
                 ToneChoice = json["tone"] is { } tone ? new(S(tone["id"]), S(tone["title"]), S(tone["summary"])) : null,
                 Frames = json["frames"] is { } frames ? new(Items(frames["blur"]).Select(item => new FrameChoices.Blur(S(item["id"]), item["blur"]!.GetValue<bool>(), S(item["reason"]))).ToArray(),
-                    frames["cover"] is { } cover ? new FrameChoices.Cover(S(cover["id"]), S(cover["reason"]), cover["fallback"]?.GetValue<bool>() ?? false) : null) : null
+                    frames["cover"] is { } cover ? new FrameChoices.Cover(S(cover["id"]), S(cover["reason"]), cover["fallback"]?.GetValue<bool>() ?? false,
+                        cover["title"]?.GetValue<string>()) : null) : null
             };
         }
         catch (Exception exception) when (exception is InvalidOperationException or NullReferenceException or FormatException or JsonException)
@@ -355,6 +409,16 @@ public sealed record ClipAutopilotPlan
 public sealed record ClipAutopilotMoment(int StartWord, int EndWord, string Title, string Idea, int Score, ClipAutopilotVerdict Verdict,
     string ScoreReason, string CaptionStyle, string CaptionReason)
 {
+    /// <summary>Explicit source ranges in playback order; null for a legacy span.</summary>
+    public IReadOnlyList<ClipProposal.Part>? OrderedParts { get; init; }
+    /// <summary>An explicit showreel shape, otherwise inferred from the parts.</summary>
+    public string? Shape { get; init; }
+    /// <summary>The wording or beat the take did not contain.</summary>
+    public string? MissingFromTake { get; init; }
+    /// <summary>The ordered source ranges, including the legacy single-span fallback.</summary>
+    public IReadOnlyList<ClipProposal.Part> Parts => OrderedParts ?? [new(StartWord, EndWord)];
+    /// <summary>The clip shape that these parts form.</summary>
+    public string Kind => Shape ?? (Parts.Count > 1 ? "story" : "stretch");
     /// <summary>A Find Clips suggestion as a moment of Claude mode's series (<see cref="ClipAutopilotRequest.Moments"/>): its span, title
     /// and reason, the score it was given and no caption style, which each clip's plan picks.</summary>
     public static ClipAutopilotMoment Found(WordSpan span, string title, string reason, int score) =>

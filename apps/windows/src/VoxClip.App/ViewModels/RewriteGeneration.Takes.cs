@@ -23,7 +23,6 @@ internal sealed partial class RewriteGeneration
     private bool refreshingOutput;
     private bool accepting;
     private bool runStarted;
-    private bool runInputRecorded;
     private readonly Dictionary<Guid, VoiceLabTakeInput> takeInputs = [];
     /// <summary>The input a take was made from: its text, tags and window. Null for a take this window did not make.</summary>
     internal VoiceLabTakeInput? InputFor(Guid id) => takeInputs.GetValueOrDefault(id);
@@ -123,15 +122,6 @@ internal sealed partial class RewriteGeneration
         if (result.End == VoiceLabTakeRunEnd.Blocked && Blocked is not null) Announcement = Blocked;
         Notify();
     }
-    /// <summary>Automatic fixes (voice-lab.md §8.2.2): later runs add their takes beside these, so no paid take is replaced
-    /// (Mac <c>ClipTakePlan.keepsEveryTake</c>).</summary>
-    internal bool KeepsEveryTake { get; private set; }
-    internal void KeepEveryTake()
-    {
-        KeepsEveryTake = true;
-        core.KeepsEarlierTakes = true;
-        if (takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun run) run.KeepsEarlierTakes = true;
-    }
     /// <summary>The phrase keeps its original words (Keep original words, or the last automatic round): no take is used and
     /// every take stays listed (Mac <c>ClipTakePlan.leaveOut</c>). <see cref="Restore"/> undoes it.</summary>
     internal bool LeftOut { get; private set; }
@@ -190,14 +180,15 @@ internal sealed partial class RewriteGeneration
             Score: row.Score ?? 0))
         .OrderByDescending(item => item.Usable).ThenBy(item => item.Usable ? -item.Score : item.Distance)
         .ThenBy(item => item.Usable ? item.Distance : -item.Score).ThenBy(item => item.Row.Index).Select(item => item.Row).ToArray();
-    /// <summary>The take chosen automatically (Mac <c>ClipTakePlan.automaticTake</c>, ADR-R37 and ADR-R39): passing takes with a
-    /// measured voice, never a rejected one, ranked by <see cref="Ranked"/> among the usable ones (else all). A take whose only
+    /// <summary>The take chosen automatically (Mac <c>ClipTakePlan.automaticTake</c>): passing selected-voice or measured
+    /// takes, never a rejected one, ranked by <see cref="Ranked"/> among the usable ones (else all). A take whose only
     /// issue is a join advisory is chosen when it ranks best, after any clean take at that rank; choosing it accepts the
     /// advisory (<see cref="Select"/>).</summary>
     internal VoiceLabTakeRow? AutomaticTake()
     {
         var order = Ranked(Rows.Where(row => row.Selectable && !rejected.Contains(row.Id) && !beforeExpression.Contains(row.Id) &&
-            row.Qa?.SpeakerScore is { } score && double.IsFinite(score) && AdvisoryCanBeAccepted(row)));
+            (row.VoiceCheck is VoiceLabTakeVoiceCheck.SelectedVoiceCheck || row.Qa?.SpeakerScore is { } score && double.IsFinite(score)) &&
+            AdvisoryCanBeAccepted(row)));
         var usable = order.Where(DurationAvailable).ToArray();
         var pool = usable.Length > 0 ? usable : order;
         return pool.FirstOrDefault(row => !row.HasJoinAdvisory) ?? pool.FirstOrDefault();
@@ -242,7 +233,7 @@ internal sealed partial class RewriteGeneration
         run.VoiceChecks = checks; run.PhraseId = phrase;
     }
     /// <summary>Whether this phrase's takes are voice-checked by Media's runs (a stub runner checks its own).</summary>
-    internal bool PoolsShortTakes => takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun;
+    internal bool PoolsShortTakes => takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun && pendingInput?.ChecksGeneratedSpeaker == true;
     /// <summary>The approved batch's pool for this phrase's run; null after the batch.</summary>
     internal void UseShortTakePool(VoxClip.Media.VoiceLab.VoiceLabShortTakePool? pool)
     {

@@ -108,7 +108,7 @@ public sealed class RewriteOwnTakeTests : IDisposable
     }
 
     [Fact]
-    public async Task DeniedAccessShowsInlineGuidanceAndNoMicrophoneHidesRecord()
+    public async Task DeniedAccessOffersPrivacySettingsButNoMicrophoneDoesNot()
     {
         var (session, _, microphone, _, _) = await PricedWithMicrophoneAsync();
         using var _session = session;
@@ -118,13 +118,33 @@ public sealed class RewriteOwnTakeTests : IDisposable
         Assert.Equal(PhraseMicrophoneCopy.Denied, session.PhraseMicrophone.Problem);
         Assert.Equal(PhraseMicrophoneAccess.Denied, session.PhraseMicrophone.Access);
         Assert.Contains("Settings → Privacy & security → Microphone", PhraseMicrophoneCopy.Denied);
-        Assert.Equal("ms-settings:privacy-microphone", VoiceLabCopy.MicrophoneSettingsUri);
+        Assert.Equal("ms-settings:privacy-microphone", session.PhraseMicrophone.PrivacySettings?.AbsoluteUri);
         var (none, _, _, _, _) = await PricedWithMicrophoneAsync(access: PhraseMicrophoneAccess.NoMicrophone);
         using var _none = none;
         await none.RecordPhraseAsync(0);
         Assert.Equal(PhraseMicrophoneAccess.NoMicrophone, none.PhraseMicrophone!.Access);
         Assert.Equal(PhraseMicrophoneCopy.NoMicrophone, none.PhraseMicrophone.Problem);
         Assert.Equal(RewritePhraseMicrophone.MicrophoneState.Idle, none.PhraseMicrophone.State);
+        Assert.Null(none.PhraseMicrophone.PrivacySettings);
+    }
+
+    [Fact]
+    public async Task MicrophonePermissionLostDuringRecordingOffersSettingsAndCanRetry()
+    {
+        var (session, _, microphone, _, _) = await PricedWithMicrophoneAsync();
+        using var _session = session;
+        await session.RecordPhraseAsync(0);
+        microphone.CaptureFailure = MicrophoneError.Permission;
+        await session.StopPhraseRecordingAsync();
+
+        var phrase = Assert.IsType<RewritePhraseMicrophone>(session.PhraseMicrophone);
+        Assert.Equal("ms-settings:privacy-microphone", phrase.PrivacySettings?.AbsoluteUri);
+        Assert.Equal(PhraseMicrophoneCopy.Denied, phrase.Problem);
+
+        microphone.CaptureFailure = null;
+        await session.RecordPhraseAsync(0);
+        Assert.Equal(RewritePhraseMicrophone.MicrophoneState.Recording, phrase.State);
+        Assert.Null(phrase.PrivacySettings);
     }
 
     [Fact]
@@ -211,13 +231,14 @@ public sealed class RewriteOwnTakeTests : IDisposable
         internal int Maximum;
         internal bool Started, Stopped, Discarded;
         internal Exception? Failure;
+        internal MicrophoneError? CaptureFailure;
         public Task StartAsync(int maximumSeconds, CancellationToken ct)
         {
             if (Failure is { } failure) return Task.FromException(failure);
             Maximum = maximumSeconds; Started = true; Stopped = false; Discarded = false; Seconds = 0;
             return Task.CompletedTask;
         }
-        public MicrophoneSnapshot Snapshot() => new(Started && !Stopped, false, Seconds, 0.4, null, null);
+        public MicrophoneSnapshot Snapshot() => new(Started && !Stopped, false, Seconds, 0.4, CaptureFailure, null);
         public MicrophoneTake Stop()
         {
             Stopped = true;

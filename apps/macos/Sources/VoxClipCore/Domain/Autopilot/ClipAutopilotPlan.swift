@@ -115,6 +115,18 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public var prompt: String
         public var reason: String
         public var underVoiceDb: Double
+        public var fadeIn: Double? = nil
+        public var fadeOut: Double? = nil
+        public var duckDb: Double? = nil
+        public var segments: [ClipPlanMusicShape.Segment]? = nil
+        public var timelineShape: ClipPlanMusicShape? {
+            guard fadeIn != nil || fadeOut != nil || duckDb != nil || segments?.isEmpty == false else { return nil }
+            return .init(fadeIn: fadeIn, fadeOut: fadeOut, duckDb: duckDb, segments: segments)
+        }
+        mutating func setShape(_ shape: ClipPlanMusicShape?) {
+            fadeIn = shape?.fadeIn; fadeOut = shape?.fadeOut; duckDb = shape?.duckDb
+            segments = shape?.segments.flatMap { $0.isEmpty ? nil : $0 }
+        }
         public init(title: String, mood: String, prompt: String, reason: String, underVoiceDb: Double) {
             self.title = title; self.mood = mood; self.prompt = prompt; self.reason = reason; self.underVoiceDb = underVoiceDb
         }
@@ -208,7 +220,10 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
             public var reason: String
             /// True when the reply named no listed candidate and the local best (`C1`) was taken.
             public var fallback: Bool
-            public init(id: String, reason: String, fallback: Bool = false) { self.id = id; self.reason = reason; self.fallback = fallback }
+            public var title: String?
+            public init(id: String, reason: String, fallback: Bool = false, title: String? = nil) {
+                self.id = id; self.reason = reason; self.fallback = fallback; self.title = title
+            }
         }
         /// One decision per blur candidate the reply named, in candidate order.
         public var blur: [Blur]
@@ -249,6 +264,7 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     public var music: [Music]
     public var musicPick: Int?
     public var zooms: [Zoom]
+    public var effects: [ClipPlanEffect]?
     /// Short X/LinkedIn post text.
     public var postText: String
     /// 1...10.
@@ -267,17 +283,25 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     public var tone: Tone?
     /// The frame choices (version 4); nil when the request carried no frames.
     public var frames: FrameChoices?
+    public var orderedParts: [ClipProposal.Part]?
+    public var shape: ClipProposal.NewClip.Kind?
+    public var missingFromTake: String?
+    public var coverTitle: String?
+    public var savedMusicTrackId: String?
+    public var parts: [ClipProposal.Part] { orderedParts ?? [.init(startWord: startWord, endWord: endWord)] }
+    public var kind: ClipProposal.NewClip.Kind { shape ?? (parts.count > 1 ? .story : .stretch) }
 
     public init(version: Int = ClipAutopilotPlan.currentVersion, startWord: Int, endWord: Int, title: String, hook: String,
                 cuts: [Cut] = [], pauseCuts: [PauseCut] = [], corrections: [Correction] = [], rewrites: [Rewrite] = [], captions: Captions,
                 look: Look = .original, speed: Speed? = nil, music: [Music] = [], musicPick: Int? = nil, zooms: [Zoom] = [], postText: String,
                 score: Int, verdict: Verdict, scoreReason: String = "", lengthReason: String = "", seconds: Double = 0,
-                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = [], tone: Tone? = nil, frames: FrameChoices? = nil) {
+                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = [], tone: Tone? = nil, frames: FrameChoices? = nil,
+                effects: [ClipPlanEffect]? = nil) {
         self.version = version; self.startWord = startWord; self.endWord = endWord; self.title = title; self.hook = hook
         self.cuts = cuts; self.pauseCuts = pauseCuts; self.corrections = corrections; self.rewrites = rewrites; self.captions = captions
         self.look = look; self.speed = speed; self.music = music; self.musicPick = musicPick; self.zooms = zooms; self.postText = postText
         self.score = score; self.verdict = verdict; self.scoreReason = scoreReason; self.lengthReason = lengthReason; self.seconds = seconds
-        self.questions = questions; self.repairs = repairs; self.flags = flags; self.tone = tone; self.frames = frames
+        self.questions = questions; self.repairs = repairs; self.flags = flags; self.tone = tone; self.frames = frames; self.effects = effects
     }
 
     public init(from decoder: any Decoder) throws {
@@ -303,16 +327,40 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
                   repairs: try values.decodeIfPresent([Repair].self, forKey: .repairs) ?? [],
                   flags: try values.decodeIfPresent([Flag].self, forKey: .flags) ?? [],
                   tone: try values.decodeIfPresent(Tone.self, forKey: .tone),
-                  frames: try values.decodeIfPresent(FrameChoices.self, forKey: .frames))
+                  frames: try values.decodeIfPresent(FrameChoices.self, forKey: .frames),
+                  effects: try values.decodeIfPresent([ClipPlanEffect].self, forKey: .effects))
+        orderedParts = try values.decodeIfPresent([ClipProposal.Part].self, forKey: .orderedParts)
+        shape = try values.decodeIfPresent(ClipProposal.NewClip.Kind.self, forKey: .shape)
+        missingFromTake = try values.decodeIfPresent(String.self, forKey: .missingFromTake)
+        coverTitle = try values.decodeIfPresent(String.self, forKey: .coverTitle)
+        savedMusicTrackId = try values.decodeIfPresent(String.self, forKey: .savedMusicTrackId)
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, startWord, endWord, title, hook, cuts, pauseCuts, corrections, rewrites, captions, look, speed, music, musicPick, zooms,
-             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags, tone, frames
+             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags, tone, frames, effects,
+             orderedParts = "parts", shape = "kind", missingFromTake = "not_in_take", coverTitle, savedMusicTrackId
     }
 
     /// The picked music, when there is one.
-    public var pickedMusic: Music? { musicPick.flatMap { music.indices.contains($0) ? music[$0] : nil } }
+    public var pickedMusic: Music? { savedMusicTrackId == nil ? musicPick.flatMap { music.indices.contains($0) ? music[$0] : nil } : nil }
+
+    public func canonicalProposal(clipID: String? = nil) -> ClipProposal {
+        let target = clipID.map(ClipProposal.Target.init(clipId:)) ?? .init(new: .init(kind: kind, title: title))
+        var proposal = ClipProposal(target: target, reason: scoreReason)
+        proposal.parts = parts; proposal.cuts = cuts; proposal.pauseCuts = pauseCuts; proposal.corrections = corrections
+        proposal.captionStyle = captions.styleId; proposal.font = captions.font; proposal.textCase = captions.textCase
+        proposal.wordsPerCaption = captions.wordsPerCaption; proposal.look = look; proposal.speed = speed
+        proposal.hook = hook; proposal.title = title; proposal.postText = postText; proposal.coverTitle = coverTitle ?? frames?.cover?.title
+        proposal.music = savedMusicTrackId.map(ClipProposal.Music.init(trackId:)) ?? pickedMusic.map { music in
+            var choice = ClipProposal.Music(brief: music.prompt)
+            choice.fadeIn = music.fadeIn; choice.fadeOut = music.fadeOut
+            choice.duckDb = music.duckDb; choice.segments = music.segments
+            return choice
+        }
+        proposal.effects = effects; proposal.rewrites = rewrites
+        return proposal
+    }
 }
 
 /// A moment the first stage of a series picked (ai.md §16.3): a span worth a clip, with its score and the caption style
@@ -329,6 +377,15 @@ public struct ClipAutopilotMoment: Codable, Sendable, Equatable {
     /// A built-in style id, never `off`; the creator's fixed style when there is one.
     public var captionStyle: String
     public var captionReason: String
+    public var orderedParts: [ClipProposal.Part]?
+    public var shape: ClipProposal.NewClip.Kind?
+    public var missingFromTake: String?
+    public var parts: [ClipProposal.Part] { orderedParts ?? [.init(startWord: startWord, endWord: endWord)] }
+    public var kind: ClipProposal.NewClip.Kind { shape ?? (parts.count > 1 ? .story : .stretch) }
+    private enum CodingKeys: String, CodingKey {
+        case startWord, endWord, title, idea, score, verdict, scoreReason, captionStyle, captionReason
+        case orderedParts = "parts", shape = "kind", missingFromTake = "not_in_take"
+    }
     public init(startWord: Int, endWord: Int, title: String, idea: String, score: Int, verdict: ClipAutopilotPlan.Verdict,
                 scoreReason: String = "", captionStyle: String, captionReason: String = "") {
         self.startWord = startWord; self.endWord = endWord; self.title = title; self.idea = idea; self.score = score

@@ -259,6 +259,10 @@ struct ContextDemoZoomCoverNativeTests {
         #expect(await http.uploads.count == 2)
         // The imported result is indexed: the same window gets it again, for free, with nothing fetched.
         let fetches = await http.resultFetches
+        #expect(await LipsyncRun.hasIndexedResult(request: request, window: window, model: run.provider.models[3],
+            paidRoot: root, scratchRoot: run.scratchRoot, now: result.provenance.importedAt, detector: { _ in 0.2 }))
+        #expect(await http.resultFetches == fetches)
+        #expect(await http.submits == 1)
         let reused = try await run.execute(request: request, window: window, recordID: recordID, model: run.provider.models[3], mayPay: false)
         #expect(reused.asset == result.asset && reused.recovered)
         #expect(await http.resultFetches == fetches)

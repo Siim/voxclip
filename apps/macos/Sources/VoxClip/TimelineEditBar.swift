@@ -40,7 +40,14 @@ extension EditorModel {
         capabilities.edit && (!selectedWordIDs.isSubset(of: cutWordIDs) || !selectedPauseIDs.isSubset(of: cutPauseIDs))
     }
 
-    var timelineCanTrim: Bool { capabilities.edit && activeClip != nil && scopeBounds != nil }
+    var timelineTrimBounds: ClosedRange<Int>? {
+        guard let clip = activeClip else { return nil }
+        guard clip.parts != nil else { return scopeBounds }
+        return clip.playPartIndices(in: words)?[selectedStoryPartIndex]
+    }
+
+    var timelineTrimTitle: String { activeClip?.parts == nil ? "Trim clip" : "Trim part \(selectedStoryPartIndex + 1)" }
+    var timelineCanTrim: Bool { capabilities.edit && timelineTrimBounds != nil }
 
     func openTimelineEditor(_ mode: TimelineEditMode, effectID: String? = nil) {
         guard !isLeaving, panelTask?.confirm == nil, mode != .trim || timelineCanTrim else {
@@ -81,7 +88,7 @@ extension EditorModel {
             if compact {
                 Menu("Edit") {
                     Button("Titles & effects…") { model.openTimelineEditor(.effects) }
-                    Button("Trim clip…") { model.openTimelineEditor(.trim) }.disabled(!model.timelineCanTrim)
+                    Button("\(model.timelineTrimTitle)…") { model.openTimelineEditor(.trim) }.disabled(!model.timelineCanTrim)
                     Button("Cut selection") { model.cutSelection() }.disabled(!model.timelineCanCut)
                 }.fixedSize().controlSize(.small)
                 .accessibilityLabel("Timeline edits")
@@ -91,9 +98,9 @@ extension EditorModel {
                     Button { model.openTimelineEditor(.effects) } label: {
                         Label("Titles & effects", systemImage: "textformat")
                     }
-                    Button { model.openTimelineEditor(.trim) } label: { Label("Trim clip", systemImage: "timeline.selection") }
+                    Button { model.openTimelineEditor(.trim) } label: { Label(model.timelineTrimTitle, systemImage: "timeline.selection") }
                         .disabled(!model.timelineCanTrim)
-                        .help("Adjust the first or last word of the open clip")
+                        .help("Adjust the first or last word")
                     Divider().frame(height: 14)
                     Button { model.cutSelection() } label: { Label("Cut selection", systemImage: "scissors") }
                         .disabled(!model.timelineCanCut).help("Cut the selected words and pauses (Delete). Undo with ⌘Z.")
@@ -197,7 +204,10 @@ extension EditorModel {
     private func add() {
         guard model.timelineEditor == route, canAdd else { return }
         do { try model.addTimelineTitle(newTitle); newTitle = ""; error = nil }
-        catch { self.error = error.localizedDescription }
+        catch {
+            self.error = error.localizedDescription
+            Task { await model.app.logFailure(error, context: .editing) }
+        }
     }
     private func finish() {
         guard model.timelineEditor == route else { return }
@@ -210,12 +220,12 @@ extension EditorModel {
     let route: TimelineEditorRoute
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Trim clip").font(.headline).accessibilityAddTraits(.isHeader)
+            Text(model.timelineTrimTitle).font(.headline).accessibilityAddTraits(.isHeader)
             Text("Move either edge one transcript word at a time. Times are in the source recording.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let bounds = model.scopeBounds, let times = model.scopeSourceRange {
-                edge("In", index: bounds.lowerBound, time: times.lowerBound, canGoBack: bounds.lowerBound > 0, canGoForward: bounds.lowerBound < bounds.upperBound, start: true)
-                edge("Out", index: bounds.upperBound, time: times.upperBound, canGoBack: bounds.upperBound > bounds.lowerBound, canGoForward: bounds.upperBound + 1 < model.words.count, start: false)
+            if let bounds = model.timelineTrimBounds {
+                edge("In", index: bounds.lowerBound, time: model.words[bounds.lowerBound].start, canGoBack: bounds.lowerBound > 0, canGoForward: bounds.lowerBound < bounds.upperBound, start: true)
+                edge("Out", index: bounds.upperBound, time: model.words[bounds.upperBound].end, canGoBack: bounds.upperBound > bounds.lowerBound, canGoForward: bounds.upperBound + 1 < model.words.count, start: false)
             }
         }
     }

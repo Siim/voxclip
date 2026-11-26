@@ -8,9 +8,11 @@ using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Music;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Media.Frames;
+using VoxClip.Media.Pipeline;
 
 namespace VoxClip.App.Pages;
 
@@ -38,7 +40,7 @@ public sealed partial class EditorPage
         var faces = App.Services.FrameFaces;
         ViewModel.MakeIt.Services = new MakeItServices(MakeItPlanAsync, MakeItVoiceAsync, MakeItVoiceAvailable, MakeItExportAsync, ShareHelpers.Copy)
         {
-            SharedRoot = root, Prices = prices, Tones = tones,
+            SharedRoot = root, Prices = prices, Tones = tones, Assets = PlanAssets(root),
             SavedTones = MyRewriteTones.Decode(App.Services.Settings.Values.TryGetValue(RewriteToneCatalog.SettingsKey, out var saved) ? saved : null),
             FramePass = faces is null ? null : project => MakeItFramePass(faces, project)
         };
@@ -51,6 +53,20 @@ public sealed partial class EditorPage
         InitializeRewriteTones();
         InitializeAskClaude();
         InitializeMusic();
+    }
+
+    private static PlanAssetServices PlanAssets(string? shared)
+    {
+        ClipIllustrationQuote? quote = null;
+        if (shared is not null)
+            try { quote = ClipIllustrationQuote.Load(shared); }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException) { }
+        var root = App.Services.Data.Root;
+        var client = new ClipPlanAssets(new HttpClientMusicHttp(TimeSpan.FromMinutes(2)));
+        return new(quote?.UsdPerImage, ct => App.Services.Keys.GetKeyAsync("fal-api-key", ct),
+            (asset, project) => quote is null ? null : client.SavedIllustration(asset, project, root, quote),
+            (asset, project, ct) => client.SoundAsync(asset, project, root, ct),
+            (asset, project, key, ct) => client.IllustrationAsync(asset, project, root, quote!, key, ct));
     }
 
     /// <summary>"✦ Claude does it all" (design §6.7): the remembered choice in Settings, Find Clips started by Claude when it needs
@@ -70,10 +86,14 @@ public sealed partial class EditorPage
             FindClips.FindIfFreeAsync,
             blocker =>
             {
-                if (blocker is ClaudeModeBlocker.SetUp) App.OpenSettings(SettingsSections.ProvidersAndKeys);
+                if (blocker is ClaudeModeBlocker.SetUp or ClaudeModeBlocker.AiSettings) App.OpenSettings(SettingsSections.ProvidersAndKeys);
                 else ShowFindClips(null);
             })
-        { Log = line => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "claude-mode", line) };
+        {
+            FindErrorKind = () => FindClips.FailureKind,
+            FindNeedsApproval = () => FindClips.NeedsApproval,
+            Log = line => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "claude-mode", line)
+        };
         FindClips.Started += (_, find) => ViewModel.ClaudeModeFindStarted(find);
         ViewModel.Transcribed += (_, _) => DispatcherQueue.TryEnqueue(() => _ = ViewModel.ClaudeModeContinueAsync());
         // A video just transcribed teaches each active voice in its language, quietly and on this PC (ADR-R41); nothing where the speaker
@@ -222,7 +242,32 @@ public sealed partial class EditorPage
         }
         // Each clip's frames, from the whole video's pass, as its plan is sent (none without faces).
         var source = frames?.Invoke(FrameAi(chosen, connector, MakeItBilling(chosen, connector)));
-        return (await service.PlanAsync(request, connector, model, lanes, progress.Report, ct, source)).Series;
+        var described = request with { FootageDescriptions = await MakeItFootageDescriptionsAsync(request.FootageSources, ct) };
+        return (await service.PlanAsync(described, connector, model, lanes, progress.Report, ct, source)).Series;
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> MakeItFootageDescriptionsAsync(IReadOnlyList<MediaReference> sources, CancellationToken ct)
+    {
+        var descriptions = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (sources.Count == 0) return descriptions;
+        frameText ??= new WindowsFrameText();
+        var analyzer = new FrameAnalyzer(App.Services.FrameFaces, FrameAnalyzer.ScreensWith(frameText), new FfmpegFrameDecoder(), new FrameAnalysisCache());
+        foreach (var source in sources.Where(item => item.Video is not null).Take(32))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!double.IsFinite(source.DurationSeconds) || source.DurationSeconds <= 0 || !File.Exists(source.AbsolutePath)) continue;
+            double[] times = [0.15 * source.DurationSeconds, 0.5 * source.DurationSeconds, 0.85 * source.DurationSeconds];
+            try
+            {
+                var found = await analyzer.ObservationsAsync(source.AbsolutePath, source.ContentKey, times, FrameScanKind.Sentence, ct);
+                if (found.Frames.Count > 0)
+                    descriptions[source.FootageKey] = string.Join("; ", found.Frames.Select(frame => FormattableString.Invariant(
+                        $"{frame.Time:F1}s: {frame.FaceCount} faces, {frame.Screens.Count} screen-like regions, {frame.TextRects.Count} text boxes")));
+            }
+            catch (Exception exception) when (exception is IOException or VoxClipException or UnauthorizedAccessException) { }
+        }
+        ct.ThrowIfCancellationRequested();
+        return descriptions;
     }
 
     /// <summary>How a send to <paramref name="chosen"/> is billed: confirmed on an API key, inline on a plan or a local server.</summary>
@@ -259,7 +304,7 @@ public sealed partial class EditorPage
             return new(new MakeItRewriteResult.Unavailable("Turn on Voice Lab and make your voice to voice rewrites. Nothing was sent."));
         if (!App.Services.Get("voiceLab.providerConsent.elevenlabs", false))
             return new(new MakeItRewriteResult.NeedsYou("Allow ElevenLabs in Rewrite to voice this fix. Nothing was sent."));
-        if (rewrite is { IsOpen: true, HasPaidTakes: true })
+        if (rewrite is { IsOpen: true, HoldsPaidWork: true })
             return new(new MakeItRewriteResult.NeedsYou("Finish the open Rewrite first; its paid takes are kept."));
         var driver = new MakeItRewriteDriver(ViewModel, request, OpenMakeItRewriteAsync, ReadMakeItVoiceCapAsync, session => makeItSessions[(request.First, request.Last)] = session);
         return await driver.RunAsync(ct);
@@ -274,7 +319,8 @@ public sealed partial class EditorPage
         var project = ViewModel.Project;
         var envelope = !demo && media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
         if (disposed || ViewModel.IsLeaving) return null;
-        var session = new RewriteSession(ViewModel, request.First, request.Last, envelope, null, prices: VoiceLabPrices.Load());
+        var session = new RewriteSession(ViewModel, request.First, request.Last, envelope, null, prices: VoiceLabPrices.Load(), forClipId: request.ClipId);
+        if (!demo) session.ConfigureSavedProposal(Path.Combine(App.Services.Data.Root, "VoiceLab"), restore: false);
         ConfigureRewriteGeneration(session);
         return session;
     }

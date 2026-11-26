@@ -31,6 +31,7 @@ import VoxClipCore
         var cards: [String] = []
         var texts: [String] = []
         var controls: [Control] = []
+        var disabledReasons: [String: String] = [:]
         var textFields = 0
         var footer: String?
         var resolverRunning = false
@@ -589,6 +590,12 @@ import VoxClipCore
 
         init(app: AppModel, directory: URL, scenario: String) { self.app = app; self.directory = directory; self.scenario = scenario }
 
+        var recoveryPhase: String? {
+            guard scenario == "S-revoice-whole-fal-short", let index = CommandLine.arguments.firstIndex(of: "-rewriteSmokeRecovery"),
+                  CommandLine.arguments.indices.contains(index + 1) else { return nil }
+            return CommandLine.arguments[index + 1]
+        }
+
         func open(_ fixture: Fixture) async throws {
             guard let shared = app.shared else { throw Failure.setup("shared resources missing") }
             RewriteSmokeHTTP.script.withLock { $0 = fixture.voice }
@@ -597,7 +604,13 @@ import VoxClipCore
             app.forgetRateCalibrationsForSmoke()
             let root = app.locations.root
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let (project, envelope) = try await DebugRewriteSmoke.project(fixture, root: root, shared: shared)
+            if let phase = recoveryPhase {
+                RewriteSmokeHTTP.script.withLock { $0.wordCheckCache = root; $0.replayChecks = phase == "reopen" }
+            }
+            let (generated, envelope) = try await DebugRewriteSmoke.project(fixture, root: root, shared: shared)
+            let saved = root.appendingPathComponent("before-rewrite.voxclip")
+            let project = recoveryPhase == "reopen" ? try JSONProjectStore.decode(Data(contentsOf: saved)) : generated
+            if recoveryPhase == "interrupt" { try JSONProjectStore.encode(project).write(to: saved, options: .atomic) }
             original = project
             let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
             editor.mediaResolved = true; editor.refresh()
@@ -718,7 +731,8 @@ import VoxClipCore
         /// Each run drops the session's takes generation (`RewriteSession.invalidate`); Make Takes would find the voices
         /// again with the live client (`discoverVoices`). The scripted one stands in for it once a proposal shows.
         func ensureGeneration() async {
-            guard let session, session.isOpen, session.ownProposal != nil, !session.isProposing, let store, let prices,
+            guard let session, session.isOpen, session.ownProposal != nil || session.voicePanelAsEdited,
+                  !session.isProposing, let store, let prices,
                   session.generationIsCurrent(region: .default) else { return }
             if session.generation == nil {
                 session.configureGeneration(client: .rewriteSmoke(prices: prices, spend: VoiceLabSpendLedger(locations: app.locations)),
@@ -877,6 +891,53 @@ import VoxClipCore
 
         /// The evidence controls the panel drew last.
         private var drawn: [Control] { steps.last?.snapshot.controls.filter { $0.source == "evidence" && $0.enabled } ?? [] }
+        func keepOlderTakes() async throws {
+            try await start()
+            try await getPrice()
+            try await click(["takeQuote-"])
+            guard let session, let plan = session.takePlan else { throw Failure.setup("No takes plan") }
+            if session.task.confirm != nil { try await click(["approveTakeQuote"]) }
+            _ = await chooseOfferedTakeIfNeeded()
+            guard let first = plan.phrases.first?.takes.first,
+                  drawn.contains(where: { $0.id == "priceAnother.0" }) else {
+                throw Failure.setup("The first take has no Try Another control")
+            }
+            try await act("price another take for phrase 1", clicked: "priceAnother.0") { session.priceAnotherTake(phrase: 0) }
+            guard let action = session.pricedTakeAction(phrase: 0), drawn.contains(where: { $0.id == action.id }) else {
+                throw Failure.setup("The second take has no priced control")
+            }
+            try await act("click [\(action.title)]", clicked: action.id) { action.perform() }
+            if session.task.confirm != nil { try await click(["approveTakeQuote"]) }
+
+            let counts = RewriteSmokeHTTP.script.withLock { ($0.syntheses, $0.checks) }
+            let takes = plan.phrases[0].takes
+            guard counts.0 == 2, takes.count == 2, takes.first?.id == first.id, let second = takes.last,
+                  let host else { throw Failure.setup("The two approved rounds did not leave both takes") }
+            let markers = DebugRightColumn.markers(in: host)
+            guard let newer = markers["director.button.pickTake.0.2"], let older = markers["director.button.pickTake.0.1"],
+                  host.isFlipped ? newer.midY < older.midY : newer.midY > older.midY else {
+                throw Failure.setup("Takes are not drawn newest first")
+            }
+            for take in [second, first] {
+                let play = "playTake.0.\(take.number)"
+                let pick = "pickTake.0.\(take.number)"
+                guard drawn.contains(where: { $0.id == play }), drawn.contains(where: { $0.id == pick }) else {
+                    throw Failure.setup("Take \(take.number) is missing Play or Pick")
+                }
+                var played = false
+                try await act("play take \(take.number)", clicked: play) {
+                    await session.playTake(take.id, phrase: 0)
+                    played = plan.audition.isPlaying && plan.audition.takeId == take.id
+                }
+                guard played else { throw Failure.setup("Take \(take.number) did not play") }
+                try await act("pick take \(take.number)", clicked: pick) { session.pickTake(take.id, phrase: 0) }
+                guard plan.phrases[0].selectedID == take.id else { throw Failure.setup("Take \(take.number) was not picked") }
+            }
+            guard RewriteSmokeHTTP.script.withLock({ ($0.syntheses, $0.checks) == counts }) else {
+                throw Failure.setup("Playing or picking a take sent a paid request")
+            }
+            try await finish()
+        }
         /// A passing take the automatic choice may not pick (its voice couldn't be measured, ADR-R37) waits for the user's click
         /// on its number in the phrase card; a join advisory never does (ADR-R39).
         private func chooseOfferedTakeIfNeeded() async -> Bool {
@@ -884,8 +945,7 @@ import VoxClipCore
                   let phrase = plan.phrases.first(where: { plan.offeredTake(phrase: $0.id) != nil }),
                   let take = plan.offeredTake(phrase: phrase.id) else { return false }
             try? await act("click take \(take.number) on phrase \(phrase.id + 1)", clicked: "takeNumber") {
-                session.focusedTakePhrase = phrase.id
-                session.mutateLipsync(phrase: phrase.id) { _ = plan.select(take: take.id, phrase: phrase.id) }
+                session.pickTake(take.id, phrase: phrase.id)
             }
             return true
         }
@@ -1033,6 +1093,8 @@ import VoxClipCore
                                 source: "evidence", role: "button", acts: !passive))
                         } else if name.hasPrefix("voice.quote.") {
                             snapshot.drawnQuotes.append(text)
+                        } else if name.hasPrefix("voice.action.reason."), !text.isEmpty {
+                            snapshot.disabledReasons[String(name.dropFirst("voice.action.reason.".count))] = text
                         } else if name.hasPrefix("voice.phrase.") || name.hasSuffix(".line") {
                             texts.append(text)
                         }
@@ -1080,7 +1142,7 @@ import VoxClipCore
         /// Row buttons that only listen, navigate or show more do not move the Rewrite on.
         /// Evidence controls that only choose a voice or open the expression chooser do not move the Rewrite on.
         static func acts(_ id: String) -> Bool {
-            !["expression.", "voicePicker"].contains { id.hasPrefix($0) }
+            !["expression.", "voicePicker", "playTake.", "pickTake."].contains { id.hasPrefix($0) }
         }
         static func editableFields(in view: NSView) -> Int {
             guard !view.isHidden else { return 0 }
@@ -1101,12 +1163,16 @@ import VoxClipCore
             let open = snapshot.state != "closed"
             if open {
                 let acting = snapshot.controls.filter { $0.acts && $0.enabled }
-                checks.append(Check(invariant: "I1", passed: !acting.isEmpty || snapshot.resolverRunning,
+                let explainsUnavailable = session?.voicePanelAsEdited == true && session?.changedPhrasesUnavailable != nil
+                    && session?.wholeClipUnavailable.map(snapshot.texts.contains) == true
+                checks.append(Check(invariant: "I1", passed: !acting.isEmpty || snapshot.resolverRunning || explainsUnavailable,
                     detail: acting.isEmpty ? (snapshot.resolverRunning ? "resolver running" : DebugRewriteSmoke.summary(snapshot))
                         : "acts: " + acting.map(\.title).prefix(4).joined(separator: ", ")))
-                let disabled = snapshot.controls.filter { !$0.enabled && DebugRewriteSmoke.allowedDisabled[$0.title] == nil }
+                let disabled = snapshot.controls.filter {
+                    !$0.enabled && snapshot.disabledReasons[$0.id] == nil && DebugRewriteSmoke.allowedDisabled[$0.title] == nil
+                }
                 checks.append(Check(invariant: "I2", passed: disabled.isEmpty,
-                    detail: disabled.isEmpty ? "no disabled control" : "disabled: " + disabled.map { "'\($0.title)'" }.joined(separator: ", ")
+                    detail: disabled.isEmpty ? "no disabled control without a reason" : "disabled: " + disabled.map { "'\($0.title)'" }.joined(separator: ", ")
                         + (snapshot.texts.first(where: { $0.contains("first.") || $0.contains("Choose a take") }).map { " beside '\($0)'" } ?? "")))
                 checks.append(Check(invariant: "I3", passed: snapshot.textFields <= 1,
                     detail: "\(snapshot.textFields) free-text field\(snapshot.textFields == 1 ? "" : "s")"))
@@ -1176,7 +1242,15 @@ import VoxClipCore
                 case .stopped:
                     let first = session.wholeClipStoppedActions().first
                     return Check(invariant: "I10", passed: first != nil, detail: first.map { "card [\($0.title)]" } ?? "no step forward on the stopped card")
-                case .choose, .used: break
+                case .choose, .used:
+                    if snapshot.cards.contains("wholeClip"), let action = session.wholeClipPrimary(),
+                       snapshot.controls.contains(where: { $0.id == action.id && $0.enabled && $0.acts }) {
+                        return Check(invariant: "I10", passed: true, detail: "Voice card [\(action.title)]")
+                    }
+                    if session.voicePanelAsEdited, let reason = session.wholeClipUnavailable,
+                       session.changedPhrasesUnavailable != nil, snapshot.texts.contains(where: { $0.contains(reason) }) {
+                        return Check(invariant: "I10", passed: true, detail: reason)
+                    }
                 }
             }
             let plan = session.takePlan
@@ -1250,6 +1324,22 @@ import VoxClipCore
             fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.start()
             try await harness.finish()
+        },
+        Definition(id: "S-phrase-selected-voice", title: "a changed phrase uses the selected voice without a speaker gate",
+            voiced: 1, fixture: Fixture(rewrites: [.passage(replace([twoChanges[1]]))],
+                voice: RewriteSmokeVoiceScript(offset: -0.2, rejectedSpeakerRequests: [1]))) { harness in
+            try await harness.start()
+            try await harness.finish()
+            let requests = RewriteSmokeHTTP.script.withLock { ($0.synthesisVoices, $0.checks) }
+            let segment = harness.editor?.project.voiceLab.segments.last
+            let qa = segment.flatMap { $0.candidates.indices.contains($0.selectedCandidateIndex) ? $0.candidates[$0.selectedCandidateIndex].recipe?.qa : nil }
+            harness.makeItAppend([Check(invariant: "SV1",
+                passed: requests.0 == ["fixtureOwnVoice"] && requests.1 == 1 && qa?.outputSpeakerCheckSkipped == true && qa?.shortSpeech == nil,
+                detail: "\(requests.0.count) syntheses · \(requests.1) word checks · skipped speaker check: \(qa?.outputSpeakerCheckSkipped == true)")])
+        },
+        Definition(id: "S-older-takes", title: "two rounds keep both takes playable and selectable for free", voiced: 1,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            try await harness.keepOlderTakes()
         },
         Definition(id: "S2", title: "two changes close together",
             fixture: Fixture(rewrites: [.passage(replace([("keep the pauses", "preserve all breaks"), ("remove the ones", "cut every one")]))],

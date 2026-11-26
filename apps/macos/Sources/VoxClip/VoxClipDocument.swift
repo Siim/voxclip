@@ -33,6 +33,7 @@ extension UTType {
         let destination: URL
     }
     private let state: Mutex<State>
+    @MainActor var importClock: ClaudeModeClock?
     @MainActor private var retainedVoiceLabFiles: Set<String> = []
     @MainActor private var voiceLabActivity: VoiceLabAssetActivity?
     @MainActor private var voiceLabActivityReady = false
@@ -43,6 +44,8 @@ extension UTType {
     }
     private let projectUndoManager = UndoManager()
     private let pendingWrite = Mutex<WriteSnapshot?>(nil)
+    private let pendingWriteFailure = Mutex<WriteFailure?>(nil)
+    @MainActor private var inlineSaveError: NSError?
     private let nameChange = Mutex<NameChange?>(nil)
     @MainActor private(set) var pendingTitleWrite: Task<Void, Never>?
     #if DEBUG
@@ -235,10 +238,14 @@ extension UTType {
                 guard let other = document as? VoxClipDocument else { return false }
                 return other !== self && other.project.id == project.id
             })
-            retainedVoiceLabFiles.formUnion(VoiceLabAssetRetention.references(in: project))
+            let inUse = VoiceLabAssetRetention.references(in: project)
+            retainedVoiceLabFiles.formUnion(inUse)
             do {
+                // Every file of the session's history stays; only what the project as it closes uses ends a paid take's
+                // journal entry, so a take or whole clip Use put in and Undo took out again stays adoptable after a relaunch.
                 try VoiceLabAssetRetention.closeProject(projectId: project.id,
-                    paidRoot: editorModel.app.locations.root.appendingPathComponent("VoiceLab"), references: retainedVoiceLabFiles, allowDeletion: voiceLabActivityReady && !anotherOpen,
+                    paidRoot: editorModel.app.locations.root.appendingPathComponent("VoiceLab"), references: retainedVoiceLabFiles, inUse: inUse,
+                    allowDeletion: voiceLabActivityReady && !anotherOpen,
                     recheckReferences: {
                         var references = self.retainedVoiceLabFiles.union(VoiceLabAssetRetention.references(in: self.project))
                         for case let document as VoxClipDocument in NSDocumentController.shared.documents {
@@ -302,16 +309,88 @@ extension UTType {
     }
     override public func write(to url: URL, ofType typeName: String, for saveOperation: SaveOperationType, originalContentsURL: URL?) throws {
         guard let snapshot = pendingWrite.withLock({ $0 }) else { throw CocoaError(.fileWriteUnknown) }
-        let data = try JSONProjectStore.encode(snapshot.project)
+        let data = try writingProject(stage: .encode) { try JSONProjectStore.encode(snapshot.project) }
         #if DEBUG
         recordBoundary("write", project: snapshot.project, destination: url)
         #endif
-        try data.write(to: url)
+        try writingProject(stage: .write) { try data.write(to: url) }
     }
+
+    private struct WriteFailure: Sendable {
+        enum Stage: String, Sendable { case encode, write, safeWrite }
+        let stage: Stage
+        let error: any Error
+    }
+
+    nonisolated private func writingProject<Value>(stage: WriteFailure.Stage, _ write: () throws -> Value) rethrows -> Value {
+        do { return try write() }
+        catch {
+            pendingWriteFailure.withLock { $0 = WriteFailure(stage: stage, error: error) }
+            throw error
+        }
+    }
+
+    private static func underlyingErrors(_ error: any Error) -> [NSError] {
+        Array(sequence(first: error as NSError) { $0.userInfo[NSUnderlyingErrorKey] as? NSError }.prefix(8))
+    }
+
+    @MainActor private func showSaveFailure(_ error: any Error, cause: WriteFailure?) {
+        guard let editor = editorModel, !FailureDiagnostic.isCancellation(error) else { return }
+        let failure = cause ?? WriteFailure(stage: .safeWrite, error: error)
+        let underlying = Self.underlyingErrors(failure.error)
+        let reason: String
+        if underlying.contains(where: {
+            ($0.domain == NSCocoaErrorDomain && $0.code == NSFileWriteOutOfSpaceError) ||
+            ($0.domain == NSPOSIXErrorDomain && $0.code == Int(ENOSPC))
+        }) {
+            reason = "There isn't enough free space. Free up some space and try again."
+        } else if case .projectUnreadable(let detail) = failure.error as? VoxClipError {
+            reason = detail
+        } else if failure.error is VoiceLabProjectError {
+            reason = "A generated take has an invalid render recipe."
+        } else if let detail = (failure.error as? LocalizedError)?.errorDescription {
+            reason = detail
+        } else {
+            let detail = underlying.last ?? (error as NSError)
+            reason = detail.localizedFailureReason ?? detail.localizedDescription
+        }
+        let safeReason = Redactor(homeDirectory: NSHomeDirectory()).redact(reason)
+        let line = "Can't save: \(safeReason)\(safeReason.hasSuffix(".") ? "" : ".") Your unsaved edits are still open."
+        inlineSaveError = error as NSError
+        if editor.projectSaveNotice != line {
+            editor.projectSaveNotice = line
+            editor.announce(line)
+        }
+        var seen = Set<String>()
+        let details = ([FailureDiagnostic.describe(error), FailureDiagnostic.describe(failure.error)]
+            + underlying.dropFirst().map { FailureDiagnostic.describe($0) })
+            .filter { seen.insert($0).inserted }.joined(separator: " <- ")
+        Task { await editor.app.log.write(LogEntry(level: .error, category: FailureContext.projectSave.rawValue,
+                                                   message: "stage=\(failure.stage.rawValue) \(details)")) }
+    }
+
+    @MainActor private func isInlineSaveError(_ error: any Error) -> Bool {
+        guard let inlineSaveError, editorModel != nil else { return false }
+        return Self.underlyingErrors(error).contains { $0.isEqual(inlineSaveError) }
+    }
+
+    override public func willPresentError(_ error: any Error) -> any Error {
+        guard isInlineSaveError(error) else { return super.willPresentError(error) }
+        willNotPresentError(error)
+        return CocoaError(.userCancelled)
+    }
+
     override public func save(to url: URL, ofType typeName: String, for saveOperation: SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
         if saveOperation == .saveAsOperation { nameChange.withLock { $0 = NameChange(previous: fileURL, destination: url) } }
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             guard let self else { completionHandler(error); return }
+            let cause = self.pendingWriteFailure.withLock { pending in let result = pending; pending = nil; return result }
+            if let error {
+                self.showSaveFailure(error, cause: cause)
+            } else if saveOperation != .saveToOperation && saveOperation != .autosaveElsewhereOperation {
+                self.inlineSaveError = nil
+                self.editorModel?.projectSaveNotice = nil
+            }
             let snapshot = self.pendingWrite.withLock { pending -> WriteSnapshot? in let result = pending; pending = nil; return result }
             if saveOperation == .saveAsOperation { self.nameChange.withLock { $0 = nil } }
             var retitled = false
@@ -498,12 +577,12 @@ extension UTType {
     }
     @MainActor func updateLocation(_ url: URL?) { fileURL = url }
     @MainActor func adoptOpenedLocation(_ url: URL?) { fileURL = url }
-    /// Harness sessions never autosave a never-saved project into the user's Autosave
-    /// Information folder. One a check gave an autosave location still autosaves there.
+    /// Harness sessions and test processes never autosave a never-saved project into the user's Autosave
+    /// Information folder. On macOS 27 that write also requests smart names, which can abort the test host.
     /// A test process also skips the timed autosave of a document whose folder a finished test already deleted: it
     /// can only fail, and its error would come up as an app-modal alert (see `presentError`).
     override public func autosave(withImplicitCancellability autosavingIsImplicitlyCancellable: Bool, completionHandler: @escaping (Error?) -> Void) {
-        if AppModel.isTestSession, fileURL == nil, autosavedContentsFileURL == nil { completionHandler(nil); return }
+        if TestProcess.isRunning || AppModel.isTestSession, fileURL == nil, autosavedContentsFileURL == nil { completionHandler(nil); return }
         if TestProcess.isRunning, let folder = fileURL?.deletingLastPathComponent(), !FileManager.default.fileExists(atPath: folder.path) {
             completionHandler(nil); return
         }
@@ -515,7 +594,7 @@ extension UTType {
     /// of the run fails (2026-11-21: an in-place autosave into a deleted test folder broke the command-field and shell
     /// tests). A test process records the error and writes it to standard error instead.
     override public func presentError(_ error: Error) -> Bool {
-        guard TestProcess.isRunning else { return super.presentError(error) }
+        guard TestProcess.isRunning, !isInlineSaveError(error) else { return super.presentError(error) }
         let line = "VoxClipDocument: not showing an alert in a test process: \(error.localizedDescription)"
         Self.errorsPresentedInTests.append(line)
         FileHandle.standardError.write(Data((line + "\n").utf8))

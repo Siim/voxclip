@@ -1,13 +1,13 @@
 import Foundation
 
-/// The MP4's cover art (ADR-R48, doc/publishing.md §7), written as AtomicParsley writes it: the image in
+/// The MP4's iTunes metadata (ADR-R48, doc/publishing.md §7): the image in
 /// `moov/udta/meta/ilst/covr/data` (an ISO full-box `meta` with the iTunes `hdlr` `mdir`/`appl`, well-known type 13 for a
 /// JPEG and 14 for a PNG). AVFoundation's writer embeds an iTunes `covr` on macOS 27 and never on macOS 26, so VoxClip
-/// writes the box itself on every version.
+/// writes the box itself on every version. The same edit can add or replace a UTF-8 `©cmt` comment for sound credits.
 ///
 /// Pure and byte-level: given the file's top-level boxes and its `moov`, `edit` returns the new `moov`. Everything else in
-/// the file is kept byte for byte, and inside `moov` only the boxes on the way to the cover and the chunk-offset tables
-/// change. An existing `covr` is replaced in place (a later duplicate is dropped), and every other `ilst` item and `udta`
+/// the file is kept byte for byte, and inside `moov` only the boxes on the way to `ilst` and the chunk-offset tables
+/// change. An edited item is replaced in place (a later duplicate is dropped), and every other `ilst` item and `udta`
 /// child stays. When the media data comes after `moov` (network-optimised exports), every `stco` and `co64` entry past the
 /// old `moov` moves by the growth; an `stco` that would pass 2^32 - 1 becomes a `co64`. When `moov` is last, no offset
 /// changes. Fragmented movies, sizes it can't follow and truncated boxes are refused before anything is written. Shared
@@ -103,12 +103,21 @@ public enum MP4CoverArt {
         return movie
     }
 
-    /// The new `moov` with `image` as the cover. `moov` is the movie box's bytes as the file has them.
-    public static func edit(layout: [Box], moov: Data, image: Data) throws -> Edit {
-        guard let type = ImageType(image: image) else { throw Refusal.unsupportedImage }
+    /// The new `moov` with the supplied cover and/or comment. `moov` is the movie box's bytes as the file has them.
+    public static func edit(layout: [Box], moov: Data, image: Data?, comment: String? = nil) throws -> Edit {
+        var items: [Item] = []
+        if let image {
+            guard let type = ImageType(image: image) else { throw Refusal.unsupportedImage }
+            items.append(Item(type: "covr", bytes: coverItem(type: type, image: [UInt8](image))))
+        }
+        if let comment {
+            let payload = box("data", be32(1) + be32(0) + Array(comment.utf8))
+            items.append(Item(type: "©cmt", bytes: box([0xA9, 0x63, 0x6D, 0x74], payload)))
+        }
         let movie = try movie(in: layout)
         guard UInt64(moov.count) == movie.size else { throw Refusal.truncated }
-        let writer = try MovieWriter(bytes: [UInt8](moov), movie: movie, cover: coverItem(type: type, image: [UInt8](image)))
+        guard !items.isEmpty else { return Edit(movie: movie, moov: moov) }
+        let writer = try MovieWriter(bytes: [UInt8](moov), movie: movie, metadataItems: items)
         return Edit(movie: movie, moov: Data(try writer.written()))
     }
 
@@ -149,7 +158,7 @@ public enum MP4CoverArt {
     static func parsedHeader(_ header: [UInt8], at offset: UInt64, available: UInt64) throws -> Box {
         guard header.count >= 8, available >= 8 else { throw Refusal.truncated }
         let size32 = read32(header, 0)
-        let type = String(decoding: header[4..<8], as: UTF8.self)
+        let type = String(decoding: header[4..<8].map(UInt16.init), as: UTF16.self)
         var headerSize: UInt64 = 8
         let size: UInt64
         switch size32 {
@@ -196,9 +205,18 @@ public enum MP4CoverArt {
 
     /// A box around `payload`: a 32-bit size, or a 64-bit one when `large` or when the payload needs it.
     static func box(_ type: String, _ payload: [UInt8], large: Bool = false) -> [UInt8] {
+        box(Array(type.utf8), payload, large: large)
+    }
+
+    static func box(_ type: [UInt8], _ payload: [UInt8], large: Bool = false) -> [UInt8] {
         let small = UInt64(8 + payload.count)
-        if !large, small <= UInt64(UInt32.max) { return be32(UInt32(small)) + Array(type.utf8) + payload }
-        return be32(1) + Array(type.utf8) + be64(UInt64(16 + payload.count)) + payload
+        if !large, small <= UInt64(UInt32.max) { return be32(UInt32(small)) + type + payload }
+        return be32(1) + type + be64(UInt64(16 + payload.count)) + payload
+    }
+
+    struct Item {
+        let type: String
+        let bytes: [UInt8]
     }
 
     /// `covr` holding one `data` atom: the well-known type, locale 0, then the image.
@@ -210,7 +228,7 @@ public enum MP4CoverArt {
     static let metadataHandler: [UInt8] = box("hdlr", be32(0) + be32(0) + Array("mdirappl".utf8) + be32(0) + be32(0) + [0])
 }
 
-/// Rewrites one `moov`: the cover on the way down `udta/meta/ilst`, and the chunk offsets for the growth.
+/// Rewrites one `moov`: the items in `udta/meta/ilst`, and the chunk offsets for the growth.
 private struct MovieWriter {
     typealias Node = MP4CoverArt.Node
     typealias Refusal = MP4CoverArt.Refusal
@@ -223,16 +241,16 @@ private struct MovieWriter {
     let bytes: [UInt8]
     let root: Node
     let movie: MP4CoverArt.Box
-    let cover: [UInt8]
+    let metadataItems: [MP4CoverArt.Item]
     let children: [Node]
     let tables: [Table]
 
-    init(bytes: [UInt8], movie: MP4CoverArt.Box, cover: [UInt8]) throws {
+    init(bytes: [UInt8], movie: MP4CoverArt.Box, metadataItems: [MP4CoverArt.Item]) throws {
         let header = try MP4CoverArt.parsedHeader(bytes, at: 0, available: UInt64(bytes.count))
         guard header.type == "moov" else { throw Refusal.malformed }
         self.bytes = bytes
         self.movie = movie
-        self.cover = cover
+        self.metadataItems = metadataItems
         root = Node(type: "moov", start: 0, headerSize: Int(header.headerSize), size: Int(header.size))
         children = try MP4CoverArt.children(bytes, of: root)
         if children.contains(where: { $0.type == "mvex" }) { throw Refusal.fragmented }
@@ -303,10 +321,12 @@ private struct MovieWriter {
         return container(table.node, [count] + entries.map { MP4CoverArt.be32(UInt32($0)) }, prefix: flags)
     }
 
-    // MARK: The cover
-
     func newMetadata() -> [UInt8] {
-        MP4CoverArt.box("meta", MP4CoverArt.be32(0) + MP4CoverArt.metadataHandler + MP4CoverArt.box("ilst", cover))
+        MP4CoverArt.box("meta", MP4CoverArt.be32(0) + MP4CoverArt.metadataHandler + newItems())
+    }
+
+    func newItems() -> [UInt8] {
+        MP4CoverArt.box("ilst", metadataItems.flatMap(\.bytes))
     }
 
     func userData(_ node: Node) throws -> [UInt8] {
@@ -331,20 +351,20 @@ private struct MovieWriter {
         if let index = nodes.firstIndex(where: { $0.type == "ilst" }) {
             parts[index] = try items(nodes[index])
         } else {
-            parts.append(MP4CoverArt.box("ilst", cover))
+            parts.append(newItems())
         }
         return container(node, parts, prefix: Array(bytes[node.body..<node.body + skip]))
     }
 
-    /// The `ilst` with the first `covr` replaced in place and any later one dropped, or the cover appended.
     func items(_ node: Node) throws -> [UInt8] {
         let nodes = try MP4CoverArt.children(bytes, of: node)
-        guard let first = nodes.firstIndex(where: { $0.type == "covr" }) else { return container(node, nodes.map(raw) + [cover]) }
-        let parts = nodes.indices.compactMap { index -> [UInt8]? in
-            if index == first { return cover }
-            return nodes[index].type == "covr" ? nil : raw(nodes[index])
+        var remaining = metadataItems
+        let parts = nodes.compactMap { item -> [UInt8]? in
+            guard metadataItems.contains(where: { $0.type == item.type }) else { return raw(item) }
+            guard let index = remaining.firstIndex(where: { $0.type == item.type }) else { return nil }
+            return remaining.remove(at: index).bytes
         }
-        return container(node, parts)
+        return container(node, parts + remaining.map(\.bytes))
     }
 
     // MARK: Chunk offsets

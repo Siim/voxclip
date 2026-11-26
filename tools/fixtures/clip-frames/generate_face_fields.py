@@ -512,6 +512,10 @@ def sharpness(variance, quality):
     return clamp((p_ln(variance) - low) / (p_ln(quality['sharpness'][1]) - low), 0.0, 1.0)
 
 
+def face_scale(width):
+    return clamp((width - 40) / 200, 0.0, 1.0)
+
+
 def quality_parts(eyes, yaw, pitch, face_width, crop, calibration, quantile_map=None):
     if eyes is None or yaw is None or pitch is None:
         return None
@@ -523,7 +527,8 @@ def quality_parts(eyes, yaw, pitch, face_width, crop, calibration, quantile_map=
     sharp = sharpness(crop['sharpnessVariance'], quality)
     gate = 1.0 if (face_width >= gates['minimumFaceWidth'] and crop['meanLuma'] >= gates['luma'][0] and
                    crop['meanLuma'] <= gates['luma'][1] and crop['clippedFraction'] <= gates['clippedFraction']) else 0.0
-    score = clamp(gate * (quality['w0'] + quality['w1'] * eyes_open * facing + quality['w2'] * sharp), 0.0, 1.0)
+    score = clamp(gate * (quality['w0'] + quality['w1'] * eyes_open * facing + quality['w2'] * sharp +
+                          quality.get('widthWeight', 0) * face_scale(face_width)), 0.0, 1.0)
     mapped = remap(score, quality['quantileMap'] if quantile_map is None else quantile_map)
     return {'eyesOpen': eyes_open, 'facing': facing, 'sharp': sharp, 'gate': gate, 'score': score, 'quality': clamp(mapped, 0.0, 1.0)}
 

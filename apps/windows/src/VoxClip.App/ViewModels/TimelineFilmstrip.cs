@@ -15,7 +15,7 @@ internal static class TimelineFilmstrip
         var cell = Math.Max(56, width / Math.Min(Limit, slots.Length));
         for (var index = indices.Start.Value; index < indices.End.Value && count < Math.Min(Limit, slots.Length); index++)
         {
-            var piece = pieces.Pieces[index];
+            var piece = pieces.OnAxis(axis)[index];
             if (piece.Kind == TimelinePieceKind.Ai) continue;
             var range = piece.Range(axis);
             var left = Math.Clamp(view.X(range.Start, width), 0, width);

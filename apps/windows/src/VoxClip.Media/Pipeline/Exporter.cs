@@ -5,9 +5,11 @@ using System.Text;
 using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Loudness;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
+using VoxClip.Core.Services.Project;
 using VoxClip.Media.Audio;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.VoiceLab;
@@ -17,7 +19,7 @@ namespace VoxClip.Media.Pipeline;
 internal unsafe delegate void ExportFrameObserver(long index, PixelBuffer decoded, PixelBuffer composed, AVFrame* nv12);
 
 /// <summary>Sequential CFR H.264/AAC MP4 exporter; architecture §6.4.</summary>
-public sealed class Exporter : IExporter
+public sealed partial class Exporter : IExporter
 {
     private readonly IFrameComposer composer;
     private readonly IEncoderProbe encoders;
@@ -81,10 +83,8 @@ public sealed class Exporter : IExporter
             throw new VoxClipException(VoxClipErrorCode.EverythingCut, "Keep at least one word before exporting.");
         if (!double.IsFinite(snapshot.Timeline.SampleRate) || snapshot.Timeline.SampleRate <= 0 || snapshot.Media.Video is null)
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, "Export stopped: this export requires a video and a valid edit plan. Your edits are saved.");
-        // The music bed needs an audio stream to ride on and its file; both are checked before anything is written.
         if (snapshot.Clip?.Music is { } music)
         {
-            if (snapshot.Media.Audio is null) throw new VoxClipException(VoxClipErrorCode.ExportFailed, MusicBed.NoAudioMessage);
             if (!File.Exists(music.AssetPath))
                 throw new VoxClipException(VoxClipErrorCode.ExportFailed, $"Export stopped: the music file {Path.GetFileName(music.AssetPath)} is missing. Your edits are saved.");
         }
@@ -100,6 +100,12 @@ public sealed class Exporter : IExporter
                     VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.StaleRenderContract);
         }
         var protectedPaths = new List<string> { snapshot.Media.Path };
+        protectedPaths.AddRange(snapshot.Footage.Select(layer => layer.Path));
+        if (snapshot.Clip?.Effects is { } effects)
+        {
+            protectedPaths.AddRange(effects.SoundPaths.Values);
+            protectedPaths.AddRange(effects.Images.Values);
+        }
         if (snapshot.VoiceLab is { } voiceInput)
         {
             var project = voiceInput.IsolatedProject();
@@ -137,7 +143,7 @@ public sealed class Exporter : IExporter
             new(sidecar, sidecarBytes)
         };
         if (srt is not null)
-            allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
+            allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed))));
         var cover = snapshot.Clip?.Controls?.CoverSeconds is null ? null : Core.Domain.Share.ExportCover.PathFor(destination);
         if (cover is not null) allocations.Add(new(cover, Core.Domain.Share.ExportCover.Limit));
         if (publish)
@@ -206,10 +212,10 @@ public sealed class Exporter : IExporter
             });
             reporter("preparing", 0);
             // Staged once: the export's reader and the loudness pre-pass mix the same bed.
-            var music = snapshot.Media.Audio is null ? null : MusicBed.Stage(snapshot, 48_000, voiceSession, ct);
+            var music = MusicBed.Stage(snapshot, 48_000, voiceSession, ct);
             using (var video = new EncoderSession(encoderName, output))
-            using (var audio = snapshot.Media.Audio is null ? null : new EncoderSession("aac", output, true))
-            using (var mux = CreateMux(partial, video, audio, out var videoStream, out var audioStream))
+            using (var audio = HasOutputAudio(snapshot) ? new EncoderSession("aac", output, true) : null)
+            using (var mux = CreateMux(partial, video, audio, snapshot.Clip?.Effects?.Credits, out var videoStream, out var audioStream))
             using (var decoder = new VideoDecoder(snapshot.Media.Path))
             using (var nv12Handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame))
             using (var scaling = NativeHandle.Own(ffmpeg.sws_getContext(size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_BGRA,
@@ -237,9 +243,12 @@ public sealed class Exporter : IExporter
                     ct.ThrowIfCancellationRequested();
                     var editedTime = EditedTime(snapshot, index, fps);
                     var sourceTime = cursor.Source(editedTime);
-                    var decoded = decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
-                    composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);
-                    if (index == coverFrame) coverJpeg = CoverImage(bgra);
+                    var synced = voiceSession?.Lipsync?.Read(editedTime, ct);
+                    var decoded = synced ?? decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
+                    if (synced is not null && composer is FrameComposer sharedComposer)
+                        sharedComposer.Compose(decoded, bgra, snapshot, editedTime, false, null, ct, renderedVoicePicture: true);
+                    else composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);
+                    if (index == coverFrame) coverJpeg = CoverImage(bgra, snapshot.Clip?.Controls?.CoverTitle);
                     Native.Check(ffmpeg.av_frame_make_writable(nv12), "Reuse export video frame", VoxClipErrorCode.ExportFailed);
                     using (var memory = bgra.Pixels.Pin())
                     {
@@ -299,7 +308,7 @@ public sealed class Exporter : IExporter
                     new(sidecarDestination!, 1_048_576)
                 };
                 if (srtDestination is not null)
-                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed))));
                 if (publish)
                 {
                     remaining.Add(VoiceLabCapacity.Rollback(destination));
@@ -319,7 +328,7 @@ public sealed class Exporter : IExporter
                 remaining.Clear();
                 remaining.Add(new(sidecarDestination!, staged.SidecarData.Length));
                 if (srtDestination is not null)
-                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed))));
                 if (publish)
                 {
                     remaining.Add(VoiceLabCapacity.Rollback(destination));
@@ -340,7 +349,7 @@ public sealed class Exporter : IExporter
             if (srtPartial is not null)
             {
                 using (OutputSafety.CreatePartial(srtPartial)) { hasSrtPartial = true; }
-                File.WriteAllText(srtPartial, Subtitles(snapshot.Captions, snapshot.Speed.Speed), new UTF8Encoding(false));
+                File.WriteAllText(srtPartial, Subtitles(snapshot.Captions, snapshot.Speed), new UTF8Encoding(false));
                 ct.ThrowIfCancellationRequested();
             }
             var destinations = new List<string> { destination };
@@ -370,18 +379,28 @@ public sealed class Exporter : IExporter
 
     /// <summary>The video frames and 48 kHz audio samples an export writes: the rendered length (edited ÷ the clip's speed).</summary>
     internal static (long Frames, long Samples) RenderedCounts(ComposeSnapshot snapshot, double fps)
-        => (Native.Round(snapshot.RenderedDuration * fps), snapshot.Media.Audio is null ? 0 : Native.Round(snapshot.RenderedDuration * 48_000));
+        => (Native.Round(snapshot.RenderedDuration * fps), HasOutputAudio(snapshot) ? Native.Round(snapshot.RenderedDuration * 48_000) : 0);
+
+    private static bool HasOutputAudio(ComposeSnapshot snapshot) => snapshot.Media.Audio is not null || snapshot.Clip?.Music is not null;
 
     /// <summary>The edited time export frame <paramref name="index"/> shows: its rendered time × the clip's speed.</summary>
     internal static double EditedTime(ComposeSnapshot snapshot, long index, double fps) => snapshot.Speed.Edited(index / fps);
 
     /// <summary>The cover JPEG of a composed export frame, full size at the Mac's 0.9 quality; null when it can't be encoded within
     /// <see cref="Core.Domain.Share.ExportCover.Limit"/>. The cover is extra: the export goes on without it.</summary>
-    internal static byte[]? CoverImage(PixelBuffer composed)
+    internal static byte[]? CoverImage(PixelBuffer composed, string? title = null)
     {
         if (composed.Width <= 0 || composed.Height <= 0) return null;
         try
         {
+            if (title is not null)
+            {
+                var copy = new PixelBuffer(composed.Pixels.ToArray(), composed.Width, composed.Height, composed.Stride);
+                var effect = new ClipEffect("cover-title", null, "title", 0, 1) { Text = title, Position = "bottom" };
+                using var frames = new EffectFrames(new([effect], new Dictionary<string, string>()), SharedResources.ResolveRoot());
+                frames.DrawFrame(copy, 0.5, 0.5, time => time, CancellationToken.None);
+                composed = copy;
+            }
             var jpeg = Frames.FrameJpeg.Encode(composed, Math.Max(composed.Width, composed.Height), Core.Domain.Share.ExportCover.Quality);
             return jpeg.Length is > 0 and <= (int)Core.Domain.Share.ExportCover.Limit ? jpeg : null;
         }
@@ -408,7 +427,7 @@ public sealed class Exporter : IExporter
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
     }
 
-    private static unsafe NativeHandle CreateMux(string path, EncoderSession video, EncoderSession? audio, out int videoIndex, out int audioIndex)
+    private static unsafe NativeHandle CreateMux(string path, EncoderSession video, EncoderSession? audio, IReadOnlyList<string>? credits, out int videoIndex, out int audioIndex)
     {
         AVFormatContext* format = null;
         Native.Check(ffmpeg.avformat_alloc_output_context2(&format, null, "mp4", path), "Create MP4 muxer", VoxClipErrorCode.ExportFailed);
@@ -433,6 +452,8 @@ public sealed class Exporter : IExporter
             AVDictionary* options = null;
             try
             {
+                if (credits is { Count: > 0 }) Native.Check(ffmpeg.av_dict_set(&format->metadata, "comment", string.Join('\n', credits), 0),
+                    "Write sound credits", VoxClipErrorCode.ExportFailed);
                 Native.Check(ffmpeg.av_dict_set(&options, "movflags", "+faststart", 0), "Set MP4 faststart", VoxClipErrorCode.ExportFailed);
                 Native.Check(ffmpeg.avformat_write_header(format, &options), "Write MP4 header", VoxClipErrorCode.ExportFailed);
             }
@@ -537,8 +558,10 @@ public sealed class Exporter : IExporter
 
     /// <summary>The SRT of <paramref name="captions"/>, cues on the rendered timeline: page times ÷ the clip's speed.</summary>
     internal static string Subtitles(CaptionTrack? captions, double speed = 1, Func<string, CaptionText, string>? transform = null)
+        => Subtitles(captions, new ClipSpeedTiming(speed), transform);
+
+    private static string Subtitles(CaptionTrack? captions, ClipSpeedTiming timing, Func<string, CaptionText, string>? transform = null)
     {
-        var timing = new ClipSpeedTiming(speed);
         if (captions is null) return string.Empty;
         var output = new StringBuilder();
         var index = 0;

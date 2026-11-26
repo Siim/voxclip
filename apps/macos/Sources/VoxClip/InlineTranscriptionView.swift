@@ -12,7 +12,10 @@ import VoxClipCore
         VStack(alignment: .leading, spacing: 0) {
             if transcription.phase == .folded { folded }
             else if transcription.isRunning { running }
-            else if transcription.phase == .choosing { choices }
+            else if transcription.phase == .choosing {
+                if transcription.pendingAlignment != nil { alignmentRetry }
+                else { choices }
+            }
             if let note = transcription.cancelledNote, transcription.phase != .running {
                 bufferLine("info.circle", text: note).padding(.top, 8)
             }
@@ -46,6 +49,18 @@ import VoxClipCore
             guard press.modifiers.contains(.command) else { return .ignored }
             if transcription.isDownloading { transcription.cancelDownload() } else if transcription.isRunning { transcription.cancel() }
             return .handled
+        }
+    }
+    private var alignmentRetry: some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacing2) {
+            title
+            if let error = transcription.error { bufferLine("exclamationmark.triangle", text: error) }
+            detail(transcription.alignmentRetryCopy)
+            if !transcription.canStart { detail("Reopen Transcribe when the video and project are ready.") }
+            HStack(spacing: 12) {
+                buttons
+                Button("Change Options…") { Task { await transcription.changeOptions() } }.buttonStyle(.plain)
+            }.padding(.leading, 80).padding(.top, VCTokens.spacingGroupGap)
         }
     }
     private var choices: some View {
@@ -115,7 +130,9 @@ import VoxClipCore
             Text("Engine").foregroundStyle(DesignValues.color("text.tertiary")).frame(width: 88, height: 26, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 Picker("Engine", selection: $transcription.engine) {
-                    engineLabel("Apple Speech", fact: "On this Mac · free").tag("apple")
+                    if !transcription.confirmsClaudeTranscript {
+                        engineLabel("Apple Speech", fact: "On this Mac · free").tag("apple")
+                    }
                     engineLabel("On this Mac", fact: localFact).tag("local")
                     engineLabel("ElevenLabs Scribe", fact: "\(transcription.hasKey ? "Your key · " : "Needs your key · ")\(transcription.price)").tag("elevenlabs")
                 }.pickerStyle(.radioGroup).labelsHidden().controlSize(.small).accessibilityLabel("Engine").help(transcription.paid ? transcription.sendLine : "Transcribes on this Mac. Nothing leaves this Mac.")
@@ -196,9 +213,9 @@ import VoxClipCore
         }.padding(.leading, 80)
     }
     @ViewBuilder private var buttons: some View {
-        if transcription.canStart || transcription.paid {
+        if transcription.canStart || transcription.paid || transcription.pendingAlignment != nil {
             InlinePrimaryButton(title: transcription.primaryTitle, accented: !(transcription.again && !transcription.againConfirmed),
-                help: transcription.paid && !transcription.hasKey ? "Save your ElevenLabs API key to enable transcription." : transcription.again && !transcription.againConfirmed ? transcription.warning : transcription.sendLine,
+                help: primaryHelp,
                 action: { transcription.activate() }, keyAction: { event in
                     transcription.pressReturn(timestamp: event.timestamp, now: ProcessInfo.processInfo.systemUptime,
                         repeatKey: event.isARepeat, command: event.modifierFlags.contains(.command), focusedPrimary: true)
@@ -211,6 +228,12 @@ import VoxClipCore
         }
         Button(transcription.cancelTitle) { transcription.notNow() }.buttonStyle(.plain).focused($cancelFocused)
             .accessibilityIdentifier("transcription.notNow").auditButtonAction("transcription.notNow")
+    }
+    private var primaryHelp: String {
+        if transcription.pendingAlignment != nil { return transcription.alignmentRetryCopy }
+        if transcription.paid && !transcription.hasKey { return "Save your ElevenLabs API key to enable transcription." }
+        if transcription.again && !transcription.againConfirmed { return transcription.warning }
+        return transcription.sendLine
     }
     private var actionNote: some View {
         Text(transcription.paid ? !transcription.hasKey ? "Paste your ElevenLabs key above, then choose Save Key." : "\(durationLabel(model.sourceDuration)) at \(transcription.rate.map { InlineTranscription.money($0) } ?? "an unknown rate") an hour" : "Free. Nothing leaves this Mac.")
@@ -231,7 +254,7 @@ import VoxClipCore
                 bufferLine(index < transcription.runStage ? "checkmark" : "circle", text: text,
                     spinning: index == transcription.runStage)
             }
-            if transcription.paid {
+            if transcription.paid && !transcription.retryingAlignment {
                 bufferLine("arrow.up", text: "\(transcription.price) to your ElevenLabs key.")
                 detail(transcription.cancelCopy)
                 if let fraction = transcription.progress?.fraction, transcription.progress?.stage == .uploading {
@@ -246,7 +269,8 @@ import VoxClipCore
         }
     }
     private var stepTitles: [String] {
-        transcription.paid ? ["Read the video", "Extract the audio", "Upload to ElevenLabs", "ElevenLabs writes the words", "Align the words on this Mac"] : ["Read the video", "Extract the audio", "Transcribe on this Mac", "Align the words"]
+        if transcription.retryingAlignment { return ["Align the words on this Mac"] }
+        return transcription.paid ? ["Read the video", "Extract the audio", "Upload to ElevenLabs", "ElevenLabs writes the words", "Align the words on this Mac"] : ["Read the video", "Extract the audio", "Transcribe on this Mac", "Align the words"]
     }
     private func detail(_ text: String) -> some View {
         Text(text).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).padding(.leading, 80)

@@ -212,6 +212,27 @@ import Testing
         #expect(await exporter.jobs.count == 1)
         #expect(editor.exports.count == 1 && editor.exportError == nil && !editor.exporting)
     }
+    @Test func disabledVoxConvoCannotPostAndKeepsTheFinishedVideo() async throws {
+        let shell = try await shell(exporter: RegressionExporter(writesFiles: true)), editor = try #require(shell.editor)
+        defer { editor.close() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let approval = VoxConvoExportState.Approval(handle: "creator", text: "My draft", addDisclosure: false)
+        editor.beginExport(targets: [.clip("five-1")], folder: directory, publish: approval)
+        _ = try await TestDeadline.value(editor.exportTask, "local export with unavailable publish")
+        let state = editor.exportJob.voxConvo
+        let finished = try #require(state.finished)
+        #expect(editor.exportError == nil && editor.exports.count == 1)
+        #expect(state.uploaded == nil && state.postedURL == nil)
+        #expect(state.error?.contains(VoxConvoConnection.unavailableReason) == true)
+        #expect(finished.fileUnchanged && !finished.draft.words.isEmpty)
+        let data = try Data(contentsOf: finished.draft.file)
+        let attributes = try FileManager.default.attributesOfItem(atPath: finished.draft.file.path)
+        let date = try #require(attributes[.modificationDate] as? Date)
+        try data.write(to: finished.draft.file, options: .atomic)
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: finished.draft.file.path)
+        #expect(!finished.fileUnchanged)
+    }
     @Test func cancellingAPausedExportReleasesItsContinuation() async throws {
         let exporter = RegressionExporter()
         await exporter.pauseFirstTarget()

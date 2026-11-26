@@ -25,6 +25,7 @@ public struct LipsyncAttempt: Codable, Sendable, Equatable {
     /// The upload's picture fingerprint (`LipsyncPictureFingerprint`): the upload's H.264 differs when the window is
     /// prepared again, so a record whose video hash differs is matched by its audio hash and this.
     var picture: Data?
+    package var redoVersion: String? = nil
     /// The result was imported as this paid video asset (`<projectId>/<assetId>.mp4` under the paid store; its `sha256` is
     /// the output's). The record then stays as the window's imported index: the same inputs get this file again, for free,
     /// after a SHA-256 check, until it is 30 days old or its file is gone.
@@ -52,7 +53,13 @@ public struct LipsyncAttempt: Codable, Sendable, Equatable {
     }
 
     /// The sidecar's name: the quote's input hashes.
-    var key: String { "\(videoSHA256)-\(audioSHA256)" }
+    var key: String { Self.key(video: videoSHA256, audio: audioSHA256, model: model, redoVersion: redoVersion) }
+
+    fileprivate static func key(video: String, audio: String, model: String?, redoVersion: String?) -> String {
+        guard let redoVersion, let model else { return "\(video)-\(audio)" }
+        let version = VoiceLabFingerprint.bytes(Data("\(redoVersion):\(model)".utf8))
+        return "\(version)-\(video)-\(audio)"
+    }
 
     /// fal.ai keeps a finished request's output for its lifecycle (`X-Fal-Object-Lifecycle-Preference`, one hour), so a
     /// result that was never downloaded can be fetched again by its request ID until then.
@@ -94,28 +101,56 @@ public enum LipsyncAttemptStore {
     /// The record over these exact input hashes, if a job over them reached fal.ai: an attempt not imported yet (its result
     /// at fal.ai or kept beside it), or the window's imported index entry (`importedAsset` set), whose asset is not checked
     /// here (`importedResult` checks it).
-    public static func load(videoSHA256: String, audioSHA256: String, projectID: String, paidRoot: URL) -> LipsyncAttempt? {
+    public static func load(videoSHA256: String, audioSHA256: String, projectID: String, paidRoot: URL,
+                            model: String? = nil, redoVersion: String? = nil) -> LipsyncAttempt? {
         guard isHash(videoSHA256), isHash(audioSHA256) else { return nil }
         return try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts -> LipsyncAttempt? in
-            guard let attempt = read(attempts, "\(videoSHA256)-\(audioSHA256).json", projectID: projectID),
-                  attempt.videoSHA256 == videoSHA256, attempt.audioSHA256 == audioSHA256 else { return nil }
+            let key = LipsyncAttempt.key(video: videoSHA256, audio: audioSHA256, model: model, redoVersion: redoVersion)
+            guard let attempt = read(attempts, "\(key).json", projectID: projectID),
+                  attempt.videoSHA256 == videoSHA256, attempt.audioSHA256 == audioSHA256,
+                  attempt.redoVersion == redoVersion else { return nil }
             return attempt
         }
     }
 
+    public static func importedAssets(inProject projectID: String, paidRoot: URL) -> Set<String> {
+        (try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts in
+            importedAssets(in: attempts, projectID: projectID)
+        }) ?? []
+    }
+
+    static func importedAssets(inProject directory: Int32, projectID: String) -> Set<String> {
+        let attempts = openat(directory, folder, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard attempts >= 0 else { return [] }
+        defer { close(attempts) }
+        return importedAssets(in: attempts, projectID: projectID)
+    }
+
+    private static func importedAssets(in attempts: Int32, projectID: String) -> Set<String> {
+        let names = (try? VoiceLabAssetRecovery.names(attempts)) ?? []
+        return Set(names.lazy.filter { $0.hasSuffix(".json") && !$0.hasPrefix(".") }.compactMap {
+            read(attempts, $0, projectID: projectID)?.importedAsset?.file
+        })
+    }
+
     /// The attempt for a window prepared again: the exact input hashes, else the same audio (the WAV is byte-identical)
     /// with the same model, lengths and a matching picture fingerprint (the H.264 upload is not).
-    static func find(_ prepared: PreparedLipsyncWindow, model: String, projectID: String, paidRoot: URL) -> LipsyncAttempt? {
-        if let exact = load(videoSHA256: prepared.video.sha256, audioSHA256: prepared.audio.sha256, projectID: projectID, paidRoot: paidRoot),
+    static func find(_ prepared: PreparedLipsyncWindow, model: String, projectID: String, paidRoot: URL,
+                     redoVersion: String? = nil) -> LipsyncAttempt? {
+        if let exact = load(videoSHA256: prepared.video.sha256, audioSHA256: prepared.audio.sha256, projectID: projectID,
+                            paidRoot: paidRoot, model: model, redoVersion: redoVersion),
            exact.model == model { return exact }
         guard isHash(prepared.audio.sha256) else { return nil }
         return try? withFolder(projectID: projectID, paidRoot: paidRoot, create: false) { attempts -> LipsyncAttempt? in
             let names = (try? FileManager.default.contentsOfDirectory(atPath: paidRoot.appendingPathComponent(projectID, isDirectory: true)
                 .appendingPathComponent(folder, isDirectory: true).path)) ?? []
-            let candidates = names.filter { $0.hasSuffix("-\(prepared.audio.sha256).json") }.sorted().prefix(16)
+            let key = LipsyncAttempt.key(video: prepared.video.sha256, audio: prepared.audio.sha256, model: model, redoVersion: redoVersion)
+            let prefix = String(key.dropLast(129))
+            let candidates = names.filter { $0.count == key.count + 5 && $0.hasPrefix(prefix) && $0.hasSuffix("-\(prepared.audio.sha256).json") }
+                .sorted().prefix(16)
             for name in candidates {
                 guard let attempt = read(attempts, name, projectID: projectID), attempt.audioSHA256 == prepared.audio.sha256,
-                      attempt.model == model, abs(attempt.neededSeconds - prepared.neededSeconds) < 1e-6,
+                      attempt.model == model, attempt.redoVersion == redoVersion, abs(attempt.neededSeconds - prepared.neededSeconds) < 1e-6,
                       abs(attempt.uploadedSeconds - prepared.video.durationSeconds) < 1e-6, abs(attempt.fps - prepared.fps) < 1e-6,
                       let picture = attempt.picture, LipsyncPictureFingerprint.matches(picture, prepared.picture) else { continue }
                 return attempt

@@ -108,6 +108,8 @@ public sealed partial class ClipAutopilotPrompt
     public string MomentsSchemaName { get; }
     /// <summary>The moments' schema.</summary>
     public JsonObject MomentsSchema { get; }
+    /// <summary>The bundled emoji also offered by Ask Claude.</summary>
+    public IReadOnlySet<string> Stickers { get; }
     /// <summary>A clip plan's output cap.</summary>
     public int ClipOutputTokens { get; }
     /// <summary>The moments' output cap.</summary>
@@ -123,7 +125,7 @@ public sealed partial class ClipAutopilotPrompt
     public static ClipAutopilotPrompt Load(string sharedRoot)
     {
         var (document, sha) = ReadShared(sharedRoot, Path);
-        return new(document, sha);
+        return new(document, sha, AskClaudePrompt.Load(sharedRoot).Stickers);
     }
 
     /// <summary>A shared JSON file and the SHA-256 of its bytes with CRLF read as LF, as the Voice Lab prompts are hashed.</summary>
@@ -145,7 +147,7 @@ public sealed partial class ClipAutopilotPrompt
         }
     }
 
-    internal ClipAutopilotPrompt(JsonObject document, string sha256)
+    internal ClipAutopilotPrompt(JsonObject document, string sha256, IReadOnlySet<string>? stickers = null)
     {
         int? Int(JsonNode? node) => AiJson.Number(node) is { } number && number == Math.Round(number) && Math.Abs(number) < int.MaxValue ? (int)number : null;
         if (Int(document["schemaVersion"]) != 2 || Int(document["promptVersion"]) is not { } version || version < 1 ||
@@ -177,13 +179,15 @@ public sealed partial class ClipAutopilotPrompt
         if (!looks.ToHashSet().SetEquals(Enum.GetValues<ClipLook>())) throw Missing();
         var templateValues = limits.TemplateValues();
         templateValues["looks"] = string.Join("\n", lookLines);
+        Stickers = stickers ?? new HashSet<string>(StringComparer.Ordinal);
+        templateValues["effectStickers"] = string.Join(" ", Stickers.Order(StringComparer.Ordinal));
         var schema = document["schema"]!.DeepClone().AsObject();
         string? zoomSection = null;
         var clipVersion = version;
         if (document["directionalZooms"] is { } directional)
         {
             var direction = AiJson.Get(directional, "directionSchema");
-            if (Int(AiJson.Get(directional, "promptVersion")) is not { } newVersion || newVersion <= version ||
+            if (Int(AiJson.Get(directional, "promptVersion")) is not { } newVersion || newVersion <= 0 ||
                 AiJson.String(AiJson.Get(directional, "section")) is not { Length: > 0 } section ||
                 AiJson.String(AiJson.Get(direction, "type")) != "string" ||
                 !AiJson.Array(AiJson.Get(direction, "enum")).Select(AiJson.String).ToHashSet(StringComparer.Ordinal)
@@ -191,7 +195,7 @@ public sealed partial class ClipAutopilotPrompt
                 AiJson.Get(AiJson.Get(AiJson.Get(schema["properties"], "zooms"), "items"), "properties") is not JsonObject fields ||
                 fields.ContainsKey("direction")) throw Missing();
             fields["direction"] = direction!.DeepClone();
-            clipVersion = newVersion;
+            clipVersion = Math.Max(version, newVersion);
             zoomSection = section;
             templateValues["minDirectionalZoomSeconds"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MinimumDirectionalSeconds);
             templateValues["maxDirectionalZoomSeconds"] = ClipAutopilotLimits.Text(ClipAutopilotPlan.Zoom.MaximumDirectionalSeconds);

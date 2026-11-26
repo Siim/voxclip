@@ -78,6 +78,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     /// "Cover frame chosen" (ADR-R48): the source second of the clip's cover, which an export writes beside the video as
     /// a JPEG and embeds as its cover art. Omitted when the clip has none.
     public var coverSeconds: Double?
+    public var coverTitle: String?
 
     public static let speedRange = 0.5...2.0
     public static let speedPresets: [Double] = [0.75, 1, 1.1, 1.25, 1.5, 2]
@@ -89,16 +90,17 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     public init(clipId: String, speed: Double = 1, shape: ClipShape? = nil, look: ClipLook = .original, gainDb: Double = 0,
                 fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0, muteSource: Bool = false, flipHorizontal: Bool = false,
                 rotationDegrees: Int = 0, reframe: ReframeSettings? = nil, coverSeconds: Double? = nil,
-                colorAdjustments: ClipColorAdjustments? = nil) {
+                colorAdjustments: ClipColorAdjustments? = nil, coverTitle: String? = nil) {
         self.clipId = clipId; self.speed = speed; self.shape = shape; self.look = look; self.gainDb = gainDb
         self.fadeInSeconds = fadeInSeconds; self.fadeOutSeconds = fadeOutSeconds; self.muteSource = muteSource
         self.flipHorizontal = flipHorizontal; self.rotationDegrees = rotationDegrees; self.reframe = reframe; self.coverSeconds = coverSeconds
         self.colorAdjustments = colorAdjustments == .neutral ? nil : colorAdjustments
+        self.coverTitle = coverTitle
     }
 
     private enum CodingKeys: String, CodingKey {
         case clipId, speed, shape, look, gainDb, fadeInSeconds, fadeOutSeconds, muteSource, flipHorizontal, rotationDegrees, reframe, coverSeconds
-        case colorAdjustments
+        case colorAdjustments, coverTitle
     }
 
     public init(from decoder: any Decoder) throws {
@@ -115,6 +117,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         rotationDegrees = try values.decode(Int.self, forKey: .rotationDegrees)
         reframe = try values.decodeIfPresent(ReframeSettings.self, forKey: .reframe)
         coverSeconds = try values.decodeIfPresent(Double.self, forKey: .coverSeconds)
+        coverTitle = try values.decodeIfPresent(String.self, forKey: .coverTitle)
         colorAdjustments = try values.decodeIfPresent(ClipColorAdjustments.self, forKey: .colorAdjustments)
     }
 
@@ -132,6 +135,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         try values.encode(rotationDegrees, forKey: .rotationDegrees)
         try values.encodeIfPresent(reframe, forKey: .reframe)
         try values.encodeIfPresent(coverSeconds, forKey: .coverSeconds)
+        try values.encodeIfPresent(coverTitle, forKey: .coverTitle)
         try values.encodeIfPresent(colorAdjustments, forKey: .colorAdjustments)
     }
 
@@ -209,7 +213,7 @@ public enum ClipControlsProject {
     /// The typed rules the schema cannot express: the clip exists, one entry per clip, no stored default entry.
     public static func validate(_ project: Project) throws {
         guard !project.clipControls.isEmpty else { return }
-        guard project.schemaVersion == 4 else { throw ClipControlsProjectError.unsupportedVersion }
+        guard project.schemaVersion >= 4 else { throw ClipControlsProjectError.unsupportedVersion }
         guard project.clipControls.count <= ProjectClipControls.maximumEntries else { throw ClipControlsProjectError.invalidEntry("too many entries") }
         let clips = Set(project.edits.clips.map(\.id))
         var seen = Set<String>()
@@ -234,6 +238,7 @@ public enum ClipControlsProject {
             try require([reframe.centerX, reframe.centerY].allSatisfy { $0.map { $0.isFinite && (0...1).contains($0) } == true }, "reframe centre")
         }
         if let cover = entry.coverSeconds { try require(cover.isFinite && cover >= 0, "cover") }
+        if let title = entry.coverTitle { try require(entry.coverSeconds != nil && ClipHookTitle.text(title) == title, "cover title") }
         guard !entry.isDefault else { throw ClipControlsProjectError.defaultEntry }
     }
 
@@ -244,7 +249,7 @@ public enum ClipControlsProject {
         }
         let keys: Set<String> = ["clipId", "speed", "shape", "look", "gainDb", "fadeInSeconds", "fadeOutSeconds", "muteSource",
                                  "flipHorizontal", "rotationDegrees"]
-        let optional: Set<String> = ["reframe", "coverSeconds", "colorAdjustments"]
+        let optional: Set<String> = ["reframe", "coverSeconds", "coverTitle", "colorAdjustments"]
         for entry in entries {
             guard case .object(let object) = entry, Set(object.keys).subtracting(optional) == keys else {
                 throw ClipControlsProjectError.invalidEntry("unknown or missing field")
@@ -258,6 +263,9 @@ public enum ClipControlsProject {
             }
             if let cover = object["coverSeconds"] {
                 guard case .number(let value) = cover, value.isFinite else { throw ClipControlsProjectError.invalidEntry("cover") }
+            }
+            if let title = object["coverTitle"] {
+                guard case .string = title else { throw ClipControlsProjectError.invalidEntry("cover title") }
             }
             if let adjustments = object["colorAdjustments"] {
                 let controls = ClipColorAdjustments.Control.allCases.map(\.rawValue)
@@ -320,12 +328,13 @@ public enum ClipControlsProject {
         return try setting(controls, in: project)
     }
 
-    /// A clip's span in source seconds: its first word's start to its last word's end.
+    /// The clip's source hull, not its playback range or duration.
     public static func sourceSpan(of clipId: String, in project: Project) -> ClosedRange<Double>? {
         guard let clip = project.edits.clips.first(where: { $0.id == clipId }), let words = project.transcript?.words,
-              let first = words.first(where: { $0.id == clip.startWordId }), let last = words.first(where: { $0.id == clip.endWordId }),
-              last.end > first.start else { return nil }
-        return first.start...last.end
+              let ranges = clip.playPartIndices(in: words),
+              let first = ranges.map(\.lowerBound).min(), let last = ranges.map(\.upperBound).max(),
+              words[last].end > words[first].start else { return nil }
+        return words[first].start...words[last].end
     }
 
     /// How far a stretch may miss a clip's ends and still count as the whole clip (Ask Claude's speed, ai.md §18).
@@ -356,13 +365,67 @@ public enum ClipControlsProject {
 /// rendered frame time back before it looks up captions, motion and Voice Lab layers.
 public struct ClipSpeedTiming: Sendable, Equatable {
     public let speed: Double
+    public let spans: [Span]
 
-    public init(speed: Double) { self.speed = speed.isFinite && speed > 0 ? speed : 1 }
+    public struct Span: Sendable, Equatable {
+        public let start: Double
+        public let end: Double
+        public let rate: Double
+        public init(start: Double, end: Double, rate: Double) { self.start = start; self.end = end; self.rate = rate }
+    }
+
+    public init(speed: Double, overrides: [Span] = []) {
+        let base = speed.isFinite && speed > 0 ? speed : 1
+        self.speed = base
+        let valid = overrides.filter { $0.start.isFinite && $0.end.isFinite && $0.end > $0.start && (0.5...2).contains($0.rate) }
+        let boundaries = Set(valid.flatMap { [$0.start, $0.end] }).sorted()
+        spans = zip(boundaries, boundaries.dropFirst()).compactMap { start, end in
+            guard let entry = valid.last(where: { $0.start <= start && $0.end >= end }), entry.rate != base else { return nil }
+            return Span(start: start, end: end, rate: entry.rate)
+        }
+    }
+
+    public init(speed: Double, timeline: RenderTimeline, effects: [ClipEffect]) {
+        self.init(speed: speed, overrides: effects.compactMap { effect in
+            guard effect.kind == .speedForPart, let rate = effect.rate else { return nil }
+            return Span(start: timeline.mapTime(effect.start), end: timeline.mapEndTime(effect.end), rate: rate)
+        })
+    }
+
+    public var isIdentity: Bool { speed == 1 && spans.isEmpty }
+
+    public func segments(through duration: Double) -> [Span] {
+        let spanBoundaries: [Double] = spans.flatMap { span in
+            let start: Double = max(0, min(duration, span.start))
+            let end: Double = max(0, min(duration, span.end))
+            return [start, end]
+        }
+        let boundaries: [Double] = Set([0, duration] + spanBoundaries).sorted()
+        return zip(boundaries, boundaries.dropFirst()).map { start, end in
+            Span(start: start, end: end, rate: spans.first(where: { $0.start <= start && $0.end >= end })?.rate ?? speed)
+        }
+    }
 
     /// Rendered seconds for an edited time.
-    public func rendered(_ edited: Double) -> Double { speed == 1 ? edited : edited / speed }
+    public func rendered(_ edited: Double) -> Double {
+        spans.reduce(edited / speed) { value, span in
+            let length: Double = max(0, min(span.end, edited) - span.start)
+            let rateDifference: Double = 1 / span.rate - 1 / speed
+            return value + length * rateDifference
+        }
+    }
     /// Edited seconds for a rendered time.
-    public func edited(_ rendered: Double) -> Double { speed == 1 ? rendered : rendered * speed }
+    public func edited(_ rendered: Double) -> Double {
+        var correction = 0.0
+        for span in spans {
+            let start = span.start / speed + correction
+            if rendered <= start { break }
+            let length = (span.end - span.start) / span.rate
+            if rendered < start + length { return span.start + (rendered - start) * span.rate }
+            correction += length - (span.end - span.start) / speed
+        }
+        return (rendered - correction) * speed
+    }
     /// The rendered sample count of `samples` edited samples.
     public func renderedSamples(_ samples: Int64) -> Int64 {
         speed == 1 ? samples : Int64((Double(samples) / speed).rounded())
@@ -372,9 +435,9 @@ public struct ClipSpeedTiming: Sendable, Equatable {
 extension RenderRequest {
     /// The clip's speed (1 without controls).
     public var speed: Double { clipControls?.speed ?? 1 }
-    public var speedTiming: ClipSpeedTiming { ClipSpeedTiming(speed: speed) }
+    public var speedTiming: ClipSpeedTiming { .init(speed: speed, timeline: timeline, effects: effects?.effects ?? []) }
     /// The rendered length in samples at the timeline's rate: the edited length divided by the speed.
-    public var renderedSamples: Int64 { speedTiming.renderedSamples(timeline.outputSamples) }
+    public var renderedSamples: Int64 { Int64((speedTiming.rendered(timeline.duration) * timeline.sampleRate).rounded()) }
     /// The rendered length in seconds.
     public var renderedDuration: Double { Double(renderedSamples) / timeline.sampleRate }
 
@@ -382,6 +445,7 @@ extension RenderRequest {
     public var withoutClipControls: RenderRequest {
         var result = self
         result.clipControls = nil
+        if let effects { result.effects = .init(effects: effects.effects.filter { $0.kind != .speedForPart }, soundURLs: effects.soundURLs, imageURLs: effects.imageURLs) }
         return result
     }
 }

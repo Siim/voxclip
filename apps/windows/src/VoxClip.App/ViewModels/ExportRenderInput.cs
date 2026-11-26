@@ -24,7 +24,7 @@ internal static class ExportRenderInput
     internal static EditPlan Plan(MediaInfo media, EditState? state)
     {
         var rate = media.Audio?.SampleRate ?? 48000;
-        if (state is not null) return EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, media.DurationSeconds), media.DurationSeconds, rate, state.PauseKeepSeconds);
+        if (state is not null) return EditingEngine.BuildPlan(state, media.DurationSeconds, rate);
         var samples = checked((long)Math.Floor(media.DurationSeconds * rate + 0.5));
         return new(rate, samples, [], [new(0, samples)], samples, []);
     }

@@ -169,8 +169,79 @@ import UniformTypeIdentifiers
         fixture.editor.sendRewriteAgain(fixture.session)
         _ = await fixture.editor.rewriteOpenTask?.value
         let confirm = try #require(fixture.session.task.confirm)
-        #expect(["discardPaidWork", "discardChanges"].contains(confirm.confirm.id) && fixture.session.isOpen, "\(confirm.question)")
+        #expect(confirm.confirm.id == "discardPaidWork" && confirm.question.contains("paid whole-clip voice"), "\(confirm.question)")
         #expect(fixture.session.wholeClip?.phase == .review, "nothing was sent again")
+    }
+
+    @Test(arguments: [false, true]) func unusableVideoClosesRewriteWithoutForgettingPaidWork(unreadable: Bool) async throws {
+        let fixture = try await fixture(.takes)
+        defer { fixture.close() }
+        fixture.session.persistPaidWork()
+        let record = try #require(RewriteSavedProposalStore.load(fixture.session.savedProposalURL))
+
+        if unreadable { fixture.editor.mediaUnreadable = true } else { fixture.editor.mediaResolved = false }
+
+        #expect(fixture.editor.openRewrite == nil && !fixture.session.isOpen)
+        #expect(!fixture.editor.mediaUsable)
+        #expect(RewriteSavedProposalStore.load(fixture.session.savedProposalURL) == record)
+    }
+
+    @Test func replacingTheTranscriptWaitsForTheOpenPaidRewrite() async throws {
+        let fixture = try await fixture(.takes)
+        defer { fixture.close() }
+        let editor = fixture.editor
+        let old = try #require(editor.project.transcript)
+        var next = old
+        next.language = "et"
+
+        editor.replaceTranscript(next)
+        #expect(editor.project.transcript?.language == old.language)
+        let question = try #require(fixture.session.task.confirm)
+        question.cancel.perform()
+        #expect(editor.openRewrite === fixture.session && editor.project.transcript?.language == old.language)
+
+        editor.replaceTranscript(next)
+        try #require(fixture.session.task.confirm).confirm.perform()
+        #expect(editor.openRewrite == nil && editor.project.transcript?.language == next.language)
+    }
+
+    @Test func retranscriptionDoesNotStartUntilRewriteCloses() async throws {
+        let fixture = try await fixture(.takes)
+        defer { fixture.close() }
+        let editor = fixture.editor, flow = editor.transcription
+        let original = try #require(editor.project.transcript)
+        var replacement = original
+        replacement.language = "et"
+        var runs = 0
+        flow.readinessOverride = { _ in .ready }
+        flow.runOverride = { _ in runs += 1; return replacement }
+        await flow.open(again: true)
+
+        flow.startApprovedRun()
+        #expect(!flow.isRunning && runs == 0)
+        try #require(fixture.session.task.confirm).cancel.perform()
+        #expect(editor.openRewrite === fixture.session && editor.project.transcript == original)
+
+        flow.startApprovedRun()
+        try #require(fixture.session.task.confirm).confirm.perform()
+        #expect(editor.openRewrite == nil && flow.isRunning)
+        await editor.workTask?.value
+        #expect(runs == 1 && editor.project.transcript == replacement)
+    }
+
+    @Test func aRelinkCandidateWaitsForTheOpenPaidRewrite() async throws {
+        let fixture = try await fixture(.takes)
+        defer { fixture.close() }
+        let editor = fixture.editor
+        let original = editor.project.media.source
+        let candidate = fixture.root.appendingPathComponent("replacement.mov")
+        try Data("different video".utf8).write(to: candidate)
+        let probe = MediaProbeResult(durationSeconds: original.durationSeconds, isPlayable: true)
+
+        await editor.prepareMediaRelink(url: candidate, probe: probe)
+        #expect(editor.mediaRelinkCandidate == nil && editor.project.media.source == original)
+        try #require(fixture.session.task.confirm).cancel.perform()
+        #expect(editor.openRewrite === fixture.session && editor.mediaRelinkCandidate == nil)
     }
 
     /// Close Project (⌘W, the window's close, opening another project) asks inline before anything freezes or saves; a
@@ -332,8 +403,12 @@ import UniformTypeIdentifiers
         #expect(throws: CocoaError(.userCancelled)) { try document.revert(toContentsOf: url, ofType: type) }
         #expect(session.task.confirm?.confirm.id == "approveQuote", "the question shown stays")
         #expect(fixture.editor.lastAnnouncement == RewriteSession.revertWaitsNotice, "\(String(describing: fixture.editor.lastAnnouncement))")
+        // Shown, not only spoken: the status bar's Rewrite notice says the revert waits, until the revert runs again.
+        #expect(fixture.editor.rewriteNotice == RewriteSession.revertWaitsNotice, "\(String(describing: fixture.editor.rewriteNotice))")
+        #expect(fixture.editor.statusRewriteNotice?.spoken == RewriteSession.revertWaitsNotice)
         session.task.confirm?.cancel.perform()
         #expect(await TestDeadline.until { session.task.confirm?.confirm.id == "discardPaidWork" }, "the revert asks once the question is answered")
+        #expect(fixture.editor.rewriteNotice == nil, "the waiting line goes once the revert runs: \(String(describing: fixture.editor.rewriteNotice))")
         asks(fixture, "Revert the project and discard ")
         session.task.confirm?.confirm.perform()
         #expect(!session.isOpen && fixture.editor.openRewrite == nil, "Discard and Revert reverts")

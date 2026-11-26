@@ -3,6 +3,10 @@ using System.Text.Json;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
+#if !EXPORT_BASELINE
+using VoxClip.Core.Domain.Loudness;
+using VoxClip.Core.Domain.Music;
+#endif
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Media.Captions;
@@ -13,6 +17,55 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class ExportEquivalenceTests
 {
+#if !EXPORT_BASELINE
+    [Fact]
+    [Trait("Category", "RequiresWindows")]
+    public async Task ExportTimelineMusicThroughTheDialogRouting()
+    {
+        var destination = Environment.GetEnvironmentVariable("VOXCLIP_EXPORT_EQ_TIMELINE");
+        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(destination)) Assert.Skip("Run export-equivalence.py --timeline-only on Windows.");
+        var shared = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
+        var source = Environment.GetEnvironmentVariable("VOXCLIP_EXPORT_EQ_SOURCE")!;
+        var data = Path.Combine(destination!, "data");
+        var ct = TestContext.Current.CancellationToken;
+        var project = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(Path.Combine(shared, "fixtures", "projects", "interview-take.voxclip"), ct));
+        var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
+        project = project with
+        {
+            Media = new(project.Media.Source with { AbsolutePath = source, RelativePath = Path.GetFileName(source), SizeBytes = new FileInfo(source).Length }),
+            Edits = project.Edits with { Clips = [], ActiveClipId = null, CutWordIds = [], CutPauseIds = [] },
+            Export = project.Export with { Aspect = ExportAspect.Source, Srt = false }
+        };
+        var track = await File.ReadAllBytesAsync(Path.Combine(destination!, "music-timeline.flac"), ct);
+        var asset = new MusicAsset(project.Id + "/music-timeline.flac", Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(track)), 4);
+        var musicPath = MusicRenderInput.PathFor(asset, data);
+        Directory.CreateDirectory(Path.GetDirectoryName(musicPath)!);
+        await File.WriteAllBytesAsync(musicPath, track, ct);
+        var original = new MusicSegment("whole", .5, 2, .5, false, FadeInSeconds: .4, FadeOutSeconds: .4);
+        foreach (var split in new[] { false, true })
+        {
+            var segments = split ? new[] { original with { Id = "left", LengthSeconds = 1, FadeOutSeconds = 0 },
+                original with { Id = "right", AnchorSeconds = 1.5, SongFromSeconds = 1.5, LengthSeconds = 1, FadeInSeconds = 0 } } : [original];
+            var music = new ProjectMusic("timeline", null, asset, MusicSource.File, "Timeline", null, MusicLicense.Own,
+                null, null, null, -12, false, 0, 0, 0, Segments: segments);
+            var saved = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project with { Music = [music] }));
+            Assert.Equal(6, saved.SchemaVersion);
+            var model = new EditorViewModel(saved);
+            var route = new ExportDialogRouting(model, null, ExportDialogRouting.Scopes(null).ToList().IndexOf(ExportScopeKind.FullVideo),
+                EditorLayout.Frames.ToList().IndexOf(ExportAspect.Source), 0, false, destination!, split ? "split" : "unsplit");
+            var target = Assert.Single(route.Targets);
+            var job = await route.JobAsync(target, (captured, scopedState, cancellation) =>
+                Task.FromResult(new ComposeSnapshot(media, ExportRenderInput.Plan(media, scopedState), null,
+                    ExportRenderInput.Output(media, captured.Export))
+                { Clip = ClipRenderInput.Resolve(captured, captured.Edits.ActiveClipId, data, shared) }), ct);
+            Assert.Equal(segments.Length, job.Snapshot.Clip!.Music!.Entry.Segments!.Count);
+            var result = await new Exporter().ExportAsync(job with { Loudness = ExportLoudness.Off }, null, ct);
+            Assert.True(result.AudioSamples > 0);
+            Assert.Equal(split ? "split.mp4" : "unsplit.mp4", Path.GetFileName(result.Output));
+        }
+    }
+#endif
+
     [Fact]
     [Trait("Category", "RequiresWindows")]
     public async Task ExportTheSharedProjectThroughTheDialogRouting()

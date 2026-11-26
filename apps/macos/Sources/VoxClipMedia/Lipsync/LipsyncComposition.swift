@@ -60,6 +60,23 @@ struct LipsyncVideoLayer: Sendable {
 }
 
 enum LipsyncComposition {
+    static func placement(start: Int64, end: Int64, piece: VoiceLabOutputPiece,
+                          input: VoiceLabRenderInput) throws -> (origin: Int64, end: Int64, replacement: Range<Int64>)? {
+        let plan = input.prepared.outputPlan
+        let story: Bool
+        if case .clip(let id) = input.scope { story = input.project.edits.clips.contains { $0.id == id && $0.parts != nil } }
+        else { story = false }
+        guard let window = LipsyncRenderWindow.savedOutputRange(start: start, end: end, piece: piece, plan: plan, restrictToPart: story) else {
+            if story { return nil }
+            throw LipsyncError.invalidInput
+        }
+        let origin = window.lowerBound, limit = window.upperBound
+        let handle = Int64((plan.sampleRate * 0.2).rounded())
+        let lower = max(origin, piece.outputStartSample - handle)
+        let upper = min(limit, piece.outputEndSample + handle)
+        return (origin, limit, lower..<max(lower, upper))
+    }
+
     static func insert(_ request: RenderRequest, into composition: AVMutableComposition,
                        scratchRoot: URL, isolation: isolated (any Actor)? = #isolation) async throws -> [LipsyncVideoLayer] {
         guard let input = request.voiceLab else { return [] }
@@ -73,8 +90,8 @@ enum LipsyncComposition {
             let video = item.recipe.video
             guard let assetID = video.assetId, let start = video.windowStartSample, let end = video.windowEndSample,
                   let record = input.project.voiceLab.videoAssets?.first(where: { $0.id == assetID }) else { throw LipsyncError.invalidInput }
-            let outputStart = LipsyncRenderWindow.outputSample(start, plan: plan)
-            let outputEnd = LipsyncRenderWindow.outputSample(end, plan: plan)
+            guard let placement = try placement(start: start, end: end, piece: item.piece, input: input) else { continue }
+            let outputStart = placement.origin, outputEnd = placement.end
             if tracks[assetID] == nil {
                 let file = try await lease.snapshot(record, projectID: input.project.id, paidRoot: input.paidRoot)
                 let asset = AVURLAsset(url: file)
@@ -89,11 +106,8 @@ enum LipsyncComposition {
                 tracks[assetID] = (target.trackID, MediaSupport.orientation(transform))
             }
             guard let track = tracks[assetID] else { throw LipsyncError.invalidMedia }
-            let handle = Int64((plan.sampleRate * 0.2).rounded())
-            let replacementStart = max(outputStart, item.piece.outputStartSample - handle)
-            let replacementEnd = min(outputEnd, item.piece.outputEndSample + handle)
-            let replacement = CMTimeRange(start: CMTime(value: replacementStart, timescale: rate),
-                                          end: CMTime(value: replacementEnd, timescale: rate))
+            let replacement = CMTimeRange(start: CMTime(value: placement.replacement.lowerBound, timescale: rate),
+                                          end: CMTime(value: placement.replacement.upperBound, timescale: rate))
             layers.append(LipsyncVideoLayer(trackID: track.0, output: replacement, orientation: track.1, lease: lease))
         }
         return layers

@@ -1,5 +1,10 @@
 # Voice Lab Core contract fixtures
 
+`fal-upload-case.json` pins the part sizes and order for a file one byte above
+fal.ai's 90 MiB single-upload limit. Both Core HTTP stand-ins replay it with a
+synthetic sparse file and check the one-byte final part. Regenerate with
+`python3 tools/fixtures/voice-lab/generate_fal_upload.py`.
+
 `hard-join-review-cases.json` (`voxclip-hard-join-review/1`) adds independent
 constant-bed vectors (including both generated edge fades and a 10 ms word
 gap), 2–20 ms source-fade counts, nonzero take-edge samples, and a synthetic
@@ -171,7 +176,7 @@ Rows without a mutation vary `rate` or `frames` to test sample rate and duration
 
 `voice-references-cases.json` (`voxclip-voice-references/1`) pins the learned voice references of voice-lab §6.9 (ADR-R41): which references the guard may use, how speech matches through them (statement first, one hop), and learning one (the refusals, one per project, the bound of 16 and its most-redundant eviction). `generate_voice_references.py` writes it in pure binary64 arithmetic; `check_drift.py` compares it byte for byte. Both Cores replay every case. See `voice-references-README.md`.
 
-`whole-clip-revoice-project.voxclip` and `whole-clip-revoice-wire-cases.json` (`voxclip-whole-clip-revoice-wire/1`) pin a project's `voiceLab.wholeClipRevoices` record (ADR-R46, voice-lab §8.14): every key written, nulls included; the record's refusals (`schemaValid: true` marks the rules JSON Schema cannot express); and what each valid project's export discloses (kinds, post text, chip). `generate_whole_clip_wire.py` writes both from `lipsync-render-v3.voxclip`; `check_drift.py` compares them byte for byte. Both Cores replay every case (Swift `WholeClipRevoiceWireReplayTests`, C# `WholeClipRevoiceWireTests`).
+`whole-clip-revoice-project.voxclip` and `whole-clip-revoice-wire-cases.json` (`voxclip-whole-clip-revoice-wire/1`) pin a project's `voiceLab.wholeClipRevoices` record (ADR-R46, voice-lab §8.14): every key written, nulls included; the record's refusals (`schemaValid: true` marks the rules JSON Schema cannot express); and what each valid project's export discloses (kinds, post text, chip). The `selected-voice` case preserves `qa.outputSpeakerCheckSkipped` without speaker measurements (ADR-R51). `generate_whole_clip_wire.py` writes both from `lipsync-render-v3.voxclip`; `check_drift.py` compares them byte for byte. Both Cores replay every case (Swift `WholeClipRevoiceWireReplayTests`, C# `WholeClipRevoiceWireTests`).
 
 `whole-clip-revoice-cases.json` (`voxclip-whole-clip-revoice/1`) pins the free parts of revoicing a whole clip (ADR-R46, voice-lab §8.14): the switch rule (40% of spoken words, or 2 phrases that can't fit) and its callout, Claude mode's choice within the cap, the script with cuts and voice changes applied, its parts (12 s, 1,000 scalars) and the voice changes each becomes (the parts tile the clip: cut fillers beside a boundary, cut words at the clip's edges, consecutive cuts, events, a cut run with no silence and a tightened pause beside a filler, which join two parts, and a rewrite whose sources end on a cut filler; each row carries its `cutPauseIds`), the fit (±8%, two reword rounds) and its "video matched" copy, the price from `shared/catalog/voice-lab.json`, and the ledger that never pays a step twice. `generate_whole_clip.py` is an independent stdlib reference (half away from zero on the exact double, decimal money); `check_drift.py` compares it byte for byte. Both Cores replay every case (Swift and C# `WholeClipRevoiceReplayTests`).
 

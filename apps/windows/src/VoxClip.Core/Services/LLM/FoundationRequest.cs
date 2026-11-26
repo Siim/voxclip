@@ -24,7 +24,7 @@ internal static class FoundationRequest
                 ["name"] = property.Key, ["schema"] = Map(property.Value!.AsObject(), name + "_" + property.Key, clipBudget, property.Key), ["isOptional"] = false
             }).ToArray())
         },
-        "array" => new JsonObject { ["arrayOf"] = Map(schema["items"]!.AsObject(), name + "_item", clipBudget), ["maximumElements"] = propertyName == "clips" ? clipBudget : null },
+        "array" => ArraySchema(schema, name, clipBudget, propertyName),
         "string" when schema["enum"] is { } values => new JsonObject { ["name"] = name, ["anyOf"] = values.DeepClone() },
         "string" => new JsonObject { ["type"] = "String" },
         "integer" => new JsonObject { ["type"] = "Int" },
@@ -32,4 +32,12 @@ internal static class FoundationRequest
         "boolean" => new JsonObject { ["type"] = "Bool" },
         _ => throw new ArgumentException("Unsupported canonical JSON schema type.", nameof(schema))
     };
+
+    private static JsonObject ArraySchema(JsonObject schema, string name, int? clipBudget, string? propertyName)
+    {
+        var value = new JsonObject { ["arrayOf"] = Map(schema["items"]!.AsObject(), name + "_item", clipBudget),
+            ["maximumElements"] = (propertyName == "clips" ? clipBudget : null) ?? schema["maxItems"]?.GetValue<int>() };
+        if (schema["minItems"] is { } minimum) value["minimumElements"] = minimum.DeepClone();
+        return value;
+    }
 }

@@ -268,6 +268,8 @@ import Testing
             var previous = -1.0
             for sample in 0...plan.totalSamples {
                 let source = Double(sample) / rate, edited = plan.mapTime(source)
+                let removed = plan.cuts.reduce(Int64(0)) { $0 + max(0, min(sample, $1.endSample) - $1.startSample) }
+                #expect(edited == Double(sample - removed) / rate)
                 #expect(edited >= previous)
                 previous = edited
                 if plan.cutContaining(source) == nil { #expect(plan.sourceTime(edited) == source) }

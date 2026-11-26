@@ -23,15 +23,35 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
     public ClipRenderInput? Clip { get; init; }
     /// <summary>The screen recordings placed over this scope (doc/spec/context-demo.md); null draws the source picture throughout.</summary>
     public VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers? ContextDemo { get; init; }
+    /// <summary>Resolved, silent companion placements on the edited clock.</summary>
+    public IReadOnlyList<FootageRenderLayer> Footage { get; init; } = [];
     /// <summary>The clip's speed timing; 1× without controls.</summary>
-    public ClipSpeedTiming Speed => new(Clip?.Controls?.Speed ?? 1);
-    /// <summary>The rendered length in samples at the timeline rate: the edited length divided by the speed.</summary>
-    public long RenderedSamples => Speed.RenderedSamples(Timeline.OutputSamples);
+    public ClipSpeedTiming Speed => ClipSpeedTiming.ForEffects(Clip?.Controls?.Speed ?? 1, Timeline.MapTime, Clip?.Effects?.Effects ?? [], Timeline.MapEndTime);
+    /// <summary>The rendered length in samples at the timeline rate: the edited length divided by the speed. One speed for the
+    /// whole clip divides the sample count exactly (the shared clip-render vectors); spans of partial speed go through seconds.</summary>
+    public long RenderedSamples => Speed.Spans.Count == 0
+        ? Speed.RenderedSamples(Timeline.OutputSamples)
+        : (long)Math.Round(Speed.Rendered(Timeline.Duration) * Timeline.SampleRate, MidpointRounding.AwayFromZero);
     /// <summary>The rendered length in seconds.</summary>
     public double RenderedDuration => RenderedSamples / Timeline.SampleRate;
     /// <summary>The single timeline used for duration, source frames, and audio.</summary>
     public RenderTimeline Timeline => VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input
         ? new RenderTimeline.VoiceLab(input.Prepared.OutputPlan) : new RenderTimeline.Legacy(Plan);
+}
+
+/// <summary>A companion picture and its half-open interval on the edited timeline.</summary>
+/// <param name="Entry">The original placement on the primary source clock.</param>
+/// <param name="Path">The verified local companion file.</param>
+/// <param name="EditedStart">The inclusive start on the edited timeline.</param>
+/// <param name="EditedEnd">The exclusive end on the edited timeline.</param>
+public sealed record FootageRenderLayer(ProjectFootage Entry, string Path, double EditedStart, double EditedEnd)
+{
+    /// <summary>Companion seconds for this frame at normal speed: a screenshot holds, video plays at 1×.</summary>
+    public double SourceTime(double editedTime) => SourceTime(editedTime, new(1));
+
+    /// <summary>Companion seconds for this frame when the primary picture has speed changes.</summary>
+    public double SourceTime(double editedTime, ClipSpeedTiming speed) => Entry.Kind == "screenshot" ? Entry.Footage.Start :
+        Entry.Footage.Start + (speed.Rendered(editedTime) - speed.Rendered(EditedStart));
 }
 /// <summary>Output encoding configuration; architecture §4.1 and §6.4.</summary>
 public sealed record OutputSpec(PixelSize Size, double FrameRate, long VideoBitrate, int AudioSampleRate = 48_000,
@@ -82,6 +102,17 @@ public sealed record EncoderCacheKey(string AdapterLuid, string DriverVersion, s
 /// defaults or for the full video), the scope's effects (null without any) and the scope's background music (null without).</summary>
 public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsRenderInput? Effects)
 {
+    /// <summary>Source-anchored face centres for story parts; absent parts use the clip's own controls.</summary>
+    public IReadOnlyList<(TimeRange Source, ReframeSettings Reframe)> PartReframes { get; init; } = [];
+
+    /// <summary>The story part's face framing at this source time.</summary>
+    public ReframeSettings? PartReframeAt(double sourceTime)
+    {
+        foreach (var (source, reframe) in PartReframes)
+            if (source.Start <= sourceTime && sourceTime < source.End)
+                return reframe;
+        return null;
+    }
     /// <summary>The track mixed under the voice for this scope.</summary>
     public MusicRenderInput? Music { get; init; }
     /// <summary>The clip's motion cues (punch-in zooms), applied after censors and before overlays; empty for the full video.</summary>
@@ -96,10 +127,17 @@ public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsR
         var effects = ClipEffectsRenderInput.Resolve(project, clipId, dataRoot, sharedRoot);
         var music = MusicRenderInput.Resolve(project, clipId, dataRoot);
         var motion = ContextDemo.MotionCueRendering.For(project, clipId);
-        return controls is null && effects is null && music is null && motion.Count == 0 ? null : new(controls, effects) { Music = music, Motion = motion };
+        (TimeRange Source, ReframeSettings Reframe)[] reframes = [];
+        if (clipId is not null && project.Transcript is { } transcript &&
+            project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { Parts: { } parts } story)
+            reframes = StoryClips.Times(story, transcript.Words).Zip(parts)
+                .Where(pair => pair.Second.Reframe is not null).Select(pair => (pair.First, pair.Second.Reframe!)).ToArray();
+        return controls is null && effects is null && music is null && motion.Count == 0 && reframes.Length == 0
+            ? null : new(controls, effects) { Music = music, Motion = motion, PartReframes = reframes };
     }
 
     /// <summary>The same input for the edited WAV: 1× with no controls, bleeps and mutes kept, no sound effects and no music
     /// (the edited-audio path reads the voice alone).</summary>
-    public ClipRenderInput? ForEditedAudio => Effects?.WithoutSounds is { } kept ? new(null, kept) : null;
+    public ClipRenderInput? ForEditedAudio => Effects?.WithoutSounds is { } kept
+        ? new(null, kept with { Effects = kept.Effects.Where(effect => effect.Kind != "speedForPart").ToArray() }) : null;
 }

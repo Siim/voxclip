@@ -52,16 +52,26 @@ extension RewriteSession {
     }
 
     func configureLipsync(_ plan: ClipTakePlan) {
+        let redoVersion = usedWholeClip.map { "voice-\($0.id)" }
+        plan.lipsync.backend = lipsyncBackend(redoVersion: redoVersion, wholeClip: { [weak self, weak plan] in
+            guard let self, let plan, wholeClipPlan === plan else { return nil }
+            return wholeClip
+        }, offers: { [weak plan] in
+            guard let plan else { throw CancellationError() }
+            return try await plan.makeLipsyncOffers()
+        })
+    }
+
+    func lipsyncBackend(redoVersion: String?, wholeClip: @escaping @MainActor () -> WholeClipRevoiceSession?,
+                        offers: @escaping @MainActor () async throws -> ([Int: RewriteLipsyncSession.Offer], RewriteLipsyncSession.Offer?) = { ([:], nil) })
+        -> RewriteLipsyncSession.Backend {
         let app = editor.app
         let paid = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
         let scratch = app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
         #if DEBUG
         let smoke = editor.lipsyncSmoke
         #endif
-        plan.lipsync.backend = RewriteLipsyncSession.Backend(offers: { [weak plan] in
-            guard let plan else { throw CancellationError() }
-            return try await plan.makeLipsyncOffers()
-        }, hasKey: {
+        return RewriteLipsyncSession.Backend(offers: offers, hasKey: {
             // Presence only, without reading the secret (no Keychain prompt); tests replace the store.
             await app.providerKeyStore.hasKey(for: "fal")
         }, hasConsent: {
@@ -73,21 +83,41 @@ extension RewriteSession {
             guard let spent = await VoiceLabSpendLedger(locations: app.locations).total(provider: "fal", at: Date()),
                   spent.unknownCount == 0 else { throw ClipTakePlan.Failure.unknownSpend }
             return VoiceLabMonthlyCap(limit: limit, spent: spent.usd)
-        }, run: { request, window, recordID, model, mayPay, progress in
+        }, run: { [weak self] request, window, recordID, model, mayPay, progress in
+            let checkpoint: @MainActor @Sendable (LipsyncQuote) -> Void = { [weak self] quote in
+                guard let self, let whole = wholeClip(),
+                      let voice = whole.voice, let picture = whole.picture else { return }
+                whole.pendingLipsync = .init(key: .init(voice: voice.key, retime: picture.speed, model: model),
+                    quoteID: quote.id, videoSHA256: quote.video.sha256, audioSHA256: quote.audio.sha256, redoVersion: redoVersion)
+                self.persistPaidWork()
+            }
+            defer { wholeClip()?.pendingLipsync = nil }
             #if DEBUG
-            if let smoke { return try await smoke(request, window, recordID, model, mayPay, progress) }
+            if let smoke { return try await smoke(request, window, recordID, model, mayPay, redoVersion, checkpoint, progress) }
             #endif
             try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
+            let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations),
+                                              onCleanupDenial: { [notice = app.falLipsyncCleanupNotice] fingerprint in
+                                                  await notice.recordDenial(forFingerprint: fingerprint)
+                                              })
             #if DEBUG
             await provider.setDiagnostic(LipsyncDiagnostic())
             #endif
-            return try await LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations),
-                paidRoot: paid, scratchRoot: scratch).execute(request: request, window: window, recordID: recordID,
-                    model: model.lipsyncModel, mayPay: mayPay, onProgress: progress)
+            var run = LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations), paidRoot: paid, scratchRoot: scratch)
+            run.beforeSubmit = checkpoint
+            run.redoVersion = redoVersion
+            return try await run.execute(request: request, window: window, recordID: recordID, model: model.lipsyncModel, mayPay: mayPay, onProgress: progress)
         }, changed: { [weak self] in
             await app.refreshMonthlySpend()
             self?.showProposal()
+        }, indexedWindows: { offer in
+            var available = Set<Int>()
+            for (index, window) in offer.windows.enumerated() {
+                guard offer.isCurrent(), !Task.isCancelled else { return [] }
+                if await LipsyncRun.hasIndexedResult(request: offer.request, window: window, model: offer.model.lipsyncModel,
+                                                     paidRoot: paid, scratchRoot: scratch, redoVersion: redoVersion) { available.insert(index) }
+            }
+            return available
         }, report: { line in
             // An offer failure's kind or a result set aside: never a URL, key or file name.
             let entry = LogEntry(level: .warn, category: "rewrite", message: line)

@@ -13,6 +13,67 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class TimelineTests
 {
+    [Fact]
+    public void StoryTimelineKeepsPartJumpsSeparateFromCutsOnBothAxes()
+    {
+        var model = ClipSemanticsTests.Story();
+        var plan = TimelineLayout.Plan(model);
+        var timeline = new TimelineStory(model, plan);
+        Assert.Equal(3.15, timeline.SourceAt(0, true), 4);
+        var seam = Assert.Single(timeline.Seams(true));
+        Assert.Equal(3, seam.Width);
+        Assert.Equal("↶ 0:00", seam.Label);
+        Assert.Equal(0.475, seam.Position, 4);
+        Assert.Equal(0.18, timeline.SourceAt(seam.Position, true), 4);
+        Assert.Equal(["first", "second"], timeline.Bands(false).Select(band => band.Part.Id));
+        Assert.Equal([3.2, 0.3], timeline.Overview.Select(band => band.Range.Start));
+        Assert.Equal(0.655, timeline.Display(0.36, false), 4);
+        Assert.Equal(0.36, timeline.SourceAt(0.655, false), 4);
+        Assert.Empty(new TimelineTileCache().Get(plan, null, new(0, plan.Duration), 600, true, timeline).Seams);
+    }
+
+    [Fact]
+    public void StoryPlayheadFollowsThePaddingOnBothSidesOfAPartJoin()
+    {
+        var model = ClipSemanticsTests.Story();
+        var timeline = new TimelineStory(model, TimelineLayout.Plan(model));
+        var seam = Assert.Single(timeline.Seams(true));
+        var tail = seam.Position - 0.02;
+        var lead = seam.Position + 0.02;
+        Assert.True(timeline.SourceAt(tail, true) > model.ClipParts[0].End);
+        Assert.True(timeline.SourceAt(lead, true) < model.ClipParts[1].Start);
+        Assert.Equal(tail, timeline.Display(timeline.SourceAt(tail, true), true), 4);
+        Assert.Equal(lead, timeline.Display(timeline.SourceAt(lead, true), true), 4);
+    }
+
+    [Fact]
+    public void StoryTimelineUsesRenderedPartLengthsAndKeepsAnInternalCutThin()
+    {
+        var model = ClipSemanticsTests.Story();
+        model.SelectPart("second");
+        model.Select(2);
+        model.SetClipEdgeAtCaret(false);
+        Assert.True(model.Apply(new EditOperation.SetWordCuts(["w2"], true)));
+        var plan = TimelineLayout.Plan(model);
+        var offset = (long)(plan.SampleRate / 2);
+        var pieces = new TimelinePieces(new RenderTimeline.Legacy(plan)).Pieces.Select((piece, index) => new VoiceLabOutputPiece(
+            index == 0 ? VoiceLabOutputPieceKind.Synth : VoiceLabOutputPieceKind.Source,
+            (long)Math.Round(piece.Source.Start * plan.SampleRate), (long)Math.Round(piece.Source.End * plan.SampleRate),
+            (long)Math.Round(piece.Edited.Start * plan.SampleRate) + (index == 0 ? 0 : offset),
+            (long)Math.Round(piece.Edited.End * plan.SampleRate) + offset, null, null, null)).ToArray();
+        var rendering = new RenderTimeline.VoiceLab(new(plan.SampleRate, plan.TotalSamples, pieces, [], VoiceLabOutputScope.Clip("clip-main"))
+        { PartSeams = plan.PartSeams.Select(seam => seam + offset).ToArray() });
+        var story = new TimelineStory(model, plan, rendering);
+
+        Assert.Equal(0.975, Assert.Single(story.Seams(true)).Position, 4);
+        Assert.Equal(rendering.Duration, story.Duration(true), 4);
+        Assert.Equal(0.18, story.SourceAt(0.975, true), 4);
+        Assert.InRange(story.Display(3.3, true), 0.30, 0.32);
+        var cut = Assert.Single(new TimelineTileCache().Get(plan, null, new(0, rendering.Duration), 600, true, story).Seams);
+        Assert.Equal(1, cut.Width);
+        Assert.True(cut.X > 600 * 0.975 / rendering.Duration);
+        Assert.Single(story.OpenCuts);
+    }
     [Theory]
     [InlineData(100, 20, 30, 18.5, 31.5)]
     [InlineData(100, 20, 60, 17, 63)]
@@ -135,6 +196,8 @@ public sealed class TimelineTests
         Assert.Equal(geometry.VideoTop + video + 1, geometry.AudioTop);
         Assert.Equal(geometry.AudioTop + audio + 1, geometry.CaptionTop);
         Assert.Equal(geometry.CaptionTop + caption + 1, geometry.EffectsTop);
+        Assert.Equal(geometry.EffectsTop + effects + 1, geometry.MusicTop);
+        Assert.True(geometry.Height > geometry.MusicTop + geometry.MusicHeight);
         var audioOnly = TimelineLayout.Tracks(size, false, false, false);
         Assert.Equal(0, audioOnly.VideoHeight); Assert.Equal(47, audioOnly.AudioTop);
         Assert.Equal(0, audioOnly.CaptionHeight); Assert.Equal(0, audioOnly.EffectsHeight);

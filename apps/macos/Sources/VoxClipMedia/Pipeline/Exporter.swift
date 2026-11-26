@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreImage
 import VideoToolbox
 import Darwin
 import ImageIO
@@ -142,20 +143,21 @@ public actor AVExporter: Exporter {
     static let coverQuality = 0.9
 
     /// The export's frame at `seconds` of its output, rendered by the export's own composition and compositor, as a JPEG.
-    private func coverImage(_ graph: RenderGraph, at seconds: Double) async throws -> Data {
+    private func coverImage(_ graph: RenderGraph, cover: ExportCover) async throws -> Data {
         guard let composition = graph.composition.copy() as? AVComposition else { throw VoxClipError.exportFailed("Cannot copy the cover's composition") }
         let generator = AVAssetImageGenerator(asset: composition)
         generator.videoComposition = graph.videoComposition
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
-        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
-        let image: CGImage = try await withCheckedThrowingContinuation { continuation in
+        let time = CMTime(seconds: max(0, cover.seconds), preferredTimescale: 600)
+        let frame: CGImage = try await withCheckedThrowingContinuation { continuation in
             generator.generateCGImageAsynchronously(for: time) { image, _, error in
                 if let image { continuation.resume(returning: image) }
                 else { continuation.resume(throwing: error ?? VoxClipError.exportFailed("Cannot render the cover")) }
             }
         }
         withExtendedLifetime(generator) {}
+        let image = Self.coverTitle(cover.title, on: frame)
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw VoxClipError.exportFailed("Cannot encode the cover")
@@ -167,18 +169,30 @@ public actor AVExporter: Exporter {
         return data as Data
     }
 
+    static func coverTitle(_ title: String?, on frame: CGImage) -> CGImage {
+        guard let title else { return frame }
+        let output = CGSize(width: frame.width, height: frame.height)
+        let effect = ClipEffect(id: "cover-title", clipId: nil, kind: .title, start: 0, end: 1, text: title, position: .bottom)
+        let frames = EffectFrames(input: .init(effects: [effect], soundURLs: [:]))
+        let image = CIImage(cgImage: frame)
+        guard let overlay = frames.overlay(effect, output: output) else { return frame }
+        return CIContext().createCGImage(overlay.composited(over: image), from: image.extent) ?? frame
+    }
+
     /// The cover inside the MP4 (ADR-R48): `MP4CoverEmbed` writes the JPEG as its iTunes `covr` art, which players,
     /// Finder and uploaders read as the attached picture. AVFoundation's writer embeds a `covr` item on macOS 27 and never
     /// on macOS 26 (13 variants on the hosted 26.7.2 runner, doc/publishing.md §7), so VoxClip writes the box itself on
-    /// every version. The cover is extra: a failure leaves the export and the JPEG beside it, logs one line and returns
-    /// false.
+    /// every version. A cover failure leaves the separate JPEG; a sound-credit failure stops publication.
     @discardableResult
-    static func embedCover(_ jpeg: Data, in partial: URL,
-                           log: @Sendable (String) -> Void = { AVExporter.logger.error("\($0, privacy: .public)") }) async -> Bool {
+    static func embedMetadata(_ jpeg: Data?, comment: String?, in partial: URL,
+                              log: @Sendable (String) -> Void = { AVExporter.logger.error("\($0, privacy: .public)") }) async throws -> Bool {
+        guard jpeg != nil || comment != nil else { return false }
         do {
-            try await MP4CoverEmbed.embed(jpeg, into: partial)
-            return true
+            try await MP4CoverEmbed.embed(jpeg, comment: comment, into: partial)
+            return jpeg != nil
         } catch {
+            guard jpeg != nil else { throw error }
+            if let comment { try await MP4CoverEmbed.embed(nil, comment: comment, into: partial) }
             log("cover: the export keeps its cover beside it but not inside the MP4 (\(String(describing: error)))")
             return false
         }
@@ -208,12 +222,12 @@ public actor AVExporter: Exporter {
 
     /// The CLI calls this before staging WAV. Export calls the same calculation
     /// after the WAV partial exists, when free space already reflects its bytes.
-    @discardableResult package func preflightCombinedExport(_ job: ExportJob, editedAudioURL: URL) throws -> [URL: ExportSafety.DestinationApproval] {
-        try transactionPreflight(job, additionalOutputs: [], plannedEditedAudioURL: editedAudioURL).approvals
+    @discardableResult package func preflightCombinedExport(_ job: ExportJob, editedAudioURL: URL, includeMusic: Bool = false) throws -> [URL: ExportSafety.DestinationApproval] {
+        try transactionPreflight(job, additionalOutputs: [], plannedEditedAudioURL: editedAudioURL, includeMusic: includeMusic).approvals
     }
 
     private func transactionPreflight(_ job: ExportJob,
-        additionalOutputs: [(partial: URL, destination: URL)], plannedEditedAudioURL: URL?) throws -> TransactionPreflight {
+        additionalOutputs: [(partial: URL, destination: URL)], plannedEditedAudioURL: URL?, includeMusic: Bool = false) throws -> TransactionPreflight {
         let destination = job.outputURL.standardizedFileURL.resolvingSymlinksInPath()
         try ExportSafety.validateDestination(destination)
         let reservedPartial = try ExportSafety.partialURL(for: destination)
@@ -227,8 +241,8 @@ public actor AVExporter: Exporter {
         let source = job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath()
         guard destination != source else { throw VoxClipError.exportFailed("The export must not overwrite the source") }
         let srtURL = job.writeSRT ? (job.srtURL ?? destination.deletingPathExtension().appendingPathExtension("srt")).standardizedFileURL.resolvingSymlinksInPath() : nil
-        let speed = job.render.speed
-        let srtText = srtURL == nil ? nil : (job.render.captionLayout.map { CaptionSubtitles.srt($0, speed: speed) } ?? Self.srt(job.render.captions, speed: speed))
+        let timing = job.render.speedTiming
+        let srtText = srtURL == nil ? nil : (job.render.captionLayout.map { CaptionSubtitles.srt($0, timing: timing) } ?? Self.srt(job.render.captions, timing: timing))
         if let sidecar = srtURL {
             try ExportSafety.validateDestination(sidecar)
             let sidecarPartial = try ExportSafety.partialURL(for: sidecar)
@@ -257,7 +271,16 @@ public actor AVExporter: Exporter {
         guard Set(normalized).count == normalized.count, !normalized.contains(source.path) else {
             throw VoxClipError.exportFailed("Export outputs overlap")
         }
+        if let music = job.render.music, normalized.contains(music.assetURL.standardizedFileURL.resolvingSymlinksInPath().path) {
+            throw VoxClipError.exportFailed("The export must not overwrite the music file")
+        }
         if let input = job.render.voiceLab { try Self.preventPaidOverwrite(input, paths: allPaths) }
+        if let effects = job.render.effects {
+            let assets = Set((Array(effects.imageURLs.values) + Array(effects.soundURLs.values)).map { $0.standardizedFileURL.resolvingSymlinksInPath().path })
+            guard allPaths.allSatisfy({ !assets.contains($0.standardizedFileURL.resolvingSymlinksInPath().path) }) else {
+                throw VoxClipError.exportFailed("The export must not overwrite an effect asset")
+            }
+        }
         try Self.preventDemoOverwrite(job.render, paths: allPaths)
         for extra in extras {
             try ExportSafety.validateDestination(extra.destination)
@@ -267,7 +290,8 @@ public actor AVExporter: Exporter {
         try ContextDemoCompositionRoute.validate(job.render)
         guard job.render.timeline.outputSamples > 0 else { throw VoxClipError.everythingCut }
         let plannedWAVBytes = try plannedEditedAudioURL.map { _ in
-            try PCMFile.plannedBytes(frames: job.render.timeline.outputSamples, channels: 2, bits: 32)
+            let frames = includeMusic && job.render.music != nil ? job.render.renderedSamples : job.render.timeline.outputSamples
+            return try PCMFile.plannedBytes(frames: frames, channels: 2, bits: 32)
         }
         let estimate = job.render.renderedDuration * (Double(job.render.output.videoBitrate) + 192_000) / 8 * 1.5
         guard estimate.isFinite, estimate > 0, estimate < Double(Int64.max / 4) else {
@@ -342,7 +366,7 @@ public actor AVExporter: Exporter {
         let audioSampleLimit = Int64((job.render.renderedDuration * 48000).rounded())
         // Social loudness (ADR-R47): measure the mix the pump will write, simulate the limiter when it has work, then
         // write it through the same gain and limiter.
-        let loudnessPlan = try await socialLoudness(job, graph: graph, timeRange: timeRange, sampleLimit: audioSampleLimit)
+        let loudnessPlan = try await Self.socialLoudness(job.loudness, graph: graph, timeRange: timeRange, sampleLimit: audioSampleLimit)
         try Task.checkCancellation()
         guard let videoComposition = graph.composition.copy() as? AVComposition,
               videoComposition.track(withTrackID: graph.videoTrack.trackID) != nil else {
@@ -377,9 +401,10 @@ public actor AVExporter: Exporter {
         // The cover (ADR-R48): the frame this export renders at its time, through the same compositor (crop, captions,
         // title), embedded as the MP4's cover art and written beside it.
         var coverJPEG: Data?
-        if let cover = job.cover { coverJPEG = try await coverImage(graph, at: cover.seconds) }
+        if let cover = job.cover { coverJPEG = try await coverImage(graph, cover: cover) }
         try Task.checkCancellation()
         let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
+        let credits = job.render.effects?.credits ?? []
         writer.directoryForTemporaryFiles = workDirectory
         writer.shouldOptimizeForNetworkUse = true
         writer.movieTimeScale = 48000
@@ -454,8 +479,7 @@ public actor AVExporter: Exporter {
             await writer.finishWriting()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
-            // The cover art goes into the finished MP4 before anything hashes or publishes it (see `embedCover`).
-            if let coverJPEG { await Self.embedCover(coverJPEG, in: partial) }
+            try await Self.embedMetadata(coverJPEG, comment: credits.isEmpty ? nil : credits.joined(separator: "\n"), in: partial)
             try Task.checkCancellation()
             if let loudnessPlan { for wav in gainedAudio { try PCMFile.applyLoudness(loudnessPlan.decision, toFloatWAV: wav) } }
             if let srtPartial, let srtText {
@@ -534,6 +558,7 @@ public actor AVExporter: Exporter {
         request.contextDemo?.placements.isEmpty != false &&
         !request.motionCues.contains(where: { $0.clipID == request.motionClipID && $0.isValid }) &&
         request.clipControls?.changesPicture != true && request.clipControls?.shape == nil &&
+        request.effects?.effects.contains(where: { [.colourLook, .speedForPart, .illustration].contains($0.kind) }) != true &&
         request.style == nil && request.captionLayout == nil && request.captions.words.isEmpty && request.captions.pages.isEmpty
     }
 
@@ -623,9 +648,9 @@ public actor AVExporter: Exporter {
     /// The social loudness plan of the mix `perform` writes (ADR-R47), or nil with loudness off or without audio:
     /// one pass measures it; when the gain leaves the limiter work, one or two more run the gain and the limiter
     /// offline and land the gain on target (`SocialLoudness.landing`).
-    private func socialLoudness(_ job: ExportJob, graph: RenderGraph, timeRange: CMTimeRange,
-                                sampleLimit: Int64) async throws -> ExportLoudnessPlan? {
-        guard job.loudness == .social, !graph.mixedAudioTracks.isEmpty else { return nil }
+    static func socialLoudness(_ setting: ExportLoudness, graph: RenderGraph, timeRange: CMTimeRange,
+                               sampleLimit: Int64, isolation: isolated (any Actor)? = #isolation) async throws -> ExportLoudnessPlan? {
+        guard setting == .social, !graph.mixedAudioTracks.isEmpty else { return nil }
         var meter = try SocialLoudnessMeter(sampleRate: 48_000, channels: 2)
         try await readMix(graph: graph, timeRange: timeRange, sampleLimit: sampleLimit) { try meter.append($0) }
         let measurement = meter.finish()
@@ -646,8 +671,9 @@ public actor AVExporter: Exporter {
 
     /// The mix `perform` writes, read offline: the export's own composition, mixed tracks, audio mix and time range
     /// at 48 kHz Float32 stereo, cut to `sampleLimit` frames and padded with silence to it.
-    private func readMix(graph: RenderGraph, timeRange: CMTimeRange, sampleLimit: Int64,
-                         _ body: (UnsafeBufferPointer<Float>) throws -> Void) async throws {
+    static func readMix(graph: RenderGraph, timeRange: CMTimeRange, sampleLimit: Int64,
+                        isolation: isolated (any Actor)? = #isolation,
+                        _ body: (UnsafeBufferPointer<Float>) throws -> Void) async throws {
         guard let composition = graph.composition.copy() as? AVComposition else {
             throw VoxClipError.decodeFailed("Cannot copy export audio composition")
         }
@@ -747,7 +773,9 @@ public actor AVExporter: Exporter {
         }
     }
 
-    static func srt(_ track: CaptionTrack, speed: Double = 1) -> String {
+    static func srt(_ track: CaptionTrack, speed: Double = 1) -> String { srt(track, timing: .init(speed: speed)) }
+
+    static func srt(_ track: CaptionTrack, timing: ClipSpeedTiming) -> String {
         func timestamp(_ time: Double) -> String {
             let milliseconds = max(0, Int((time * 1000).rounded()))
             return String(format: "%02d:%02d:%02d,%03d", milliseconds / 3600000,
@@ -760,7 +788,7 @@ public actor AVExporter: Exporter {
             let text = !validLines ? page.words.map(\.text).joined(separator: " ") : page.lines.map { line in
                 line.words.map { track.words[$0].text }.joined(separator: " ")
             }.joined(separator: "\n")
-            return "\(index + 1)\n\(timestamp(page.start / speed)) --> \(timestamp(page.end / speed))\n\(text)\n\n"
+            return "\(index + 1)\n\(timestamp(timing.rendered(page.start))) --> \(timestamp(timing.rendered(page.end)))\n\(text)\n\n"
         }.joined()
     }
 
@@ -779,14 +807,14 @@ public actor AVExporter: Exporter {
         }
     }
 
-    package func stageEditedAudio(_ request: RenderRequest, to destination: URL) async throws -> URL {
+    package func stageEditedAudio(_ request: RenderRequest, to destination: URL, includeMusic: Bool = false) async throws -> URL {
         try await acquire(); defer { release() }
         let id = UUID()
         activeID = id
         defer { activeID = nil; activePumps = nil }
         do {
             return try await withTaskCancellationHandler {
-                try await performEditedAudio(request, to: destination)
+                try await performEditedAudio(request, to: destination, includeMusic: includeMusic && request.music != nil)
             } onCancel: { Task { await self.cancelActive(id) } }
         } catch {
             if error is VoiceLabRenderCapabilityError { throw error }
@@ -800,7 +828,7 @@ public actor AVExporter: Exporter {
         }
     }
 
-    private func performEditedAudio(_ request: RenderRequest, to destination: URL) async throws -> URL {
+    private func performEditedAudio(_ request: RenderRequest, to destination: URL, includeMusic: Bool) async throws -> URL {
         try Task.checkCancellation()
         let destination = destination.standardizedFileURL.resolvingSymlinksInPath()
         try ExportSafety.validateDestination(destination)
@@ -812,7 +840,8 @@ public actor AVExporter: Exporter {
         try Self.preventDemoOverwrite(request, paths: [destination, URL(fileURLWithPath: destination.path + ".partial")])
         let synthetic = request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering == true
         guard request.timeline.outputSamples >= 0 else { throw VoxClipError.diskFull(destination.path) }
-        let bytes = try PCMFile.plannedBytes(frames: request.timeline.outputSamples, channels: 2, bits: 32)
+        let expectedFrames = includeMusic ? request.renderedSamples : request.timeline.outputSamples
+        let bytes = try PCMFile.plannedBytes(frames: expectedFrames, channels: 2, bits: 32)
         var needs = [DiskCapacity.Need(directory: destination.deletingLastPathComponent(),
                                        bytes: try DiskCapacity.checkedAdd(bytes, DiskCapacity.fileBytes(destination), at: destination))]
         if synthetic, let input = request.voiceLab {
@@ -820,12 +849,15 @@ public actor AVExporter: Exporter {
                                bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
         }
         try DiskCapacity.check(needs, provider: capacityProvider)
-        // Edited audio is the clip's voice as recorded: 1×, at its own level, without music.
-        let graph = try await builder.build(request.withoutMusic.withoutClipControls)
-        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease)) {} }
-        guard let track = graph.audioTrack else { throw VoxClipError.noAudioTrack }
+        let graph = try await builder.build(includeMusic ? request : request.withoutMusic.withoutClipControls)
+        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease, graph.effectsLease, graph.clipVoiceLease)) {} }
+        let tracks = includeMusic ? graph.mixedAudioTracks : [graph.audioTrack].compactMap { $0 }
+        guard !tracks.isEmpty else { throw VoxClipError.noAudioTrack }
         let reader = try AVAssetReader(asset: graph.composition)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: MediaSupport.pcm(rate: request.timeline.sampleRate, channels: 2))
+        if includeMusic {
+            reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(value: expectedFrames, timescale: Int32(request.timeline.sampleRate)))
+        }
+        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: MediaSupport.pcm(rate: request.timeline.sampleRate, channels: 2))
         output.audioMix = graph.audioMix; output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)
         let temporary = try ExportSafety.preparePartial(for: destination, registry: cleanupRegistry)
@@ -847,8 +879,10 @@ public actor AVExporter: Exporter {
             }
             try Task.checkCancellation()
             guard reader.status == .completed else { throw VoxClipError.decodeFailed(reader.error?.localizedDescription ?? "Edited audio did not finish") }
-            let deficit = request.timeline.outputSamples - wav.frames
-            if !synthetic, deficit > 0, let last = request.plan.kept.last {
+            let deficit = expectedFrames - wav.frames
+            if includeMusic {
+                try wav.finish(expectedFrames: expectedFrames)
+            } else if !synthetic, deficit > 0, let last = request.plan.kept.last {
                 let sourceEnd = try await decodedSourceAudioEnd(request)
                 let missingTail = max(0, last.endSample - max(last.startSample, sourceEnd))
                 if deficit == missingTail {
@@ -860,8 +894,8 @@ public actor AVExporter: Exporter {
             } else {
                 try wav.finish()
             }
-            guard wav.frames == request.timeline.outputSamples else {
-                throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(request.timeline.outputSamples)")
+            guard wav.frames == expectedFrames else {
+                throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(expectedFrames)")
             }
             prepared = true
             return temporary

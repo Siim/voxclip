@@ -427,10 +427,10 @@ public sealed class VoiceLabSettingsTests
     }
 
     [Fact]
-    public void UnshippedLipSyncProvidersHaveNoKeyOrMonthlyCapRows()
+    public void OnlyElevenLabsAndTheWholeClipProviderHaveSettingsRows()
     {
         Assert.False(LipSyncAvailability.Shipped);
-        Assert.Equal(("elevenlabs", "ElevenLabs"), Assert.Single(LipSyncAvailability.SettingsProviders));
+        Assert.Equal([("elevenlabs", "ElevenLabs"), ("fal", "fal.ai")], LipSyncAvailability.SettingsProviders);
         var pane = AppSource("Controls/VoiceLabSettingsPane.cs");
         Assert.Contains("keyInventory.Rows.Where(entry => LipSyncAvailability.SettingsProviders.Any(provider => entry.Provider == provider.Label))", pane);
         Assert.Contains("foreach (var provider in LipSyncAvailability.SettingsProviders)", pane);
@@ -462,7 +462,7 @@ public sealed class VoiceLabSettingsTests
     {
         var editor = AppSource(Path.Combine("Pages", "EditorPage.xaml.cs"));
         Assert.DoesNotContain("VoiceLabDialogs.TurnOnAsync", editor);
-        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite)", editor);
+        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(session);", editor);
         Assert.Contains("session.GenerationIsCurrent && App.Services.VoiceLabEnabled", editor);
         Assert.DoesNotContain("Title = \"Turn on Voice Lab\"", editor);
         Assert.DoesNotContain("EnablementCopy", AppSource(Path.Combine("ViewModels", "RewriteEntryPolicy.cs")));

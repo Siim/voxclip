@@ -25,6 +25,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/voice-lab/autofit-cases.json',
          'shared/fixtures/voice-lab/lipsync-window-cases.json',
          'shared/fixtures/voice-lab/lipsync-project-cases.json',
+         'shared/fixtures/voice-lab/fal-upload-case.json',
          'shared/fixtures/voice-lab/homophone-word-check-cases.json',
          'shared/fixtures/voice-lab/rewrite-next-actions-cases.json',
          'shared/fixtures/voice-lab/hard-join-cases.json',
@@ -69,6 +70,8 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-frames/autopilot-picture-cases.json',
          'shared/fixtures/autopilot/plan-frames-cases.json', 'shared/fixtures/autopilot/plan-validation-cases.json',
          'shared/fixtures/autopilot/plan-v2-cases.json', 'shared/fixtures/autopilot/plan-tone-cases.json',
+         'shared/schemas/clip-proposal.schema.json', 'shared/schemas/harness-timeline.schema.json',
+         'shared/schemas/harness-proposal.schema.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
          'shared/fixtures/clips-mode/clips-mode-settings-cases.json',
          'shared/fixtures/clip-style/caption-look-cases.json',
@@ -119,6 +122,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/loudness/generate_social_loudness.py")], check=True)
     # The clip-effects schema field and its shared vectors (doc/spec/ai.md section 18.2), after the music field.
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_effects_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_timeline_edit_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_proposal_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-effects/generate_clip_effects.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/ask-claude/generate_ask_claude.py")], check=True)
     # The clip-controls schema field and its shared vectors (doc/design.md section 6.9).

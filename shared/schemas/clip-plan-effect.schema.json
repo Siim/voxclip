@@ -1,0 +1,383 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/clip-plan-effect.schema.json",
+  "title": "VoxClip clip-plan effect",
+  "description": "One reasoned effect anchored to inclusive transcript item indices. Project replay checks the anchors, the clip, and its kept words. Entries describe intent only and cannot authorize a purchase or fetch an asset.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "startWord",
+    "endWord",
+    "reason"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "zoom",
+        "punchIn",
+        "motionTitle",
+        "lowerThird",
+        "emojiPop",
+        "motionTemplate",
+        "soundEffect",
+        "illustration",
+        "colourLook",
+        "speedForPart",
+        "bRoll",
+        "screenshot",
+        "videoStack"
+      ]
+    },
+    "startWord": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "endWord": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "scale": {
+      "type": "number",
+      "minimum": 1.05,
+      "maximum": 1.35
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "look": {
+      "enum": [
+        "original",
+        "muted",
+        "warm",
+        "bw"
+      ]
+    },
+    "rate": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 2
+    },
+    "footage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceKey",
+        "start"
+      ],
+      "properties": {
+        "sourceKey": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "template": {
+      "$ref": "motion-template.schema.json"
+    },
+    "fadeIn": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "fadeOut": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "gainDb": {
+      "type": "number",
+      "minimum": -30,
+      "maximum": 6
+    },
+    "soundFrom": {
+      "type": "number",
+      "minimum": 0
+    },
+    "volume": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "word",
+          "db"
+        ],
+        "properties": {
+          "word": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "db": {
+            "type": "number",
+            "minimum": -60,
+            "maximum": 12
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "zoom",
+              "punchIn"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "scale"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "scale"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "motionTitle",
+              "lowerThird",
+              "emojiPop"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "text"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "text",
+            "fadeIn",
+            "fadeOut"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "soundEffect"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "query"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "query",
+            "fadeIn",
+            "fadeOut",
+            "gainDb",
+            "soundFrom",
+            "volume"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "illustration"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "prompt"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "prompt",
+            "fadeIn",
+            "fadeOut"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "colourLook"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "look"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "look",
+            "fadeIn",
+            "fadeOut"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "speedForPart"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "rate"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "rate"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "bRoll",
+              "screenshot",
+              "videoStack"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "footage"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "footage",
+            "fadeIn",
+            "fadeOut"
+          ]
+        },
+        "properties": {
+          "fadeIn": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "fadeOut": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "motionTemplate"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "template"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "startWord",
+            "endWord",
+            "reason",
+            "template",
+            "fadeIn",
+            "fadeOut"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "emojiPop"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "text": {
+            "maxLength": 16
+          }
+        }
+      }
+    }
+  ]
+}

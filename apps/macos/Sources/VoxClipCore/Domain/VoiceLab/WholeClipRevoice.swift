@@ -37,6 +37,8 @@ public enum WholeClipRevoice {
 // MARK: - The switch rule
 
 extension WholeClipRevoice {
+    public static let fullTakeID = "voxclip-full-take"
+
     /// What the rule reads from a Rewrite of one clip.
     public struct RuleInputs: Equatable, Sendable {
         /// The clip's spoken words (transcript `word` items in its span, after its cuts).
@@ -467,12 +469,11 @@ extension WholeClipRevoice {
 // MARK: - Lip-sync model and price
 
 extension WholeClipRevoice {
-    /// The lip-sync models a whole clip may use (the user's decision, 2026-11-07): lipsync-2 by default, sync-3 as the
-    /// priced upgrade on Review that re-runs only the lip sync.
+    /// The lip-sync models accepted in whole-clip records. New whole-clip jobs use sync-3.
     public enum Lipsync: String, Codable, Sendable, CaseIterable {
         case lipsync2 = "fal-ai/sync-lipsync/v2:lipsync-2"
         case sync3 = "fal-ai/sync-lipsync/v3"
-        public static let standard = Lipsync.lipsync2
+        public static let standard = Lipsync.sync3
         public var endpoint: String { String(rawValue.split(separator: ":", maxSplits: 1)[0]) }
         public var model: String? { rawValue.split(separator: ":", maxSplits: 1).dropFirst().first.map(String.init) }
         /// "lipsync-2", "sync-3".
@@ -570,7 +571,7 @@ extension WholeClipRevoice {
         var ids = Set<String>(), used = Set<String>()
         for record in records {
             guard idShape(record.id), ids.insert(record.id).inserted, idShape(record.clipId),
-                  project.edits.clips.contains(where: { $0.id == record.clipId }),
+                  record.clipId == fullTakeID || project.edits.clips.contains(where: { $0.id == record.clipId }),
                   !record.segmentIds.isEmpty, !record.script.isEmpty, record.script.unicodeScalars.count <= 20_000,
                   !record.consentRecordId.isEmpty,
                   Lipsync(rawValue: record.lipsyncModel) != nil,
@@ -595,7 +596,7 @@ extension WholeClipRevoice {
         guard var records = project.voiceLab.wholeClipRevoices else { return }
         let clips = Set(project.edits.clips.map(\.id))
         let tts = Set(project.voiceLab.segments.filter { $0.kind == .tts }.map(\.id))
-        records.removeAll { !clips.contains($0.clipId) || $0.segmentIds.isEmpty || !$0.segmentIds.allSatisfy(tts.contains) }
+        records.removeAll { ($0.clipId != fullTakeID && !clips.contains($0.clipId)) || $0.segmentIds.isEmpty || !$0.segmentIds.allSatisfy(tts.contains) }
         project.voiceLab.wholeClipRevoices = records.isEmpty ? nil : records
     }
 
@@ -620,7 +621,7 @@ extension WholeClipRevoice {
 // MARK: - Paid steps (never paid twice)
 
 /// What a whole-clip run has paid for, keyed by what it was paid for. A step whose key matches is reused instead of paid
-/// again: Try Again after a failed or cancelled lip sync keeps the voice, and the sync-3 upgrade re-runs only the lip sync.
+/// again: Try Again after a failed or cancelled lip sync keeps the voice, and Redo Lip Sync Only reuses the saved voice.
 public struct WholeClipRevoiceLedger: Codable, Sendable, Equatable {
     /// The voice: the script, the voice record and the text-to-speech model it was said in.
     public struct VoiceKey: Codable, Sendable, Hashable {

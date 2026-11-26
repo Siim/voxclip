@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Music;
@@ -38,11 +39,26 @@ public enum MusicLicense
 /// <summary>The track file under the data folder's Music root (<see cref="MusicRenderInput.Root"/>).</summary>
 public sealed record MusicAsset(string File, string Sha256, double DurationSeconds);
 
-/// <summary>One background track under a clip, or the full video when ClipId is null; schema v4, doc/spec/music.md §2.
-/// Every key is written, null included, as the Mac Core writes it.</summary>
+/// <summary>One connected playback segment of a track's local asset.</summary>
+/// <param name="Id">Segment identifier within the track.</param>
+/// <param name="AnchorSeconds">Start in take-source seconds.</param>
+/// <param name="LengthSeconds">Duration on the edited clock.</param>
+/// <param name="SongFromSeconds">Start in song seconds.</param>
+/// <param name="Loop">Whether to wrap at the end of the song.</param>
+/// <param name="GainDb">Offset from the track's gain.</param>
+/// <param name="FadeInSeconds">Entrance fade duration.</param>
+/// <param name="FadeOutSeconds">Exit fade duration.</param>
+/// <param name="GainPoints">Relative gain in strictly increasing item-local time.</param>
+public sealed record MusicSegment(string Id, double AnchorSeconds, double LengthSeconds, double SongFromSeconds, bool Loop,
+    double GainDb = 0, double FadeInSeconds = 0, double FadeOutSeconds = 0,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<GainPoint>? GainPoints = null);
+
+/// <summary>One background track under a clip, or the full video when ClipId is null; doc/spec/music.md §2.</summary>
 public sealed record ProjectMusic(string Id, string? ClipId, MusicAsset Asset, MusicSource Source, string Title, string? Creator,
     MusicLicense License, string? Attribution, string? SourceUrl, string? Prompt, double GainDb, bool Ducking,
-    double FadeInSeconds, double FadeOutSeconds, double StartOffsetSeconds);
+    double FadeInSeconds, double FadeOutSeconds, double StartOffsetSeconds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? DuckDb = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<MusicSegment>? Segments = null);
 
 /// <summary>Validation, setting and pruning for the v4 music field; preview and export mix it under the voice (<see cref="MusicMix"/>).</summary>
 public static class MusicProject
@@ -57,13 +73,14 @@ public static class MusicProject
     public static void Validate(Project project)
     {
         if (project.Music.Count == 0) return;
-        Require(project.SchemaVersion == 4 && project.Music.Count <= 65);
+        Require(project.SchemaVersion >= 4 && project.Music.Count <= 65);
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var identities = new HashSet<string>(StringComparer.Ordinal);
         var scopes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in project.Music)
         {
             Require(entry is not null && entry.Asset is not null);
+            Require(project.SchemaVersion >= TimelineEditFields.Version || (entry.DuckDb is null && entry.Segments is null));
             Validate(entry!, project.Id);
             Require(identities.Add(entry!.Id) && (entry.ClipId is null || clips.Contains(entry.ClipId)) && scopes.Add(entry.ClipId ?? ""));
         }
@@ -92,15 +109,32 @@ public static class MusicProject
         Require(double.IsFinite(entry.FadeInSeconds) && entry.FadeInSeconds is >= 0 and <= 10);
         Require(double.IsFinite(entry.FadeOutSeconds) && entry.FadeOutSeconds is >= 0 and <= 10);
         Require(double.IsFinite(entry.StartOffsetSeconds) && entry.StartOffsetSeconds >= 0 && entry.StartOffsetSeconds < duration);
+        Require(entry.DuckDb is null or (>= -24 and <= 0));
+        if (entry.Segments is { } segments)
+        {
+            Require(segments.Count is >= 1 and <= 8);
+            var identities = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var segment in segments)
+            {
+                Require(segment is not null && Matches(segment.Id, Identifier) && identities.Add(segment.Id));
+                Require(double.IsFinite(segment.AnchorSeconds) && segment.AnchorSeconds >= 0);
+                Require(segment.SongFromSeconds >= 0 && segment.SongFromSeconds < duration);
+                Require(double.IsFinite(segment.LengthSeconds) && segment.LengthSeconds > 0.1 &&
+                    (segment.Loop || segment.LengthSeconds <= duration - segment.SongFromSeconds));
+                Require(segment.GainDb is >= -40 and <= 12 && segment.FadeInSeconds is >= 0 and <= 10 && segment.FadeOutSeconds is >= 0 and <= 10);
+                Require(segment.GainPoints is null || ItemShape.ValidGainPoints(segment.GainPoints));
+            }
+        }
     }
 
     /// <summary>Strict wire shape: exact keys and JSON types, a non-empty list (absent when empty).</summary>
-    internal static void ValidateWire(JsonElement value)
+    internal static void ValidateWire(JsonElement value, bool timelineEdits)
     {
         Require(value.ValueKind == JsonValueKind.Array && value.GetArrayLength() is >= 1 and <= 65);
         foreach (var entry in value.EnumerateArray())
         {
-            Object(entry, "id clipId asset source title creator license attribution sourceUrl prompt gainDb ducking fadeInSeconds fadeOutSeconds startOffsetSeconds");
+            Object(entry, "id clipId asset source title creator license attribution sourceUrl prompt gainDb ducking fadeInSeconds fadeOutSeconds startOffsetSeconds",
+                timelineEdits ? "duckDb segments" : "");
             var asset = entry.GetProperty("asset");
             Object(asset, "file sha256 durationSeconds");
             foreach (var key in new[] { "id", "source", "title", "license" }) Require(entry.GetProperty(key).ValueKind == JsonValueKind.String);
@@ -113,6 +147,20 @@ public static class MusicProject
             var source = entry.GetProperty("source").GetString();
             var license = entry.GetProperty("license").GetString();
             Require(source is "library" or "generated" or "file" && license is "cc0" or "by" or "pdm" or "generated" or "own");
+            if (entry.TryGetProperty("duckDb", out var depth)) Number(depth);
+            if (entry.TryGetProperty("segments", out var segments))
+            {
+                Require(segments.ValueKind == JsonValueKind.Array && segments.GetArrayLength() is >= 1 and <= 8);
+                foreach (var segment in segments.EnumerateArray())
+                {
+                    Object(segment, "id anchorSeconds lengthSeconds songFromSeconds loop gainDb fadeInSeconds fadeOutSeconds", "gainPoints");
+                    Require(segment.GetProperty("id").ValueKind == JsonValueKind.String);
+                    Require(segment.GetProperty("loop").ValueKind is JsonValueKind.True or JsonValueKind.False);
+                    foreach (var key in new[] { "anchorSeconds", "lengthSeconds", "songFromSeconds", "gainDb", "fadeInSeconds", "fadeOutSeconds" })
+                        Number(segment.GetProperty(key));
+                    if (segment.TryGetProperty("gainPoints", out var points)) Require(ItemShape.ValidGainPointsWire(points));
+                }
+            }
         }
     }
 
@@ -126,6 +174,7 @@ public static class MusicProject
             Require(entry.ClipId == clipId);
             result = ContextDemoProject.UpgradeToV4(result);
             result = result with { Music = kept.Append(entry).ToArray() };
+            result = TimelineEditFields.Promoting(result);
         }
         Validate(result);
         return result;
@@ -141,11 +190,12 @@ public static class MusicProject
         return music.Where(entry => entry.ClipId is null || identities.Contains(entry.ClipId)).ToArray();
     }
 
-    private static void Object(JsonElement value, string keys)
+    private static void Object(JsonElement value, string keys, string optional = "")
     {
         Require(value.ValueKind == JsonValueKind.Object);
-        Require(value.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal)
-            .SetEquals(keys.Split(' ').ToHashSet(StringComparer.Ordinal)));
+        var required = keys.Split(' ');
+        var allowed = required.Concat(optional.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToHashSet(StringComparer.Ordinal);
+        Require(required.All(key => value.TryGetProperty(key, out _)) && value.EnumerateObject().All(property => allowed.Contains(property.Name)));
     }
 
     private static void Number(JsonElement value) =>

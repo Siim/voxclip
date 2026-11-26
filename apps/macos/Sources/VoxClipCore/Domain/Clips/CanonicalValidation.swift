@@ -101,7 +101,8 @@ extension CanonicalResponseParser {
             }
         case "array":
             guard case .array(let items) = value else { return false }
-            return items.allSatisfy { conforms($0, to: schema[ai: "items"]) }
+            return items.count >= (schema[ai: "minItems"].aiInt ?? 0) && items.count <= (schema[ai: "maxItems"].aiInt ?? Int.max)
+                && items.allSatisfy { conforms($0, to: schema[ai: "items"]) }
         case "number", "integer": return value.aiDouble != nil
         case "string":
             guard let string = value.aiString else { return false }
@@ -125,12 +126,16 @@ extension CanonicalResponseParser {
     }
 
     public static func validateSchemaSubset(_ schema: JSONValue) -> Bool {
-        guard let object = schema.aiObject, Set(object.keys).isSubset(of: ["type", "properties", "required", "additionalProperties", "items", "enum"]) else { return false }
+        guard let object = schema.aiObject, Set(object.keys).isSubset(of: ["type", "properties", "required", "additionalProperties", "items", "enum", "minItems", "maxItems"]) else { return false }
+        if schema[ai: "type"].aiString != "array", object["minItems"] != nil || object["maxItems"] != nil { return false }
         switch schema[ai: "type"].aiString {
         case "object":
             guard schema[ai: "additionalProperties"].aiBool == false, let properties = schema[ai: "properties"].aiObject else { return false }
             return Set(schema[ai: "required"].aiArray.compactMap(\.aiString)).isSubset(of: Set(properties.keys)) && properties.values.allSatisfy(validateSchemaSubset)
-        case "array": return validateSchemaSubset(schema[ai: "items"])
+        case "array":
+            let minimum = object["minItems"].map { $0.aiInt ?? -1 } ?? 0
+            let maximum = object["maxItems"].map { $0.aiInt ?? -1 } ?? Int.max
+            return minimum >= 0 && maximum >= minimum && validateSchemaSubset(schema[ai: "items"])
         case "string": return schema[ai: "enum"] == .null || (!schema[ai: "enum"].aiArray.isEmpty && schema[ai: "enum"].aiArray.allSatisfy { $0.aiString != nil })
         case "integer", "number", "boolean": return schema[ai: "enum"] == .null
         default: return false

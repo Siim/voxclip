@@ -3,6 +3,14 @@ import Testing
 @testable import VoxClipCore
 
 struct MusicMixTests {
+    @Test func itemShapeInterpolatesDecibelsBeforeApplyingFades() {
+        let shape = ItemShape(fadeInSeconds: 1, fadeOutSeconds: 0.5,
+                              gainPoints: [.init(t: 0.25, db: -12), .init(t: 0.75, db: 0)])
+        #expect(abs(MusicMix.itemGain(at: 0.5, shape: shape, length: 2) - 0.5 * pow(10, -6.0 / 20)) < 1e-12)
+        #expect(MusicMix.itemGain(at: 1.75, shape: shape, length: 2) == 0.5)
+        #expect(MusicMix.itemGain(at: 2, shape: shape, length: 2) == 0)
+    }
+
     private func activity(_ pattern: [(Bool, Int)]) -> [Bool] { pattern.flatMap { Array(repeating: $0.0, count: $0.1) } }
 
     @Test func duckingReachesMinusTwelveByEachOnsetAndReleasesOver400Milliseconds() {

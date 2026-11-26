@@ -203,6 +203,7 @@ import VoxClipCore
     var compact = false
 
     var body: some View {
+        let reason = model.storyRewriteReason(for: scope)
         Menu {
             RewriteAsMenuItems(model: model, place: place) { item in
                 if let choose { choose(item) } else { model.rewriteAs(item, scope: scope) }
@@ -215,8 +216,9 @@ import VoxClipCore
             }
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-        .disabled(!model.capabilities.ai || !model.capabilities.edit)
-        .help("Rewrite as: the words in a tone, at once. Your default is first.")
+        .disabled(reason != nil || !model.capabilities.ai || !model.capabilities.edit)
+        .help(reason ?? "Rewrite as: the words in a tone, at once. Your default is first.")
+        .accessibilityHint(reason ?? "")
         .accessibilityLabel(label)
         .accessibilityIdentifier("voxclip.\(place).rewriteAs")
     }

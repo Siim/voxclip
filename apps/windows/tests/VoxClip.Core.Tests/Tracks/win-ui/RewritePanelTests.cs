@@ -12,6 +12,37 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class RewritePanelTests
 {
+    [Fact]
+    public void FullTakeVoiceLetsYouSelectWholeTakeWithoutSendingAndExplainsUnavailableActions()
+    {
+        using var session = new RewriteSession(Editor(), 0, 1, Envelope(), null, scope: RewriteScope.FullTake);
+        Assert.True(session.OffersWholeClip);
+        Assert.Null(session.SelectedWholeClipIntent);
+        session.SelectWholeClipIntent(WholeClipIntent.Revoice);
+        Assert.Equal(WholeClipIntent.Revoice, session.SelectedWholeClipIntent);
+        Assert.Null(session.WholeClipPrice);
+        Assert.NotEmpty(session.WholeClipUseBlocked!);
+        Assert.NotEmpty(session.WholeClipCompareBlocked!);
+        Assert.Equal(new[] { WholeClipIntent.Revoice, WholeClipIntent.RedoVoice, WholeClipIntent.RedoLipSync }, Enum.GetValues<WholeClipIntent>());
+    }
+
+    [Fact]
+    public void FalCleanupNoticeOnlyAppliesToTheKeyDeniedAndNotifiesOnce()
+    {
+        var notice = new FalCleanupNotice();
+        var notifications = 0;
+        notice.Changed += () => notifications++;
+        const string fixtureKey = "fixture-fal-key";
+        var fingerprint = VoxClip.Core.Services.VoiceLab.FalLipsyncProvider.KeyFingerprint(fixtureKey);
+        Assert.False(notice.AppliesTo(fixtureKey));
+        notice.MarkDenied(fingerprint);
+        notice.MarkDenied(fingerprint);
+        Assert.Equal(1, notifications);
+        Assert.True(notice.AppliesTo(fixtureKey));
+        Assert.False(notice.AppliesTo("fixture-replacement-key"));
+        Assert.False(notice.AppliesTo(null));
+    }
+
     [Theory]
     [InlineData(300)]
     [InlineData(320)]
@@ -432,6 +463,50 @@ public sealed class RewritePanelTests
         Assert.Contains("var unavailable = Small(VoiceLabCopy.LanguageUnavailable);", panel);
         Assert.Contains("AutomationProperties.SetAutomationId(unavailable, \"Rewrite.LanguageUnavailable\");", panel);
         Assert.Contains("SetName(unavailable, VoiceLabCopy.LanguageUnavailable);", panel);
+    }
+
+    /// <summary>Opening another Rewrite (the toolbar, the menu, a shell job, a tone) over the open one's paid takes used to retire them
+    /// unasked (<c>OpenRewriteAsync</c> called <c>RetireRewrite()</c> first). It now asks in the open one, as closing does (Mac
+    /// <c>askBeforeReplacing</c>): "Start a new Rewrite and discard 2 paid takes?" with Keep Working, the default, and Discard and
+    /// Rewrite, which disposes them and runs the press again. The panel comes forward without ever being closed for a job; when it
+    /// can't, the editor's notice says how to go on and nothing opens.</summary>
+    [Fact]
+    public void OpeningAnotherRewriteOverPaidTakesAsksFirst()
+    {
+        Assert.Equal("Start a new Rewrite and discard 1 paid take?", RewriteSession.CloseQuestion(1, newRewrite: true));
+        Assert.Equal("Start a new Rewrite and discard 2 paid takes?", RewriteSession.CloseQuestion(2, newRewrite: true));
+        Assert.Equal("Start a new Rewrite and discard the takes being made?", RewriteSession.CloseQuestion(0, newRewrite: true));
+        Assert.Equal("Close Rewrite and discard 2 paid takes?", RewriteSession.CloseQuestion(2));
+        var page = AppSource("Pages", "EditorPage.xaml.cs");
+        var opening = page[page.IndexOf("private async Task OpenRewriteAsync", StringComparison.Ordinal)..page.IndexOf("private bool AskBeforeReplacingRewrite", StringComparison.Ordinal)];
+        var ask = opening.IndexOf("if (AskBeforeReplacingRewrite(() => OpenRewriteAsync(insertion, instruction, wholeClipIntent))) return;", StringComparison.Ordinal);
+        Assert.True(ask > 0 && ask < opening.IndexOf("RetireRewrite();", StringComparison.Ordinal), "the open Rewrite asks before anything is retired");
+        var guard = page[page.IndexOf("private bool AskBeforeReplacingRewrite", StringComparison.Ordinal)..page.IndexOf("private void ShowRewriteSession", StringComparison.Ordinal)];
+        Assert.Contains("rewrite is not { IsOpen: true, HoldsPaidWork: true } open", guard);
+        Assert.Contains("rightContent.RevealRewrite(panel)", guard);
+        Assert.Contains("panel.AskBeforeReplacing(() => RunAsync(replay, \"Rewrite\"))", guard);
+        // The panel can't come forward while a job that stays holds the column: the notice names that job, the step that shows
+        // Rewrite again. It used to say "Use or discard them in Rewrite" while Rewrite couldn't be seen.
+        Assert.Contains("ViewModel.Notice = RewriteSession.ReplaceHeldNotice(rightContent?.HeldJobLabel);", guard);
+        Assert.Equal("Finish or close Export to see Rewrite, then use or discard its paid takes before starting another. They are kept.",
+            RewriteSession.ReplaceHeldNotice("Export"));
+        Assert.Equal("Rewrite has paid takes you haven't used. Use or discard them in Rewrite before starting another. They are kept.",
+            RewriteSession.ReplaceHeldNotice(null));
+        Assert.DoesNotContain("RetireRewrite", guard);
+        var tones = AppSource("Pages", "EditorPage.RewriteTones.cs");
+        Assert.True(tones.IndexOf("if (AskBeforeReplacingRewrite(() => RewriteAsAsync(request))) return;", StringComparison.Ordinal)
+            < tones.IndexOf("ViewModel.Select(words.First)", StringComparison.Ordinal), "a tone asks before it changes the selection");
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        var replacing = panel[panel.IndexOf("internal void AskBeforeReplacing", StringComparison.Ordinal)..panel.IndexOf("private void KeepWorking", StringComparison.Ordinal)];
+        Assert.Contains("RewriteSession.CloseQuestion(session.PaidTakeCount, newRewrite: replay is not null)", replacing);
+        Assert.Contains("\"Discard and Rewrite\"", replacing);
+        Assert.Contains("var keep = Ui.Button(\"Keep Working\", KeepWorking, accent: true);", replacing);
+        Assert.Contains("keep.Focus(FocusState.Programmatic);", replacing);
+        var column = AppSource("Controls", "RightColumn.cs");
+        var reveal = column[column.IndexOf("internal bool RevealRewrite", StringComparison.Ordinal)..column.IndexOf("internal void CloseRewrite", StringComparison.Ordinal)];
+        Assert.DoesNotContain("CloseForHost", reveal);
+        Assert.DoesNotContain("Close()", reveal);
+        Assert.Contains("internal string? HeldJobLabel => job?.JobLabel;", column);
     }
 
     private static string AppSource(string directory, string name) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", directory, name));

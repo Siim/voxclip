@@ -87,6 +87,8 @@ internal static class ExportFingerprint
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream)) WriteCanonical(writer, input);
         var hash = Convert.ToHexStringLower(SHA256.HashData(stream.ToArray()));
+        if (clipId is not null && (project.Media.Footage?.Where(entry => entry.ClipId == clipId).OrderBy(entry => entry.Start).ToArray()) is { Length: > 0 } footage)
+            hash = WithLayer(hash, "companion-footage", JsonSerializer.SerializeToElement(footage));
         // A clip's controls and the scope's effects change the render; without them the fingerprint is unchanged.
         var effects = project.ClipEffects.Where(effect => VoxClip.Core.Domain.Effects.ClipEffects.IsCensor(effect.GetProperty("kind").GetString()!) ||
             (effect.GetProperty("clipId").ValueKind == JsonValueKind.String ? effect.GetProperty("clipId").GetString() : null) == clipId).ToArray();
@@ -94,7 +96,7 @@ internal static class ExportFingerprint
         var music = VoxClip.Core.Domain.Music.MusicProject.Entry(clipId, project);
         // The clip's zoom cues crop its picture (design §6.7); the full video has none.
         var motion = VoxClip.Core.Domain.ContextDemo.MotionCueRendering.For(project, clipId);
-        if (controls is null && effects.Length == 0 && music is null && motion.Count == 0) return WithDemo(hash, demo);
+        if (controls is null && effects.Length == 0 && music is null && motion.Count == 0) return WithLayer(hash, "context-demo", demo);
         var clipInput = (music, motion.Count) switch
         {
             (null, 0) => JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects }),
@@ -103,14 +105,14 @@ internal static class ExportFingerprint
         };
         using var clipStream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(clipStream)) WriteCanonical(writer, clipInput);
-        return WithDemo(Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(hash + "\n").Concat(clipStream.ToArray()).ToArray())), demo);
+        return WithLayer(Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(hash + "\n").Concat(clipStream.ToArray()).ToArray())), "context-demo", demo);
     }
-    private static string WithDemo(string hash, JsonElement? demo)
+    private static string WithLayer(string hash, string layer, JsonElement? content)
     {
-        if (demo is not { } value) return hash;
+        if (content is not { } value) return hash;
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream)) WriteCanonical(writer, value);
-        return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(hash + "\ncontext-demo\n").Concat(stream.ToArray()).ToArray()));
+        return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{hash}\n{layer}\n").Concat(stream.ToArray()).ToArray()));
     }
     private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
     {

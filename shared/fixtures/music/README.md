@@ -15,3 +15,4 @@ and an offset inside the track. The rules are in doc/spec/music.md section 2.
 beds. `python3 tools/fixtures/music/generate_music_mix.py` writes it from a port of Mac Core `MusicMix.swift` (check_drift.py
 runs it). Floats are rounded to 9 decimals. C# `MusicMixVectorTests` (Core) and `MusicBedTests` (Media) replay every case,
 as do Swift `MusicMixVectorTests` (Core) and `MusicBedVectorTests` (Media, the beds through the renderer's `MusicBedPlan`).
+The `timeline` vector adds rendered placement at speed, slipped and looped pieces, overlap weights, envelope and fade factors, and custom duck depth.

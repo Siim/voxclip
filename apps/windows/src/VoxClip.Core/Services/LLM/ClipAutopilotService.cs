@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
@@ -257,18 +258,43 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         var rendered = ClipAutopilotRequestBuilder.Render(input, prompt, resources.Styles, resources.Fonts, pauses, moment, shown);
         var moments = input.IsSeries;
         var system = moments ? prompt.MomentsSystem : prompt.System;
-        if (System.Text.Encoding.UTF8.GetByteCount(system + rendered.CachedBlock + rendered.Instruction) > 400_000)
+        var offered = moments ? [] : input.FootageSources.Where(source => source.Video is not null).Take(32).ToArray();
+        var tracks = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        if (!moments)
+            foreach (var track in input.MusicTracks.OrderBy(item => item.Key, StringComparer.Ordinal).Take(32))
+                tracks[track.Key] = string.Concat(track.Value.EnumerateRunes().Take(150));
+        var instruction = rendered.Instruction;
+        if (offered.Length > 0)
+        {
+            var inventory = offered.Select(source =>
+            {
+                var label = Path.GetFileNameWithoutExtension(source.AbsolutePath);
+                if (source.RecordingHash is { } hash && label.EndsWith("--" + hash, StringComparison.Ordinal)) label = label[..^(hash.Length + 2)];
+                return (JsonNode)new JsonObject { ["sourceKey"] = source.FootageKey, ["label"] = string.Concat(label.EnumerateRunes().Take(150)),
+                    ["seconds"] = source.DurationSeconds, ["description"] = string.Concat((input.FootageDescriptions.GetValueOrDefault(source.FootageKey) ?? "").EnumerateRunes().Take(500)) };
+            });
+            instruction += "\n\nOffered recordings (metadata only):\n" + new JsonArray(inventory.ToArray()).ToJsonString();
+        }
+        if (tracks.Count > 0) instruction += "\n\nSaved music tracks by id:\n" + new JsonObject(tracks.Select(track =>
+            new KeyValuePair<string, JsonNode?>(track.Key, JsonValue.Create(track.Value)))).ToJsonString();
+        if (System.Text.Encoding.UTF8.GetByteCount(system + rendered.CachedBlock + instruction) > 400_000)
             throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", "", LlmFeature.ClipAutopilot);
         var output = catalog.Cap(connector, moments ? prompt.MomentsOutputTokens : prompt.ClipOutputTokens);
         var timeout = catalog.Timeout(TimeoutKind(connector));
         if (timeout < prompt.MinimumTimeout) timeout = prompt.MinimumTimeout;
-        var request = new LlmRequest(LlmFeature.ClipAutopilot, system, rendered.CachedBlock, rendered.Instruction,
+        var request = new LlmRequest(LlmFeature.ClipAutopilot, system, rendered.CachedBlock, instruction,
             moments ? prompt.MomentsSchemaName : prompt.SchemaName, (moments ? prompt.MomentsSchema : prompt.Schema).DeepClone().AsObject(), output,
             moments ? MomentsEffort : PlanEffort, timeout, input.Language ?? input.Transcript.Language,
             moments ? "clip-autopilot-moments" : moment is null ? "clip-autopilot" : "clip-autopilot-series-clip") { Images = shown?.Images ?? [] };
         var context = new ClipAutopilotContext(input.Transcript.Words, input.Edits.Corrections, input.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal),
             pauses, input.Edits.CutPauseIds.ToHashSet(StringComparer.Ordinal), input.Edits.PauseKeepSeconds, rendered.Scope,
-            resources.Styles.Select(style => style.Id).ToHashSet(StringComparer.Ordinal), resources.Fonts, input.CaptionPreference, prompt, moments ? null : input.Tone, shown);
+            resources.Styles.Select(style => style.Id).ToHashSet(StringComparer.Ordinal), resources.Fonts, input.CaptionPreference, prompt, moments ? null : input.Tone, shown)
+        {
+            OfferedParts = moments ? null : moment?.Moment.Parts ?? input.SelectedParts ?? [new(rendered.Scope.Start, rendered.Scope.End)],
+            Kind = moment?.Moment.Kind ?? input.SelectedKind, MissingFromTake = moment?.Moment.MissingFromTake,
+            FootageSources = offered.GroupBy(source => source.FootageKey, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First().DurationSeconds, StringComparer.Ordinal),
+            MusicTrackIds = tracks.Keys.ToHashSet(StringComparer.Ordinal)
+        };
         return new(request, context, input, connector, moment);
     }
 }

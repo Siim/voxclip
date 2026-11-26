@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
+using Windows.UI;
 
 namespace VoxClip.App.Controls;
 
@@ -120,6 +121,9 @@ internal sealed class TranscriptOverlay : IDisposable
 
     internal void Band(double top, double bottom, double width, bool rtl) => Rectangle(behind, new(rtl ? -44 : -80, top - 8, width + 124, bottom - top + 16), "VcEditorBandBrush");
 
+    internal void PartBand(Rect rect, Color color) => Rectangle(behind,
+        new(rect.X, rect.Y, rect.Width + 1, rect.Height), "VcEditorBandBrush", opacity: Ui.HighContrast ? 0.35f : 0.16f, overrideColor: color);
+
     internal void ChangeBar(Rect rect, bool focused, bool excluded = false)
     {
         if (excluded) Pattern(rect.X, rect.Bottom - 1, rect.Width, "VcTextTertiaryBrush", 1, 3, 1);
@@ -144,7 +148,7 @@ internal sealed class TranscriptOverlay : IDisposable
             Rectangle(above, new(left + horizontal, top, Math.Min(dash, width - horizontal), thickness), key);
     }
 
-    private CompositionSpriteShape? Rectangle(ShapeVisual visual, Rect rect, string fill, double radius = 0, string? stroke = null, double thickness = 0, float opacity = 1)
+    private CompositionSpriteShape? Rectangle(ShapeVisual visual, Rect rect, string fill, double radius = 0, string? stroke = null, double thickness = 0, float opacity = 1, Color? overrideColor = null)
     {
         if (rect.Width <= 0 || rect.Height <= 0 || !double.IsFinite(rect.X + rect.Y + rect.Width + rect.Height)) return null;
         var geometry = compositor.CreateRoundedRectangleGeometry();
@@ -152,7 +156,7 @@ internal sealed class TranscriptOverlay : IDisposable
         geometry.Size = new((float)rect.Width, (float)rect.Height);
         geometry.CornerRadius = new((float)radius);
         var shape = compositor.CreateSpriteShape(geometry);
-        var color = ((SolidColorBrush)Ui.ThemeBrush(owner, fill)).Color;
+        var color = overrideColor ?? ((SolidColorBrush)Ui.ThemeBrush(owner, fill)).Color;
         color.A = (byte)Math.Round(color.A * opacity);
         shape.FillBrush = compositor.CreateColorBrush(color);
         if (stroke is not null)

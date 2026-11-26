@@ -194,7 +194,8 @@ private func aiSharedGoldenVector(_ vector: AIGoldenVector) async throws {
     case "finalize-clips":
         let entries = try AIGoldenCorpus.entries(input[ai: "words"])
         let candidates = try input[ai: "candidates"].aiArray.map { candidate in
-            ClipCandidate(title: candidate[ai: "title"].aiString ?? "", reason: candidate[ai: "reason"].aiString ?? "", score: try AIGoldenCorpus.number(candidate[ai: "score"]), startWord: try AIGoldenCorpus.number(candidate[ai: "start_word"]), endWord: try AIGoldenCorpus.number(candidate[ai: "end_word"]))
+            if candidate[ai: "parts"] != .null { return try JSONDecoder().decode(ClipCandidate.self, from: candidate.aiEncoded()) }
+            return ClipCandidate(title: candidate[ai: "title"].aiString ?? "", reason: candidate[ai: "reason"].aiString ?? "", score: try AIGoldenCorpus.number(candidate[ai: "score"]), startWord: try AIGoldenCorpus.number(candidate[ai: "start_word"]), endWord: try AIGoldenCorpus.number(candidate[ai: "end_word"]))
         }
         let preset = try AIClipTestData.preset(#require(ClipPresetID(rawValue: input[ai: "preset"].aiString ?? "")))
         let clips = try finalizeClips(candidates, words: AIGoldenCorpus.timed(input[ai: "words"], entries: entries), preset: preset, lines: formatTranscript(entries).lines,

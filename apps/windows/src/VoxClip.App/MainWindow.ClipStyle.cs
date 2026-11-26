@@ -68,7 +68,8 @@ public sealed partial class MainWindow
             ClipStyleHost.Content = clipStyleCard;
         }
         clipStyleCard.Show(ClipStyleCard.Showing(model.Project, clipStyles!, SavedClipStyle()), clipStyles!, clipStyleLibrary, SavedClipStyle(),
-            App.Services.Settings.GetClipsAutopilot(), rewriteTones is null ? null : rewriteTones.Tones.Concat(SavedRewriteTones()).ToArray());
+            App.Services.Settings.GetClipsAutopilot(), rewriteTones is null ? null : rewriteTones.Tones.Concat(SavedRewriteTones()).ToArray(),
+            ClaudeTranscriptionChoice.ForWindows(App.Services.Get("transcription.engineMode", "local")).Label);
         ClipStyleHost.Visibility = Visibility.Visible;
     }
 

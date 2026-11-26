@@ -7,9 +7,9 @@ import Testing
 
 enum FoundationModelsFixtures {
     /// Shared files the corpora pin as `sources`, each checked by hash: the catalog and prompts every comparison reads, and
-    /// the two rewrite prompts whose schemas `connector-requests.json`'s Codex cases carry (tools/fixtures/llm/README.md).
+    /// the Autopilot and rewrite prompts whose schemas `connector-requests.json`'s Codex cases carry.
     static let sharedInputs = ["catalog/llm-providers.json", "prompts/ai-tighten.json", "prompts/clip-finder.json",
-                               "prompts/voice-rewrite.json", "prompts/patch-rewrite.json"]
+                               "prompts/voice-rewrite.json", "prompts/patch-rewrite.json", "prompts/clip-autopilot.json"]
 
     struct Failure: Error, CustomStringConvertible, LocalizedError {
         let description: String
@@ -293,10 +293,12 @@ enum FoundationModelsFixtures {
             return .object(["name": .string(title), "properties": .array(mapped)])
         case "array":
             guard let item = node["items"] else { throw Failure(description: "Missing SDK array item at \(name) (\(path)).") }
-            return try .object([
+            var mapped: [String: JSONValue] = try [
                 "arrayOf": mappedNode(item, root: root, name: name + "_item", path: path + "/items", depth: depth + 1),
                 "maximumElements": node["maxItems"] ?? .null
-            ])
+            ]
+            mapped["minimumElements"] = node["minItems"]
+            return .object(mapped)
         case "string": return .object(["type": .string("String")])
         case "integer": return .object(["type": .string("Int")])
         case "number": return .object(["type": .string("Double")])

@@ -106,6 +106,20 @@ Advisory notices (never blocking), shown under the share row:
 
 ---
 
+### 2.4 Editable hand-off (Mac)
+
+In Export, **Save editable timeline (.fcpxml)** writes one FCPXML 1.10 document per target to the chosen folder. It is not a rendered video and does not add a finished video to export history. The CLI uses the same prepared plan: `voxclip-cli export --format fcpxml --open project.voxclip --clip <id> --export clip.fcpxml`.
+
+The spine links to the original media with frame-aligned cuts and explicit time maps for whole-clip and part-clip speed changes. Titles and lower thirds use editable Basic Title text, and caption pages become text titles on their own lane. A title crossing a cut is split at the cut. Dialogue and the referenced, trimmed or looped music stay on separate lanes. For a kept Rewrite or revoice, Dialogue links to the rendered voice file rather than the source audio; lip-synced picture sections link to their own companion files. Keep those companion files beside the timeline, and bring original media and music along when moving it. Do not treat the timeline as a redacted copy of the media.
+
+VoxClip checks the media, timing and destination before enabling Save. Freezes, censorship, additional footage and unsupported clip effects require video export rather than silently dropping them. This is an editing hand-off, not a recreation of the MP4 look: use the MP4 for the final motion styling, grade, fades and ducking. Windows hand-off is not implemented. CapCut is skipped because its draft format is private and writing it would require reverse-engineering.
+
+### 2.5 Posting help (Mac)
+
+After successfully exporting up to 12 clips, **Posting help** offers one priced Claude send. Choose Claude Code or Anthropic in AI settings. The button names the billing path: your Claude plan or your key (with the same unknown-price wording as other AI steps). No automatic retries or fallback sends. The request contains clip names, lengths, excerpts of edited words and the local time zone, not media files, file paths, cut words or spoken words masked by a bleep or mute.
+
+The review shows Claude's suggested order and local posting windows, and separate copyable drafts with hashtags for X, LinkedIn, and VoxConvo. Suggestions are not audience analytics or scheduled posts. Copy includes the track's music credit when required. The raw reply is kept privately as soon as it arrives, including an unusable reply. A valid saved plan returns without another send when you re-export the same clip batch on this Mac. No draft is posted from this section.
+
 ## 3. VoxConvo direct publish (M2)
 
 ### 3.1 Today's VoxConvo (facts the plan depends on)
@@ -159,6 +173,8 @@ Before launching A7, run a read-only account-handle check for its retained route
 | W10 | `test/ssr.test.mjs` | `/device` renders the sign-in prompt for logged-out users; no download-page/redirect tests. Launch-page tests live in `site/` | M2 |
 
 ### 3.5 Desktop flow
+
+Mac implements the device flow and publishing client below. Tests use `shared/fixtures/device-flow/voxconvo-stand-in.py` on loopback, with no real account, media, or credentials. Production access is disabled by default: leave the Mac bundle key `VoxConvoDevicePublishingEnabled` unset until the scoped-session enforcement (A10), the approved upload and GraphQL routes, and the browser approval page (W1/W6) are deployed and verified together. Windows Accounts, DPAPI storage, and Export integration are not implemented here.
 
 #### 3.5.1 Connect (Settings → Accounts → VoxConvo → Connect)
 
@@ -227,9 +243,9 @@ Shown in the Export sheet as "Also post to VoxConvo @handle" when connected. The
 Rules:
 
 - The upload timeout is `max(180 s, bytes / 500)`. Progress shows "Uploading 63%" → "Processing" → "Posted · Open".
-- The button disables on press. Steps 1–2 may be retried automatically (no post exists yet). **Step 3 is never retried automatically.** On failure: "Saved to {folder}. Posting to VoxConvo failed: {reason}." [Try again]. "Try again" reuses the rendered file, and reuses the completed job's `s3Url` if it is less than 24 hours old, so only step 3 repeats.
+- The button disables on press. The client does not automatically retry an upload or the final post. On failure: "Saved to {folder}. Posting to VoxConvo failed: {reason}." **Try posting again** checks the file and the account, then reuses the completed job's `s3Url` if it is less than 24 hours old and belongs to the current session. If the server did not confirm a post, check the profile before retrying to avoid a duplicate.
 - Any edit after the render invalidates the cached render for posting.
-- `wordTimestamps` are the caption words on the final clip's timeline after cuts (the same words the SRT uses).
+- `wordTimestamps` are the caption words on the final clip's timeline after cuts and playback speed (the same word track the SRT uses, before cue grouping). When captions are off, use the edited, censored transcript. The burned-in AI disclosure is unchanged; adding its line to the post is optional and off by default. Include any music credit.
 - Against a server without A4/A5, steps 1–3 still work (`style: none`, `words: []`), but a pass-through MP4 is stored as `video/webm`. Ship A4 before the desktop M2 release.
 
 ### 3.6 Hardening (v1.1): `createClipPost`
@@ -258,16 +274,16 @@ The server resolves the video URL from the job instead of trusting a URL from th
 
 **User decision, 2026-10-27 (ADR-R32):** voxconvo.com/download and its redirects are dropped. The public VoxClip repository owns `site/`, served by GitHub Pages at **clip.voxconvo.com**. Releases and installer files remain on GitHub Releases. No VoxConvo server or API is needed to serve the page.
 
-- Hero: "Cut video by its words." Sections: editor capture, showreel, three downloads, four features, tutorials, privacy, MIT/source/notices and the VoxConvo footer. Pending captures are visibly labelled.
+- Hero: "Long takes in. Postable clips out." The page covers Claude does it all, word editing and Rewrite, automatic effects, captions, music, colour looks, and −14 LUFS export. The static page ships the three approved README images from `doc/media/readme/` without re-encoding them. Showreel and tutorial players appear only with approved, staged media.
 - Mac: Apple silicon, macOS 26 or later (Package.swift); Windows x64/Arm64: Windows 10 2004 or later / Windows 11 (App csproj SupportedOSPlatformVersion). Only verified release asset URLs become links; sizes and optional SHA-256 come from saved release metadata.
 - Next to Windows downloads: "This software uses libraries from the FFmpeg project under the LGPL" and a link to that same release's `VoxClip-win-ffmpeg-source.tar.xz` (architecture §6.1). A Windows asset without its corresponding-source archive fails the build.
-- Local transcription requires a model download; cloud transcription sends audio to the chosen provider. Find Clips sends transcript text to the chosen connector; AI tighten (coming, ai §12) will do the same. Keys are stored in Keychain/DPAPI; there is no telemetry (architecture §11).
-- Voice Lab has not shipped. The page labels it **Voice Lab (beta, coming)** and says it sends the user's voice recordings, the words to speak and a little surrounding transcript for context to ElevenLabs with their key after consent; lip sync sends the selected video and audio to the chosen provider (voice-lab §1, §2.5, §12). No claim that all cloud processing receives only text.
+- Local Whisper needs a model download; cloud transcription sends audio. Cloud clip plans can send transcript text and sampled frames to the selected connector. The page explains sign-in, bring-your-own keys, and local models. Keys are stored in Keychain/DPAPI; there is no telemetry (architecture §11).
+- Rewrite uses ElevenLabs for voice samples and synthesis with the user's key and consent. The page identifies whole-clip revoice and lip sync as Mac features and explains that fal.ai receives the selected video and audio (voice-lab §1, §2.5, §12).
 - Both platforms launch together (ADR-R33, user decision 2026-10-27). Production release fetching requires Mac and both Windows installers. Missing assets in an offline scaffold are labelled unavailable, never invented.
 
 ### 4.2 Publication and approval
 
-`.github/workflows/pages.yml` is dispatch- and release-published-only, with no push trigger. It checks Pages settings using a read-only API call, skips publication while disabled, fetches published app metadata and launch videos from the media release named in `site/media.json`, requires the API metadata and every video's/caption's bytes to match committed, approved size and SHA-256 pins (null pins keep placeholders without fetching media), builds and deploys through the Pages artifact actions. Site builds and tests run offline; media files enter only the build artifact and are never committed.
+`.github/workflows/pages.yml` is dispatch- and release-published-only, with no push trigger. It checks Pages settings using a read-only API call, skips publication while disabled, fetches published app metadata and launch videos from the media release named in `site/media.json`, requires the API metadata and every video's/caption's bytes to match committed, approved size and SHA-256 pins (null pins skip media fetching and leave availability notes in place of players), builds and deploys through the Pages artifact actions. Site builds and tests run offline; videos and captions enter only the build artifact and are never committed.
 
 Each go-live action needs the user's approval, in this order (see [release §4.1](release.md#41-launch-page-go-live--users-approval-required)):
 
@@ -348,7 +364,7 @@ Windows timing is owed to the next run on the VM.
 
 A clip with a chosen cover ("Cover frame chosen" in Make it postable, design.md §6.7.1; `clipControls.coverSeconds` in the project) exports its cover two ways, so a platform that asks for a thumbnail has one ready:
 
-- **A JPEG beside the video:** `<export base name>-cover.jpg` (for example `Ship day.mp4` and `Ship day-cover.jpg`), so several clips can share a folder. It is the exported frame at the cover's time, at the export's size, exactly as the video shows it: crop, captions and titles included. It is written with the export's transaction, so an export that fails or is cancelled leaves neither file.
+- **A JPEG beside the video:** `<export base name>-cover.jpg` (for example `Ship day.mp4` and `Ship day-cover.jpg`), so several clips can share a folder. It is the exported frame at the cover's time and size, with the video's crop, captions and titles. If Claude chose a cover title, that title is drawn on the JPEG only, not on the video. It is written with the export's transaction, so an export that fails or is cancelled leaves neither file.
 - **Cover art inside the MP4, on every macOS:** the same JPEG as the file's iTunes cover art (`moov/udta/meta/ilst/covr`), which players, Finder and Quick Look show as the file's artwork. It is metadata, not a stream: `ffprobe` lists the same video and audio streams as without it, plus the art as an `attached_pic`.
   - **How.** VoxClip writes the box itself, as AtomicParsley does: after the encoder finishes, `MP4CoverEmbed` (Media) applies Core `MP4CoverArt` to the export's `.partial` file before anything hashes or publishes it. It reads only the top-level box headers and `moov` (a 60 s 1080p export's is about 38 KB), builds the new `moov` in memory, copies the rest of the file in 4 MB chunks into a staged copy beside the partial and renames it over the partial, off the cooperative pool. The edit adds `udta/meta` (an ISO full box with the iTunes `hdlr`, `mdir`/`appl`), `ilst` and `covr/data` (well-known type 13 for a JPEG, 14 for a PNG), or replaces an existing `covr` in place and keeps every other `ilst` item, `udta` child and byte. Our exports put `moov` before `mdat` (network-optimised), so every `stco` and `co64` entry moves by the growth; an `stco` that would pass 2^32 − 1 becomes a `co64`. When `moov` is last, no offset changes.
   - **Why not AVFoundation.** `AVAssetWriter.metadata` embeds an iTunes `covr` item on macOS 27 and never on macOS 26. On the hosted macOS 26.7.2 runner (CI run 42472116651), none of 13 variants embedded: the identifier and key-space forms, JPEG and raw data, before or after the inputs, network-optimised or not, and `AVAssetExportSession` passthrough. The exporter no longer adds the item, so a file has exactly one cover.
@@ -360,7 +376,7 @@ The cover's time is a source second; the export maps it through the clip's cuts 
 
 ## 8. Export self-check (ADR-R49)
 
-Every export can be checked on the Mac or on Windows, in seconds, before it is posted: `voxclip-cli check --project <project> --clip <n> <export.mp4> --json`, and by default after each clip `voxclip-cli autopilot` exports (`--no-check` skips it). The review rows that show it in the app wait for the mockup's approval.
+Every export can be checked on the Mac or on Windows, in seconds, before it is posted: `voxclip-cli check --project <project> --clip <n> <export.mp4> --json`, and by default after each clip `voxclip-cli autopilot` exports (`--no-check` skips it). On Mac, the inline review can centre captions and re-export the affected clip and aspect in one click. Warnings that require judgement say what to listen for or adjust; the original export stays on disk.
 
 **What it measures**, from the exported file:
 

@@ -23,7 +23,7 @@ enum EffectAudio {
         guard let input = request.effects else { return [] }
         let timeline = request.timeline
         return input.audio.filter(\.kind.usesWords).compactMap { effect in
-            let start = timeline.mapTime(effect.start), end = timeline.mapTime(effect.end)
+            let start = timeline.mapTime(effect.start), end = timeline.mapEndTime(effect.end)
             return end > start ? start...end : nil
         }.sorted { $0.lowerBound < $1.lowerBound }
     }
@@ -48,7 +48,7 @@ enum EffectAudio {
         let timeline = request.timeline
         for effect in freezes.sorted(by: { $0.start < $1.start }) {
             let start = CMTime(seconds: timeline.mapTime(effect.start), preferredTimescale: 600_000)
-            let end = min(duration, CMTime(seconds: timeline.mapTime(effect.end), preferredTimescale: 600_000))
+            let end = min(duration, CMTime(seconds: timeline.mapEndTime(effect.end), preferredTimescale: 600_000))
             guard end - start > frame else { continue }
             let held = CMTime(seconds: effect.start, preferredTimescale: 600_000)
             let source = CMTimeRange(start: max(videoRange.start, min(held, videoRange.end - frame)), duration: frame)
@@ -69,16 +69,26 @@ enum EffectAudio {
         func mapTime(_ source: Double) -> Double { speed.rendered(timeline.mapTime(source)) }
         let outputFrames = Int((durationSeconds * rate).rounded())
         let tones = input.audio.filter { $0.kind == .bleep }.compactMap { effect -> ClosedRange<Double>? in
-            let start = mapTime(effect.start), end = mapTime(effect.end)
+            let start = mapTime(effect.start), end = speed.rendered(timeline.mapEndTime(effect.end))
             return end > start ? start...end : nil
         }
-        var sounds: [(start: Int, samples: [Float], gain: Float)] = []
+        var sounds: [(start: Int, samples: [Float], gain: Float, shape: ItemShape?, length: Double)] = []
         for effect in input.audio where effect.kind == .sound {
             guard let url = input.soundURLs[effect.id] else { throw VoxClipError.sharedResourcesMissing }
             let start = Int((mapTime(effect.start) * rate).rounded())
             guard start < outputFrames else { continue }
-            let samples = try await MusicBedRenderer.decodeStereo(url, upToSeconds: effect.sound?.durationSeconds ?? ClipEffect.maximumSoundSeconds)
-            sounds.append((start, samples, Float(pow(10, (effect.gainDb ?? 0) / 20))))
+            let length = effect.end - effect.start
+            let offset = effect.mediaOffsetSeconds ?? 0
+            let sourceLength = effect.sound?.durationSeconds ?? ClipEffect.maximumSoundSeconds
+            let edited = effect.mediaOffsetSeconds != nil || effect.fadeInSeconds != nil || effect.fadeOutSeconds != nil ||
+                effect.gainPoints != nil || abs(length - sourceLength) >= 1e-6
+            let decoded = try await MusicBedRenderer.decodeStereo(url, upToSeconds: edited ? offset + length : sourceLength)
+            let first = min(decoded.count, 2 * Int((offset * rate).rounded()))
+            let last = min(decoded.count, first + 2 * Int((length * rate).rounded()))
+            let samples = edited ? Array(decoded[first..<last]) : decoded
+            let shape = edited ? ItemShape(fadeInSeconds: effect.fadeInSeconds, fadeOutSeconds: effect.fadeOutSeconds,
+                                           gainPoints: effect.gainPoints) : nil
+            sounds.append((start, samples, Float(pow(10, (effect.gainDb ?? 0) / 20)), shape, length))
         }
         guard !tones.isEmpty || !sounds.isEmpty else { return nil }
         try Task.checkCancellation()
@@ -111,8 +121,11 @@ enum EffectAudio {
                 let from = max(start, sound.start), to = min(start + count, sound.start + sound.samples.count / 2)
                 for frame in from..<to {
                     let index = 2 * (frame - sound.start)
-                    samples[2 * (frame - start)] += sound.samples[index] * sound.gain
-                    samples[2 * (frame - start) + 1] += sound.samples[index + 1] * sound.gain
+                    let gain = sound.shape.map {
+                        sound.gain * Float(MusicMix.itemGain(at: Double(frame - sound.start) / rate, shape: $0, length: sound.length))
+                    } ?? sound.gain
+                    samples[2 * (frame - start)] += sound.samples[index] * gain
+                    samples[2 * (frame - start) + 1] += sound.samples[index + 1] * gain
                 }
             }
             try file.append(samples)

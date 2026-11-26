@@ -102,6 +102,7 @@ public struct CompositionBuilder: Sendable {
                       isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
         try Task.checkCancellation()
         let plan = request.plan
+        let sourceOrdered = plan.kept.sorted { $0.startSample < $1.startSample }
         let voicePlan = request.voiceLab?.prepared.outputPlan
         let synthetic = voicePlan?.requiresSyntheticRendering == true
         try VoiceLabRenderPreflight.validate(request)
@@ -110,7 +111,7 @@ public struct CompositionBuilder: Sendable {
         guard synthetic || (plan.totalSamples >= 0 && plan.sampleRate.isFinite && plan.sampleRate > 0 && plan.sampleRate <= Double(Int32.max) &&
               plan.sampleRate.rounded() == plan.sampleRate &&
               plan.kept.allSatisfy({ $0.startSample >= 0 && $0.endSample <= plan.totalSamples && $0.count > 0 }) &&
-              zip(plan.kept, plan.kept.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) &&
+              zip(sourceOrdered, sourceOrdered.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) &&
               plan.kept.reduce(Int64(0), { $0.addingReportingOverflow($1.count).overflow ? -1 : $0 + $1.count }) == plan.outputSamples &&
               plan.joins.allSatisfy({ $0.outSample >= 0 && $0.outSample <= plan.outputSamples && $0.fadeInLen >= 0 && $0.fadeOutLen >= 0 }) &&
               zip(plan.joins, plan.joins.dropFirst()).allSatisfy({ $0.outSample <= $1.outSample })) else {
@@ -127,7 +128,12 @@ public struct CompositionBuilder: Sendable {
         let videoSpans = try CompositionVideoSpan.build(request)
         let asset = AVURLAsset(url: request.sourceURL)
         guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first else { throw VoxClipError.decodeFailed("No video track") }
-        let (transform, videoRange, nominalRate) = try await sourceVideo.load(.preferredTransform, .timeRange, .nominalFrameRate)
+        let (transform, trackRange, nominalRate, edits) = try await sourceVideo.load(.preferredTransform, .timeRange, .nominalFrameRate, .segments)
+        let firstPicture = edits.first { !$0.isEmpty }?.timeMapping.target ?? trackRange
+        let videoRange = CMTimeRange(start: max(trackRange.start, firstPicture.start), end: trackRange.end)
+        guard videoRange.isValid, !videoRange.isEmpty else { throw VoxClipError.decodeFailed("No source video frames") }
+        let sourceFrameDuration = CMTime(seconds: 1 / max(1, Double(nominalRate)), preferredTimescale: 600_000)
+        let firstFrame = CMTimeRange(start: videoRange.start, duration: min(sourceFrameDuration, firstPicture.end - videoRange.start))
         // A lip-sync result's conform reads only its picture: fal.ai's resampled audio is never used (voice-lab §9.3).
         let sourceAudio = includesSourceAudio ? try await MediaSupport.audioTrack(in: asset) : nil
         let composition = AVMutableComposition()
@@ -139,8 +145,13 @@ public struct CompositionBuilder: Sendable {
             let range = span.source
             let cursor = span.output.start
             let scaled = range.duration != span.output.duration
-            guard (!scaled && span.zoom == 1) || (range.start >= videoRange.start && range.end <= videoRange.end) else {
+            guard (!scaled && span.zoom == 1) || (range.start >= trackRange.start && range.end <= trackRange.end) else {
                 throw VoxClipError.decodeFailed("Retimed source video does not cover its replacement window")
+            }
+            if range.start < videoRange.start {
+                let leadDuration = min(range.end, videoRange.start) - range.start
+                try video.insertTimeRange(firstFrame, of: sourceVideo, at: cursor)
+                video.scaleTimeRange(CMTimeRange(start: cursor, duration: firstFrame.duration), toDuration: leadDuration)
             }
             let overlap = CMTimeRangeGetIntersection(range, otherRange: videoRange)
             if overlap.isValid, !overlap.isEmpty {
@@ -149,7 +160,7 @@ public struct CompositionBuilder: Sendable {
             if range.end > videoRange.end {
                 let tailStart = max(range.start, videoRange.end)
                 let tailDuration = range.end - tailStart
-                let frameDuration = min(videoRange.duration, CMTime(seconds: 1 / max(1, Double(nominalRate)), preferredTimescale: 600000))
+                let frameDuration = min(videoRange.duration, sourceFrameDuration)
                 let lastFrame = CMTimeRange(start: videoRange.end - frameDuration, duration: frameDuration)
                 let insertion = cursor + tailStart - range.start
                 try video.insertTimeRange(lastFrame, of: sourceVideo, at: insertion)
@@ -188,15 +199,18 @@ public struct CompositionBuilder: Sendable {
         // Clip controls (design.md §6.9): the voice is staged with its speed, level, fades and mute, then the whole
         // composition is time-scaled; captions, motion and Voice Lab layers keep edited times the compositor maps back.
         let rendered = CMTime(value: request.renderedSamples, timescale: rate)
+        let timing = request.speedTiming
         var voiceTrack = audio
         var voiceLease: ClipVoiceLease?
-        if let controls = request.clipControls, controls.changesAudio, let audio {
+        if let audio, request.clipControls?.changesAudio == true || !timing.isIdentity {
+            let controls = request.clipControls ?? ProjectClipControls(clipId: "render")
             voiceLease = try await ClipVoiceRenderer.stage(composition: composition, voice: audio, audioMix: mix, editedDuration: duration,
-                                                           renderedDuration: rendered, controls: controls, scratchRoot: scratchRoot)
+                                                           renderedDuration: rendered, controls: controls, timing: timing, scratchRoot: scratchRoot)
             composition.removeTrack(audio)
             voiceTrack = nil; mix = nil
         }
-        if request.speed != 1 { composition.scaleTimeRange(CMTimeRange(start: .zero, duration: duration), toDuration: rendered) }
+        ClipVoiceRenderer.scale(duration, timing: timing, apply: composition.scaleTimeRange(_:toDuration:))
+        let footage = try await FootageLayer.insert(request, into: composition)
         if let voiceLease {
             let staged = AVURLAsset(url: voiceLease.url) // Held while its track is inserted.
             guard let stagedTrack = try await MediaSupport.audioTrack(in: staged),
@@ -211,16 +225,17 @@ public struct CompositionBuilder: Sendable {
         }
         let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
             orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
-            demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync,
+            demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync, footageLayers: footage,
             includeDisclosure: includeDisclosure, colorCorrection: colorCorrection, previewFailures: previewFailures)
         let size = videoComposition.renderSize
         let frameDuration = videoComposition.frameDuration
         var musicTrack: AVMutableCompositionTrack?
         var musicLease: MusicBedLease?
-        if let music = request.music {
+        if let music = request.music, music.entry.segments?.isEmpty != true {
             // The bed is fitted to the rendered length, never sped up, and ducks under the voice as it plays.
             let bed = try await MusicBedRenderer.stage(music, composition: composition, voiceTrack: voiceTrack,
-                                                       durationSeconds: rendered.seconds, scratchRoot: scratchRoot)
+                                                       durationSeconds: rendered.seconds, scratchRoot: scratchRoot,
+                                                       mapTime: { timing.rendered(request.timeline.mapTime($0)) })
             let bedAsset = AVURLAsset(url: bed.url) // Held while its track is inserted.
             guard let bedTrack = try await MediaSupport.audioTrack(in: bedAsset),
                   let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
@@ -257,7 +272,7 @@ public struct CompositionBuilder: Sendable {
                               orientation: CGImagePropertyOrientation, videoSpans: [CompositionVideoSpan] = [],
                               demoLayers: [CompositionDemoLayer] = [],
                               contextDemoLease: ContextDemoCompositionLease? = nil,
-                              lipsyncLayers: [LipsyncVideoLayer] = [], includeDisclosure: Bool = true,
+                              lipsyncLayers: [LipsyncVideoLayer] = [], footageLayers: [FootageLayer] = [], includeDisclosure: Bool = true,
                               colorCorrection: (scale: Double, bias: Double)? = nil,
                               previewFailures: PreviewFrameFailures? = nil) throws -> AVVideoComposition {
         let size = CGSize(width: request.output.size.width, height: request.output.size.height)
@@ -282,21 +297,27 @@ public struct CompositionBuilder: Sendable {
         } else { disclosure = nil }
         let captionRasterizer = needsRasterizer ? try sharedRasterizer.get() : nil
         let effects = request.effects.flatMap { $0.picture.isEmpty ? nil : EffectFrames(input: $0) }
-        let framingSpans = videoSpans.filter { $0.zoom > 1 }
-        let boundaries = ([CMTime.zero, duration] + framingSpans.flatMap { [$0.output.start, $0.output.end] } +
-            demoLayers.flatMap { [$0.output.start, $0.output.end] } +
-            lipsyncLayers.flatMap { [$0.output.start, $0.output.end] }).sorted().reduce(into: [CMTime]()) { result, time in
-                if result.last != time { result.append(time) }
-            }
+        let framingSpans = videoSpans.filter { $0.zoom > 1 || $0.partReframe != nil }
+        var boundaryTimes: [CMTime] = [.zero, duration]
+        boundaryTimes.append(contentsOf: framingSpans.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.append(contentsOf: demoLayers.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.append(contentsOf: lipsyncLayers.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.append(contentsOf: footageLayers.flatMap { [$0.output.start, $0.output.end] })
+        boundaryTimes.sort()
+        let boundaries: [CMTime] = boundaryTimes.reduce(into: []) { result, time in
+            if result.last != time { result.append(time) }
+        }
         var spanIndex = 0, layerIndex = 0
         // Edited boundaries onto the rendered timeline: identical at 1×, divided by the clip's speed otherwise.
-        let speed = request.speed
+        let timing = request.speedTiming
         let samples = request.renderedSamples
         let timescale = Int32(request.timeline.sampleRate)
         func rendered(_ time: CMTime) -> CMTime {
-            guard speed != 1 else { return time }
+            guard !timing.isIdentity else { return time }
             if time == duration { return CMTime(value: samples, timescale: timescale) }
-            return CMTime(value: min(samples, Int64((time.seconds * request.timeline.sampleRate / speed).rounded())), timescale: timescale)
+            let samplePosition: Double = timing.rendered(time.seconds) * request.timeline.sampleRate
+            let sample: Int64 = Int64(samplePosition.rounded())
+            return CMTime(value: min(samples, sample), timescale: timescale)
         }
         let instructions = zip(boundaries, boundaries.dropFirst()).compactMap { start, end -> RenderInstruction? in
             while spanIndex < framingSpans.count && framingSpans[spanIndex].output.end <= start { spanIndex += 1 }
@@ -310,8 +331,10 @@ public struct CompositionBuilder: Sendable {
                 legacyRasterizer: rasterizer, disclosure: disclosure, demoLayer: layer,
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
                 videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5,
+                partReframe: span?.partReframe,
                 lipsyncLayers: lipsyncLayers.filter { $0.output.start < end && $0.output.end > start }, colorCorrection: colorCorrection,
-                effects: effects, previewFailures: request.forPreview ? previewFailures : nil, captionDrawHook: captionDrawHook)
+                effects: effects, previewFailures: request.forPreview ? previewFailures : nil, captionDrawHook: captionDrawHook,
+                footage: footageLayers.first { $0.output.start <= start && $0.output.end > start })
         }
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,

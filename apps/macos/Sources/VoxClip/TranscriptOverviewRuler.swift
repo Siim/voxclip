@@ -38,7 +38,7 @@ import VoxClipCore
         func add(_ kind: Kind, _ start: Double, _ end: Double) {
             marks.append(Mark(kind: kind, lower: min(1, max(0, start / duration)), upper: min(1, max(0, max(start, end) / duration))))
         }
-        if let scope = model.scopeBounds, words.indices.contains(scope.lowerBound), words.indices.contains(scope.upperBound) {
+        for scope in model.scopePartBounds ?? [] where words.indices.contains(scope.lowerBound) && words.indices.contains(scope.upperBound) {
             add(.clip, words[scope.lowerBound].start, words[scope.upperBound].end)
         }
         for segment in model.project.voiceLab.segments where segment.enabled { add(.ai, segment.replace.start, segment.replace.end) }

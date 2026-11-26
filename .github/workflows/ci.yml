@@ -28,7 +28,7 @@ jobs:
     name: macOS (Swift app, .NET core on macOS)
     runs-on: macos-26
     # Every step after setup has its own budget; the job limit is their sum plus about five minutes of setup.
-    timeout-minutes: 195
+    timeout-minutes: 210
     steps:
       - uses: actions/checkout@v5
 
@@ -123,6 +123,11 @@ jobs:
         working-directory: apps/macos
         run: swift build --jobs 2
 
+      - name: Replay the project harness contract offline
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 3
+        run: '"${{ steps.py.outputs.python-path }}" tools/schemas/test_harness_contract.py'
+
       # Whole-module Release compile errors show here within minutes; E2E, plan parity and caption parity
       # use this binary. A failed build is rebuilt once with -debug-cycles, which names the declarations
       # behind a compiler request cycle ("<unknown>:0: error: circular reference").
@@ -160,8 +165,9 @@ jobs:
       - name: Swift test (headless Voice Lab app model)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
         # 814 tests ran 592 s on 2026-11-03; 1,012 ran 15 min on 2026-11-05 and 1,060 ran 19 min 58 s on 2026-11-06
-        # (no single test waits out a timeout; slower runners add ~25% per test). Keep headroom.
-        timeout-minutes: 30
+        # (slower runners add ~25% per test). On 2026-11-25, 98cc8ae8b was still running at 30 min. The 354–355 s
+        # suites waited for the shared fixture lane, not individual test deadlines. Keep headroom.
+        timeout-minutes: 45
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
@@ -268,6 +274,15 @@ jobs:
         run: |
           dotnet build tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
           dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release --no-build
+
+      - name: Replay the overlay proposal with the .NET CLI offline
+        if: ${{ !cancelled() && steps.detect.outputs.core_tests == 'true' }}
+        timeout-minutes: 5
+        working-directory: apps/windows
+        run: |
+          dotnet build src/VoxClip.Cli/VoxClip.Cli.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+          VOXCLIP_CLI="$PWD/src/VoxClip.Cli/bin/Release/net10.0/voxclip-cli.dll" \
+            "${{ steps.py.outputs.python-path }}" ../../tools/schemas/test_harness_contract.py -k overlay_proposal
 
       # The Windows App's view models, layout, navigation and Home rules (VoxClip.App ViewModels and services built under
       # WIN_UI_TESTS). They need no Windows APIs; the two cases that need the ARM64 VM's native media skip themselves.
@@ -551,6 +566,13 @@ jobs:
               assert path.stem == report["caseId"] and report["platform"] == "windows" and isinstance(report["result"], dict)
           print("Validated ten structured Windows CLI E2E reports")
           PY
+
+      - name: Compare Windows timeline music exports
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: pwsh
+        run: |
+          python apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/export-equivalence.py --timeline-only --tools "$env:GITHUB_WORKSPACE/apps/windows/build/.cache/ffmpeg/win-x64/test-tools" --evidence "$env:RUNNER_TEMP/voxclip-test-results/timeline-export"
+          if ($LASTEXITCODE -ne 0) { throw 'Timeline music export equivalence failed.' }
 
       - name: Upload native test log and structured CLI reports
         if: always() && steps.detect.outputs.media_tests == 'true'

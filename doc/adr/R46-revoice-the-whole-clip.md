@@ -29,6 +29,12 @@ The user decided (2026-11-07):
 7. **Disclosure.** A segment named by a record adds the disclosure kind `revoice`. The burned-in chip reads "Voice and lip movement generated with AI" and the post text "Voice and lip movement generated with AI." The rest of the label plan is unchanged, so a revoiced clip, being over 30% AI, is labelled throughout. Consent is the existing voice consent, plus the lip-sync approval.
 8. **The stage** shows its AI voice tag over the whole revoiced clip, the pauses between parts included (`WholeClipRevoice.isRevoiced`).
 
+### Update 2026-11-24: Voice in Full Take and clips
+
+On Mac, Voice leads with the choice between changed phrases and the whole edited take, even when there are no changes to Rewrite. The selected option sets the priced button. A whole take outside the lip-sync upload limit stays visible with an explanation. ⌘K and the sidebar clip menu open Voice without starting a paid step.
+
+Use keeps a Full Take result in the same whole-clip record format, with the reserved `voxclip-full-take` scope instead of a clip ID. Redo leaves the in-use version until the replacement is used. With the same saved voice and movie in the current review, redo can reuse a paid result for free or run only the sharper lip-sync model. Back to My Recording disables the generated segments without deleting their assets.
+
 ### Update 2026-11-08: parts tile the clip
 
 On the user's 0:29.7 clip (61 items, 14 cut fillers and tightened pauses), two of four parts were refused with `seamFadeCrossesCut`: each began right after a cut word, so its left seam's fade had no kept audio before it. The run stopped with the lip-sync copy ("The job could not be completed…"), wrote no log line, and Try Again · ≈ $1.90 failed the same way at once.
@@ -94,9 +100,15 @@ Claude mode used to close Rewrite over a paid whole-clip voice after a Fit stop 
 - **One automatic Try Again** at most (`automaticRetryUSD`): free when the lip-sync result is kept, or the unfinished voice part when it fits what is left of the cap; never after a stale stop, a paid voice that no longer matches or an unconfirmed submission.
 - This supersedes "Claude mode patches on its own" in the parts-tile-the-clip update, "A Fit stop patches the changed phrases on its own … the patch gets what is left" in the one-timeline update, and "patches on its own after any stop that would only repeat, the voice's cost charged to the run" in the MVP45 update. Decision item 2 is unchanged: over the cap Claude still patches before anything is paid and offers the whole clip inline.
 
+## Amended 2026-11-25: sync-3 only, multipart uploads
+
+New whole-clip lip syncs, whether the first run or a redo, use `fal-ai/sync-lipsync/v3` at the catalog price. This supersedes the November 7 choice of lipsync-2 by default with a priced **Sharper Lip Sync** upgrade. **Redo Lip Sync Only** keeps the saved voice and prices only the new picture. Saved lipsync-2 results remain valid and usable without a new purchase.
+
+Mac and Windows use fal.ai's multipart storage protocol above 90 MiB, with 10 MiB parts. An upload failure stops before the job for that window is submitted; the inline message says fal.ai did not charge for it. Earlier paid results stay saved.
+
 ## Consequences
 
-- A heavily rewritten clip can sound like one take, at a lip-sync price: about $1.55 for 31 s with lipsync-2, about $4.13 with sync-3.
+- A heavily rewritten clip can sound like one take, at a lip-sync price of about $4.13 for a 31 s sync-3 window.
 - **The whole clip's lip-sync seconds are quoted** from the script's span on the clip as edited plus Rewrite's one-second handles (update 2026-11-08). The job is priced again from its real window, which can differ by the seam widening.
 - **Parts as written.** A clip whose script is one stretch of speech is voiced as one take: placement joins the parts. The mockup's "3 parts, one take" applies only when parts stay apart. The step reads "one take" otherwise.
 - **A whole-recording clip** has no speech beside it to level the voice against (voice-lab §8.7 item 2), and the Voice step stops with that reason. The same holds for any patch over a whole recording.

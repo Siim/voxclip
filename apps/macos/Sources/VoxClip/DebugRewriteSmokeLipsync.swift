@@ -22,6 +22,8 @@ extension DebugRewriteSmoke.Harness {
         /// Each import's needed length (the voice's) and its stored asset's length.
         var imports: [(needed: Double, stored: Double, recovered: Bool)] = []
         var failures: [String] = []
+        var paymentPermissions: [Bool] = []
+        var models: [WholeClipRevoice.Lipsync] = []
         init(http: LipsyncSmokeFalHTTP) { self.http = http }
 
         func line() async -> String {
@@ -40,23 +42,26 @@ extension DebugRewriteSmoke.Harness {
     }
 
     /// Puts the real lip-sync run over the stood-in fal.ai under every take plan this Rewrite makes.
-    func installFalShortResult(droppingFrames: Int = 5) throws -> FalShortResult {
+    func installFalShortResult(droppingFrames: Int = 5, exactPicture: Bool = false) throws -> FalShortResult {
         guard let editor, let shared = app.shared else { throw DebugRewriteSmoke.Failure.setup("no editor") }
         app.providerKeyStoreOverride = RewriteSmokeFalKey(base: app.providerKeyStore)
         let catalog = try VoiceLabPriceCatalog(data: Data(contentsOf: shared.root.appendingPathComponent("catalog/voice-lab.json")))
-        let http = LipsyncSmokeFalHTTP(droppingFrames: droppingFrames)
+        let http = LipsyncSmokeFalHTTP(droppingFrames: droppingFrames, recoveryRoot: recoveryPhase == nil ? nil : app.locations.root,
+                                       interruptOnPoll: recoveryPhase == "interrupt")
         let fal = FalShortResult(http: http)
         let app = self.app
-        editor.lipsyncSmoke = { request, window, recordID, model, mayPay, progress in
-            try await Self.smokeLipsync(app: app, catalog: catalog, fal: fal, request: request, window: window, recordID: recordID,
-                                        model: model, mayPay: mayPay, progress: progress)
+        editor.lipsyncSmoke = { request, window, recordID, model, mayPay, redoVersion, checkpoint, progress in
+            if exactPicture { await http.returnPicture(seconds: window.seconds(sampleRate: request.timeline.sampleRate)) }
+            return try await Self.smokeLipsync(app: app, catalog: catalog, fal: fal, request: request, window: window, recordID: recordID,
+                                               model: model, mayPay: mayPay, redoVersion: redoVersion, checkpoint: checkpoint, progress: progress)
         }
         return fal
     }
 
     /// One lip sync through the real run over the stood-in fal.ai, recorded in `fal`.
     private static func smokeLipsync(app: AppModel, catalog: VoiceLabPriceCatalog, fal: FalShortResult, request: RenderRequest,
-                                     window: LipsyncRenderWindow, recordID: String, model: WholeClipRevoice.Lipsync, mayPay: Bool,
+                                     window: LipsyncRenderWindow, recordID: String, model: WholeClipRevoice.Lipsync, mayPay: Bool, redoVersion: String?,
+                                     checkpoint: @escaping @MainActor @Sendable (LipsyncQuote) -> Void,
                                      progress: @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult {
         let paid: URL = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
         let scratch: URL = app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
@@ -65,8 +70,12 @@ extension DebugRewriteSmoke.Harness {
         let provider = FalLipsyncProvider(keys: RewriteSmokeFalSecret(), prices: catalog, http: fal.http, logger: app.log, spend: spend,
                                           now: { Date() }, monotonic: VoiceLabQuoteClock.continuousSource(), sleep: { _ in })
         var run = LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations), paidRoot: paid, scratchRoot: scratch)
+        run.redoVersion = redoVersion
         // The fixture's picture is synthetic: the face check is the one stand-in on this Mac.
         run.detector = { _ in 0.2 }
+        run.beforeSubmit = checkpoint
+        fal.paymentPermissions.append(mayPay)
+        fal.models.append(model)
         do {
             let result = try await run.execute(request: request, window: window, recordID: recordID, model: model.lipsyncModel,
                                                mayPay: mayPay, onProgress: progress)

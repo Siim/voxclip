@@ -231,6 +231,11 @@ public enum VoiceLabRenderValidation {
             ?? (abs(qa.lufsJumpLu) <= 2)
         guard qa.lufsJumpLu.isFinite, joinAllowed,
               qa.peakDbfs.isFinite, qa.peakDbfs < 0 else { throw VoiceLabProjectError.qaRejected }
+        if qa.outputSpeakerCheckSkipped != nil {
+            guard qa.outputSpeakerCheckSkipped == true, segment.kind == .tts, recipe.voiceSource == .own,
+                  qa.speakerScore == nil, qa.speakerThreshold == nil, qa.speakerModel == nil, qa.speakerPassed == nil,
+                  qa.shortSpeech == nil else { throw VoiceLabProjectError.qaRejected }
+        }
         if segment.kind == .tts {
             guard recipe.voiceSource == .own else { throw VoiceLabProjectError.consentUnverified }
             guard let words = recipe.words, !words.isEmpty else { throw VoiceLabProjectError.alignmentUnavailable }
@@ -253,7 +258,7 @@ public enum VoiceLabRenderValidation {
                   recipe.provenance.consentRecordId == voice.consentRecordId,
                   recipe.provenance.voiceId == voice.voiceId, recipe.provenance.provider == voice.provider,
                   let verified = recipe.consentVerifiedAt, verified <= recipe.provenance.createdAt else { throw VoiceLabProjectError.consentUnverified }
-            if segment.kind == .tts {
+            if segment.kind == .tts, qa.outputSpeakerCheckSkipped != true {
                 if let evidence = qa.shortSpeech, evidence.mode == .unmeasured {
                     guard evidence.valid, evidence.recordId == voice.consentRecordId,
                           qa.speakerScore == nil, qa.speakerPassed == false,

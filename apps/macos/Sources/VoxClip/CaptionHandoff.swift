@@ -49,7 +49,7 @@ struct AppCaptionLayoutInput: Sendable {
                 language: input.language ?? "und", duration: voiceLab.duration,
                 captions: .init(overrides: input.settings.overrides, position: input.settings.position,
                                 positionByAspect: input.settings.positionByAspect),
-                words: words.map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+                words: words.map { CaptionInputWord($0) })
             let result = try await pipeline.layout(input: layoutInput, style: style)
             rejectedOverrides = resolution.rejectedOverrides
             droppedWords = result.dropped.count

@@ -3,9 +3,9 @@
   "id": "ai-tighten-requests",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/clip-finder.json": "0f89bd35783ce785195ac22b394104397f77a52600ae88e0172567945372b0f6",
+    "shared/prompts/clip-finder.json": "01bbde496bb349d937781b36f1bb2a530591a497e31a9e75be8a59d542471669",
     "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
-    "shared/catalog/llm-providers.json": "43c1919e1a9405c0efee49881ff559fbf21b491b87aec895a0beadee7c5f6bc4"
+    "shared/catalog/llm-providers.json": "b19c861b1bd5d9b7b5ff5f24eece6f1caf178a470d66d83e785e6b6f22e4446c"
   },
   "cases": [
     {

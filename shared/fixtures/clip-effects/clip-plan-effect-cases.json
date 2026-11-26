@@ -1,0 +1,27 @@
+{
+  "format": "voxclip-clip-plan-effect-cases/1",
+  "words": [
+    {"start": 0.5, "end": 1.0}, {"start": 1.2, "end": 2.5},
+    {"start": 3.0, "end": 4.5}, {"start": 5.0, "end": 6.0}
+  ],
+  "cases": [
+    {"id": "zoom", "entry": {"kind":"zoom","startWord":0,"endWord":1,"scale":1.2,"reason":"Build into the claim."}, "placement":{"start":0.5,"end":2.5,"scales":[1,1.2,1.2,1]}},
+    {"id": "punch", "entry": {"kind":"punchIn","startWord":2,"endWord":2,"scale":1.3,"reason":"Land the punchline."}, "placement":{"start":3,"end":4.5,"scales":[1.3,1.3]}},
+    {"id": "title", "entry": {"kind":"motionTitle","startWord":1,"endWord":2,"text":"The catch","reason":"Introduce the reversal."}, "placement":{"start":1.2,"end":4.5,"overlayKind":"title","position":"top","animation":"rise"}},
+    {"id": "title-with-fades", "entry": {"kind":"motionTitle","startWord":1,"endWord":2,"text":"The catch","reason":"Introduce the reversal.","fadeIn":0.25,"fadeOut":0.5}, "placement":{"start":1.2,"end":4.5,"overlayKind":"title","position":"top","animation":"rise","fadeIn":0.25,"fadeOut":0.5}},
+    {"id": "lower", "entry": {"kind":"lowerThird","startWord":0,"endWord":1,"text":"Ada · Editor","reason":"Identify the speaker."}, "placement":{"start":0.5,"end":2.5,"overlayKind":"lowerThird","position":"bottom","animation":"rise"}},
+    {"id": "emoji", "entry": {"kind":"emojiPop","startWord":2,"endWord":2,"text":"🔥","reason":"Punctuate the result."}, "placement":{"start":3,"end":4.5,"overlayKind":"sticker","position":"topRight","animation":"pop"}},
+    {"id": "sound", "entry": {"kind":"soundEffect","startWord":2,"endWord":2,"query":"soft chime","reason":"Mark the reveal."}, "placement":{"start":3,"end":4.5,"asset":"soft chime"}},
+    {"id": "sound-with-envelope", "entry": {"kind":"soundEffect","startWord":2,"endWord":3,"query":"soft chime","reason":"Mark the reveal.","fadeIn":0.25,"gainDb":-12,"soundFrom":0.1,"volume":[{"word":2,"db":-3},{"word":3,"db":-9}]}, "placement":{"start":3,"end":6,"asset":"soft chime","fadeIn":0.25,"gainDb":-12,"soundFrom":0.1,"points":[{"t":0,"db":-3},{"t":2,"db":-9}]}},
+    {"id": "fade-on-speed", "entry": {"kind":"speedForPart","startWord":1,"endWord":2,"rate":1.15,"reason":"Move through setup.","fadeIn":1}, "invalid":true},
+    {"id": "illustration", "entry": {"kind":"illustration","startWord":1,"endWord":2,"prompt":"A paper map on a desk","reason":"Show the analogy."}, "placement":{"start":1.2,"end":4.5,"asset":"A paper map on a desk"}},
+    {"id": "look", "entry": {"kind":"colourLook","startWord":1,"endWord":2,"look":"warm","reason":"Distinguish the memory."}, "placement":{"start":1.2,"end":4.5,"overlayKind":"colourLook","look":"warm"}},
+    {"id": "speed", "entry": {"kind":"speedForPart","startWord":1,"endWord":2,"rate":1.15,"reason":"Move through setup."}, "placement":{"start":1.2,"end":4.5,"overlayKind":"speedForPart","rate":1.15}},
+    {"id": "cut-anchor", "entry": {"kind":"motionTitle","startWord":0,"endWord":2,"text":"The catch","reason":"Introduce the reversal."}, "cutWords":[1]},
+    {"id": "unlisted-anchor", "entry": {"kind":"punchIn","startWord":0,"endWord":4,"scale":1.25,"reason":"Land the claim."}},
+    {"id": "unsupported-emoji", "entry": {"kind":"emojiPop","startWord":1,"endWord":1,"text":"plain","reason":"Punctuate the result."}},
+    {"id": "missing-payload", "entry": {"kind":"punchIn","startWord":0,"endWord":1,"reason":"Land the claim."}, "invalid":true},
+    {"id": "extra-payload", "entry": {"kind":"punchIn","startWord":0,"endWord":1,"scale":1.2,"text":"The catch","reason":"Land the claim."}, "invalid":true},
+    {"id": "missing-reason", "entry": {"kind":"punchIn","startWord":0,"endWord":1,"scale":1.2}, "invalid":true}
+  ]
+}

@@ -14,13 +14,21 @@ import VoxClipCore
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
-                    headline
-                    if run.running || run.rows.isEmpty { progress }
-                    if !run.rows.isEmpty { decisions }
+                    if run.phase == .ready {
+                        MakeItCreativeProposal(model: model, run: run).id(run.startedAt)
+                        if !run.proposalUndone, !run.rows.isEmpty {
+                            DisclosureGroup("Decision controls") { decisions }
+                        }
+                    } else {
+                        headline
+                        if run.running || run.rows.isEmpty { progress }
+                        if !run.rows.isEmpty { decisions }
+                    }
                     if run.phase == .ready, !run.illustrationSuggestions.isEmpty {
                         MakeItIllustrationReview(model: model, run: run)
                     }
-                    if !model.makeItPostCopy(run).isEmpty, !run.running { postText }
+                    if !run.proposalUndone, !model.makeItPostCopy(run).isEmpty, !run.running { postText }
+                    ForEach(model.exportJob.checks[run.clipID] ?? []) { review in ExportSelfCheckRows(review: review) }
                     if !model.makeIt.series.isEmpty { MakeItSeriesList(model: model) }
                 }
                 .padding(.horizontal, VCTokens.spacingCardPadding)
@@ -136,12 +144,12 @@ import VoxClipCore
                     Button("Try Again") { model.makeIt.forget(run.clipID); model.makeItPostable(run.clipID) }
                         .buttonStyle(.borderedProminent).disabled(!model.canMakeItPostable(run.clipID))
                         .columnLayoutEvidence("makeIt.tryAgain", text: "Try Again")
-                } else {
+                } else if !run.proposalUndone {
                     Button { model.makeItExport(run) } label: { Text(exportTitle).frame(maxWidth: .infinity) }
                         .buttonStyle(.borderedProminent).disabled(!model.canExport || !model.mediaExportable || model.exporting)
                         .accessibilityLabel(exportTitle)
                         .columnLayoutEvidence("makeIt.export", text: exportTitle)
-                    if run.rows.contains(where: { $0.undoable && !$0.undone }) {
+                    if run.phase != .ready, run.rows.contains(where: { $0.undoable && !$0.undone }) {
                         Button("Undo All") { model.makeItUndoAll(run) }.buttonStyle(.borderless)
                             .columnLayoutEvidence("makeIt.undoAll", text: "Undo All")
                     }

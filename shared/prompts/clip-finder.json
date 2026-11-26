@@ -1,7 +1,7 @@
 {
   "id": "clip-finder",
   "schemaVersion": 1,
-  "promptVersion": 2,
+  "promptVersion": 3,
   "provenance": {
     "upstream": "VoxConvo vox-api/src/services/clipService.ts (SYSTEM_PROMPT, CLIP_PRESETS, ClipsSchema, formatTranscript, finalizeClips)",
     "upstreamSystemPromptSha256": "05f54d3b820a73d5f7a718edd818fd6db24b71508f8b972dfaf67a1bd09741a0",
@@ -12,10 +12,11 @@
       "system: the first sentence drops the product context. 'You choose clips from a spoken recording for VoxConvo, a voice and video social app.' became 'You choose clips from a spoken recording.' Everything else is byte-identical.",
       "presets: label and placeholder added for the UI; instructions, min, max, maxClips and noOverlap are unchanged.",
       "request.windowLines and request.topicsContinuationLine are VoxClip additions used only when a transcript is split into more than one window.",
-      "Prompt version 2 (VoxClip): the transcript is sent as numbered sentence lines (\"12 0:05 text\": a line number, its start time and its words) without word ranges or pause markers, and the reply names start_line and end_line; VoxClip maps them to the lines' first and last words. The system prompt's transcript paragraph and its start_word/end_word rule changed to match, and topicsContinuationLine counts lines."
+      "Prompt version 2 (VoxClip): the transcript is sent as numbered sentence lines (\"12 0:05 text\": a line number, its start time and its words) without word ranges or pause markers, and the reply names start_line and end_line; VoxClip maps them to the lines' first and last words. The system prompt's transcript paragraph and its start_word/end_word rule changed to match, and topicsContinuationLine counts lines.",
+      "Prompt version 3 (VoxClip): clips have ordered, disjoint line-range parts (up to eight in Custom, one otherwise) and a separate not_in_take disclosure. Reasons may quote only kept transcript words."
     ]
   },
-  "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+  "system": "You choose clips from a spoken recording. Each clip is its own post and needs to make sense to someone who never heard the rest.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, five seconds into the recording.\n\n- When a Custom request asks to join, combine or chain moments, or names them in an order, answer with one clip whose parts are those moments in that order. Look across the full transcript in this request. A later passage can open the clip. Pick the clearest spoken beat for each step, then land the story; do not return each beat as a separate clip. Otherwise use one part.\n- Each part starts and ends on whole lines. Use inclusive start_line and end_line numbers that appear in the transcript. Parts must not overlap. Start where a thought starts and end where it lands.\n- Respect the requested clip length across all parts, not across the gaps between them.\n- title: a short, plain headline in the speaker's language. No hashtags, emoji or quotation marks.\n- reason: one sentence on why the assembled clip works as a standalone post. Quote only words that are in the selected transcript.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- When the recording doesn't contain something the request describes, say what is missing in not_in_take and use the closest thing the speaker actually says. Never invent words or treat an inference as a quote. Use an empty string when nothing is missing. If nothing fits the request, return an empty list.",
   "transcriptBlock": {
     "prefix": "<transcript>\n",
     "suffix": "\n</transcript>",
@@ -113,6 +114,7 @@
   },
   "output": {
     "name": "clips",
+    "customMaxParts": 8,
     "schema": {
       "type": "object",
       "additionalProperties": false,
@@ -127,26 +129,37 @@
             "additionalProperties": false,
             "required": [
               "title",
-              "start_line",
-              "end_line",
               "reason",
-              "score"
+              "score",
+              "parts",
+              "not_in_take"
             ],
             "properties": {
               "title": {
                 "type": "string"
-              },
-              "start_line": {
-                "type": "integer"
-              },
-              "end_line": {
-                "type": "integer"
               },
               "reason": {
                 "type": "string"
               },
               "score": {
                 "type": "integer"
+              },
+              "parts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["start_line", "end_line"],
+                  "properties": {
+                    "start_line": { "type": "integer" },
+                    "end_line": { "type": "integer" }
+                  }
+                },
+                "maxItems": 1,
+                "minItems": 1
+              },
+              "not_in_take": {
+                "type": "string"
               }
             }
           }

@@ -295,7 +295,7 @@ struct WholeClipLayoutTests {
         // sync-3 at $8 a minute: 31 s is $4.1333…, shown with the shared formatter's two significant digits.
         #expect(upgrade.usd.map { abs(NSDecimalNumber(decimal: $0).doubleValue - 31.0 * 8 / 60) < 0.000_001 } == true)
         #expect(VoiceLabCostPresentation.format(upgrade.usd!) == "≈ $4.10")
-        #expect(WholeClipRevoice.Lipsync.standard == .lipsync2)
+        #expect(WholeClipRevoice.Lipsync.standard == .sync3)
         #expect(WholeClipRevoice.Lipsync.lipsync2.endpoint == "fal-ai/sync-lipsync/v2" && WholeClipRevoice.Lipsync.lipsync2.model == "lipsync-2")
         #expect(WholeClipRevoice.Lipsync.sync3.endpoint == "fal-ai/sync-lipsync/v3" && WholeClipRevoice.Lipsync.sync3.model == nil)
         // An unknown voice model has no price, so the whole has none.

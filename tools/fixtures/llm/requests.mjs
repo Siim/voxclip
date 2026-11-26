@@ -42,10 +42,37 @@ export function canonicalRequest({ feature, words, lines, choice, instructions =
     if (window && window.count > 1) parts.push(interpolate(prompt.request.windowLine, { windowStart: formatTime(window.start), windowEnd: formatTime(window.end) }))
     instruction = parts.join('\n')
   }
+  const schema = structuredClone(prompt.output.schema)
+  if (feature === 'clipFinder' && choice === 'custom') schema.properties.clips.items.properties.parts.maxItems = prompt.output.customMaxParts
   return {
     feature, system: prompt.system, cachedBlock: feature === 'clipFinder' ? sentenceTranscript(words, lines, prompt) : cachedTranscript(lines, prompt), instruction,
-    schemaName: prompt.output.name, schema: prompt.output.schema,
+    schemaName: prompt.output.name, schema,
     maxOutputTokens: prompt.generation.maxOutputTokens, effort: prompt.generation.effort, language
+  }
+}
+
+const schemaKeywords = ['type', 'additionalProperties', 'required', 'properties', 'items', 'enum']
+function orderedSchema(schema) {
+  const ordered = [...schemaKeywords.filter(key => key in schema), ...Object.keys(schema).filter(key => !schemaKeywords.includes(key)).sort()]
+  return Object.fromEntries(ordered.map(key => {
+    if (key === 'items') return [key, orderedSchema(schema.items)]
+    if (key !== 'properties') return [key, schema[key]]
+    const required = schema.required.filter(name => name in schema.properties)
+    const names = [...required, ...Object.keys(schema.properties).filter(name => !required.includes(name)).sort()]
+    return [key, Object.fromEntries(names.map(name => [name, orderedSchema(schema.properties[name])]))]
+  }))
+}
+const compactSchemaJSON = schema => JSON.stringify(orderedSchema(schema))
+
+export function autopilotSchemaRequests(prompt) {
+  const schema = structuredClone(prompt.schema)
+  if (prompt.directionalZooms) schema.properties.zooms.items.properties.direction = prompt.directionalZooms.directionSchema
+  const story = { parts: '45–64, 5–24', kind: 'story', seconds: 25, estimate: 22 }
+  return {
+    moments: { system: prompt.sections.shapes, instruction: interpolate(prompt.request.seriesInstruction, { maxClips: 4 }),
+      schemaName: prompt.momentsSchemaName, schema: orderedSchema(prompt.momentsSchema), maxOutputTokens: prompt.maxOutputTokens.moments, effort: 'high' },
+    plan: { system: prompt.sections.companionEffects, instruction: interpolate(prompt.request.partsInstruction, story),
+      schemaName: prompt.schemaName, schema: orderedSchema(schema), maxOutputTokens: prompt.maxOutputTokens.clip, effort: 'xhigh' }
   }
 }
 
@@ -102,7 +129,8 @@ export function appleSchema(schema, name, clipBudget = null, propertyName = null
       name: property, schema: appleSchema(child, `${name}_${property}`, clipBudget, property), isOptional: false
     }))
   }
-  if (schema.type === 'array') return { arrayOf: appleSchema(schema.items, `${name}_item`, clipBudget), maximumElements: propertyName === 'clips' ? clipBudget : null }
+  if (schema.type === 'array') return { arrayOf: appleSchema(schema.items, `${name}_item`, clipBudget), maximumElements: (propertyName === 'clips' ? clipBudget : null) ?? schema.maxItems ?? null,
+    ...(schema.minItems !== undefined ? { minimumElements: schema.minItems } : {}) }
   if (schema.enum) return { name, anyOf: schema.enum }
   return { type: { string: 'String', integer: 'Int', number: 'Double', boolean: 'Bool' }[schema.type] }
 }
@@ -134,7 +162,7 @@ export function renderConnector(request, connector, catalog, options = {}) {
   const user = request.cachedBlock === null ? request.instruction : request.cachedBlock + '\n\n' + request.instruction
   const chunks = request.cachedBlock === null ? [request.instruction] : [request.cachedBlock, request.instruction]
   let schema = request.schema
-  const compactSchema = JSON.stringify(schema)
+  const compactSchema = compactSchemaJSON(schema)
   const timeout = catalog.policy.timeoutsSeconds[request.feature === 'test'
     ? connector.cli ? 'cliTest' : 'test'
     : connector.cli ? 'cli' : connector.id === 'apple-foundation' ? 'appleFoundation' : connector.privacy === 'local' || ['ollama', 'lmstudio'].includes(connector.id) ? 'localServer' : 'cloud']
@@ -166,7 +194,7 @@ export function renderConnector(request, connector, catalog, options = {}) {
       }
     }
     for (const forbidden of connector.cli.forbiddenFlags) assert(!argv.includes(forbidden), `forbidden CLI flag ${forbidden}`)
-    return { kind: 'cli', model, timeoutSeconds: timeout, executable: connector.cli.executable, argv, stdin: user, cwd: '<cwd>', files: connector.id === 'codex' ? { '<io>/schema.json': JSON.stringify(strictSchema(schema)) } : {} }
+    return { kind: 'cli', model, timeoutSeconds: timeout, executable: connector.cli.executable, argv, stdin: user, cwd: '<cwd>', files: connector.id === 'codex' ? { '<io>/schema.json': compactSchemaJSON(strictSchema(schema)) } : {} }
   }
   if (connector.id === 'apple-foundation') {
     return {

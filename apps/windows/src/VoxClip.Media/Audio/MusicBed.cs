@@ -1,3 +1,4 @@
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
@@ -15,6 +16,7 @@ internal sealed class MusicBed
 {
     private readonly float[] track;
     private readonly IReadOnlyList<MusicMix.LoopPiece> pieces;
+    private readonly IReadOnlyList<MusicMix.SegmentPlacement>? segments;
     private readonly double[] ducking;
     private readonly ProjectMusic entry;
     private readonly int rate;
@@ -28,9 +30,10 @@ internal sealed class MusicBed
     private readonly double bedGain;
 
     private MusicBed(float[] track, IReadOnlyList<MusicMix.LoopPiece> pieces, double[] ducking, ProjectMusic entry, int rate, long outputFrames,
-        double bedGainDb, double? speechDb)
+        double bedGainDb, double? speechDb, IReadOnlyList<MusicMix.SegmentPlacement>? segments)
     {
         this.track = track; this.pieces = pieces; this.ducking = ducking; this.entry = entry; this.rate = rate;
+        this.segments = segments;
         OutputFrames = outputFrames; BedGainDb = bedGainDb; SpeechDb = speechDb; bedGain = Math.Pow(10, bedGainDb / 20);
     }
 
@@ -44,31 +47,39 @@ internal sealed class MusicBed
     internal static MusicBed? Stage(ComposeSnapshot snapshot, int rate, Func<RenderedAudioReader> openVoice, CancellationToken ct)
     {
         if (snapshot.Clip?.Music is not { } input) return null;
-        if (snapshot.Media.Audio is null) throw new VoxClipException(VoxClipErrorCode.ExportFailed, NoAudioMessage);
         var outputFrames = (long)Math.Round(snapshot.RenderedDuration * rate, MidpointRounding.AwayFromZero);
         if (outputFrames <= 0) throw new VoxClipException(VoxClipErrorCode.ExportFailed, "The clip is too short for music. Your edits are saved.");
-        double[] speech;
-        using (var voice = openVoice()) speech = SpeechLevels(voice, rate, ct);
-        var seconds = Math.Min(input.Entry.Asset.DurationSeconds, input.Entry.StartOffsetSeconds + outputFrames / (double)rate + 0.05);
-        return Create(input.Entry, Decode(input, seconds, rate), speech, outputFrames, rate);
+        double[] speech = [];
+        if (snapshot.Media.Audio is not null)
+            using (var voice = openVoice()) speech = SpeechLevels(voice, rate, ct);
+        var seconds = input.Entry.StartOffsetSeconds + outputFrames / (double)rate + 0.05;
+        var timeline = snapshot.Timeline;
+        var speed = snapshot.Speed;
+        if (input.Entry.Segments is { Count: > 0 } segments)
+            seconds = Math.Max(seconds, segments.Max(segment => segment.Loop ? input.Entry.Asset.DurationSeconds :
+                segment.SongFromSeconds + segment.LengthSeconds));
+        return Create(input.Entry, Decode(input, Math.Min(seconds, input.Entry.Asset.DurationSeconds), rate), speech, outputFrames, rate,
+            anchor => speed.Rendered(timeline.MapTime(anchor)));
     }
-
-    /// <summary>A Windows export of a video without an audio track has no audio stream to carry music.</summary>
-    internal const string NoAudioMessage =
-        "Export stopped: this video has no sound, so Windows can't add its music yet. Remove the music, or export it on a Mac. Your edits are saved.";
 
     /// <summary>The bed for <paramref name="trackStereo"/> (interleaved stereo at <paramref name="rate"/>) under a voice with these
     /// 10 ms <paramref name="speechLevels"/>, spanning <paramref name="outputFrames"/>.</summary>
-    internal static MusicBed Create(ProjectMusic entry, float[] trackStereo, double[] speechLevels, long outputFrames, int rate)
+    internal static MusicBed Create(ProjectMusic entry, float[] trackStereo, double[] speechLevels, long outputFrames, int rate,
+        Func<double, double>? mapTime = null)
     {
         var trackFrames = trackStereo.Length / 2;
         var offsetFrames = (long)Math.Round(entry.StartOffsetSeconds * rate, MidpointRounding.AwayFromZero);
-        var pieces = MusicMix.LoopPieces(trackFrames, Math.Min(offsetFrames, Math.Max(0, trackFrames - 1)), outputFrames,
-            (long)(MusicMix.LoopCrossfadeSeconds * rate));
-        if (pieces.Count == 0) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The music track is too short to use. Your edits are saved.");
+        var first = (int)Math.Min(offsetFrames, Math.Max(0, trackFrames - 1));
+        var segments = entry.Segments is null ? null : MusicMix.SegmentPieces(entry.Segments,
+            Math.Min(trackFrames, (long)Math.Round(entry.Asset.DurationSeconds * rate, MidpointRounding.AwayFromZero)),
+            rate, outputFrames, mapTime ?? (seconds => seconds));
+        var pieces = segments is null ? MusicMix.LoopPieces(trackFrames, first, outputFrames,
+            (long)(MusicMix.LoopCrossfadeSeconds * rate)) : [];
+        if (trackFrames < 4 || segments is null && pieces.Count == 0)
+            throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The music track is too short to use. Your edits are saved.");
         // Per-frame power averaged over both channels, so a wide stereo track is not read 3 dB quieter than it plays.
-        var first = (int)pieces[0].SourceStart;
-        var power = new float[Math.Max(0, trackFrames - first)];
+        var referenceEnd = segments is null ? trackFrames : Math.Min(trackFrames, first + outputFrames + (long)(0.05 * rate));
+        var power = new float[referenceEnd - first];
         for (var index = 0; index < power.Length; index++)
         {
             var left = trackStereo[2 * (index + first)]; var right = trackStereo[2 * (index + first) + 1];
@@ -78,12 +89,14 @@ internal sealed class MusicBed
         var activity = MusicMix.SpeechActivity(speechLevels);
         var speechDb = MusicMix.SpeechLevelDb(speechLevels, activity);
         var bedDb = MusicMix.BedGainDb(speechDb, musicDb, entry.GainDb);
-        return new(trackStereo, pieces, MusicMix.DuckingGainsDb(activity, entry.Ducking), entry, rate, outputFrames, bedDb, speechDb);
+        return new(trackStereo, pieces, MusicMix.DuckingGainsDb(activity, entry.Ducking, entry.DuckDb ?? MusicMix.DuckDb),
+            entry, rate, outputFrames, bedDb, speechDb, segments);
     }
 
     /// <summary>Adds the bed at rendered frames <paramref name="firstFrame"/>… into interleaved stereo <paramref name="target"/>.</summary>
     internal void Mix(Span<float> target, long firstFrame, int frames)
     {
+        if (segments is not null) { MixSegments(target, firstFrame, frames); return; }
         var duration = OutputFrames / (double)rate;
         var last = Math.Min(firstFrame + frames, OutputFrames);
         for (var frame = Math.Max(0, firstFrame); frame < last; frame++)
@@ -101,6 +114,38 @@ internal sealed class MusicBed
             var gain = (float)(bedGain * MusicMix.FadeFactor(seconds, duration, entry.FadeInSeconds, entry.FadeOutSeconds) * MusicMix.DuckFactor(ducking, seconds));
             var at = (int)(frame - firstFrame) * 2;
             target[at] += left * gain; target[at + 1] += right * gain;
+        }
+    }
+
+    private void MixSegments(Span<float> target, long firstFrame, int frames)
+    {
+        var last = Math.Min(firstFrame + frames, OutputFrames);
+        foreach (var placement in segments!)
+        {
+            var (segment, span, pieces) = placement;
+            var start = span.OutputStart;
+            var end = start + span.Count;
+            if (start >= last || end <= firstFrame) continue;
+            var shape = new ItemShape(segment.FadeInSeconds, segment.FadeOutSeconds, segment.GainPoints);
+            var staticGain = Math.Pow(10, (BedGainDb + segment.GainDb) / 20);
+            foreach (var piece in pieces)
+            {
+                var pieceStart = start + piece.OutputStart;
+                var from = Math.Max(firstFrame, pieceStart);
+                var to = Math.Min(Math.Min(last, end), pieceStart + piece.Count);
+                for (var frame = from; frame < to; frame++)
+                {
+                    var local = frame - start;
+                    var index = frame - pieceStart;
+                    var envelope = MusicMix.ItemGain(local / (double)rate, shape, segment.LengthSeconds);
+                    var weight = MusicMix.PieceWeight(span, local) * MusicMix.PieceWeight(piece, index);
+                    var gain = (float)(staticGain * envelope * weight * MusicMix.DuckFactor(ducking, frame / (double)rate));
+                    var source = (int)(2 * (piece.SourceStart + index));
+                    var at = (int)(2 * (frame - firstFrame));
+                    target[at] += track[source] * gain;
+                    target[at + 1] += track[source + 1] * gain;
+                }
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 @testable import VoxClipCore
 @testable import VoxClip
 
@@ -19,6 +20,41 @@ import Testing
 
     @Test func aTestProcessIsDetected() { #expect(TestProcess.isRunning) }
 
+    @Test func anUntitledDocumentOnlyAutosavesAfterItHasATestURL() async throws {
+        let document = try document()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-autosave-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        defer { document.close() }
+        document.fileType = UTType.voxclipProject.identifier
+        let before = document.project.modifiedAt
+        document.updateChangeCount(.changeDone)
+
+        let untitled = await withTestDeadline(returning: false) { continuation in
+            document.autosave(withImplicitCancellability: false) { error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+        try #require(untitled)
+        try #require(document.autosavedContentsFileURL == nil)
+        #expect(document.hasUnautosavedChanges)
+
+        let url = folder.appendingPathComponent("Project.voxclip")
+        try JSONProjectStore.encode(document.project).write(to: url)
+        document.fileURL = url
+        let saved = await withTestDeadline(returning: false) { continuation in
+            document.autosave(withImplicitCancellability: false) { error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+
+        try #require(saved)
+        let project = try JSONProjectStore.decode(Data(contentsOf: url))
+        #expect(project.id == document.project.id)
+        #expect(project.modifiedAt != before)
+        #expect(!document.hasUnautosavedChanges)
+    }
+
     @Test func anErrorIsRecordedNotShownInAnAlert() throws {
         let document = try document()
         let before = VoxClipDocument.errorsPresentedInTests.count
@@ -29,6 +65,50 @@ import Testing
         #expect(!NSApp.windows.contains { $0.isVisible && String(describing: type(of: $0)).contains("Alert") })
         #expect(VoxClipDocument.errorsPresentedInTests.count == before + 1)
         #expect(VoxClipDocument.errorsPresentedInTests.last?.contains("could not be autosaved") == true)
+    }
+
+    @Test func aFailedSaveExplainsTheReasonInlineUntilAWorkingSave() async throws {
+        let document = try document()
+        let editor = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        document.editorModel = editor
+        defer { editor.close(); document.close() }
+        let folder = try FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask,
+                                                  appropriateFor: FileManager.default.temporaryDirectory, create: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Project.voxclip")
+        let original = document.project
+        let originalBytes = try JSONProjectStore.encode(original)
+        try originalBytes.write(to: url)
+        document.fileURL = url
+        document.fileType = UTType.voxclipProject.identifier
+        var invalid = original
+        invalid.schemaVersion = 4
+        invalid.clipEffects = [ClipEffect(id: "test-look", clipId: "missing-clip", kind: .freeze, start: 0, end: 0.5)]
+        document.replaceProject(invalid)
+        document.markEdited()
+
+        func save() async -> (any Error)? {
+            await withCheckedContinuation { continuation in
+                document.save(to: url, ofType: UTType.voxclipProject.identifier, for: .saveOperation) { error in
+                    continuation.resume(returning: error)
+                }
+            }
+        }
+        let line = "Can't save: The project's effects are invalid: clip. Your unsaved edits are still open."
+        let announcements = editor.announcements.count
+        for _ in 0..<2 {
+            let failure = try #require(await save())
+            #expect(editor.projectSaveNotice == line)
+            let alerts = VoxClipDocument.errorsPresentedInTests.count
+            #expect(!document.presentError(failure))
+            #expect(VoxClipDocument.errorsPresentedInTests.count == alerts)
+        }
+        #expect(editor.announcements.dropFirst(announcements).filter { $0 == line }.count == 1)
+        #expect(try Data(contentsOf: url) == originalBytes)
+        #expect(document.hasUnautosavedChanges)
+        document.replaceProject(original)
+        #expect(await save() == nil)
+        #expect(editor.projectSaveNotice == nil)
     }
 
     @Test func aTimedAutosaveIntoADeletedTestFolderIsSkipped() async throws {

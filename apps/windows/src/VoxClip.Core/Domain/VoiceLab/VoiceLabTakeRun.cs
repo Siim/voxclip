@@ -8,6 +8,8 @@ using VoxClip.Core.Services.LLM;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
+public sealed record VoiceLabEditedLayout(IReadOnlyList<VoiceLabVideoCut> Cuts, double PauseThreshold);
+
 /// <summary>What a take run needs. <paramref name="Source"/> holds the source frames the run reads at
 /// <paramref name="SourceSampleRate"/>, and <paramref name="SourceEnvelope"/> is the whole source's 10 ms RMS envelope
 /// (<see cref="VoiceLabTakeProcessing.Envelope"/>), which the room-tone search reads.</summary>
@@ -16,6 +18,10 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null, bool HardJoinSmoothing = true)
 {
     public VoiceLabPauseProfile? PauseProfile { get; init; }
+    public bool ChecksGeneratedSpeaker { get; init; } = true;
+    /// <summary>A redo may recover takes from its own run, not from the version already in use.</summary>
+    public DateTimeOffset? RecoverTakesAfter { get; init; }
+    public VoiceLabEditedLayout? EditedLayout { get; init; }
     public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
     public string RequestText => VoiceLabAudioTags.RequestText(Text, AudioTags, ModelId);
     public bool HasRequestTags => AudioTags.Count > 0 && VoiceLabAudioTags.Supports(ModelId) && VoiceLabAudioTags.Validated(AudioTags, Text).Count > 0;
@@ -37,6 +43,7 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     /// <summary>A copy that later changes to the caller's lists cannot reach. The excerpt never changes, so it is shared.</summary>
     public VoiceLabTakeInput Snapshot() => this with { SourceEnvelope = SourceEnvelope with { Rms = Array.AsReadOnly(SourceEnvelope.Rms.ToArray()) },
         AudioTags = Array.AsReadOnly(AudioTags.ToArray()),
+        EditedLayout = EditedLayout is { } layout ? layout with { Cuts = Array.AsReadOnly(layout.Cuts.ToArray()) } : null,
         Items = Array.AsReadOnly(Items.ToArray()),
         CutWordIds = System.Collections.Frozen.FrozenSet.ToFrozenSet(CutWordIds, StringComparer.Ordinal),
         Window = Window with { LeftBridgeWordIds = Array.AsReadOnly(Window.LeftBridgeWordIds.ToArray()), RightBridgeWordIds = Array.AsReadOnly(Window.RightBridgeWordIds.ToArray()) } };
@@ -101,9 +108,11 @@ public sealed record VoiceLabTakeQaResult(double? TranscriptMatch, double? LufsJ
     /// <summary>ADR-R37: the take's voice could not be measured (its pool held under three seconds of voiced speech), so it
     /// carries no speaker score; only the take row's own-clone evidence lets it be chosen, and never automatically.</summary>
     public bool SpeakerUnmeasured { get; init; }
+    public bool OutputSpeakerCheckSkipped { get; init; }
     public VoiceLabTakeQaVerdict Verdict => TranscriptMatch is not { } match || !double.IsFinite(match) ||
         LufsJumpLu is not { } jump || !double.IsFinite(jump) || PeakDbfs is not { } peak || !double.IsFinite(peak) ||
-        (SpeakerScore is not { } score ? !SpeakerUnmeasured : !double.IsFinite(score) || SpeakerUnmeasured) ||
+        (SpeakerScore is not { } score ? SpeakerUnmeasured == OutputSpeakerCheckSkipped :
+            !double.IsFinite(score) || SpeakerUnmeasured || OutputSpeakerCheckSkipped) ||
         Failures.Any(failure => failure != VoiceLabTakeQaFailure.Loudness)
             ? VoiceLabTakeQaVerdict.Failed
             : Failures.Count == 0 && jump is >= 0 and <= 2 ? VoiceLabTakeQaVerdict.Passed
@@ -271,7 +280,7 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
         or VoiceLabException { Kind: VoiceLabErrorKind.Cancelled };
     public bool Selectable => VoiceCheck.Complete && Failure is null && Qa is { Verdict: not VoiceLabTakeQaVerdict.Failed } && Audio is not null;
     public bool Fits => Audio?.Fit is VoiceLabFitResult.Exact;
-    /// <summary>How this take's voice was checked (ADR-R37); a short take waits for its run's pooled check.</summary>
+    /// <summary>How this take's voice was checked (ADR-R37), or explicitly skipped (ADR-R51).</summary>
     public VoiceLabTakeVoiceCheck VoiceCheck { get; init; } = VoiceLabTakeVoiceCheck.PerTake;
     /// <summary>A waiting short take whose words, acoustics and fit already pass: its run needs no further candidate.</summary>
     public bool PassesBeforeVoiceCheck => VoiceCheck is VoiceLabTakeVoiceCheck.WaitingCheck && Failure is null && Audio is not null && Fits &&

@@ -146,6 +146,8 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored var wholeClipPlan: ClipTakePlan?
     @ObservationIgnored var wholeClipPlanScript: WholeClipScript?
     @ObservationIgnored var wholeClipPlanSettled = false
+    @ObservationIgnored var wholeClipUsedPlanIdentity: Project?
+    var voicePanelAsEdited = false
     var retiredWholeClipVoiceSpend: Decimal = 0
     var speechContextOffer: RewriteSpeechContextReview?
     private var requestedSurroundingSentenceOrdinal: Int?
@@ -173,6 +175,7 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored var publishOverride: ((Int, VoiceLabPublishedTake) -> VoiceLabPublishedTake)?
     #endif
     var takeQuotePhrase: Int?
+    let wordCheckFailures = RewriteWordCheckFailures()
     var focusedTakePhrase = 0
     var takeRowsShown = true
     /// The phrase whose My words field shows: one free-text field at a time (PhraseOwnWords.swift).
@@ -303,25 +306,33 @@ struct RewriteChange: Equatable, Sendable {
     /// The session applies its own changes (Apply, Use Takes): the edit that follows is not an edit in its scope. Set only
     /// around the synchronous edit (`ownEdit`), so an edit the user makes while takes publish is still followed.
     @ObservationIgnored private var applying = false
+    /// The scope before and after Rewrite's last own whole-clip commit (`commitOwnEdit`): the editor's Undo back to `before`
+    /// and Redo back to `after` are the card's own (`followOwnCommit`).
+    struct OwnCommit {
+        let before: Project
+        let after: Project
+    }
+    @ObservationIgnored private var ownCommit: OwnCommit?
     /// The review being built again, off the main actor, after an edit outside the scope moved the session on (`move`).
     /// Make Takes and Use Takes wait for it.
     @ObservationIgnored private(set) var reviewing: Task<Void, Never>?
 
     init(editor: EditorModel, scope rewriteScope: RewriteScope, instruction: String = "", envelope: AudioEnvelope?, connector: RewriteConnector?,
-         prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil,
+         prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil, forClipID: String? = nil,
          consent: @escaping @MainActor () async -> Bool = { false }, connectorIsCurrent: @escaping @MainActor () -> Bool = { true }) {
-        self.editor = editor; self.rewriteScope = rewriteScope; project = editor.project
+        let project = forClipID.map { editor.project.scoped(to: $0) } ?? editor.project
+        self.editor = editor; self.rewriteScope = rewriteScope; self.project = project
         self.instruction = instruction
-        let corrected = Self.corrected(editor.project)
-        let items = Self.items(of: rewriteScope, in: corrected, project: editor.project)
+        let corrected = Self.corrected(project)
+        let items = Self.items(of: rewriteScope, in: corrected, project: project)
         transcript = corrected
         source = items
-        scope = Self.outputScope(of: rewriteScope, in: editor.project)
+        scope = Self.outputScope(of: rewriteScope, in: project)
         self.envelope = envelope; self.connector = connector; self.prices = prices; self.synthesisModel = VoiceLabWordingFit.modelID
         self.consent = consent; self.connectorIsCurrent = connectorIsCurrent
         passageService = editor.app.shared.map(VoiceRewriteService.init)
         scopeService = editor.app.shared.map(PatchRewriteService.init)
-        let words = Self.scopeWords(rewriteScope, source: items, project: editor.project, editor: editor)
+        let words = Self.scopeWords(rewriteScope, source: items, project: project, editor: editor)
         task = DirectorTask(scope: rewriteScope, words: words, state: connector == nil ? .choosingAI : .running,
                             close: PanelAction(id: "close", title: "Close Rewrite") { [weak editor] in editor?.closeRewrite() })
         if connector == nil { task.show(.choosingAI, headline: PanelHeadline(text: "Who should rewrite \(words.name)?"), cards: [.text("Checking which AIs are set up…")]) }
@@ -341,7 +352,7 @@ struct RewriteChange: Equatable, Sendable {
         }
     }
     /// The positions a clip spans in the take, nil for an unknown clip.
-    private static func clipRange(_ id: String, in project: Project) -> ClosedRange<Int>? {
+    static func clipRange(_ id: String, in project: Project) -> ClosedRange<Int>? {
         let words = project.transcript?.words ?? []
         guard let clip = project.edits.clips.first(where: { $0.id == id }),
               let lower = words.firstIndex(where: { $0.id == clip.startWordId }),
@@ -407,10 +418,10 @@ struct RewriteChange: Equatable, Sendable {
     // MARK: Running
 
     /// The scope's inputs still match, apart from save metadata and the active tab (impl-plan §3.3).
-    var current: Bool { isOpen && editor.capabilities.edit && inside(editor.project) == inside(project) && connectorIsCurrent() }
+    var current: Bool { voiceSpendCurrent && connectorIsCurrent() }
     /// Paid voice work's currency: `current` without the AI connector, which matters only for a proposal and asking the AI
     /// again, never for takes, a whole clip's voice or a lip sync. Plans add their own voice identity (`voiceIdentity`).
-    var voiceSpendCurrent: Bool { isOpen && editor.capabilities.edit && inside(editor.project) == inside(project) }
+    var voiceSpendCurrent: Bool { isOpen && !editor.transcription.isRunning && editor.capabilities.edit && inside(editor.project) == inside(project) }
     /// "Rewrite", or "Rewrite…" when the send asks first (design §6.3.1): an API key, or a CLI signed in with one.
     var proposalButton: String { sendAsksFirst ? "Rewrite…" : "Rewrite" }
     /// The note beside the button that sends (design.md R1's footer); empty while no AI is chosen (R0).
@@ -459,11 +470,19 @@ struct RewriteChange: Equatable, Sendable {
         // Paid work saved before VoxClip quit or crashed comes back first, with its proposal and no AI call.
         if restoreSavedProposal() { return }
         if connector == nil {
+            if stopForUsedRevoice() { return }
             actionTask = Task { [weak self] in await self?.showChooser() }
         } else if let work = begin() {
             actionTask = Task { _ = await work.value }
         }
     }
+    func startVoicePanel(whole: Bool) {
+        voicePanelAsEdited = true
+        task.appeared = nil
+        if !restoreSavedProposal() { showProposal() }
+        selectWholeClipMode(whole)
+    }
+
     /// Runs Rewrite on the scope again, asking `instruction` when given (the Ask field's text): Rewrite Again, Try Again
     /// and a new Rewrite of the same scope. False when nothing was proposed.
     @discardableResult func run(instruction next: String? = nil, feedback: String? = nil) async -> Bool {
@@ -474,7 +493,11 @@ struct RewriteChange: Equatable, Sendable {
             editor.restartRewrite(self)
             return false
         }
-        guard connector != nil else { await showChooser(); return false }
+        guard connector != nil else {
+            reread()
+            if !stopForUsedRevoice() { await showChooser() }
+            return false
+        }
         guard let work = begin() else { return false }
         return await work.value
     }
@@ -501,6 +524,7 @@ struct RewriteChange: Equatable, Sendable {
         reread()
         changes = []; review = nil; setAside = nil; problem = ""
         clearProposal()
+        if stopForUsedRevoice() { runs.release(lease); return nil }
         isProposing = true
         let expected = revision
         beginRun()
@@ -590,7 +614,8 @@ struct RewriteChange: Equatable, Sendable {
     /// The request a run sends, made off the main actor: placing a selection and planning a clip or Full take read the
     /// whole take (impl-plan §3.1). The quote is the service's.
     func prepareSend(_ connector: RewriteConnector, feedback: String? = nil) async throws -> PreparedSend {
-        let project = project, rewriteScope = rewriteScope, envelope = envelope
+        let project = wholeClipReplacement?.removing(from: project) ?? project
+        let rewriteScope = rewriteScope, envelope = envelope
         let language = project.transcript?.language ?? "en"
         let asked = RewriteSuggestions.suggestion(for: instruction).instruction
         let feedback = feedback ?? shorterFeedback
@@ -665,7 +690,8 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// What the review reads now.
     var reviewInputs: RewriteReview.Inputs {
-        RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel,
+        RewriteReview.Inputs(transcript: transcript, project: wholeClipReplacement?.removing(from: project) ?? project,
+            scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel,
             voiceCalibration: voiceCalibration)
     }
     private func receive(_ checked: Checked) {
@@ -695,7 +721,8 @@ struct RewriteChange: Equatable, Sendable {
     /// nothing was saved for these inputs.
     @discardableResult func restoreSavedProposal() -> Bool {
         guard isOpen, !hasRun, let inputs = savedProposalInputs, let saved = RewriteSavedProposalStore.load(savedProposalURL),
-              saved.projectId == project.id, saved.scope == savedProposalScope, saved.inputs == inputs, !saved.changes.isEmpty else { return false }
+              saved.projectId == project.id, saved.scope == savedProposalScope, saved.inputs == inputs,
+              !saved.changes.isEmpty || saved.wholeClip != nil else { return false }
         let found = saved.changes.map(\.change)
         receive(found)
         guard review != nil else { changes = []; problem = ""; return false }
@@ -858,7 +885,7 @@ struct RewriteChange: Equatable, Sendable {
     }
     #endif
     /// Takes the session's proposal out of the transcript.
-    private func clearProposal() {
+    func clearProposal() {
         if ownProposal != nil { editor.proposal = nil }
     }
     /// Shows what the run replaced again, with the transcript's proposal and its reviews, or closes a first run.
@@ -1080,7 +1107,7 @@ struct RewriteChange: Equatable, Sendable {
     /// The patch's paid takes as a stop names them: ("Your 3 paid takes (≈ $0.12) are kept", "them"), ("Your paid take
     /// is kept", "it"), or ("Your paid takes are kept", "them") while the first are still being made.
     var paidTakesKept: (kept: String, pronoun: String) {
-        let takes = paidTakeCount
+        let takes = paidTakeCount > 0 ? paidTakeCount : restoredPendingTakes
         let usd = takePlan.flatMap { $0.isRetired ? nil : $0.spent.usd }
         let cost = usd.map { $0 > 0 ? " (" + VoiceLabCostPresentation.format($0) + ")" : "" } ?? ""
         if takes == 1 { return ("Your paid take\(cost) is kept", "it") }
@@ -1129,8 +1156,9 @@ struct RewriteChange: Equatable, Sendable {
         if editor.app.shell.editor === editor, !editor.app.shell.viewerShown { editor.app.shell.toggleViewer() }
         editor.announce(question)
     }
-    /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then).
-    var changeNeedsDiscard: Bool { hasPaidTakes && !applyingTextFixesOnly }
+    /// Whether a change of the proposal must first discard paid takes (`confirmPaidProposalChange` asks then): this
+    /// Rewrite's own, or those saved before VoxClip closed that Make Takes would adopt for these words.
+    var changeNeedsDiscard: Bool { (hasPaidTakes || restoredTakesPending) && !applyingTextFixesOnly }
     func confirmPaidProposalChange(waiting: RewriteThreadState.Waiting? = nil, perform: @escaping @MainActor () -> Void) -> Bool {
         guard changeNeedsDiscard else { return false }
         confirmDiscardChanges(waiting: waiting) { [weak self] in
@@ -1148,6 +1176,8 @@ struct RewriteChange: Equatable, Sendable {
     private func discardPaidPlan(perform: @MainActor () -> Void) {
         takePlan?.invalidate(); takePlan = nil
         generation?.invalidate()
+        // The user let the takes go: those saved before a relaunch go too, and the saved record with them.
+        letGoOfRestoredTakes()
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil
         surroundingSentenceOrdinal = nil; takeQuotePhrase = nil
         perform()
@@ -1267,11 +1297,39 @@ struct RewriteChange: Equatable, Sendable {
         defer { applying = false }
         return try edit()
     }
+    /// Rewrite's own commit of the whole clip (Use Whole Clip, Use the Voice Without Lip Sync), which leaves the session open
+    /// on its card: `follow` doesn't take it for an edit in the scope (it used to show R3, "Nothing was applied", over a
+    /// commit that went in), and the session moves on to the committed project, so the card shows it used and an edit after
+    /// it is followed from there. The editor's Undo and Redo of that one step are followed as the card's own
+    /// (`followOwnCommit`).
+    func commitOwnEdit(_ edit: () throws -> Void) rethrows {
+        let before = project
+        try ownEdit(edit)
+        let after = editor.project.scoped(to: project.edits.activeClipId)
+        ownCommit = OwnCommit(before: before, after: after)
+        project = after; derive()
+    }
+    /// The editor's Undo (⌘Z) of Rewrite's own whole-clip commit puts the card back where Use was clicked, its paid voice and
+    /// lip sync unused again: closing asks first, the saved record is written again, so a relaunch offers them back, and
+    /// Use puts them in again for free. Redo puts the commit back, and the card is used again. True when `next` is either.
+    private func followOwnCommit(_ next: Project) -> Bool {
+        guard let commit = ownCommit, let whole = wholeClip, !whole.running, case .proposal = task.state else { return false }
+        let scoped = inside(next)
+        let undo = whole.phase == .used && scoped == inside(commit.before)
+        let redo = whole.useWasUndone && scoped == inside(commit.after)
+        guard undo || redo else { return false }
+        // The project first: the record written again is the one a relaunch over this project reads.
+        project = next; derive()
+        if undo { whole.useUndone() } else { whole.useRedone() }
+        refreshWholeClipPanel()
+        return true
+    }
     /// The free changes still pending as edit commands: cuts of words not cut yet, and corrections.
     var localCommands: [EditCommand] { pendingFree.flatMap(editor.commands) }
     func close() {
         guard isOpen else { return }
         isOpen = false; phraseMicrophone.cancel(); invalidate(); actionTask?.cancel(); takesTask?.cancel()
+        wholeClip?.cancel(); wholeClipPlan?.invalidate()
         clearProposal()
     }
 
@@ -1291,6 +1349,7 @@ struct RewriteChange: Equatable, Sendable {
             editor.closeRewrite(returnFocus: false)
             return
         }
+        if followOwnCommit(next) { return }
         let unchanged = after == before
         if task.state == .changed {
             guard unchanged else { return }
@@ -1430,15 +1489,16 @@ struct RewriteChange: Equatable, Sendable {
         let clipID: String? = if case .clip(let id) = scope { id } else { nil }
         return project.voiceTakeIdentity(scope: rewriteScope, enclosingClipID: clipID)
     }
-    enum ChangedReason { case scope, ai }
+    enum ChangedReason { case scope, ai, revoiceUndone }
     /// R3: "Clip 1 changed", why nothing was applied, Close, and Rewrite Again with the send line.
     func showChanged(reason: ChangedReason = .scope) {
         let words = task.words
-        let headline = reason == .ai ? "AI changed" : words.changed
+        let headline = reason == .revoiceUndone ? "Revoice undone" : reason == .ai ? "AI changed" : words.changed
         let change = reason == .ai ? "You changed the AI" : "You edited \(words.name)"
         // Paid work is named with what keeps it, never beside "no takes were paid for" (design.md R3).
         let paid = paidWorkKept
-        let body = "\(change), so these changes may no longer fit. " + (hasPaidWork
+        let body = reason == .revoiceUndone ? "The earlier revoice is off. Rewrite again to change the recording’s words." :
+            "\(change), so these changes may no longer fit. " + (hasPaidWork
             ? "Nothing was applied. \(paid.kept) until you close this" + (reason == .ai ? "." : "; Undo brings \(paid.pronoun) back.")
             : "Nothing was applied, and no takes were paid for.")
         // Rewrite Again discards the set-aside proposal and its takes, so it asks first as ⇧⌘R does.
@@ -1462,40 +1522,17 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// "rewrite failure stage=takes type=ClipTakePlan.Failure case=tooManyPhrases" through the app logger.
     func logFailure(_ error: any Error, stage: String) {
-        guard !(error is CancellationError) else { return }
-        let entry = LogEntry(level: .warn, category: "rewrite", message: "rewrite failure stage=\(stage) " + Self.failureKind(error))
+        guard !FailureDiagnostic.isCancellation(error) else { return }
+        let safeStage = switch stage {
+        case "plan", "takes", "generation", "voices", "review", "reask", "proposal", "ownWords", "wordingFit", "use": stage
+        default: "other"
+        }
+        let entry = LogEntry(level: .warn, category: FailureContext.rewrite.rawValue, message: "rewrite failure stage=\(safeStage) " + Self.failureKind(error))
         let log = editor.app.log
         Task { await log.write(entry) }
     }
-    /// An error's type and case, with no associated text: "type=VoiceLabError case=permissionMissing",
-    /// "type=ClipTakePlan.Failure case=placement.geometry.windowTooShort", or an NSError's domain and code.
     nonisolated static func failureKind(_ error: any Error) -> String {
-        // A lip-sync result's named check (its numbers are logged on their own line by the import).
-        if let check = error as? LipsyncResultCheck { return "type=LipsyncResultCheck case=\(check.name.rawValue)" }
-        // The module and any "(unknown context at $…)" of a private type are dropped.
-        let type = String(reflecting: Swift.type(of: error)).split(separator: ".").dropFirst()
-            .filter { $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" } }.joined(separator: ".")
-        let mirror = Mirror(reflecting: error)
-        guard mirror.displayStyle == .enum else {
-            let ns = error as NSError
-            let domain = ns.domain.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" }
-            return "type=\(type.isEmpty ? "unknown" : type) domain=\(domain) code=\(ns.code)"
-        }
-        return "type=\(type) case=\(caseName(error, depth: 0))"
-    }
-    private nonisolated static func caseName(_ value: Any, depth: Int) -> String {
-        let mirror = Mirror(reflecting: value)
-        guard let child = mirror.children.first else {
-            let name = String(describing: value)
-            return name.range(of: #"\A[A-Za-z_][A-Za-z0-9_]*\z"#, options: .regularExpression) != nil ? name : "unnamed"
-        }
-        let label = child.label ?? "unnamed"
-        guard depth < 3 else { return label }
-        // A case's payload is its value, or a tuple when the case has several; the first enum in it names the inner case.
-        let payload = Mirror(reflecting: child.value)
-        let first: Any? = payload.displayStyle == .tuple ? payload.children.first?.value : child.value
-        guard let inner = first, Mirror(reflecting: inner).displayStyle == .enum else { return label }
-        return label + "." + caseName(inner, depth: depth + 1)
+        FailureDiagnostic.describe(error)
     }
 
     nonisolated static func refusal(_ error: any Error) -> String {

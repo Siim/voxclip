@@ -1,3 +1,4 @@
+import AppKit
 import AVKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -25,6 +26,9 @@ import VoxClipMedia
         .onChange(of: model.mediaResolved) { _, _ in session.followEditor() }
         .onChange(of: model.mediaUnreadable) { _, _ in session.followEditor() }
         .onChange(of: model.exporting) { _, _ in session.followEditor() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            session.becameActive()
+        }
         .onExitCommand {
             if session.busy { session.cancel() } else { model.closeContextDemoJob() }
         }
@@ -136,10 +140,10 @@ import VoxClipMedia
             }
             if session.loadingWindows {
                 Text("Reading available app windows…")
-            } else {
-                Button("Refresh App Windows", action: session.refreshWindows)
-                    .accessibilityIdentifier("voxclip.demo.refreshWindows")
             }
+            Button("Refresh App Windows", action: session.refreshWindows)
+                .disabled(!session.canRefreshWindows)
+                .accessibilityIdentifier("voxclip.demo.refreshWindows")
         }
     }
 
@@ -154,10 +158,8 @@ import VoxClipMedia
             } else if !session.busy, !session.canReview, session.request == nil, session.selectedAsset == nil, let reason = session.inputReason {
                 Text(reason).foregroundStyle(DesignValues.color("text.secondary"))
             }
-            if !session.busy {
-                Button("Check Screen Recording Access", action: session.checkCaptureAccess)
-                    .accessibilityHint("Checks the current grant only. Does not request permission, open another app or start recording.")
-                    .accessibilityIdentifier("voxclip.demo.checkCaptureAccess")
+            if !session.waitingForDesktopInspection, let notice = session.permissionNotice {
+                ContextDemoPermissionRow(notice: notice)
             }
             VStack(alignment: .leading, spacing: 8) {
                 if session.busy {
@@ -183,8 +185,9 @@ import VoxClipMedia
                             .accessibilityIdentifier("voxclip.demo.newCapture")
                     }
                     }
-                    if session.canStart {
+                    if session.phase == .ready {
                         Button("Start Recording", action: session.start).buttonStyle(.borderedProminent)
+                            .disabled(!session.canStart)
                             .accessibilityIdentifier("voxclip.demo.start")
                     } else if session.canApply {
                         Button(session.recordedAsset == nil ? "Apply Trim" : session.selectedPlacementID == nil ? "Place Beside Narration" : "Replace Demonstration") {
@@ -192,8 +195,9 @@ import VoxClipMedia
                         }.buttonStyle(.borderedProminent)
                             .keyboardShortcut(.return, modifiers: [.command])
                             .accessibilityIdentifier("voxclip.demo.apply")
-                    } else if session.canReview {
+                    } else if session.showsReview {
                         Button("Review Capture", action: session.review)
+                            .disabled(!session.canReview)
                             .accessibilityIdentifier("voxclip.demo.review")
                     }
                 }
@@ -204,6 +208,19 @@ import VoxClipMedia
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
+    }
+}
+
+struct ContextDemoPermissionRow: View {
+    let notice: ContextDemoSession.PermissionNotice
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(notice.reason).foregroundStyle(DesignValues.color("text.secondary"))
+            Button(notice.title) { openURL(notice.url) }
+                .accessibilityIdentifier("voxclip.demo.permission.\(notice.permission.rawValue).settings")
+        }
     }
 }
 

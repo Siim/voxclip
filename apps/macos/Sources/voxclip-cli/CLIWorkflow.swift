@@ -101,7 +101,8 @@ enum CLIWorkflow {
         try RenderCallerInputs.prepare(RenderRequest(sourceURL: source, plan: plan, style: style,
             placement: project.captions.positionByAspect[project.export.aspect.rawValue] ?? project.captions.position,
             output: output, voiceLab: voiceLab), project: project, clipID: project.edits.activeClipId,
-            dataRoot: dataRoot, isCancelled: { Task.isCancelled })
+            dataRoot: dataRoot.resolvingSymlinksInPath(), shared: try? SharedResources.locate(),
+            resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, isCancelled: { Task.isCancelled })
     }
 
     static func style(_ id: String) throws -> CaptionStyle? {
@@ -204,16 +205,20 @@ enum CLIWorkflow {
             throw ValidationError("--transcript only applies when --open is a media file.")
         }
         let outputs = [options.output, options.srt, options.audioOut].compactMap { $0 }.map { URL(fileURLWithPath: $0) }
-        let inputs = [inputURL] + (options.transcript.map { [URL(fileURLWithPath: $0)] } ?? [])
+        let inputs = [inputURL] + [options.transcript, options.musicFile].compactMap { $0.map { URL(fileURLWithPath: $0) } }
         if checkingOutputs { try validateOutputs(outputs, inputs: inputs) }
         if let id = options.style { _ = try style(id) }
         try Task.checkCancellation()
+        let dataRoot = DataLocations().root.resolvingSymlinksInPath()
+        var musicOverride: MusicRenderInput?
+        if let path = options.musicFile { musicOverride = try await CLIMusic.local(path) }
         var project: Project
         let source: URL
         let probe: MediaProbeResult
         if inputURL.pathExtension.lowercased() == "voxclip" {
             let store = JSONProjectStore()
             project = try await store.load(from: inputURL)
+            if let track = options.music { musicOverride = try CLIMusic.saved(track, in: project, dataRoot: dataRoot) }
             try Task.checkCancellation()
             source = try await store.resolveSource(for: project, projectURL: inputURL)
             if checkingOutputs { try validateOutputs(outputs, inputs: inputs + [source]) }
@@ -223,6 +228,7 @@ enum CLIWorkflow {
             try validateExportArguments(options, probe: probe, styleID: options.style ?? project.captionSettings(forClip: options.clip).styleId)
             try validateRequestedScope(options, project: project)
         } else {
+            if options.music != nil { throw ValidationError("The requested music track does not exist in the project.") }
             source = inputURL
             try Task.checkCancellation()
             probe = try await AVMediaProbe().probe(source)
@@ -280,8 +286,10 @@ enum CLIWorkflow {
         try Task.checkCancellation()
         let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init))
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
-        let request = try renderRequest(project: project, source: source, plan: plan, style: style,
-            output: output, voiceLab: voiceLab, dataRoot: DataLocations().root)
+        var request = try renderRequest(project: project, source: source, plan: plan, style: style,
+            output: output, voiceLab: voiceLab, dataRoot: dataRoot)
+        if let musicOverride { request.music = musicOverride }
+        if checkingOutputs, let music = request.music { try validateOutputs(outputs, inputs: inputs + [source, music.assetURL]) }
         let render: RenderRequest
         switch try await captions(.export(request,
             state: effectiveState, activeClip: activeClip, overrides: project.captions.overrides, language: project.transcript?.language, project: project)) {
@@ -301,6 +309,13 @@ enum CLIWorkflow {
         let project = prepared.project, render = prepared.render, activeClip = prepared.activeClip
         let aspect = prepared.aspect, quality = prepared.quality, styleID = prepared.styleID
         try Task.checkCancellation()
+        if options.format == "fcpxml", let output = options.output {
+            let name = activeClip?.title ?? project.title ?? render.sourceURL.deletingPathExtension().lastPathComponent
+            let url = try await FCPXMLExporter.write(name: name, render: render, to: URL(fileURLWithPath: output), replacing: true,
+                cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch", isDirectory: true))
+            return success("export", fields: ["format": .string("fcpxml"), "output": .string(url.path),
+                "captionStyle": .string(styleID), "aspect": .string(aspect.rawValue), "music": .null])
+        }
         let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version,
                                   cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
         let job = ExportJob(render: render, aspect: aspect, quality: quality, outputURL: URL(fileURLWithPath: options.output!),
@@ -313,9 +328,9 @@ enum CLIWorkflow {
         defer { if let audioStaging { ExportSafety.discardPartial(audioStaging) } }
         try Task.checkCancellation()
         if let audioDestination {
-            approvals = try await exporter.preflightCombinedExport(job, editedAudioURL: audioDestination)
+            approvals = try await exporter.preflightCombinedExport(job, editedAudioURL: audioDestination, includeMusic: options.withMusic)
             try Task.checkCancellation()
-            audioStaging = try await exporter.stageEditedAudio(render, to: audioDestination)
+            audioStaging = try await exporter.stageEditedAudio(render, to: audioDestination, includeMusic: options.withMusic)
             try Task.checkCancellation()
         }
         let additionalOutputs = audioDestination.flatMap { destination in
@@ -334,6 +349,7 @@ enum CLIWorkflow {
         if let cover = result.coverURL { fields["cover"] = .string(cover.path) }
         fields["output"] = .string(result.outputURL.path); fields["srt"] = result.srtURL.map { .string($0.path) } ?? .null
         fields["captionStyle"] = .string(styleID); fields["aspect"] = .string(aspect.rawValue)
+        fields["music"] = CLIMusic.json(render.music?.entry)
         return success("export", fields: fields)
     }
 
@@ -382,7 +398,7 @@ enum CLIWorkflow {
                         captions: .init(overrides: project.captions.overrides, position: project.captions.position,
                                         positionByAspect: project.captions.positionByAspect),
                         words: translated(ClipEffects.maskingBleeps(plan.captions, effects: effects))
-                            .map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+                            .map { CaptionInputWord($0) })
                     try Task.checkCancellation()
                     let pipeline = try CaptionPipeline(shared: SharedResources.locate())
                     let layout = try await pipeline.layout(input: input, style: style)

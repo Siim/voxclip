@@ -60,7 +60,7 @@ import VoxClipCore
     static func scrollIfRequested(_ model: EditorModel, coordinator: Coordinator, in text: TranscriptNSTextView) {
         if coordinator.scopeScrollRevision != model.scopeScrollRevision {
             coordinator.scopeScrollRevision = model.scopeScrollRevision
-            let id = model.outlineScrollWordID ?? model.activeClip?.startWordId ?? model.words.first?.id
+            let id = model.outlineScrollWordID ?? model.activeClip?.playParts.first?.startWordId ?? model.words.first?.id
             if let id, let span = text.map.span(id: id) {
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = EditorAccessibilityPolicy.system.transcriptScrollDuration
@@ -896,23 +896,25 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     /// visible rect there; the visible part is always measured from laid-out lines.
     func updateBackdrop() {
         guard let backdrop else { return }
-        guard let renderer, let id = renderer.appearance?.activeClipID, let clip = renderer.clipMarks[id], clip.range.length > 0,
+        guard let renderer, let id = renderer.appearance?.activeClipID,
               let manager = textLayoutManager, let content = manager.textContentManager, let viewport = manager.textViewportLayoutController.viewportRange else {
             backdrop.show(nil, visible: visibleRect, width: bounds.width); return
         }
         let start = content.offset(from: content.documentRange.location, to: viewport.location)
         let end = content.offset(from: content.documentRange.location, to: viewport.endLocation)
-        let first = clip.range.location, last = NSMaxRange(clip.range) - 1
-        guard last >= start, first <= end else { backdrop.show(nil, visible: visibleRect, width: bounds.width); return }
         let visible = visibleRect, beyond = TranscriptBackdropView.margin * 2
-        let top = first >= start ? lineBox(atCharacter: first) : nil
-        let bottom = last <= end ? lineBox(atCharacter: last) : nil
-        let band = TranscriptBackdropView.Band(
-            top: top.map { $0.minY - TranscriptGutter.bandOverhang } ?? visible.minY - beyond,
-            bottom: bottom.map { $0.maxY + TranscriptGutter.bandOverhang } ?? visible.maxY + beyond,
-            barTop: top.map { $0.minY + TranscriptGutter.rangeBarInset }, barBottom: bottom.map { $0.maxY - TranscriptGutter.rangeBarInset },
-            suggested: clip.suggested)
-        backdrop.show(band, visible: visible, width: bounds.width)
+        let bands = renderer.marks(for: id).compactMap { clip -> TranscriptBackdropView.Band? in
+            let first = clip.range.location, last = NSMaxRange(clip.range) - 1
+            guard clip.range.length > 0, last >= start, first <= end else { return nil }
+            let top = first >= start ? lineBox(atCharacter: first) : nil
+            let bottom = last <= end ? lineBox(atCharacter: last) : nil
+            return TranscriptBackdropView.Band(
+                top: top.map { $0.minY - TranscriptGutter.bandOverhang } ?? visible.minY - beyond,
+                bottom: bottom.map { $0.maxY + TranscriptGutter.bandOverhang } ?? visible.maxY + beyond,
+                barTop: top.map { $0.minY + TranscriptGutter.rangeBarInset }, barBottom: bottom.map { $0.maxY - TranscriptGutter.rangeBarInset },
+                suggested: clip.suggested, partIndex: clip.partIndex)
+        }
+        backdrop.showBands(bands, visible: visible, width: bounds.width)
     }
     /// The centred box of the line holding the character at `offset`, in view coordinates.
     func lineBox(atCharacter offset: Int) -> CGRect? {

@@ -173,6 +173,8 @@ public struct MediaReference: Codable, Sendable, Equatable {
     public var durationSeconds: Double
     /// contentKey; doc/architecture.md §3; shared/schemas/project.schema.json
     public var contentKey: String
+    public var recordingHash: String?
+    public var footageKey: String { recordingHash ?? contentKey }
     /// video; doc/architecture.md §3; shared/schemas/project.schema.json
     public var video: MediaVideo?
     /// audio; doc/architecture.md §3; shared/schemas/project.schema.json
@@ -195,6 +197,7 @@ public struct MediaReference: Codable, Sendable, Equatable {
         case sizeBytes
         case durationSeconds
         case contentKey
+        case recordingHash
         case video
         case audio
     }
@@ -206,6 +209,7 @@ public struct MediaReference: Codable, Sendable, Equatable {
         self.sizeBytes = try values.decode(Int64.self, forKey: .sizeBytes)
         self.durationSeconds = try values.decode(Double.self, forKey: .durationSeconds)
         self.contentKey = try values.decode(String.self, forKey: .contentKey)
+        self.recordingHash = try values.decodeIfPresent(String.self, forKey: .recordingHash)
         self.video = try values.decode(Optional<MediaVideo>.self, forKey: .video)
         self.audio = try values.decode(Optional<MediaAudio>.self, forKey: .audio)
     }
@@ -217,6 +221,7 @@ public struct MediaReference: Codable, Sendable, Equatable {
         try values.encode(self.sizeBytes, forKey: .sizeBytes)
         try values.encode(self.durationSeconds, forKey: .durationSeconds)
         try values.encode(self.contentKey, forKey: .contentKey)
+        try values.encodeIfPresent(self.recordingHash, forKey: .recordingHash)
         try values.encode(self.video, forKey: .video)
         try values.encode(self.audio, forKey: .audio)
     }
@@ -227,29 +232,64 @@ public struct MediaReference: Codable, Sendable, Equatable {
 public struct ProjectMedia: Codable, Sendable, Equatable {
     /// source; doc/architecture.md §3; shared/schemas/project.schema.json
     public var source: MediaReference
+    public var additionalSources: [MediaReference]
+    public var footage: [ClipFootage]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(source: MediaReference) {
+    public init(source: MediaReference, additionalSources: [MediaReference] = [], footage: [ClipFootage] = []) {
         self.source = source
+        var seen = Set([source.footageKey])
+        self.additionalSources = additionalSources.filter { seen.insert($0.footageKey).inserted }
+        self.footage = footage
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source
+        case source, additionalSources, footage
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        self.source = try values.decode(MediaReference.self, forKey: .source)
+        self.init(source: try values.decode(MediaReference.self, forKey: .source),
+                  additionalSources: try values.decodeIfPresent([MediaReference].self, forKey: .additionalSources) ?? [],
+                  footage: try values.decodeIfPresent([ClipFootage].self, forKey: .footage) ?? [])
     }
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.source, forKey: .source)
+        if !additionalSources.isEmpty { try values.encode(additionalSources, forKey: .additionalSources) }
+        if !footage.isEmpty { try values.encode(footage, forKey: .footage) }
     }
 
 }
 
 /// doc/architecture.md §3; shared/schemas/project.schema.json
+public enum StoryClipKind: String, Codable, Sendable { case story, showreel }
+
+public struct ClipPart: Codable, Sendable, Equatable {
+    public var id: String
+    public var startWordId: String
+    public var endWordId: String
+    public var reframe: ReframeSettings?
+
+    public init(id: String, startWordId: String, endWordId: String, reframe: ReframeSettings? = nil) {
+        self.id = id
+        self.startWordId = startWordId
+        self.endWordId = endWordId
+        self.reframe = reframe
+    }
+}
+
+public struct ClipWordRange: Codable, Sendable, Equatable {
+    public var startWordId: String
+    public var endWordId: String
+
+    public init(startWordId: String, endWordId: String) {
+        self.startWordId = startWordId
+        self.endWordId = endWordId
+    }
+}
+
 public struct ClipRange: Codable, Sendable, Equatable {
     /// id; doc/architecture.md §3; shared/schemas/project.schema.json
     public var id: String
@@ -270,10 +310,19 @@ public struct ClipRange: Codable, Sendable, Equatable {
     /// Schema v4 only, omitted when nil: the clip opens this many seconds before its first word, in the silence before it
     /// (0 < s ≤ 0.6), never across the item before it ("Opens on a clear look at you", ADR-R48). `clipTimes` honours it.
     public var leadInSeconds: Double?
+    public var parts: [ClipPart]?
+    public var kind: StoryClipKind?
+
+    public var playParts: [ClipPart] {
+        if let parts, !parts.isEmpty { return parts }
+        return [ClipPart(id: id, startWordId: startWordId, endWordId: endWordId)]
+    }
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(id: String, startWordId: String, endWordId: String, title: String? = nil, origin: ClipOrigin = .manual, aiResultId: String? = nil, aiClipIndex: Int? = nil, selected: Bool = true, leadInSeconds: Double? = nil) {
+    public init(id: String, startWordId: String, endWordId: String, title: String? = nil, origin: ClipOrigin = .manual, aiResultId: String? = nil, aiClipIndex: Int? = nil, selected: Bool = true, leadInSeconds: Double? = nil, parts: [ClipPart]? = nil, kind: StoryClipKind? = nil) {
         self.leadInSeconds = leadInSeconds
+        self.parts = parts
+        self.kind = kind
         self.id = id
         self.startWordId = startWordId
         self.endWordId = endWordId
@@ -294,11 +343,15 @@ public struct ClipRange: Codable, Sendable, Equatable {
         case aiClipIndex
         case selected
         case leadInSeconds
+        case parts
+        case kind
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.leadInSeconds = try values.decodeIfPresent(Double.self, forKey: .leadInSeconds)
+        self.parts = try values.decodeIfPresent([ClipPart].self, forKey: .parts)
+        self.kind = try values.decodeIfPresent(StoryClipKind.self, forKey: .kind)
         self.id = try values.decode(String.self, forKey: .id)
         self.startWordId = try values.decode(String.self, forKey: .startWordId)
         self.endWordId = try values.decode(String.self, forKey: .endWordId)
@@ -320,6 +373,8 @@ public struct ClipRange: Codable, Sendable, Equatable {
         try values.encode(self.aiClipIndex, forKey: .aiClipIndex)
         try values.encode(self.selected, forKey: .selected)
         try values.encodeIfPresent(self.leadInSeconds, forKey: .leadInSeconds)
+        try values.encodeIfPresent(self.parts, forKey: .parts)
+        try values.encodeIfPresent(self.kind, forKey: .kind)
     }
 
 }
@@ -654,14 +709,18 @@ public struct ProjectAIClip: Codable, Sendable, Equatable {
     public var startWordId: String
     /// endWordId; doc/architecture.md §3; shared/schemas/project.schema.json
     public var endWordId: String
+    public var parts: [ClipWordRange]?
+    public var notInTake: String?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(title: String, reason: String, score: Int, startWordId: String, endWordId: String) {
+    public init(title: String, reason: String, score: Int, startWordId: String, endWordId: String, parts: [ClipWordRange]? = nil, notInTake: String? = nil) {
         self.title = title
         self.reason = reason
         self.score = score
         self.startWordId = startWordId
         self.endWordId = endWordId
+        self.parts = parts
+        self.notInTake = notInTake
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -670,6 +729,8 @@ public struct ProjectAIClip: Codable, Sendable, Equatable {
         case score
         case startWordId
         case endWordId
+        case parts
+        case notInTake
     }
 
     public init(from decoder: any Decoder) throws {
@@ -679,6 +740,8 @@ public struct ProjectAIClip: Codable, Sendable, Equatable {
         self.score = try values.decode(Int.self, forKey: .score)
         self.startWordId = try values.decode(String.self, forKey: .startWordId)
         self.endWordId = try values.decode(String.self, forKey: .endWordId)
+        self.parts = try values.decodeIfPresent([ClipWordRange].self, forKey: .parts)
+        self.notInTake = try values.decodeIfPresent(String.self, forKey: .notInTake)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -688,6 +751,8 @@ public struct ProjectAIClip: Codable, Sendable, Equatable {
         try values.encode(self.score, forKey: .score)
         try values.encode(self.startWordId, forKey: .startWordId)
         try values.encode(self.endWordId, forKey: .endWordId)
+        try values.encodeIfPresent(self.parts, forKey: .parts)
+        try values.encodeIfPresent(self.notInTake, forKey: .notInTake)
     }
 
 }
@@ -981,13 +1046,13 @@ public struct Project: Codable, Sendable, Equatable {
         self.clipEffects = try values.decodeIfPresent([ClipEffect].self, forKey: .clipEffects) ?? []
         self.clipControls = try values.decodeIfPresent([ProjectClipControls].self, forKey: .clipControls) ?? []
         self.captionTranslations = try values.decodeIfPresent([CaptionTranslation].self, forKey: .captionTranslations) ?? []
-        guard schemaVersion == 4 || (!values.contains(.contextDemo) && !values.contains(.motionCues)) else {
+        guard schemaVersion >= 4 || (!values.contains(.contextDemo) && !values.contains(.motionCues)) else {
             throw ContextDemoError.unsupportedVersion
         }
-        guard schemaVersion == 4 || !values.contains(.music) else { throw MusicProjectError.unsupportedVersion }
-        guard schemaVersion == 4 || !values.contains(.clipEffects) else { throw ClipEffectError.unsupportedVersion }
-        guard schemaVersion == 4 || !values.contains(.clipControls) else { throw ClipControlsProjectError.unsupportedVersion }
-        guard schemaVersion == 4 || !values.contains(.captionTranslations) else { throw CaptionTranslationError.unsupportedVersion }
+        guard schemaVersion >= 4 || !values.contains(.music) else { throw MusicProjectError.unsupportedVersion }
+        guard schemaVersion >= 4 || !values.contains(.clipEffects) else { throw ClipEffectError.unsupportedVersion }
+        guard schemaVersion >= 4 || !values.contains(.clipControls) else { throw ClipControlsProjectError.unsupportedVersion }
+        guard schemaVersion >= 4 || !values.contains(.captionTranslations) else { throw CaptionTranslationError.unsupportedVersion }
         try ContextDemoProject.validate(self)
         try MusicProject.validate(self)
         try ClipEffects.validate(self)

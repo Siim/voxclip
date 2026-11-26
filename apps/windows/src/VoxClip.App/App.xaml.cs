@@ -18,13 +18,9 @@ public partial class App : Application
     /// <summary>Initialize theme-aware WinUI resources.</summary>
     public App()
     {
+        UiError.FailureLog = StartupDiagnostics.Log;
         UnhandledException += (_, args) =>
         {
-#if DEBUG
-            // Native registered errors can have no managed stack. Preserve WinUI's
-            // explanation through the same redacting logger, without marking it handled.
-            StartupDiagnostics.Log.Write(Core.Services.Logging.LogLevel.Error, "startup", $"native={args.Message} projected={args.Exception.Message}");
-#endif
             StartupDiagnostics.Failure(args.Exception, "xaml");
         };
         InitializeComponent();

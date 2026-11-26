@@ -27,7 +27,8 @@ struct EditorRenderSnapshot {
     /// Told when a whole-clip voice plan is priced, so the smoke's scripted voice knows its windows.
     @ObservationIgnored var wholeClipPrepared: (@MainActor (ClipTakePlan) -> Void)?
     /// The Rewrite smoke's lip sync: the real run over a stood-in fal.ai (`LipsyncSmokeFalHTTP`), for every take plan.
-    @ObservationIgnored var lipsyncSmoke: (@MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, Bool,
+    @ObservationIgnored var lipsyncSmoke: (@MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, Bool, String?,
+                                                       @escaping @MainActor @Sendable (LipsyncQuote) -> Void,
                                                        @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult)?
     #endif
     var selectedWordIDs: Set<String> = [] {
@@ -41,6 +42,10 @@ struct EditorRenderSnapshot {
     }
     var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope() } } }
     var previewStop: Double?
+    var storyPartPlaybackEnd: Double?
+    var selectedStoryPartID: String?
+    var draggedStoryPartID: String?
+    var storyPartError: String?
     var playhead: Double = 0
     var sourceTime: Double = 0
     var isPlaying = false
@@ -81,6 +86,7 @@ struct EditorRenderSnapshot {
     var query = ""
     var textSize = DesignValues.transcriptTextSize
     var error: String?
+    var projectSaveNotice: String?
     var previewError: String?
     var captionError: String?
     var progress: String?
@@ -197,8 +203,10 @@ struct EditorRenderSnapshot {
     /// in R1, or in R0 when no AI is chosen. The open session on this tab sends again when it has the same scope;
     /// another scope replaces it. Text Rewrite needs no Voice Lab.
     func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil, verb: String = "Rewrite") {
+        if let reason = storyRewriteReason(for: requested ?? rewriteScopeNow) { announce(reason); return }
         let replacingPendingSend = sendConfirmation.isPresented
-        guard let scope = requested ?? rewriteScopeNow, RewriteEntryPolicy.canRun(editable: capabilities.edit && (capabilities.ai || replacingPendingSend), scope: scope) else { return }
+        guard !transcription.isRunning, let scope = requested ?? rewriteScopeNow,
+              RewriteEntryPolicy.canRun(editable: capabilities.edit && (capabilities.ai || replacingPendingSend), scope: scope) else { return }
         // A Rewrite of another scope replaces the open one: its unused or running paid work asks first, inline in that
         // Rewrite ("Start a new Rewrite and discard 3 paid takes (≈ $0.12)?"); the same scope sends again and asks there.
         if let open = openRewrite, open.asksBeforeClosing, replacingPendingSend || open.rewriteScope != scope {
@@ -277,7 +285,7 @@ struct EditorRenderSnapshot {
     static let rewriteUnavailableNotice = "Rewrite isn't available right now. Nothing was sent."
     static let rewriteStoppedNotice = "Rewrite didn't start. Nothing was sent. Press Rewrite again."
     /// Ends a Rewrite still getting ready without a notice: a close, or a send of the open session, replaced it.
-    private func cancelRewriteOpen() { rewriteOpenToken = nil; rewriteOpenTask?.cancel() }
+    func cancelRewriteOpen() { rewriteOpenToken = nil; rewriteOpenTask?.cancel() }
     /// Scope changes reword the single row and bind its approval to the newly displayed words, also headlessly.
     func refreshPendingSendScope() {
         guard sendConfirmation.isPresented, openRewrite != nil else { return }
@@ -316,9 +324,11 @@ struct EditorRenderSnapshot {
             if paid { session.discardWholeClipWork() }
             sendAgain(session, instruction: instruction, feedback: feedback)
         }
-        // With no change in the proposal (R3, a whole clip), the question names the paid work ("Start a new Rewrite and
-        // discard …?"); else the changes, as before.
-        if count == 0 { session.confirmDiscardPaidWork(.newRewrite, perform: send) } else { session.confirmDiscardChanges(perform: send) }
+        if count > 0 && (session.hasEditedChanges || session.hasPaidPatchWork || session.restoredTakesPending) {
+            session.confirmDiscardChanges(perform: send)
+        } else {
+            session.confirmDiscardPaidWork(.newRewrite, perform: send)
+        }
     }
     /// A next step's re-ask (an AI chip, Change fewer words or the free-text field) in `session`: only its phrases can
     /// change, so nothing else is discarded; paid takes still ask first, inline (RewriteNextSteps.swift).
@@ -342,7 +352,7 @@ struct EditorRenderSnapshot {
         let signature = rewriteConnectorSignature
         let provider = app.providers.first { $0.id == app.string("llm.connector") }
         let connector: RewriteConnector? = provider.map { (provider: ProviderChoice) -> RewriteConnector in
-            RewriteConnector(connector: app.connector(provider.id), model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""),
+            RewriteConnector(connector: app.connector(provider.id), model: app.effectiveModel(for: provider),
                 name: provider.shortName, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
         }
         let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
@@ -395,13 +405,14 @@ struct EditorRenderSnapshot {
     /// closes it then. Another question already up in it (a price, a provider to allow) stays, and the close waits for the
     /// creator. A session whose clip went away without Remove or Dismiss (an Undo, a run's own edit) shows on no tab to ask
     /// on, so it closes, and the status bar says what went with it. True when it closed (or nothing was open).
-    @discardableResult func closeRewrite(returnFocus: Bool = true) -> Bool {
+    @discardableResult func closeRewrite(returnFocus: Bool = true, onDiscard: (@MainActor () -> Void)? = nil) -> Bool {
         if let session = openRewrite, session.asksBeforeClosing, !closesUnasked {
             // A Rewrite still getting ready is replaced by this close, as before.
             cancelRewriteOpen()
             session.confirmDiscardPaidWork(.close) { [weak self, weak session] in
                 guard let self, let session, openRewrite === session else { return }
                 discardRewrite(returnFocus: returnFocus)
+                onDiscard?()
             }
             return false
         }
@@ -510,7 +521,7 @@ struct EditorRenderSnapshot {
         // An idle entry follows the active tab; only a render in flight keeps its
         // captured target regardless of where the user has navigated.
         let requestedIDs = clipIDs ?? activeClip.map { [$0.id] } ?? []
-        if !exporting && (!exportJob.isOpen || clipIDs != nil || exportJob.requestedIDs != requestedIDs) {
+        if !exporting && !exportJob.voxConvo.running && (!exportJob.isOpen || clipIDs != nil || exportJob.requestedIDs != requestedIDs) {
             exportJob.draft.commit(model: self)
             exportJob = ExportJobState()
             exports = []; exportDisclosureLines = [:]; exportError = nil
@@ -524,7 +535,7 @@ struct EditorRenderSnapshot {
         onPresentExport?()
     }
     func finishExportJob() {
-        guard !exporting else { return }
+        guard !exporting, !exportJob.voxConvo.running else { return }
         exportJob.draft.commit(model: self)
         exportJob.isOpen = false
         onFinishExport?()
@@ -534,7 +545,7 @@ struct EditorRenderSnapshot {
     var exportTotal: Int?
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
-    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { suspendWorkWithoutVideo() }; followWaveformKey() } }
     /// The video's check (as the project opens or reverts, or after its video changes) has answered, found or not. A
     /// video not resolved before then is only not checked yet, so Locate… and the read-only note wait for the answer
     /// rather than flash while a slow or external volume reads.
@@ -551,7 +562,20 @@ struct EditorRenderSnapshot {
     @ObservationIgnored let exportsFingerprintCache = ExportsFingerprintCache()
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
-    var mediaUnreadable = false { didSet { if mediaUnreadable { transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    var mediaUnreadable = false { didSet { if mediaUnreadable { suspendWorkWithoutVideo() }; followWaveformKey() } }
+
+    private func suspendWorkWithoutVideo() {
+        transcription.close()
+        sendConfirmation.cancel()
+        if let session = openRewrite {
+            let paid = session.hasUnusedPaidWork
+            if paid { session.persistPaidWork() }
+            let notice = "Rewrite closed because the video is unavailable." + (paid ? " \(session.paidWorkKept.kept)." : "")
+            rewriteNotice = notice
+            announce(notice)
+        }
+        discardRewrite(returnFocus: false)
+    }
     var canMoveCaptions: Bool {
         !document.demo && capabilities.captionPosition && !mediaUnreadable && (previewError == nil || !mediaResolved)
     }
@@ -583,6 +607,8 @@ struct EditorRenderSnapshot {
     var cutWordIDs: Set<String> = []
     var cutPauseIDs: Set<String> = []
     var scopeBounds: ClosedRange<Int>?
+    private(set) var scopePartBounds: [ClosedRange<Int>]?
+    private(set) var storyTimeline: StoryTimelineLayout?
     var editingAvailable = false
     var waveform: WaveformData?
     var waveformKey: WaveformCache.Key? {
@@ -642,6 +668,8 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
+    @ObservationIgnored var cardPlanConnector: CardPlanConnector?
+    @ObservationIgnored var onCardProjectChange: ((Project) -> Void)?
     @ObservationIgnored private var initialised = false
     /// This editor's lease on its project's cache entry, from `start` to `close` (architecture §8.2). Every editor holds
     /// its own, so a Versions window showing the same project never releases or moves the main window's lease.
@@ -801,9 +829,10 @@ struct EditorRenderSnapshot {
                 case .time(let edited, let source):
                     playhead = edited; sourceTime = source
                     if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
+                    if let stop = storyPartPlaybackEnd, edited >= stop { preview.pause(); storyPartPlaybackEnd = nil }
                 case .playing(let playing): isPlaying = playing
                 case .failed(let error, let reason):
-                    if let reason { await previewFailed(reason) } else { previewError = await app.safeError(error) }
+                    if let reason { await previewFailed(reason) } else { previewError = await app.safeError(error, context: .preview) }
                 case .frame: break
                 }
             }
@@ -812,6 +841,8 @@ struct EditorRenderSnapshot {
             do {
                 let url = try await resolveMediaIdentity()
                 var changed = project
+                document.importClock?.begin(.probe)
+                defer { document.importClock?.end(.probe) }
                 let probe = try await AVMediaProbe().probe(url)
                 if document.fileURL == nil {
                     changed.media.source.durationSeconds = probe.durationSeconds
@@ -821,7 +852,7 @@ struct EditorRenderSnapshot {
             } catch {
                 // The file resolved but its probe failed: it is there and can't be read.
                 mediaUnreadable = mediaResolved
-                previewError = await app.safeError(error)
+                previewError = await app.safeError(error, context: .preview)
             }
         }
         // The check has answered (a project without a video path has none to make).
@@ -842,6 +873,8 @@ struct EditorRenderSnapshot {
         sendConfirmation.cancel()
         discardRewrite(returnFocus: false)
         previewRevision &+= 1
+        claudeMode.armed = false
+        claudeMode.cancelFindContinuation()
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); waveformTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
         cacheLeaseEnded = true
@@ -863,6 +896,7 @@ struct EditorRenderSnapshot {
         app.openProjectKeys[previousProjectID] = nil
         // The project stays open while its video is checked again, even if it is missing (architecture §8.2).
         holdCacheEntry()
+        claudeMode.cancelFindContinuation()
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); updateTask?.cancel()
         preview.pause(); isPlaying = false; previewStop = nil
         history = nil
@@ -878,7 +912,7 @@ struct EditorRenderSnapshot {
             do {
                 _ = try await resolveMediaIdentity()
                 await updatePreview(load: true)
-            } catch is CancellationError {} catch { previewError = await app.safeError(error) }
+            } catch is CancellationError {} catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
     func editState() -> EditState? {
@@ -907,6 +941,12 @@ struct EditorRenderSnapshot {
         let editChanged = renderedEdits != edits
         guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedMusic != project.music || renderedClipControls != project.clipControls || renderedEdits == nil else { return }
         let clipsChanged = renderedEdits?.clips != edits.clips
+        if renderedEdits?.activeClipId != edits.activeClipId {
+            selectedStoryPartID = nil
+            draggedStoryPartID = nil
+            storyPartError = nil
+            storyPartPlaybackEnd = nil
+        }
         if transcribed != (project.transcript != nil) { transcribed = project.transcript != nil }
         projectRevision += 1
         scopeDurations.removeAll(keepingCapacity: true)
@@ -934,6 +974,7 @@ struct EditorRenderSnapshot {
         let activeClip = edits.clips.first { $0.id == edits.activeClipId }
         if let clip = activeClip, let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper { scopeBounds = lower...upper }
         else { scopeBounds = nil }
+        scopePartBounds = activeClip?.playPartIndices(in: words)
         fillerIDs = fillerCandidateIDs.subtracting(cutWordIDs).filter { id in
             guard let scopeBounds else { return true }
             return wordIndex[id].map(scopeBounds.contains) ?? false
@@ -966,12 +1007,19 @@ struct EditorRenderSnapshot {
                     planningWordIndex = Dictionary(uniqueKeysWithValues: segments.enumerated().filter { $0.element.kind == .word }.map { ($0.element.id, $0.offset) })
                 }
                 planningSegments = segments
-                plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: edits.pauseKeepSeconds)
+                let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+                if let clip = activeClip, clip.parts != nil {
+                    plan = try buildStoryPlan(state, clip: clip, duration: sourceDuration, sampleRate: rate)
+                } else {
+                    plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
+                }
             } else { planningSegments = nil; planningWordIndex = [:]; plan = Self.uncutPlan(duration: sourceDuration) }
         } catch {
             plan = nil; voiceLabPlan = nil
             previewError = UserMessages.message(error)
+            Task { await app.logFailure(error, context: .preview) }
         }
+        storyTimeline = StoryTimelineLayout(model: self)
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
         renderedContextDemo = project.contextDemo; renderedMotionCues = project.motionCues; renderedMusic = project.music; renderedClipControls = project.clipControls
@@ -1047,7 +1095,7 @@ struct EditorRenderSnapshot {
         openRewrite?.follow(changed, name: name)
         // A relink, or its undo or redo, may change the content key: the lease moves with the project.
         if mediaChanged { holdCacheEntry() }
-        recordDocumentChange()
+        if let onCardProjectChange { onCardProjectChange(changed) } else { recordDocumentChange() }
         error = nil
         refresh()
         schedulePreviewUpdate(mediaChanged: mediaChanged)
@@ -1064,7 +1112,7 @@ struct EditorRenderSnapshot {
                 }
                 try await Task.sleep(for: .milliseconds(150))
                 await updatePreview(load: mediaChanged)
-            } catch is CancellationError {} catch { previewError = await app.safeError(error) }
+            } catch is CancellationError {} catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
     #if DEBUG
@@ -1116,9 +1164,7 @@ struct EditorRenderSnapshot {
     /// open Rewrite closes as it does when the video goes missing.
     var mediaRelinkCandidate: MediaRelinkCandidate? {
         didSet {
-            if mediaRelinkCandidate != nil {
-                transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false)
-            }
+            if mediaRelinkCandidate != nil { suspendWorkWithoutVideo() }
         }
     }
     private var mediaRelinkRevision = 0
@@ -1134,7 +1180,7 @@ struct EditorRenderSnapshot {
                 guard revision == mediaRelinkRevision else { return }
                 await prepareMediaRelink(url: url, probe: probe)
             }
-            catch { if revision == mediaRelinkRevision { previewError = await app.safeError(error) } }
+            catch { if revision == mediaRelinkRevision { previewError = await app.safeError(error, context: .relink) } }
         }
     }
     func prepareMediaRelink(url: URL, probe: MediaProbeResult) async {
@@ -1142,6 +1188,10 @@ struct EditorRenderSnapshot {
         previewError = nil
         let revision = mediaRelinkRevision, base = project
         guard !isLeaving, !cacheLeaseEnded else { return }
+        let resume: @MainActor () -> Void = { [weak self] in
+            guard let self, revision == mediaRelinkRevision, project == base else { return }
+            Task { await self.prepareMediaRelink(url: url, probe: probe) }
+        }
         do {
             let next: Project
             do { next = try await app.projectStore.relink(base, to: url, probe: probe) }
@@ -1151,13 +1201,15 @@ struct EditorRenderSnapshot {
                     return
                 }
                 guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+                guard closeRewrite(returnFocus: false, onDiscard: resume) else { return }
                 mediaRelinkCandidate = MediaRelinkCandidate(url: url, probe: probe)
                 announce("This file looks different. Use it anyway? \(url.lastPathComponent)")
                 return
             }
             guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+            guard closeRewrite(returnFocus: false, onDiscard: resume) else { return }
             await applyMediaRelink(next)
-        } catch { previewError = await app.safeError(error) }
+        } catch { previewError = await app.safeError(error, context: .relink) }
     }
     /// Only the banner's explicit Use It action confirms different media.
     func confirmMediaRelink() async {
@@ -1183,7 +1235,7 @@ struct EditorRenderSnapshot {
             mediaRelinkCandidate = nil
             await applyMediaRelink(current)
         } catch {
-            if revision == mediaRelinkRevision { previewError = await app.safeError(error) }
+            if revision == mediaRelinkRevision { previewError = await app.safeError(error, context: .relink) }
         }
     }
     private func applyMediaRelink(_ next: Project) async {
@@ -1284,6 +1336,10 @@ struct EditorRenderSnapshot {
         apply(.updateClip(id: clip.id, startIndex: start ? min(upper, max(0, lower + offset)) : lower, endIndex: start ? upper : max(lower, min(words.count - 1, upper + offset))), name: "Nudge clip edge")
     }
     func setClipEdge(start: Bool) {
+        if activeClip?.parts != nil {
+            if let id = selectedIDs.first, let caret = index(id) { trimStoryPart(start: start, at: caret) }
+            return
+        }
         guard let clip = activeClip, let id = selectedIDs.first, let caret = index(id), let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return }
         guard start ? caret <= upper : caret >= lower else { return }
         apply(.updateClip(id: clip.id, startIndex: start ? caret : lower, endIndex: start ? upper : caret), name: "Set clip edge")
@@ -1311,6 +1367,12 @@ struct EditorRenderSnapshot {
         apply(.updateClip(id: clip.id, startIndex: nextStart, endIndex: nextEnd), name: "Trim clip")
     }
     func adjustTrim(start: Bool, offset: Int) {
+        if let parts = activeClip?.parts {
+            let part = parts[selectedStoryPartIndex]
+            guard let current = index(start ? part.startWordId : part.endWordId) else { return }
+            trimStoryPart(start: start, at: current + offset)
+            return
+        }
         guard let clip = activeClip, let current = index(start ? clip.startWordId : clip.endWordId) else { return }
         trimClip(clip, start: start, index: current + offset)
     }
@@ -1331,7 +1393,12 @@ struct EditorRenderSnapshot {
     }
     /// Moves the playhead to the active clip's first word.
     private func seekToActiveClip() {
-        if let clip = activeClip, let word = words.first(where: { $0.id == clip.startWordId }) { seek(source: word.start) }
+        guard let clip = activeClip else { return }
+        if clip.parts != nil, let timeline = renderTimeline, timeline.duration > 0 {
+            seek(source: timeline.sourceTime(0))
+        } else if let start = clip.playParts.first?.startWordId, let first = index(start) {
+            seek(source: words[first].start)
+        }
     }
     func moveClip(_ direction: Int) {
         guard !sortedClips.isEmpty else { return }
@@ -1449,8 +1516,9 @@ struct EditorRenderSnapshot {
     func editedDuration(_ clip: ClipRange?) -> Double {
         let key = clip?.id ?? "full"
         if let cached = scopeDurations[key] { return cached }
-        guard let state = editState(), let segments = try? buildSegments(state, activeClip: clip),
-              let plan = try? buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
+        guard let state = editState(),
+              let plan = try? EditPlan.build(transcript: state.transcript, editState: state, activeClip: clip, duration: sourceDuration,
+                                             sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000))
         else { return clip == nil ? sourceDuration : 0 }
         scopeDurations[key] = plan.duration
         return plan.duration
@@ -1470,7 +1538,8 @@ struct EditorRenderSnapshot {
     /// The source time of a scope's first kept word, where its thumbnail frame is taken.
     func firstKeptTime(_ clip: ClipRange?) -> Double? {
         let cut = Set(project.edits.cutWordIds)
-        let lower = clip.flatMap { index($0.startWordId) } ?? 0, upper = clip.flatMap { index($0.endWordId) } ?? words.count - 1
+        let opening = clip?.playParts.first
+        let lower = opening.flatMap { index($0.startWordId) } ?? 0, upper = opening.flatMap { index($0.endWordId) } ?? words.count - 1
         guard lower <= upper, upper < words.count else { return nil }
         return words[lower...upper].first { $0.kind == .word && !cut.contains($0.id) }?.start
     }
@@ -1532,10 +1601,11 @@ struct EditorRenderSnapshot {
         Task { [weak self] in
             guard let self else { return }
             do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source }
-            catch { previewError = await app.safeError(error) }
+            catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
     func transport(_ key: String, shift: Bool = false) {
+        storyPartPlaybackEnd = nil
         if [" ", "l", "p"].contains(key.lowercased()) { rewrite?.takePlan?.stopAudition() }
         // Saving an open correction pauses (`apply`), so Space and L toggle from the state before the save.
         let wasPlaying = isPlaying
@@ -1665,8 +1735,9 @@ struct EditorRenderSnapshot {
         if clip != nil && state == nil { throw VoxClipError.exportFailed("Clip transcript is unavailable") }
         let segments = try state.map { try buildSegments($0, activeClip: clip) }
         var plan = snapshot.plan
-        if target != nil || voiceLab != nil, let state, let segments {
-            plan = try buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
+        if target != nil || voiceLab != nil, let state {
+            plan = try EditPlan.build(transcript: state.transcript, editState: state, activeClip: clip, duration: project.media.source.durationSeconds,
+                                      sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000))
         }
         if state == nil, project.contextDemo != nil, case .legacy(let canonical) = try RenderCallerInputs.timeline(project: project) {
             plan = canonical
@@ -1685,7 +1756,8 @@ struct EditorRenderSnapshot {
         if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
         let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
             output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
-        return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root,
+        return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root.resolvingSymlinksInPath(),
+            shared: app.shared, resolveFootageURL: { JSONProjectStore.footageURL($0, beside: request.sourceURL) },
             reduceMotion: snapshot.reduceMotion, isCancelled: { Task.isCancelled })
     }
     func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,
@@ -1757,7 +1829,7 @@ struct EditorRenderSnapshot {
         } catch is CancellationError {} catch {
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             preview.close(); isPlaying = false; previewStop = nil
-            let message = await app.safeError(error)
+            let message = await app.safeError(error, context: .preview)
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             previewError = message
         }
@@ -1796,9 +1868,28 @@ extension EditorModel {
     func retryFindClips() {
         findClips(preset: lastFindRequest?.preset, instruction: lastFindRequest?.instruction)
     }
+
+    struct ClaudeDraft {
+        let transcript: Transcript
+        let request: InlineTranscription.ApprovedRun
+        let work: Task<Void, Never>
+    }
+
+    private func canSearchClaudeDraft(_ provider: ProviderChoice) -> Bool {
+        guard let connector = ConnectorID(rawValue: provider.id), case .inline(let amount) = app.llmSendKind(connector), amount.isEmpty else { return false }
+        return (provider.privacy != "thirdPartyCloud" && app.localServerHost(provider) == nil) || app.bool("llm.cloudConsent.\(provider.id)")
+    }
+
+    func findClipsOnDraft(_ transcript: Transcript, request: InlineTranscription.ApprovedRun) -> Task<Void, Never>? {
+        guard claudeModeWaitsForTranscript, let workTask, let provider = findConnector, canSearchClaudeDraft(provider),
+              findTask == nil, !sendConfirmation.isPresented else { return nil }
+        findClips(draft: ClaudeDraft(transcript: transcript, request: request, work: workTask))
+        return findTask
+    }
+
     /// Asks the chosen connector for clips with `preset` and `instruction`, the popover's when nil. They arrive as
     /// suggestions in one undo step.
-    func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil) {
+    func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil, draft: ClaudeDraft? = nil) {
         if sendConfirmation.isPresented {
             let pending = findTask, session = openRewrite
             sendConfirmation.cancel(); pending?.cancel(); closeRewrite(returnFocus: false)
@@ -1809,7 +1900,8 @@ extension EditorModel {
             }
             return
         }
-        guard capabilities.ai, let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
+        let canStart = draft == nil ? capabilities.ai : capabilities.writable && capabilities.media && !llmRuns.isBusy
+        guard canStart, let shared = app.shared, let transcript = draft?.transcript ?? project.transcript, let provider = findConnector else { return }
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
         let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
@@ -1819,23 +1911,41 @@ extension EditorModel {
         lastFindRequest = (selectedPreset, instructions)
         let snapshot = project
         do {
-            guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
+            guard self.project == snapshot, self.app.string("llm.connector") == provider.id,
                   self.app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "") == selectedModel,
                   self.rewriteConnectorSignature == selectedSignature,
                   let lease = self.llmRuns.acquire() else { return }
             let runs = self.llmRuns
-            let connector = self.app.connector(provider.id)
+            let connector: any LLMConnector = cardPlanConnector.map { $0 as any LLMConnector } ?? app.connector(provider.id)
+            if claudeMode.findNeedsAction || claudeMode.afterFind != nil {
+                claudeMode.cancelFindContinuation()
+                if claudeMode.armed, claudeModeOn { claudeMode.phase = .waiting }
+            }
+            claudeMode.findNeedsAction = false
             self.findTask?.cancel(); self.showAISetup = false
+            if draft != nil { claudeMode.clock?.begin(.find) }
             self.findTask = Task { [self] in
-                defer { self.finding = false; runs.release(lease) }
+                var outcome = ClaudeModeFindOutcome.cancelled
+                defer {
+                    finding = false
+                    runs.release(lease)
+                    claudeModeFindEnded(outcome)
+                }
                 do {
                     // The route comes first (design §6.2: the consent, then "while it runs"); only the lease is held. A
                     // declined send leaves the sidebar, the last error and the fallback note as they were and announces
                     // nothing, and no "Finding clips…" row shows behind a sheet.
-                    guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
+                    let authorized = if let cardPlanConnector { cardPlanConnector.isCurrent } else { try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
                         wordCount: transcript.words.filter { $0.kind == .word }.count, rewrite: selectedPreset == .hooks ? DirectorScope(kind: .fullTake, wordCount: transcript.words.filter { $0.kind == .word }.count) : nil, confirmation: sendConfirmation, verb: selectedPreset == .hooks ? "Hook" : nil, isCurrent: { [self] in
-                            !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
-                        }) else { return }
+                            let current = project == snapshot || (draft?.request.confirmedTranscript != nil && project.transcript == draft?.request.confirmedTranscript)
+                            return !isLeaving && current && rewriteConnectorSignature == selectedSignature && (draft == nil || canSearchClaudeDraft(provider))
+                        }) }
+                    guard authorized else {
+                            if let draft { await draft.work.value }
+                            if !Task.isCancelled, project == snapshot, rewriteConnectorSignature == selectedSignature { outcome = .needsApproval }
+                            else if draft != nil, !Task.isCancelled, capabilities.edit { outcome = .needsApproval }
+                            return
+                        }
                     finding = true; clipError = nil; fallbackNote = nil
                     onNeedsSidebar?()
                     announce("Finding clips")
@@ -1843,14 +1953,37 @@ extension EditorModel {
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
                     guard let preset = presets.first(where: { $0.id == selectedPreset }) else { throw ClipFinderGateError.needInstructions(message: "Choose a clip preset.") }
-                    let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                    var result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                    if let draft {
+                        claudeMode.clock?.end(.find)
+                        await draft.work.value
+                        try Task.checkCancellation()
+                        guard claudeModeWaitsForTranscript, let confirmed = draft.request.confirmedTranscript, project.transcript == confirmed,
+                              project.edits.corrections == corrections, Set(project.edits.cutWordIds) == cuts,
+                              rewriteConnectorSignature == selectedSignature else { return }
+                        result = try Self.confirmDraftRanges(result, from: transcript, with: confirmed, preset: preset)
+                        if result.clips.isEmpty {
+                            guard canSearchClaudeDraft(provider) else { outcome = .needsApproval; return }
+                            claudeMode.clock?.begin(.find)
+                            result = try await finder.find(ClipFinderRequest(transcript: confirmed, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                            guard project.transcript == confirmed, rewriteConnectorSignature == selectedSignature else { return }
+                        }
+                    }
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
-                    guard project.transcript == transcript else { return }
-                    guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; claudeModeFindEnded(); return }
+                    let publishable = draft?.request.confirmedTranscript ?? transcript
+                    guard !Task.isCancelled, project.transcript == publishable else { return }
+                    outcome = .finished
+                    guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
                     var next = project
                     next.ai.results.append(result)
-                    let ranges = result.clips.enumerated().map { position, clip in ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId, title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position) }
+                    let ranges = result.clips.enumerated().map { position, clip in
+                        let parts = clip.parts?.enumerated().map { index, part in
+                            ClipPart(id: "part-\(index + 1)", startWordId: part.startWordId, endWordId: part.endWordId)
+                        }
+                        return ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId,
+                                         title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position, parts: parts)
+                    }
                     // One undo step: the result arrives as suggestions, not kept clips.
                     guard capabilities.edit, let state = editState() else { return }
                     if history?.state != state { history = EditHistory(state: state) }
@@ -1864,18 +1997,57 @@ extension EditorModel {
                     // The first new suggestion in transcript order is focused, not selected
                     // (design §6.2): the scope, playhead, Export and status summary stay.
                     focusedSuggestion = added.min { (index($0.startWordId) ?? .max) < (index($1.startWordId) ?? .max) }?.id
-                    fallbackNote = usedFallback ? "Answered by \(result.model) because \(selectedModel) was busy." : nil
+                    let codexFallback = provider.id == "codex" ? app.codexFallbackMessage(for: selectedModel) : nil
+                    fallbackNote = usedFallback ? codexFallback ?? "Answered by \(result.model) because \(selectedModel) was busy." : nil
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
-                    // Claude mode on a newly opened video goes straight on (ClaudeMode.swift).
-                    claudeModeFindEnded()
-                } catch is CancellationError { claudeModeFindEnded() } catch LLMError.cancelled { claudeModeFindEnded() } catch VoxClipError.cancelled { claudeModeFindEnded() } catch {
-                    let message = await app.safeError(error, context: "ai:\(provider.label)")
+                } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
+                    if let draft {
+                        claudeMode.clock?.end(.find)
+                        await draft.work.value
+                        guard project.transcript == draft.request.confirmedTranscript, draft.request.confirmedTranscript != nil else { return }
+                    }
+                    guard !Task.isCancelled else { return }
+                    let message = await app.safeError(error, context: .llm, messageContext: "ai:\(provider.label)")
+                    guard !Task.isCancelled else { return }
                     // A connector that is not ready fails in the route, before the run revealed the sidebar.
                     if !message.isEmpty { clipError = message; fallbackNote = nil; onNeedsSidebar?() }
-                    claudeModeFindEnded()
+                    outcome = .failed(error, connectorSignature: selectedSignature)
                 }
             }
         }
+    }
+
+    private nonisolated static func confirmDraftRanges(_ result: ProjectAIResult, from draft: Transcript, with confirmed: Transcript,
+                                                       preset: ClipPreset) throws -> ProjectAIResult {
+        var updated = result
+        updated.language = confirmed.language
+        if let firstLanguage = draft.language, let finalLanguage = confirmed.language,
+           SpeechText.primaryLanguage(firstLanguage) != SpeechText.primaryLanguage(finalLanguage) {
+            updated.clips = []
+            return updated
+        }
+        let draftByID = Dictionary(draft.words.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let spoken = confirmed.words.indices.filter { confirmed.words[$0].kind == .word }
+        func boundary(_ time: Double, at edge: KeyPath<TimedWord, Double>) -> Int? {
+            guard let nearest = spoken.min(by: { abs(confirmed.words[$0][keyPath: edge] - time) < abs(confirmed.words[$1][keyPath: edge] - time) }),
+                  abs(confirmed.words[nearest][keyPath: edge] - time) <= 1 else { return nil }
+            return nearest
+        }
+        let candidates: [ClipCandidate] = result.clips.compactMap { clip in
+            let parts = (clip.parts ?? [.init(startWordId: clip.startWordId, endWordId: clip.endWordId)]).compactMap { part -> ClipCandidatePart? in
+                guard let first = draftByID[part.startWordId], let last = draftByID[part.endWordId],
+                      let start = boundary(first.start, at: \.start), let end = boundary(last.end, at: \.end), start <= end else { return nil }
+                return .init(startWord: Double(start), endWord: Double(end))
+            }
+            guard let first = parts.first else { return nil }
+            let title = confirmed.words[Int(first.startWord)...Int(first.endWord)].lazy.filter { $0.kind == .word }.prefix(6).map(\.text).joined(separator: " ")
+            return ClipCandidate(title: title, reason: "Suggested moment", score: Double(clip.score), parts: parts, notInTake: clip.notInTake)
+        }
+        let validated = try finalizeClips(candidates, words: confirmed.words, preset: preset, lines: [], options: FinalizeClipsOptions(snap: false))
+        updated.clips = validated.map { ProjectAIClip(title: $0.title, reason: $0.reason, score: $0.score,
+                                                       startWordId: confirmed.words[$0.startWord].id, endWordId: confirmed.words[$0.endWord].id,
+                                                       parts: $0.parts?.map { .init(startWordId: confirmed.words[$0.lowerBound].id, endWordId: confirmed.words[$0.upperBound].id) }, notInTake: $0.notInTake) }
+        return updated
     }
 }
 

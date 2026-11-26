@@ -16,4 +16,8 @@ public enum RenderTimeline: Sendable, Equatable {
     public func mapTime(_ source: Double) -> Double {
         switch self { case .legacy(let plan): plan.mapTime(source); case .voiceLab(let plan): plan.mapTime(source) }
     }
+    /// A half-open range ends on the source piece to its left, which may play later than its neighbour.
+    public func mapEndTime(_ source: Double) -> Double {
+        switch self { case .legacy(let plan): plan.mapTime(source, end: true); case .voiceLab(let plan): plan.mapTime(source, end: true) }
+    }
 }

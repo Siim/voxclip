@@ -38,6 +38,45 @@ public sealed class ClipEffectsWireTests
     public void FormatIsItsOwnFile() => Assert.Equal("voxclip-clip-effects-wire-cases/1", Cases()["format"]!.GetValue<string>());
 
     [Fact]
+    public void CompanionRecordingsRoundTripAndBadPlacementsAreRejected()
+    {
+        var vectors = JsonNode.Parse(FixtureLoader.ReadText("fixtures/clip-effects/footage-project-cases.json"))!;
+        var document = Fixture();
+        var media = document["media"]!;
+        media["source"]!["recordingHash"] = vectors["recordingHash"]!.DeepClone();
+        media["additionalSources"] = new JsonArray(vectors["companion"]!.DeepClone());
+        media["footage"] = vectors["valid"]!.DeepClone();
+        var project = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.True(JsonNode.DeepEquals(media, JsonNode.Parse(ProjectSerialization.Serialize(project))!["media"]));
+        foreach (var invalid in vectors["invalid"]!.AsArray())
+        {
+            var placements = media["footage"]!.AsArray();
+            placements.Add(invalid!.DeepClone());
+            Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+            placements.RemoveAt(placements.Count - 1);
+        }
+        media["additionalSources"]!.AsArray().Add(vectors["companion"]!.DeepClone());
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        media["additionalSources"]!.AsArray().RemoveAt(1);
+        var edited = media["footage"]!.AsArray();
+        foreach (var placement in vectors["v6Valid"]!.AsArray()) edited.Add(placement!.DeepClone());
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        document["schemaVersion"] = 6;
+        var editedProject = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.True(JsonNode.DeepEquals(media, JsonNode.Parse(ProjectSerialization.Serialize(editedProject))!["media"]));
+        var firstEdit = project with { Media = project.Media with {
+            Footage = project.Media.Footage!.Select(placement => placement with { FadeInSeconds = 0 }).ToArray()
+        } };
+        Assert.Equal(6, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(firstEdit)).SchemaVersion);
+        foreach (var invalid in vectors["v6Invalid"]!.AsArray())
+        {
+            edited.Add(invalid!.DeepClone());
+            Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+            edited.RemoveAt(edited.Count - 1);
+        }
+    }
+
+    [Fact]
     public void MacProjectsWithEffectsOpenValidateAndSaveUnchanged()
     {
         foreach (var item in Cases()["valid"]!.AsArray())
@@ -45,7 +84,7 @@ public sealed class ClipEffectsWireTests
             var id = item!["id"]!.GetValue<string>();
             var input = Applied(item);
             var project = ProjectSerialization.Deserialize(input.ToJsonString());
-            Assert.Equal(4, project.SchemaVersion);
+            Assert.Equal(input["schemaVersion"]!.GetValue<int>(), project.SchemaVersion);
             var encoded = ProjectSerialization.Serialize(project);
             Assert.Equal(encoded, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(encoded)));
             var saved = JsonNode.Parse(encoded)!.AsObject();
@@ -71,7 +110,7 @@ public sealed class ClipEffectsWireTests
     {
         var project = ProjectSerialization.Deserialize(Fixture().ToJsonString());
         VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
-        Assert.Equal(12, project.ClipEffects.Count);
+        Assert.Equal(15, project.ClipEffects.Count);
         var typed = project.ClipEffects.Select(ClipEffect.Parse).ToArray();
         Assert.Equal(project.ClipEffects.Select(effect => effect.GetProperty("id").GetString()), typed.Select(effect => effect.Id));
         // Censor kinds render everywhere; the others only in their own clip, or the full video for a null clip (ai.md §18.5).

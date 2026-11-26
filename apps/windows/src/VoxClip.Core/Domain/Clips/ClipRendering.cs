@@ -8,14 +8,68 @@ namespace VoxClip.Core.Domain.Clips;
 /// compositor multiplies a rendered frame time back before it looks anything up.</summary>
 public readonly record struct ClipSpeedTiming
 {
+    /// <summary>An edited span with a specific playback rate.</summary>
+    /// <param name="Start">Inclusive edited start.</param>
+    /// <param name="End">Exclusive edited end.</param>
+    /// <param name="Rate">Effective playback rate.</param>
+    public readonly record struct Span(double Start, double End, double Rate);
+
     /// <summary>A finite positive speed; anything else plays at 1×.</summary>
-    public ClipSpeedTiming(double speed) => Speed = double.IsFinite(speed) && speed > 0 ? speed : 1;
+    public ClipSpeedTiming(double speed, IEnumerable<Span>? overrides = null)
+    {
+        var baseline = double.IsFinite(speed) && speed > 0 ? speed : 1;
+        Speed = baseline;
+        var valid = overrides?.Where(span => double.IsFinite(span.Start) && double.IsFinite(span.End) &&
+            span.End > span.Start && span.Rate is >= 0.5 and <= 2).ToArray() ?? [];
+        var boundaries = valid.SelectMany(span => new[] { span.Start, span.End }).Distinct().Order().ToArray();
+        Spans = boundaries.Zip(boundaries.Skip(1), (start, end) => new Span(start, end,
+            valid.LastOrDefault(span => span.Start <= start && span.End >= end, new(0, 0, baseline)).Rate))
+            .Where(span => span.Rate != baseline).ToArray();
+    }
     /// <summary>The playback rate.</summary>
     public double Speed { get; }
+    /// <summary>Map source-anchored speed spans onto the kept timeline.</summary>
+    public static ClipSpeedTiming ForEffects(double speed, Func<double, double> mapTime, IEnumerable<ClipEffect> effects) =>
+        ForEffects(speed, mapTime, effects, mapTime);
+
+    /// <summary>Map speed ranges with the render's half-open end lookup.</summary>
+    public static ClipSpeedTiming ForEffects(double speed, Func<double, double> mapTime, IEnumerable<ClipEffect> effects, Func<double, double> mapEndTime) =>
+        new(speed, effects.Where(effect => effect.Kind == "speedForPart" && effect.Rate.HasValue)
+            .Select(effect => new Span(mapTime(effect.Start), mapEndTime(effect.End), effect.Rate!.Value)));
+    /// <summary>Non-overlapping deviations from the default speed.</summary>
+    public IReadOnlyList<Span> Spans { get; }
+
+    /// <summary>The consecutive constant-rate segments in an edited range.</summary>
+    public IEnumerable<Span> Segments(double from, double through)
+    {
+        var intervals = Spans;
+        var baseline = Speed;
+        var boundaries = intervals.SelectMany(span => new[] { span.Start, span.End })
+            .Where(time => from < time && time < through).Append(from).Append(through).Distinct().Order().ToArray();
+        return boundaries.Zip(boundaries.Skip(1), (start, end) => new Span(start, end,
+            intervals.FirstOrDefault(span => span.Start <= start && span.End >= end, new(0, 0, baseline)).Rate));
+    }
     /// <summary>Rendered seconds for an edited time.</summary>
-    public double Rendered(double edited) => Speed == 1 ? edited : edited / Speed;
+    public double Rendered(double edited)
+    {
+        var time = edited / Speed;
+        foreach (var span in Spans) time += Math.Max(0, Math.Min(span.End, edited) - span.Start) * (1 / span.Rate - 1 / Speed);
+        return time;
+    }
     /// <summary>Edited seconds for a rendered time.</summary>
-    public double Edited(double rendered) => Speed == 1 ? rendered : rendered * Speed;
+    public double Edited(double rendered)
+    {
+        var correction = 0.0;
+        foreach (var span in Spans)
+        {
+            var start = span.Start / Speed + correction;
+            if (rendered <= start) break;
+            var length = (span.End - span.Start) / span.Rate;
+            if (rendered < start + length) return span.Start + (rendered - start) * span.Rate;
+            correction += length - (span.End - span.Start) / Speed;
+        }
+        return (rendered - correction) * Speed;
+    }
     /// <summary>The rendered sample count of <paramref name="samples"/> edited samples.</summary>
     public long RenderedSamples(long samples) => Speed == 1 ? samples : (long)Math.Round(samples / Speed, MidpointRounding.AwayFromZero);
 }

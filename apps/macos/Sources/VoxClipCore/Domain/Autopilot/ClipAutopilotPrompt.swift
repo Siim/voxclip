@@ -81,6 +81,7 @@ public struct ClipAutopilotPrompt: Sendable {
     public let system: String
     /// The series' first stage: picking the moments.
     public let momentsSystem: String
+    let shapeInstructions: String
     public let limits: ClipAutopilotLimits
     public let defaults: ClipAutopilotDefaults
     /// The looks in the order the prompt lists them; the same set as `ClipAutopilotPlan.LookID`.
@@ -89,6 +90,7 @@ public struct ClipAutopilotPrompt: Sendable {
     public let schema: JSONValue
     public let momentsSchemaName: String
     public let momentsSchema: JSONValue
+    public let stickers: Set<String>
     public let clipOutputTokens: Int
     public let momentsOutputTokens: Int
     public let minimumTimeout: Duration
@@ -100,10 +102,10 @@ public struct ClipAutopilotPrompt: Sendable {
 
     public init(shared: SharedResources) throws {
         let read = try VoiceLabLLMChecks.readPrompt(shared, Self.path)
-        try self.init(document: read.document, sha256: read.sha256)
+        try self.init(document: read.document, sha256: read.sha256, stickers: AskClaudePrompt.load(shared: shared).stickers)
     }
 
-    init(document: JSONValue, sha256: String) throws {
+    init(document: JSONValue, sha256: String, stickers: Set<String> = []) throws {
         guard document[ai: "schemaVersion"].aiInt == 2, let version = document[ai: "promptVersion"].aiInt, version >= 1,
               let name = document[ai: "schemaName"].aiString, let momentsName = document[ai: "momentsSchemaName"].aiString,
               CanonicalResponseParser.validateSchemaSubset(document[ai: "schema"]),
@@ -133,13 +135,15 @@ public struct ClipAutopilotPrompt: Sendable {
         guard Set(looks) == Set(ClipAutopilotPlan.LookID.allCases) else { throw VoxClipError.sharedResourcesMissing }
         var templateValues = limits.templateValues
         templateValues["looks"] = lookLines.joined(separator: "\n")
+        templateValues["effectStickers"] = stickers.sorted().joined(separator: " ")
+        self.stickers = stickers
         let directional = document[ai: "directionalZooms"]
         var schema = document[ai: "schema"]
         var zoomSection: String?
         var clipVersion = version
         if directional != .null {
             let direction = directional[ai: "directionSchema"]
-            guard let newVersion = directional[ai: "promptVersion"].aiInt, newVersion > version,
+            guard let newVersion = directional[ai: "promptVersion"].aiInt, newVersion > 0,
                   let section = directional[ai: "section"].aiString, !section.isEmpty,
                   direction[ai: "type"].aiString == "string",
                   Set(direction[ai: "enum"].aiArray.compactMap(\.aiString)) == Set(ClipAutopilotPlan.Zoom.Direction.allCases.map(\.rawValue)),
@@ -153,7 +157,7 @@ public struct ClipAutopilotPrompt: Sendable {
             root["properties"] = .object(properties)
             schema = .object(root)
             guard CanonicalResponseParser.validateSchemaSubset(schema) else { throw VoxClipError.sharedResourcesMissing }
-            clipVersion = newVersion
+            clipVersion = max(version, newVersion)
             zoomSection = section
             templateValues["minDirectionalZoomSeconds"] = String(ClipAutopilotPlan.Zoom.minimumDirectionalSeconds)
             templateValues["maxDirectionalZoomSeconds"] = String(Int(ClipAutopilotPlan.Zoom.maximumDirectionalSeconds))
@@ -165,6 +169,7 @@ public struct ClipAutopilotPrompt: Sendable {
         self.sha256 = sha256
         self.system = try Self.system(document, "plan", templateValues, zoomSection: zoomSection)
         self.momentsSystem = try Self.system(document, "moments", templateValues)
+        self.shapeInstructions = document[ai: "sections"][ai: "shapes"].aiString ?? ""
         self.limits = limits
         self.defaults = ClipAutopilotDefaults(styleID: style, font: .init(family: family, weight: weight), textCase: textCase,
                                               wordsPerCaption: words, underVoiceDb: under, zoomScale: scale, score: score)

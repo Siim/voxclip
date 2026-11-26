@@ -13,6 +13,24 @@ namespace VoxClip.Core.Tests.Tracks.ExportChecks;
 /// <c>ExportCheckExpectationTests</c>.</summary>
 public sealed class ExportCheckExpectationTests
 {
+    [Fact]
+    public void StorySeamPassesUnlessTheNextPartLosesItsFirstWord()
+    {
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/story-clips/story-project.voxclip"));
+        var timeline = RenderCallerInputs.Timeline(project, project.Edits.ActiveClipId);
+        var edit = ExportCheckExpectation.Make(timeline, new ClipSpeedTiming(1), [], EditingEngine.FromProject(project), timeline.Duration);
+        var seam = Assert.Single(edit.Cuts);
+        var next = edit.Words.ToList().FindIndex(word => word.Start >= seam);
+        Assert.InRange(next, 1, edit.Words.Count - 2);
+        var heard = edit.Words.Select(word => new ExportCheckHeard(word.Text, word.Start, word.End)).ToList();
+        var input = new ExportCheckInput(edit.Words, heard, new(0, edit.Duration), new(0, edit.Duration), 1.0 / 30, null, new(320, 180)) { Cuts = edit.Cuts };
+        Assert.True(ExportCheck.Run(input).Passed);
+        heard.RemoveAt(next);
+        var result = Assert.IsType<ExportCheckResult>(ExportCheck.Run(input)[ExportCheckKind.Words]);
+        Assert.Equal(ExportCheckStatus.Warning, result.Status);
+        Assert.Contains(result.Items, item => item.Kind == ExportCheckItemKind.CutOff && item.Expected == edit.Words[next].Text);
+    }
+
     /// <summary>"So um, today we ship uh the clipper. Thanks" with a Rewrite of "we ship" as "new words" (segment vl-passage).</summary>
     static Project Passage() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip"));
 

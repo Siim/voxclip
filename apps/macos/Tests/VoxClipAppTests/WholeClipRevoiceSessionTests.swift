@@ -15,6 +15,26 @@ private struct FalKeyOnly: ProviderKeyStore {
 /// edited, the shorter-only reword round and its check before paying, Cancel and failure keeping the clip, Try Again and the
 /// sync-3 upgrade never paying a step twice, Review's Use and Undo.
 @Suite(.serialized) @MainActor struct WholeClipRevoiceSessionTests {
+    @Test func storyClipVoiceActionsAreDisabledBeforeAnyVoicePreparation() throws {
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        let words = try #require(project.transcript?.words)
+        try #require(words.count >= 9)
+        let parts = [ClipPart(id: "late", startWordId: words[7].id, endWordId: words[8].id),
+                     ClipPart(id: "early", startWordId: words[3].id, endWordId: words[4].id),
+                     ClipPart(id: "earliest", startWordId: words[0].id, endWordId: words[1].id)]
+        try project.applyEditing(.addClip(ClipRange(id: "story", startWordId: words[0].id, endWordId: words[8].id, parts: parts)))
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let rewrite = RewriteSession(editor: editor, scope: .clip("story"), envelope: nil, connector: nil)
+        let reason = "Lip sync can't run across the 2 seams of a story clip yet. Make a clip of the part first."
+        #expect(rewrite.wholeClipUnavailable == reason)
+        #expect(rewrite.wholeClipPrimaryUnavailable == reason)
+        #expect(rewrite.changedPhrasesUnavailable == "Voice changes work on one part at a time. Make a clip of the part first.")
+        #expect(rewrite.wholeClipPrimary() == nil)
+    }
+
     @MainActor final class Stubs {
         var voices: [String] = []
         var lipsyncs: [WholeClipRevoice.Lipsync] = []
@@ -38,6 +58,7 @@ private struct FalKeyOnly: ProviderKeyStore {
         /// Thrown by the lip sync itself (a job or its preparation).
         var lipsyncError: (any Error)?
         var lipsyncFactors: [Double] = []
+        var quotedModels: [WholeClipRevoice.Lipsync] = []
         /// The lip sync re-imported this billed attempt's kept result (nothing new paid).
         var recoveredRequest: String?
         /// The order the paid and free steps ran in.
@@ -47,14 +68,12 @@ private struct FalKeyOnly: ProviderKeyStore {
         /// Thrown by the free checks before a voice is paid (the source within the lip sync's limits).
         var preflightError: (any Error)?
         var preflights = 0
-        /// The real currency of what the voice is made from (`RewriteSession.wholeClipInputsCurrency`): the Fit step's
+        /// The scope guard for what the voice is made from (`RewriteSession.wholeClipInputsStillCurrent`): the Fit step's
         /// picture stops as the live one does once it is false.
         var isCurrent: (@MainActor () -> Bool)?
         /// The lip syncs applied to the parts, as the live plan holds them, when a test follows them.
         var tracksApplied = false
         var applied: [Int: RewriteLipsyncSession.Applied] = [:]
-        /// Thrown by a sync-3 lip sync after it took lipsync-2 off the parts, as the live step does while it runs.
-        var sync3Error: (any Error)?
         /// Restores refused (the live plan's offer can't be made again).
         var refuseRestore = false
         var restores = 0
@@ -94,7 +113,7 @@ private struct FalKeyOnly: ProviderKeyStore {
         let output = VoiceLabOutputPlan(sampleRate: 48_000, totalSourceSamples: 480_000, pieces: [piece], captions: [], scope: .full)
         let source = try LipsyncWindow.make(seamIn: 96_000, seamOut: 144_000, totalSamples: 480_000, sampleRate: 48_000, phraseID: 0)
         let window = try LipsyncRenderWindow(source: source, plan: output)
-        let usd: Decimal = model == .sync3 ? Decimal(string: "4.13")! : Decimal(string: "1.55")!
+        let usd: Decimal = Decimal(string: "1.55")!
         let estimate = CostEstimate(provider: "fal", operation: "lipsync", units: 3, unit: "second", usd: usd, basis: "fixture")
         let asset = VoiceLabVideoAsset(id: "asset-" + model.name, file: "fixture.mp4", sha256: String(repeating: "a", count: 64),
             durationSeconds: 3, frameRate: 30, width: 320, height: 180)
@@ -122,14 +141,21 @@ private struct FalKeyOnly: ProviderKeyStore {
         let editor: EditorModel
         let rewrite: RewriteSession
     }
-    private func live(_ edit: (inout Project) -> Void = { _ in }) throws -> Live {
+    private func live(ready: Bool = false, _ edit: (inout Project) -> Void = { _ in }) throws -> Live {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
         edit(&project)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-whole-clip-" + UUID().uuidString, isDirectory: true)
         let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
         let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
-        return Live(root: root, editor: editor, rewrite: RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: nil, connector: nil))
+        let envelope = ready ? AudioEnvelope(sampleRate: 1_000, levels: Array(repeating: 0.1, count: 700)) : nil
+        if ready {
+            app.settings.values["voiceLab.enabled"] = .bool(true)
+            app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+            editor.mediaResolved = true
+            editor.refresh()
+        }
+        return Live(root: root, editor: editor, rewrite: RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: envelope, connector: nil))
     }
     private func close(_ live: Live) {
         live.editor.close()
@@ -141,8 +167,9 @@ private struct FalKeyOnly: ProviderKeyStore {
 
     static func backend(_ stubs: Stubs) -> WholeClipRevoiceSession.Backend {
         let script = Self.script
-        return .init(script: { script }, quote: { script, _ in
-            .init(clipNumber: 7, clipSeconds: 31, spokenWords: script.words, reason: .manyWords(revoiced: 4, spoken: 7), patchUSD: Decimal(string: "0.1"),
+        return .init(script: { script }, quote: { script, model in
+            stubs.quotedModels.append(model)
+            return .init(clipNumber: 7, clipSeconds: 31, spokenWords: script.words, reason: .manyWords(revoiced: 4, spoken: 7), patchUSD: Decimal(string: "0.1"),
                   phrases: 2, voiceUSD: stubs.quoteVoiceUSD?(script) ?? Decimal(string: "0.06"), lipsyncUSD: Decimal(string: "1.55"),
                   voiceName: "siim · DJI 0011", voiceNote: "matched to this video")
         }, voice: { script, progress in
@@ -166,11 +193,6 @@ private struct FalKeyOnly: ProviderKeyStore {
         }, lipsync: { _, factor, model, progress in
             stubs.lipsyncs.append(model); stubs.lipsyncFactors.append(factor); stubs.order.append("lipsync")
             stubs.mayPay.append(stubs.session?.lipsyncMayPay ?? true)
-            if model == .sync3, let error = stubs.sync3Error {
-                // The live step takes the applied lipsync-2 off while sync-3 runs, and puts it back when that fails.
-                stubs.applied = [:]
-                throw error
-            }
             if let error = stubs.lipsyncError { throw error }
             progress(0.5)
             if stubs.holdLipsync { await withCheckedContinuation { stubs.held = $0 } }
@@ -178,9 +200,9 @@ private struct FalKeyOnly: ProviderKeyStore {
             try Task.checkCancellation()
             if stubs.failLipsync { throw LipsyncError.http(503) }
             if stubs.tracksApplied { stubs.applied = [0: try Self.applied(model)] }
-            return .init(model: model, usd: model == .sync3 ? Decimal(string: "4.13")! : Decimal(string: "1.55")!, factor: factor,
+            return .init(model: model, usd: Decimal(string: "1.55")!, factor: factor,
                          requestID: stubs.recoveredRequest, recovered: stubs.recoveredRequest != nil)
-        }, lipsyncPrice: { model in model == .sync3 ? Decimal(string: "4.13") : Decimal(string: "1.55") },
+        }, lipsyncPrice: { _ in Decimal(string: "1.55") },
            match: { _ in .init(take: 0.81, anchorBaseline: 0.54, realSpeech: 0.86) }, play: { _ in },
            use: { voice, synced, match in
             if let error = stubs.useError { stubs.useError = nil; throw error }
@@ -203,10 +225,41 @@ private struct FalKeyOnly: ProviderKeyStore {
         })
     }
 
+    @Test func aSecondQuoteRequestWaitsForThePriceAlreadyInFlight() async throws {
+        let session = session(Stubs())
+        var backend = try #require(session.backend)
+        let price = backend.quote
+        var releaseQuote: CheckedContinuation<Void, Never>?
+        var quoteCalls = 0
+        backend.quote = { script, model in
+            quoteCalls += 1
+            if quoteCalls == 1 { await withCheckedContinuation { releaseQuote = $0 } }
+            return try await price(script, model)
+        }
+        session.backend = backend
+        defer { releaseQuote?.resume() }
+        let first = Task { await session.refreshQuote() }
+        await TestDeadline.until { releaseQuote != nil }
+        var checkingPrice = false
+        let second = Task {
+            checkingPrice = true
+            await session.refreshQuote()
+            return session.quote?.wholeUSD
+        }
+        await TestDeadline.until { checkingPrice }
+        let release = try #require(releaseQuote)
+        releaseQuote = nil
+        release.resume()
+        #expect(await second.value == Decimal(string: "1.61"))
+        await first.value
+        #expect(quoteCalls == 1 && !session.quoting)
+    }
+
     @Test func aRunGoesScriptVoiceFitLipSyncThenReviewAndUse() async {
         let stubs = Stubs()
         let session = session(stubs)
         await session.refreshQuote()
+        #expect(stubs.quotedModels == [.sync3])
         #expect(session.phase == .choose && session.quote?.wholeUSD == Decimal(string: "1.61"))
         session.start()
         #expect(session.phase == .running)
@@ -215,13 +268,12 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(session.steps[.script] == .done("Script · 7 words, your edits applied"))
         #expect(session.steps[.voice] == .done("Voice · 0:30.6 in siim · DJI 0011 · 3 parts, one take"))
         #expect(session.steps[.fit] == .done("Fit · 0:30.6 for 0:31 of video, video matched (−1.3%)"))
-        #expect(stubs.lipsyncs == [.lipsync2], "lipsync-2 by default")
+        #expect(stubs.lipsyncs == [.sync3], "sync-3 for whole-clip runs")
         #expect(session.spent == Decimal(string: "1.61"))
-        #expect(session.upgradeUSD == Decimal(string: "4.13"))
         #expect(WholeClipRevoiceCardMatch.line(session.match!) == "Sounds like you: 0.81 · siim's earlier takes 0.54 · your real speech 0.86")
         #expect(stubs.used == 0, "nothing goes into the clip before Use")
         await session.use()
-        #expect(session.phase == .used && stubs.used == 1 && session.record?.lipsyncModel == WholeClipRevoice.Lipsync.lipsync2.rawValue)
+        #expect(session.phase == .used && stubs.used == 1 && session.record?.lipsyncModel == WholeClipRevoice.Lipsync.sync3.rawValue)
         session.undoUse()
         #expect(stubs.undone == 1 && session.phase == .review)
     }
@@ -262,6 +314,23 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(session.isStopped && session.failure?.step == .fit)
     }
 
+    @Test func theWholeClipPriceIncludesWordChecksButNoSpeakerRetryReserve() async throws {
+        let stubs = Stubs()
+        let session = session(stubs)
+        let originalQuote = try #require(session.backend?.quote)
+        session.backend?.quote = { script, model in
+            var quote = try await originalQuote(script, model)
+            quote.wordChecksUSD = Decimal(string: "0.02")
+            return quote
+        }
+        await session.refreshQuote()
+        #expect(session.quote?.wholeUSD == Decimal(string: "1.63"))
+        session.start()
+        await session.waitForRun()
+        #expect(session.phase == .review)
+        #expect(session.spent == Decimal(string: "1.61"))
+    }
+
     @Test func partialVoiceSpendAndRetryPriceAreSeparateAndTheFailedCheckIsNamed() async {
         let stubs = Stubs()
         let session = session(stubs)
@@ -291,7 +360,7 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(stubs.rewords.isEmpty, "never a longer wording: \(stubs.rewords)")
         #expect(stubs.voices.count == 1, "one voice")
         #expect(session.steps[.fit] == .done("Fit · 0:27 for 0:31.4 of video, laid out on the clip's pauses (−14.0%)"))
-        #expect(session.phase == .review && stubs.lipsyncs == [.lipsync2], "it reaches the lip sync: \(session.phase)")
+        #expect(session.phase == .review && stubs.lipsyncs == [.sync3], "it reaches the lip sync: \(session.phase)")
         // The old fit read the source windows and asked for a longer wording.
         #expect(WholeClipRevoice.fit(voiceSeconds: 27, videoSeconds: WholeClipUserCase.sourceSeconds, words: 49, round: 0) == .laidOut(factor: 27 / WholeClipUserCase.sourceSeconds))
     }
@@ -345,7 +414,7 @@ private struct FalKeyOnly: ProviderKeyStore {
         await session.waitForRun()
         #expect(session.phase == .review)
         #expect(stubs.voices.count == 1, "the paid voice is reused")
-        #expect(stubs.lipsyncs == [.lipsync2, .lipsync2])
+        #expect(stubs.lipsyncs == [.sync3, .sync3])
     }
 
     @Test func aFailedLipSyncKeepsTheClipAndTryAgainPaysOnlyTheLipSync() async {
@@ -454,20 +523,6 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(session.spent == 0.06 && session.billedLipsyncs.isEmpty)
         stubs.lipsyncError = nil; session.start(); await session.waitForRun()
         #expect(session.isStopped && stubs.lipsyncs.count == 1 && stubs.voices.count == 1)
-    }
-
-    @Test func theSync3UpgradeReRunsOnlyTheLipSync() async {
-        let stubs = Stubs()
-        let session = session(stubs)
-        session.start()
-        await session.waitForRun()
-        session.upgrade()
-        await session.waitForRun()
-        #expect(session.phase == .review)
-        #expect(stubs.voices.count == 1 && stubs.lipsyncs == [.lipsync2, .sync3])
-        #expect(session.synced?.model == .sync3 && session.upgradeUSD == nil)
-        await session.use()
-        #expect(session.record?.lipsyncModel == WholeClipRevoice.Lipsync.sync3.rawValue)
     }
 
     @Test func undoOnReviewKeepsTheOriginalAndOffersTheChoiceAgain() async {
@@ -686,13 +741,13 @@ private struct FalKeyOnly: ProviderKeyStore {
 
     /// wholeclip-fit-stale-retry-loop, wholeclip-stale-snapshot-blocks-free-lipsync-retry: the voice is paid, the lip sync
     /// fails, then a save and a music track change the project. The plan's currency reads what the voice is made from
-    /// (`RewriteSession.wholeClipInputsCurrency`), so Try Again reaches the lip sync over the paid voice. A word cut in the
+    /// (`RewriteSession.wholeClipInputsStillCurrent`), so Try Again reaches the lip sync over the paid voice. A word cut in the
     /// clip is what changes it.
     @Test func aSaveOrMusicNeverMakesThePaidVoiceStaleButAWordEditDoes() async throws {
         let live = try live()
         defer { close(live) }
         let stubs = Stubs()
-        stubs.isCurrent = live.rewrite.wholeClipInputsCurrency()
+        stubs.isCurrent = live.rewrite.wholeClipInputsStillCurrent()
         stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncNotSubmitted(error: URLError(.networkConnectionLost)), local: false)
         let session = session(stubs)
         live.rewrite.wholeClip = session
@@ -793,7 +848,7 @@ private struct FalKeyOnly: ProviderKeyStore {
     /// whole-clip-fixable-stops-patch-only: with no fal.ai key nothing is priced; the primary opens Settings. Once the key is
     /// saved the card offers the price, and the stop's Try Again.
     @Test func noFalKeyOffersSettingsUntilTheKeyIsAdded() async throws {
-        let live = try live()
+        let live = try live(ready: true) { $0.voiceLab.segments = [] }
         defer { close(live) }
         let stubs = Stubs()
         stubs.hasKey = false
@@ -803,7 +858,6 @@ private struct FalKeyOnly: ProviderKeyStore {
         await session.refreshQuote()
         let primary = try #require(live.rewrite.wholeClipPrimary())
         #expect(primary.id == "wholeClipAddKey" && primary.title == "Add fal.ai Key…" && !primary.priced)
-        #expect(live.rewrite.wholeClipChipAction() == nil, "no priced chip without the key")
         session.start()
         await session.waitForRun()
         #expect(session.failure?.repeats == false && !session.keyAvailable)
@@ -819,9 +873,7 @@ private struct FalKeyOnly: ProviderKeyStore {
     }
 
     /// wholeclip-fit-drops-paid-lipsync, retry-unapplies-paid-lipsync, whole-clip-retry-undoes-paid-lipsync,
-    /// wholeclip-reuse-drops-applied-lipsync: Review with lipsync-2, then Sharper Lip Sync fails. lipsync-2 is put back,
-    /// Review says why, and Use puts the lipsync-2 result in. A failed Use is Try Use Again · free.
-    @Test func aFailedSync3UpgradeKeepsTheLipsync2ResultForUse() async throws {
+    @Test func aFailedUseKeepsThePaidLipSyncForFreeRetry() async throws {
         let live = try live()
         defer { close(live) }
         let stubs = Stubs()
@@ -831,15 +883,7 @@ private struct FalKeyOnly: ProviderKeyStore {
         await session.refreshQuote()
         session.start()
         await session.waitForRun()
-        #expect(session.phase == .review && stubs.applied[0]?.result.asset.id == "asset-lipsync-2")
-        stubs.sync3Error = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncNotSubmitted(error: URLError(.networkConnectionLost)), local: false)
-        session.upgrade()
-        await session.waitForRun()
-        #expect(session.phase == .review, "\(session.phase)")
-        #expect(session.synced?.model == .lipsync2 && stubs.applied[0]?.result.asset.id == "asset-lipsync-2", "lipsync-2 is back on the parts")
-        #expect(session.upgradeNote?.hasPrefix("Sharper Lip Sync didn't finish:") == true && session.upgradeNote?.hasSuffix("Your lipsync-2 lip sync is kept.") == true,
-                "\(session.upgradeNote ?? "none")")
-        #expect(live.rewrite.wholeClipUpgradeAction()?.id == "wholeClipUpgrade", "the upgrade can be tried again")
+        #expect(session.phase == .review && stubs.applied[0]?.result.asset.id == "asset-sync-3")
         // Use fails once: Try Use Again · free, nothing voiced or patched.
         stubs.useError = VoiceLabProjectError.staleRenderContract
         await session.use()
@@ -847,8 +891,8 @@ private struct FalKeyOnly: ProviderKeyStore {
         let actions = live.rewrite.wholeClipStoppedActions()
         #expect(actions.map(\.id) == ["wholeClipUseAgain", "wholeClipPatch"] && actions[0].title == "Try Use Again · free" && !actions[0].priced)
         await session.useAgain()
-        #expect(session.phase == .used && stubs.usedAssets == [["asset-lipsync-2"]], "\(stubs.usedAssets)")
-        #expect(stubs.lipsyncs == [.lipsync2, .sync3] && stubs.voices.count == 1, "nothing paid twice")
+        #expect(session.phase == .used && stubs.usedAssets == [["asset-sync-3"]], "\(stubs.usedAssets)")
+        #expect(stubs.lipsyncs == [.sync3] && stubs.voices.count == 1, "nothing paid twice")
     }
 
     /// A lip sync paid over this voice and picture is priced at nothing on Try Again, and put back rather than paid again
@@ -872,7 +916,7 @@ private struct FalKeyOnly: ProviderKeyStore {
         await session.waitForRun()
         #expect(session.phase == .review)
         await session.use()
-        #expect(session.phase == .used && stubs.usedAssets == [["asset-lipsync-2"]])
+        #expect(session.phase == .used && stubs.usedAssets == [["asset-sync-3"]])
         #expect(stubs.lipsyncs.count == 1, "put back, never paid again: \(stubs.lipsyncs)")
     }
 
@@ -1178,8 +1222,6 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(aside.components(separatedBy: "for free").count == 2, "\(aside)")
     }
 
-    /// whole-clip-card-hidden-after-pick: the pick only sets the default. After the patch the card is one row, "Revoice the
-    /// Whole Clip Instead · ≈ $X"; Undo Whole Clip clears the pick.
     @Test func thePatchPickOnlyChoosesTheDefault() async throws {
         let live = try live()
         defer { close(live) }
@@ -1187,13 +1229,10 @@ private struct FalKeyOnly: ProviderKeyStore {
         let session = session(stubs)
         live.rewrite.wholeClip = session
         await session.refreshQuote()
-        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: false, proposal: live.rewrite.proposalID)
-        session.wholeSelected = false
-        #expect(live.rewrite.wholeClipCompact)
-        let instead = try #require(live.rewrite.wholeClipInsteadAction())
-        #expect(instead.id == "wholeClipInstead" && instead.title == "Revoice the Whole Clip Instead · " + VoiceLabCostPresentation.format(Decimal(string: "1.61")!) && instead.priced)
-        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: true, proposal: live.rewrite.proposalID)
-        #expect(!live.rewrite.wholeClipCompact)
+        live.rewrite.selectWholeClipMode(false)
+        #expect(!session.wholeSelected && live.rewrite.wholeClipCard() == .wholeClip)
+        live.rewrite.selectWholeClipMode(true)
+        #expect(session.wholeSelected)
         let record = WholeClipRevoiceRecord(id: "wholeclip-1", clipId: "clip-main", segmentIds: ["s"], script: "x", consentRecordId: "r1",
                                             videoRetime: 1, lipsyncModel: WholeClipRevoice.Lipsync.lipsync2.rawValue, usd: 1, match: nil, createdAt: Date())
         live.editor.removeWholeClip(record)
@@ -1222,10 +1261,9 @@ private struct FalKeyOnly: ProviderKeyStore {
         later.wholeClip = second
         await second.refreshQuote()
         #expect(later.proposalID != live.rewrite.proposalID)
-        #expect(!later.wholeClipCompact, "the earlier pick was for another proposal")
-        // The same proposal keeps its pick.
-        live.editor.wholeClipPicks["clip-main"] = WholeClipPick(whole: false, proposal: later.proposalID)
-        #expect(later.wholeClipCompact)
+        #expect(second.wholeSelected, "the earlier pick was for another proposal")
+        later.selectWholeClipMode(false)
+        #expect(later.wholeClipCard() == .wholeClip && !second.wholeSelected)
         later.close()
     }
 
@@ -1426,33 +1464,6 @@ private struct FalKeyOnly: ProviderKeyStore {
         #expect(live.rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipPatch"])
         stubs.canReword = true
         #expect(session.canAskShorterWording && live.rewrite.wholeClipStoppedActions().contains { $0.id == "wholeClipShorter" })
-    }
-
-    /// I Checked fal.ai over a lip sync already paid (a failed sync-3 upgrade whose lipsync-2 couldn't be put back, then a
-    /// lost submit answer): the click only puts the paid lipsync-2 back, so it says free and may not pay.
-    @Test func iCheckedFalNeverPaysAgainForALipSyncAlreadyPaid() async throws {
-        let live = try live()
-        defer { close(live) }
-        let stubs = Stubs()
-        stubs.tracksApplied = true
-        let session = session(stubs)
-        live.rewrite.wholeClip = session
-        await session.refreshQuote()
-        session.start()
-        await session.waitForRun()
-        #expect(session.phase == .review)
-        stubs.sync3Error = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.submissionUncertain, local: false, usd: Decimal(string: "4.13"))
-        stubs.refuseRestore = true
-        session.upgrade()
-        await session.waitForRun()
-        #expect(session.isStopped && session.submissionUnconfirmed && session.synced?.model == .lipsync2, "\(session.phase)")
-        let checked = try #require(live.rewrite.wholeClipStoppedActions().first)
-        #expect(checked.id == "wholeClipCheckedFal" && checked.title == "I Checked fal.ai · Lip Sync Again · free" && !checked.priced, "\(checked.title)")
-        stubs.refuseRestore = false
-        session.lipsyncAfterCheckingFal()
-        await session.waitForRun()
-        #expect(session.phase == .review && stubs.mayPay.last == false, "\(stubs.mayPay)")
-        #expect(stubs.lipsyncs == [.lipsync2, .sync3, .lipsync2] && session.spent == Decimal(string: "1.61"))
     }
 
     /// A paid voice made with a voice no longer chosen says so, not "You edited Clip N".

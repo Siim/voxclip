@@ -67,14 +67,15 @@ internal sealed partial class RewriteSession
     private void PreferVideoVoice(RewriteGeneration window)
     {
         var fallback = window.PreferredVoice;
-        window.PreferredVoice = () => PreferredVoiceForVideo ?? fallback?.Invoke();
+        window.PreferredVoice = () => RestoredVoice ?? PreferredVoiceForVideo ?? fallback?.Invoke();
         window.AnchorVoice = () => videoVoiceLab?.AnchorVoice(Project.Transcript?.Language)?.RecordId;
         window.OtherVideoVoices = () => OtherVideoVoices;
     }
 
     /// <summary>The voices of this Rewrite's phrases that hold paid takes not used or discarded yet: their voices are kept.</summary>
     internal IReadOnlySet<string> PendingTakeVoices => IsOpen
-        ? generationWindows.Where(window => window.HasPaidTakes && window.VoiceId is not null).Select(window => window.VoiceId!).ToHashSet(StringComparer.Ordinal)
+        ? generationWindows.Where(window => window.HasPaidTakes && window.VoiceId is not null).Select(window => window.VoiceId!)
+            .Concat(RestoredVoice is { } saved ? [saved] : []).ToHashSet(StringComparer.Ordinal)
         : new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>Before a price (Mac <c>ensureVideoVoice</c>): with the stored answer "match", this video's voice is made (or the one being

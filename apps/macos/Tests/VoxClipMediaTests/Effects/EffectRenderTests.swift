@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import CoreImage
 import CoreText
+import CryptoKit
 import Foundation
 import ImageIO
 import Testing
@@ -97,6 +98,15 @@ import VoxClipCore
     }
 
     // MARK: Pixel goldens
+
+    @Test func editedFadeInOpacityGolden() throws {
+        var title = Self.effect(.title, text: "Fade in", position: .top)
+        title.fadeInSeconds = 0.8
+        title.fadeOutSeconds = 0
+        let time = title.start + 0.2
+        #expect(abs(title.opacity(at: time) - 0.25) < 1e-12)
+        try Self.expectGolden("edited-title-fade-in", Self.render([title], time: time))
+    }
 
     @Test func blurAndPixelateGoldensCoverOnlyTheirRegion() throws {
         let rect = ClipEffect.Rect(x: 0.5, y: 0.2, width: 0.3, height: 0.4)
@@ -216,6 +226,43 @@ import VoxClipCore
         return rgba
     }
 
+    @Test func harnessMotionTemplatesRenderInTheSharedComposition() async throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/projects/clip-from-long-take.voxclip"))
+        let vectors = try FixtureLoader.decode([JSONValue].self, at: "fixtures/clip-effects/motion-template-cases.json")
+        let source = shared.root.appendingPathComponent("fixtures/media/joins-tone.mov")
+        var request = Self.request(source, effects: [])
+        request.plan = EditPlan(sampleRate: 48_000, totalSamples: 576_000, kept: [.init(startSample: 264_000, endSample: 360_000)])
+        let plain = try await CompositionBuilder().build(request)
+        func digest(_ graph: RenderGraph, at seconds: Double) async throws -> SHA256.Digest {
+            SHA256.hash(data: Data(try await Self.frame(graph, at: seconds)))
+        }
+        var templateFrames = Set<SHA256.Digest>()
+        for vector in vectors {
+            let timeline = try HarnessTimeline.read(.object([
+                "clipId": .string("clip-2f1c"), "reason": .string("Make a showreel."), "effects": .array([vector])
+            ]))
+            let proposal = try HarnessProposal(timeline: timeline, project: project)
+            let edited = try proposal.applying(to: project, shared: shared)
+            let saved = try JSONProjectStore.decode(JSONProjectStore.encode(edited))
+            let effects = ClipEffects.rendered(in: saved, clipID: "clip-2f1c")
+            let placed = try #require(effects.first)
+            #expect(effects.count == 1)
+            #expect(placed.start == 5.9 && placed.end == 6.24)
+            request.effects = ClipEffectsRenderInput(effects: effects, soundURLs: [:])
+            let graph = try await CompositionBuilder().build(request)
+            let before = try await digest(plain, at: 0.3)
+            #expect(try await digest(graph, at: 0.3) == before)
+            let middle = try await digest(graph, at: 0.5333333333333333)
+            #expect(middle != (try await digest(plain, at: 0.5333333333333333)))
+            #expect(middle == (try await digest(graph, at: 0.5333333333333333)))
+            #expect(middle != (try await digest(graph, at: 0.6)))
+            #expect(try await digest(graph, at: 0.8) == (try await digest(plain, at: 0.8)))
+            templateFrames.insert(middle)
+        }
+        #expect(templateFrames.count == vectors.count)
+    }
+
     @Test(.timeLimit(.minutes(2))) func freezeHoldsThePictureAndTheVoicePlaysOn() async throws {
         let source = try await NativeMediaFixtures.shared.file("counter.mov")
         let freeze = ClipEffect(id: "fx-freeze-1", clipId: nil, kind: .freeze, start: 0.5, end: 1.5)
@@ -245,6 +292,48 @@ import VoxClipCore
         let left = CGRect(x: 30, y: 60, width: 100, height: 60), right = CGRect(x: 190, y: 60, width: 100, height: 60)
         #expect(Self.regionVariance((blurred, 320, 180), left, channel: 0) < Self.regionVariance((unblurred, 320, 180), left, channel: 0) * 0.7)
         #expect(abs(Self.regionVariance((blurred, 320, 180), right, channel: 0) - Self.regionVariance((unblurred, 320, 180), right, channel: 0)) < 1)
+    }
+
+    @Test(.timeLimit(.minutes(2))) func companionRecordingCutawaysStillAndStackRenderWithPrimaryAudio() async throws {
+        let camera = try await NativeMediaFixtures.shared.file("counter.mov")
+        let companion = try await NativeMediaFixtures.shared.file("bars-tone.mov")
+        var request = Self.request(camera, effects: [])
+        request.output.size = PixelSize(width: 180, height: 320)
+        let plain = try await CompositionBuilder().build(request)
+        for (offset, kind) in ["bRoll", "screenshot", "videoStack"].enumerated() {
+            let start = 0.25 + Double(offset) * 0.5
+            let placement = """
+            {"id":"footage-\(offset)","clipID":"clip","kind":"\(kind)","start":\(start),"end":\(start + 0.3),"footage":{"sourceKey":"demo","start":0.2}}
+            """
+            request.footage.append(.init(entry: try JSONDecoder().decode(ClipFootage.self, from: Data(placement.utf8)), url: companion))
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let graph = try await CompositionBuilder().build(request)
+        for time in [0.35, 0.9, 1.35] {
+            let original = try await Self.frame(plain, at: time)
+            let edited = try await Self.frame(graph, at: time)
+            #expect(edited != original, "footage at \(time)")
+        }
+        #expect(try await Self.frame(graph, at: 0.85) == (try await Self.frame(graph, at: 0.95)), "the screenshot holds")
+        #expect(try await Self.frame(graph, at: 1.8) == (try await Self.frame(plain, at: 1.8)), "the camera resumes outside placements")
+        let stacked = try await Self.frame(graph, at: 1.35)
+        let row = 180 * 4
+        #expect(stacked[(row * 80)..<(row * 81)] != stacked[(row * 240)..<(row * 241)], "the panes show two different recordings")
+        #expect(graph.composition.duration == plain.composition.duration)
+        #expect(graph.audioTrack?.segments.count == plain.audioTrack?.segments.count)
+        let samplingTime = start.duration(to: clock.now)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appendingPathComponent("multi-source.mp4")
+        let result = try await AVExporter(cleanupRegistry: directory.appendingPathComponent("Scratch"))
+            .export(ExportJob(render: request, outputURL: output)) { _ in }
+        let probe = try await AVMediaProbe().probe(output)
+        #expect(probe.orientedSize == request.output.size)
+        #expect(probe.videoCodec == "h264" && probe.audio?.sampleRate == 48_000)
+        #expect(result.frames == 60 && result.audioSamples == 96_000)
+        print("Multi-source fixture: picture checks in \(samplingTime); native portrait export in \(result.elapsedSeconds) s")
     }
 
     // MARK: Audio
@@ -373,6 +462,31 @@ import VoxClipCore
             let duration = try await MusicBedRenderer.durationSeconds(ClipEffectsRenderInput.bundledSoundURL(id, shared: shared))
             #expect(abs(duration - seconds) < 0.001, "\(id)")
         }
+    }
+
+    @Test func slippedSoundPlacesTheOnsetAtTheExpectedSample() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sound = root.appendingPathComponent("effect.caf")
+        let writer = try MusicCAFWriter(url: sound, channels: 2)
+        let samples = [Float](repeating: 0, count: 2 * 9_600) + [Float](repeating: 0.5, count: 2 * 14_400)
+        try writer.append(samples)
+        writer.close()
+        let source = try await NativeMediaFixtures.shared.file()
+        var effect = ClipEffect(id: "sound", clipId: nil, kind: .sound, start: 0.25, end: 0.45,
+                                sound: .init(source: .bundled, id: "pop", durationSeconds: 0.5, title: "Test", license: "cc0"), gainDb: 0)
+        effect.mediaOffsetSeconds = 0.15
+        effect.fadeInSeconds = 0.1
+        effect.gainPoints = [.init(t: 0, db: -6)]
+        let request = Self.request(source, effects: [effect], soundURLs: [effect.id: sound])
+        let graph = try await CompositionBuilder(scratchRoot: root).build(request)
+        let lease = try #require(graph.effectsLease)
+        let decoded = try MusicBedTests.readBed(lease.url)
+        let onset = try #require(decoded.firstIndex { abs($0) > 1e-6 })
+        #expect(onset == 2 * 14_400)
+        #expect(abs(Double(decoded[onset]) - 0.25 * pow(10, -6.0 / 20)) < 1e-6)
+        #expect(decoded[2 * 21_600] == 0)
     }
 
     // MARK: Vision

@@ -90,6 +90,7 @@ internal static class CliOperations
         var result = await WriteExportAsync(prepared, arguments, ct, prepareExport).ConfigureAwait(false);
         var fields = Node(result, CliDataJson.Default.ExportResult)!.AsObject();
         fields["captionStyle"] = prepared.Style; fields["aspect"] = AspectText(prepared.Aspect); fields["elapsedSeconds"] = timer.Elapsed.TotalSeconds;
+        fields["music"] = CliMusic.Json(prepared.Snapshot.Clip?.Music?.Entry);
         return fields;
     }
 
@@ -109,6 +110,9 @@ internal static class CliOperations
         if (!File.Exists(path)) throw new FileNotFoundException();
         destination = OutputSafety.Resolve(destination);
         var (openedProject, media) = await (openExport ?? OpenExportInputAsync)(path, ct).ConfigureAwait(false);
+        var dataRoot = DataLocations.Resolve().Root;
+        var musicOverride = arguments.GetValue<string?>("--music") is { } track ? CliMusic.Saved(track, openedProject, dataRoot)
+            : arguments.GetValue<string?>("--music-file") is { } file ? await CliMusic.LocalAsync(file, ct).ConfigureAwait(false) : null;
         // A project's clip renders in its own caption style (its pick, else the project default; design §6.6). A --range clip is new,
         // so it follows the default.
         var exportedClip = arguments.GetValue<string?>("--range") is not null ? null : arguments.GetValue<string?>("--clip") ?? openedProject?.Edits.ActiveClipId;
@@ -157,7 +161,9 @@ internal static class CliOperations
         var aspect = arguments.GetValue<string?>("--aspect") is { } aspectText ? Aspect(aspectText) : project.Export.Aspect;
         var quality = arguments.GetValue<string?>("--quality") is { } qualityText ? qualityText == "high" ? ExportQuality.High : ExportQuality.Standard : project.Export.Quality;
         // A clip render carries its controls (speed, frame, look, levels, flip, turn) and the scope's effects (design §6.9, ai.md §18.5).
-        var clip = ClipRenderInput.Resolve(project, project.Edits.ActiveClipId, DataLocations.Resolve().Root, SharedResources.ResolveRoot());
+        var clip = ClipRenderInput.Resolve(project, project.Edits.ActiveClipId, dataRoot, SharedResources.ResolveRoot());
+        if (musicOverride is not null) clip = (clip ?? new(null, null)) with { Music = musicOverride };
+        if (checkingOutputs && clip?.Music is { } music) ValidateOutputs(arguments, media.Path, destination, path, music.AssetPath);
         var size = ClipControlsRendering.OutputSize(media.OrientedSize, aspect, clip?.Controls);
         var fps = ExportPresets.OutputFrameRate(arguments.GetValue<string?>("--fps") is { } fpsText
             ? double.Parse(fpsText, NumberStyles.Float, CultureInfo.InvariantCulture) : media.Video?.FrameRate ?? 30);
@@ -175,7 +181,11 @@ internal static class CliOperations
         var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md).
-        snapshot = snapshot with { ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, DataLocations.Resolve().Root) };
+        snapshot = snapshot with
+        {
+            ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, DataLocations.Resolve().Root),
+            Footage = await FootageRendering.ResolveAsync(project, snapshot, new ProjectStore(), path, ct).ConfigureAwait(false),
+        };
         var target = project.Edits.ActiveClipId is { } selectedClip ? (ExportTarget)new ExportTarget.Clip(selectedClip) : new ExportTarget.FullEdit();
         var loudness = arguments.GetValue<string?>("--loudness") == "off" ? ExportLoudness.Off : ExportLoudness.Social;
         return new(project, snapshot, target, aspect, quality, captions, style, destination, loudness);
@@ -186,6 +196,7 @@ internal static class CliOperations
     {
         var (snapshot, target, aspect, quality, captions, destination) = (prepared.Snapshot, prepared.Target, prepared.Aspect, prepared.Quality, prepared.Captions, prepared.Destination);
         var audioPath = arguments.GetValue<string?>("--audio-out") is { } audioDestination ? OutputSafety.Resolve(audioDestination) : null;
+        var includeMusic = arguments.GetValue<bool>("--with-music") && snapshot.Clip?.Music is not null;
         var srtPath = arguments.GetValue<string?>("--srt") is { } srtDestination ? OutputSafety.Resolve(srtDestination) : null;
         var destinations = ExportDestinations(snapshot, destination, srtPath, audioPath);
         // The exporter prepares the sidecar partial; the CLI owns publication of the complete set.
@@ -197,7 +208,7 @@ internal static class CliOperations
                 destination, srtPath), true).ToList();
             if (audioPath is not null)
             {
-                var dataBytes = VoiceLabCapacity.Bytes(snapshot.Timeline.OutputSamples, 8);
+                var dataBytes = VoiceLabCapacity.Bytes(includeMusic ? snapshot.RenderedSamples : snapshot.Timeline.OutputSamples, 8);
                 if (dataBytes > uint.MaxValue - 36L)
                     throw new VoxClipException(VoxClipErrorCode.ExportFailed,
                         "The edited WAV is too long for the supported WAV format. Your edits are saved.");
@@ -212,7 +223,7 @@ internal static class CliOperations
         {
             if (audioPath is not null)
             {
-                await EditedAudioReader.WriteWaveAsync(snapshot, audioPath, ct, false).ConfigureAwait(false);
+                await EditedAudioReader.WriteWaveAsync(snapshot, audioPath, ct, false, includeMusic).ConfigureAwait(false);
                 ownedPartials.Add(audioPath);
             }
             if (srtPath is not null)
@@ -253,6 +264,7 @@ internal static class CliOperations
     internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations)
     {
         var protectedPaths = new List<string> { snapshot.Media.Path };
+        if (snapshot.Clip?.Music is { } music) protectedPaths.Add(music.AssetPath);
         if (snapshot.VoiceLab is { } input)
         {
             var project = input.IsolatedProject();
@@ -262,10 +274,10 @@ internal static class CliOperations
         OutputSafety.Validate(protectedPaths, destinations);
     }
 
-    private static void ValidateOutputs(ParseResult arguments, string source, string destination, string? project = null)
+    private static void ValidateOutputs(ParseResult arguments, string source, string destination, string? project = null, string? music = null)
     {
         var outputs = new[] { destination, arguments.GetValue<string?>("--audio-out"), arguments.GetValue<string?>("--srt") }.OfType<string>();
-        var inputs = new[] { source, project, arguments.GetValue<string?>("--transcript") }.OfType<string>();
+        var inputs = new[] { source, project, music, arguments.GetValue<string?>("--transcript"), arguments.GetValue<string?>("--music-file") }.OfType<string>();
         try { OutputSafety.Validate(inputs, outputs); }
         catch (VoxClipException exception) { throw new CliUsageException(exception.Message); }
     }
@@ -507,7 +519,7 @@ internal static class CliOperations
         }
         var state = State(project);
         if (!activeClip) state = state with { ActiveClipId = null };
-        return EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, reference.DurationSeconds), reference.DurationSeconds, rate, state.PauseKeepSeconds);
+        return EditingEngine.BuildPlan(state, reference.DurationSeconds, rate);
     }
 
     private static EditState State(Project project)

@@ -1,12 +1,18 @@
 import Foundation
 
 public actor CLIConnector: LLMConnector {
+    public struct Installation: Sendable, Equatable {
+        public let executable: URL
+        public let version: String
+    }
+
     public struct Detection: Sendable, Equatable {
         public let executable: URL
         public let version: String
         public let supportedFlags: Set<String>
         public let features: Set<String>
         public let authMethod: String?
+        public let newerInstallation: Installation?
     }
 
     public nonisolated let id: ConnectorID
@@ -18,9 +24,13 @@ public actor CLIConnector: LLMConnector {
     private let temporaryDirectory: URL
     private let appVersion: String
     private let loginShellPATH: String?
+    private let onModelFallback: (@Sendable (String, String) async -> Void)?
     private var environment: [String: String]?
     private var capabilities: CLICapabilities?
+    private var codexCandidates: [CLIFingerprint] = []
     private var discoveredModels: [LLMModel]?
+    private var missingModels = Set<String>()
+    private var modelRedirects: [String: String] = [:]
     private var modelEfforts: [String: Set<String>] = [:]
     /// The `isDefault` model's supportedReasoningEfforts from the last model/list; nil when it reported none.
     private var defaultModelEfforts: Set<String>?
@@ -28,6 +38,7 @@ public actor CLIConnector: LLMConnector {
     private var authenticatedPreflight: (fingerprint: CLIFingerprint, at: ContinuousClock.Instant)?
     public internal(set) var refreshWarning: String?
     public private(set) var lastAuthMethod: String?
+    public var hasLiveModels: Bool { discoveredModels != nil }
 
     private var probeFailure: LLMError {
         .cliFailed("The CLI could not be started or its output could not be read.")
@@ -36,7 +47,8 @@ public actor CLIConnector: LLMConnector {
     public init(id: ConnectorID, runner: any ProcessRunner = FoundationProcessRunner(), catalog: LLMCatalog,
                 log: any Redacting, executable: URL? = nil, environment: [String: String]? = nil,
                 temporaryDirectory: URL = FileManager.default.temporaryDirectory,
-                appVersion: String = AppVersion.current, loginShellPATH: String? = nil) {
+                appVersion: String = AppVersion.current, loginShellPATH: String? = nil,
+                onModelFallback: (@Sendable (String, String) async -> Void)? = nil) {
         self.id = id
         self.runner = runner
         self.catalog = catalog
@@ -46,6 +58,7 @@ public actor CLIConnector: LLMConnector {
         self.temporaryDirectory = temporaryDirectory
         self.appVersion = appVersion
         self.loginShellPATH = loginShellPATH
+        self.onModelFallback = onModelFallback
     }
 
     public func status() async -> ConnectorStatus {
@@ -79,16 +92,27 @@ public actor CLIConnector: LLMConnector {
     }
 
     public func detection(refresh: Bool = false) async throws -> Detection {
+        try await inspect(refresh: refresh, authenticate: true)
+    }
+
+    public func installation() async throws -> Detection {
+        try await inspect(refresh: true, authenticate: false)
+    }
+
+    private func inspect(refresh: Bool, authenticate checkAuth: Bool) async throws -> Detection {
         try await acquire()
         defer { occupied = false }
         authenticatedPreflight = nil
         let configuration = try configuration()
         let detected = try await detect(configuration, refresh: refresh)
-        let method = try await authenticate(detected, configuration: configuration)
-        lastAuthMethod = method
-        authenticatedPreflight = (detected.fingerprint, .now)
+        let method = checkAuth ? try await authenticate(detected, configuration: configuration) : nil
+        if checkAuth {
+            lastAuthMethod = method
+            authenticatedPreflight = (detected.fingerprint, .now)
+        }
         return Detection(executable: detected.fingerprint.url, version: detected.version,
-                         supportedFlags: detected.flags, features: detected.features, authMethod: method)
+                         supportedFlags: detected.flags, features: detected.features, authMethod: method,
+                         newerInstallation: detected.newerInstallation)
     }
 
     public func models(refresh: Bool) async throws -> [LLMModel] {
@@ -97,24 +121,18 @@ public actor CLIConnector: LLMConnector {
         let configuration = try configuration()
         if id == .claudeCode { return curatedModels(configuration) }
         if !refresh { return discoveredModels ?? curatedModels(configuration) }
-        let previousModels = discoveredModels
-        let previousEfforts = modelEfforts
-        let previousDefaultEfforts = defaultModelEfforts
         do {
             let detected = try await detect(configuration, refresh: false)
-            let models = try await refreshCodexModels(detected, configuration: configuration)
+            let models = try await refreshCodexModels(detected)
             discoveredModels = models
             refreshWarning = nil
             return models
         } catch LLMError.cancelled { throw LLMError.cancelled }
         catch is CancellationError { throw LLMError.cancelled }
         catch {
-            discoveredModels = previousModels
-            modelEfforts = previousEfforts
-            defaultModelEfforts = previousDefaultEfforts
             let failure = error as? LLMError ?? probeFailure
             refreshWarning = "Couldn't refresh: " + (await failureMessage(failure, includeEditsSaved: true))
-            return previousModels ?? curatedModels(configuration)
+            return discoveredModels ?? curatedModels(configuration)
         }
     }
 
@@ -127,10 +145,38 @@ public actor CLIConnector: LLMConnector {
         try await acquire()
         defer { occupied = false }
         let configuration = try configuration()
+        let detected = try await detect(configuration, refresh: false)
+        let redirects = id == .codex && request.feature != .test
+        let canRedirect = redirects && request.allowsCodexModelRedirect
+        let effectiveModel = canRedirect && request.feature != .voiceRewrite ? modelRedirects[model] ?? model : model
+        do {
+            return try await sendOnce(request, model: effectiveModel, detected: detected, configuration: configuration)
+        } catch let LLMError.modelNotFound(missing) where redirects {
+            missingModels.insert(missing)
+            guard canRedirect, effectiveModel == model, modelRedirects[model] == nil,
+                  let fallback = catalog.fallback(for: id, model: model, excluding: missingModels) else {
+                throw LLMError.modelNotFound(missing)
+            }
+            modelRedirects[model] = fallback
+            if let onModelFallback { await onModelFallback(model, fallback) }
+            guard request.feature != .voiceRewrite else { throw LLMError.modelNotFound(missing) }
+            do {
+                return try await sendOnce(request, model: fallback, detected: detected, configuration: configuration)
+            } catch let LLMError.modelNotFound(rejectedFallback) {
+                missingModels.insert(rejectedFallback)
+                throw LLMError.modelNotFound(rejectedFallback)
+            }
+        }
+    }
+
+    public func hasSessionModelFallback(for model: String) -> Bool { modelRedirects[model] != nil }
+
+    private func sendOnce(_ request: LLMRequest, model: String, detected: CLICapabilities,
+                          configuration: [String: JSONValue]) async throws -> RawCompletion {
         guard !model.isEmpty, !model.hasPrefix("-"), !model.contains("\0") else {
             throw LLMError.badRequest(status: 0, message: "Invalid CLI model id.")
         }
-        let detected = try await detect(configuration, refresh: false)
+        guard !missingModels.contains(model) else { throw LLMError.modelNotFound(model) }
         let preflight = authenticatedPreflight
         authenticatedPreflight = nil
         if preflight?.fingerprint != detected.fingerprint || preflight.map({ ContinuousClock.now - $0.at >= .seconds(5) }) != false {
@@ -256,28 +302,118 @@ public actor CLIConnector: LLMConnector {
     }
 
     private func detect(_ configuration: [String: JSONValue], refresh: Bool) async throws -> CLICapabilities {
-        let executable = try await locate(configuration)
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: executable.resolvingSymlinksInPath().path) else {
-            throw LLMError.cliMissing
+        let settings = configuration["cli"]?.cliObject?["detect"]?.cliObject ?? [:]
+        let previous = capabilities
+        if refresh { capabilities = nil }
+        let detected: CLICapabilities
+        if id == .codex, executableOverride == nil {
+            let candidates = try await installedCodex(configuration)
+            if !refresh, let capabilities, candidates == codexCandidates { return capabilities }
+            detected = try await newestCodex(candidates, settings: settings)
+            codexCandidates = candidates
+        } else {
+            let executable = if id == .codex, let executableOverride { executableOverride } else { try await locate(configuration) }
+            guard let fingerprint = fingerprint(executable) else { throw LLMError.cliMissing }
+            if !refresh, let capabilities, capabilities.fingerprint == fingerprint { return capabilities }
+            let version = try await installedVersion(fingerprint, settings: settings)
+            var chosen = try await probeCapabilities(fingerprint, version: version, settings: settings)
+            if id == .codex, refresh {
+                let alternatives = try await installedCodex(configuration).filter { $0.target != fingerprint.target }
+                do {
+                    let newer = try await newestCodex(alternatives, settings: settings, newerThan: version)
+                    chosen.newerInstallation = Installation(executable: newer.fingerprint.url, version: newer.version)
+                } catch LLMError.cancelled { throw LLMError.cancelled }
+                catch { }
+            }
+            detected = chosen
         }
-        let fingerprint = CLIFingerprint(url: executable, size: (attributes[.size] as? NSNumber)?.uint64Value ?? 0,
-                                         modified: attributes[.modificationDate] as? Date ?? .distantPast)
-        if !refresh, let capabilities, capabilities.fingerprint == fingerprint { return capabilities }
-        if capabilities?.fingerprint != fingerprint {
+        if previous?.fingerprint != detected.fingerprint {
             discoveredModels = nil
             modelEfforts = [:]
             defaultModelEfforts = nil
         }
-        capabilities = nil
-        let detect = configuration["cli"]?.cliObject?["detect"]?.cliObject ?? [:]
-        let versionConfiguration = detect["version"]?.cliObject ?? [:]
-        let versionResult = try await probe(executable, arguments: versionConfiguration["args"]?.cliStrings ?? ["--version"])
+        capabilities = detected
+        return detected
+    }
+
+    private func fingerprint(_ executable: URL) -> CLIFingerprint? {
+        let manager = FileManager.default
+        let target = executable.resolvingSymlinksInPath()
+        guard manager.isExecutableFile(atPath: executable.path),
+              let attributes = try? manager.attributesOfItem(atPath: target.path),
+              attributes[.type] as? FileAttributeType == .typeRegular else { return nil }
+        return CLIFingerprint(url: executable, target: target, size: (attributes[.size] as? NSNumber)?.uint64Value ?? 0,
+                              modified: attributes[.modificationDate] as? Date ?? .distantPast)
+    }
+
+    private func installedCodex(_ configuration: [String: JSONValue]) async throws -> [CLIFingerprint] {
+        let path = try await resolvedEnvironment()["PATH"] ?? ""
+        var urls = [path, inheritedEnvironment["PATH"] ?? ""].flatMap { value in
+            value.split(separator: ":").filter { $0.hasPrefix("/") }.map {
+                URL(fileURLWithPath: String($0), isDirectory: true).appendingPathComponent("codex")
+            }
+        }
+        let home = inheritedEnvironment["HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0, isDirectory: true) : nil }
+        let knownPaths = configuration["cli"]?.cliObject?["searchPaths"]?.cliObject?["macos"]?.cliStrings ?? []
+        urls += knownPaths.compactMap { path in
+            if path.hasPrefix("~/") { return home?.appendingPathComponent(String(path.dropFirst(2))) }
+            return URL(fileURLWithPath: path)
+        }
+        let codexHome = inheritedEnvironment["CODEX_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0, isDirectory: true) : nil }
+        for codexHome in [codexHome, home?.appendingPathComponent(".codex")].compactMap({ $0 }) {
+            for package in ["standalone", "app-server-daemon"] {
+                let root = codexHome.appendingPathComponent("packages/\(package)")
+                urls.append(root.appendingPathComponent("current/bin/codex"))
+                let releases = root.appendingPathComponent("releases")
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: releases.path)) ?? []
+                urls += names.sorted().map { releases.appendingPathComponent("\($0)/bin/codex") }
+            }
+        }
+        var seen = Set<URL>()
+        return urls.compactMap(fingerprint).filter { seen.insert($0.target).inserted }
+    }
+
+    private func newestCodex(_ candidates: [CLIFingerprint], settings: [String: JSONValue],
+                             newerThan minimum: String? = nil) async throws -> CLICapabilities {
+        var versions: [(CLIFingerprint, String)] = []
+        var firstFailure: (any Error)?
+        func isNewer(_ left: String, than right: String) -> Bool {
+            let comparison = compareVersions(left, right)
+            if comparison != .orderedSame { return comparison == .orderedDescending }
+            guard let leftSuffix = left.split(separator: "-", maxSplits: 1).last, left.contains("-"),
+                  let rightSuffix = right.split(separator: "-", maxSplits: 1).last, right.contains("-") else { return false }
+            return leftSuffix.compare(rightSuffix, options: .numeric) == .orderedDescending
+        }
+        for candidate in candidates {
+            do {
+                let version = try await installedVersion(candidate, settings: settings)
+                if minimum.map({ isNewer(version, than: $0) }) ?? true { versions.append((candidate, version)) }
+            } catch LLMError.cancelled { throw LLMError.cancelled }
+            catch { if firstFailure == nil { firstFailure = error } }
+        }
+        for (candidate, version) in versions.sorted(by: { isNewer($0.1, than: $1.1) }) {
+            do { return try await probeCapabilities(candidate, version: version, settings: settings) }
+            catch LLMError.cancelled { throw LLMError.cancelled }
+            catch { if firstFailure == nil { firstFailure = error } }
+        }
+        throw firstFailure ?? LLMError.cliMissing
+    }
+
+    private func installedVersion(_ fingerprint: CLIFingerprint, settings: [String: JSONValue]) async throws -> String {
+        let versionConfiguration = settings["version"]?.cliObject ?? [:]
+        let versionResult = try await probe(fingerprint.url, arguments: versionConfiguration["args"]?.cliStrings ?? ["--version"])
         let versionText = String(decoding: versionResult.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         let version = cliRegexGroups(versionConfiguration["regex"]?.cliString ?? "^(.+)$", in: versionText)?.first
         guard versionResult.exitCode == 0, let version, !AIText.trim(version).isEmpty else {
             throw LLMError.cliTooOld(version: "unknown", missing: ["version"])
         }
-        let helpConfiguration = detect["help"]?.cliObject ?? [:]
+        return version
+    }
+
+    private func probeCapabilities(_ fingerprint: CLIFingerprint, version: String,
+                                   settings: [String: JSONValue]) async throws -> CLICapabilities {
+        let executable = fingerprint.url
+        let helpConfiguration = settings["help"]?.cliObject ?? [:]
         let helpResult = try await probe(executable, arguments: helpConfiguration["args"]?.cliStrings ?? ["--help"])
         let help = String(decoding: helpResult.stdout, as: UTF8.self) + "\n" + String(decoding: helpResult.stderr, as: UTF8.self)
         let flags = Set(cliAllRegexMatches("--[A-Za-z][A-Za-z0-9-]*", in: help))
@@ -287,7 +423,7 @@ public actor CLIConnector: LLMConnector {
         guard missing.isEmpty else { throw LLMError.cliTooOld(version: version, missing: missing) }
         var features = Set<String>()
         if id == .codex {
-            let featureConfiguration = detect["features"]?.cliObject ?? [:]
+            let featureConfiguration = settings["features"]?.cliObject ?? [:]
             let result = try await probe(executable, arguments: featureConfiguration["args"]?.cliStrings ?? ["features", "list"])
             guard result.exitCode == 0 else { throw LLMError.cliTooOld(version: version, missing: ["features list"]) }
             let pattern = featureConfiguration["lineRegex"]?.cliString ?? "^(\\S+)\\s+(.+?)\\s+(true|false)\\s*$"
@@ -298,9 +434,7 @@ public actor CLIConnector: LLMConnector {
                 }
             }
         }
-        let value = CLICapabilities(fingerprint: fingerprint, version: version, flags: flags, features: features)
-        capabilities = value
-        return value
+        return CLICapabilities(fingerprint: fingerprint, version: version, flags: flags, features: features)
     }
 
     private func authenticate(_ detected: CLICapabilities, configuration: [String: JSONValue]) async throws -> String? {
@@ -631,8 +765,7 @@ public actor CLIConnector: LLMConnector {
         }
     }
 
-    private func refreshCodexModels(_ detected: CLICapabilities,
-                                    configuration: [String: JSONValue]) async throws -> [LLMModel] {
+    private func refreshCodexModels(_ detected: CLICapabilities) async throws -> [LLMModel] {
         let inherited = try await resolvedEnvironment()
         return try await workspace { directories in
             let messages: [JSONValue] = [
@@ -669,7 +802,6 @@ public actor CLIConnector: LLMConnector {
                 if item["isDefault"]?.cliBool == true, defaultEfforts == nil, efforts[id]?.isEmpty == false { defaultEfforts = efforts[id] }
                 return LLMModel(id: id, name: item["displayName"]?.cliString ?? id, source: .discovered)
             }
-            guard !models.isEmpty else { throw LLMError.noModels }
             modelEfforts = efforts
             defaultModelEfforts = defaultEfforts
             return [LLMModel(id: "default", name: "CLI default", source: .curated)] + models.filter { $0.id != "default" }
@@ -710,12 +842,13 @@ public actor CLIConnector: LLMConnector {
     }
 }
 
-private struct CLIFingerprint: Equatable, Sendable { let url: URL; let size: UInt64; let modified: Date }
+private struct CLIFingerprint: Equatable, Sendable { let url: URL; let target: URL; let size: UInt64; let modified: Date }
 private struct CLICapabilities: Sendable {
     let fingerprint: CLIFingerprint
     let version: String
     let flags: Set<String>
     let features: Set<String>
+    var newerInstallation: CLIConnector.Installation?
 }
 private struct CLIWorkspace: Sendable { let cwd: URL; let io: URL }
 

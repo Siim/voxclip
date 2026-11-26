@@ -131,6 +131,7 @@ struct ExportRecord: Codable, Equatable {
         let motionCues: [MotionCue]?
         /// Absent without effects, so a project without them keeps its fingerprint.
         let effects: [ClipEffect]?
+        let footage: [ClipFootage]?
         /// Absent at the defaults, so a fingerprint without clip controls is unchanged.
         let clipControls: ProjectClipControls?
     }
@@ -167,7 +168,7 @@ struct ExportRecord: Codable, Equatable {
                                   cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips)
             segments = try buildSegments(state, activeClip: clip)
             let rate: Double = Double(project.media.source.audio?.sampleRate ?? 48_000)
-            plan = try buildEditPlan(segments, duration: duration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
+            plan = try EditPlan.build(transcript: transcript, editState: state, activeClip: clip, duration: duration, sampleRate: rate)
         }
         let output = output(project, clipID: clip?.id)
         let preset = CaptionStyleResolver.preset(width: output.size.width, height: output.size.height)
@@ -212,7 +213,10 @@ struct ExportRecord: Codable, Equatable {
             contextDemo: project.contextDemo, motionCues: clip.flatMap { selected in
                 let cues = project.motionCues.filter { $0.clipID == selected.id }
                 return cues.isEmpty ? nil : cues
-            }, effects: effects.isEmpty ? nil : effects,
+            }, effects: effects.isEmpty ? nil : effects, footage: clip.flatMap { selected in
+                let footage = project.media.footage.filter { $0.clipID == selected.id }
+                return footage.isEmpty ? nil : footage
+            },
                clipControls: ClipControlsProject.controls(for: clip?.id, in: project).flatMap { $0.isDefault ? nil : $0 })
         let encoder = ProjectJSON.encoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

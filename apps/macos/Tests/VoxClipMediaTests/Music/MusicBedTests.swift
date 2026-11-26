@@ -108,6 +108,67 @@ import VoxClipCore
         #expect(Self.level(bed, 4.99, 5) < open - 30 && Self.level(bed, 4.2, 4.3) < open - 3)
     }
 
+    @Test func slippedSegmentHasItsOwnFadeEnvelopeAndGapAndSplittingPreservesPCM() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var edited = entry("p", duration: 4, ducking: false, fadeIn: 0, fadeOut: 0)
+        let points: [GainPoint] = [.init(t: 0.5, db: -12), .init(t: 1.5, db: 0)]
+        edited.segments = [.init(id: "one", anchorSeconds: 1, lengthSeconds: 2, songFromSeconds: 1,
+                                 loop: false, gainDb: 0, fadeInSeconds: 0.5, fadeOutSeconds: 0.5, gainPoints: points)]
+        let voice = Self.voice(seconds: 4, speech: [])
+        let music = [Float](repeating: 0, count: 2 * Self.rate) + [Float](repeating: 0.25, count: 6 * Self.rate)
+        let (_, whole) = try await stage(voice: voice, music: music, entry: edited, seconds: 4, in: directory)
+        #expect(Self.level(whole, 0, 1) == -300)
+        #expect(Self.level(whole, 3, 4) == -300)
+        func sample(_ time: Double) -> Double { Double(whole[2 * Int(time * Double(Self.rate))]) }
+        #expect(abs(20 * log10(sample(2.5) / sample(2)) - 6) < 0.5)
+        #expect(abs(sample(1.25) / sample(1.5) - 0.5) < 1e-6)
+        #expect(abs(sample(2.75) / sample(2.5) - 0.5) < 1e-6)
+        edited.segments = [
+            .init(id: "left", anchorSeconds: 1, lengthSeconds: 1, songFromSeconds: 1, loop: false,
+                  gainDb: 0, fadeInSeconds: 0.5, fadeOutSeconds: 0, gainPoints: [points[0], .init(t: 1, db: -6)]),
+            .init(id: "right", anchorSeconds: 2, lengthSeconds: 1, songFromSeconds: 2, loop: false,
+                  gainDb: 0, fadeInSeconds: 0, fadeOutSeconds: 0.5, gainPoints: [.init(t: 0, db: -6), .init(t: 0.5, db: 0)])
+        ]
+        let (_, split) = try await stage(voice: voice, music: music, entry: edited, seconds: 4, in: directory)
+        #expect(whole.withUnsafeBytes { Data($0) } == split.withUnsafeBytes { Data($0) })
+    }
+
+    @Test func storySeamsDoNotResetOrFadeTheBed() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await NativeMediaFixtures.shared.file("chirp.mov")
+        let track = directory.appendingPathComponent("bed.caf")
+        let music = Self.noise(frames: 3 * Self.rate, amplitude: 0.25)
+        try Self.caf(music, channels: 2, to: track)
+        let plan = EditPlan(sampleRate: Double(Self.rate), totalSamples: 30 * 48_000,
+            kept: [.init(startSample: 144_000, endSample: 168_000), .init(startSample: 24_000, endSample: 62_400),
+                   .init(startSample: 120_000, endSample: 144_000)], partSeams: [24_000, 62_400])
+        var request = RenderRequest(sourceURL: source, plan: plan, output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
+        request.music = MusicRenderInput(entry: entry("p", duration: 3, ducking: false, fadeIn: 0, fadeOut: 0), assetURL: track)
+        let exporter = AVExporter(cleanupRegistry: directory.appendingPathComponent("Scratch"))
+        let dryURL = directory.appendingPathComponent("dry.wav")
+        try await exporter.writeEditedAudio(request, to: dryURL)
+        let wetURL = try await exporter.stageEditedAudio(request, to: directory.appendingPathComponent("wet.wav"), includeMusic: true)
+        let dry = try Self.readBed(dryURL), wet = try Self.readBed(wetURL)
+        try #require(dry.count == 2 * Int(plan.outputSamples) && wet.count == dry.count)
+        var gains: [Double] = []
+        for seam in plan.partSeams {
+            for start in [Int(seam) - 960, Int(seam)] {
+                var dot = 0.0, original = 0.0, mixed = 0.0
+                for frame in start..<(start + 960) {
+                    let expected = Double(music[frame * 2])
+                    let actual = Double(wet[frame * 2] - dry[frame * 2])
+                    dot += actual * expected; original += expected * expected; mixed += actual * actual
+                }
+                #expect(mixed > 0 && dot / sqrt(original * mixed) > 0.99)
+                gains.append(dot / original)
+            }
+        }
+        let minimum = try #require(gains.min()), maximum = try #require(gains.max())
+        #expect(minimum > 0 && maximum / minimum < 1.01)
+    }
+
     @Test func duckingOffKeepsOneLevelAndShortTracksLoopWithoutDips() async throws {
         let directory = try Self.directory()
         defer { try? FileManager.default.removeItem(at: directory) }

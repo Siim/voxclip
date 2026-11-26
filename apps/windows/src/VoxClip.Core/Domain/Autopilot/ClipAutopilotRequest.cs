@@ -55,6 +55,16 @@ public sealed record ClipAutopilotRequest(TranscriptModel Transcript, ProjectEdi
     /// plan is told its rank, its title and idea, and the other clips of the series, as a series' second stage is (prompt version 7).
     /// Empty plans each span on its own.</summary>
     public IReadOnlyList<ClipAutopilotMoment> Moments { get; init; } = [];
+    /// <summary>Companion recordings offered to the planner.</summary>
+    public IReadOnlyList<MediaReference> FootageSources { get; init; } = [];
+    /// <summary>Local frame-analysis summaries keyed by recording identity.</summary>
+    public IReadOnlyDictionary<string, string> FootageDescriptions { get; init; } = new Dictionary<string, string>();
+    /// <summary>Saved project tracks keyed by track identity.</summary>
+    public IReadOnlyDictionary<string, string> MusicTracks { get; init; } = new Dictionary<string, string>();
+    /// <summary>The active clip’s source ranges in playback order.</summary>
+    public IReadOnlyList<ClipProposal.Part>? SelectedParts { get; init; }
+    /// <summary>The active clip’s explicit shape, when it has one.</summary>
+    public string? SelectedKind { get; init; }
     /// <summary>A series request.</summary>
     public bool IsSeries => Mode is ClipAutopilotMode.Series;
     /// <summary>The same request for one clip span.</summary>
@@ -71,6 +81,16 @@ public sealed record ClipAutopilotContext(IReadOnlyList<TimedWord> Words, IReadO
     IReadOnlyDictionary<ClipAutopilotFont, string> Fonts, ClipAutopilotCaptionPreference? Preference, ClipAutopilotPrompt Prompt, ClipAutopilotTone? Tone = null,
     ClipAutopilotFrames? Frames = null)
 {
+    /// <summary>The parts the second stage may tighten but not extend.</summary>
+    public IReadOnlyList<ClipProposal.Part>? OfferedParts { get; init; }
+    /// <summary>The clip shape that these parts form.</summary>
+    public string? Kind { get; init; }
+    /// <summary>The saved music track IDs offered to this request.</summary>
+    public IReadOnlySet<string> MusicTrackIds { get; init; } = new HashSet<string>();
+    /// <summary>Companion recordings offered to the planner.</summary>
+    public IReadOnlyDictionary<string, double> FootageSources { get; init; } = new Dictionary<string, double>();
+    /// <summary>The wording or beat the take did not contain.</summary>
+    public string? MissingFromTake { get; init; }
     /// <summary>The word as shown, corrections applied.</summary>
     public string Text(int index) => Corrections.TryGetValue(Words[index].Id, out var text) ? text : Words[index].Text;
     /// <summary>Inside the scope and not already cut.</summary>
@@ -147,7 +167,10 @@ public static partial class ClipAutopilotRequestBuilder
         if (Scope(request) is not { } scope) throw Invalid();
         var words = request.Transcript.Words;
         var cut = request.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
-        var listed = scope.Indices.Where(index => !cut.Contains(words[index].Id)).ToArray();
+        var parts = moment?.Moment.Parts ?? request.SelectedParts;
+        var ranges = parts?.Select(part => new WordSpan(part.StartWord, part.EndWord)).ToArray() ?? [scope];
+        if (ranges.Length == 0 || ranges.Any(range => range.Start > range.End || !scope.Contains(range.Start) || !scope.Contains(range.End))) throw Invalid();
+        var listed = scope.Indices.Where(index => ranges.Any(range => range.Contains(index)) && !cut.Contains(words[index].Id)).ToArray();
         if (!listed.Any(index => words[index].Kind == WordKind.Word) || listed.Length > prompt.Limits.MaxTranscriptWords) throw Invalid();
         if (request.Note is { } note && Encoding.UTF8.GetByteCount(note) > prompt.Limits.MaxNoteBytes) throw Invalid();
         var language = request.Language ?? request.Transcript.Language ?? "en";
@@ -162,8 +185,10 @@ public static partial class ClipAutopilotRequestBuilder
                 .Select(font => prompt.Request("fontLine", Values(("family", font.Family), ("weight", font.Weight.ToString(CultureInfo.InvariantCulture))))));
         var first = words[listed[0]];
         var last = words[listed[^1]];
-        var seconds = request.IsSeries ? request.Transcript.DurationSeconds : last.End - first.Start;
-        var spoken = SpokenTime(words, listed, request.Edits.Corrections, uncutPauses, request.Edits.PauseKeepSeconds);
+        var recorded = ranges.Sum(range => words[range.End].End - words[range.Start].Start);
+        var seconds = request.IsSeries ? request.Transcript.DurationSeconds : ranges.Length == 1 ? last.End - first.Start : recorded;
+        var spoken = ranges.Select(range => SpokenTime(words, listed.Where(range.Contains).ToArray(), request.Edits.Corrections, uncutPauses, request.Edits.PauseKeepSeconds))
+            .Aggregate((Words: 0, Seconds: 0.0), (total, part) => (total.Words + part.Words, total.Seconds + part.Seconds));
         var rate = spoken.Seconds > 0 ? spoken.Words / spoken.Seconds : 0;
         var limits = prompt.Limits;
         var values = limits.TemplateValues();
@@ -187,6 +212,9 @@ public static partial class ClipAutopilotRequestBuilder
                 ("endWord", listed[^1].ToString(CultureInfo.InvariantCulture)), ("seconds", Fixed1(Math.Max(0, last.End - first.Start))),
                 ("estimate", Fixed1(estimate)), ("minTargetSeconds", values["minTargetSeconds"]), ("maxTargetSeconds", values["maxTargetSeconds"]),
                 ("lengthHint", lengthHint)));
+            if (ranges.Length > 1)
+                instruction = prompt.Request("partsInstruction", Values(("parts", string.Join(", ", ranges.Select(range => $"{range.Start.ToString(CultureInfo.InvariantCulture)}–{range.End.ToString(CultureInfo.InvariantCulture)}"))),
+                    ("kind", moment?.Moment.Kind ?? request.SelectedKind ?? (ranges.Length > 1 ? "story" : "stretch")), ("seconds", Fixed1(recorded)), ("estimate", Fixed1(estimate))));
             var elsewhere = Names(words, scope, request.Edits.Corrections);
             if (elsewhere.Count > 0) instruction += prompt.Request("names", Values(("names", string.Join(", ", elsewhere))));
             if (frames is not null) instruction += FramesBlock(frames, prompt);

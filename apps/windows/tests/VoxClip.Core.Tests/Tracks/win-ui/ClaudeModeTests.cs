@@ -1,7 +1,9 @@
 #if WIN_UI_TESTS
+using System.Text.Json;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Settings;
 using Xunit;
 using static VoxClip.Core.Tests.Tracks.WinUi.MakeItPostableTests;
@@ -25,6 +27,9 @@ public sealed class ClaudeModeTests
         internal ClaudeModeBlocker? Blocker { get; set; }
         internal TaskCompletionSource Gate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int Finds { get; private set; }
+        internal Queue<LlmErrorKind> Failures { get; } = new();
+        internal List<double> RetrySeconds { get; } = [];
+        private LlmErrorKind? failure;
         /// <summary>The scores of the suggestions the find adds, by start word (0, 20, 40, 60); empty finds nothing.</summary>
         internal int[] Scores { get; set; } = [4, 9, 7, 8];
 
@@ -41,16 +46,69 @@ public sealed class ClaudeModeTests
                 editor.ClaudeModeFindStarted(FindAsync(editor));
                 return Task.FromResult<ClaudeModeBlocker?>(null);
             },
-            Fixes.Add);
+            Fixes.Add)
+        {
+            FindErrorKind = () => failure,
+            WaitForRetry = delay => { RetrySeconds.Add(delay.TotalSeconds); return Task.CompletedTask; }
+        };
 
         private async Task FindAsync(EditorViewModel editor)
         {
             await Gate.Task;
+            if (Failures.TryDequeue(out var error))
+            {
+                failure = error;
+                Problem = error switch
+                {
+                    LlmErrorKind.ModelNotFound => "Claude Code doesn't offer missing-model to this account.",
+                    LlmErrorKind.CliSignedOut => "Claude Code isn't signed in.",
+                    LlmErrorKind.QuotaExceeded => "Claude Code says this account is over its quota.",
+                    _ => "Couldn't reach Claude Code."
+                };
+                Finding = false;
+                return;
+            }
             if (Scores.Length > 0)
                 editor.AddAiResult(Result(Scores.Select((score, index) => new AiClip("Clip " + index, "", score, "w" + index * 20, "w" + (index * 20 + 9))).ToArray()));
             else editor.AddAiResult(Result([]));
             Finding = false;
         }
+    }
+
+    public static IEnumerable<object[]> FindRetryCases()
+    {
+        var shared = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
+        using var cases = JsonDocument.Parse(File.ReadAllText(Path.Combine(shared, "fixtures", "clips-mode", "find-retry-cases.json")));
+        foreach (var row in cases.RootElement.EnumerateArray())
+            yield return [row.GetProperty("name").GetString()!,
+                row.GetProperty("failures").EnumerateArray().Select(value => Enum.Parse<LlmErrorKind>(value.GetString()!, ignoreCase: true)).ToArray(),
+                row.GetProperty("requests").GetInt32(), row.GetProperty("retrySeconds").EnumerateArray().Select(value => value.GetDouble()).ToArray(),
+                row.GetProperty("action").GetString()!];
+    }
+
+    [Theory]
+    [MemberData(nameof(FindRetryCases))]
+    public async Task FindFailuresStopOrRetryTheRun(string name, LlmErrorKind[] failures, int requests, double[] retrySeconds, string action)
+    {
+        var (editor, claude, _) = Video();
+        foreach (var failure in failures) claude.Failures.Enqueue(failure);
+        await editor.ClaudeModeContinueAsync();
+        claude.Gate.SetResult();
+        await editor.ClaudeMode.WaitAsync().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await editor.ClaudeModeContinueAsync();
+        Assert.Equal(requests, claude.Finds);
+        Assert.Equal(retrySeconds, claude.RetrySeconds);
+        if (action == "done")
+        {
+            Assert.Equal(ClaudeModePhase.Done, editor.ClaudeMode.Phase);
+            return;
+        }
+        Assert.Equal(ClaudeModePhase.Blocked, editor.ClaudeMode.Phase);
+        Assert.Equal(action == "settings" ? "AI Settings…" : "Find Clips Again", editor.ClaudeMode.Blocker?.Action);
+        Assert.Equal(claude.Problem, editor.ClaudeMode.Blocker?.Reason);
+        editor.FixClaudeModeBlocker();
+        var fix = Assert.Single(claude.Fixes);
+        if (name == "unavailable model") Assert.Contains("missing-model", fix.Reason, StringComparison.Ordinal);
     }
 
     /// <summary>A newly imported, transcribed video with no clips yet, Claude mode's stubs and Make it postable's.</summary>
@@ -128,6 +186,43 @@ public sealed class ClaudeModeTests
         // It ran once: a later transcript or Continue never starts it again on this video.
         await editor.ClaudeModeContinueAsync();
         Assert.Single(stub.Requests);
+    }
+
+    [Fact]
+    public async Task LaterPlansDoNotInterruptReviewOfTheFirstReadyClip()
+    {
+        var (editor, claude, stub) = Video();
+        var firstPlan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var laterPlans = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        editor.MakeIt.Services = stub.Services() with
+        {
+            Plan = async (request, progress, _, cancellation) =>
+            {
+                var series = stub.Series(request);
+                progress.Report(new ClipAutopilotProgress.Ready(0, series.Plans.Count, series.Plans[0]));
+                firstPlan.SetResult();
+                await laterPlans.Task.WaitAsync(cancellation);
+                return series;
+            }
+        };
+        await editor.ClaudeModeContinueAsync();
+        claude.Gate.SetResult();
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(5));
+            await firstPlan.Task.WaitAsync(deadline.Token);
+            while (editor.ClaudeModeReady.Count == 0) await Task.Delay(10, deadline.Token);
+            var reviewing = Assert.Single(editor.ClaudeModeReady).ClipId;
+            editor.ReviewClaudeMode();
+            laterPlans.SetResult();
+            await editor.ClaudeMode.WaitAsync();
+            await editor.ClaudeMode.WaitAsync();
+            Assert.Equal(3, editor.ClaudeModeReady.Count);
+            Assert.Equal(reviewing, editor.MakeIt.Shown?.ClipId);
+            Assert.Equal(reviewing, editor.Project.Edits.ActiveClipId);
+        }
+        finally { laterPlans.TrySetResult(); }
     }
 
     [Fact]
@@ -304,7 +399,7 @@ public sealed class ClaudeModeTests
         var window = File.ReadAllText(Path.Combine(app, "MainWindow.xaml"));
         Assert.Contains("x:Name=\"ClaudeModeHost\"", window);
         var import = File.ReadAllText(Path.Combine(app, "MainWindow.xaml.cs"));
-        Assert.True(import.IndexOf("ArmClaudeMode()", StringComparison.Ordinal) is > 0 and var arm && arm < import.IndexOf("await incoming.PromptTranscriptionAsync()", StringComparison.Ordinal));
+        Assert.True(import.IndexOf("ArmClaudeMode(importClock)", StringComparison.Ordinal) is > 0 and var arm && arm < import.IndexOf("await incoming.PromptTranscriptionAsync()", StringComparison.Ordinal));
         var page = File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.MakeIt.cs"));
         Assert.Contains("FindClips.Started += (_, find) => ViewModel.ClaudeModeFindStarted(find)", page);
         var find = File.ReadAllText(Path.Combine(app, "Controls", "FindClipsJob.cs"));
@@ -312,7 +407,7 @@ public sealed class ClaudeModeTests
         var settings = File.ReadAllText(Path.Combine(app, "SettingsWindow.xaml"));
         Assert.Contains("Tag=\"Clips\"", settings);
         var card = File.ReadAllText(Path.Combine(app, "Controls", "ClipStyleCardPanel.cs"));
-        foreach (var row in new[] { "\"Clips\"", "\"Spend\"", "\"Tone\"", "\"Mode\"" }) Assert.Contains(row, card);
+        foreach (var row in new[] { "\"Clips\"", "\"Spend\"", "\"Tone\"", "\"Mode\"", "\"Transcript\"" }) Assert.Contains(row, card);
     }
 }
 #endif

@@ -6,7 +6,7 @@ import VoxClipMedia
 
 /// ✦ Claude does it all, headless (design.md §6.7, ai.md §16.12): probe, transcribe, Find Clips, then plan the top clips at
 /// once (at most three in flight) and apply and export each one as soon as its plan is ready. Paid steps never run here:
-/// rewrites in the creator's voice and music are left for the app and listed as pending. The whole video's sentence-frame
+/// rewrites and music without a matching saved track are left for the app. The whole video's sentence-frame
 /// pass (ADR-R48 part 2) runs beside Find Clips, and each plan request carries its clip's frames: small images to an AI on
 /// your plan that takes them, a text summary otherwise (the CLI has no spend cap, so an API key gets the summary). Each
 /// clip then gets the picture decisions Make it postable applies (`ClipPicture`): the opening, the face-follow crop for
@@ -15,7 +15,7 @@ import VoxClipMedia
 struct Autopilot: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Make the top clips of a video postable, as Claude mode does, and time each stage.",
-        discussion: "Find Clips and the plans run at extra high effort through the chosen connector. Rewrites and music are left for the app.")
+        discussion: "Find Clips and the plans run at extra high effort through the chosen connector. Reuse matching saved music; otherwise report it as pending.")
     @Option(name: .customLong("open"), help: "Source media, or a project with a transcript.") var input: String
     @Option(help: "Connector ID.") var connector: String
     @Option(help: "LLM model ID.") var model: String?
@@ -132,7 +132,7 @@ extension CLIWorkflow {
     }
 
     /// Find Clips, then the top `count` clips planned at once on `connector` and `lanes`, each applied (and handed to
-    /// `export`) the moment its plan is ready, one at a time. Rewrites and music stay pending. `frames` starts as Find Clips
+    /// `export`) the moment its plan is ready, one at a time. `frames` starts as Find Clips
     /// does and never waits for it; each clip's request takes its frames from the pass (`images` sends them as pictures,
     /// else as a text summary) and starts its opening scan beside the request. A clip whose request carried frames gets
     /// the picture decisions for `shapes` (`ClipPicture.apply`) after the plan's own edits, and its JSON a `picture`. With
@@ -140,6 +140,7 @@ extension CLIWorkflow {
     static func autopilot(project start: Project, connector: any LLMConnector, lanes: [any LLMConnector], model: String, preset: ClipPresetID,
                           count: Int, shared: SharedResources, catalog: LLMCatalog, clock: ClaudeModeClock, report: AutopilotReport,
                           frames: VideoFramePass? = nil, images: Bool = false, shapes: [AspectRatio] = [.portrait], checks: ClipChecks? = nil,
+                          dataRoot: URL = DataLocations().root,
                           export: (_ project: Project, _ clipID: String, _ rank: Int) async throws -> [String]) async throws
         -> (clips: [JSONValue], found: Int, model: String, project: Project) {
         guard let transcript = start.transcript else { throw VoxClipError.noSpeech }
@@ -192,9 +193,12 @@ extension CLIWorkflow {
                 await sent.opening(index)?.value
                 let clipID = UUID().uuidString.lowercased()
                 let applyStart = clock.elapsed
-                let operations = try ClipAutopilotMapping.operations(for: plan, clipID: clipID, project: project, fonts: fonts)
+                let stickers = try AskClaudePrompt.load(shared: shared).stickers
+                let operations = try ClipAutopilotMapping.operations(for: plan, clipID: clipID, project: project, fonts: fonts, stickers: stickers)
                 let applied = try ClipAutopilotMapping.apply(operations, to: project)
                 project = applied.project
+                let music = CLIMusic.autopilotTrack(for: plan, clipID: clipID, in: project, saved: start.music, dataRoot: dataRoot)
+                if let music { project = try MusicProject.setting(music, clipId: clipID, in: project) }
                 // What the picture showed (ADR-R48): the same four decisions as Make it postable's rows.
                 var picture: ClipPicture.Decisions?
                 if let frames, let shown = sent.record(index) {
@@ -209,10 +213,12 @@ extension CLIWorkflow {
                 clock.record(.apply, clip: index + 1, since: applyStart)
                 report.line("Clip \(index + 1) ready: score \(plan.score)/10.")
                 let outputs = try await export(project, clipID, index + 1)
+                let pending = applied.pending.filter { music == nil || $0.decision != .music }
                 var fields: [String: JSONValue] = ["rank": .number(Double(index + 1)), "clipId": .string(clipID), "title": .string(plan.title),
                     "score": .number(Double(plan.score)), "verdict": .string(plan.verdict.rawValue),
                     "startWordId": .string(transcript.words[plan.startWord].id), "endWordId": .string(transcript.words[plan.endWord].id),
-                    "pending": .array(applied.pending.map { .string($0.decision.rawValue) }), "outputs": .array(outputs.map(JSONValue.string))]
+                    "music": music.map { CLIMusic.json($0) } ?? .string("pending"),
+                    "pending": .array(pending.map { .string($0.decision.rawValue) }), "outputs": .array(outputs.map(JSONValue.string))]
                 if let shown = sent.record(index) {
                     fields["frames"] = Self.framesJSON(shown.frames, plan: plan)
                     if let picture { fields["picture"] = Self.pictureJSON(picture, sentences: shown.sentences, shapes: shapes) }

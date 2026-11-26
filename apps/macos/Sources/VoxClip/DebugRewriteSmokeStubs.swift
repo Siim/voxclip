@@ -12,6 +12,7 @@ import VoxClipCore
 enum RewriteSmokeReply: Sendable {
     /// A Rewrite reply: the new passage and optional next actions.
     case passage(String, nextActions: [RewriteNextAction] = [])
+    case patch(line: String, text: String)
     /// The request fails as a provider error would.
     case failure
     /// Waits until `RewriteSmokeConnector.release()` before answering with `then`.
@@ -55,7 +56,7 @@ actor RewriteSmokeConnector: LLMConnector {
         records.append(RewriteSmokeRequestRecord(tag: request.tag, feedback: feedback,
             slots: request.instruction.contains("TIME IN THE VIDEO") && request.system.contains("picture keeps running")))
         switch request.tag {
-        case "voice-rewrite":
+        case "voice-rewrite", "patch-rewrite":
             guard !rewrites.isEmpty else { throw LLMError.invalidOutput(reason: "The smoke script has no reply.") }
             let reply = rewrites.count > 1 ? rewrites.removeFirst() : rewrites[0]
             return try await answer(reply, model: model)
@@ -87,6 +88,9 @@ actor RewriteSmokeConnector: LLMConnector {
             var object: [String: Any] = ["rewrite": text, "audioTags": []]
             object["nextActions"] = actions.map { ["label": $0.label, "instruction": $0.instruction, "ordinals": $0.ordinals] }
             let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            return RawCompletion(text: String(decoding: data, as: UTF8.self), model: model, stop: .complete)
+        case .patch(let line, let text):
+            let data = try JSONSerialization.data(withJSONObject: ["edits": [["line": line, "text": text, "reason": "Clarify the opening."]]])
             return RawCompletion(text: String(decoding: data, as: UTF8.self), model: model, stop: .complete)
         case .failure:
             throw LLMError.invalidOutput(reason: "Scripted provider failure.")
@@ -197,6 +201,7 @@ struct RewriteSmokeVoiceScript: Sendable {
     var seconds: [String: Double] = [:]
     /// Word-check transcript substitutions, lowercased: "claude code" heard as "cloud code".
     var heard: [String: String] = [:]
+    var misheardScript: String?
     /// Quirky v4 timing for every synthesis, cycling in order.
     var quirks: [RewriteSmokeTimingQuirk] = []
     var quirkIndex = 0
@@ -204,6 +209,7 @@ struct RewriteSmokeVoiceScript: Sendable {
     var fitting: [String: Double] = [:]
     /// Paid synthesis requests and word checks answered.
     var syntheses = 0
+    var rejectedSpeakerRequests: Set<Int> = []
     var checks = 0
     /// The owner's cloned voices the account lists; S-voice-rebuild adds and removes them (voice-lab §6.12).
     var voices = ["fixtureOwnVoice"]
@@ -212,8 +218,11 @@ struct RewriteSmokeVoiceScript: Sendable {
     /// Every request, as "METHOD /path", and the voice each paid synthesis used.
     var requests: [String] = []
     var synthesisVoices: [String] = []
+    var synthesisScripts: [String] = []
     var lastText = ""
     var lastDuration = 1.0
+    var wordCheckCache: URL?
+    var replayChecks = false
 }
 
 /// ElevenLabs as the take run reaches it (models, voices, synthesis with timestamps, speech to text), scripted.
@@ -251,7 +260,7 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
     override func startLoading() {
         do {
             guard let url = request.url else { throw URLError(.badURL) }
-            let data: Data
+            var data: Data
             let method = request.httpMethod ?? "GET"
             Self.script.withLock { $0.requests.append("\(method) \(url.path)") }
             switch (method, url.path) {
@@ -282,7 +291,7 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                 let text = ((dialogue ? input?["text"] : body["text"]) as? String) ?? ""
                 let voice = dialogue ? (input?["voice_id"] as? String ?? "") : String(url.path.dropFirst("/v1/text-to-speech/".count).dropLast("/with-timestamps".count))
                 Self.script.withLock { $0.synthesisVoices.append(voice) }
-                let duration = Self.script.withLock { script -> Double in
+                let (duration, pitch) = Self.script.withLock { script -> (Double, Double) in
                     script.syntheses += 1
                     let fits = script.fitting[Self.words(text)] ?? script.fitting.first { Self.words(text).contains($0.key) }?.value
                         ?? Self.scaled(Self.words(text), from: script.fitting)
@@ -290,13 +299,17 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                     let fixed = script.seconds.first { Self.words(text).contains($0.key) }?.value
                     let base: Double = fixed ?? (script.exactFit ? fits : Self.naturalSeconds(text) + script.offset)
                     script.lastText = Self.words(text); script.lastDuration = max(0.3, base * factor)
-                    return script.lastDuration
+                    script.synthesisScripts.append(script.lastText)
+                    return (script.lastDuration, script.rejectedSpeakerRequests.contains(script.syntheses) ? 300 : 120)
                 }
-                data = try Self.synthesis(text: text, duration: duration, dialogue: dialogue)
+                data = try Self.synthesis(text: text, duration: duration, dialogue: dialogue, pitch: pitch)
             case ("POST", "/v1/speech-to-text"):
                 let (text, duration) = Self.script.withLock { script -> (String, Double) in
                     script.checks += 1
                     var heard = script.lastText
+                    if let misheard = script.misheardScript, script.lastText == Self.words(misheard) {
+                        heard = script.lastText.split(separator: " ").map { _ in "unrelated" }.joined(separator: " ")
+                    }
                     for (said, misheard) in script.heard { heard = heard.replacing(said, with: misheard, maxReplacements: .max) }
                     for (said, misheard) in script.heard {
                         let capitalised = said.split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
@@ -306,7 +319,8 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                 }
                 // The check hears the take mixed into its source context; the take sits in its middle. Words are timed over
                 // that span, so the word check (which keeps the words inside the patch) hears each one.
-                let mixed = Self.wavSeconds(try Self.body(request)) ?? duration
+                let body = try Self.body(request)
+                let mixed = Self.wavSeconds(body) ?? duration
                 let lead = max(0, (mixed - duration) / 2)
                 let words = text.split(separator: " ").map(String.init)
                 let stride = max(0.05, duration - 0.2) / Double(max(1, words.count))
@@ -314,6 +328,15 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                     ["type": "word", "text": word, "start": lead + 0.1 + Double(index) * stride, "end": lead + 0.1 + Double(index + 1) * stride] as [String: Any]
                 }
                 data = try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": timed])
+                if let root = Self.script.withLock({ $0.wordCheckCache }) {
+                    guard let riff = body.range(of: Data("RIFF".utf8)), riff.lowerBound + 8 <= body.count else { throw URLError(.cannotDecodeContentData) }
+                    let size = body[riff.upperBound..<(riff.upperBound + 4)].enumerated().reduce(0) { $0 | (Int($1.element) << (8 * $1.offset)) }
+                    guard size <= body.count - riff.lowerBound - 8 else { throw URLError(.cannotDecodeContentData) }
+                    let key = VoiceLabFingerprint.bytes(body.subdata(in: riff.lowerBound..<(riff.lowerBound + 8 + size)))
+                    let saved = root.appendingPathComponent("word-check-" + key)
+                    if Self.script.withLock({ $0.replayChecks }) { data = try Data(contentsOf: saved) }
+                    else { try data.write(to: saved, options: .atomic) }
+                }
             default:
                 throw URLError(.unsupportedURL)
             }
@@ -327,7 +350,7 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
     /// 24 kHz PCM16 of the fixture's voice for `duration`, spoken as the source is (DebugRewriteSmoke.project): its voiced
     /// tone under each word, its room tone in 70 ms gaps between words and 50 ms margins. Each character's timing lies
     /// inside its word. Its joins still differ from the source's by a few LU, so its takes pass with a join advisory.
-    private static func synthesis(text: String, duration: Double, dialogue: Bool) throws -> Data {
+    private static func synthesis(text: String, duration: Double, dialogue: Bool, pitch: Double) throws -> Data {
         let margin = 0.05, gap = 0.07
         let words = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
         let letters = Double(max(1, words.reduce(0) { $0 + $1.count }))
@@ -349,7 +372,7 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
             let seconds: Double = Double(index) / 24_000
             while span < spans.count - 1, seconds >= spans[span + 1].start { span += 1 }
             let voiced = spans.indices.contains(span) && seconds >= spans[span].start && seconds < spans[span].end
-            let level: Double = voiced ? sin(2 * Double.pi * 120 * seconds) * 3_277 : sin(2 * Double.pi * 60 * seconds) * 33
+            let level: Double = voiced ? sin(2 * Double.pi * pitch * seconds) * 3_277 : sin(2 * Double.pi * 60 * seconds) * 33
             var value = Int16(level.rounded()).littleEndian
             withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
         }

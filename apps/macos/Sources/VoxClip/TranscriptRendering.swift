@@ -72,6 +72,7 @@ struct TranscriptSpan: Equatable {
 struct TranscriptClipMark: Equatable {
     let range: NSRange
     let suggested: Bool
+    var partIndex: Int? = nil
 }
 
 /// One display paragraph of the take (`TranscriptParagraphs`): where its text starts, its
@@ -313,6 +314,11 @@ struct TranscriptAppearance: Equatable {
     /// The text size the storage was built at.
     private var builtTextSize: Double?
     private(set) var clipMarks: [String: TranscriptClipMark] = [:]
+    private(set) var storyClipMarks: [String: [TranscriptClipMark]] = [:]
+
+    func marks(for id: String) -> [TranscriptClipMark] {
+        storyClipMarks[id] ?? clipMarks[id].map { [$0] } ?? []
+    }
     private(set) var aiWordIDs: Set<String> = []
     /// The body font, whose glyphs the gutter centres its line boxes on.
     private(set) var font = DesignValues.transcriptFont(size: DesignValues.transcriptTextSize)
@@ -502,12 +508,20 @@ struct TranscriptAppearance: Equatable {
             }
         }
         var marks: [String: TranscriptClipMark] = [:]
+        var stories: [String: [TranscriptClipMark]] = [:]
         for clip in model.sortedClips {
-            guard let first = text.map.span(id: clip.startWordId), let last = text.map.span(id: clip.endWordId), first.range.location <= last.range.location else { continue }
-            marks[clip.id] = TranscriptClipMark(range: NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location), suggested: clip.origin == .ai && !clip.selected)
+            let parts = clip.playParts.enumerated().compactMap { position, part -> TranscriptClipMark? in
+                guard let first = text.map.span(id: part.startWordId), let last = text.map.span(id: part.endWordId),
+                      first.range.location <= last.range.location else { return nil }
+                let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
+                return TranscriptClipMark(range: range, suggested: clip.origin == .ai && !clip.selected, partIndex: clip.parts == nil ? nil : position)
+            }
+            if clip.parts != nil { stories[clip.id] = parts }
+            else { marks[clip.id] = parts.first }
         }
-        let backdropChanged = appearance?.activeClipID.map { marks[$0] != clipMarks[$0] } ?? false
+        let backdropChanged = appearance?.activeClipID.map { marks[$0] != clipMarks[$0] || stories[$0] != storyClipMarks[$0] } ?? false
         clipMarks = marks
+        storyClipMarks = stories
         // Keep All, or undoing it, turns the open clip's bar solid or dashed without any
         // storage edit or viewport layout, and `update` places the backdrop again only when
         // the scope or the open clip changes.
@@ -542,12 +556,12 @@ struct TranscriptAppearance: Equatable {
     private func contents(model: EditorModel, replacements: [VoiceLabSegment]) -> [TranscriptParagraphContent] {
         let words = transcript
         let cutWords = model.cutWordIDs, cutPauses = model.cutPauseIDs, fillers = model.fillerCandidateIDs
-        let showsCuts = model.showsCuts, openEnds = model.openFoldEnds, scope = model.scopeBounds
+        let showsCuts = model.showsCuts, openEnds = model.openFoldEnds, scopes = model.scopePartBounds
         let pauses = model.pauseByAfterIndex, showPauses = model.showPauses
         let proposal = model.proposalDisplay, marks = proposal?.marks ?? [:], changesPending = proposal?.pending ?? false
         var segments: [String: VoiceLabSegment] = [:]
         for segment in replacements where segments[segment.replace.firstWordId] == nil { segments[segment.replace.firstWordId] = segment }
-        func inside(_ position: Int) -> Bool { scope?.contains(position) ?? true }
+        func inside(_ position: Int) -> Bool { scopes?.contains { $0.contains(position) } ?? true }
         func removed(_ position: Int) -> Bool {
             inside(position) && cutWords.contains(words[position].id) && !aiWordIDs.contains(words[position].id) && marks[words[position].id]?.role != .old
         }
@@ -560,7 +574,7 @@ struct TranscriptAppearance: Equatable {
         }
         /// The pause after a word, when it is in the open clip: between two of its words.
         func pause(after position: Int) -> Pause? {
-            guard let pause = pauses[position], inside(position), inside(position + 1) else { return nil }
+            guard let pause = pauses[position], scopes?.contains(where: { $0.contains(position) && $0.contains(position + 1) }) ?? true else { return nil }
             return pause
         }
         func pausePiece(_ pause: Pause) -> TranscriptParagraphContent.Piece {
@@ -569,9 +583,11 @@ struct TranscriptAppearance: Equatable {
         }
         var result: [TranscriptParagraphContent] = []
         result.reserveCapacity(split.count)
-        let visible = model.focusesClip ? scope.map { $0.lowerBound..<($0.upperBound + 1) } : nil
-        for sourceParagraph in split {
-            let paragraph = visible.map { sourceParagraph.clamped(to: $0) } ?? sourceParagraph
+        let visible = model.focusesClip ? scopes?.sorted { $0.lowerBound < $1.lowerBound } : nil
+        let paragraphs = split.flatMap { source -> [Range<Int>] in
+            visible?.map { source.clamped(to: Range($0)) }.filter { !$0.isEmpty } ?? [source]
+        }
+        for paragraph in paragraphs {
             guard !paragraph.isEmpty else { continue }
             var content = TranscriptParagraphContent(firstWord: paragraph.lowerBound, start: words[paragraph.lowerBound].start)
             var position = paragraph.lowerBound
@@ -615,7 +631,7 @@ struct TranscriptAppearance: Equatable {
                     if !changesPending { content.pieces.append(.init(kind: .aiMarker, id: "ai:\(segment.id)", text: " ")) }
                     if let replacement = segment.words {
                         let replacementEnd = max(position + 1, (wordIndex[segment.replace.lastWordId] ?? position) + 1)
-                        let end = visible.map { min($0.upperBound, replacementEnd) } ?? replacementEnd
+                        let end = visible?.first(where: { $0.contains(position) }).map { min($0.upperBound + 1, replacementEnd) } ?? replacementEnd
                         content.pieces.append(.init(kind: .replacement, id: word.id, text: replacement.map(\.text).joined(separator: " "), ids: words[position..<end].map(\.id)))
                         position = end
                         continue

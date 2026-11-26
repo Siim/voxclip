@@ -112,6 +112,7 @@ enum SidebarItem: Hashable {
 /// controller while it is open and detached before it closes.
 @MainActor @Observable final class WorkspaceShell {
     let app: AppModel
+    let cardImport = CardImport()
     private(set) var document: VoxClipDocument?
     private(set) var editor: EditorModel?
     var selection: SidebarItem = .home { didSet { if selection != oldValue { followSelection() } } }
@@ -255,7 +256,7 @@ enum SidebarItem: Hashable {
             if !next.isDocumentEdited { next.markEdited() }
             return true
         } catch {
-            notice = await app.safeError(error)
+            notice = await app.safeError(error, context: .projectOpen)
             return false
         }
     }
@@ -314,6 +315,8 @@ enum SidebarItem: Hashable {
     /// Imports a movie as a new untitled project and opens it in place of the open one.
     func importVideo(_ url: URL) async {
         guard importTask == nil else { notice = Self.busyCopy; return }
+        let clock = ClaudeModeClock()
+        clock.begin(.ingest)
         // A file opened from Finder or the Dock shows its progress in the main window,
         // even if that window was closed or minimised.
         windowController?.window?.makeKeyAndOrderFront(nil)
@@ -322,7 +325,7 @@ enum SidebarItem: Hashable {
             importProgress = "Importing video…"
             defer { importProgress = nil; importTask = nil }
             do {
-                let imported = try await importedDocument(url, app: app)
+                let imported = try await importedDocument(url, app: app, clock: clock)
                 try Task.checkCancellation()
                 NSDocumentController.shared.addDocument(imported)
                 let opened: @MainActor () async -> Void = { [weak self] in
@@ -341,7 +344,7 @@ enum SidebarItem: Hashable {
                 }
                 await opened()
             } catch is CancellationError {
-            } catch { notice = await app.safeError(error) }
+            } catch { notice = await app.safeError(error, context: .importMedia) }
         }
         importTask = task
         await task.value
@@ -352,6 +355,7 @@ enum SidebarItem: Hashable {
     /// Opens a project file without a window of its own and replaces the open project
     /// with it. Opening the project that is already open selects Full take.
     @discardableResult func openProject(at url: URL) async -> Bool {
+        guard !cardImport.owns(url) else { notice = "This recording is still being worked on. Open it once the card finishes."; return false }
         windowController?.window?.makeKeyAndOrderFront(nil)
         if let open = document?.fileURL, open.standardizedFileURL == url.standardizedFileURL {
             selection = .fullTake
@@ -369,7 +373,7 @@ enum SidebarItem: Hashable {
             if !holdsForPaidWork(next) { refused() }
             return false
         } catch {
-            notice = await app.safeError(error)
+            notice = await app.safeError(error, context: .projectOpen)
             return false
         }
     }

@@ -85,6 +85,7 @@ struct MakeItServices {
     var framePass: @MainActor (_ editor: EditorModel) -> VideoFramePass? = { _ in nil }
     /// The AI the frames go to: its name, whether it takes images, and who pays; nil sends no frames.
     var frameAI: @MainActor (_ editor: EditorModel) async -> MakeItFrameAI? = { _ in nil }
+    var effectAssets: ClipPlanAssets?
 }
 
 /// One rewrite for the voice step.
@@ -120,6 +121,11 @@ struct MakeItRewriteOutcome: Equatable {
     var keptAsRecorded = 0
 }
 
+struct MakeItPaidVoice {
+    let inputs: Project
+    let outcome: MakeItRewriteOutcome
+}
+
 /// How a decision is taken back on its own (the review's Undo).
 enum MakeItInverse {
     case edits([EditCommand])
@@ -128,6 +134,7 @@ enum MakeItInverse {
     case motion(added: MotionCue)
     case share(clipID: String, previous: String?)
     case music(added: ProjectMusic)
+    case reusedMusic(added: ProjectMusic, previous: ProjectMusic?)
     case voice(segments: [String])
     /// A whole-clip revoice (ADR-R46): its segments off and its record removed.
     case wholeClip(WholeClipRevoiceRecord)
@@ -137,12 +144,13 @@ enum MakeItInverse {
     case speed(clipID: String, previous: Double)
     /// An effect the run added (the hook's title card): removed, or put back as it was when the run replaced one.
     case effect(id: String, previous: ClipEffect?)
+    case footage(id: String, previous: ClipFootage?)
     /// The clip's opening lead-in before "Opens on a clear look at you" (ADR-R48).
     case leadIn(clipID: String, previous: Double?)
     /// The clip's crop before "9:16 follows your face".
     case reframe(clipID: String, previous: ReframeSettings?)
     /// The clip's cover before "Cover frame chosen".
-    case cover(clipID: String, previous: Double?)
+    case cover(clipID: String, previous: Double?, previousTitle: String?)
 }
 
 /// Where a decision's Change goes.
@@ -193,6 +201,7 @@ struct MakeItRow: Identifiable, Equatable {
 @MainActor @Observable final class MakeItBudget {
     /// The per-video cap the creator chose (Settings `clips.autopilot.capUSD`).
     let cap: Decimal
+    private let fixed: Bool
     /// The cap plus every amount Continue approved.
     private(set) var approved: Decimal
     private(set) var spent: Decimal = 0
@@ -200,7 +209,8 @@ struct MakeItRow: Identifiable, Equatable {
     private(set) var needed: Decimal?
     @ObservationIgnored private var waiting: CheckedContinuation<Bool, Never>?
 
-    init(cap: Decimal) { self.cap = cap; approved = cap }
+    convenience init(cap: Decimal) { self.init(cap: cap, fixed: false) }
+    init(cap: Decimal, fixed: Bool) { self.cap = cap; self.fixed = fixed; approved = cap }
 
     var remaining: Decimal { max(0, approved - spent) }
     /// A $0 cap means no paid voice or music at all: fixes are cuts and wording only, and nothing asks for more.
@@ -209,7 +219,7 @@ struct MakeItRow: Identifiable, Equatable {
 
     /// Waits at the cap for the creator: true once Continue approved `shortfall` (rounded up to the cent), false after Stop.
     func ask(_ shortfall: Decimal) async -> Bool {
-        guard paidAllowed, shortfall > 0, waiting == nil else { return false }
+        guard !fixed, paidAllowed, shortfall > 0, waiting == nil else { return false }
         var value = shortfall * 100, cents = Decimal()
         NSDecimalRound(&cents, &value, 0, .up)
         needed = cents / 100
@@ -266,6 +276,20 @@ struct MakeItRow: Identifiable, Equatable {
     var openQuestion: Int?
     /// The look or speed row whose other choices show, or the hook row whose text field shows.
     var openChoice: String?
+    var proposalOperations: [ClipAutopilotOperation] = []
+    var proposalMusic: ProjectMusic?
+    var proposalUndone = false
+    var proposalKept = false
+    var revisionInFlight = false
+    var revisionError: String?
+    var priorPlan: ClipAutopilotPlan?
+    var priorOperations: [ClipAutopilotOperation] = []
+    var assetPrices: [String: Decimal] = [:]
+    @ObservationIgnored var proposalInput: ClipAutopilotRequest?
+    @ObservationIgnored var paidMusic: [ProjectMusic] = []
+    @ObservationIgnored var paidCues: [String: ProjectMusic] = [:]
+    @ObservationIgnored var paidPhrases: [ClosedRange<Int>: [String: MakeItPaidVoice]] = [:]
+    @ObservationIgnored var paidWholeClips: [String: MakeItPaidWholeClip] = [:]
     @ObservationIgnored var task: Task<Void, Never>?
     @ObservationIgnored var inverses: [String: MakeItInverse] = [:]
     @ObservationIgnored var cancelled = false
@@ -274,7 +298,7 @@ struct MakeItRow: Identifiable, Equatable {
 
     init(clipID: String, cap: Decimal?, budget: MakeItBudget? = nil) { self.clipID = clipID; self.cap = cap; self.budget = budget }
 
-    var running: Bool { phase == .planning || phase == .applying }
+    var running: Bool { phase == .planning || phase == .applying || revisionInFlight }
     /// What the run may still spend: its own cap's rest, or the video pool's.
     var remaining: Decimal? { budget.map(\.remaining) ?? cap.map { max(0, $0 - spent) } }
     func charge(_ usd: Decimal) { spent += usd; budget?.charge(usd) }
@@ -363,6 +387,9 @@ extension EditorModel {
         }
         // The frames an API key bills for (ADR-R48): at most a full sheet, priced before the send.
         if let images = makeItImageEstimate() { total += images; priced = true }
+        if makeIt.services == nil, let quote = clipIllustrationQuote {
+            total += quote.usdPerImage; priced = true
+        }
         return priced && total > 0 ? total : nil
     }
 
@@ -415,11 +442,21 @@ extension EditorModel {
     /// step, kept first. Claude mode passes the video's `budget` (the runs share it instead of each having its own cap) and
     /// its `clock`, which times each clip's plan and apply.
     func makeTopPostable(_ count: Int = 3, budget: MakeItBudget? = nil, clock: ClaudeModeClock? = nil) {
-        let ranked = suggestedClips.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>, moment: ClipAutopilotMoment)? in
+        makeTopPostable(count, budget: budget, clock: clock, only: nil)
+    }
+
+    func makeTopPostable(_ count: Int, budget: MakeItBudget?, clock: ClaudeModeClock? = nil, only clipIDs: Set<String>?) {
+        let chosen = suggestedClips.filter { clipIDs?.contains($0.id) ?? true }
+        let ranked = chosen.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>, moment: ClipAutopilotMoment)? in
             guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
             let found = foundSuggestion(clip)
-            let moment = ClipAutopilotMoment.found(lower...upper, title: clip.title ?? found?.title ?? "", reason: found?.reason ?? "",
+            var moment = ClipAutopilotMoment.found(lower...upper, title: clip.title ?? found?.title ?? "", reason: found?.reason ?? "",
                                                    score: suggestionScore(clip) ?? found?.score ?? 0)
+            if clip.parts != nil, let words = project.transcript?.words {
+                moment.orderedParts = clip.playPartIndices(in: words)?.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }
+                moment.shape = clip.kind == .showreel ? .showreel : .story
+            }
+            moment.missingFromTake = found?.notInTake
             return (clip.id, lower...upper, moment)
         }
         guard !ranked.isEmpty, makeIt.active == nil, capabilities.ai, capabilities.edit, let transcript = project.transcript else { return }
@@ -427,9 +464,11 @@ extension EditorModel {
         let runs = ranked.map { MakeItRun(clipID: $0.id, cap: budget?.cap ?? makeItCap(clipID: $0.id), budget: budget) }
         for run in runs.reversed() { makeIt.insert(run); run.line("Waiting for Claude…") }
         onShowMakeIt?()
-        let request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
+        var request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
                                            captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone(),
-                                           moments: ranked.map(\.moment))
+                                           moments: ranked.map(\.moment), footageSources: project.media.additionalSources)
+        request.creativeShapes = true
+        if makeItStyle.music { request.musicTracks = Dictionary(project.music.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first }) }
         let task = Task { [weak self] () -> Void in await self?.performSeries(runs, spans: ranked.map(\.span), request: request, clock: clock) }
         for run in runs { run.task = task }
         makeIt.holdQueue(task)
@@ -485,7 +524,7 @@ extension EditorModel {
                 for run in runs where run.running { run.phase = .stopped }
                 return
             }
-            let message = await app.safeError(error, context: "ai:make-it")
+            let message = await app.safeError(error, context: .makeIt, messageContext: "ai:make-it")
             for (index, run) in runs.enumerated() where !applied.contains(index) {
                 run.phase = .failed(message.isEmpty ? "Claude couldn't plan these clips. Nothing was changed." : message)
             }
@@ -518,13 +557,14 @@ extension EditorModel {
             run.phase = .failed("This clip changed. Nothing was changed."); return false
         }
         let started = clock?.elapsed
-        makeIt.shownClipID = run.clipID
+        let reveal = run.budget == nil || claudeModeReady.isEmpty
+        if reveal { makeIt.shownClipID = run.clipID }
         beginUndoGroup("Make it postable")
         if isSuggestion(run.clipID) { _ = keepForRowAction(run.clipID) }
-        _ = setScope(run.clipID)
+        if reveal { _ = setScope(run.clipID) }
         await llmRuns.sharing { await finish(run, plan: plan, services: services) }
         endUndoGroup()
-        if let clock, let started { clock.record(.apply, clip: clip, since: started) }
+        if run.phase == .ready, let clock, let started { clock.record(.apply, clip: clip, since: started) }
         return run.phase == .stopped
     }
 
@@ -580,12 +620,13 @@ extension EditorModel {
         defer { endUndoGroup(); if run.running { run.phase = .stopped } }
         run.line("Reading the clip…")
         guard let request = makeItRequest(run.clipID) else { run.phase = .failed("This clip has no words to plan."); return }
+        run.proposalInput = request
         let series: ClipAutopilotSeries
         do { series = try await services.plan(request, self, makeItFrameSource([run.clipID]), progress([run])) }
         catch is CancellationError { run.phase = .stopped; return }
         catch LLMError.cancelled { run.phase = .stopped; return }
         catch {
-            let message = await app.safeError(error, context: "ai:make-it")
+            let message = await app.safeError(error, context: .makeIt, messageContext: "ai:make-it")
             run.phase = .failed(message.isEmpty ? "Claude couldn't plan this clip. Nothing was changed." : message)
             return
         }
@@ -599,6 +640,9 @@ extension EditorModel {
 
     /// Applies a checked plan as the run's step, inside the undo group the caller opened.
     private func finish(_ run: MakeItRun, plan: ClipAutopilotPlan, services: MakeItServices) async {
+        if run.proposalInput == nil {
+            run.proposalInput = makeItRequest(run.clipID, consumesNote: false)
+        }
         run.plan = plan
         makeIt.record(score: plan.score, verdict: plan.verdict, for: run.clipID)
         guard !makeItStopped(run) else { run.phase = .stopped; return }
@@ -621,11 +665,121 @@ extension EditorModel {
     }
 
     /// The planner's request for one clip: its span, the project's edits and the style's caption preference.
-    func makeItRequest(_ clipID: String) -> ClipAutopilotRequest? {
+    func makeItRequest(_ clipID: String, consumesNote: Bool = true) -> ClipAutopilotRequest? {
         guard let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == clipID }),
               let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
-        return ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clip(lower...upper),
-                                    captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone())
+        var request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clip(lower...upper),
+                                    captionPreference: makeItStyle.captionPreference, note: consumesNote ? makeItNoteText() : nil,
+                                    tone: consumesNote ? makeItPlannerTone() : nil,
+                                    footageSources: project.media.additionalSources)
+        request.creativeShapes = true
+        if clip.parts != nil {
+            request.selectedParts = clip.playPartIndices(in: transcript.words)?.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }
+            request.selectedKind = clip.kind == .showreel ? .showreel : .story
+        }
+        if makeItStyle.music { request.musicTracks = Dictionary(project.music.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first }) }
+        return request
+    }
+
+    func creativeProposalBlocker(_ run: MakeItRun) -> String? {
+        if !canEditForMakeIt(run.clipID) { return "Open a writable clip to change this proposal." }
+        if makeIt.active != nil || capabilities.aiBusy { return "Finish the current action first." }
+        return nil
+    }
+
+    func undoCreativeProposal(_ run: MakeItRun) {
+        guard creativeProposalBlocker(run) == nil, !run.proposalKept, !run.proposalUndone else { return }
+        beginUndoGroup("Undo Make it postable")
+        let seconds = run.seconds
+        takeBackMakeIt(run)
+        run.seconds = seconds
+        endUndoGroup()
+        run.proposalUndone = true
+        announce("Proposal undone. Paid files stay in this project.")
+    }
+
+    func playCreativeProposal(_ run: MakeItRun) {
+        guard !run.proposalUndone, setScope(run.clipID),
+              let first = project.edits.clips.first(where: { $0.id == run.clipID })?.playParts.first,
+              let time = words.first(where: { $0.id == first.startWordId })?.start else { return }
+        makeItPlay(MakeItRow(id: "proposal", text: "Play", play: time))
+    }
+
+    func reviseCreativeProposal(_ run: MakeItRun, instruction: String) {
+        let instruction = String(instruction.trimmingCharacters(in: .whitespacesAndNewlines).prefix(600))
+        guard !instruction.isEmpty, creativeProposalBlocker(run) == nil, !run.proposalKept,
+              let plan = run.plan, var request = run.proposalInput else { return }
+        let saved = run.paidMusic.filter { FileManager.default.fileExists(atPath: MusicRenderInput.url(for: $0.asset, dataRoot: app.locations.root).path) }
+        var prior = plan
+        prior.orderedParts = plan.parts
+        prior.shape = plan.kind
+        if let track = run.proposalMusic, saved.contains(track) { prior.savedMusicTrackId = track.id }
+        request.note = nil
+        request.selectedKind = plan.kind
+        request.revision = .init(instruction: instruction, plan: prior)
+        request.musicTracks = Dictionary((saved + project.music).map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
+        run.revisionError = nil
+        run.revisionInFlight = true
+        run.cancelled = false
+        let snapshot = project
+        run.task = Task { [weak self] in
+            guard let self else { return }
+            await reviseCreativeProposal(run, request: request, snapshot: snapshot, saved: saved)
+        }
+    }
+
+    private func reviseCreativeProposal(_ run: MakeItRun, request: ClipAutopilotRequest, snapshot: Project, saved: [ProjectMusic]) async {
+        defer { run.revisionInFlight = false }
+        let services = makeIt.services ?? .live
+        do {
+            let series = try await services.plan(request, self, makeItFrameSource([run.clipID]), progress([run]))
+            guard !run.cancelled, !Task.isCancelled, !isLeaving else { return }
+            var current = project
+            current.edits.activeClipId = snapshot.edits.activeClipId
+            guard current == snapshot, canEditForMakeIt(run.clipID) else {
+                run.revisionError = "This project changed while Claude was working. Nothing was changed."
+                return
+            }
+            guard let plan = series.plans.first else {
+                run.revisionError = "Claude couldn't revise this proposal. Nothing was changed."
+                return
+            }
+            let next = MakeItRun(clipID: run.clipID, cap: run.cap, budget: run.budget)
+            next.task = run.task
+            next.spent = run.spent
+            next.paidMusic = saved
+            next.paidCues = run.paidCues
+            next.paidPhrases = run.paidPhrases
+            next.paidWholeClips = run.paidWholeClips
+            next.proposalInput = run.proposalInput
+            next.priorPlan = run.plan
+            next.priorOperations = run.proposalOperations
+            next.frames = run.frames
+            let priorInverses = run.inverses
+            let priorRows = run.rows
+            let priorSeconds = run.seconds
+            beginUndoGroup("Revise proposal")
+            defer { endUndoGroup() }
+            if !run.proposalUndone { takeBackMakeIt(run) }
+            run.revisionInFlight = false
+            makeIt.insert(next)
+            await finish(next, plan: plan, services: services)
+            if next.phase == .failed("This plan no longer fits the clip. Nothing was changed.") {
+                replace(snapshot, name: "Revise proposal")
+                undoGroup?.base = nil
+                run.inverses = priorInverses
+                run.rows = priorRows
+                run.seconds = priorSeconds
+                if let previous = run.plan { makeIt.record(score: previous.score, verdict: previous.verdict, for: run.clipID) }
+                run.revisionError = "This revision no longer fits the clip. Nothing was changed."
+                makeIt.insert(run)
+            }
+        } catch is CancellationError {
+        } catch LLMError.cancelled {
+        } catch {
+            let message = await app.safeError(error, context: .makeIt, messageContext: "ai:make-it")
+            run.revisionError = message.isEmpty ? "Claude couldn't revise this proposal. Nothing was changed." : message
+        }
     }
 
     /// The planner's tone (ai.md §16.3): a Change's tone once, else the style's. Auto offers the catalogue tones; a tone
@@ -652,10 +806,12 @@ extension EditorModel {
     /// the music. Every step stops early once the run is cancelled, keeping what is done.
     private func apply(_ plan: ClipAutopilotPlan, run: MakeItRun, services: MakeItServices) async {
         guard let shared = app.shared, let fonts = try? ClipAutopilotFonts.load(shared: shared),
-              let operations = try? ClipAutopilotMapping.operations(for: plan, clipID: run.clipID, project: project, fonts: fonts) else {
+              let stickers = try? AskClaudePrompt.load(shared: shared).stickers,
+              let operations = try? ClipAutopilotMapping.operations(for: plan, clipID: run.clipID, project: project, fonts: fonts, stickers: stickers) else {
             run.phase = .failed("This plan no longer fits the clip. Nothing was changed."); return
         }
         let style = makeItStyle
+        run.proposalOperations = operations
         var rows: [MakeItRow] = []
         let cuts = operations.filter { $0.decision == .cut || $0.decision == .pauseCut }
         if !cuts.isEmpty {
@@ -667,7 +823,7 @@ extension EditorModel {
         var next = project
         var hookRow: MakeItRow?
         for operation in operations {
-            guard let (inverse, row) = makeItStep(operation, plan: plan, clipID: run.clipID, in: &next) else { continue }
+            guard let (inverse, row) = makeItStep(operation, plan: plan, run: run, in: &next) else { continue }
             if let inverse { run.inverses[operation.id] = inverse }
             if operation.decision == .hook { hookRow = row } else if let row { rows.append(row) }
         }
@@ -695,10 +851,21 @@ extension EditorModel {
             }
         }
         if let offer = whole?.offer { rows.append(offer) }
+        if let assets = services.effectAssets {
+            var illustrated = false
+            for operation in operations where !makeItStopped(run) {
+                guard case .asset(let asset) = operation.action else { continue }
+                if asset.kind == .illustration {
+                    guard !illustrated else { continue }
+                    illustrated = true
+                }
+                rows.append(await makeItAssetStep(asset, operation: operation, run: run, client: assets))
+            }
+        }
         // Music, once the clip's length is final.
-        if makeItStyle.music, !makeItStopped(run) {
+        if makeItStyle.music || plan.kind == .showreel, !makeItStopped(run) {
             run.line("Picking music…")
-            if let row = await musicStep(plan.pickedMusic ?? plan.music.first, run: run) { rows.append(row) }
+            if plan.savedMusicTrackId == nil, let row = await musicStep(plan.pickedMusic ?? plan.music.first, run: run) { rows.append(row) }
         }
         if let hookRow { rows.append(hookRow) }
         for (index, question) in plan.questions.enumerated() {
@@ -708,13 +875,15 @@ extension EditorModel {
         rows.insert(contentsOf: pictureRows, at: 0)
         if let toneRow = makeItToneRow(plan, run: run, rows: rows) { rows.insert(toneRow, at: 0) }
         run.rows = rows
+        run.proposalMusic = MusicProject.entry(for: run.clipID, in: project)
         run.seconds = makeItRenderedSeconds(run.clipID)
         run.postText = MusicCredits.postText(project.share.captions[run.clipID] ?? run.postText, music: MusicProject.entry(for: run.clipID, in: project))
     }
 
     /// One pure operation applied to `project`, with how to take it back and its review row; nil for the operations a
     /// later step owns (rewrites, music).
-    private func makeItStep(_ operation: ClipAutopilotOperation, plan: ClipAutopilotPlan, clipID runClipID: String, in project: inout Project) -> (MakeItInverse?, MakeItRow?)? {
+    private func makeItStep(_ operation: ClipAutopilotOperation, plan: ClipAutopilotPlan, run: MakeItRun, in project: inout Project) -> (MakeItInverse?, MakeItRow?)? {
+        let runClipID = run.clipID
         let words = project.transcript?.words ?? []
         func start(_ ids: [String]) -> Double? { ids.compactMap { id in words.first { $0.id == id }?.start }.min() }
         switch operation.action {
@@ -738,6 +907,10 @@ extension EditorModel {
                 let seconds = editedSeconds(of: id, in: project)
                 return (.edits([.updateClip(id: id, startIndex: lower, endIndex: upper)]),
                         MakeItRow(id: operation.id, text: "Tightened the clip to \(durationLabel(seconds))", play: words[safe: plan.startWord]?.start, undoable: true))
+            case .setClipParts(let id, _, _):
+                guard let old = before.edits.clips.first(where: { $0.id == id }) else { return (nil, nil) }
+                return (.edits([.setClipParts(id: id, parts: old.playParts, kind: old.kind)]),
+                        MakeItRow(id: operation.id, text: "Updated the clip parts", play: clipPlay(id, in: project), undoable: true))
             case .renameClip(let id, let title):
                 let old = before.edits.clips.first { $0.id == id }?.title
                 return (.edits([.renameClip(id: id, title: old)]), MakeItRow(id: operation.id, kind: .choice, text: "Claude chose the title “\(title ?? "")”", undoable: true, change: .rename))
@@ -802,11 +975,31 @@ extension EditorModel {
             return (.effect(id: card.id, previous: previous),
                     MakeItRow(id: operation.id, kind: .choice, text: Self.makeItHookRowText(card.text ?? text, chosenBy: "Claude"),
                               detail: Self.makeItHookDetail, play: clipPlay(clipID, in: project), undoable: true, change: .hook))
-        case .rewrite, .music:
+        case .rewrite, .music, .asset, .coverTitle, .timeline:
             return nil
-        case .effect, .stretch, .translateCaptions, .musicDucking:
-            // Ask Claude's toolbox (ai.md §18): the planner doesn't plan these, so a run applies nothing for them.
+        case .savedMusic(let clipID, _, _):
+            guard makeItStyle.music || plan.kind == .showreel,
+                  let changed = try? ClipAutopilotMapping.apply([operation], to: project, savedTracks: run.paidMusic).project,
+                  let entry = MusicProject.entry(for: clipID, in: changed), changed != project else { return (nil, nil) }
+            let previous = MusicProject.entry(for: clipID, in: project)
+            project = changed
+            return (.reusedMusic(added: entry, previous: previous), MakeItRow(id: operation.id, text: "Reused music: \(entry.title)", undoable: true))
+        case .effect(let effect):
+            let previous = project.clipEffects.first { $0.id == effect.id }
+            guard let changed = try? ClipEffects.adding([effect], to: project) else { return (nil, nil) }
+            project = changed
+            let name = Self.rowTitle(operation)
+            return (.effect(id: effect.id, previous: previous),
+                    MakeItRow(id: operation.id, text: effect.text.map { "\(name): \($0)" } ?? name, detail: operation.reason,
+                              play: max(0, effect.start - 0.5), undoable: true))
+        case .stretch, .translateCaptions, .musicDucking:
             return (nil, nil)
+        case .footage(let entry):
+            let previous = project.media.footage.first { $0.id == entry.id }
+            guard project.media.setFootage(entry) else { return (nil, nil) }
+            let label = switch entry.kind { case .bRoll: "B-roll"; case .screenshot: "Screenshot"; case .videoStack: "Two-video stack" }
+            return (.footage(id: entry.id, previous: previous), MakeItRow(id: operation.id, text: label,
+                    detail: operation.reason, play: max(0, entry.start - 0.5), undoable: true))
         }
     }
 
@@ -820,8 +1013,9 @@ extension EditorModel {
     func makeItRenderedSeconds(_ clipID: String) -> Double {
         guard let clip = project.edits.clips.first(where: { $0.id == clipID }) else { return 0 }
         let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
-        let edited = renderedActiveClipID == clipID ? renderTimeline?.duration ?? editedDuration(clip) : editedDuration(clip)
-        return ClipSpeedTiming(speed: speed).rendered(edited)
+        let timeline = (renderedActiveClipID == clipID ? renderTimeline : nil) ?? (try? RenderCallerInputs.timeline(project: project, clipID: clipID))
+        guard let timeline else { return ClipSpeedTiming(speed: speed).rendered(editedDuration(clip)) }
+        return ClipSpeedTiming(speed: speed, timeline: timeline, effects: ClipEffects.rendered(in: project, clipID: clipID)).rendered(timeline.duration)
     }
 
     private func pausePlay(_ id: String?, in project: Project) -> Double? {
@@ -838,6 +1032,15 @@ extension EditorModel {
         let play = words[safe: range.lowerBound].map { max(0, $0.start - 1) }
         var row = MakeItRow(id: operation.id, text: "Rewrote “\(text)”", detail: operation.reason, play: play, change: .phrase(range))
         guard allowed else { row.kind = .note; row.text = "Claude suggests “\(text)”"; row.detail = "This clip style keeps your words."; return row }
+        let inputs = makeItVoiceInputs(.selection(range), clipID: run.clipID)
+        if let saved = run.paidPhrases[range]?[text], saved.inputs == inputs,
+           case .voiced(let segments) = saved.outcome.result, restoreMakeItVoice(segments, clipID: run.clipID) {
+            run.inverses[operation.id] = .voice(segments: segments)
+            run.voiceSpent += saved.outcome.spent
+            row.undoable = true
+            row.text = "Reused your voice for “\(text)”"
+            return row
+        }
         if run.budget?.paidAllowed == false {
             row.kind = .note; row.text = "Claude suggests “\(text)”"
             row.detail = "Spend is $0 per video, so your words stay. Change voices it in Rewrite."
@@ -856,6 +1059,9 @@ extension EditorModel {
         }
         switch outcome.result {
         case .voiced(let segments):
+            if outcome.spent > 0, !segments.isEmpty {
+                run.paidPhrases[range, default: [:]][text] = MakeItPaidVoice(inputs: inputs, outcome: outcome)
+            }
             run.inverses[operation.id] = .voice(segments: segments)
             row.undoable = true
             row.text = "Voiced “\(text)” in your voice"
@@ -886,14 +1092,68 @@ extension EditorModel {
         return row
     }
 
+    func makeItVoiceInputs(_ scope: RewriteScope, clipID: String) -> Project {
+        var inputs = project.voiceTakeIdentity(scope: scope, enclosingClipID: clipID)
+        inputs.voiceLab.segments.removeAll { !$0.enabled }
+        inputs.edits.clips = project.edits.clips.filter { $0.id == clipID }.map { clip in
+            ClipRange(id: clip.id, startWordId: clip.startWordId, endWordId: clip.endWordId, parts: clip.parts, kind: clip.kind)
+        }
+        return inputs
+    }
+
+    func restoreMakeItVoice(_ ids: [String], clipID: String, wholeClip: WholeClipRevoiceRecord? = nil) -> Bool {
+        let segments = ids.compactMap { id in project.voiceLab.segments.first { $0.id == id && !$0.enabled } }
+        guard !segments.isEmpty, segments.count == ids.count else { return false }
+        let root = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        func exists(_ file: String?) -> Bool {
+            file.map { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) } == true
+        }
+        for segment in segments {
+            guard exists(project.voiceLab.assets?.first { $0.id == segment.audio.assetId }?.file) else { return false }
+            if let video = segment.candidates[safe: segment.selectedCandidateIndex]?.recipe?.video.assetId,
+               !exists(project.voiceLab.videoAssets?.first { $0.id == video }?.file) { return false }
+        }
+        var next = project
+        if let wholeClip { next.voiceLab.wholeClipRevoices = (next.voiceLab.wholeClipRevoices ?? []) + [wholeClip] }
+        for index in next.voiceLab.segments.indices where ids.contains(next.voiceLab.segments[index].id) {
+            next.voiceLab.segments[index].enabled = true
+        }
+        let restored = next.voiceLab.segments.filter { ids.contains($0.id) }
+        guard (try? VoiceLabProject.validate(next, scope: .clip(clipID), accepting: restored)) != nil else { return false }
+        replace(next, name: "Reuse paid voice")
+        return true
+    }
+
     private func musicStep(_ pick: ClipAutopilotPlan.Music?, run: MakeItRun) async -> MakeItRow? {
         let clipID = run.clipID, projectID = project.id
-        var active: Bool { !makeItStopped(run) && makeItStyle.music && project.id == projectID && canEditForMakeIt(clipID) }
+        var active: Bool { !makeItStopped(run) && (makeItStyle.music || run.plan?.kind == .showreel) && project.id == projectID && canEditForMakeIt(clipID) }
         var kept: MakeItRow? {
             MusicProject.entry(for: clipID, in: project).map { MakeItRow(id: "music", kind: .note, text: "Kept music “\($0.title)”", change: .music) }
         }
         if let kept { return kept }
         func note(_ detail: String) -> MakeItRow { MakeItRow(id: "music", kind: .note, text: "No music added", detail: detail + " Change to choose a track.", change: .music) }
+        let cueKey = pick.map { [$0.mood, $0.prompt].map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }.joined(separator: "\n") }
+        func place(_ track: ProjectMusic, reused: Bool = false) throws -> MakeItRow? {
+            guard active else { return nil }
+            if let kept { return kept }
+            var entry = track
+            if let pick { entry.gainDb = ((-pick.underVoiceDb).clamped(to: ProjectMusic.gainRange) * 2).rounded() / 2 }
+            if let shape = pick?.timelineShape, let shaped = try? shape.placing(entry, in: project, clipID: clipID) { entry = shaped }
+            entry = MusicProject.unique(entry, in: project)
+            replace(try MusicProject.setting(entry, clipId: clipID, in: project), name: "Add music")
+            run.inverses["music"] = .music(added: entry)
+            if entry.source == .generated, let cueKey {
+                run.paidMusic.removeAll { $0.id == entry.id }
+                run.paidMusic.append(entry)
+                run.paidCues[cueKey] = entry
+            }
+            let detail = [pick?.reason, "\(Int(-entry.gainDb.rounded())) dB under your voice"].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            let title = reused ? "Reused music: \(entry.title)" : "Claude chose music “\(entry.title)”" + (entry.source == .generated ? " (generated)" : "")
+            return MakeItRow(id: "music", kind: .choice, text: title, detail: detail, undoable: true, change: .music)
+        }
+        if let cueKey, let track = run.paidCues[cueKey], run.paidMusic.contains(where: { $0.asset == track.asset }) {
+            return try? place(track, reused: true)
+        }
         guard let services = musicPanel.services ?? (document.demo ? nil : defaultMusicServices()) else {
             return note("Music sources are unavailable, so Eleven Music wasn't requested.")
         }
@@ -907,18 +1167,11 @@ extension EditorModel {
         }
         var attempted = Set<String>()
         func use(_ candidate: MusicCandidate) async throws -> MakeItRow? {
-            var entry = try await services.importTrack(candidate, projectId: projectID, clipId: clipID, dataRoot: app.locations.root) {
+            let entry = try await services.importTrack(candidate, projectId: projectID, clipId: clipID, dataRoot: app.locations.root) {
                 await run.charge(candidate.estimate?.usd ?? 0)
             }
-            guard active else { return nil }
-            if let kept { return kept }
-            if let pick { entry.gainDb = ((-pick.underVoiceDb).clamped(to: ProjectMusic.gainRange) * 2).rounded() / 2 }
-            entry = MusicProject.unique(entry, in: project)
-            replace(try MusicProject.setting(entry, clipId: clipID, in: project), name: "Add music")
-            run.inverses["music"] = .music(added: entry)
-            let detail = [pick?.reason, "\(Int(-entry.gainDb.rounded())) dB under your voice"].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-            return MakeItRow(id: "music", kind: .choice, text: "Claude chose music “\(entry.title)”" + (entry.source == .generated ? " (generated)" : ""),
-                             detail: detail, undoable: true, change: .music)
+            if let price = candidate.estimate?.usd, candidate.source == .generated { run.assetPrices["music"] = price }
+            return try place(entry)
         }
         let free = suggestions.candidates.filter { $0.source != .generated }
         var freeProblem = suggestions.notes[.library] ?? "No usable free track was found."
@@ -926,7 +1179,10 @@ extension EditorModel {
             guard active else { return nil }
             if let kept { return kept }
             do { return try await use(candidate) }
-            catch { freeProblem = "The free track couldn't be added: " + UserMessages.message(error) }
+            catch {
+                freeProblem = "The free track couldn't be added: " + UserMessages.message(error)
+                Task { await app.logFailure(error, context: .makeIt) }
+            }
         }
         guard active else { return nil }
         if let kept { return kept }
@@ -949,13 +1205,16 @@ extension EditorModel {
         guard active else { return nil }
         if let kept { return kept }
         do { return try await use(made) }
-        catch { return note("Eleven Music couldn't add the track: " + UserMessages.message(error)) }
+        catch {
+            Task { await app.logFailure(error, context: .makeIt) }
+            return note("Eleven Music couldn't add the track: " + UserMessages.message(error))
+        }
     }
 
     /// Claude mode at the cap: the run waits for Continue (exactly `shortfall`) or Stop. The creator's edits meanwhile are
     /// their own undo steps, not the run's.
     private func makeItWaitAtCap(_ run: MakeItRun, budget: MakeItBudget, shortfall: Decimal) async -> Bool {
-        guard budget.paidAllowed, shortfall > 0 else { return false }
+        guard run.priorPlan == nil, budget.paidAllowed, shortfall > 0 else { return false }
         run.line("Needs about \(Self.makeItDollars(shortfall)) more…")
         let owned = undoGroup?.ownsEdits
         undoGroup?.ownsEdits = false
@@ -998,7 +1257,7 @@ extension EditorModel {
         let name = "Undo " + makeItRowText(run.rows[index], run: run)
         // The post text keeps the hook the card last showed.
         if run.rows[index].change == .hook { run.hook = makeItHook(run) }
-        guard undoInverse(inverse, name: name) else { return }
+        guard undoInverse(inverse, clipID: run.clipID, name: name) else { return }
         run.rows[index].undone = true
         run.inverses[rowID] = nil
         run.seconds = makeItRenderedSeconds(run.clipID)
@@ -1022,10 +1281,10 @@ extension EditorModel {
         let ids = rows ?? run.rows.filter { !$0.undone && run.inverses[$0.id] != nil }.map(\.id)
         for id in ids.reversed() { makeItUndo(id, in: run) }
         // Inverses without a row (the post text) go too.
-        for (id, inverse) in run.inverses { _ = undoInverse(inverse, name: "Undo Make it postable"); run.inverses[id] = nil }
+        for (id, inverse) in run.inverses { _ = undoInverse(inverse, clipID: run.clipID, name: "Undo Make it postable"); run.inverses[id] = nil }
     }
 
-    private func undoInverse(_ inverse: MakeItInverse, name: String) -> Bool {
+    private func undoInverse(_ inverse: MakeItInverse, clipID: String, name: String) -> Bool {
         switch inverse {
         case .edits(let commands): return apply(commands, name: name)
         case .captionPick(let clipID, let previous):
@@ -1044,13 +1303,17 @@ extension EditorModel {
             guard MusicProject.entry(for: added.clipId, in: project) == added else { return true }
             guard let next = try? MusicProject.setting(nil, clipId: added.clipId, in: project) else { return false }
             replace(next, name: name); return true
+        case .reusedMusic(let added, let previous):
+            guard MusicProject.entry(for: added.clipId, in: project) == added else { return true }
+            guard let next = try? MusicProject.setting(previous, clipId: added.clipId, in: project) else { return false }
+            replace(next, name: name); return true
         case .wholeClip(let record):
             let next = removingWholeClip(record, from: project)
             guard next != project else { return false }
             replace(next, name: name); return true
         case .voice(let segments):
             var next = project
-            let output = project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
+            let output = VoiceLabOutputScope.clip(clipID)
             for id in segments { next = (try? VoiceLabEditCommand.setEnabled(segmentID: id, enabled: false).applying(to: next, outputScope: output)) ?? next }
             guard next != project else { return false }
             replace(next, name: name); return true
@@ -1067,6 +1330,12 @@ extension EditorModel {
             guard let next else { return false }
             if next != project { replace(next, name: name) }
             return true
+        case .footage(let id, let previous):
+            var next = project
+            next.media.footage.removeAll { $0.id == id }
+            if let previous, !next.media.setFootage(previous) { return false }
+            if next != project { replace(next, name: name) }
+            return true
         case .leadIn(let clipID, let previous):
             guard let next = ClipPicture.settingLeadIn(previous, clipID: clipID, in: project) else { return false }
             if next != project { replace(next, name: name) }
@@ -1075,8 +1344,8 @@ extension EditorModel {
             guard let next = ClipPicture.settingControls(clipID, in: project, { $0.reframe = previous }) else { return false }
             if next != project { replace(next, name: name) }
             return true
-        case .cover(let clipID, let previous):
-            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.coverSeconds = previous }) else { return false }
+        case .cover(let clipID, let previous, let previousTitle):
+            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.coverSeconds = previous; $0.coverTitle = previousTitle }) else { return false }
             if next != project { replace(next, name: name) }
             return true
         }
@@ -1347,7 +1616,7 @@ extension MakeItServices {
             wholeClipQuote: { request, editor in await liveWholeClipQuote(request, editor: editor) },
             revoiceWholeClip: { request, editor in await liveRevoiceWholeClip(request, editor: editor) },
             framePass: { editor in editor.liveFramePass() },
-            frameAI: { editor in await editor.liveFrameAI() })
+            frameAI: { editor in await editor.liveFrameAI() }, effectAssets: EditorModel.clipPlanAssets)
     }
 }
 
@@ -1358,17 +1627,24 @@ extension EditorModel {
         guard let shared = app.shared, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else {
             throw LLMError.noConnector
         }
-        let connector = app.connector(provider.id)
+        let connector: any LLMConnector = cardPlanConnector.map { $0 as any LLMConnector } ?? app.connector(provider.id)
         let model = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
         guard let lease = llmRuns.acquire() else { throw VoxClipError.providerError("Another AI request on this project is still running. Try again when it finishes.", provider: provider.id) }
         defer { llmRuns.release(lease) }
         let words = request.transcript.words.filter { $0.kind == .word }.count
-        guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips, wordCount: words,
-                                                      confirmation: sendConfirmation, verb: "Make it postable") else { throw CancellationError() }
+        if let cardPlanConnector {
+            guard cardPlanConnector.isCurrent else { throw CancellationError() }
+        } else {
+            guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips, wordCount: words,
+                                                          confirmation: sendConfirmation, verb: "Make it postable") else { throw CancellationError() }
+        }
         let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
         let service = ClipAutopilotService(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
         // Claude Code runs one process per connector: two more lanes plan a series' clips three at once.
-        let lanes: [any LLMConnector] = provider.id == ConnectorID.claudeCode.rawValue ? [app.connector(provider.id), app.connector(provider.id)] : []
-        return try await service.plan(request, connector: connector, model: model, lanes: lanes, frames: frames, progress: progress).series
+        let lanes: [any LLMConnector] = cardPlanConnector == nil && provider.id == ConnectorID.claudeCode.rawValue
+            ? [app.connector(provider.id), app.connector(provider.id)] : []
+        var described = request
+        described.footageDescriptions = try await makeItFootageDescriptions(request.footageSources)
+        return try await service.plan(described, connector: connector, model: model, lanes: lanes, frames: frames, progress: progress).series
     }
 }

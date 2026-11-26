@@ -1,5 +1,65 @@
 import Foundation
 
+struct SourceMapEntry: Sendable, Equatable {
+    let source: MediaInterval
+    let outputStart: Int64
+    let outputEnd: Int64
+}
+
+func sourceMapEntry<T>(_ entries: [T], at sample: Int64, start: (T) -> Int64) -> T? {
+    var lower = 0, upper = entries.count
+    while lower < upper {
+        let middle = lower + (upper - lower) / 2
+        if start(entries[middle]) <= sample { lower = middle + 1 } else { upper = middle }
+    }
+    return lower == 0 ? nil : entries[lower - 1]
+}
+
+func sourceMapEntry(_ entries: [SourceMapEntry], at sample: Int64) -> SourceMapEntry? {
+    sourceMapEntry(entries, at: sample) { $0.source.startSample }
+}
+
+extension ClipRange {
+    func singlePartClips() -> [ClipRange] {
+        playParts.enumerated().map { index, part in
+            ClipRange(id: id, startWordId: part.startWordId, endWordId: part.endWordId,
+                      leadInSeconds: index == 0 ? leadInSeconds : nil)
+        }
+    }
+}
+
+/// Plans the parts independently and joins their kept spans in playback order on a single sample grid.
+public func buildStoryPlan(_ state: EditState, clip: ClipRange, duration: Double, sampleRate: Double) throws -> EditPlan {
+    guard clip.parts != nil, StoryClips.valid(clip, words: state.transcript.words) else {
+        throw VoxClipError.projectUnreadable("Invalid story clip parts or source hull")
+    }
+    let plans = try clip.singlePartClips().map { part in
+        try EditPlan.build(transcript: state.transcript, editState: state, activeClip: part, duration: duration, sampleRate: sampleRate)
+    }
+    let total = plans[0].totalSamples
+    var kept: [MediaInterval] = [], seams: [Int64] = [], offset: Int64 = 0
+    for plan in plans where !plan.kept.isEmpty {
+        if offset > 0 { seams.append(offset) }
+        kept += plan.kept
+        offset += plan.outputSamples
+    }
+    let sorted = kept.sorted { $0.startSample < $1.startSample }
+    guard zip(sorted, sorted.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) else {
+        throw VoxClipError.projectUnreadable("Story parts overlap on the source sample grid")
+    }
+    return EditPlan(sampleRate: sampleRate, totalSamples: total, cuts: complement(sorted, total: total), kept: kept, partSeams: seams)
+}
+
+func complement(_ ordered: [MediaInterval], total: Int64) -> [MediaInterval] {
+    var cuts: [MediaInterval] = [], cursor: Int64 = 0
+    for span in ordered {
+        if cursor < span.startSample { cuts.append(MediaInterval(startSample: cursor, endSample: span.startSample)) }
+        cursor = span.endSample
+    }
+    if cursor < total { cuts.append(MediaInterval(startSample: cursor, endSample: total)) }
+    return cuts
+}
+
 public struct FadePart: Sendable, Equatable, Codable {
     public var outputStart: Int64
     public var length: Int64
@@ -73,23 +133,22 @@ public func clipTimes(_ words: [TimedWord], clip: ClipRange, startIndex: Int, en
 }
 
 func clipIndices(_ clip: ClipRange?, words: [TimedWord]) -> ClosedRange<Int>? {
-    guard let clip, let start = words.firstIndex(where: { $0.id == clip.startWordId }),
-          let end = words.firstIndex(where: { $0.id == clip.endWordId }), start <= end else { return nil }
-    return start...end
+    guard let clip, let ranges = clip.playPartIndices(in: words), ranges.count == 1 else { return nil }
+    return ranges.first
 }
 
 public func buildSegments(_ state: EditState, activeClip: ClipRange?) throws -> [EditSegment] {
     let words = state.transcript.words
-    let bounds = clipIndices(activeClip, words: words)
-    if activeClip != nil, bounds == nil { throw VoxClipError.projectUnreadable("Invalid clip bounds") }
+    let ranges = activeClip?.playPartIndices(in: words)
+    if activeClip != nil, ranges == nil { throw VoxClipError.projectUnreadable("Invalid clip bounds") }
     var segments = words.enumerated().map { index, word in
         EditSegment(id: word.id, kind: .word, wordKind: word.kind, text: state.textOf(word), start: word.start, end: word.end,
-                    cut: state.cutWordIds.contains(word.id) || !(bounds?.contains(index) ?? true))
+                    cut: state.cutWordIds.contains(word.id) || !(ranges?.contains { $0.contains(index) } ?? true))
     }
     segments += state.pauses.filter { state.cutPauseIds.contains($0.id) }.map {
         EditSegment(id: $0.id, kind: .pause, start: $0.start, end: $0.end, cut: true)
     }
-    if let bounds {
+    if let ranges, ranges.count == 1, let bounds = ranges.first {
         let times = try clipTimes(words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound, leadIn: activeClip?.leadInSeconds)
         if times.start > 0 { segments.append(EditSegment(id: "clip-head", kind: .range, start: 0, end: times.start, cut: true)) }
         let end = max(times.end, words.last?.end ?? times.end) + 3600
@@ -207,6 +266,19 @@ public func buildEditPlan(_ segments: [EditSegment], duration: Double, sampleRat
 }
 
 public func captionCopy(_ segments: [EditSegment], plan: EditPlan) -> [CaptionWord] {
+    if !plan.partSeams.isEmpty {
+        let offsets = [0] + plan.partSeams + [plan.outputSamples]
+        var result: [CaptionWord] = [], keptIndex = 0
+        for (start, end) in zip(offsets, offsets.dropFirst()) {
+            let first = keptIndex
+            while keptIndex < plan.kept.count && plan.fadeParts[keptIndex].outputStart < end { keptIndex += 1 }
+            let kept = Array(plan.kept[first..<keptIndex])
+            let part = EditPlan(sampleRate: plan.sampleRate, totalSamples: plan.totalSamples, cuts: complement(kept, total: plan.totalSamples), kept: kept)
+            let captions = captionCopy(segments, plan: part)
+            result += shiftedPartCaptions(captions, by: start, rate: plan.sampleRate, startsPart: !result.isEmpty)
+        }
+        return result
+    }
     let words = segments.filter { $0.kind == .word && $0.wordKind == .word && !$0.cut && validSegment($0) }
     var samples: [Int64] = []
     samples.reserveCapacity(words.count * 2)
@@ -230,6 +302,16 @@ public func captionCopy(_ segments: [EditSegment], plan: EditPlan) -> [CaptionWo
         let start = Double(mapped[index * 2]) / plan.sampleRate, end = Double(mapped[index * 2 + 1]) / plan.sampleRate
         let word = words[index]
         return end > start ? CaptionWord(id: word.id, text: word.text, start: start, end: end) : nil
+    }
+}
+
+func shiftedPartCaptions(_ captions: [CaptionWord], by offset: Int64, rate: Double, startsPart: Bool) -> [CaptionWord] {
+    captions.enumerated().map { index, word in
+        var word = word
+        word.start += Double(offset) / rate
+        word.end += Double(offset) / rate
+        if index == 0 && startsPart { word.startsPart = true }
+        return word
     }
 }
 

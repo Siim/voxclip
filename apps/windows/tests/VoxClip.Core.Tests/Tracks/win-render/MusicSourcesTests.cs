@@ -14,6 +14,21 @@ namespace VoxClip.Core.Tests.Tracks.WinRender;
 /// ElevenMusicClientTests and MusicSuggestionServiceTests. Every reply is hand-written; nothing reaches the network.</summary>
 public sealed class MusicSourcesTests
 {
+    [Fact]
+    public void AChosenFolderWinsOverTheDefaultEvenWhenItIsMissing()
+    {
+        var root = Directory.CreateTempSubdirectory("voxclip-music-folder-").FullName;
+        try
+        {
+            var fallback = Directory.CreateDirectory(Path.Combine(root, "VoxClip")).FullName;
+            var chosen = Path.Combine(root, "chosen");
+            Assert.Equal(fallback, MusicLibraryFolder.Resolve(null, root));
+            Assert.Equal(chosen, MusicLibraryFolder.Resolve(chosen, root));
+            Assert.Empty(MusicLibraryFolder.Files(MusicLibraryFolder.Resolve(chosen, root)));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private sealed class Http(params MusicHttpReply[] replies) : IMusicHttp
     {
         private readonly Queue<MusicHttpReply> queue = new(replies);
@@ -176,6 +191,27 @@ public sealed class MusicSourcesTests
             Assert.Equal("Add an ElevenLabs key in Settings to make music for this clip.", notes.Notes[MusicSource.Generated]);
         }
         finally { Directory.Delete(folder, true); }
+    }
+
+    [Fact]
+    public async Task PricingOnlyTheProposedMusicDoesNotSearchOrGenerate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var library = new Http();
+        var generator = new Http();
+        var eleven = new ElevenMusicClient(new Keys("test-key"), VoiceLabPrices.Load(FixtureLoader.SharedRoot), null, ElevenLabsRegion.Default, generator);
+        var service = new MusicSuggestionService(new OpenverseMusicClient(library), eleven, _ => Task.FromResult(true),
+            () => throw new InvalidOperationException("Pricing does not read local tracks."));
+
+        var (candidate, note) = await service.PriceGenerationAsync(new("", Prompt: "A warm instrumental"), 42, ct);
+
+        Assert.Null(note);
+        var generated = Assert.IsType<MusicCandidate>(candidate);
+        Assert.Equal("A warm instrumental", generated.Prompt);
+        Assert.Equal("$0.11", MusicPricing.Label(Assert.IsType<CostEstimate>(generated.Estimate)));
+        Assert.NotNull(service.Quote(generated));
+        Assert.Empty(library.Sent);
+        Assert.Empty(generator.Sent);
     }
 
     private sealed class FailingHttp : IMusicHttp

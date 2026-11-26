@@ -120,7 +120,7 @@ Not uploaded: `RELEASES-*` (legacy Squirrel feeds), `assets.*.json` (local build
 
 `Sources/VoxClip/Info.plist` is the single source of truth for app metadata, document types, usage descriptions and the bundle version. The package embeds it into both executables with `-sectcreate`; `bundle.sh` copies it unchanged into the bundle. Inspect that file rather than maintaining a second XML template here. The speech usage description is also explained in the transcription spec; it is not unique to this document.
 
-Also: `dmg-background.png` (600×400) in `apps/macos`. From the repository root: `shared/brand/macos/AppIcon.icns`, the single `THIRD_PARTY_NOTICES.md` (fonts, Unicode data, whisper.cpp, swift-argument-parser, models' attribution, and the Windows components) and `LICENSE`.
+Also: `dmg-background.png` (1200×800 at 144 dpi for the 600×400 window) in `apps/macos`. From the repository root: `shared/brand/macos/AppIcon.icns`, the single `THIRD_PARTY_NOTICES.md` (fonts, Unicode data, whisper.cpp, swift-argument-parser, models' attribution, and the Windows components) and `LICENSE`.
 
 ### 2.3 `bundle.sh` (lives at `apps/macos/bundle.sh`)
 
@@ -137,7 +137,7 @@ Both Swift build invocations use two jobs to bound compiler resource use on the 
 | `./bundle.sh --upload-only` | Verify existing `dist/` artifacts, then attach them to draft `v<version>`, creating it if missing; no build or notarization |
 | `./bundle.sh --upload-only --dry-run` | Perform local and read-only remote validation; print draft creation/upload commands without executing them |
 | `./bundle.sh --release` or `-r` | Build, sign, notarize, staple and package, then create/update the draft |
-| `./bundle.sh --release --no-upload --allow-dirty` | Untagged/dirty local test release; Apple submissions still happen, GitHub uploads are permanently forbidden for these artifacts |
+| `./bundle.sh --release --no-upload --allow-dirty` | Untagged/dirty local test release; produces `VoxClip-macOS-<version>-<9-character-commit>.dmg`. Apple submissions still happen; GitHub uploads are permanently forbidden for these artifacts |
 | `./bundle.sh --universal` | Reserved and rejected; v1 ships arm64 only |
 
 Usage errors exit **2**: unknown options, conflicting modes (`profile` included), `--no-upload` without `--release`, `--dry-run` without `--upload-only`, or `--allow-dirty` in any combination except `--release --no-upload`. Operational failures exit 1, including nonzero signing, stapler and Gatekeeper statuses, normalized by `set -Eeo pipefail` and `trap 'exit 1' ERR`. `--help` exits 0.
@@ -269,6 +269,8 @@ The installed CLI smoke test sets `VOXCLIP_DATA_DIR` to a fresh directory under 
 
 ### 4.0 Rewrite smoke: run before every handed-over test build
 
+For the paid-recovery gate, also run `apps/macos/scripts/rewrite-smoke.sh --crash-recovery`. It kills only its isolated DEBUG process at the fake provider’s first status poll, then opens the same `.voxclip` in a second process. The saved voice must play before any new checks; retry may pay for word checks only, recover the same lip sync without a second submission and reach Use. Both provider transports are offline.
+
 Run it before any build goes to the user, test builds included:
 
 ```sh
@@ -281,7 +283,10 @@ The fixture is a small synthetic recording: 160×90 H.264 with 24 kHz LPCM audio
 
 It drives the real Rewrite session through these scenarios using only clicks a user could make:
 
+- S-rewrite-used-revoice and S-rewrite-used-revoice-partial: use a lip-synced clip and open Rewrite again. The whole clip can be replaced in one undo step; a partial selection offers a free Undo before sending. Both run at realistic and exact lengths.
 - S1: happy path.
+- S-phrase-selected-voice: a phrase whose generated voice would fail the old speaker comparison applies after one synthesis and one word check.
+- S-older-takes: make two rounds, then play both takes and pick the earlier one without sending a paid request.
 - S2: two nearby changes refused as too close.
 - S3: takes too long for the slot.
 - S4: "Claude Code" heard as "cloud code".
@@ -329,11 +334,15 @@ It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel
 
 ---
 
+### 4.0.1 Editable timeline import check
+
+Once per release, on a Mac with Final Cut Pro, get the locally installed Apple FCPXML 1.10 DTD and run the opt-in check from the repo root: `VOXCLIP_FCPXML_DTD=/absolute/path/to/FCPXMLv1_10.dtd VOXCLIP_SHARED_DIR="$PWD/shared" swift test --package-path apps/macos --jobs 2 --filter FCPXMLTests`. Hosted CI does not have that DTD. Export a clip with two retained ranges, a part-speed change, a title, captions, a kept Rewrite or revoice, and music. Validate the output with `xmllint --noout --dtdvalid <DTD> <timeline.fcpxml>`. Open it with its companion media in Final Cut Pro and DaVinci Resolve; verify cuts and speed boundaries, aspect, editable text, and separate rendered voice and music. Record both editor versions and the DTD and import results in the release verification record. A DTD pass alone does not count as an import pass.
+
 ### 4.1 Launch page go-live — user's approval required
 
 The page address is **clip.voxconvo.com**, served by GitHub Pages from this public repository (ADR-R32, user decision 2026-10-27). Pages is disabled until the user approves going live. The implementation task does not change DNS, repo settings, upload assets or publish releases.
 
-Prepare approved captures and completed `doc/media/CREDITS.md`. Commit the approved byte size and SHA-256 for every MP4 and VTT in `site/media.json` with the user's capture approval. Stage those exact bytes in the media release named there. Until all pins are approved, leave their size and SHA-256 entries null: fetching skips the media release entirely and the builder uses placeholders. Approved fetching requires the API size/digest and downloaded bytes to match the committed pins. Use a tag containing the Pages workflow, and mark this media release **not latest**, preserving the latest stable `vX.Y.Z` app release for downloads. Videos never enter Git. Production fetching requires the Mac, Windows x64 and Windows Arm installers and matching FFmpeg corresponding source. Both platforms must pass acceptance before publishing 0.1.0 (ADR-R33).
+The site uses the approved README stills. Prepare approved video captures and completed `doc/media/CREDITS.md` separately. Commit the approved byte size and SHA-256 for every MP4 and VTT in `site/media.json` with the user's capture approval. Stage those exact bytes in the media release named there. Until all pins are approved, leave their size and SHA-256 entries null: fetching skips the media release entirely and the builder displays availability notes instead of video players. Approved fetching requires the API size/digest and downloaded bytes to match the committed pins. Use a tag containing the Pages workflow, and mark this media release **not latest**, preserving the latest stable `vX.Y.Z` app release for downloads. Videos never enter Git. Production fetching requires the Mac, Windows x64 and Windows Arm installers and matching FFmpeg corresponding source. Both platforms must pass acceptance before publishing 0.1.0 (ADR-R33).
 
 Each of these go-live actions needs the user's approval:
 

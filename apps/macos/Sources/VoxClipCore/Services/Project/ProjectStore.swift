@@ -71,7 +71,7 @@ public actor JSONProjectStore: ProjectStore {
     }
 
     public static func encode(_ project: Project) throws -> Data {
-        var snapshot = pruneAIResults(cleanReferences(project).project)
+        var snapshot = try ProjectMigrations.forWriting(pruneAIResults(cleanReferences(project).project))
         let words = snapshot.transcript?.words ?? []
         let pauses = try detectPauses(words, thresholdSeconds: snapshot.edits.pauseThresholdSeconds)
         let cutWords = Set(snapshot.edits.cutWordIds), cutPauses = Set(snapshot.edits.cutPauseIds)
@@ -124,6 +124,11 @@ public actor JSONProjectStore: ProjectStore {
                (try? Self.contentKey(for: candidate)) == source.contentKey { return candidate }
         }
         throw VoxClipError.mediaMissing(URL(fileURLWithPath: source.absolutePath).lastPathComponent)
+    }
+
+    public static func footageURL(_ original: URL, beside primary: URL) -> URL {
+        if FileManager.default.fileExists(atPath: original.path) { return original }
+        return primary.deletingLastPathComponent().appendingPathComponent(original.lastPathComponent)
     }
 
     public func relink(_ project: Project, to sourceURL: URL, probe: MediaProbeResult, confirmedDifferent: Bool = false) async throws -> Project {
@@ -192,9 +197,11 @@ public actor JSONProjectStore: ProjectStore {
         warn("cut pause", project.edits.cutPauseIds.count - result.edits.cutPauseIds.count)
         result.edits.corrections = project.edits.corrections.filter { id, text in words.contains { $0.id == id && $0.kind == .word && $0.text != text } }
         warn("correction", project.edits.corrections.count - result.edits.corrections.count)
-        result.edits.clips = project.edits.clips.filter { clipIndices($0, words: words) != nil }
+        result.edits.clips = project.edits.clips.filter { $0.parts != nil || clipIndices($0, words: words) != nil }
         warn("clip", project.edits.clips.count - result.edits.clips.count)
         let clipIDs = Set(result.edits.clips.map(\.id)), aiIDs = Set(project.ai.results.map(\.id))
+        result.media.footage.removeAll { !clipIDs.contains($0.clipID) }
+        warn("companion footage", project.media.footage.count - result.media.footage.count)
         if let active = result.edits.activeClipId, !clipIDs.contains(active) { result.edits.activeClipId = nil; warn("active clip", 1) }
         for index in result.edits.clips.indices {
             if let id = result.edits.clips[index].aiResultId, !aiIDs.contains(id) {

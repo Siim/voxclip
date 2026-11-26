@@ -49,14 +49,21 @@ public enum CaptionTranslationError: Error, Equatable, Sendable {
 
 /// Validation, editing and rendering of `Project.captionTranslations`.
 public enum CaptionTranslations {
+    static func storyPartRestriction(for range: ClosedRange<Int>, clipID: String?, in project: Project) -> String? {
+        guard let clip = project.edits.clips.first(where: { $0.id == clipID }), clip.parts != nil,
+              let words = project.transcript?.words else { return nil }
+        let fits = clip.playPartIndices(in: words)?.contains { $0.contains(range.lowerBound) && $0.contains(range.upperBound) }
+        return fits == true ? nil : "Translate inside one part."
+    }
+
     private static func matches(_ text: String, _ pattern: String) -> Bool { text.range(of: pattern, options: .regularExpression) != nil }
 
-    /// The typed rules: v4 only, unique ids, known words in order, a known clip, a language tag, a non-empty text, no two
+    /// The typed rules: v4 and later, unique ids, known words in order, a known clip, a language tag, a non-empty text, no two
     /// over the same words in one scope.
     public static func validate(_ project: Project) throws {
         let entries = project.captionTranslations
         guard !entries.isEmpty else { return }
-        guard project.schemaVersion == 4 else { throw CaptionTranslationError.unsupportedVersion }
+        guard project.schemaVersion >= 4 else { throw CaptionTranslationError.unsupportedVersion }
         guard entries.count <= CaptionTranslation.maximumEntries else { throw CaptionTranslationError.invalidEntry("too many") }
         let order = wordOrder(project)
         let clips = Set(project.edits.clips.map(\.id))
@@ -113,7 +120,10 @@ public enum CaptionTranslations {
         guard let words = project.transcript?.words, range.lowerBound >= 0, range.upperBound < words.count else {
             throw CaptionTranslationError.invalidEntry("words")
         }
-        var result = project.schemaVersion == 4 ? project : try ContextDemoProject.upgradeToV4(project)
+        if let reason = storyPartRestriction(for: range, clipID: clipID, in: project) {
+            throw CaptionTranslationError.invalidEntry(reason)
+        }
+        var result = project.schemaVersion >= 4 ? project : try ContextDemoProject.upgradeToV4(project)
         let order = wordOrder(result)
         result.captionTranslations.removeAll { entry in
             guard entry.clipId == clipID, let lower = order[entry.startWordId], let upper = order[entry.endWordId] else { return false }
@@ -165,9 +175,11 @@ public enum CaptionTranslations {
             guard let lower = order[translation.startWordId], let upper = order[translation.endWordId] else { continue }
             let positions = result.indices.filter { index in order[result[index].id].map { (lower...upper).contains($0) } ?? false }
             guard !positions.isEmpty, positions.allSatisfy({ !consumed.contains(result[$0].id) }) else { continue }
+            if positions.count > 1, result[(positions[0] + 1)...positions.last!].contains(where: \.startsPart) { continue }
             let slots = positions.map { result[$0] }
-            let spread = spreading(translation.tokens, over: slots, bleeped: bleeped)
+            var spread = spreading(translation.tokens, over: slots, bleeped: bleeped)
             guard !spread.isEmpty else { continue }
+            spread[0].startsPart = slots[0].startsPart
             consumed.formUnion(slots.map(\.id))
             for position in positions.reversed() { result.remove(at: position) }
             result.insert(contentsOf: spread, at: positions[0])

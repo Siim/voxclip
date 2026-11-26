@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/project.schema.json",
-  "title": "VoxClip project file (.voxclip), schemaVersion 1, 2, 3 or 4",
+  "title": "VoxClip project file (.voxclip), schemaVersion 1, 2, 3, 4, 5 or 6",
   "description": "One portable UTF-8 JSON document per project, identical on macOS and Windows. It references the source media (never embeds it) and stores the transcript, the edits (cut set, corrections, clip range layer), caption choices, export choices, share captions and cached AI clip results. Caches (levels, thumbnails, proxies) live in the app support directory, never here. Secrets never appear in this file. Semantics that JSON Schema cannot express are normative in doc/spec/editing.md section 10. The apps do not run a JSON Schema engine at runtime; they decode strictly into typed models (doc/architecture.md section 2.1), and tests validate every file the apps write against this schema.",
   "type": "object",
   "additionalProperties": false,
@@ -31,7 +31,9 @@
         1,
         2,
         3,
-        4
+        4,
+        5,
+        6
       ]
     },
     "id": {
@@ -82,6 +84,20 @@
       "properties": {
         "source": {
           "$ref": "#/$defs/mediaReference"
+        },
+        "additionalSources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/mediaReference"
+          }
+        },
+        "footage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/clipFootage"
+          }
         }
       }
     },
@@ -222,7 +238,9 @@
           "schemaVersion": {
             "enum": [
               3,
-              4
+              4,
+              5,
+              6
             ]
           }
         }
@@ -279,6 +297,37 @@
               "required": [
                 "captionTranslations"
               ]
+            },
+            {
+              "properties": {
+                "media": {
+                  "required": [
+                    "additionalSources"
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "media": {
+                  "required": [
+                    "footage"
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "media": {
+                  "properties": {
+                    "source": {
+                      "required": [
+                        "recordingHash"
+                      ]
+                    }
+                  }
+                }
+              }
             }
           ]
         },
@@ -301,6 +350,174 @@
             }
           }
         ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 5
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "edits": {
+            "properties": {
+              "clips": {
+                "contains": {
+                  "required": [
+                    "parts"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "schemaVersion": {
+              "maximum": 4
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "edits": {
+              "properties": {
+                "clips": {
+                  "items": {
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "parts"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "ai": {
+              "properties": {
+                "results": {
+                  "items": {
+                    "properties": {
+                      "clips": {
+                        "items": {
+                          "not": {
+                            "anyOf": [
+                              {
+                                "required": [
+                                  "parts"
+                                ]
+                              },
+                              {
+                                "required": [
+                                  "notInTake"
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "maximum": 5
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "clipEffects": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "fadeInSeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "fadeOutSeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "mediaOffsetSeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "gainPoints"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "music": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "duckDb"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "segments"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "media": {
+            "properties": {
+              "footage": {
+                "items": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "fadeInSeconds"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "fadeOutSeconds"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   ],
@@ -932,6 +1149,10 @@
               }
             }
           ]
+        },
+        "recordingHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     },
@@ -1056,7 +1277,7 @@
       }
     },
     "clipRange": {
-      "description": "A clip in the range layer: an inclusive word range. Never stored as cut flags.",
+      "description": "A clip in the range layer. For a story the inclusive outer word range is the source hull of its parts.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1121,7 +1342,26 @@
           "exclusiveMinimum": 0,
           "maximum": 0.6,
           "description": "Schema v4: the clip opens this many seconds before its first word, in the silence before it and never across the item before it (ADR-R48). Omitted when the clip opens as the editor places it."
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/clipPart"
+          }
+        },
+        "kind": {
+          "enum": [
+            "story",
+            "showreel"
+          ]
         }
+      },
+      "dependentRequired": {
+        "kind": [
+          "parts"
+        ]
       }
     },
     "edits": {
@@ -1437,6 +1677,18 @@
         },
         "endWordId": {
           "$ref": "#/$defs/wordId"
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/clipWordRange"
+          }
+        },
+        "notInTake": {
+          "type": "string",
+          "maxLength": 200
         }
       }
     },
@@ -2097,6 +2349,9 @@
               "type": "boolean"
             }
           ]
+        },
+        "outputSpeakerCheckSkipped": {
+          "const": true
         },
         "joinAdvisory": {
           "$ref": "#/$defs/voiceLabJoinAdvisory"
@@ -3178,7 +3433,7 @@
       }
     },
     "music": {
-      "description": "One background track; doc/spec/music.md section 2. Every key is written, null where a source has no value. Runtime also checks that the file folder is the project id, the clip exists and the offset is inside the track.",
+      "description": "One background track; doc/spec/music.md section 2. Legacy keys are written even when null. Runtime also checks that the file folder is the project id, the clip exists and the offset is inside the track.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -3310,6 +3565,19 @@
         "startOffsetSeconds": {
           "type": "number",
           "minimum": 0
+        },
+        "duckDb": {
+          "type": "number",
+          "minimum": -24,
+          "maximum": 0
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/musicSegment"
+          }
         }
       },
       "allOf": [
@@ -3598,7 +3866,7 @@
       ]
     },
     "clipEffect": {
-      "description": "One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the clip and words exist, a freeze is at most 5 s, a sound spans its own length, a sticker is at most 16 scalars and a progress bar sits at the top or bottom.",
+      "description": "One effect on a stretch of the recording; doc/spec/ai.md section 18.2. Every entry writes id, clipId, kind, start and end, plus exactly the keys its kind uses. Runtime also checks the clip and words exist, a freeze is at most 5 s, a sound fits its available media, a sticker is at most 16 scalars and a progress bar sits at the top or bottom.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -3638,7 +3906,11 @@
             "circle",
             "progress",
             "freeze",
-            "sound"
+            "sound",
+            "colourLook",
+            "speedForPart",
+            "illustration",
+            "motionTemplate"
           ]
         },
         "start": {
@@ -3685,6 +3957,9 @@
           "minLength": 1,
           "maxLength": 80
         },
+        "template": {
+          "$ref": "#/$defs/motionTemplate"
+        },
         "position": {
           "enum": [
             "top",
@@ -3716,6 +3991,52 @@
           "minimum": -30,
           "maximum": 6,
           "description": "Relative to the voice."
+        },
+        "animation": {
+          "enum": [
+            "rise",
+            "pop"
+          ],
+          "description": "Optional entrance on title, lowerThird or sticker."
+        },
+        "look": {
+          "enum": [
+            "original",
+            "muted",
+            "warm",
+            "bw"
+          ]
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "imageFile": {
+          "type": "string",
+          "pattern": "^[0-9a-f-]{36}/illustration-[0-9a-f]{64}\\.png$"
+        },
+        "fadeInSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "fadeOutSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "mediaOffsetSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gainPoints": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/gainPoint"
+          },
+          "description": "Relative dB points in strictly increasing item-local time; checked at runtime."
         }
       },
       "allOf": [
@@ -3805,7 +4126,9 @@
                 "end",
                 "rect",
                 "tracking",
-                "track"
+                "track",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -3838,7 +4161,9 @@
                 "end",
                 "rect",
                 "tracking",
-                "track"
+                "track",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -3869,8 +4194,16 @@
                 "start",
                 "end",
                 "text",
-                "position"
+                "position",
+                "animation",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
+            },
+            "properties": {
+              "animation": {
+                "const": "rise"
+              }
             }
           }
         },
@@ -3900,8 +4233,16 @@
                 "start",
                 "end",
                 "text",
-                "position"
+                "position",
+                "animation",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
+            },
+            "properties": {
+              "animation": {
+                "const": "rise"
+              }
             }
           }
         },
@@ -3933,8 +4274,16 @@
                 "end",
                 "text",
                 "position",
-                "scale"
+                "scale",
+                "animation",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
+            },
+            "properties": {
+              "animation": {
+                "const": "pop"
+              }
             }
           }
         },
@@ -3962,7 +4311,9 @@
                 "kind",
                 "start",
                 "end",
-                "rect"
+                "rect",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -3991,7 +4342,9 @@
                 "kind",
                 "start",
                 "end",
-                "rect"
+                "rect",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4020,7 +4373,9 @@
                 "kind",
                 "start",
                 "end",
-                "position"
+                "position",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4078,7 +4433,148 @@
                 "start",
                 "end",
                 "sound",
-                "gainDb"
+                "gainDb",
+                "fadeInSeconds",
+                "fadeOutSeconds",
+                "mediaOffsetSeconds",
+                "gainPoints"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "colourLook"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "look"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "look",
+                "fadeInSeconds",
+                "fadeOutSeconds"
+              ]
+            },
+            "properties": {
+              "clipId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "speedForPart"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "rate"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "rate"
+              ]
+            },
+            "properties": {
+              "clipId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "illustration"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "imageFile"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "imageFile",
+                "fadeInSeconds",
+                "fadeOutSeconds"
+              ]
+            },
+            "properties": {
+              "clipId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "motionTemplate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "clipId",
+              "kind",
+              "start",
+              "end",
+              "template"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "clipId",
+                "kind",
+                "start",
+                "end",
+                "template",
+                "fadeInSeconds",
+                "fadeOutSeconds"
               ]
             }
           }
@@ -4086,7 +4582,7 @@
       ]
     },
     "clipControls": {
-      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds and colorAdjustments are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
+      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds, coverTitle and colorAdjustments are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -4204,6 +4700,12 @@
           "minimum": 0,
           "description": "\"Cover frame chosen\": the source second of the clip's cover, written beside each export as <name>-cover.jpg and embedded as its cover art. Omitted when there is none."
         },
+        "coverTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Optional text on the exported cover image, never on the clip video."
+        },
         "colorAdjustments": {
           "type": "object",
           "additionalProperties": false,
@@ -4253,6 +4755,11 @@
             }
           }
         }
+      },
+      "dependentRequired": {
+        "coverTitle": [
+          "coverSeconds"
+        ]
       }
     },
     "captionTranslation": {
@@ -4409,6 +4916,265 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "clipFootage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "clipID",
+        "kind",
+        "start",
+        "end",
+        "footage"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "clipID": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "bRoll",
+            "screenshot",
+            "videoStack"
+          ]
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end": {
+          "type": "number",
+          "minimum": 0
+        },
+        "footage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceKey",
+            "start"
+          ],
+          "properties": {
+            "sourceKey": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "fadeInSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "fadeOutSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        }
+      }
+    },
+    "motionTemplate": {
+      "title": "VoxClip local motion template",
+      "description": "A named graphic drawn by VoxClip. Logo stings use a text wordmark, not an asset or URL.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "titleCard",
+            "kineticCaption",
+            "logoSting",
+            "counter"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^\\S(?:.*\\S)?$",
+          "not": {
+            "pattern": "[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]"
+          }
+        },
+        "from": {
+          "type": "integer",
+          "minimum": -999999,
+          "maximum": 999999
+        },
+        "to": {
+          "type": "integer",
+          "minimum": -999999,
+          "maximum": 999999
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "const": "counter"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "to"
+            ],
+            "maxProperties": 3
+          },
+          "else": {
+            "required": [
+              "text"
+            ],
+            "maxProperties": 2
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "const": "logoSting"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "maxLength": 24
+              }
+            }
+          }
+        }
+      ]
+    },
+    "clipWordRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startWordId",
+        "endWordId"
+      ],
+      "properties": {
+        "startWordId": {
+          "$ref": "#/$defs/wordId"
+        },
+        "endWordId": {
+          "$ref": "#/$defs/wordId"
+        }
+      }
+    },
+    "clipPart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "startWordId",
+        "endWordId"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "startWordId": {
+          "$ref": "#/$defs/wordId"
+        },
+        "endWordId": {
+          "$ref": "#/$defs/wordId"
+        },
+        "reframe": {
+          "$ref": "#/$defs/clipControls/properties/reframe"
+        }
+      }
+    },
+    "gainPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "t",
+        "db"
+      ],
+      "properties": {
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "db": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 12
+        }
+      }
+    },
+    "musicSegment": {
+      "description": "One music segment on the edited clock. Runtime checks that non-looping segments fit the asset.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "anchorSeconds",
+        "lengthSeconds",
+        "songFromSeconds",
+        "loop",
+        "gainDb",
+        "fadeInSeconds",
+        "fadeOutSeconds"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "anchorSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lengthSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0.1
+        },
+        "songFromSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "gainDb": {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 12,
+          "default": 0
+        },
+        "fadeInSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "fadeOutSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "gainPoints": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/gainPoint"
+          },
+          "description": "Relative dB points in strictly increasing item-local time; checked at runtime."
         }
       }
     }

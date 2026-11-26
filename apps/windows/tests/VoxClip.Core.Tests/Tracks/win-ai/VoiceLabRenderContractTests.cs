@@ -137,6 +137,26 @@ public sealed class VoiceLabRenderContractTests
         Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(raw.Replace("\"mode\": \"source\"", "\"mode\": \"unrecognised\"", StringComparison.Ordinal)));
     }
     [Fact]
+    public void SelectedVoiceRoundTripsWithoutAFalseSpeakerMeasurement()
+    {
+        var project = Fixture("selected-voice-render-v3");
+        var segment = project.VoiceLab.Segments[0];
+        var selected = segment.Candidates[segment.SelectedCandidateIndex];
+        var recipe = selected.Recipe!;
+        var qa = recipe.Qa;
+        Assert.True(qa.OutputSpeakerCheckSkipped);
+        Project Build(VoiceLabRenderQa evidence) => Replace(project, segment with {
+            Qa = segment.Qa with { SpeakerScore = evidence.SpeakerScore },
+            Candidates = segment.Candidates.Select((candidate, index) => index == segment.SelectedCandidateIndex
+                ? selected with { Recipe = recipe with { Qa = evidence } } : candidate).ToArray()
+        });
+        var reopened = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project));
+        VoiceLabRenderContract.Prepare(reopened, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+        Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabProject.Validate(Build(qa with { OutputSpeakerCheckSkipped = null })));
+        Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabProject.Validate(Build(qa with { SpeakerPassed = true })));
+        Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabProject.Validate(Build(qa with { TranscriptExact = false, TranscriptMatch = 0 })));
+    }
+    [Fact]
     public void DisclosureThresholdsAndStockConversion()
     {
         var at = VoiceLabRenderContract.Prepare(Fixture("disclosure-at-30-render-v3"), VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);

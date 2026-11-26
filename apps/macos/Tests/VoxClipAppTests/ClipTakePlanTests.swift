@@ -647,7 +647,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     }
 
     /// Use the Voice Without Lip Sync over the live plan (`putInWholeClipVoiceOnly`): the lip sync fails, and the paid
-    /// voice goes in as ordinary Voice Lab segments, with no whole-clip record and no lip sync left applied.
+    /// voice goes in as ordinary Voice Lab segments, with no whole-clip record and no lip sync left applied. It is
+    /// Rewrite's own commit: the card shows it used, never R3's "Nothing was applied" (the commit went in outside `ownEdit`).
+    /// The editor's Undo puts the card back on the stop it was used from, its paid voice saved again; Redo puts it back in.
     @Test func aPaidVoiceWhoseLipSyncFailsGoesInWithoutItOverTheLivePlan() async throws {
         let fixture = try await fixture(indices: [10])
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -655,6 +657,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let (editor, rewrite) = session(fixture)
         defer { editor.close() }
         editor.mediaResolved = true
+        let undoManager = UndoManager(); undoManager.groupsByEvent = false; editor.undoManager = undoManager
+        rewrite.receive(hunks([10]).map { RewriteChange(hunk: $0) })
+        rewrite.finishRun(seconds: 1)
+        // The plan is the whole clip's voice here, not the patch's takes.
+        rewrite.takePlan = nil
         rewrite.wholeClipPlan = plan
         plan.prepareDurationRender = lipSyncRender(fixture)
         plan.lipsync.automaticallyRefreshOffers = false
@@ -685,12 +692,25 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         whole.start()
         await whole.waitForRun()
         try #require(whole.failure?.step == .lipsync && whole.canUseVoiceOnly, "\(whole.phase)")
-        await whole.useVoiceOnly()
+        let stop = whole.phase
+        let url = try #require(rewrite.savedProposalURL)
+        undoManager.beginUndoGrouping(); await whole.useVoiceOnly(); undoManager.endUndoGrouping()
         #expect(whole.phase == .used && whole.usedVoiceOnly && whole.record == nil, "\(whole.phase)")
         #expect(!editor.project.voiceLab.segments.isEmpty, "the voice is in the clip")
         #expect(editor.project.voiceLab.wholeClipRevoices?.isEmpty ?? true, "no whole-clip record")
         #expect(plan.lipsync.applied.isEmpty)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 1, "one voice, paid once")
+        #expect(Self.showsProposal(rewrite) && !Self.saysNothingWasApplied(rewrite), "the card shows it used, not R3: \(rewrite.task.cards)")
+        #expect(!FileManager.default.fileExists(atPath: url.path), "used: its saved record goes")
+        undoManager.undo()
+        #expect(editor.project.voiceLab.segments.isEmpty, "Undo took the voice out")
+        #expect(whole.phase == stop && whole.canUseVoiceOnly && !whole.usedVoiceOnly, "back on the stop it was used from: \(whole.phase)")
+        #expect(Self.showsProposal(rewrite) && !Self.saysNothingWasApplied(rewrite) && rewrite.asksBeforeClosing)
+        #expect(RewriteSavedProposalStore.load(url)?.wholeClip != nil, "the paid voice is saved again")
+        undoManager.redo()
+        #expect(!editor.project.voiceLab.segments.isEmpty && whole.phase == .used && whole.usedVoiceOnly, "\(whole.phase)")
+        #expect(!FileManager.default.fileExists(atPath: url.path) && !rewrite.asksBeforeClosing)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 1, "still one voice, paid once")
     }
 
     /// A project imported and transcribed in this session: its dates are `Date()`s, finer than the millisecond its .voxclip
@@ -704,21 +724,28 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     /// Quits mid-review and relaunches, as VoxClip does: the document is saved to disk and read back from it
     /// (`JSONProjectStore.decode`, dates to the millisecond), the process goes with its plan and its claims on the journal,
     /// and a fresh app over the same data folder opens the same Rewrite on the reopened project, its voices discovered.
+    /// `unsaved` is the project a crash reopens instead of the one in memory: the last one saved, before the steps since.
     private func relaunch(_ fixture: Fixture, _ editor: EditorModel, _ session: RewriteSession, instruction: String = "",
+                          reopening unsaved: Project? = nil,
                           edit: (inout Project) -> Void = { _ in }) async throws -> (EditorModel, RewriteSession, MeasuredFitConnector) {
-        let file = fixture.root.appendingPathComponent("relaunch-\(UUID().uuidString).voxclip")
-        // A plain save to the document's own file: an untitled document's Save As asks AppKit for name suggestions later,
-        // which a test process can't answer.
-        editor.document.fileURL = file
-        let saved = await withTestDeadline(returning: false) { continuation in
-            editor.document.save(to: file, ofType: UTType.voxclipProject.identifier, for: .saveOperation) { error in
-                continuation.resume(returning: error == nil)
+        var project: Project
+        if let unsaved {
+            project = unsaved
+        } else {
+            let file = fixture.root.appendingPathComponent("relaunch-\(UUID().uuidString).voxclip")
+            // A plain save to the document's own file: an untitled document's Save As asks AppKit for name suggestions
+            // later, which a test process can't answer.
+            editor.document.fileURL = file
+            let saved = await withTestDeadline(returning: false) { continuation in
+                editor.document.save(to: file, ofType: UTType.voxclipProject.identifier, for: .saveOperation) { error in
+                    continuation.resume(returning: error == nil)
+                }
             }
+            try #require(saved)
+            // A document left with a file in the fixture's folder would autosave there after the test.
+            editor.document.fileURL = nil
+            project = try JSONProjectStore.decode(Data(contentsOf: file))
         }
-        try #require(saved)
-        // A document left with a file in the fixture's folder would autosave there after the test.
-        editor.document.fileURL = nil
-        var project = try JSONProjectStore.decode(Data(contentsOf: file))
         edit(&project)
         let envelope = session.envelope
         session.takePlan?.invalidate()
@@ -798,6 +825,100 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(FileManager.default.fileExists(atPath: url.path), "the saved record stays for an Undo")
     }
 
+    /// Where VoxClip crashes in the Rewrite a relaunch restored (`aCrashAtEachStepKeepsTheSavedProposalUntilUse`).
+    enum CrashStep: String, CaseIterable, CustomTestStringConvertible {
+        /// Make Takes priced the takes it adopts: its click hasn't come.
+        case priced
+        /// The click adopted the paid takes from the journal and paid their word checks.
+        case paid
+        /// The creator picks a take and the picture for each phrase.
+        case review
+        /// Use put the takes in; the project wasn't saved since.
+        case used
+        var testDescription: String { rawValue }
+    }
+
+    /// A crash at each step after a relaunch restored a proposal with paid takes. It used to delete the saved record as soon
+    /// as Make Takes priced its plan (the plan held nothing paid yet), so a crash then lost the proposal and asked the AI
+    /// again. Now the record stays while the proposal or its plan is open, naming the journal's takes (an adopted take's
+    /// receipt is its entry's), and the next relaunch shows it again with no AI call and adopts the takes again, voicing
+    /// nothing. Only Use removes it: a crash after Use, with the project as last saved before it, offers nothing back.
+    @Test(arguments: CrashStep.allCases) func aCrashAtEachStepKeepsTheSavedProposalUntilUse(step: CrashStep) async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        _ = try await makeTakes(session)
+        session.showProposal()
+        let url = try #require(session.savedProposalURL)
+        let voiced = ClipTakeHTTP.state.withLock { $0.texts.count }
+        let note = "Your paid take from before VoxClip closed is kept: Make Takes uses it again and pays only for the word checks."
+        let (reopened, again, _) = try await relaunch(fixture, editor, session)
+        again.start()
+        try #require(again.restoredProposal != nil && again.autoFix.notes.contains(note), "\(again.autoFix.notes)")
+        let saved = try JSONProjectStore.decode(JSONProjectStore.encode(reopened.project))
+        await again.prepareTakes()
+        let adopted = try #require(again.takePlan)
+        if step != .priced {
+            await adopted.start(approved: true, quoteID: adopted.approvalID)
+            await settle(again)
+            #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == voiced, "the paid take was adopted, not voiced again")
+        }
+        if step == .review {
+            for phrase in adopted.phrases {
+                guard let take = phrase.takes.first else { continue }
+                _ = adopted.select(take: take.id, phrase: phrase.id)
+                _ = adopted.chooseVideo(.source, phrase: phrase.id)
+            }
+            again.showProposal()
+        }
+        if step == .used { try #require(await useFirstTakes(again, adopted), "\(adopted.problem); \(again.problem)") }
+        #expect(FileManager.default.fileExists(atPath: url.path) == (step != .used), "the record stays until Use, and goes at Use")
+        // The crash: nothing asked, nothing closed cleanly; after Use the project on disk is the one saved before it.
+        let (crashed, last, connector) = try await relaunch(fixture, reopened, again, reopening: step == .used ? saved : nil)
+        defer { crashed.close() }
+        last.start()
+        guard step != .used else {
+            #expect(last.restoredProposal == nil, "a used proposal is never offered back")
+            #expect(!FileManager.default.fileExists(atPath: url.path))
+            return
+        }
+        #expect(last.restoredProposal != nil && last.ownProposal != nil, "the proposal is back after a crash")
+        #expect(await connector.requests.isEmpty, "with no AI call")
+        #expect(last.autoFix.notes.contains(note), "the note still names the journal's take: \(last.autoFix.notes)")
+        await last.prepareTakes()
+        let again2 = try #require(last.takePlan)
+        await again2.start(approved: true, quoteID: again2.approvalID)
+        await settle(last)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == voiced, "nothing was voiced again")
+        #expect(await useFirstTakes(last, again2), "\(again2.problem); \(last.problem)")
+        #expect(!FileManager.default.fileExists(atPath: url.path), "Use removes it")
+    }
+
+    /// After a relaunch the restored proposal's paid takes, not adopted yet, are unused paid work: closing asks first
+    /// ("Close Rewrite and discard 1 paid take (≈ $x)?"), and so does Rewrite Again, which used to delete the record unasked.
+    /// Keep Working keeps the record; the question's Discard removes it.
+    @Test func aRestoredProposalsPaidTakesAskBeforeTheyGo() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        _ = try await makeTakes(session)
+        session.showProposal()
+        let url = try #require(session.savedProposalURL)
+        let (reopened, again, connector) = try await relaunch(fixture, editor, session)
+        defer { reopened.close() }
+        again.start()
+        try #require(again.restoredProposal != nil)
+        #expect(again.restoredTakesPending && again.hasUnusedPaidWork && again.asksBeforeClosing)
+        #expect(again.changeNeedsDiscard, "a change of the restored proposal asks before its takes go")
+        reopened.sendRewriteAgain(again)
+        #expect(again.task.confirm?.confirm.id == "discardChanges", "Rewrite Again asks: \(String(describing: again.task.confirm?.question))")
+        again.task.confirm?.cancel.perform()
+        #expect(await connector.requests.isEmpty && FileManager.default.fileExists(atPath: url.path), "Keep Working sends nothing and keeps the record")
+        #expect(reopened.closeRewrite(returnFocus: false) == false)
+        let question = try #require(again.task.confirm?.question)
+        #expect(question.hasPrefix("Close Rewrite and discard 1 paid take (≈ $"), "\(question)")
+        again.task.confirm?.confirm.perform()
+        #expect(!again.isOpen && !FileManager.default.fileExists(atPath: url.path), "Discard and Close removes the record")
+    }
+
     /// The note after a relaunch says only what the journal still gives back for its word check: with the paid take's entry
     /// gone (its 60 days are up, though the record was saved again since), it promises nothing. A new instruction the
     /// creator typed waits for Rewrite Again, said in a line, instead of being replaced silently by the saved one.
@@ -828,8 +949,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     /// The whole clip over `fixture`'s plan, as the live card makes it, with only fal.ai and the voice step stood in: the
     /// voice is the plan's real takes (journaled), the lip sync returns at once and reports whether it may pay. `voiceRecord`
     /// is the voice chosen now (`Backend.voiceKey`), nil for none; `restoring` puts a saved whole clip on the card first.
+    /// `priced` runs between the voice's price and its run, where the live voice step holds a restored voice to the price its
+    /// Try Again showed (`RewriteSession.holdRestoredVoicePrice`).
     private func wholeClipRelaunchRevoice(_ fixture: Fixture, _ rewrite: RewriteSession, script: WholeClipScript, restoring: Bool,
-                                          voiceRecord: String?, mayPay: @escaping @MainActor (Bool) -> Void) throws -> WholeClipRevoiceSession {
+                                          voiceRecord: String?, priced: (@MainActor (ClipTakePlan) throws -> Void)? = nil,
+                                          mayPay: @escaping @MainActor (Bool) -> Void) throws -> WholeClipRevoiceSession {
         let plan = fixture.plan
         rewrite.takePlan = nil
         rewrite.wholeClipPlan = plan
@@ -850,8 +974,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 importedAt: Date(), estimate: estimate)
             return ImportedLipsyncResult(asset: asset, url: root.appendingPathComponent(asset.file), provenance: provenance)
         }, changed: {})
-        let whole = WholeClipRevoiceSession()
-        rewrite.configureWholeClip(whole)
+        let whole = (restoring ? rewrite.wholeClip : nil) ?? WholeClipRevoiceSession()
+        if whole.backend == nil { rewrite.configureWholeClip(whole) }
         var backend = try #require(whole.backend)
         backend.script = { script }
         backend.videoSeconds = { 4 }
@@ -860,7 +984,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                   lipsyncUSD: 0.25, voiceName: "Fixture", voiceNote: "")
         }
         backend.voice = { [weak rewrite] script, _ in
-            await plan.prepare(); await plan.start(approved: true)
+            await plan.prepare()
+            try priced?(plan)
+            await plan.start(approved: true)
             _ = try #require(plan.phrases[0].selectedID)
             try chooseSourceDuration(plan)
             // As the live voice step does once its parts are made (`finishWholeClipVoice`).
@@ -873,20 +999,20 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         backend.report = { _ in }
         backend.hasKey = { true }
         whole.backend = backend
-        if restoring { rewrite.restoreWholeClip(into: whole) }
+        if restoring, whole.restoredVoiceKey == nil { rewrite.restoreWholeClip(into: whole) }
         rewrite.wholeClip = whole
         return whole
     }
 
     /// Pays for a whole clip over a fresh fixture and quits at Review: nothing used, nothing discarded. Returns the fixture,
-    /// the script and what was spent.
-    private func paidWholeClipThenQuit() async throws -> (Fixture, WholeClipScript, Decimal) {
-        let fixture = try await fixture(indices: [10])
+    /// the script and what was spent. `indices` are the voice's parts (one take each).
+    private func paidWholeClipThenQuit(indices: [Int] = [10]) async throws -> (Fixture, WholeClipScript, Decimal) {
+        let fixture = try await fixture(indices: indices)
         let words = try #require(fixture.source.transcript?.words)
-        let script = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: hunks([10])))
+        let script = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: hunks(indices)))
         var paidMayPay: [Bool] = []
         let (editor, rewrite) = session(fixture)
-        rewrite.receive(hunks([10]).map { RewriteChange(hunk: $0) })
+        rewrite.receive(hunks(indices).map { RewriteChange(hunk: $0) })
         rewrite.finishRun(seconds: 1)
         let whole = try wholeClipRelaunchRevoice(fixture, rewrite, script: script, restoring: false, voiceRecord: fixture.record.id) { paidMayPay.append($0) }
         whole.start()
@@ -894,9 +1020,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         try #require(whole.phase == .review, "\(whole.phase)")
         let url = try #require(rewrite.savedProposalURL)
         let saved = try #require(RewriteSavedProposalStore.load(url)?.wholeClip, "the whole clip is saved at Review")
-        #expect(saved.voices.count == 1 && saved.lipsyncs.count == 1 && saved.parts == 1 && saved.partRequests.count == 1)
+        #expect(saved.voices.count == 1 && saved.lipsyncs.count == 1 && saved.parts == indices.count && saved.partRequests.count == indices.count)
+        #expect(!saved.partRequests.contains(""), "every part's paid take is named: \(saved.partRequests)")
         let spent = whole.spent
-        #expect(paidMayPay == [true] && spent > 0.25)
+        // One lip sync of the clip: a run for each part's window, each one paid.
+        #expect(paidMayPay == Array(repeating: true, count: indices.count) && spent > 0.25, "\(paidMayPay) \(spent)")
         fixture.plan.invalidate()
         editor.close()
         return (fixture, script, spent)
@@ -914,9 +1042,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         defer { reopened.close() }
         again.takePlan = nil
         again.start()
-        try #require(again.ownProposal != nil && again.restoredProposal?.wholeClip != nil, "the proposal and its whole clip are back")
+        try #require(again.ownProposal != nil && again.wholeClip?.restoredVoiceKey != nil, "the proposal and its whole clip are back")
         var restoredMayPay: [Bool] = []
-        let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id) { restoredMayPay.append($0) }
+        var adopted: [Int?] = []
+        let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id,
+                                                priced: { adopted.append($0.adoptedPhraseCount) }) { restoredMayPay.append($0) }
         await back.refreshQuote()
         let catalog = try VoiceLabPriceCatalog.load(shared: SharedResources.locate())
         let check = try VoiceLabPricing.estimate(operation: .elevenLabsSpeechToText, model: ElevenLabsScribe.modelID,
@@ -932,6 +1062,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty }, "the paid take was adopted, not voiced again")
         #expect(restoredMayPay == [false], "the paid lip sync is only re-imported")
         #expect(back.spent == spent + (check ?? 0), "everything from before is counted once, plus the word check: \(back.spent) \(spent) \(String(describing: check))")
+        #expect(adopted == [1], "the fresh plan's price adopts the paid part (`adoptedPhraseCount`): \(adopted)")
     }
 
     /// The restored whole clip's voice is missing after the relaunch (removed, or another voice chosen): its Try Again would
@@ -946,7 +1077,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         defer { reopened.close() }
         again.takePlan = nil
         again.start()
-        try #require(again.restoredProposal?.wholeClip != nil)
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
         var mayPay: [Bool] = []
         var chosen: String? = "another-voice"
         let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: nil) { mayPay.append($0) }
@@ -976,6 +1107,342 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(back.phase == .review && ClipTakeHTTP.state.withLock { $0.texts.isEmpty } && mayPay == [false], "\(back.phase)")
     }
 
+    /// A restored whole clip whose parts the journal no longer gives back (their entries went before the record's 60 days)
+    /// used to read "Try Again puts it back, without voicing it again." with no price, while its Try Again then needed a new
+    /// voice and expected the paid lip sync back over it. Now the line and the button say the same price before the click:
+    /// each part the journal can't give back is voiced again with its word check, and the clip is lip synced again (the
+    /// paid one was made over the old audio). The run then pays exactly that: one new voice, one new lip sync.
+    @Test func aRestoredWholeClipWhosePartsAreGonePricesTheNewVoiceAndLipSyncBeforeTheClick() async throws {
+        let (fixture, script, spent) = try await paidWholeClipThenQuit()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let paidRoot = fixture.root.appendingPathComponent("VoiceLab")
+        let entries = VoiceLabTakeJournal.list(projectID: fixture.source.id, paidRoot: paidRoot)
+        try #require(!entries.isEmpty)
+        for entry in entries { VoiceLabTakeJournal.remove(assetID: entry.asset.id, projectID: fixture.source.id, paidRoot: paidRoot) }
+        let relaunched = try await self.fixture(indices: [10], root: fixture.root, projectID: fixture.source.id)
+        let (reopened, again) = session(relaunched)
+        defer { reopened.close() }
+        again.takePlan = nil
+        again.start()
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
+        var mayPay: [Bool] = []
+        let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id) { mayPay.append($0) }
+        await back.refreshQuote()
+        let catalog = try VoiceLabPriceCatalog.load(shared: SharedResources.locate())
+        let check = try #require(RewriteSession.wordCheckUSD(catalog))
+        let part = try #require(script.parts.first)
+        let characters: Double = Double(part.text.unicodeScalars.count)
+        let voice = try #require(try VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
+                                                              units: characters, catalog: catalog).usd)
+        let lipsync: Decimal = 0.25
+        let expected: Decimal = check + voice + lipsync
+        let price = VoiceLabCostPresentation.format(expected)
+        #expect(back.restoredVoiceChosen && !back.restoredVoiceWhole && back.restoredPartsBack == 0)
+        #expect(back.retryUSD == expected, "the part voiced again, its word check and the lip sync: \(String(describing: back.retryUSD))")
+        #expect(again.wholeClipStoppedActions().first?.title == "Try Again · " + price)
+        #expect(back.restoredVoiceNote == "Its paid parts can't be put back, so Try Again voices it again and lip syncs it again (\(price)).",
+                "\(back.restoredVoiceNote ?? "none")")
+        if case .stopped(let line) = back.phase {
+            #expect(line.hasPrefix("Your paid whole-clip voice from before VoxClip closed can't be put back."), "\(line)")
+        } else { Issue.record("not a stop: \(back.phase)") }
+        back.start()
+        await back.waitForRun()
+        #expect(back.phase == .review, "\(back.phase)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 1, "the part was voiced again, as the price said")
+        #expect(mayPay == [true], "the lip sync was paid again, as the price said, never expected back over another voice")
+        #expect(back.spent > spent, "what was paid before stays counted")
+    }
+
+    /// The price of putting a restored voice back, part by part: a part the journal gives back costs its word check; any
+    /// other its new voice and its word check. It can't be made exact when the record's parts don't line up with its script.
+    @Test func aRestoredVoiceIsPricedPartByPart() throws {
+        // Two sentences 20 s apart, each long enough to stay its own part.
+        let words = [TimedWord(id: "a", text: "First.", start: 0, end: 5), TimedWord(id: "b", text: "Second one.", start: 20, end: 25)]
+        let script = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: []))
+        try #require(script.parts.count == 2)
+        let catalog = try VoiceLabPriceCatalog.load(shared: SharedResources.locate())
+        let check = try #require(RewriteSession.wordCheckUSD(catalog))
+        func tts(_ text: String) throws -> Decimal {
+            let characters: Double = Double(text.unicodeScalars.count)
+            return try #require(try VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
+                                                             units: characters, catalog: catalog).usd)
+        }
+        let saved = RewriteSavedProposal.WholeClip(script: script, baseScript: script, voices: [], lipsyncs: [], billed: [:], parts: 2,
+                                                   partRequests: ["r1", "r2"])
+        let both: Decimal = check + check
+        #expect(RewriteSession.restoredVoiceUSD(saved, adoptable: ["r1", "r2"], catalog: catalog) == both)
+        let second: Decimal = try both + tts(script.parts[1].text)
+        #expect(RewriteSession.restoredVoiceUSD(saved, adoptable: ["r1"], catalog: catalog) == second)
+        let none: Decimal = try both + tts(script.parts[0].text) + tts(script.parts[1].text)
+        #expect(RewriteSession.restoredVoiceUSD(saved, adoptable: [], catalog: catalog) == none)
+        var unaligned = saved
+        unaligned.partRequests = ["r1"]
+        #expect(RewriteSession.restoredVoiceUSD(unaligned, adoptable: ["r1"], catalog: catalog) == nil)
+    }
+
+    /// The panel shows the proposal (R2), not R3.
+    private static func showsProposal(_ session: RewriteSession) -> Bool {
+        if case .proposal = session.task.state { return true }
+        return false
+    }
+
+    /// R3's "Nothing was applied" copy is on the panel.
+    private static func saysNothingWasApplied(_ session: RewriteSession) -> Bool {
+        session.task.cards.contains { card in
+            if case .text(let line) = card { return line.contains("Nothing was applied") }
+            return false
+        }
+    }
+
+    /// Closes the project as VoxClip does when it quits: the document's close settles the take journal against the project
+    /// as it closes (`VoiceLabAssetRetention.closeProject`), then the editor goes.
+    private func closeDocument(_ editor: EditorModel) {
+        editor.document.editorModel = editor
+        editor.document.close()
+        editor.close()
+    }
+
+    /// Use Whole Clip's commit over the fixture's full-take plan, as `useWholeClip` makes it: Rewrite's own commit
+    /// (`commitOwnEdit`) of the plan's paid parts and their assets, one undo step. The live commit adds the clip's record in
+    /// the same step, which needs a clip the full-take fixture doesn't have, and the stand-in lip sync's result is no file,
+    /// so only the parts' audio goes in.
+    private func standInWholeClipUse(_ whole: WholeClipRevoiceSession, _ rewrite: RewriteSession, _ editor: EditorModel,
+                                     plan: ClipTakePlan) throws {
+        var backend = try #require(whole.backend)
+        backend.use = { [weak editor, weak rewrite, weak plan] voice, synced, _ in
+            guard let editor, let rewrite, let plan else { throw CancellationError() }
+            for phrase in Array(plan.lipsync.applied.keys) { plan.lipsync.undo(phrase) }
+            let made = try await plan.acceptance()
+            try rewrite.commitOwnEdit {
+                try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: .fullTake)
+            }
+            return WholeClipRevoiceRecord(id: "wholeclip-fixture", clipId: "clip-fixture", segmentIds: made.segments.map(\.id),
+                script: voice.key.script, consentRecordId: voice.key.recordId, videoRetime: synced.factor,
+                lipsyncModel: synced.model.rawValue, usd: 0.3, match: nil, createdAt: Date(timeIntervalSince1970: 1_800_000_000))
+        }
+        whole.backend = backend
+    }
+
+    /// A whole clip paid for and at Review in a Rewrite with a proposal, over a fresh fixture, with an undo manager.
+    private func wholeClipAtReview() async throws -> (Fixture, EditorModel, RewriteSession, WholeClipRevoiceSession, WholeClipScript, UndoManager) {
+        let fixture = try await fixture(indices: [10])
+        let words = try #require(fixture.source.transcript?.words)
+        let script = try #require(WholeClipScript.assemble(words: words, cutWordIds: [], voiceHunks: hunks([10])))
+        let (editor, rewrite) = session(fixture)
+        let undoManager = UndoManager(); undoManager.groupsByEvent = false; editor.undoManager = undoManager
+        rewrite.receive(hunks([10]).map { RewriteChange(hunk: $0) })
+        rewrite.finishRun(seconds: 1)
+        let whole = try wholeClipRelaunchRevoice(fixture, rewrite, script: script, restoring: false, voiceRecord: fixture.record.id) { _ in }
+        whole.start()
+        await whole.waitForRun()
+        try #require(whole.phase == .review && Self.showsProposal(rewrite), "\(whole.phase)")
+        try standInWholeClipUse(whole, rewrite, editor, plan: fixture.plan)
+        return (fixture, editor, rewrite, whole, script, undoManager)
+    }
+
+    /// Use Whole Clip is Rewrite's own commit: the card shows it used ("✓ Whole clip revoiced and in your clip. Undo takes it
+    /// back."), never R3. The commit used to go in outside `ownEdit`, so `follow` took it for an edit of the scope and said
+    /// "Nothing was applied. Your paid whole-clip voice is kept until you close this; Undo brings it back." over a voice that
+    /// was in. Its saved record goes at Use: a relaunch over the project as saved before it (a crash right after Use) offers
+    /// nothing back to put in or pay for again.
+    @Test func aUsedWholeClipShowsItsUsedCardAndIsNeverOfferedBackAfterARelaunch() async throws {
+        let (fixture, editor, rewrite, whole, _, undoManager) = try await wholeClipAtReview()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let url = try #require(rewrite.savedProposalURL)
+        try #require(FileManager.default.fileExists(atPath: url.path))
+        let voiced = ClipTakeHTTP.state.withLock { $0.texts.count }
+        undoManager.beginUndoGrouping(); await whole.use(); undoManager.endUndoGrouping()
+        try #require(whole.phase == .used, "\(whole.phase)")
+        #expect(!editor.project.voiceLab.segments.isEmpty, "the voice is in the clip")
+        #expect(Self.showsProposal(rewrite) && !Self.saysNothingWasApplied(rewrite), "the card shows it used, not R3: \(rewrite.task.cards)")
+        #expect(!rewrite.asksBeforeClosing, "nothing unused is left to ask about")
+        #expect(!FileManager.default.fileExists(atPath: url.path), "Use removes the saved record")
+        fixture.plan.invalidate()
+        editor.close()
+        // The relaunch, over the project as saved before Use.
+        let relaunched = try await self.fixture(indices: [10], root: fixture.root, projectID: fixture.source.id)
+        let (reopened, again) = session(relaunched)
+        defer { reopened.close() }
+        again.takePlan = nil
+        again.start()
+        #expect(again.restoredProposal == nil && again.wholeClip == nil, "the used whole clip is never offered back")
+        #expect(voiced == 1 && ClipTakeHTTP.state.withLock { $0.texts.isEmpty }, "nothing was sent again")
+    }
+
+    /// Undo (⌘Z) right after Use Whole Clip, with Rewrite open on the card. It used to be an edit of the scope (R3, "Undo
+    /// brings it back"), no record came back, and the project's close ended the paid part's journal entry because the
+    /// session's history had used it, so after a relaunch nothing came back and the same whole clip paid for its voice and
+    /// lip sync again. Now the Undo is the card's own: it is back on Review, its paid work unused again (closing asks) and
+    /// saved again; Redo puts it back in and the record goes. The close keeps the journal entries the project as it closes
+    /// doesn't use, so after the relaunch Try Again puts the voice back for its word check and re-imports the lip sync.
+    @Test func anUndoneWholeClipComesBackAfterARelaunchForItsWordCheck() async throws {
+        let (fixture, editor, rewrite, whole, script, undoManager) = try await wholeClipAtReview()
+        let root = fixture.root
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = try #require(rewrite.savedProposalURL)
+        undoManager.beginUndoGrouping(); await whole.use(); undoManager.endUndoGrouping()
+        try #require(whole.phase == .used && !editor.project.voiceLab.segments.isEmpty, "\(whole.phase)")
+        let spent = whole.spent
+        undoManager.undo()
+        #expect(editor.project.voiceLab.segments.isEmpty, "Undo took the voice out")
+        #expect(whole.phase == .review && Self.showsProposal(rewrite) && !Self.saysNothingWasApplied(rewrite), "\(whole.phase) \(rewrite.task.cards)")
+        #expect(rewrite.asksBeforeClosing, "the paid voice and lip sync are unused again: closing asks first")
+        #expect(RewriteSavedProposalStore.load(url)?.wholeClip != nil, "saved again for a relaunch")
+        undoManager.redo()
+        #expect(!editor.project.voiceLab.segments.isEmpty && whole.phase == .used && Self.showsProposal(rewrite), "\(whole.phase)")
+        #expect(!FileManager.default.fileExists(atPath: url.path), "Redo put it back in: the record goes again")
+        undoManager.undo()
+        try #require(whole.phase == .review && FileManager.default.fileExists(atPath: url.path), "\(whole.phase)")
+        // Quit with the whole clip undone: the project closes without it, and the journal keeps its paid part.
+        fixture.plan.invalidate()
+        closeDocument(editor)
+        let paidRoot = root.appendingPathComponent("VoiceLab")
+        #expect(VoiceLabTakeJournal.list(projectID: fixture.source.id, paidRoot: paidRoot).count == 1, "the undone part stays adoptable")
+        let relaunched = try await self.fixture(indices: [10], root: root, projectID: fixture.source.id)
+        let (reopened, again) = session(relaunched)
+        defer { reopened.close() }
+        again.takePlan = nil
+        again.start()
+        try #require(again.wholeClip?.restoredVoiceKey != nil, "the undone whole clip is offered back")
+        var mayPay: [Bool] = []
+        let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id) { mayPay.append($0) }
+        await back.refreshQuote()
+        let check = try #require(RewriteSession.wordCheckUSD(VoiceLabPriceCatalog.load(shared: SharedResources.locate())))
+        #expect(back.restoredVoiceWhole && back.retryUSD == check, "Try Again costs the word check only: \(String(describing: back.retryUSD))")
+        back.start()
+        await back.waitForRun()
+        #expect(back.phase == .review, "\(back.phase)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty }, "the paid part was adopted, not voiced again")
+        #expect(mayPay == [false], "the paid lip sync was only re-imported")
+        #expect(back.spent == spent + check, "paid once, plus the word check: \(back.spent) \(spent)")
+    }
+
+    /// Use Whole Clip, then Rewrite closed, then Undo (⌘Z) with no Rewrite open to follow it: when the project closes the
+    /// whole clip is only in the session's history. The close used to end the paid part's journal entry (that history had
+    /// used its audio), so asking for the same whole clip after a relaunch voiced it and paid for it again. The close now
+    /// settles the journal against the project as it closes: the part stays adoptable for 60 days, and the same whole clip
+    /// voices nothing new, paying only the part's word check. (Over the same audio the live lip sync re-imports its earlier
+    /// result for free from the window's imported index, `LipsyncRun.execute` step 1; this stand-in only reports that a
+    /// fresh card may pay.)
+    @Test func anUndoneWholeClipWithRewriteClosedVoicesNothingNewAfterARelaunch() async throws {
+        let (fixture, editor, _, whole, script, undoManager) = try await wholeClipAtReview()
+        let root = fixture.root
+        defer { try? FileManager.default.removeItem(at: root) }
+        undoManager.beginUndoGrouping(); await whole.use(); undoManager.endUndoGrouping()
+        try #require(whole.phase == .used, "\(whole.phase)")
+        #expect(editor.closeRewrite(returnFocus: false), "a used whole clip closes without asking")
+        undoManager.undo()
+        #expect(editor.project.voiceLab.segments.isEmpty, "Undo took the voice out")
+        fixture.plan.invalidate()
+        closeDocument(editor)
+        let paidRoot = root.appendingPathComponent("VoiceLab")
+        #expect(VoiceLabTakeJournal.list(projectID: fixture.source.id, paidRoot: paidRoot).count == 1, "the undone part stays adoptable")
+        let relaunched = try await self.fixture(indices: [10], root: root, projectID: fixture.source.id)
+        let (reopened, again) = session(relaunched)
+        defer { reopened.close() }
+        again.takePlan = nil
+        #expect(RewriteSavedProposalStore.load(again.savedProposalURL) == nil, "Use removed the record: nothing is offered back")
+        // The same whole clip asked for again: the AI's same changes, then Revoice Whole Clip.
+        again.receive(hunks([10]).map { RewriteChange(hunk: $0) })
+        again.finishRun(seconds: 1)
+        let fresh = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: false, voiceRecord: relaunched.record.id) { _ in }
+        fresh.start()
+        await fresh.waitForRun()
+        let check = try #require(RewriteSession.wordCheckUSD(VoiceLabPriceCatalog.load(shared: SharedResources.locate())))
+        #expect(fresh.phase == .review, "\(fresh.phase)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty }, "the paid part was adopted, not voiced again")
+        #expect(fresh.voiceSpent == check, "the voice cost only its word check: \(fresh.voiceSpent)")
+    }
+
+    /// A restored whole clip whose journal gives back one of its two parts (the other's entry went before the record's 60
+    /// days): the card says so before the click ("1 of the 2 parts …", "Try Again puts back 1 of its 2 paid parts for their
+    /// word checks, voices the other part again and lip syncs the clip again (≈ $x)."), and Try Again carries that price,
+    /// with a new lip sync: the paid one was made over audio a part voiced again changes. The run then voices that one part
+    /// and lip syncs once, never paying more than the button said.
+    @Test func aRestoredWholeClipWithOnePartGoneVoicesOnlyThatPartAndLipSyncsAgain() async throws {
+        let (fixture, script, spent) = try await paidWholeClipThenQuit(indices: [3, 10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let paidRoot = fixture.root.appendingPathComponent("VoiceLab")
+        let relaunched = try await self.fixture(indices: [3, 10], root: fixture.root, projectID: fixture.source.id)
+        let (reopened, again) = session(relaunched)
+        defer { reopened.close() }
+        let saved = try #require(RewriteSavedProposalStore.load(again.savedProposalURL)?.wholeClip)
+        try #require(saved.parts == 2 && saved.partRequests.count == 2, "\(saved.partRequests)")
+        let entries = VoiceLabTakeJournal.list(projectID: fixture.source.id, paidRoot: paidRoot)
+        let second = try #require(entries.first { $0.requestID == saved.partRequests[1] }, "\(entries.map(\.requestID))")
+        VoiceLabTakeJournal.remove(assetID: second.asset.id, projectID: fixture.source.id, paidRoot: paidRoot)
+        again.takePlan = nil
+        again.start()
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
+        var mayPay: [Bool] = []
+        let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id) { mayPay.append($0) }
+        await back.refreshQuote()
+        #expect(back.restoredParts == 2 && back.restoredPartsBack == 1 && !back.restoredVoiceWhole)
+        let voice = try #require(back.restoredRetryVoiceUSD)
+        let lipsync: Decimal = 0.25
+        let total: Decimal = voice + lipsync
+        let price = VoiceLabCostPresentation.format(total)
+        #expect(back.retryUSD == total, "the voice back part by part and a new lip sync: \(String(describing: back.retryUSD))")
+        #expect(again.wholeClipStoppedActions().first?.title == "Try Again · " + price)
+        #expect(back.restoredVoiceNote == "Try Again puts back 1 of its 2 paid parts for their word checks, voices the other part again and lip syncs the clip again (\(price)).",
+                "\(back.restoredVoiceNote ?? "none")")
+        if case .stopped(let line) = back.phase {
+            #expect(line.hasPrefix("1 of the 2 parts of your paid whole-clip voice from before VoxClip closed is kept."), "\(line)")
+        } else { Issue.record("not a stop: \(back.phase)") }
+        back.start()
+        await back.waitForRun()
+        #expect(back.phase == .review, "\(back.phase)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 1, "only the part whose entry went was voiced again")
+        #expect(mayPay == [true, true], "the clip lip synced again (a run for each part's window), as the price said: \(mayPay)")
+        let paid: Decimal = back.spent - spent
+        #expect(paid <= total && paid > lipsync, "never more than the button: \(paid) for \(total)")
+    }
+
+    /// The backstop after the card was priced: the part's journal entry goes after the restored card priced Try Again at
+    /// the word check (the voice back, the lip sync re-imported) and before the click. The fresh plan adopts nothing, so the
+    /// voice step sends nothing and stops; its new price used to keep the lip sync free and the line "without voicing it
+    /// again", so the next click voiced the part and stopped again at a lip sync that couldn't come back. Now the stop
+    /// counts the parts the plan adopts: Try Again carries the new voice and a new lip sync, and the line says so.
+    @Test func aJournalEntryGoneBeforeTheClickRepricesTheVoiceAndItsLipSync() async throws {
+        let (fixture, script, spent) = try await paidWholeClipThenQuit()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let relaunched = try await self.fixture(indices: [10], root: fixture.root, projectID: fixture.source.id)
+        let (reopened, again) = session(relaunched)
+        defer { reopened.close() }
+        again.takePlan = nil
+        again.start()
+        try #require(again.wholeClip?.restoredVoiceKey != nil)
+        var mayPay: [Bool] = []
+        var adopted: [Int?] = []
+        let back = try wholeClipRelaunchRevoice(relaunched, again, script: script, restoring: true, voiceRecord: relaunched.record.id,
+                                                priced: { [weak again] plan in
+            adopted.append(plan.adoptedPhraseCount)
+            try again?.holdRestoredVoicePrice(plan, approved: again?.wholeClip?.restoredRetryVoiceUSD)
+        }) { mayPay.append($0) }
+        await back.refreshQuote()
+        let check = try #require(RewriteSession.wordCheckUSD(VoiceLabPriceCatalog.load(shared: SharedResources.locate())))
+        try #require(back.restoredVoiceWhole && back.retryUSD == check, "priced for the word check: \(String(describing: back.retryUSD))")
+        let paidRoot = fixture.root.appendingPathComponent("VoiceLab")
+        for entry in VoiceLabTakeJournal.list(projectID: fixture.source.id, paidRoot: paidRoot) {
+            VoiceLabTakeJournal.remove(assetID: entry.asset.id, projectID: fixture.source.id, paidRoot: paidRoot)
+        }
+        back.start()
+        await back.waitForRun()
+        #expect(adopted == [0], "the fresh plan adopts no part: \(adopted)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty } && mayPay.isEmpty, "nothing was sent: the click approved the word check only")
+        guard case .stopped(let line) = back.phase else { Issue.record("not a stop: \(back.phase)"); return }
+        #expect(line.hasPrefix("The price to put your paid voice back changed. Nothing new was sent."), "\(line)")
+        #expect(!back.restoredVoiceWhole && back.restoredPartsBack == 0, "\(back.restoredPartsBack) of \(back.restoredParts)")
+        let voice = try #require(back.restoredVoiceUSD)
+        let lipsync: Decimal = 0.25
+        let total: Decimal = voice + lipsync
+        let price = VoiceLabCostPresentation.format(total)
+        #expect(voice > check && back.retryUSD == total, "a new voice and a new lip sync: \(String(describing: back.retryUSD))")
+        #expect(back.restoredVoiceNote == "Its paid parts can't be put back, so Try Again voices it again and lip syncs it again (\(price)).",
+                "\(back.restoredVoiceNote ?? "none")")
+        #expect(back.spent == spent, "nothing new was paid: \(back.spent) \(spent)")
+    }
+
     /// A saved proposal nobody reopened goes after 60 days, with the journal's unused takes, and is owner-only meanwhile.
     @Test func aSavedProposalGoesAfterSixtyDaysUnused() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-saved-\(UUID().uuidString)")
@@ -985,9 +1452,26 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let saved = RewriteSavedProposal(projectId: "p1", scope: "clip:c1", inputs: "x", instruction: "", changes: [], kept: [], pricedAnyway: [],
                                          voiceRecordID: nil, patchTakes: 1, patchUSD: 0.04, patchRequests: [], wholeClip: nil,
                                          savedAt: Date(timeIntervalSince1970: 1_800_000_000))
+        // A folder already there with other permissions (an earlier build, a copy) is made owner-only too.
+        let folder = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+        // Written twice: the second replaces the first through its own temporary file.
+        try RewriteSavedProposalStore.write(RewriteSavedProposalStore.encode(saved), to: url)
         try RewriteSavedProposalStore.write(RewriteSavedProposalStore.encode(saved), to: url)
         let mode = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
         #expect(mode?.intValue == 0o600)
+        let folderMode = try FileManager.default.attributesOfItem(atPath: folder.path)[.posixPermissions] as? NSNumber
+        #expect(folderMode?.intValue == 0o700, "the folder is 0700 even when it was there: \(String(describing: folderMode))")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == [url.lastPathComponent], "no temporary file is left")
+        // Owner-only from the start: the mode is set on the temporary file before the rename, never by a chmod after it
+        // (which left the record readable by others for a moment under its own name).
+        let repository = try SharedResources.locate().root.deletingLastPathComponent()
+        let source = try String(contentsOf: repository.appendingPathComponent("apps/macos/Sources/VoxClip/RewriteSavedProposal.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "static func write(_ data: Data, to url: URL) throws {"))
+        let end = try #require(source.range(of: "static func ownerOnlyFolder", range: start.upperBound..<source.endIndex))
+        let body = source[start.upperBound..<end.lowerBound]
+        let chmod = try #require(body.range(of: "fchmod(descriptor, 0o600)")), rename = try #require(body.range(of: "rename(temporary.path, url.path)"))
+        #expect(chmod.lowerBound < rename.lowerBound && body.contains("O_CREAT | O_EXCL") && !body.contains("setAttributes"))
         #expect(RewriteSavedProposalStore.load(url, now: saved.savedAt.addingTimeInterval(59 * 86_400)) == saved)
         #expect(RewriteSavedProposalStore.load(url, now: saved.savedAt.addingTimeInterval(61 * 86_400)) == nil)
         #expect(!FileManager.default.fileExists(atPath: url.path))
@@ -1495,7 +1979,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(output.segments.count == 3)
     }
 
-    @Test func retriesUseFreshSeedsAndKeepThreeSlots() async throws {
+    @Test func retriesUseFreshSeedsAndKeepEveryTake() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         await plan.prepare(); await plan.start(approved: true)
@@ -1512,27 +1996,24 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             }
         }
         #expect(ClipTakeHTTP.state.withLock { $0.seeds == [7, 8, 9, 10] })
-        #expect(plan.phrases[0].takes.count == 3)
-        #expect(plan.phrases[0].takes.map(\.number).sorted() == [1, 2, 3])
-        #expect(plan.phrases[0].takes.contains { $0.id == original })
-        #expect(held.count == 4 && held.values.filter(\.isValid).count == 3)
-        let selected = try #require(plan.phrases[0].selectedID)
-        let scratch = await plan.scratch(take: selected, phrase: 0)
-        #expect(scratch?.isValid == true)
+        #expect(plan.phrases[0].takes.map(\.number) == [1, 2, 3, 4])
+        #expect(held.count == 4 && held.values.allSatisfy(\.isValid))
+        for take in plan.phrases[0].takes.reversed() {
+            #expect(plan.select(take: take.id, phrase: 0))
+        }
+        #expect(plan.phrases[0].selectedID == original)
+        #expect(ClipTakeHTTP.state.withLock { $0.seeds == [7, 8, 9, 10] && $0.qa == 4 })
         let output = try await sourceAcceptance(plan)
         #expect(output.segments.count == 1)
     }
 
-    @Test func repeatedRetryRetiresOnlyEvictedScratchesAndDrainsConsumers() async throws {
+    @Test func closingPlanDrainsConsumersOfEarlierTakes() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         await plan.prepare(); await plan.start(approved: true)
-        let selected = try #require(plan.phrases[0].selectedID)
-        for _ in 0..<2 { await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true) }
-        #expect(plan.select(take: selected, phrase: 0))
-        let number = plan.phrases[0].nextTakeNumber
-        let evicted = try #require(plan.phrases[0].takes.first { $0.number == number })
-        let scratch = try #require(await plan.scratch(take: evicted.id, phrase: 0))
+        let first = try #require(plan.phrases[0].takes.first)
+        await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
+        let scratch = try #require(await plan.scratch(take: first.id, phrase: 0))
         let privateMixed = scratch.mixedAudioURL.deletingLastPathComponent()
         let privatePaid = scratch.fitted.snapshot.url.deletingLastPathComponent()
         let barrier = ClipTakeBarrier()
@@ -1540,34 +2021,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             #expect(FileManager.default.fileExists(atPath: privateMixed.path) && FileManager.default.fileExists(atPath: privatePaid.path))
             await barrier.pause()
         }
-        await plan.prepareAnother(phrase: 0)
-        let retry = Task { await plan.tryAnother(phrase: 0, approved: true) }
+        let second = try #require(plan.phrases[0].takes.last)
+        let latest = try #require(await plan.scratch(take: second.id, phrase: 0))
+        plan.invalidate()
         await barrier.wait()
-        #expect(!scratch.isValid && plan.generating)
+        #expect(!scratch.isValid)
         #expect(FileManager.default.fileExists(atPath: privateMixed.path) && FileManager.default.fileExists(atPath: privatePaid.path))
-        #expect(plan.phrases[0].selectedID == selected)
-        barrier.resume(); await retry.value
+        barrier.resume(); await plan.invalidation?.value
         #expect(!FileManager.default.fileExists(atPath: privateMixed.path) && !FileManager.default.fileExists(atPath: privatePaid.path))
-        #expect(await plan.scratch(take: evicted.id, phrase: 0) == nil)
-        var allIDs = Set(plan.phrases[0].takes.map(\.id)); allIDs.insert(evicted.id)
-        for _ in 0..<4 {
-            #expect(plan.select(take: selected, phrase: 0))
-            await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
-            allIDs.formUnion(plan.phrases[0].takes.map(\.id))
-            var live = 0
-            for id in allIDs {
-                if let retained = await plan.scratch(take: id, phrase: 0) { #expect(retained.isValid); live += 1 }
-            }
-            #expect(live == 3 && plan.phrases[0].takes.count == 3 && plan.phrases[0].takes.contains { $0.id == selected })
-            for take in plan.phrases[0].takes {
-                #expect(plan.select(take: take.id, phrase: 0))
-                #expect(try await sourceAcceptance(plan).segments.count == 1)
-            }
-        }
-        var survivors: [VoiceLabTakeScratch] = []
-        for take in plan.phrases[0].takes { survivors.append(try #require(await plan.scratch(take: take.id, phrase: 0))) }
-        plan.invalidate(); await plan.invalidation?.value
-        #expect(survivors.allSatisfy { !$0.isValid })
+        #expect(!latest.isValid)
         let paid = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(fixture.source.id)
         #expect(try FileManager.default.contentsOfDirectory(atPath: paid.path).contains { $0.hasSuffix(".wav") })
     }
@@ -3138,7 +3600,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.spent.units > 0 && ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
-    @Test func explicitLowerScoreSelectionSurvivesFailedBetterRetryStopAndEviction() async throws {
+    @Test func explicitLowerScoreSelectionSurvivesFailedBetterRetryAndStopWithEveryTakeKept() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         ClipTakeHTTP.state.withLock { $0.amplitudeVariance = 0.8 }
@@ -3154,7 +3616,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         ClipTakeHTTP.state.withLock { $0.failQA = false; $0.amplitudeVariance = 0 }
         fixture.beforeProgress = { #expect(plan.phrases[0].selectedID == selected.id) }
         await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
-        #expect(plan.phrases[0].selectedID == selected.id && plan.phrases[0].takes.count == 3)
+        // Every paid take stays (#11): a fourth take no longer evicts one, and the explicit pick holds.
+        #expect(plan.phrases[0].selectedID == selected.id && plan.phrases[0].takes.count == 4)
         let barrier = ClipTakeBarrier()
         fixture.beforeProgress = { #expect(plan.phrases[0].selectedID == selected.id); await barrier.pause() }
         await plan.prepareAnother(phrase: 0)
@@ -3887,10 +4350,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     /// says so with Undo, and the footer's Apply completes the Rewrite with the text fix.
     @Test func afterThreeRoundsThePhraseKeepsItsOriginalWordsAndApplyCompletes() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let (editor, session) = try await productionSession(fixture, rewriteConnector: MeasuredFitConnector()); defer { editor.close() }
+        let connector = ScriptedFitConnector(["Corrected Hi", "corrected, HI", "Corrected A"])
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
         let plan = try #require(session.takePlan)
-        ClipTakeHTTP.state.withLock { $0.failQA = true }
+        ClipTakeHTTP.state.withLock { $0.duration += 5; $0.echoQA = true }
         try approvePrice(session)
+        session.autoFix.allowance = 100
         await settle(session)
         #expect(session.autoFix.rounds[0] == RewriteAutoFixState.maximumRounds && session.autoFix.gaveUp == [0])
         #expect(plan.phrases[0].leftOut && plan.phrases[0].selectedID == nil && !plan.isRetired && session.takePlan === plan)
@@ -4047,8 +4512,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         barrier.resume()
         await settle(session)
         #expect(session.autoFix.stopped && session.takePlan === plan && !plan.phrases[0].takes.isEmpty)
-        #expect(session.task.nextSteps.contains { $0.id == "take.0" && $0.chips.contains { $0.action.id == "tryAnother.0" } })
-        #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
+        let steps = try #require(session.task.nextSteps.first { $0.id == "take.0" })
+        #expect(steps.chips.map(\.id) == ["editFailedWords.0", "keepOriginal.0"])
+        #expect(!steps.chips.contains { $0.action.priced })
     }
 
     // MARK: Expressions on a takes-panel phrase (design.md R2 "Expressions")

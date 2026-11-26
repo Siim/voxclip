@@ -175,16 +175,18 @@ public struct VoiceLabRenderQA: Codable, Sendable, Equatable {
     public var speakerPassed: Bool?
     public var shortSpeech: VoiceLabShortSpeechEvidence?
     public var joinAdvisory: VoiceLabJoinAdvisory?
+    public var outputSpeakerCheckSkipped: Bool?
     public init(transcriptTokens: Int?, transcriptExact: Bool?, transcriptMatch: Double?, lufsJumpLu: Double,
                 peakDbfs: Double, speakerScore: Double?, speakerThreshold: Double?, speakerModel: String?, speakerPassed: Bool?, shortSpeech: VoiceLabShortSpeechEvidence? = nil,
-                joinAdvisory: VoiceLabJoinAdvisory? = nil) {
+                joinAdvisory: VoiceLabJoinAdvisory? = nil, outputSpeakerCheckSkipped: Bool? = nil) {
         self.transcriptTokens = transcriptTokens; self.transcriptExact = transcriptExact; self.transcriptMatch = transcriptMatch
         self.lufsJumpLu = lufsJumpLu; self.peakDbfs = peakDbfs; self.speakerScore = speakerScore
         self.shortSpeech = shortSpeech
         self.joinAdvisory = joinAdvisory
+        self.outputSpeakerCheckSkipped = outputSpeakerCheckSkipped
         self.speakerThreshold = speakerThreshold; self.speakerModel = speakerModel; self.speakerPassed = speakerPassed
     }
-    private enum CodingKeys: String, CodingKey { case transcriptTokens, transcriptExact, transcriptMatch, lufsJumpLu, peakDbfs, speakerScore, speakerThreshold, speakerModel, speakerPassed, shortSpeech, joinAdvisory }
+    private enum CodingKeys: String, CodingKey { case transcriptTokens, transcriptExact, transcriptMatch, lufsJumpLu, peakDbfs, speakerScore, speakerThreshold, speakerModel, speakerPassed, shortSpeech, joinAdvisory, outputSpeakerCheckSkipped }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(transcriptTokens, forKey: .transcriptTokens)
@@ -198,6 +200,7 @@ public struct VoiceLabRenderQA: Codable, Sendable, Equatable {
         try values.encode(speakerPassed, forKey: .speakerPassed)
         try values.encodeIfPresent(shortSpeech, forKey: .shortSpeech)
         try values.encodeIfPresent(joinAdvisory, forKey: .joinAdvisory)
+        try values.encodeIfPresent(outputSpeakerCheckSkipped, forKey: .outputSpeakerCheckSkipped)
     }
 }
 public struct VoiceLabCost: Codable, Sendable, Equatable {

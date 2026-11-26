@@ -239,6 +239,7 @@ struct MusicPanelServices: Sendable {
                 if case .offline? = error as? VoxClipError { message = "Openverse is unavailable while you’re offline." }
                 else { message = UserMessages.message(error) }
                 self.catalogNote = (page == 1 ? "Search failed: " : "Couldn’t load more tracks: ") + message
+                Task { await model.app.logFailure(error, context: .music) }
             }
         }
     }
@@ -323,7 +324,7 @@ struct MusicPanelServices: Sendable {
 
     /// Use: stores the track in the project's music folder and sets it under the open clip (or the full video). A
     /// generated candidate is made first; its priced button is the approval and a failure is never retried.
-    func use(_ candidate: MusicCandidate, model: EditorModel) {
+    func use(_ candidate: MusicCandidate, model: EditorModel, timelineShape: ClipPlanMusicShape? = nil) {
         guard model.capabilities.edit else { return }
         guard !isBusy else { return }
         let scope = QuoteScope(model)
@@ -358,6 +359,7 @@ struct MusicPanelServices: Sendable {
                     entry.gainDb = current.gainDb; entry.ducking = current.ducking
                     entry.fadeInSeconds = current.fadeInSeconds; entry.fadeOutSeconds = current.fadeOutSeconds
                 }
+                if let timelineShape, let shaped = try? timelineShape.placing(entry, in: model.project, clipID: clipId) { entry = shaped }
                 try self.apply(entry, clipId: clipId, model: model, name: "Add music")
                 self.phase = .idle
             } catch is CancellationError {
@@ -366,6 +368,7 @@ struct MusicPanelServices: Sendable {
             } catch {
                 guard !Task.isCancelled else { return }
                 self?.phase = .failed(UserMessages.message(error))
+                if self != nil { Task { await model.app.logFailure(error, context: .music) } }
             }
         }
     }
@@ -374,7 +377,10 @@ struct MusicPanelServices: Sendable {
         guard model.capabilities.edit, !isUsing, model.currentMusic != nil else { return }
         stopAudition()
         do { try apply(nil, clipId: model.renderedActiveClipID, model: model, name: "Remove music") }
-        catch { phase = .failed(UserMessages.message(error)) }
+        catch {
+            phase = .failed(UserMessages.message(error))
+            Task { await model.app.logFailure(error, context: .music) }
+        }
     }
 
     /// The one volume control: the bed's level under the voice, −40 to 0 dB (−20 by default).
@@ -384,7 +390,10 @@ struct MusicPanelServices: Sendable {
         guard rounded != entry.gainDb else { return }
         entry.gainDb = rounded
         do { try apply(entry, clipId: entry.clipId, model: model, name: "Change music volume") }
-        catch { phase = .failed(UserMessages.message(error)) }
+        catch {
+            phase = .failed(UserMessages.message(error))
+            Task { await model.app.logFailure(error, context: .music) }
+        }
     }
 
     private func apply(_ entry: ProjectMusic?, clipId: String?, model: EditorModel, name: String) throws {

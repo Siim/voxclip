@@ -11,6 +11,7 @@ struct AskClaudeRow: Identifiable, Equatable {
         case undone
         /// Needs a paid click first: a voice rewrite or generated music, with its price.
         case paid(price: String)
+        case asset(title: String, disabled: String?)
         /// The editor cannot render it yet (translated captions); the row says why and that nothing changed.
         case later(String)
         /// A speed for part of a clip, which plays at one speed (design.md §6.9): the row offers that speed for the whole
@@ -36,6 +37,7 @@ struct AskClaudeRow: Identifiable, Equatable {
     var repairs: [String] = []
     /// The project before the answer applied; Undo reads the previous values of corrections and ducking from it.
     @ObservationIgnored var base: Project?
+    @ObservationIgnored var timelineUndo: [String: TimelineEditUndo] = [:]
     init(instruction: String, selection: AskClaudeSelection, label: String) { self.instruction = instruction; self.selection = selection; self.label = label }
     var appliedCount: Int { rows.filter { $0.status == .applied }.count }
 }
@@ -47,6 +49,8 @@ struct AskClaudeRow: Identifiable, Equatable {
     var label = ""
     var text = ""
     var asking = false
+    var assetWorking: String?
+    var illustrationKeyAvailable: Bool?
     var progress: String?
     var error: String?
     var run: AskClaudeRun?
@@ -207,7 +211,7 @@ extension EditorModel {
                 guard project == snapshot else { state.error = "The project changed while Claude worked. Ask again."; return }
                 applyAskClaude(answer, instruction: instruction, selection: selection)
             } catch is CancellationError {} catch LLMError.cancelled {} catch {
-                let message = await app.safeError(error, context: "ai:\(provider.label)")
+                let message = await app.safeError(error, context: .askClaude, messageContext: "ai:\(provider.label)")
                 if !message.isEmpty { state.error = message }
             }
         }
@@ -221,27 +225,64 @@ extension EditorModel {
         run.repairs = answer.repairs
         run.base = project
         let paid = Set(answer.paid.map(\.id))
-        let free = answer.operations.filter { !paid.contains($0.id) }
+        let free = answer.operations.filter {
+            if case .timeline = $0.action { return false }
+            return !paid.contains($0.id)
+        }
         var pending = Set<String>()
+        var refused: [String: String] = [:]
+        var timelineNames: [String: String] = [:]
         if let applied = try? ClipAutopilotMapping.apply(free, to: project) {
             pending = Set(applied.pending.map(\.id))
-            if applied.project != project { replace(applied.project, name: "Ask Claude") }
+            var next = applied.project
+            for operation in answer.operations {
+                guard case .timeline(let clipID, let edits) = operation.action else { continue }
+                var candidate = next
+                do {
+                    for edit in edits {
+                        let change = try edit.applying(to: candidate, scope: clipID)
+                        candidate = change.project
+                        if edits.count == 1 { timelineNames[operation.id] = change.undoName }
+                    }
+                    if candidate == next { refused[operation.id] = "The timeline doesn't change the project." }
+                    else {
+                        run.timelineUndo[operation.id] = TimelineEditUndo(before: next, after: candidate)
+                        next = candidate
+                    }
+                } catch { refused[operation.id] = error.localizedDescription }
+            }
+            if next != project { replace(next, name: "Ask Claude") }
         } else {
             askClaude.error = "Claude's changes could not be applied. Try different wording."
             return
         }
         run.rows = answer.operations.map { operation in
             let status: AskClaudeRow.Status
-            if paid.contains(operation.id) { status = .paid(price: askClaudePrice(operation)) }
+            if let refusal = refused[operation.id] { status = .later(refusal) }
+            else if case .asset(let asset) = operation.action { status = askAssetStatus(asset) }
+            else if paid.contains(operation.id) { status = .paid(price: askClaudePrice(operation)) }
             else if pending.contains(operation.id), case .stretch = operation.action, let clip = Self.stretchClip(operation, in: project) {
                 status = .wholeClip(clipID: clip)
             }
             else if pending.contains(operation.id) { status = .later(Self.laterReason(operation)) }
             else { status = .applied }
-            return AskClaudeRow(operation: operation, status: status, title: Self.rowTitle(operation), detail: rowDetail(operation),
+            return AskClaudeRow(operation: operation, status: status, title: timelineNames[operation.id] ?? Self.rowTitle(operation), detail: rowDetail(operation),
                                 choice: answer.choices[operation.id])
         }
         askClaude.run = run
+        if answer.operations.contains(where: { if case .asset(let asset) = $0.action { asset.kind == .illustration } else { false } }) {
+            Task { [weak self] in
+                guard let self else { return }
+                let ready = await app.providerKeyStore.hasKey(for: "fal")
+                guard askClaude.run === run else { return }
+                askClaude.illustrationKeyAvailable = ready
+                for index in run.rows.indices {
+                    if case .asset(let asset) = run.rows[index].operation.action, case .asset = run.rows[index].status {
+                        run.rows[index].status = askAssetStatus(asset)
+                    }
+                }
+            }
+        }
         askClaude.selection = nil
         askClaude.text = ""
         let count = run.appliedCount
@@ -259,6 +300,7 @@ extension EditorModel {
             case .blur: return effect.tracking == ClipEffect.Tracking.none ? "Blur" : "Blur, tracked"
             case .pixelate: return effect.tracking == ClipEffect.Tracking.none ? "Pixelate" : "Pixelate, tracked"
             case .title: return "Title"
+            case .motionTemplate: return effect.template?.label ?? "Motion template"
             case .lowerThird: return "Lower third"
             case .sticker: return "Emoji"
             case .arrow: return "Arrow"
@@ -266,6 +308,9 @@ extension EditorModel {
             case .progress: return "Progress bar"
             case .freeze: return "Freeze frame"
             case .sound: return "Sound: \(effect.sound?.title ?? "effect")"
+            case .colourLook: return "Colour look"
+            case .speedForPart: return "Speed: \(Self.rate(effect.rate ?? 1))"
+            case .illustration: return "Illustration"
             }
         case .motion: return "Zoom in"
         case .edit(.correct): return "Fix a word"
@@ -274,7 +319,9 @@ extension EditorModel {
         case .stretch(_, _, _, let rate): return rate < 1 ? "Slow-mo \(Self.rate(rate))" : "Speed up \(Self.rate(rate))"
         case .translateCaptions(_, _, _, let language, _): return "Captions in \(Locale(identifier: "en").localizedString(forLanguageCode: language) ?? language)"
         case .music: return "Music change"
+        case .asset(let asset): return asset.kind == .sound ? "Sound effect" : "Illustration"
         case .musicDucking: return "Duck the music"
+        case .timeline: return "Edit timeline"
         default: return operation.decision.rawValue.capitalized
         }
     }
@@ -297,13 +344,14 @@ extension EditorModel {
         case .stretch(_, let start, let end, _): return "\(Self.clock(start))\u{2013}\(Self.clock(end))"
         case .translateCaptions(_, _, _, _, let text): return "\u{201C}\(text)\u{201D}"
         case .music(let cue): return cue.picked.mood
+        case .asset: return operation.reason
         default: return operation.reason
         }
     }
 
     static func laterReason(_ operation: ClipAutopilotOperation) -> String {
         switch operation.action {
-        case .stretch: return "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."
+        case .stretch: return "Ask on a clip to change its speed. Nothing changed."
         case .musicDucking: return "This clip has no music to duck."
         case .motion: return "This cue overlaps existing motion or no longer fits the clip. Nothing changed."
         default: return "Not available yet. Nothing changed."
@@ -350,6 +398,7 @@ extension EditorModel {
     static func sourceRange(_ operation: ClipAutopilotOperation, words: [TimedWord]) -> ClosedRange<Double>? {
         switch operation.action {
         case .effect(let effect): return effect.start...effect.end
+        case .asset(let asset): return asset.start...asset.end
         case .motion(let cue): return cue.sourceStart...cue.sourceEnd
         case .stretch(_, let start, let end, _): return start...end
         case .edit(.correct(let id, _)):
@@ -401,7 +450,7 @@ extension EditorModel {
     /// Takes one applied row out as its own undo step; the other rows stay.
     func undoAskClaudeRow(_ id: String) {
         guard let run = askClaude.run, let index = run.rows.firstIndex(where: { $0.id == id }), run.rows[index].status == .applied,
-              let next = try? undone([run.rows[index].operation], base: run.base, from: project) else { return }
+              let next = try? undone([run.rows[index].operation], base: run.base, from: project, timelineUndo: run.timelineUndo) else { return }
         replace(next, name: "Undo \(run.rows[index].title)")
         run.rows[index].status = .undone
         if askClaude.adjusting == id { askClaude.adjusting = nil }
@@ -412,7 +461,7 @@ extension EditorModel {
     func undoAllAskClaude() {
         guard let run = askClaude.run else { return }
         let applied = run.rows.filter { $0.status == .applied }
-        guard !applied.isEmpty, let next = try? undone(applied.map(\.operation), base: run.base, from: project) else { return }
+        guard !applied.isEmpty, let next = try? undone(applied.map(\.operation), base: run.base, from: project, timelineUndo: run.timelineUndo) else { return }
         replace(next, name: "Undo Ask Claude")
         for index in run.rows.indices where run.rows[index].status == .applied { run.rows[index].status = .undone }
         askClaude.adjusting = nil
@@ -420,12 +469,17 @@ extension EditorModel {
     }
 
     /// `project` with `operations` taken out: their effects and zooms removed, corrections, cuts and ducking back to `base`.
-    func undone(_ operations: [ClipAutopilotOperation], base: Project?, from project: Project) throws -> Project {
+    func undone(_ operations: [ClipAutopilotOperation], base: Project?, from project: Project,
+                timelineUndo: [String: TimelineEditUndo] = [:]) throws -> Project {
         var next = project
+        for operation in operations.reversed() {
+            if let undo = timelineUndo[operation.id] { next = try undo.restoring(in: next) }
+        }
         var effects = Set<String>(), cues: [MotionCue] = []
         for operation in operations {
             switch operation.action {
             case .effect(let effect): effects.insert(effect.id)
+            case .asset(let asset): effects.insert(asset.id)
             case .motion(let cue): cues.append(cue)
             case .edit(.correct(let id, _)): next.edits.corrections[id] = base?.edits.corrections[id]
             case .edit(.cutSelection(let ids)):

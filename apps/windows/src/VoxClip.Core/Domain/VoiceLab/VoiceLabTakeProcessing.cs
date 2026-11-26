@@ -27,7 +27,14 @@ public static class VoiceLabTakeProcessing
             window.End > total / (double)rate || SourceFrames(window.Start, rate) != window.StartSample || SourceFrames(window.End, rate) != window.EndSample)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         if (!KeepsBridgeWords(input.Text, BridgeWords(input))) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample);
+        double level;
+        try { level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample); }
+        catch (VoiceLabAudioMathException error) when (error.Code == VoiceLabAudioMathErrorCode.NoVoicedAudio && input.EditedLayout is not null)
+        {
+            if (input.Source.Samples(window.StartSample, window.EndSample) is not { } samples ||
+                VoiceLabLoudness.VoicedRmsDb(samples.Span, rate) is not { } inside) throw;
+            level = inside;
+        }
         var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, rate, total,
             VoiceLabRoomToneSelection.ExcludeDigitalSilence(input.Items, input.SourceEnvelope, rate, total, window, input.HardJoinSmoothing));
         if (input.HardJoinSmoothing && (window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard) && tone is not null)
@@ -73,9 +80,13 @@ public static class VoiceLabTakeProcessing
         var gain = VoiceLabLoudness.LevelGainDb(preflight.SourceLevel, VoiceLabLoudness.VoicedRmsDb(trimmed, rate), VoiceLabLoudness.TruePeakDbtp(trimmed, rate));
         var take = new VoiceLabFitTake(samples.Length, rate, trim.Start, trim.End, words, Envelope(samples, rate));
         var profile = input.PauseProfile ?? VoiceLabPauseProfile.Measure(input.Items, input.SourceEnvelope, 0, double.MaxValue);
-        var fit = VoiceLabNaturalPacing.Fit(input.Window, input.IncomingSilence, input.OutgoingSilence, take,
+        var tags = VoiceLabNaturalPacing.PauseTags(input.AudioTags, input.ModelId, words.Count);
+        var fit = input.EditedLayout is { } layout
+            ? VoiceLabNaturalPacing.Layout(input.Window, input.IncomingSilence, input.OutgoingSilence, take, input.SourceSampleRate,
+                input.HardJoinSmoothing, tags, layout.Cuts, layout.PauseThreshold)
+            : VoiceLabNaturalPacing.Fit(input.Window, input.IncomingSilence, input.OutgoingSilence, take,
             input.SourceSampleRate, input.HardJoinSmoothing, profile,
-            VoiceLabNaturalPacing.PauseTags(input.AudioTags, input.ModelId, words.Count), input.SourceEnvelope, input.Items);
+            tags, input.SourceEnvelope, input.Items);
         return new(rate, trimmed, gain, preflight.RoomTone, fit, tilt);
     }
     /// <summary>The bridge words a take's text must begin and end with (voice-lab §8.4; Mac <c>bridgeWords</c>): the unchanged

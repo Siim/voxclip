@@ -34,11 +34,11 @@ internal sealed class TimelineFrame
 
     internal void Compute(TimelineViewportState viewport, TimelineScene scene, EditPlan plan, TimelineWindow rendered,
         TimelineWindow view, double width, double source, bool edited, bool trimming, bool trimStart, string? trimId,
-        int first, int last, bool trimEnabled, double? pointer = null)
+        int first, int last, bool trimEnabled, double? pointer = null, TimelineStory? story = null)
     {
         double Display(double time) => edited ? plan.MapTime(time) : time;
         var pointerTime = pointer is { } position ? view.Time(position, width) : source;
-        if (pointer is not null && edited) pointerTime = plan.SourceTime(pointerTime);
+        if (pointer is not null) pointerTime = story?.SourceAt(pointerTime, edited) ?? (edited ? plan.SourceTime(pointerTime) : pointerTime);
         PointerWord = viewport.PointerWord(pointerTime);
         var pending = trimming && trimId == viewport.ActiveClip?.Id;
         First = pending ? first : viewport.First;
@@ -82,14 +82,17 @@ internal sealed class TimelineFrame
         }
         Start = viewport.Trim(true, First, Last);
         End = viewport.Trim(false, First, Last);
-        ComputePlayhead(viewport, plan, view, width, source, edited);
+        ComputePlayhead(viewport, plan, view, width, source, edited, story);
     }
 
-    internal void ComputePlayhead(TimelineViewportState viewport, EditPlan plan, TimelineWindow view, double width, double source, bool edited)
+    internal void ComputePlayhead(TimelineViewportState viewport, EditPlan plan, TimelineWindow view, double width, double source, bool edited, TimelineStory? story = null)
     {
         Source = source;
-        Playhead = viewport.Playhead(plan, view, source, edited);
-        var playhead = view.X(edited ? plan.MapTime(source) : source, width);
+        var position = story?.Display(source, edited) ?? (edited ? plan.MapTime(source) : source);
+        Playhead = story is null ? viewport.Playhead(plan, view, source, edited) :
+            new(view.Start, view.End, Math.Clamp(position, view.Start, view.End), .1,
+                TimelineLayout.ValueText(position, story.Duration(edited), viewport.Cuts, edited));
+        var playhead = view.X(position, width);
         PlayheadVisible = playhead >= 0 && playhead <= width;
         PlayheadLeft = Math.Clamp(playhead - 1, 0, Math.Max(0, width - 2));
         HeadLeft = Math.Clamp(playhead - 5.25, 0, Math.Max(0, width - 10.5));

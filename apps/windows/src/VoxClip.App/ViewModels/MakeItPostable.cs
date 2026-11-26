@@ -97,6 +97,7 @@ public sealed record MakeItServices(
     Func<string, IReadOnlyList<ExportAspect>, CancellationToken, Task<IReadOnlyList<string>>>? Export = null,
     Action<string>? Copy = null)
 {
+    internal PlanAssetServices? Assets { get; init; }
     /// <summary>The shared root for the planner's prompt, fonts and prices.</summary>
     public string? SharedRoot { get; init; }
     /// <summary>The Voice Lab price catalog for the cap; null prices nothing.</summary>
@@ -198,6 +199,8 @@ public abstract record MakeItInverse
     public sealed record Effect(string Id, System.Text.Json.JsonElement? Previous) : MakeItInverse;
     /// <summary>The clip's track before the run (null: none).</summary>
     public sealed record Music(string ClipId, Core.Domain.Music.ProjectMusic? Previous) : MakeItInverse;
+    public sealed record ReusedMusic(Core.Domain.Music.ProjectMusic Added, Core.Domain.Music.ProjectMusic? Previous) : MakeItInverse;
+    public sealed record Footage(string Id, ProjectFootage? Previous) : MakeItInverse;
     /// <summary>A zoom the run set: removed, or the cue with its id put back as it was.</summary>
     public sealed record Motion(string Id, Core.Domain.ContextDemo.MotionCue? Previous) : MakeItInverse;
     /// <summary>The clip's opening lead-in before "Opens on a clear look at you" (ADR-R48).</summary>
@@ -205,7 +208,7 @@ public abstract record MakeItInverse
     /// <summary>The clip's crop before "9:16 follows your face".</summary>
     public sealed record Reframe(string ClipId, ReframeSettings? Previous) : MakeItInverse;
     /// <summary>The clip's cover before "Cover frame chosen".</summary>
-    public sealed record Cover(string ClipId, double? Previous) : MakeItInverse;
+    public sealed record Cover(string ClipId, double? Previous, string? PreviousTitle = null) : MakeItInverse;
 }
 
 /// <summary>Where a decision's Change goes. <see cref="Screens"/>: a blurred screen lists the clip's screens inline, each a toggle;

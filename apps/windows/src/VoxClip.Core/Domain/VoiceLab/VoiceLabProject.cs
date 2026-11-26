@@ -73,6 +73,9 @@ public static class VoiceLabAssetNaming
     /// <summary>Returns the relative <c>projectId/assetId.wav</c> or <c>.flac</c> name under the caller's paid Voice Lab store.</summary>
     public static string File(string projectId, string assetId, string fileExtension)
         => SafeFile(projectId, assetId, fileExtension) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
+    /// <summary>Returns the relative paid-picture path for a lip-sync asset.</summary>
+    public static string VideoFile(string projectId, string assetId)
+        => SafeVideoFile(projectId, assetId) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
     internal static bool IsSafeProjectId(string projectId) => VoiceLabProject.Matches(projectId, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
     internal static string? SafeFile(string projectId, string assetId, string fileExtension)
         => fileExtension is "wav" or "flac" ? SafeName(projectId, assetId, fileExtension) : null;
@@ -123,7 +126,7 @@ public static class VoiceLabProject
             return;
         }
         WholeClipRevoice.Validate(project);
-        Require(project.SchemaVersion is 2 or 3 or 4 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
+        Require(project.SchemaVersion is >= 2 and <= Editing.TimelineEditFields.Version && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 2) Require(project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null &&
             project.VoiceLab.Segments.All(segment => segment.Scope is null && segment.GroupId is null && segment.Provenance.Region is null && segment.Candidates.All(candidate => candidate.Recipe is null)), VoiceLabProjectErrorCode.InvalidSegment);
         Require(VoiceLabAssetNaming.IsSafeProjectId(project.Id), VoiceLabProjectErrorCode.UnsafePath);

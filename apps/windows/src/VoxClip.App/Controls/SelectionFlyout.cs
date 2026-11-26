@@ -18,6 +18,8 @@ internal sealed class SelectionFlyout
     private readonly AppBarButton restore;
     private readonly AppBarButton rewrite;
     private readonly AppBarButton rewriteAs;
+    private readonly AppBarButton rewriteReason = new() { IsEnabled = false, Visibility = Visibility.Collapsed };
+    private readonly AppBarButton makePart = new() { Visibility = Visibility.Collapsed };
     private readonly AppBarButton askClaude;
     private readonly AppBarSeparator askSeparator = new();
     /// <summary>Whether ✦ Ask Claude can act on the selection (an AI is chosen and the project can change).</summary>
@@ -29,6 +31,7 @@ internal sealed class SelectionFlyout
     internal Func<IReadOnlyList<VoxClip.App.ViewModels.RewriteStripItem>>? Tones { get; set; }
     /// <summary>A chip: rewrites the selected words in that tone at once.</summary>
     internal Action<VoxClip.App.ViewModels.RewriteStripItem>? RewriteAs { get; set; }
+    internal Action? MakePart { get; set; }
     private readonly AppBarSeparator separator = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private Action? pending;
@@ -62,6 +65,9 @@ internal sealed class SelectionFlyout
         flyout.PrimaryCommands.Add(separator);
         flyout.PrimaryCommands.Add(rewrite);
         flyout.PrimaryCommands.Add(rewriteAs);
+        flyout.SecondaryCommands.Add(rewriteReason);
+        flyout.SecondaryCommands.Add(makePart);
+        makePart.Click += (_, _) => { Hide(); MakePart?.Invoke(); };
         timer.Tick += (_, _) => { timer.Stop(); var action = pending; pending = null; action?.Invoke(); };
         flyout.Opened += (_, _) =>
         {
@@ -139,7 +145,8 @@ internal sealed class SelectionFlyout
         if (focus && owner.IsLoaded) owner.Focus(FocusState.Keyboard);
     }
 
-    internal void Show(Rect selection, bool below, bool keyboard, bool editable, bool canRestore, bool voiceLab, bool rewriteAvailable, string? existingClip)
+    internal void Show(Rect selection, bool below, bool keyboard, bool editable, bool canRestore, bool voiceLab, bool rewriteAvailable, string? existingClip,
+        VoxClip.App.ViewModels.StoryVoiceActions? story = null)
     {
         restoreFocus = false;
         flyout.AreOpenCloseAnimationsEnabled = Ui.EffectPolicy.Animations;
@@ -148,9 +155,16 @@ internal sealed class SelectionFlyout
         // Shown only when it can act: an AI is chosen and the project can change.
         askClaude.Visibility = askSeparator.Visibility = editable && CanAskClaude?.Invoke() == true ? Visibility.Visible : Visibility.Collapsed;
         restore.IsEnabled = editable && canRestore;
-        rewrite.Visibility = separator.Visibility = voiceLab ? Visibility.Visible : Visibility.Collapsed;
-        rewrite.IsEnabled = editable && rewriteAvailable;
-        if (!rewriteAvailable) ToolTipService.SetToolTip(rewrite, "Rewrite is not available in this build.");
+        rewrite.Visibility = separator.Visibility = voiceLab || story is not null ? Visibility.Visible : Visibility.Collapsed;
+        rewrite.IsEnabled = story is null && editable && rewriteAvailable;
+        ToolTipService.SetToolTip(rewrite, story?.RewriteReason ?? (rewriteAvailable ? "Rewrite… (Ctrl+R)" : "Rewrite is not available in this build."));
+        ToolTipService.SetToolTip(rewriteAs, story?.RewriteReason);
+        AutomationProperties.SetHelpText(rewrite, story?.RewriteReason ?? "");
+        AutomationProperties.SetHelpText(rewriteAs, story?.RewriteReason ?? "");
+        rewriteReason.Label = story?.RewriteReason ?? "";
+        makePart.Label = story?.MakeSelected ?? "";
+        rewriteReason.Visibility = makePart.Visibility = story is null ? Visibility.Collapsed : Visibility.Visible;
+        makePart.IsEnabled = editable;
         var items = Tones?.Invoke() ?? [];
         tones.Items.Clear();
         foreach (var item in items)
@@ -161,8 +175,8 @@ internal sealed class SelectionFlyout
             entry.Click += (_, _) => { Hide(); RewriteAs?.Invoke(item); };
             tones.Items.Add(entry);
         }
-        rewriteAs.Visibility = voiceLab && items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        rewriteAs.IsEnabled = editable && rewriteAvailable && items.Count > 0;
+        rewriteAs.Visibility = story is not null || voiceLab && items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        rewriteAs.IsEnabled = story is null && editable && rewriteAvailable && items.Count > 0;
         flyout.ShowMode = keyboard ? FlyoutShowMode.Standard : FlyoutShowMode.Transient;
         flyout.ShowAt(owner, new FlyoutShowOptions
         {

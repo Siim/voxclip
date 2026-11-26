@@ -160,7 +160,8 @@ internal static class LlmOutput
         {
             "object" => value is JsonObject obj && schema["required"]!.AsArray().All(name => obj.ContainsKey(name!.GetValue<string>())) &&
                 schema["properties"]!.AsObject().All(property => !obj.ContainsKey(property.Key) || Matches(obj[property.Key], property.Value!.AsObject())),
-            "array" => value is JsonArray array && array.All(item => Matches(item, schema["items"]!.AsObject())),
+            "array" => value is JsonArray array && array.Count >= (schema["minItems"]?.GetValue<int>() ?? 0) &&
+                array.Count <= (schema["maxItems"]?.GetValue<int>() ?? int.MaxValue) && array.All(item => Matches(item, schema["items"]!.AsObject())),
             "integer" or "number" => kind == JsonValueKind.Number,
             "string" => kind == JsonValueKind.String && (schema["enum"] is not JsonArray choices || choices.Any(choice => choice!.GetValue<string>() == value.GetValue<string>())),
             "boolean" => kind is JsonValueKind.True or JsonValueKind.False,

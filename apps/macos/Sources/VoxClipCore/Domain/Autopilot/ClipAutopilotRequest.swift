@@ -25,6 +25,16 @@ public enum ClipAutopilotTone: Sendable, Equatable {
 
 /// What to plan (ai.md §16.3): one clip span, several clip spans, or a whole video (or a range of it) as a series.
 public struct ClipAutopilotRequest: Sendable, Equatable {
+    public struct Revision: Sendable, Equatable {
+        public let instruction: String
+        public let plan: ClipAutopilotPlan
+
+        public init(instruction: String, plan: ClipAutopilotPlan) {
+            self.instruction = instruction
+            self.plan = plan
+        }
+    }
+
     public enum Mode: Sendable, Equatable {
         /// Inclusive transcript item positions of the clip, as `ClipRange` resolves them.
         case clip(ClosedRange<Int>)
@@ -51,12 +61,20 @@ public struct ClipAutopilotRequest: Sendable, Equatable {
     /// plan is told its rank, its title and idea, and the other clips of the series, as a series' second stage is. Empty
     /// plans each span on its own.
     public var moments: [ClipAutopilotMoment]
+    public var footageSources: [MediaReference]
+    public var footageDescriptions: [String: String] = [:]
+    public var musicTracks: [String: String] = [:]
+    public var selectedParts: [ClipProposal.Part]?
+    public var selectedKind: ClipProposal.NewClip.Kind?
+    public var creativeShapes = false
+    public var revision: Revision?
 
     public init(transcript: Transcript, edits: ProjectEdits = ProjectEdits(), mode: Mode,
                 captionPreference: ClipAutopilotCaptionPreference? = nil, language: String? = nil, note: String? = nil,
-                tone: ClipAutopilotTone? = nil, moments: [ClipAutopilotMoment] = []) {
+                tone: ClipAutopilotTone? = nil, moments: [ClipAutopilotMoment] = [], footageSources: [MediaReference] = []) {
         self.transcript = transcript; self.edits = edits; self.mode = mode; self.captionPreference = captionPreference
         self.language = language; self.note = note; self.tone = tone; self.moments = moments
+        self.footageSources = footageSources
     }
 
     public var isSeries: Bool { if case .series = mode { true } else { false } }
@@ -110,14 +128,21 @@ public struct ClipAutopilotContext: Sendable {
     public let tone: ClipAutopilotTone?
     /// The frames the request carried (ADR-R48): the candidates the reply's `frames` may name. Nil without frames.
     public let frames: ClipAutopilotFrames?
+    public let footageSources: [String: Double]
+    public var offeredParts: [ClipProposal.Part]?
+    public var kind: ClipProposal.NewClip.Kind?
+    public var musicTrackIDs: Set<String> = []
+    public var missingFromTake: String?
+    var mayChooseShape = false
 
     public init(words: [TimedWord], corrections: [String: String] = [:], cutWordIDs: Set<String> = [], pauses: [Pause] = [],
                 cutPauseIDs: Set<String> = [], pauseKeepSeconds: Double = 0.15, scope: ClosedRange<Int>, styleIDs: Set<String>,
                 fonts: [ClipAutopilotPlan.Font: String], preference: ClipAutopilotCaptionPreference? = nil, prompt: ClipAutopilotPrompt,
-                tone: ClipAutopilotTone? = nil, frames: ClipAutopilotFrames? = nil) {
+                tone: ClipAutopilotTone? = nil, frames: ClipAutopilotFrames? = nil, footageSources: [String: Double] = [:]) {
         self.words = words; self.corrections = corrections; self.cutWordIDs = cutWordIDs; self.pauses = pauses
         self.cutPauseIDs = cutPauseIDs; self.pauseKeepSeconds = pauseKeepSeconds; self.scope = scope; self.styleIDs = styleIDs
         self.fonts = fonts; self.preference = preference; self.prompt = prompt; self.tone = tone; self.frames = frames
+        self.footageSources = footageSources
     }
 
     /// The word as shown, corrections applied.
@@ -136,16 +161,20 @@ public struct ClipAutopilotContext: Sendable {
         guard !plan.isEmpty else { return self }
         var merged = corrections
         for correction in plan { merged[words[correction.word].id] = correction.text }
-        return ClipAutopilotContext(words: words, corrections: merged, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
+        var copy = ClipAutopilotContext(words: words, corrections: merged, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
                                     pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts,
-                                    preference: preference, prompt: prompt, tone: tone, frames: frames)
+                                    preference: preference, prompt: prompt, tone: tone, frames: frames, footageSources: footageSources)
+        copy.offeredParts = offeredParts; copy.kind = kind; copy.musicTrackIDs = musicTrackIDs; copy.missingFromTake = missingFromTake
+        return copy
     }
 
     /// This context for a request that carried `frames`.
     func showing(_ frames: ClipAutopilotFrames?) -> ClipAutopilotContext {
-        ClipAutopilotContext(words: words, corrections: corrections, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
+        var copy = ClipAutopilotContext(words: words, corrections: corrections, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
                              pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts, preference: preference,
-                             prompt: prompt, tone: tone, frames: frames)
+                             prompt: prompt, tone: tone, frames: frames, footageSources: footageSources)
+        copy.offeredParts = offeredParts; copy.kind = kind; copy.musicTrackIDs = musicTrackIDs; copy.missingFromTake = missingFromTake
+        return copy
     }
 }
 
@@ -194,7 +223,13 @@ public enum ClipAutopilotRequestBuilder {
         guard let scope = scope(request) else { throw VoiceLabError.invalidInput }
         let words = request.transcript.words
         let cut = Set(request.edits.cutWordIds)
-        let listed = scope.filter { !cut.contains(words[$0].id) }
+        let parts = moment?.moment.parts ?? request.selectedParts
+        let ranges = parts?.compactMap { part -> ClosedRange<Int>? in
+            guard part.startWord <= part.endWord, scope.contains(part.startWord), scope.contains(part.endWord) else { return nil }
+            return part.startWord...part.endWord
+        } ?? [scope]
+        guard !ranges.isEmpty, parts == nil || parts?.count == ranges.count else { throw VoiceLabError.invalidInput }
+        let listed = scope.filter { position in ranges.contains { $0.contains(position) } && !cut.contains(words[position].id) }
         guard listed.contains(where: { words[$0].kind == .word }), listed.count <= prompt.limits.maxTranscriptWords else { throw VoiceLabError.invalidInput }
         if let note = request.note, note.utf8.count > prompt.limits.maxNoteBytes { throw VoiceLabError.invalidInput }
         let language = request.language ?? request.transcript.language ?? "en"
@@ -210,9 +245,13 @@ public enum ClipAutopilotRequestBuilder {
                 try prompt.request("fontLine", ["family": $0.family, "weight": String($0.weight)])
             }
         let first = words[listed.first!], last = words[listed.last!]
-        let seconds: Double = request.isSeries ? request.transcript.durationSeconds : last.end - first.start
-        let spoken = spokenTime(words: words, listed: listed, corrections: request.edits.corrections, pauses: uncutPauses,
-                                keepSeconds: request.edits.pauseKeepSeconds)
+        let recorded = ranges.reduce(0.0) { $0 + words[$1.upperBound].end - words[$1.lowerBound].start }
+        let seconds: Double = request.isSeries ? request.transcript.durationSeconds : ranges.count == 1 ? last.end - first.start : recorded
+        let spoken = ranges.reduce((words: 0, seconds: 0.0)) { total, range in
+            let part = spokenTime(words: words, listed: listed.filter(range.contains), corrections: request.edits.corrections,
+                                  pauses: uncutPauses, keepSeconds: request.edits.pauseKeepSeconds)
+            return (total.words + part.words, total.seconds + part.seconds)
+        }
         let rate = spoken.seconds > 0 ? Double(spoken.words) / spoken.seconds : 0
         let limits = prompt.limits, values = limits.templateValues
         let block = try prompt.request("contextBlock", ["language": language, "seconds": toFixed1(max(0, seconds)),
@@ -231,6 +270,11 @@ public enum ClipAutopilotRequestBuilder {
             instruction = try prompt.request("clipInstruction", ["startWord": String(listed.first!), "endWord": String(listed.last!),
                 "seconds": toFixed1(max(0, last.end - first.start)), "estimate": toFixed1(estimate),
                 "minTargetSeconds": values["minTargetSeconds"]!, "maxTargetSeconds": values["maxTargetSeconds"]!, "lengthHint": lengthHint])
+            if ranges.count > 1 {
+                instruction = try prompt.request("partsInstruction", ["parts": ranges.map { "\($0.lowerBound)–\($0.upperBound)" }.joined(separator: ", "),
+                    "kind": (moment?.moment.kind ?? request.selectedKind)?.rawValue ?? (ranges.count > 1 ? "story" : "stretch"),
+                    "seconds": toFixed1(recorded), "estimate": toFixed1(estimate)])
+            }
             let elsewhere = names(words: words, outside: scope, corrections: request.edits.corrections)
             if !elsewhere.isEmpty { instruction += try prompt.request("names", ["names": elsewhere.joined(separator: ", ")]) }
             if let frames { instruction += try framesBlock(frames, prompt: prompt) }
@@ -253,6 +297,19 @@ public enum ClipAutopilotRequestBuilder {
         }
         if let note = request.note.map(AIText.trim), !note.isEmpty {
             instruction += "\n\n" + (try prompt.request("creatorNote", ["instruction": note]))
+        }
+        if request.creativeShapes && request.revision == nil && !request.isSeries {
+            instruction += "\n\n" + prompt.shapeInstructions
+        }
+        if !request.isSeries, request.creativeShapes || request.revision != nil {
+            instruction += "\nIn a single offered stretch you may choose several nonoverlapping subranges to make a story or reel. Never use words outside the offered ranges. Return the clip's kind: stretch, story, or showreel."
+        }
+        if let revision = request.revision {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            let plan = String(decoding: try encoder.encode(revision.plan), as: UTF8.self)
+            let change = String(decoding: try encoder.encode(revision.instruction), as: UTF8.self)
+            instruction += "\n\n" + (try prompt.request("revise", ["instruction": change, "plan": plan]))
         }
         return Rendered(cachedBlock: block, instruction: instruction, scope: scope, listedWords: listed.count)
     }

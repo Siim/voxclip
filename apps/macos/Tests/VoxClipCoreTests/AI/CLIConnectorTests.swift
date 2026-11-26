@@ -4,6 +4,80 @@ import Testing
 
 @Suite("CLI connector safety and recorded outputs", .offlineFixtures)
 struct CLIConnectorTests {
+    @Test(arguments: ["later/codex", ".codex/packages/app-server-daemon/releases/0.171.0-arm64/bin/codex"])
+    func codexChoosesTheNewestCompatibleInstallation(_ newerPath: String) async throws {
+        let directory = try CLITestDirectory()
+        let older = try installCodexFixture(in: directory, path: "path/codex", version: "0.164.0")
+        let newer = try installCodexFixture(in: directory, path: newerPath, version: "0.171.0")
+        let broken = try installCodexFixture(in: directory, path: "other/codex", version: "0.172.0", compatible: false)
+        let onPath = newerPath.hasPrefix("later/") ? [older, broken, newer] : [older, broken]
+        let path = onPath.map { $0.deletingLastPathComponent().path }.joined(separator: ":")
+        let connector = CLIConnector(id: .codex, catalog: try isolatedCodexCatalog(), log: CLITestLog(),
+            environment: ["HOME": directory.url.path, "PATH": path], temporaryDirectory: directory.url, loginShellPATH: path)
+        let detected = try await connector.detection(refresh: true)
+        #expect(detected.executable == newer)
+        #expect(detected.version == "0.171.0")
+        #expect(detected.newerInstallation == nil)
+
+        let pinned = CLIConnector(id: .codex, catalog: try isolatedCodexCatalog(), log: CLITestLog(), executable: older,
+            environment: ["HOME": directory.url.path, "PATH": path], temporaryDirectory: directory.url, loginShellPATH: path)
+        let pinnedDetection = try await pinned.installation()
+        #expect(pinnedDetection.executable == older)
+        #expect(pinnedDetection.newerInstallation?.executable == newer)
+        #expect(pinnedDetection.newerInstallation?.version == "0.171.0")
+    }
+
+    @Test(arguments: [true, false])
+    func missingSavedCodexModelFallsBackWithoutSendingToItAgain(_ fallbackWorks: Bool) async throws {
+        let catalog = try cliTestCatalog()
+        let processes = CLIFakeRunner(id: .codex, catalog: catalog) { request in
+            if request.arguments.contains("missing-model") || (!fallbackWorks && request.arguments.contains("gpt-5.6-terra")) {
+                return cliTestResult(#"{"type":"turn.failed","error":{"message":"model_not_found"}}"#, exit: 1)
+            }
+            return cliTestResult(cliCodexSuccess)
+        }
+        let connector = cliTestConnector(.codex, runner: processes, catalog: catalog)
+        let runner = LLMRunner(keys: CLIReviewKeys(), catalog: catalog, log: CLITestLog())
+        await #expect(throws: LLMError.modelNotFound("missing-model")) {
+            try await runner.test(on: connector, model: "missing-model")
+        }
+        var request = cliTestRequest()
+        request.feature = .clipFinder
+        for _ in 0..<2 {
+            if fallbackWorks {
+                let answer = try await runner.run(request, on: connector, model: "missing-model")
+                #expect(answer.usedFallback)
+                #expect(answer.model == "gpt-5.6-terra")
+            } else {
+                await #expect(throws: LLMError.modelNotFound("gpt-5.6-terra")) {
+                    try await runner.run(request, on: connector, model: "missing-model")
+                }
+            }
+        }
+        let generation = await processes.requests.filter { $0.arguments.first == "exec" && !$0.arguments.contains("--help") }
+        #expect(generation.filter { $0.arguments.contains("missing-model") }.count == 2)
+        #expect(generation.filter { $0.arguments.contains("gpt-5.6-terra") }.count == (fallbackWorks ? 2 : 1))
+    }
+
+    @Test func codexDoesNotRedirectARejectedTransientFallback() async throws {
+        let catalog = try cliTestCatalog()
+        let processes = CLIFakeRunner(id: .codex, catalog: catalog) { request in
+            if request.arguments.contains("gpt-5.6-terra") {
+                return cliTestResult(#"{"type":"turn.failed","error":{"message":"model_not_found"}}"#, exit: 1)
+            }
+            if request.arguments.contains("gpt-5.6-luna") { return cliTestResult(cliCodexSuccess) }
+            return cliTestResult(#"{"type":"turn.failed","error":{"message":"overloaded"}}"#, exit: 1)
+        }
+        let connector = cliTestConnector(.codex, runner: processes, catalog: catalog)
+        let runner = LLMRunner(keys: CLIReviewKeys(), catalog: catalog, log: CLITestLog())
+        var request = cliTestRequest()
+        request.feature = .clipFinder
+        await #expect(throws: LLMError.modelNotFound("gpt-5.6-terra")) {
+            try await runner.run(request, on: connector, model: "busy-model")
+        }
+        #expect(await processes.generationCount == 2)
+    }
+
     @Test func shorterFeedbackReachesOnlyTheApprovedStubCLI() async throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let catalog = try LLMCatalog(shared: shared)
@@ -204,7 +278,7 @@ struct CLIConnectorTests {
 
     @Test(arguments: [ConnectorID.claudeCode, .codex])
     func statusCachesDetectionAndSendConsumesAuthPreflight(_ id: ConnectorID) async throws {
-        let catalog = try cliTestCatalog()
+        let catalog = try isolatedCodexCatalog()
         let process = CLIFakeRunner(id: id, catalog: catalog)
         let connector = cliTestConnector(id, runner: process, catalog: catalog)
         for _ in 0..<2 {
@@ -1041,7 +1115,10 @@ struct CLIConnectorTests {
             #expect(try await connector.models(refresh: true) == catalog.curatedModels(for: id))
             #expect(await connector.refreshWarning == "Couldn't refresh: Codex isn't installed. \(hint) Your edits are saved.")
         }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.url.appendingPathComponent("VoxClip/cli").path).isEmpty)
+        let workspaces = directory.url.appendingPathComponent("VoxClip/cli")
+        if FileManager.default.fileExists(atPath: workspaces.path) {
+            #expect(try FileManager.default.contentsOfDirectory(atPath: workspaces.path).isEmpty)
+        }
     }
 
     @Test(arguments: [ConnectorID.claudeCode, .codex])
@@ -1332,6 +1409,37 @@ final class CLITestDirectory: Sendable {
 
 private func cliTestCatalog() throws -> LLMCatalog {
     LLMCatalog(document: try FixtureLoader.decode(JSONValue.self, at: "catalog/llm-providers.json"))
+}
+
+private func isolatedCodexCatalog() throws -> LLMCatalog {
+    var document = try #require(cliTestCatalog().document.aiObject)
+    document["connectors"] = .array(document["connectors"]!.aiArray.map { entry in
+        guard entry[ai: "id"].aiString == "codex", var fields = entry.aiObject,
+              var cli = fields["cli"]?.aiObject else { return entry }
+        cli["searchPaths"] = .object(["macos": .array([])])
+        fields["cli"] = .object(cli)
+        return .object(fields)
+    })
+    return LLMCatalog(document: .object(document))
+}
+
+private func installCodexFixture(in directory: CLITestDirectory, path: String, version: String,
+                                 compatible: Bool = true) throws -> URL {
+    let executable = directory.url.appendingPathComponent(path)
+    try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let flags = "--json --output-schema --output-last-message --skip-git-repo-check --ephemeral --ignore-user-config --sandbox --cd --model"
+    try """
+    #!/bin/sh
+    case "$*" in
+        '--version') printf '%s\\n' 'codex-cli \(version)' ;;
+        'exec --help') printf '%s\\n' '\(compatible ? flags : "--json")' ;;
+        'features list') exit 0 ;;
+        'login status') printf '%s\\n' 'Logged in using ChatGPT' ;;
+        *) exit 88 ;;
+    esac
+    """.write(to: executable, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+    return executable
 }
 
 private func cliTestAuthCatalog(_ id: ConnectorID, changes: [String: JSONValue]) throws -> LLMCatalog {

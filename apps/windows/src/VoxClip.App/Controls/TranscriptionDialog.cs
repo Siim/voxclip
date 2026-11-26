@@ -2,10 +2,13 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Services.Media;
 using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Project;
+using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
 using System.ComponentModel;
@@ -28,6 +31,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
     private readonly CheckBox allowCloud = new() { Content = "Allow this audio to be sent to ElevenLabs with my key" };
     private readonly TextBlock spend = Ui.Text("", "HelperText");
     private decimal? price;
+    private TranscriptionAlignmentRetry? alignmentRetry;
     private bool keySaved;
     private int inputRevision;
     private CancellationTokenSource? transcribing;
@@ -54,7 +58,9 @@ internal sealed class TranscriptionDialog : InlineEditorJob
         baseline = new(model);
         this.model = model; projectPath = owner.ProjectPath; Title = model.HasTranscript ? "Transcribe again" : "Transcribe video";
         PrimaryButtonText = "Transcribe"; CloseButtonText = "Not now";
-        engine.SelectedIndex = App.Services.Get("transcription.engineMode", "local") == "elevenlabs" ? 1 : 0;
+        var engineMode = App.Services.Get("transcription.engineMode", "local");
+        var confirmation = model.ClaudeModeOn ? ClaudeTranscriptionChoice.ForWindows(engineMode).Confirmation : engineMode;
+        engine.SelectedIndex = confirmation == "elevenlabs" ? 1 : 0;
         var savedLanguage = App.Services.Get("transcription.language", "auto");
         language.Text = savedLanguage == "auto" ? "" : savedLanguage;
         var body = Ui.Stack(16);
@@ -146,6 +152,13 @@ internal sealed class TranscriptionDialog : InlineEditorJob
     {
         var cloud = engine.SelectedIndex == 1;
         PrimaryButtonVisible = true;
+        if (alignmentRetry is not null)
+        {
+            RequiresExplicitApproval = false;
+            PrimaryButtonText = "Retry";
+            IsPrimaryButtonEnabled = !running && !closed && baseline.IsCurrent;
+            return;
+        }
         RequiresExplicitApproval = cloud || model.HasTranscript || confirmingDownload is not null;
         allowCloud.Visibility = cloud ? Visibility.Visible : Visibility.Collapsed;
         if (cloud)
@@ -279,6 +292,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
     }
     private void UpdateEngine()
     {
+        if (alignmentRetry is not null) { UpdateApproval(); return; }
         var cloud = engine.SelectedIndex == 1;
         models.Visibility = cloud ? Visibility.Collapsed : Visibility.Visible;
         cloudKeyRow.Visibility = cloud ? Visibility.Visible : Visibility.Collapsed;
@@ -287,6 +301,22 @@ internal sealed class TranscriptionDialog : InlineEditorJob
             : "Audio stays on this computer. No key or account is needed.";
         CheckLocalRuntime();
         UpdateApproval();
+    }
+    private void OfferAlignmentRetry(TranscriptionAlignmentRetry saved)
+    {
+        alignmentRetry = saved;
+        engine.IsEnabled = language.IsEnabled = remember.IsEnabled = false;
+        allowCloud.Visibility = cloudKeyRow.Visibility = Visibility.Collapsed;
+        flow.Text = "Retry aligns the saved words on this computer. Nothing is uploaded or billed.";
+        notice.ActionButton = Ui.Button("Change Options…", () =>
+        {
+            if (running || closed) return;
+            alignmentRetry = null;
+            engine.IsEnabled = language.IsEnabled = remember.IsEnabled = true;
+            notice.IsOpen = false;
+            ResetApprovalFreshness();
+            UpdateEngine();
+        });
     }
     private bool CheckLocalRuntime()
     {
@@ -352,6 +382,8 @@ internal sealed class TranscriptionDialog : InlineEditorJob
         using var worker = workers.Enter();
         preparing = true;
         var version = inputRevision;
+        var retry = alignmentRetry;
+        TranscriptionAlignmentRetry? retainedWords = null;
         var local = engine.SelectedIndex == 0;
         var requestedLanguage = language.Text.Trim().ToLowerInvariant();
         var selectedModel = (models.SelectedItem as ComboBoxItem)?.Tag as string;
@@ -380,12 +412,12 @@ internal sealed class TranscriptionDialog : InlineEditorJob
         await Ui.RunAsync(notice, async () =>
         {
             ClearRoute();
-            if (!CheckLocalRuntime()) return;
+            if (retry is null && !CheckLocalRuntime()) return;
             RequireCurrent();
-            var route = local ? await Route(null) : null;
+            var route = retry is null && local ? await Route(null) : null;
             RequireCurrent();
             if (route is { Plan: null, Detector: null }) { ShowRoute(route); return; }
-            if (!local)
+            if (retry is null && !local)
             {
                 if (!authorizedCloud || approvedPrice is null) return;
                 if (await App.Services.Keys.GetKeyAsync("elevenlabs-api-key", token) is null) { keySaved = false; UpdateApproval(); return; }
@@ -394,7 +426,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                     await App.Services.SetAsync("transcription.cloudConsent.elevenlabs", true, token);
             }
             RequireCurrent();
-            if (rememberLanguage) await App.Services.SetAsync("transcription.language", requestedLanguage.Length == 0 ? "auto" : requestedLanguage, token);
+            if (retry is null && rememberLanguage) await App.Services.SetAsync("transcription.language", requestedLanguage.Length == 0 ? "auto" : requestedLanguage, token);
             RequireCurrent();
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
             CloseButtonText = "Cancel";
@@ -406,10 +438,21 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel);
                 if (announcements.Update(step, fraction, !local) is { } text) Ui.Announce(notice, text, "transcription");
             }
-            Report(MediaTranscriptionStage.ReadingVideo, null);
-            Ui.Show(notice, TranscriptionProgressCopy.ReadingVideo);
             try
             {
+                if (retry is not null)
+                {
+                    Report(MediaTranscriptionStage.Aligning, null);
+                    progress.IsIndeterminate = true;
+                    Ui.Show(notice, TranscriptionProgressCopy.Label(TranscriptionStage.Aligning, null, true));
+                    var aligned = await retry.FinishAsync(token);
+                    RequireCurrent();
+                    model.SetTranscript(aligned);
+                    if (!closed) Hide();
+                    return;
+                }
+                Report(MediaTranscriptionStage.ReadingVideo, null);
+                Ui.Show(notice, TranscriptionProgressCopy.ReadingVideo);
                 var source = baseline.Project.Media.Source;
                 using var sourceRead = new FileStream(source.AbsolutePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var entryLease = await App.Services.CacheKeys.LeaseAsync(source.ContentKey, token);
@@ -421,7 +464,11 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 RequireCurrent();
                 Report(MediaTranscriptionStage.ExtractingAudio, null);
                 Ui.Show(notice, TranscriptionProgressCopy.ExtractingAudio);
-                var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, token);
+                var clock = model.ClaudeMode.Armed && model.ClaudeModeOn ? model.ClaudeMode.Clock : null;
+                clock?.Begin(ClaudeModeStage.Audio);
+                AudioExtractionResult audio;
+                try { audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, token); }
+                finally { clock?.End(ClaudeModeStage.Audio); }
                 RequireCurrent();
                 if (route is { Detector: not null })
                 {
@@ -442,13 +489,14 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 if (cloud && approvedPrice is { } amount) { TranscriptionSpendState.Shared.Begin(jobId, amount); spentPending = true; }
                 var request = new TranscriptionRequest(plan, audio.Audio, source.ContentKey)
                 {
+                    AlignmentReady = cloud ? value => retainedWords = value : null,
                     Observe = cloud && approvedPrice is { } capturedEstimate ? evidence =>
                     {
                         if (evidence.Kind == TranscriptionEvidenceKind.UploadStarted) Interlocked.Exchange(ref uploadMayHaveStarted, 1);
                         TranscriptionSpendState.Shared.Observe(jobId, approvedDay, capturedEstimate, evidence);
                     } : null
                 };
-                var transcript = await service.TranscribeAsync(request, new WorkflowProgress<TranscriptionProgress>(value =>
+                var confirmationProgress = new WorkflowProgress<TranscriptionProgress>(value =>
                 {
                     if (cloud && value.Stage == TranscriptionStage.Uploading) Interlocked.Exchange(ref uploadMayHaveStarted, 1);
                 }, value =>
@@ -460,7 +508,9 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                         ? "ElevenLabs may still bill audio already received. Your video is still here."
                         : "Nothing has been sent yet. Cancel now and nothing is billed.";
                     Report(value.Stage == TranscriptionStage.Aligning ? MediaTranscriptionStage.Aligning : MediaTranscriptionStage.Transcribing, value.Fraction);
-                }, action => DispatcherQueue.TryEnqueue(() => action())), token);
+                }, action => DispatcherQueue.TryEnqueue(() => action()));
+                var transcript = clock is null ? await service.TranscribeAsync(request, confirmationProgress, token)
+                    : await clock.TimedAsync(ClaudeModeStage.Confirm, null, () => service.TranscribeAsync(request, confirmationProgress, token));
                 if (cloud && approvedPrice is { } paid)
                     TranscriptionSpendState.Shared.Completed(jobId, approvedDay, paid, transcript.FromCache);
                 RequireCurrent();
@@ -469,14 +519,21 @@ internal sealed class TranscriptionDialog : InlineEditorJob
             }
             catch (OperationCanceledException)
             {
-                if (!closed) Ui.Show(notice, local ? "Transcription cancelled. Your media and edits are safe." :
+                if (!closed && retry is not null) OfferAlignmentRetry(retry);
+                if (!closed) Ui.Show(notice, retry is not null ? "Transcription cancelled. Your saved words, media and edits are safe." : local ? "Transcription cancelled. Your media and edits are safe." :
                     "Transcription cancelled. ElevenLabs may still bill audio already received. Your media and edits are safe.");
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 if (exception is VoxClip.Core.Domain.Shared.VoxClipException { Code: VoxClip.Core.Domain.Shared.VoxClipErrorCode.KeyRejected or VoxClip.Core.Domain.Shared.VoxClipErrorCode.KeyPermissionMissing }) keySaved = false;
-                App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Error, "transcribe",
-                    $"dialog failed type={exception.GetType().Name} hresult={exception.HResult}");
+                if (!closed && version == inputRevision && baseline.IsCurrent && (retry ?? retainedWords) is { } saved)
+                {
+                    UiError.WriteFailure(exception, "Transcription");
+                    OfferAlignmentRetry(saved);
+                    Ui.Show(notice, "Couldn't finish aligning the words. ElevenLabs' words are saved. Your media and edits are safe.", InfoBarSeverity.Error);
+                    Ui.Announce(notice, notice.Message, "transcription");
+                    return;
+                }
                 throw;
             }
             finally

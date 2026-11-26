@@ -10,6 +10,7 @@ import VoxClipCore
             TranscriptionSettings(app: app).tabItem { Label("Transcription", systemImage: "waveform") }.tag("transcription")
             ProviderSettings(app: app).tabItem { Label("AI", systemImage: "key") }.tag("ai")
             ExportSettings(app: app).tabItem { Label("Export", systemImage: "square.and.arrow.up") }.tag("export")
+            VoxConvoAccountsSettings(connection: app.voxConvo).tabItem { Label("Accounts", systemImage: "person.crop.circle") }.tag("accounts")
             ClipsSettings(app: app).tabItem { Label("Clips", systemImage: "film.stack") }.tag("clips")
             if app.voiceLabSettingsVisible {
                 VoiceLabSettings(app: app, session: app.voiceLabSession).tabItem { Label("Voice Lab", systemImage: "waveform.badge.mic") }.tag("voiceLab")
@@ -134,7 +135,19 @@ extension AppModel {
     @State private var refreshed: [LLMModel] = []
     @State private var refreshing = false
     @State private var result: String?
+    @State private var falKey: (revision: Int, fingerprint: String)?
+
+    private var falKeyLookupRevision: Int? {
+        app.falLipsyncCleanupNotice.hasDeniedKeys ? app.connectorReadinessRevision : nil
+    }
+
+    private var showsFalCleanupNotice: Bool {
+        guard let falKey, falKey.revision == app.connectorReadinessRevision else { return false }
+        return app.falLipsyncCleanupNotice.applies(toFingerprint: falKey.fingerprint)
+    }
+
     var body: some View {
+        let falKeyRevision = falKeyLookupRevision
         Form {
             Section("Providers & Keys") {
                 ConnectorConfirmationView(confirmation: app.settingsSendConfirmation, compact: false)
@@ -143,28 +156,55 @@ extension AppModel {
                 Text("The AI menu above the transcript changes this too.").font(.caption).foregroundStyle(.secondary)
                 if let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) {
                     ProviderModelPicker(provider: provider, refreshed: refreshed, app: app).id(provider.id)
+                    if let draft = app.codexDraftModel, provider.id == "codex", !draft.isEmpty {
+                        Text("Test Connection to save this model.").font(.caption).foregroundStyle(.secondary)
+                    }
                     if let note = provider.decisionEffortNote { Text(note).font(.caption).foregroundStyle(.secondary) }
                     Button(refreshing ? "Refreshing…" : "Refresh models") {
                         refreshing = true
-                        Task { defer { refreshing = false }; do { refreshed = try await app.connector(provider.id).models(refresh: true) } catch { result = await app.safeError(error) } }
-                    }.disabled(refreshing)
+                        Task {
+                            defer { refreshing = false }
+                            if provider.id == "codex" { await app.refreshCodexModels(force: true) }
+                            else {
+                                do { refreshed = try await app.connector(provider.id).models(refresh: true) }
+                                catch { result = await app.safeError(error, context: .settings) }
+                            }
+                        }
+                    }.disabled(refreshing || (provider.id == "codex" && app.codexModelsRefreshing))
+                    if provider.id == "codex", let warning = app.codexModelListWarning {
+                        Text(warning).font(.caption).foregroundStyle(.secondary)
+                    }
                     if provider.group == "local" {
                         if provider.id != "apple-foundation" { SettingTextField("Server URL", key: "llm.baseUrl.\(provider.id)", fallback: provider.baseUrl ?? "", app: app) }
                         Text(app.providerStatus[provider.id] ?? "Status unavailable in this build").font(.caption).foregroundStyle(.secondary)
                         Button("Test") { Task { result = await testProvider(provider, app: app) } }
                         Text(localPrivacy(provider)).font(.caption).foregroundStyle(.secondary)
-                    } else if provider.group == "cli" { CLIConnectorRow(provider: provider, app: app) }
+                    } else if provider.group == "cli" { CLIConnectorRow(provider: provider, app: app).id(provider.id) }
                     else { ProviderKeyRow(provider: provider.id, label: provider.label, app: app) }
                     if let result { Text(result).font(.caption).foregroundStyle(.secondary) }
                 }
             }
             Section("Your API keys") {
                 ForEach(app.providers.filter { $0.group == "apiKey" }) { provider in ProviderKeyRow(provider: provider.id, label: provider.label, app: app) }
+                if showsFalCleanupNotice {
+                    Text("This fal.ai key can't delete finished results. Your video stays on fal.ai until it expires. Use a key with the FULL preset to delete it.")
+                        .font(.caption).foregroundStyle(DesignValues.color("status.warning"))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Section("Installed CLI (your own sign-in)") {
-                ForEach(app.providers.filter { $0.group == "cli" }) { CLIConnectorRow(provider: $0, app: app) }
+                ForEach(app.providers.filter { $0.group == "cli" && !($0.id == "codex" && app.string("llm.connector") == "codex") }) {
+                    CLIConnectorRow(provider: $0, app: app)
+                }
             }
         }.formStyle(.grouped).onDisappear { app.settingsSendConfirmation.cancel() }
+            .task(id: falKeyRevision) { await refreshFalKey(revision: falKeyRevision) }
+    }
+    private func refreshFalKey(revision: Int?) async {
+        guard let revision else { return }
+        let key = try? await app.secrets.key(for: "fal")
+        guard !Task.isCancelled, revision == app.connectorReadinessRevision else { return }
+        falKey = key.map { (revision, VoiceLabFingerprint.bytes(Data($0.utf8))) }
     }
     private func localPrivacy(_ provider: ProviderChoice) -> String {
         if let host = app.localServerHost(provider) { return "Transcripts are sent to \(host)." }
@@ -177,18 +217,34 @@ extension AppModel {
     let refreshed: [LLMModel]
     let app: AppModel
     @State private var custom = false
-    private var models: [ProviderChoice.Model] { provider.models + refreshed.filter { candidate in !provider.models.contains { $0.id == candidate.id } }.map { ProviderChoice.Model(id: $0.id, name: $0.name, tier: $0.tier) } }
-    private var modelID: String { app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "") }
+    private var models: [ProviderChoice.Model] { app.modelChoices(for: provider, refreshed: refreshed) }
+    private var modelID: String {
+        provider.id == "codex" ? app.codexDraftModel ?? app.effectiveModel(for: provider) : app.savedModel(for: provider)
+    }
     private var isCustom: Bool { custom || (!modelID.isEmpty && !models.contains { $0.id == modelID }) }
     var body: some View {
         Picker("Model", selection: Binding(get: { isCustom ? "__custom" : modelID }, set: { choice in
             custom = choice == "__custom"
-            if !custom { app.set("llm.model.\(provider.id)", .string(choice)) }
+            if !custom { app.chooseModel(choice, for: provider) }
+            else if provider.id == "codex" { app.chooseModel("", for: provider) }
         })) {
-            ForEach(models) { model in Text(model.name + (model.tier.map { " (\($0))" } ?? "")).tag(model.id) }
+            ForEach(models) { model in
+                let unavailable = app.modelUnavailable(model.id, for: provider)
+                Text(unavailable ? "\(model.name) (unavailable)" : model.name + (model.tier.map { " (\($0))" } ?? ""))
+                    .tag(model.id).disabled(unavailable)
+            }
             Text("Custom…").tag("__custom")
         }
-        if isCustom { SettingTextField("Custom model ID", key: "llm.model.\(provider.id)", fallback: provider.defaultModel ?? "", app: app) }
+        .onChange(of: app.codexDraftModel) { _, draft in
+            if provider.id == "codex", draft == nil { custom = false }
+        }
+        if isCustom {
+            if provider.id == "codex" {
+                TextField("Custom model ID", text: Binding(get: { modelID }, set: { app.codexDraftModel = $0 }))
+            } else {
+                SettingTextField("Custom model ID", key: "llm.model.\(provider.id)", fallback: provider.defaultModel ?? "", app: app)
+            }
+        }
     }
 }
 
@@ -206,20 +262,20 @@ extension AppModel {
             HStack {
                 SecureField(saved ? "Saved in the Keychain; paste to replace" : "API key", text: $value).textContentType(.password).accessibilityLabel("\(label) API key")
                 Button("Save key") {
-                    Task { do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true; result = "Saved in the Keychain." } catch { result = await app.safeError(error) } }
+                    Task { do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true; result = "Saved in the Keychain." } catch { result = await app.safeError(error, context: .settings) } }
                 }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button(testing ? "Testing…" : "Test") {
                     testing = true
                     Task {
                         defer { testing = false }
                         if !value.isEmpty {
-                            do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true } catch { result = await app.safeError(error); return }
+                            do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true } catch { result = await app.safeError(error, context: .settings); return }
                         }
                         if provider == "elevenlabs" { result = await testSpeechKey(app: app) }
                         else if let choice = app.providers.first(where: { $0.id == provider }) { result = await testProvider(choice, app: app) }
                     }
                 }.disabled(testing || !saved && value.isEmpty).accessibilityIdentifier("provider.\(provider).test").auditButtonAction("provider.\(provider).test")
-                if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error) } } } }
+                if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error, context: .settings) } } } }
             }
             Text(provider == "elevenlabs" ? "The key stays in the macOS Keychain and is shared with Voice Lab when you turn it on." : "The key stays in the macOS Keychain and is used only for AI features.").font(.caption).foregroundStyle(.secondary)
             Text(provider == "elevenlabs" ? "Sends the audio track to ElevenLabs." : "Sends transcript text only. No audio or video.").font(.caption).foregroundStyle(.secondary)
@@ -234,24 +290,70 @@ extension AppModel {
     let app: AppModel
     @State private var status = "Detection not run"
     @State private var result: String?
+    @State private var detection: CLIConnector.Detection?
+    private var cliPath: String { app.string("llm.cliPath.\(provider.id)") }
+    private var testDisabled: Bool {
+        if app.testingProviders.contains(provider.id) { return true }
+        guard provider.id == "codex" else { return false }
+        let model = app.codexDraftModel ?? app.effectiveModel(for: provider)
+        return model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || app.modelUnavailable(model, for: provider)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(provider.label).fontWeight(.medium)
             Text(status).font(.caption).foregroundStyle(.secondary)
+            if provider.id == "codex", let detection, let newer = detection.newerInstallation {
+                HStack(spacing: 4) {
+                    Text("Codex CLI \(shortVersion(detection.version)) is older than \(shortVersion(newer.version)) on this Mac.")
+                        .foregroundStyle(.secondary)
+                    Button("Use \(shortVersion(newer.version))") { app.set("llm.cliPath.codex", .string(newer.executable.path)) }
+                        .buttonStyle(.link)
+                }.font(.caption)
+            }
             HStack {
                 Button("Detect") { Task { await detect() } }
                 Button("Choose…") {
                     let panel = NSOpenPanel(); panel.canChooseDirectories = false
-                    if panel.runModal() == .OK, let url = panel.url { app.set("llm.cliPath.\(provider.id)", .string(url.path)); Task { await detect() } }
+                    if panel.runModal() == .OK, let url = panel.url { app.set("llm.cliPath.\(provider.id)", .string(url.path)) }
                 }
-                Button("Test") { Task { await detect(); result = await testProvider(provider, app: app) } }
+                Button(provider.id == "codex" ? "Test Connection" : "Test") {
+                    Task { result = await testProvider(provider, app: app) }
+                }.disabled(testDisabled)
                 Button("Sign-in help") { result = provider.cli?.signInHint }
             }
             Text("VoxClip runs your installed \(provider.id == "claude-code" ? "Claude Code" : "Codex") with your own sign-in. Sends transcript text only. No audio or video.").font(.caption).foregroundStyle(.secondary)
             if let result { Text(result).font(.caption).foregroundStyle(.secondary) }
-        }.task { await detect() }
+        }.task(id: cliPath) { await detect() }
     }
+
+    private func shortVersion(_ version: String) -> String {
+        version.hasSuffix(".0") ? String(version.dropLast(2)) : version
+    }
+
     private func detect() async {
+        guard !(AppModel.isTestSession || TestProcess.isRunning) || app.connectorOverride != nil else { return }
+        if provider.id == "codex", let cli = app.connector(provider.id) as? CLIConnector {
+            let path = cliPath
+            detection = nil
+            do {
+                let found = try await cli.installation()
+                let readiness = await app.connectorStatus(provider, using: cli)
+                guard !Task.isCancelled, path == cliPath else { return }
+                detection = found
+                let executable = found.executable.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
+                let signIn = switch readiness {
+                case .ready: "Ready"
+                case .cliSignedOut: "Not signed in"
+                default: "Sign-in status unavailable"
+                }
+                status = "Found codex \(found.version) at \(executable) · \(signIn)"
+            } catch {
+                guard !Task.isCancelled, path == cliPath else { return }
+                status = await app.safeError(error, context: .settings, messageContext: "ai-test:\(provider.label)")
+            }
+            await app.refreshCodexModels(force: true)
+            return
+        }
         guard let shared = app.shared, let cli = provider.cli else { return }
         do {
             let root = try JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))) as? [String: Any]
@@ -264,7 +366,7 @@ extension AppModel {
             status = "Found \(cli.executable) at \(path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")) · Sign-in status unavailable"
             let connectorStatus = await app.connectorStatus(provider)
             if connectorStatus == .ready { status += " · Ready" }
-        } catch { status = await app.safeError(error) }
+        } catch { status = await app.safeError(error, context: .settings) }
     }
 }
 
@@ -272,21 +374,39 @@ extension AppModel {
     guard let shared = app.shared else { return "Failed: VoxClip is missing some of its files. Reinstall VoxClip." }
     guard app.testingProviders.insert(provider.id).inserted else { return "" }
     defer { app.testingProviders.remove(provider.id) }
+    let codex = provider.id == "codex"
+    let draft = codex ? app.codexDraftModel : nil
+    let saved = app.savedModel(for: provider)
+    let model = (draft ?? app.effectiveModel(for: provider)).trimmingCharacters(in: .whitespacesAndNewlines)
+    let path = app.string("llm.cliPath.\(provider.id)")
+    func isCurrent() -> Bool {
+        !Task.isCancelled && (!codex || (draft == app.codexDraftModel && saved == app.savedModel(for: provider)
+            && path == app.string("llm.cliPath.\(provider.id)")))
+    }
+    if codex, model.isEmpty || app.modelUnavailable(model, for: provider) { return "Choose an available Codex model." }
     do {
         let connector = app.connector(provider.id)
-        guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .test) else { return "" }
-        let data = try Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))
-        let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: data))
-        struct Test: Decodable { let system: String; let instruction: String; let schemaName: String; let schema: JSONValue; let maxOutputTokens: Int }
-        struct Catalogue: Decodable { let testRequest: Test }
-        let test = try JSONDecoder().decode(Catalogue.self, from: data).testRequest
-        let start = ContinuousClock.now
-        let answer = try await LLMRunner(keys: app.secrets, catalog: catalog, log: app.log).run(LLMRequest(feature: .test, system: test.system, instruction: test.instruction, schemaName: test.schemaName, schema: test.schema, maxOutputTokens: test.maxOutputTokens, effort: .low, timeout: .seconds(provider.group == "cli" ? 120 : 30), tag: "connection-test"), on: connector, model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""))
-        guard case .object(let object) = answer.object, object["ok"] == .bool(true), case .string(let echo) = object["echo"], echo.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "voxclip" else { return "The model answered, but not as expected. It may not follow instructions well." }
-        if answer.usedFallback { return "Works · answered by \(answer.model)" }
-        let seconds = Double(start.duration(to: .now).components.attoseconds) / 1e18 + Double(start.duration(to: .now).components.seconds)
-        return "Works · \(answer.model) · \(String(format: "%.1f", seconds)) s"
-    } catch is CancellationError { return "" } catch { return "Failed: " + (await app.safeError(error, context: "ai-test:\(provider.label)")) }
+        guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .test,
+            testingModel: model, isCurrent: isCurrent), isCurrent() else { return "" }
+        let catalog = try LLMCatalog(shared: shared)
+        let answer = try await LLMRunner(keys: app.secrets, catalog: catalog, log: app.log).test(on: connector, model: model)
+        guard isCurrent() else { return "" }
+        guard answer.passed else { return "The model answered, but not as expected. It may not follow instructions well." }
+        if answer.usedFallback {
+            return draft == nil ? "Works · answered by \(answer.model)" : "\(answer.model) answered instead. Your model wasn't saved."
+        }
+        if draft != nil {
+            guard app.set("llm.model.\(provider.id)", .string(model)) else { return "The model works, but its ID couldn't be saved." }
+            app.codexDraftModel = nil
+        }
+        return "Works · \(answer.model) · \(String(format: "%.1f", answer.seconds)) s"
+    } catch is CancellationError { return "" }
+    catch {
+        guard isCurrent() else { return "" }
+        if draft != nil, let failure = error as? LLMError, case .modelNotFound = failure { app.codexDraftModel = nil }
+        let message = await app.safeError(error, context: .settings, messageContext: "ai-test:\(provider.label)")
+        return message.isEmpty ? "" : "Failed: " + message
+    }
 }
 
 @MainActor func testSpeechKey(app: AppModel) async -> String {
@@ -308,9 +428,14 @@ extension AppModel {
         case 429: .rateLimited("elevenlabs")
         default: .providerError("The request could not be completed.", provider: "ElevenLabs", status: status)
         }
-        return UserMessages.message(error)
-    } catch let error as URLError where error.code != .cancelled { return UserMessages.message(VoxClipError.offline)
-    } catch { return "Failed: " + (await app.safeError(error)) }
+        return await app.safeError(error, context: .settings)
+    } catch let error as URLError where error.code != .cancelled {
+        await app.logFailure(error, context: .settings)
+        return UserMessages.message(VoxClipError.offline)
+    } catch {
+        let message = await app.safeError(error, context: .settings)
+        return message.isEmpty ? "" : "Failed: " + message
+    }
 }
 
 @MainActor struct ExportSettings: View {

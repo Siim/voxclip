@@ -11,6 +11,20 @@ import Testing
 /// without adding a stream; `--cover off` writes neither; the 9:16 and 1:1 crops centre on the stored face and 16:9
 /// ignores it.
 extension HeavyMediaTests {
+@Test func aCoverTitleChangesOnlyTheCoverPixels() throws {
+    let context = try #require(CGContext(data: nil, width: 640, height: 360, bitsPerComponent: 8, bytesPerRow: 0,
+                                        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    context.setFillColor(CGColor(gray: 1, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
+    let videoFrame = try #require(context.makeImage())
+    let before = rgba(videoFrame)
+    let cover = AVExporter.coverTitle("Ship every week", on: videoFrame)
+    #expect(cover.width == videoFrame.width && cover.height == videoFrame.height)
+    #expect(rgba(cover) != before)
+    #expect(rgba(videoFrame) == before)
+    #expect(rgba(AVExporter.coverTitle(nil, on: videoFrame)) == before)
+}
+
 @Test(.timeLimit(.minutes(3)))
 func clipCoverIsWrittenBesideTheExportAndEmbedded() async throws {
     let directory = try cliDirectory()
@@ -205,20 +219,25 @@ private func counterFrame(_ image: CGImage) -> Int? {
     return value
 }
 
-/// The JPEG inside the file's iTunes `covr` atom (its `data` atom's payload after the 8-byte type and locale), read from
-/// the bytes, so the check doesn't depend on what AVFoundation reads back on each macOS.
 func coverArt(_ video: URL) async throws -> Data? {
+    try iTunesMetadataPayload(video, itemType: Data("covr".utf8))
+}
+
+let iTunesCommentAtom = Data([0xA9, 0x63, 0x6D, 0x74])
+
+/// The iTunes item's `data` payload after the 8-byte type and locale, read from the bytes so the check doesn't
+/// depend on what AVFoundation reads back on each macOS.
+func iTunesMetadataPayload(_ video: URL, itemType: Data) throws -> Data? {
     let bytes = try Data(contentsOf: video)
     func size(at index: Int) -> Int { bytes[index..<index + 4].reduce(0) { $0 << 8 | Int($1) } }
-    // The four letters can occur by chance in coded media, so only a `covr` whose first child is a `data` atom counts.
+    // The type can occur by chance in coded media, so only an item whose first child is a `data` atom counts.
     var from = bytes.startIndex
-    while let covr = bytes.range(of: Data("covr".utf8), in: from..<bytes.endIndex) {
-        from = covr.upperBound
-        // covr's own size is the 4 bytes before its type; its first child is the `data` atom.
-        let start = covr.lowerBound - 4, data = covr.upperBound
+    while let item = bytes.range(of: itemType, in: from..<bytes.endIndex) {
+        from = item.upperBound
+        let start = item.lowerBound - 4, data = item.upperBound
         guard start >= bytes.startIndex, data + 16 <= bytes.endIndex, bytes[data + 4..<data + 8] == Data("data".utf8) else { continue }
-        let covrEnd = start + size(at: start), dataEnd = data + size(at: data)
-        guard dataEnd <= covrEnd, dataEnd <= bytes.endIndex, data + 16 <= dataEnd else { continue }
+        let itemEnd = start + size(at: start), dataEnd = data + size(at: data)
+        guard dataEnd <= itemEnd, itemEnd <= bytes.endIndex, data + 16 <= dataEnd else { continue }
         return Data(bytes[(data + 16)..<dataEnd])
     }
     return nil

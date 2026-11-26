@@ -25,8 +25,9 @@ struct ExplorerOutlineEntry: Identifiable, Equatable {
     let title: String
     let pendingHunk: Bool
     let aiVoice: Bool
+    var partID: String? = nil
     var accessibilityLabel: String {
-        "\(time), \(title)" + (pendingHunk ? ", pending change" : "") + (aiVoice ? ", AI voice" : "")
+        (partID == nil ? "" : "Part \(id + 1), ") + "\(time), \(title)" + (pendingHunk ? ", pending change" : "") + (aiVoice ? ", AI voice" : "")
     }
 }
 
@@ -39,20 +40,39 @@ extension WorkspaceShell {
         let words = editor.words
         let scope = editor.scopeBounds.map { $0.lowerBound..<($0.upperBound + 1) } ?? 0..<words.count
         let grid = editor.sourceGrid
-        return TranscriptParagraphs.split(words: words).enumerated().compactMap { index, range in
-            guard range.overlaps(scope) else { return nil }
+        func entry(_ index: Int, _ range: Range<Int>, partID: String? = nil) -> ExplorerOutlineEntry {
             let start = words[range.lowerBound].start, end = words[range.upperBound - 1].end
-            return ExplorerOutlineEntry(id: index, words: range, time: TranscriptGutter.timecode(start),
+            let time = partID == nil ? TranscriptGutter.timecode(start) : "\(storyTakeTime(start))–\(storyTakeTime(end))"
+            return ExplorerOutlineEntry(id: index, words: range, time: time,
                 title: words[range.prefix(6)].map { editor.text($0) }.joined(separator: " "),
                 pendingHunk: outlineHasPendingHunk?(range) ?? false,
-                aiVoice: editor.project.voiceLab.segments.contains { $0.enabled && grid.overlaps(start, end, start: $0.replace.start, end: $0.replace.end) })
+                aiVoice: editor.project.voiceLab.segments.contains { $0.enabled && grid.overlaps(start, end, start: $0.replace.start, end: $0.replace.end) },
+                partID: partID)
+        }
+        if let clip = editor.activeClip, clip.parts != nil, let ranges = clip.playPartIndices(in: words) {
+            return zip(clip.playParts, ranges).enumerated().map { position, item in
+                entry(position, item.1.lowerBound..<(item.1.upperBound + 1), partID: item.0.id)
+            }
+        }
+        return TranscriptParagraphs.split(words: words).enumerated().compactMap { index, range in
+            range.overlaps(scope) ? entry(index, range) : nil
         }
     }
 
     func scrollToOutline(_ index: Int) {
         guard let editor, let entry = outlineEntries.first(where: { $0.id == index }) else { return }
+        if let partID = entry.partID { editor.selectedStoryPartID = partID }
         editor.outlineScrollWordID = editor.words[entry.words.lowerBound].id
         editor.scopeScrollRevision += 1
+    }
+
+    func showStoryPartInTake(_ entry: ExplorerOutlineEntry) {
+        guard let editor, editor.words.indices.contains(entry.words.lowerBound) else { return }
+        let word = editor.words[entry.words.lowerBound]
+        choose(.fullTake)
+        editor.outlineScrollWordID = word.id
+        editor.scopeScrollRevision += 1
+        editor.select(word.id)
     }
 
     /// Native List primary action is double-click. Return keeps its existing Keep/Rename path.
@@ -68,6 +88,7 @@ extension WorkspaceShell {
         guard let editor, RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: .clip(id)),
               !editor.isSuggestion(id) || editor.capabilities.edit,
               let clip = editor.project.edits.clips.first(where: { $0.id == id }),
+              clip.parts == nil,
               let lower = editor.index(clip.startWordId), let upper = editor.index(clip.endWordId), lower <= upper else { return false }
         return editor.words[lower...upper].contains { !editor.cutWordIDs.contains($0.id) }
     }

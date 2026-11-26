@@ -23,7 +23,7 @@ internal static class EditingProject
             state.Transcript.Words.Where(word => state.CutWordIds.Contains(word.Id)).Select(word => word.Id).ToArray(),
             state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => pause.Id).ToArray(),
             new Dictionary<string, string>(state.Corrections, StringComparer.Ordinal), state.Clips.ToArray(), state.ActiveClipId);
-        return Clean(project with { Transcript = state.Transcript, Edits = edits,
+        return StoryClips.ForWriting(Clean(project with { Transcript = state.Transcript, Edits = edits,
             Ai = replaced ? new([]) : project.Ai,
             Share = replaced ? new(new Dictionary<string, string>(StringComparer.Ordinal)) : project.Share,
             VoiceLab = replaced ? project.VoiceLab with { Segments = [] } : project.VoiceLab,
@@ -31,7 +31,7 @@ internal static class EditingProject
             MotionCues = replaced ? [] : project.MotionCues,
             Music = replaced ? project.Music.Where(entry => entry.ClipId is null).ToArray() : project.Music,
             ClipEffects = replaced ? [] : project.ClipEffects, ClipControls = replaced ? [] : project.ClipControls,
-            CaptionTranslations = replaced ? [] : project.CaptionTranslations }, []);
+            CaptionTranslations = replaced ? [] : project.CaptionTranslations }, []));
     }
 
     internal static ProjectModel Clean(ProjectModel project, List<string> warnings)
@@ -42,7 +42,7 @@ internal static class EditingProject
         var results = project.Ai.Results.ToDictionary(result => result.Id, StringComparer.Ordinal);
         var clips = project.Edits.Clips.Where(clip =>
         {
-            var valid = ids.TryGetValue(clip.StartWordId, out var start) && ids.TryGetValue(clip.EndWordId, out var end) && start <= end;
+            var valid = clip.Parts is not null || ids.TryGetValue(clip.StartWordId, out var start) && ids.TryGetValue(clip.EndWordId, out var end) && start <= end;
             if (!valid) warnings.Add("Dropped a clip with invalid transcript references.");
             return valid;
         }).Select(clip =>

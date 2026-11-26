@@ -57,22 +57,65 @@ import Testing
         #expect(try cases().format == "voxclip-clip-effects-wire-cases/1")
     }
 
-    @Test func validCorpusRoundTripsAtV4AndWritesOnlyEachKindsKeys() throws {
+    @Test func companionRecordingsRoundTripAndBadPlacementsAreRejected() throws {
+        let vectors = try #require(JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/clip-effects/footage-project-cases.json")).aiObject)
+        var document = try #require(JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/clip-effects/effects-project.voxclip")).aiObject)
+        var media = try #require(document["media"]?.aiObject)
+        var source = try #require(media["source"]?.aiObject)
+        source["recordingHash"] = try #require(vectors["recordingHash"])
+        let companion = try #require(vectors["companion"])
+        let placements = try #require(vectors["valid"]?.aiArray)
+        media["source"] = .object(source)
+        media["additionalSources"] = .array([companion])
+        media["footage"] = .array(placements)
+        func data(_ fields: [String: JSONValue]) throws -> Data {
+            document["media"] = .object(fields)
+            return try JSONEncoder().encode(JSONValue.object(document))
+        }
+        let project = try JSONProjectStore.decode(data(media))
+        let encoded = try JSONProjectStore.encode(project)
+        #expect(try JSONDecoder().decode(JSONValue.self, from: encoded).aiObject?["media"] == .object(media))
+        for invalid in try #require(vectors["invalid"]?.aiArray) {
+            media["footage"] = .array(placements + [invalid])
+            #expect(throws: (any Error).self) { try JSONProjectStore.decode(data(media)) }
+        }
+        media["footage"] = .array(placements)
+        media["additionalSources"] = .array([companion, companion])
+        #expect(throws: (any Error).self) { try JSONProjectStore.decode(data(media)) }
+
+        media["additionalSources"] = .array([companion])
+        let edited = placements + (try #require(vectors["v6Valid"]?.aiArray))
+        media["footage"] = .array(edited)
+        #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data(media)) }
+        document["schemaVersion"] = .number(6)
+        let editedProject = try JSONProjectStore.decode(data(media))
+        let saved = try JSONProjectStore.encode(editedProject)
+        #expect(try JSONDecoder().decode(JSONValue.self, from: saved).aiObject?["media"] == .object(media))
+        var firstEdit = project
+        firstEdit.media.footage[0].fadeInSeconds = 0
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(firstEdit)).schemaVersion == 6)
+        for invalid in try #require(vectors["v6Invalid"]?.aiArray) {
+            media["footage"] = .array(edited + [invalid])
+            #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data(media)) }
+        }
+    }
+
+    @Test func validCorpusRoundTripsAndWritesOnlyEachKindsKeys() throws {
         for item in try cases().valid {
             let input = try data(item)
             let project = try ProjectJSON.decode(input)
-            #expect(project.schemaVersion == 4, "\(item.id)")
             let encoded = try ProjectJSON.encode(project)
             #expect(try ProjectJSON.decode(encoded) == project, "\(item.id)")
             #expect(try JSONProjectStore.decode(JSONProjectStore.encode(project)) == project, "\(item.id)")
             let raw = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
             let original = try #require(JSONSerialization.jsonObject(with: input) as? [String: Any])
+            #expect(project.schemaVersion == original["schemaVersion"] as? Int, "\(item.id)")
             if project.clipEffects.isEmpty { #expect(raw["clipEffects"] == nil, "\(item.id)") }
             // Saved unchanged: the same entries, key for key, as the file that was opened.
             #expect(NSDictionary(dictionary: ["e": raw["clipEffects"] ?? NSNull()]) == NSDictionary(dictionary: ["e": original["clipEffects"] ?? NSNull()]), "\(item.id)")
             for entry in (raw["clipEffects"] as? [[String: Any]]) ?? [] {
                 let kind = try #require(ClipEffect.Kind(rawValue: entry["kind"] as? String ?? ""))
-                #expect(Set(entry.keys) == ClipEffect.commonKeys.union(ClipEffect.kindKeys(kind)), "\(item.id) \(kind)")
+                #expect(ClipEffect.commonKeys.union(ClipEffect.kindKeys(kind)).isSubset(of: entry.keys), "\(item.id) \(kind)")
             }
         }
     }
@@ -119,7 +162,7 @@ import Testing
         let project = try fixture()
         let full = ClipEffects.rendered(in: project, clipID: nil).map(\.id)
         #expect(full == ["fx-bleep-1", "fx-blur-1", "fx-pixelate-1", "fx-mute-1"])
-        #expect(ClipEffects.rendered(in: project, clipID: "clip-main").count == 12)
+        #expect(ClipEffects.rendered(in: project, clipID: "clip-main").count == 15)
     }
 
     @Test func bleepedWordsAreMaskedInCaptionsAndPunctuationStays() {

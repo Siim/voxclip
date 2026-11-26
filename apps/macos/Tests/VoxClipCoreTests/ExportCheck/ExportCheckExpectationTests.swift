@@ -4,6 +4,49 @@ import Testing
 
 /// What the export check expects to hear (ADR-R49), from the same timeline the renderer plays.
 @Suite(.offlineFixtures) struct ExportCheckExpectationTests {
+    @Test func audioWindowsKeepOwnLengthAcrossACutAndExpectGaps() throws {
+        let rate = 48_000.0
+        let plan = EditPlan(sampleRate: rate, totalSamples: 288_000,
+                            kept: [.init(startSample: 0, endSample: 48_000), .init(startSample: 96_000, endSample: 288_000)])
+        var render = RenderRequest(sourceURL: URL(fileURLWithPath: "/Media/take.mov"), plan: plan,
+                                   output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 0))
+        var entry = ProjectMusic(id: "bed", clipId: nil, asset: .init(file: "bed.wav", sha256: "", durationSeconds: 6),
+                                 source: .file, title: "Bed", license: .own, gainDb: -20, startOffsetSeconds: 0)
+        entry.segments = [.init(id: "part", anchorSeconds: 1.5, lengthSeconds: 2, songFromSeconds: 0.75,
+                                loop: false, fadeInSeconds: 0.5, fadeOutSeconds: 0)]
+        render.music = .init(entry: entry, assetURL: URL(fileURLWithPath: "/Media/bed.wav"))
+        var sound = ClipEffect(id: "sound", clipId: nil, kind: .sound, start: 3, end: 3.5)
+        sound.mediaOffsetSeconds = 0.25
+        sound.gainPoints = [.init(t: 0, db: -6)]
+        render.effects = .init(effects: [sound], soundURLs: [:])
+        let edit = try ExportCheckExpectation.edit(render: render, state: nil)
+        #expect(edit.audioWindows.map(\.kind) == [.gap, .music, .sound, .gap])
+        let windows: [Range<Double>] = [0..<1, 1..<3, 2..<2.5, 3..<5]
+        #expect(edit.audioWindows.map(\.range) == windows)
+        #expect(edit.audioWindows[1].sourceStart == 0.75)
+        #expect(edit.audioWindows[2].sourceStart == 0.25)
+        #expect(edit.audioWindows[2].shape?.gainPoints == sound.gainPoints)
+    }
+
+    @Test func storySeamPassesUnlessTheNextPartLosesItsFirstWord() throws {
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+        let clipID = try #require(project.edits.activeClipId)
+        let timeline = try RenderCallerInputs.timeline(project: project, clipID: clipID)
+        let edit = try ExportCheckExpectation.edit(timeline: timeline, speed: .init(speed: 1), effects: [],
+                                                   state: state(project, clipID: clipID), duration: timeline.duration)
+        let seam = try #require(edit.cuts.first)
+        let next = try #require(edit.words.firstIndex { $0.start >= seam })
+        #expect(next > 0 && next < edit.words.count - 1)
+        var input = ExportCheckInput(expected: edit.words, heard: edit.words.map { .init(text: $0.text, start: $0.start, end: $0.end) },
+            cuts: edit.cuts, video: .init(start: 0, end: edit.duration), audio: .init(start: 0, end: edit.duration),
+            frameSeconds: 1.0 / 30, loudness: nil, frame: .init(width: 320, height: 180))
+        #expect(ExportCheck.run(input).passed)
+        input.heard?.remove(at: next)
+        let result = try #require(ExportCheck.run(input)[.words])
+        #expect(result.status == .warning)
+        #expect(result.items.contains { $0.kind == .cutOff && $0.expected == edit.words[next].text })
+    }
+
     /// "So um, today we ship uh the clipper. Thanks" with a Rewrite of "we ship" as "new words" (segment vl-passage).
     private func passage() throws -> Project {
         try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))

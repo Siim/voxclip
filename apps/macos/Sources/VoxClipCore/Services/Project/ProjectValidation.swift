@@ -23,7 +23,10 @@ enum ProjectValidation {
 
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
-        let isV4 = try map(raw)["schemaVersion"] == .number(4)
+        let wireVersion = try map(raw)["schemaVersion"]
+        let isV6 = wireVersion == .number(6)
+        let isV5 = isV6 || wireVersion == .number(5)
+        let isV4 = isV5 || wireVersion == .number(4)
         let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""))
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone")
@@ -36,10 +39,30 @@ enum ProjectValidation {
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform")
-        let media = try object(root["media"], required: "source")
-        let source = try object(media["source"], required: "absolutePath relativePath sizeBytes durationSeconds contentKey video audio")
-        if source["video"] != .null { _ = try object(source["video"], required: "width height frameRate rotationDegrees") }
-        if source["audio"] != .null { _ = try object(source["audio"], required: "sampleRate channels") }
+        let media = try object(root["media"], required: "source", optional: isV4 ? "additionalSources footage" : "")
+        let additional = try media["additionalSources"].map { try array($0) } ?? []
+        try require(media["additionalSources"] == nil || !additional.isEmpty, "Empty companion source list")
+        var sourceKeys = Set<String>()
+        for raw in [media["source"] ?? .null] + additional {
+            let source = try object(raw, required: "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", optional: isV4 ? "recordingHash" : "")
+            if let hash = source["recordingHash"] { try require(hash.aiString.map { matches($0, hashPattern) } == true, "Invalid recording hash") }
+            if let key = (source["recordingHash"] ?? source["contentKey"])?.aiString {
+                try require(sourceKeys.insert(key).inserted, "Duplicate source recording")
+            }
+            if source["video"] != .null { _ = try object(source["video"], required: "width height frameRate rotationDegrees") }
+            if source["audio"] != .null { _ = try object(source["audio"], required: "sampleRate channels") }
+        }
+        if let footage = media["footage"] {
+            let entries = try array(footage)
+            try require(!entries.isEmpty, "Empty companion placement list")
+            for raw in entries {
+                let fields = try object(raw, required: "id clipID kind start end footage", optional: isV6 ? "fadeInSeconds fadeOutSeconds" : "")
+                _ = try object(fields["footage"], required: "sourceKey start")
+                for key in ["fadeInSeconds", "fadeOutSeconds"] where fields[key] != nil {
+                    guard case .number(let fade) = fields[key], (0...2).contains(fade) else { try fail("Invalid footage fade") }
+                }
+            }
+        }
         if root["transcript"] != .null {
             let transcript = try object(root["transcript"], required: "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt")
             _ = try object(transcript["engine"], required: "id modelId modelSha256 engineVersion locale")
@@ -47,7 +70,16 @@ enum ProjectValidation {
         }
         let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId")
         for clip in try array(edits["clips"]) {
-            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds")
+            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds" + (isV5 ? " parts kind" : ""))
+            if let kind = fields["kind"] {
+                try require(fields["parts"] != nil && (kind == .string("story") || kind == .string("showreel")), "Invalid clip kind")
+            }
+            if let parts = fields["parts"] {
+                for part in try array(parts) {
+                    let fields = try object(part, required: "id startWordId endWordId", optional: "reframe")
+                    if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY") }
+                }
+            }
             // An opening lead-in (ADR-R48) is schema v4 only: 0 < s ≤ 0.6.
             if let lead = fields["leadInSeconds"] {
                 guard isV4, case .number(let seconds) = lead, seconds.isFinite, seconds > 0, seconds <= FrameSampling.openingSpan + 1e-9 else {
@@ -67,7 +99,13 @@ enum ProjectValidation {
         let ai = try object(root["ai"], required: "results")
         for rawResult in try array(ai["results"]) {
             let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips")
-            for clip in try array(result["clips"]) { _ = try object(clip, required: "title reason score startWordId endWordId") }
+            for clip in try array(result["clips"]) {
+                let fields = try object(clip, required: "title reason score startWordId endWordId", optional: isV5 ? "parts notInTake" : "")
+                if let parts = fields["parts"] { for part in try array(parts) { _ = try object(part, required: "startWordId endWordId") } }
+                if let note = fields["notInTake"] {
+                    guard case .string = note else { try fail("Invalid missing-from-take note") }
+                }
+            }
         }
         let version = isV4 ? 4 : root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
         let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments",
@@ -122,11 +160,11 @@ enum ProjectValidation {
         if let extensions = root["extensions"] { _ = try map(extensions) }
         if let demo = root["contextDemo"] {
             let document = try ContextDemoCodec.decode(ProjectJSON.encoder().encode(demo))
-            try require(root["id"] == .string(document.projectId) && source["contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
+            try require(root["id"] == .string(document.projectId) && media["source"]?[ai: "contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
         }
         if let cues = root["motionCues"] { try validateMotionCues(cues) }
-        if let music = root["music"] { try MusicProject.validateWire(music) }
-        if let effects = root["clipEffects"] { try ClipEffects.validateWire(effects) }
+        if let music = root["music"] { try MusicProject.validateWire(music, timelineEdits: isV6) }
+        if let effects = root["clipEffects"] { try ClipEffects.validateWire(effects, timelineEdits: isV6) }
         if let controls = root["clipControls"] { try ClipControlsProject.validateWire(controls) }
         if let translations = root["captionTranslations"] { try CaptionTranslations.validateWire(translations) }
         try validateDates(raw)
@@ -184,7 +222,8 @@ enum ProjectValidation {
         if let cuts = video["cuts"] {
             for cut in try array(cuts) { _ = try object(cut, required: "startSample endSample") }
         }
-        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory")
+        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory outputSpeakerCheckSkipped")
+        if let skipped = qa["outputSpeakerCheckSkipped"], skipped != .bool(true) { try fail("Invalid output speaker check status") }
         if let value = qa["joinAdvisory"] {
             let advisory = try object(value, required: "seams acceptedAt")
             for seam in try array(advisory["seams"]) { _ = try object(seam, required: "side excessLu") }
@@ -232,17 +271,26 @@ enum ProjectValidation {
         try text(project.title, max: 200)
         try require(project.savedBy.app == "VoxClip", "Invalid writer")
         try text(project.savedBy.version, pattern: "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?")
-        let source = project.media.source
-        try text(source.absolutePath, min: 1, max: 4096)
-        try text(source.relativePath, min: 1, max: 4096)
-        try require(source.relativePath?.contains("\\") != true && source.sizeBytes >= 0, "Invalid source reference")
-        try text(source.contentKey, pattern: hashPattern)
-        try number(source.durationSeconds)
-        if let video = source.video {
-            try require(video.width > 0 && video.height > 0 && [0, 90, 180, 270].contains(video.rotationDegrees), "Invalid video facts")
-            try number(video.frameRate, min: .leastNonzeroMagnitude)
+        for source in [project.media.source] + project.media.additionalSources {
+            try text(source.absolutePath, min: 1, max: 4096)
+            try text(source.relativePath, min: 1, max: 4096)
+            try require(source.relativePath?.contains("\\") != true && source.sizeBytes >= 0, "Invalid source reference")
+            try text(source.contentKey, pattern: hashPattern)
+            try number(source.durationSeconds)
+            if let video = source.video {
+                try require(video.width > 0 && video.height > 0 && [0, 90, 180, 270].contains(video.rotationDegrees), "Invalid video facts")
+                try number(video.frameRate, min: .leastNonzeroMagnitude)
+            }
+            if let audio = source.audio { try require(audio.sampleRate > 0 && audio.channels > 0, "Invalid audio facts") }
         }
-        if let audio = source.audio { try require(audio.sampleRate > 0 && audio.channels > 0, "Invalid audio facts") }
+        var media = ProjectMedia(source: project.media.source, additionalSources: project.media.additionalSources)
+        var placementIDs = Set<String>()
+        for entry in project.media.footage {
+            try text(entry.id, pattern: idPattern)
+            try text(entry.clipID, pattern: idPattern)
+            try text(entry.footage.sourceKey, pattern: hashPattern)
+            try require(placementIDs.insert(entry.id).inserted && media.storeFootage(entry, allowShortSource: project.schemaVersion == 6), "Invalid companion footage placement")
+        }
         if let transcript = project.transcript {
             try require(transcript.schemaVersion == 1 && transcript.pipelineVersion >= 1, "Invalid transcript version")
             try number(transcript.durationSeconds)

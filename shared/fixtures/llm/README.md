@@ -19,7 +19,7 @@ npm --prefix tools/fixtures/llm run check
 | `tighten-verifier.json` | 16 | T1–T8 plus duplicates, kinds, no-ops, Unicode, punctuation and review thresholds |
 | `clip-finder-requests.json` | 30 | Every preset, with/without instructions, single/multiple windows; 252 connector renderings |
 | `ai-tighten-requests.json` | 20 | All strengths, instructions, windows, sparse indices; 180 connector renderings |
-| `connector-requests.json` | 46 | Connection tests, capability branches, CLI escaping/flags, Codex strict passage and patch rewrite schemas, Apple mapping; 46 renderings |
+| `connector-requests.json` | 48 | Connection tests, capability branches, CLI escaping/flags, Codex strict rewrite and Autopilot v12 schemas, Apple mapping; 48 renderings |
 | `effort-requests.json` | 52 | Every connector at every effort (`low`…`max`, ai.md §4.4.1): the highest supported level at or below the request, or none; Codex named-model and CLI-default (`isDefault`) model-list cases |
 | `voice-rewrite-requests.json` | 7 | Voice Lab rewrite (voice-lab §8.9.1): passage and full take, with and without a request, six budgets including `minChars` = `maxChars`, a decomposed source; each with the quote's estimate and preflight |
 | `patch-rewrite-requests.json` | 5 | Voice Lab Fix with AI (voice-lab §8.1): the line ranges and instruction, equal `minChars` and `maxChars`, a trimmed instruction, F1, sparse indices, decomposed Estonian text; each with the quote's estimate and preflight |

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Clips;
@@ -73,12 +74,14 @@ public sealed record ProjectClipControls(string ClipId, double Speed, ClipShape?
     double FadeInSeconds, double FadeOutSeconds, bool MuteSource, bool FlipHorizontal, int RotationDegrees,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? CoverSeconds = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClipColorAdjustments? ColorAdjustments = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClipColorAdjustments? ColorAdjustments = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CoverTitle = null)
 {
     /// <summary>Every control at its default.</summary>
     [JsonIgnore]
     public bool IsDefault => Speed == 1 && Shape is null && Look == ClipLook.Original && GainDb == 0 && FadeInSeconds == 0 &&
-        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null && ColorAdjustments is null;
+        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null &&
+        ColorAdjustments is null && CoverTitle is null;
 
     /// <summary>The face-follow centre (0–1 from the top left of the source) for an output of width over height
     /// <paramref name="outputAspect"/>: only in face mode and for 9:16 and 1:1 (16:9 ignores it). Twin of the Mac <c>cropCenter</c>.</summary>
@@ -92,10 +95,13 @@ public static class ClipFaceCrop
 {
     /// <summary>The centre crop <paramref name="crop"/> of a <paramref name="width"/>×<paramref name="height"/> oriented source,
     /// moved to the face (mapped through the clip's flip and turns) for an output of <paramref name="outputAspect"/>.</summary>
-    public static RectD Centered(RectD crop, double width, double height, ProjectClipControls? controls, double outputAspect)
+    public static RectD Centered(RectD crop, double width, double height, ProjectClipControls? controls, double outputAspect,
+        ReframeSettings? part = null)
     {
-        if (controls?.CropCenter(outputAspect) is not { } center) return crop;
-        var (x, y) = controls.MapAnchor(center.X, center.Y);
+        var center = part is { Mode: ReframeSettings.FaceMode, CenterX: { } faceX, CenterY: { } faceY } && outputAspect <= 1 + 1e-9
+            ? (faceX, faceY) : controls?.CropCenter(outputAspect);
+        if (center is not { } face) return crop;
+        var (x, y) = controls?.MapAnchor(face.Item1, face.Item2) ?? face;
         var left = Math.Min(width - crop.Width, Math.Max(0, width * x - crop.Width / 2));
         var top = Math.Min(height - crop.Height, Math.Max(0, height * y - crop.Height / 2));
         return new(left, top, crop.Width, crop.Height);
@@ -112,7 +118,7 @@ public static class ClipControlsProject
     public static void Validate(Project project)
     {
         if (project.ClipControls.Count == 0) return;
-        Require(project.SchemaVersion == 4 && project.ClipControls.Count <= 64);
+        Require(project.SchemaVersion >= 4 && project.ClipControls.Count <= 64);
         var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in project.ClipControls)
@@ -127,6 +133,7 @@ public static class ClipControlsProject
             if (entry.Reframe is { } reframe)
                 Require(reframe.Mode == ReframeSettings.FaceMode && reframe.Zoom == 1 && reframe.CenterX is >= 0 and <= 1 && reframe.CenterY is >= 0 and <= 1);
             if (entry.CoverSeconds is { } cover) Require(double.IsFinite(cover) && cover >= 0);
+            if (entry.CoverTitle is { } title) Require(entry.CoverSeconds is not null && ClipHookTitle.Text(title) == title);
             if (entry.ColorAdjustments is { } adjustments) Require(adjustments.IsValid);
             Require(!entry.IsDefault && clips.Contains(entry.ClipId) && seen.Add(entry.ClipId));
         }
@@ -140,7 +147,7 @@ public static class ClipControlsProject
         {
             Require(entry.ValueKind == JsonValueKind.Object);
             var keys = entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
-            keys.Remove("reframe"); keys.Remove("coverSeconds"); keys.Remove("colorAdjustments");
+            keys.Remove("reframe"); keys.Remove("coverSeconds"); keys.Remove("coverTitle"); keys.Remove("colorAdjustments");
             Require(keys.SetEquals("clipId speed shape look gainDb fadeInSeconds fadeOutSeconds muteSource flipHorizontal rotationDegrees".Split(' ')));
             if (entry.TryGetProperty("reframe", out var reframe))
             {
@@ -150,6 +157,7 @@ public static class ClipControlsProject
                 foreach (var key in new[] { "zoom", "centerX", "centerY" }) Number(reframe.GetProperty(key));
             }
             if (entry.TryGetProperty("coverSeconds", out var cover)) Number(cover);
+            if (entry.TryGetProperty("coverTitle", out var title)) Require(title.ValueKind == JsonValueKind.String);
             if (entry.TryGetProperty("colorAdjustments", out var adjustments)) ReadColorAdjustments(adjustments);
             Require(entry.GetProperty("clipId").ValueKind == JsonValueKind.String && entry.GetProperty("look").ValueKind == JsonValueKind.String);
             Require(entry.GetProperty("shape").ValueKind is JsonValueKind.String or JsonValueKind.Null);
@@ -207,14 +215,15 @@ public static class ClipControlsProject
     public static Project SettingLook(ClipLook look, string clipId, Project project) =>
         Setting(Controls(clipId, project)! with { Look = look }, project);
 
-    /// <summary>A clip's span in source seconds, its first word's start to its last word's end; null for an unknown clip.</summary>
+    /// <summary>The clip's source hull, not its playback range or duration; null for an unknown clip.</summary>
     public static (double Start, double End)? SourceSpan(string clipId, Project project)
     {
         var clip = project.Edits.Clips.FirstOrDefault(item => item.Id == clipId);
         var words = project.Transcript?.Words;
-        var first = words?.FirstOrDefault(word => word.Id == clip?.StartWordId);
-        var last = words?.FirstOrDefault(word => word.Id == clip?.EndWordId);
-        return first is not null && last is not null && last.End > first.Start ? (first.Start, last.End) : null;
+        if (words is null || clip?.PlayPartIndices(words) is not { Count: > 0 } ranges) return null;
+        var first = words[ranges.Min(range => range.Start)];
+        var last = words[ranges.Max(range => range.End)];
+        return last.End > first.Start ? (first.Start, last.End) : null;
     }
 
     /// <summary>How far a stretch may miss a clip's first word start or last word end and still count as the whole clip.</summary>

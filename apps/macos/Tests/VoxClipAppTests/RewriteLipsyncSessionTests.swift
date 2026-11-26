@@ -64,6 +64,27 @@ struct RewriteLipsyncSessionTests {
         var lines: [String] = []
     }
 
+    @Test func aPendingQuoteNeedsItsOwnRecoverableProviderReceipt() throws {
+        let (_, offer, _) = try setup()
+        var attempt = try keptAttempt(offer)
+        attempt.keptResult = false
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = UUID().uuidString.lowercased(), now = attempt.submittedAt
+        func price(_ id: UUID, at date: Date, model: WholeClipRevoice.Lipsync = .sync3) -> Decimal? {
+            let key = WholeClipRevoiceLedger.LipsyncKey(voice: .init(script: "fixture", recordId: "fixture", model: "eleven_v4"), retime: 1, model: model)
+            return RewriteSavedProposal.PendingLipsync(key: key, quoteID: id, videoSHA256: attempt.videoSHA256, audioSHA256: attempt.audioSHA256)
+                .acceptedUSD(projectID: project, root: root, now: date)
+        }
+        #expect(price(offer.id, at: now) == nil)
+        try LipsyncAttemptStore.record(attempt, projectID: project, paidRoot: root)
+        #expect(price(offer.id, at: now) == attempt.estimate.usd)
+        #expect(price(UUID(), at: now) == nil)
+        #expect(price(offer.id, at: now, model: .lipsync2) == nil)
+        #expect(price(offer.id, at: now.addingTimeInterval(3600)) == nil)
+    }
+
     private func keptAttempt(_ offer: RewriteLipsyncSession.Offer) throws -> LipsyncAttempt {
         let json = """
             {"requestID":"11111111-2222-4333-8444-555555555555","provider":"fal","model":"fal-ai/sync-lipsync/v3",
@@ -296,7 +317,7 @@ struct RewriteLipsyncSessionTests {
     }
 
     private func reusing(_ session: RewriteLipsyncSession, _ template: RewriteLipsyncSession.Offer, _ log: ReuseLog,
-                         all: (() -> RewriteLipsyncSession.Offer)? = nil) {
+                         all: (() -> RewriteLipsyncSession.Offer)? = nil, indexed: Bool = false) {
         session.backend = .init(offers: {
             let fresh = RewriteLipsyncSession.Offer(id: UUID(), request: template.request, windows: template.windows,
                 estimate: template.estimate, recordID: template.recordID, dependencies: template.dependencies, isCurrent: { true })
@@ -308,7 +329,31 @@ struct RewriteLipsyncSessionTests {
             var result = Self.result(template)
             result.recovered = !mayPay
             return result
-        }, changed: {})
+        }, changed: {}, indexedWindows: { offer in indexed && !log.gone ? Set(offer.windows.indices) : [] })
+    }
+
+    @Test func aFreshSessionOffersAnIndexedResultForFreeBeforeAnyClick() async throws {
+        let (_, template, _) = try setup()
+        let relaunched = RewriteLipsyncSession(), log = ReuseLog()
+        reusing(relaunched, template, log, indexed: true)
+        await relaunched.refresh()
+        let offer = try #require(relaunched.offers[0])
+        #expect(offer.charge == "free" && relaunched.allOffer?.free == true)
+        #expect(log.pays.isEmpty)
+
+        relaunched.press(offer)
+        await relaunched.waitForRun()
+        #expect(log.pays == [false] && relaunched.applied[0]?.result.recovered == true)
+
+        let nextLaunch = RewriteLipsyncSession()
+        reusing(nextLaunch, template, log, indexed: true)
+        await nextLaunch.refresh()
+        let freeClick = try #require(nextLaunch.offers[0])
+        log.gone = true
+        nextLaunch.press(freeClick)
+        await nextLaunch.waitForRun()
+        #expect(log.pays == [false, false])
+        #expect(nextLaunch.offers[0]?.charge == "≈ $0.40")
     }
 
     /// Undo keeps the paid result findable (the window's imported index): the next Lip Sync over the same takes gets it back,
@@ -459,7 +504,7 @@ struct RewriteLipsyncSessionTests {
         await session.waitForRun()
         guard case .failed(let reason, _, let mayBill) = session.states[0] else { Issue.record("not failed"); return }
         #expect(!mayBill && session.freeRetries.isEmpty)
-        #expect(reason == "Stopped before submitting a lip-sync job. The media didn't pass the lip-sync file checks.")
+        #expect(reason == "Stopped before submitting a lip-sync job. The media didn't pass the lip-sync file checks. fal.ai didn't charge for this lip sync.")
     }
 
     @Test func anExplicitlyFreeOfferStaysFreeEvenWithoutAPhraseMarker() async throws {

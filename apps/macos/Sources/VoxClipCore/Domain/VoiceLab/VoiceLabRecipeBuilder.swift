@@ -132,15 +132,17 @@ public enum VoiceLabRecipeBuilder {
             evidenceMatches = evidence.valid && evidence.recordId == record.id && evidence.consentMethod == record.consentMethod
         } else { evidenceMatches = true }
         let unmeasured: Bool = evidence?.mode == .unmeasured
+        let selectedVoice = row.voiceCheck == .selectedVoice
         let score: Double? = checked.values.speakerScore
         let measuredPassed: Bool = score.map { $0.isFinite && $0 >= record.speaker.threshold } ?? false
-        let voiceAllowed: Bool = unmeasured ? score == nil : measuredPassed
+        let voiceAllowed = selectedVoice ? !input.checksGeneratedSpeaker && score == nil : (unmeasured ? score == nil : measuredPassed)
         guard evidenceMatches, voiceAllowed else { throw VoiceLabProjectError.qaRejected }
         let tokens = VoiceLabTakeQuality.tokens(input.text).count
         let qa = VoiceLabRenderQA(transcriptTokens: tokens, transcriptExact: tokens <= 5 ? match == 1 : nil,
             transcriptMatch: match, lufsJumpLu: jump, peakDbfs: peak, speakerScore: score,
-            speakerThreshold: record.speaker.threshold, speakerModel: record.speaker.model, speakerPassed: !unmeasured,
-            shortSpeech: evidence, joinAdvisory: row.acceptedJoinAdvisory)
+            speakerThreshold: selectedVoice ? nil : record.speaker.threshold, speakerModel: selectedVoice ? nil : record.speaker.model,
+            speakerPassed: selectedVoice ? nil : !unmeasured, shortSpeech: evidence, joinAdvisory: row.acceptedJoinAdvisory,
+            outputSpeakerCheckSkipped: selectedVoice ? true : nil)
         var provenance = VoiceLabProvenance(provider: receipt.provider, endpoint: receipt.endpoint, model: input.modelID,
             voiceId: record.voiceId, consentRecordId: record.id, requestId: receipt.requestID.uuidString,
             seed: row.seed, createdAt: createdAt)

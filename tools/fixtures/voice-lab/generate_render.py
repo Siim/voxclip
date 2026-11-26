@@ -2,6 +2,7 @@
 import copy
 import json
 import math
+import re
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[3]
@@ -103,6 +104,15 @@ for flavor in ['passage', 'full-take']:
 
 # Exact disclosure thresholds use source-equal video, keeping capability separate.
 base = json.loads((fixtures / 'passage-render-v3.voxclip').read_text())
+selected_voice = copy.deepcopy(base)
+for segment in selected_voice['voiceLab']['segments']:
+    segment['qa']['speakerScore'] = None
+    for candidate in segment['candidates']:
+        qa = candidate['recipe']['qa']
+        qa.update(speakerScore=None, speakerThreshold=None, speakerModel=None, speakerPassed=None, outputSpeakerCheckSkipped=True)
+wire = json.dumps(selected_voice, indent=2, ensure_ascii=False)
+wire = re.sub(r'("\w+At": "\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)Z"', r'\1.000Z"', wire)
+(fixtures / 'selected-voice-render-v3.voxclip').write_text(wire + '\n')
 for suffix, duration in [('at-30', 2.1), ('above-30', 2.101)]:
     project = copy.deepcopy(base)
     segment = project['voiceLab']['segments'][0]

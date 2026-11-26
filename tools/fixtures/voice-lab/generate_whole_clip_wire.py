@@ -49,8 +49,18 @@ def generated():
         kinds = ['lipsync', 'revoice', 'tts'] if revoiced else ['lipsync', 'tts']
         return {'revoiced': revoiced, 'kinds': kinds, 'postText': post, 'chip': chip}
 
+    selected_voice = [set_value(RECORD + '/match', None)]
+    for index, segment in enumerate(project['voiceLab']['segments']):
+        path = f'/voiceLab/segments/{index}'
+        selected_voice.append(set_value(path + '/qa/speakerScore', None))
+        for candidate_index, candidate in enumerate(segment['candidates']):
+            qa = dict(candidate['recipe']['qa'], speakerScore=None, speakerThreshold=None, speakerModel=None,
+                      speakerPassed=None, outputSpeakerCheckSkipped=True)
+            selected_voice.append(set_value(f'{path}/candidates/{candidate_index}/recipe/qa', qa))
+
     valid = [
         {'id': 'record', 'patches': [], **expect()},
+        {'id': 'selected-voice', 'patches': selected_voice, 'outputSpeakerCheckSkipped': True, **expect()},
         {'id': 'no-match-yet', 'patches': [set_value(RECORD + '/match', None)], **expect()},
         {'id': 'every-score', 'patches': [set_value(RECORD + '/match', {'take': -1, 'anchorBaseline': 1, 'realSpeech': 0.5})], **expect()},
         {'id': 'take-only', 'patches': [set_value(RECORD + '/match', {'take': 0.7, 'anchorBaseline': None, 'realSpeech': None})], **expect()},
@@ -108,7 +118,7 @@ def generated():
     reject('empty-list', [set_value('/voiceLab/wholeClipRevoices', [])])
     reject('null-list', [set_value('/voiceLab/wholeClipRevoices', None)])
     reject('single-object', [set_value('/voiceLab/wholeClipRevoices', record())])
-    reject('future-project', [set_value('/schemaVersion', 5)])
+    reject('future-project', [set_value('/schemaVersion', 7)])
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-whole-clip-revoice-wire/1', 'project': 'fixtures/voice-lab/whole-clip-revoice-project.voxclip',
              'clipId': 'clip-main', 'valid': valid, 'invalid': invalid}

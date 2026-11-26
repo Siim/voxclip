@@ -32,7 +32,7 @@ voxclip/
 │   │   ├── Package.resolved
 │   │   ├── bundle.sh                     build, sign, notarize, staple, DMG (release.md)
 │   │   ├── VoxClip.entitlements          camera + audio-input only
-│   │   ├── dmg-background.png            600x400, SVG source next to it
+│   │   ├── dmg-background.png            1200x800 @144 dpi (600x400 window), SVG next to it
 │   │   ├── Sources/
 │   │   │   ├── VoxClipCore/              library: pure domain + platform-neutral services
 │   │   │   ├── VoxClipMedia/             library: AVFoundation, CoreText, Speech, FoundationModels, whisper.cpp
@@ -283,6 +283,10 @@ On macOS, damaged settings are backed up before valid preferences are recovered.
 
 Project schema v4 adds explicit context-demo and clip-motion roots while retaining v3 Voice Lab semantics. Source binding, full-narration placement coordinates, single-compositor rendering and legacy preservation are specified in [Context demonstrations and clip motion](spec/context-demo.md). The v4 wire is not an optional-field extension to older versions.
 
+Project schema v5 adds story clips. A writer uses v5 only while the project contains a multi-part clip. The clip's outer word IDs are its source hull; consumers use `playParts` / `PlayParts` for the ordered ranges. Parts have stable IDs and optional individual face reframes. A reader refuses a version newer than it knows before checking the rest of the document.
+
+The v6 timeline uses the pure Core `TimelineEdits` reducer for both placement previews and commits, and `TimelineItems.layout` / `Layout` for lane geometry and snap targets. See [direct timeline editing](spec/timeline-editing.md) for clocks, anchoring, and the shared replay vectors.
+
 The normative project format is defined by `doc/spec/editing.md` section 10 and `shared/schemas/project.schema.json`. The architecture relies on these properties:
 
 - **One portable JSON file**, extension `.voxclip`, UTF-8, no BOM, identical schema on both platforms, `"format": "voxclip-project"` plus an integer `schemaVersion`. Autosaved (debounced about 1 s) with atomic writes. macOS UTType `com.voxconvo.voxclip.project` conforming to `public.json`; Windows associates `.voxclip` with `VoxClip.exe` in the Velopack install hook (current user only).
@@ -390,6 +394,7 @@ No ffmpeg ships on macOS in v1. WebM and MKV are rejected with the `unsupportedC
 
 - `final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sendable`. `sourcePixelBufferAttributes`: `420v` and `BGRA`, Metal-compatible. `requiredPixelBufferAttributesForRenderContext`: `BGRA`, Metal-compatible. `supportsHDRSourceFrames` is not implemented, so AVFoundation converts HDR sources to SDR BT.709 before they reach the compositor.
 - Instruction: `final class RenderInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable` holding immutable snapshots: time range, source track id, orientation, `CaptionTrack`, `CaptionStyle`, placement, crop track, output size. `containsTweening = true` so every frame is requested (captions animate). `enablePostProcessing = false`.
+- Instruction boundaries are the sorted, distinct start and end times of the output, zoom spans, demos, lip-sync layers, and companion footage. Collect the `CMTime` boundaries one layer at a time before mapping them to rendered time so the composition builds on Xcode 26.
 - `startRequest`: take the source frame, `CIImage(cvPixelBuffer:).oriented(orientation)`, crop to the crop rect at `compositionTime`, scale to `renderSize` (Lanczos for export, affine bilinear for preview) with one `CIContext(mtlDevice:, options: [.cacheIntermediates: false])`, render into `renderContext.newPixelBuffer()`. Then lock the buffer, wrap it in a premultiplied BGRA `CGContext` in sRGB (gamma-encoded blending, matching Skia on Windows), and call `CaptionRasterizer.draw(page, at: compositionTime)`. Finish with `finish(withComposedVideoFrame:)`. The body runs inside `autoreleasepool` on the compositor's own serial `renderQueue`.
 - `cancelAllPendingVideoCompositionRequests` bumps a generation counter (`Mutex<UInt64>`); queued requests with an older generation finish with `finishCancelledRequest()`.
 - Caption raster cache: LRU keyed by `(pageIndex, styleHash, renderSize, animationFrameKey)`, capped at 64 MiB per window. Only static states are cached; animated frames are drawn directly.
@@ -402,6 +407,7 @@ No ffmpeg ships on macOS in v1. WebM and MKV are rejected with the `unsupportedC
 Mac App and CLI bind supported saved v3 recipes through `VoiceLabRenderPreflight.prepare` using the exact project, full or clip scope and canonical `<data>/VoiceLab` paid root. Unsupported video or nonunity fit is rejected before paid snapshots or output. The editor caches the prepared output timeline for duration, scrubbing and dormant cuts; each render request takes a fresh immutable project snapshot. Captions use the prepared words and duration, with the original caption settings retained in the layout for Media validation. A failed preview request closes its old player and frame; an obsolete or cancelled update cannot clear a newer preview. Full App export ignores the active clip. CLI export retains its existing saved-scope behavior unless `--clip` or `--range` overrides it, and binds any explicit caption settings before preparation. The legacy `plan --json` shape still refuses active synth.
 
 - `AVPlayerItem(asset: graph.composition)` with `videoComposition` and `audioMix` from the same graph. The video surface is an `AVPlayerLayer` in an `NSView` wrapped with `NSViewRepresentable` (no system transport controls).
+- A source track's time range can include an empty edit before its first picture. The composition holds the first real frame for any kept time in that lead-in, including when an imported lip-sync track is added. The audio, edits and captions keep their original timing. Preview and export use the same picture track.
 - Plan change: `src = oldPlan.sourceTime(fromEdited: player.currentTime)`; build; `replaceCurrentItem`; `seek(to: newPlan.editedTime(fromSource: src), toleranceBefore: .zero, toleranceAfter: .zero)`. The last frame stays visible while the new item becomes ready (typically 100–300 ms).
 - Scrubbing: while dragging, seeks use ±0.1 s tolerance and coalesce (one seek in flight, newest target wins). On release or word click, an exact seek.
 - Transcript highlight: `addPeriodicTimeObserver(forInterval: 1/30 s, queue: .main)`; the playing word follows editing spec 7.8: `s = plan.sourceTime(t)`, then the first uncut `word` item with `start <= s < end` (binary search over source items by `start`, then a short forward scan); the UI changes only when the word changes.
@@ -512,6 +518,8 @@ Acceptance (the on-demand `--long-hevc` clip of section 9.5): a 10-minute 1080p 
 - **Mux.** `avformat_alloc_output_context2(…, "mp4", …)`, stream time bases `1/fps` (video) and `1/48000` (audio), `movflags=+faststart`, codec tags `avc1` and `mp4a`, video colour tags `color_primaries=AVCOL_PRI_BT709`, `color_trc=AVCOL_TRC_BT709`, `colorspace=AVCOL_SPC_BT709`, `color_range=AVCOL_RANGE_MPEG`. Write to `<dest>.partial`, rename on success, delete on failure or cancel.
 - **Progress** = encoded frames / total frames at ≤ 10 Hz with phases `preparing`, `encoding`, `finalizing`. **Cancellation** through `CancellationToken`, checked per frame.
 
+Timeline overlays and companion footage fade in the same frame compositor used by preview. Companion video plays at 1× from its selected source time across speech cuts and ends early if the recording runs out; stills hold. The shared audio reader maps sound and music anchors to the rendered clock but plays their slipped media at 1×, then applies item gain, fades, and the music bed mix.
+
 For active Voice Lab output, export finalizes the muxer MP4, creates a distinct bounded copy containing the Adobe XMP UUID, hashes that finished file, and stages provenance using the published basename and assembly version (ADR-R27). MP4, requested SRT/WAV and sidecar use the existing rollback transaction. Capacity preflight groups private snapshots, output copies and rollback bytes by actual volume identity; an alias does not create a separate free-space allowance. Empty WAV timelines return `EverythingCut` before capacity queries, readers or partial creation. Known synthetic WAV sizes beyond RIFF limits fail before staging. Windows CLI reaches this combined-output path for a supported persisted v3 recipe, resolving paid assets only under `<data>/VoiceLab`; `plan --json` still refuses active synth because its legacy schema describes source cuts alone.
 
 ### 6.5 HDR sources
@@ -612,7 +620,7 @@ The Windows CLI checks the separate per-user runtime agreement before dispatchin
 ### 9.1 Primary form (export)
 
 ```text
-voxclip-cli --open <project.voxclip | media file> --export <out.mp4>
+voxclip-cli [export] --open <project.voxclip | media file> --export <out.mp4>
             [--style <captionStyleId> | --style off]          style id from shared/caption-styles (e.g. vox-highlight); default: the project's style, else "off"
             [--aspect source | 16:9 | 9:16 | 1:1]               default: the project's aspect, else "source"
             [--clip <clipId> | --range <startWordIndex>:<endWordIndex>]
@@ -620,7 +628,8 @@ voxclip-cli --open <project.voxclip | media file> --export <out.mp4>
             [--engine whisper | apple | elevenlabs] [--model <modelId>] [--language <bcp47>]
             [--cut-fillers] [--tighten-pauses]                  applied in this order before export
             [--quality standard | high] [--fps <n>] [--srt <out.srt>]
-            [--audio-out <edited.wav>]                          test hook: also write the edited, faded audio as 32-bit float WAV
+            [--music <trackId> | --music-file <audio file>]     choose the bed for this MP4 export only
+            [--audio-out <edited.wav> [--with-music]]            also write 32-bit float WAV; voice only by default
             [--loudness social | off]                           default social: -14 LUFS, true peak at most -1 dBTP (ADR-R47)
             [--json] [--quiet]
 ```
@@ -630,7 +639,7 @@ Behaviour:
 1. `--open` a `.voxclip` project: load it and relink media by the project rules (section 3) without prompts; a `contentKey` mismatch is exit 3.
 2. `--open` a media file: create an in-memory project. With `--transcript`, load that file: one JSON object exactly as `transcript` is stored in a project (`project.schema.json` `$defs/transcript`), used as is with no post-processing (stored timings never change); a file that does not decode is exit 3. Otherwise transcribe with `--engine` (default: whisper with the first installed model that matches `--language`, else exit 7).
 3. Select the export scope first: `--clip` (an existing clip) or `--range` (a new clip over those words) when given, else an opened project's stored `activeClipId`, else the whole take. Then apply `--cut-fillers`, then `--tighten-pauses` (the same reducers as the UI), which act within that scope as they do in the app. So `--clip b --cut-fillers` cuts the fillers of clip `b`, whichever clip was active when the project was saved. A new in-memory project (media-file input) sets `pauseThresholdSeconds` as an import does (editing.md 2.5: 0.8 when the transcript is refined, else 1.0).
-4. Export with the same exporter as the app. Write `--srt` if asked.
+4. Export with the same exporter as the app. MP4 uses the clip's saved bed (or the full take's bed for a full-take export). Use `--music <trackId>` to reuse any saved entry in the open project, even if the exported clip has no track. The ID is the entry's `music[].id`, also listed by `voxclip-cli decisions`. The entry must already have a local asset in the data folder. Use `--music-file <path>` instead for a local MP3, M4A, WAV, AIF/AIFF or FLAC (up to 200 MB and 30 minutes). A file uses the app defaults: −20 dB under speech, ducking on, 0.5 s fade-in and 1.5 s fade-out. Both options use the app's loudness matching, ducking, fades and crossfaded loops; neither writes to the project, copies an audio file into the library, or calls a music provider. Write `--srt` if asked.
 
 ### 9.2 Subcommands
 
@@ -644,9 +653,11 @@ Behaviour:
 | `voxclip-cli render-caption --case <layout fixture> --sample <index> --out <file.png>` | Render one sample of a case, golden or not |
 | `voxclip-cli render-caption --tiles <preview-tiles.json> --out <dir>` | Render every gallery tile into `<dir>/tiles/` |
 | `voxclip-cli find-clips --open <project> --preset best\|hooks\|topics\|quotes\|custom [--instruction <text>] --connector <id> [--model <id>] [--no-snap] [--dry-run] --json` | Run the clip finder headless (AI spec section 10.4); never modifies the project; `--dry-run` prints the rendered prompts without sending |
+| `voxclip-cli autopilot --open <project-or-media> --connector <id> [--out-dir <dir>] --json` | Plan the top clips. Reuse local saved entries that match a suggested title or mood; try the picked suggestion first. Each clip reports the attached `music` object, or `"music": "pending"` when there is no match. No music is purchased, generated or downloaded. With `--out-dir`, export the clips and save the resulting project there; leave the input project untouched. |
 | `voxclip-cli llm-test --connector <id> [--model <id>] --json` | Run the connector Test (AI spec section 10.2); exit 0 on pass |
 | `voxclip-cli encoders --json` | Windows: run the encoder probe; macOS: report VideoToolbox H.264 availability |
 | `voxclip-cli check --project <project> --clip <n\|id> <export.mp4> [--aspect …] [--style …] [--loudness social\|off] [--json]` | macOS and Windows: the export self-check (ADR-R49). It checks the words heard against the clip's edit, the tracks' and phrases' sync, the loudness and the caption and title boxes against the safe-zone bands. Transcription is local only. `--json` adds a `check` object with `passed`, `engine`, `model`, `seconds` and one result per check (`status`, `reason`, `items`). Exit 8 when any check warns |
+| `voxclip-cli mcp --project <project>` | Mac and Windows: stdio server bound to one saved project. Matching `transcript`, `clips`, `decisions`, `frames` and `propose-timeline` commands always use JSON. Keep a timeline or approve a priced action in the editor, not through the server. See [harness setup](harness.md) and [ADR-R52](adr/R52-project-harness-mcp.md). |
 | `voxclip-cli --version` / `voxclip-cli version [--json]` | Read the linked plist/assembly version (`unknown` when absent); print the version alone, `VoxClip <version> (<platform>-<arch>)`, or a JSON envelope with `result` and `version` |
 
 ### 9.3 Output and exit codes
@@ -662,7 +673,8 @@ Other bad arguments are usage errors (exit 2) before the input is opened, with t
 Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its destination, where the destination path is resolved through symlinks first. An existing regular file at a `.partial` path is a leftover from an earlier run and is replaced; a directory or symlink there is a bad argument. The WAV and SRT are finished before anything is published. Publication is all-or-nothing, in the order MP4, SRT, WAV: before the first rename, each existing destination is kept as a backup beside it (`<name>.rollback-<random>`, a copy-on-write clone where the file system supports one). If any rename fails, every destination already replaced is restored from its backup, or removed if it did not exist before, so a failure at any step leaves every existing destination unchanged. Every restore is attempted even if an earlier one fails. A backup whose restore fails is never deleted: it stays beside the destination, and the error (`exportFailed`) says "Couldn't put back {file name}. The previous version is saved as {backup file name}." Every other backup is deleted on success, failure and cancellation. Partial files are removed on success, failure and cancellation.
 
 - Human-readable progress goes to **stderr**: one line per phase change, percentages at most once per second, nothing with `--quiet`.
-- The edited WAV (`--audio-out`) is written at the plan's sample rate with exactly `plan.outputSamples` samples per channel; it is never resampled. It carries the export's loudness gain and limiter, run over its own samples (ADR-R47).
+- `--audio-out` writes voice alone at 1×, at the plan's sample rate with exactly `plan.outputSamples` samples per channel. Add `--with-music` to write the rendered mix at the plan's sample rate and rendered length, including clip speed and levels, when a bed is selected. With no bed it still writes voice alone. Both WAV modes carry the MP4 export's loudness gain and limiter, run over the WAV's own samples (ADR-R47).
+- `music` is the bed actually mixed into the MP4: `trackId`, `title`, `gainDb` (the track's level under speech, not the output loudness gain) and `ducking`; `null` if no bed was mixed. A local file reports `file-` plus the first 16 hex characters of its SHA-256 and uses the filename stem as its title. Editable FCPXML on Mac links its existing project assets rather than mixing an MP4 bed and reports `music: null`.
 - `--loudness social` (the default) applies one gain and the true-peak limiter so the exported audio lands at −14 LUFS with its true peak at or below −1 dBTP (ADR-R47); `loudness` in the JSON reports `measuredLufs` (before the gain), `gainDb`, `outputLufs` and `truePeakDbtp` (after the gain and the limiter), `capped` (the 9 dB reduction cap stopped the gain short), `limiterMaxReductionDb` and `limitedPercent` (the share of frames under any reduction, release included). It is null with `--loudness off` or without an audio track.
 - `audioSampleRate` reports the 48,000 Hz export target on both platforms. For video-only output it stays 48,000, `audioSamples` is 0 and no audio track is written.
 - `--json` prints exactly one JSON object on **stdout** at the end:
@@ -672,6 +684,7 @@ Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its 
   "durationSeconds": 42.317, "width": 1080, "height": 1920, "fps": 30, "frames": 1270,
   "audioSampleRate": 48000, "audioSamples": 2031216, "videoCodec": "h264", "encoder": "h264_videotoolbox",
   "captionStyle": "vox-highlight", "aspect": "9:16", "elapsedSeconds": 6.4,
+  "music": { "trackId": "music-main", "title": "Calm intro", "gainDb": -20, "ducking": true },
   "loudness": { "measuredLufs": -21.5, "gainDb": 8.5, "outputLufs": -14.04, "truePeakDbtp": -1, "capped": false,
                 "limiterMaxReductionDb": 6.9, "limitedPercent": 45.7 },
   "version": "0.1.0" }
@@ -806,6 +819,8 @@ Core defines `Log` with levels `error`, `warn`, `info`, `debug` and a category s
 | stderr | CLI only | CLI only |
 
 Logging must never crash or block startup: file sink failures are swallowed after one system-log message. Writes go through a background queue (macOS) or channel (Windows). Help → "Reveal Logs" opens the folder in Finder / Explorer. Help → "Copy Diagnostics" copies version, OS, architecture, GPU and cached encoder (Windows), and the last 200 redacted log lines.
+
+User-facing failures use a fixed action category, such as `project-open`, `rewrite`, `export`, or `settings`, separate from the copy shown in the app. Each diagnostic includes the error type and its named case where available. Known system errors can include a standard domain and numeric code on macOS, or an HRESULT on Windows. Rewrite can add a fixed stage. Cancellation does not write a failure. The diagnostic never takes the displayed message, associated error values, arbitrary domains, paths, provider replies or personal data, and still goes through the redactor.
 
 ### 11.2 Redaction (Core `Redactor`, pure, fixture-tested)
 

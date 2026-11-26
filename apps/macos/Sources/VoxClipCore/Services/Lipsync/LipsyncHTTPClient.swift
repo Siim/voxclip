@@ -6,10 +6,12 @@ package struct LipsyncHTTPResponse: Sendable {
     package let status: Int
     package let body: Data
     package let contentType: String?
+    package let etag: String?
     /// A 429 or 503's `Retry-After` in seconds (delta-seconds only; an HTTP date is ignored), at most 10 minutes.
     package let retryAfter: Double?
-    package init(status: Int, body: Data, contentType: String? = "application/json", retryAfter: Double? = nil) {
+    package init(status: Int, body: Data, contentType: String? = "application/json", retryAfter: Double? = nil, etag: String? = nil) {
         self.status = status; self.body = body; self.contentType = Self.mediaType(contentType)
+        self.etag = etag
         self.retryAfter = retryAfter.flatMap { $0.isFinite && $0 >= 0 ? min($0, 600) : nil }
     }
 
@@ -39,7 +41,10 @@ struct URLSessionLipsyncHTTPClient: LipsyncHTTPClient {
         var request = request
         // URLSession would otherwise offer its own list, br included, which the transfer refuses (it reads gzip and deflate).
         if request.value(forHTTPHeaderField: "Accept-Encoding") == nil { request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding") }
+        let complete = request.httpMethod == "POST" && request.url?.lastPathComponent == "complete"
+            && request.url?.host.map(LipsyncURLPolicy.isUploadHost) == true
         return try await LipsyncHTTPTransfer(limit: limit, upload: request.httpMethod == "PUT" && request.httpBody != nil,
+                                             complete: complete,
                                              configure: configure).run(request, permit: permit)
     }
 
@@ -127,9 +132,11 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
     private let limit: Int
     private let descriptor: Int32?
     private let upload: Bool
+    private let complete: Bool
     private let configure: @Sendable (URLSessionConfiguration) -> Void
-    init(limit: Int, descriptor: Int32? = nil, upload: Bool = false, configure: @escaping @Sendable (URLSessionConfiguration) -> Void) {
-        self.limit = limit; self.descriptor = descriptor; self.upload = upload; self.configure = configure
+    init(limit: Int, descriptor: Int32? = nil, upload: Bool = false, complete: Bool = false,
+         configure: @escaping @Sendable (URLSessionConfiguration) -> Void) {
+        self.limit = limit; self.descriptor = descriptor; self.upload = upload; self.complete = complete; self.configure = configure
     }
 
     func run(_ request: URLRequest, permit: VoiceDispatchPermit?) async throws -> LipsyncHTTPResponse {
@@ -178,7 +185,7 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
             if response.expectedContentLength > Int64(limit) || (declaredLength ?? 0) > Int64(limit) { failure = .responseTooLarge }
             else if encoding != "identity" && (descriptor != nil || !["gzip", "deflate"].contains(encoding)) { failure = .invalidResponse }
             else if descriptor != nil && (response.statusCode != 200 || mime != "video/mp4") { failure = .invalidMedia }
-            else if descriptor == nil && (200...299).contains(response.statusCode) && !upload &&
+            else if descriptor == nil && (200...299).contains(response.statusCode) && !upload && !complete &&
                 !LipsyncHTTPResponse.isJSON(mime) { failure = .invalidResponse }
             else { failure = nil }
             // An earlier failure stands: a refused redirect's 3xx arrives here next and must stay unsafeURL.
@@ -228,7 +235,8 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
             }
             return (state.continuation, .success(LipsyncHTTPResponse(status: response.statusCode, body: state.bytes,
                 contentType: response.value(forHTTPHeaderField: "Content-Type"),
-                retryAfter: LipsyncHTTPResponse.retryAfter(response.value(forHTTPHeaderField: "Retry-After")))))
+                retryAfter: LipsyncHTTPResponse.retryAfter(response.value(forHTTPHeaderField: "Retry-After")),
+                etag: response.value(forHTTPHeaderField: "ETag"))))
         }
         value.0?.resume(with: value.1)
     }

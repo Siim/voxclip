@@ -21,7 +21,7 @@ extension RewriteSession {
             showProposal()
         }
     }
-    func discoverVoices() async {
+    func discoverVoices(resume: (@MainActor () -> Void)? = nil) async {
         guard current, editor.app.voiceLabRewriteEnabled, generation == nil else { return }
         reportGenerationProblem(nil)
         let app = editor.app
@@ -32,7 +32,7 @@ extension RewriteSession {
                     guard let self, current, task.confirm?.confirm.id == "allowVoiceProvider" else { return }
                     task.dismissConfirm()
                     app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
-                    makeTakes()
+                    if let resume { resume() } else { makeTakes() }
                 }))
             return
         }
@@ -47,7 +47,7 @@ extension RewriteSession {
         } catch { generationProblem(error) }
     }
     func prepareTakes() async {
-        guard !wordingIsLocked else { return }
+        guard !wordingIsLocked, wholeClipReplacement == nil else { return }
         if let reviewing { await reviewing.value }
         if let ordinal = surroundingSentenceOrdinal, acceptedSpeechContext == nil {
             reviewTimingSpeechContext(ordinal: ordinal)
@@ -95,7 +95,7 @@ extension RewriteSession {
                 hunks = try contextReview.replacingHunks(current: contextRequest, envelope: envelope)
             } else { hunks = selected.map { $0.element.hunk } }
             let makeInput = try takeInputMaker(final: final, recordID: recordID, modelID: modelID, envelope: envelope,
-                                               model: { created?.modelID ?? modelID })
+                                               checksGeneratedSpeaker: false, model: { created?.modelID ?? modelID })
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
                 makeInput: makeInput, readCap: { [weak self] in
                     guard let self else { throw CancellationError() }
@@ -105,7 +105,7 @@ extension RewriteSession {
                     return staleCause(basis, generation: generation) == nil
                 }, acceptedChargesChanged: { [weak app = editor.app] in
                     await app?.refreshMonthlySpend()
-                })
+                }, wordCheckFailures: wordCheckFailures)
             created = plan
             plan.onFailure = { [weak self] error in self?.logFailure(error, stage: "takes") }
             plan.describeStale = { [weak self, weak plan] in
@@ -162,7 +162,7 @@ extension RewriteSession {
     /// RewriteWholeClip.swift): the speaker's rate, pauses and levels are measured once per plan, the source's own levels
     /// decoded once, by the first phrase. `model` reads the plan's model at the time each input is made.
     func takeInputMaker(final: Project, recordID: String, modelID: String, envelope: AudioEnvelope,
-                        model: @escaping @MainActor () -> String) throws -> @MainActor (ClipTakePlan.Phrase) async throws -> VoiceLabTakeInput {
+                        checksGeneratedSpeaker: Bool, model: @escaping @MainActor () -> String) throws -> @MainActor (ClipTakePlan.Phrase) async throws -> VoiceLabTakeInput {
         guard let audio = project.media.source.audio else { throw RewriteSessionError.noSourceAudio }
         let sampleRate: Double = Double(audio.sampleRate)
         let sampleCount: Double = project.media.source.durationSeconds * sampleRate
@@ -196,7 +196,7 @@ extension RewriteSession {
                 contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
                 sourceSampleRate: audio.sampleRate, items: correctedItems, cutWordIDs: Set(final.edits.cutWordIds),
                 window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                providerConsent: true, pace: timing.pace, audioTags: phrase.audioTags)
+                providerConsent: true, pace: timing.pace, audioTags: phrase.audioTags, checksGeneratedSpeaker: checksGeneratedSpeaker)
             input.pauseProfile = pauseProfile
             return input
         }

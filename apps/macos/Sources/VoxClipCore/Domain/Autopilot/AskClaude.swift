@@ -188,6 +188,15 @@ public struct AskClaudePrompt: Sendable {
                 if cut.contains(words[index].id) { lines.append(line("jumpCut", words[index].start, words[index].end, " [\(index)]")) }
             }
         }
+        if let timeline = try? TimelineDecisions.read(project: project, scope: scope.clipID) {
+            for item in timeline[ai: "items"].aiArray.prefix(100) {
+                let id = item[ai: "id"].aiString ?? "", kind = item[ai: "kind"].aiString ?? ""
+                let start = item[ai: "startWord"].aiInt ?? -1, end = item[ai: "endWord"].aiInt ?? -1
+                let shape = item[ai: "shape"]
+                let detail = shape.aiObject?.isEmpty == false ? " " + ((try? shape.aiEncoded()).flatMap { String(data: $0, encoding: .utf8) } ?? "") : ""
+                lines.append("Timeline item \(id) (\(kind)), words [\(start)–\(end)]\(detail)")
+            }
+        }
         return lines
     }
 
@@ -214,7 +223,13 @@ public struct AskClaudeAnswer: Sendable, Equatable {
 
     /// The rows that need a paid click before they run: a voice rewrite, generated music.
     public var paid: [ClipAutopilotOperation] {
-        operations.filter { if case .rewrite = $0.action { true } else if case .music = $0.action { true } else { false } }
+        operations.filter {
+            switch $0.action {
+            case .rewrite, .music: true
+            case .asset(let asset): asset.kind == .illustration
+            default: false
+            }
+        }
     }
 }
 
@@ -241,7 +256,12 @@ public struct AskClaudeValidator: Sendable {
     public func answer(_ object: JSONValue) -> AskClaudeAnswer {
         var answer = AskClaudeAnswer(summary: AIText.prefix(AIText.trim(object[ai: "summary"].aiString ?? ""), utf16: 200), operations: [], choices: [:], repairs: [])
         var effectIDs = Set(project.clipEffects.map(\.id))
+        var planEffectIDs = effectIDs.union(project.motionCues.map(\.id))
         var cutSoFar = Set(project.edits.cutWordIds)
+        let transcriptWords = project.transcript?.words ?? []
+        let cutPauseIDs = Set(project.edits.cutPauseIds)
+        let pauses = cutPauseIDs.isEmpty ? [] : (try? detectPauses(transcriptWords, thresholdSeconds: project.edits.pauseThresholdSeconds)) ?? []
+        let tightenedAfter = Set(pauses.filter { cutPauseIDs.contains($0.id) }.map(\.afterIndex))
         var corrected = Set<String>()
         let raw = object[ai: "ops"].aiArray
         if raw.count > prompt.maxOps { answer.repairs.append("Kept the first \(prompt.maxOps) of \(raw.count) changes.") }
@@ -256,6 +276,30 @@ public struct AskClaudeValidator: Sendable {
                 if let note { answer.choices[id] = note }
             }
             func drop(_ why: String) { answer.repairs.append("Left out \(kind.isEmpty ? "a change" : kind): \(why).") }
+            if kind == "timelineEdit" {
+                guard let edits = try? TimelineEditRequest.providerEdits(item[ai: "edits"]) else {
+                    drop("needs supported timeline edits"); continue
+                }
+                add(.timeline, .timeline(clipID: scope.clipID, edits: edits))
+                continue
+            }
+            let wordAnchored = item[ai: "target"].aiString == "planEffect"
+            if ["punchIn", "motionTitle", "emojiPop", "soundEffect", "illustration", "colourLook", "speedForPart"].contains(kind) ||
+                (wordAnchored && ["zoom", "lowerThird"].contains(kind)) {
+                let listed = scope.words.map { $0.lowerBound...min($0.upperBound, $0.lowerBound + prompt.maxSelectionWords - 1) }
+                let clip = scope.clipID ?? clipContaining(scope)
+                var serial = 1
+                while planEffectIDs.contains("ask-fx-\(serial)") { serial += 1 }
+                let effectID = "ask-fx-\(serial)"
+                guard let entry = ClipPlanEffect.providerEntry(item), let listed, let clip,
+                      let operation = entry.operation(id: effectID, clipID: clip, scope: listed, words: transcriptWords, cut: cutSoFar,
+                                                      tightenedAfter: tightenedAfter, stickers: prompt.stickers) else {
+                    drop("needs a kept phrase in a clip and a supported effect"); continue
+                }
+                planEffectIDs.insert(effectID)
+                add(operation.decision, operation.action)
+                continue
+            }
             func effect(_ kind: ClipEffect.Kind, _ build: (inout ClipEffect) -> Void) -> ClipEffect? {
                 guard let range = timeRange(item, kind: kind) else { return nil }
                 var value = ClipEffect(id: ClipEffects.nextID(kind, existing: effectIDs), clipId: scope.clipID, kind: kind, start: range.lowerBound, end: range.upperBound)
@@ -360,6 +404,10 @@ public struct AskClaudeValidator: Sendable {
                 add(.rewrite, .rewrite(scope: .selection(words), text: text))
             case "translate":
                 guard let words = wordRange(item) else { drop("no words of the selection"); continue }
+                if let reason = CaptionTranslations.storyPartRestriction(for: words, clipID: scope.clipID, in: project) {
+                    answer.repairs.append(reason)
+                    continue
+                }
                 let language = AIText.trim(item[ai: "language"].aiString ?? "").lowercased()
                 let text = AIText.trim(item[ai: "text"].aiString ?? "")
                 guard language.range(of: #"\A[a-z]{2,3}(-[a-z0-9]{2,8})*\z"#, options: .regularExpression) != nil, !text.isEmpty else { drop("no language or translation"); continue }

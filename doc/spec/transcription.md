@@ -360,7 +360,7 @@ source media
                                     Transcript ─► project file (transcript)
 ```
 
-`TranscriptionService` in Core coordinates a job. It owns one job per project, the job queue (13.4), progress aggregation and the cache. Engines contain no UI code. The import post-process runs once. Reopening a project never reruns it (`editing.md` §5).
+`TranscriptionService` in Core coordinates a job. It owns one job per project, the job queue (13.4), progress aggregation and the cache. Engines contain no UI code. The import post-process runs for each import or alignment retry. Reopening a project never reruns it (`editing.md` §5).
 
 ---
 
@@ -897,6 +897,8 @@ Flip TalTech to `verbatim: true` once 16.4 shows a filler recall of at least 0.9
 
 ## 10. Apple SpeechTranscriber (`apple-speech`, macOS 26+)
 
+For a newly imported video in Claude mode, an installed Apple Speech locale is tried first. For automatic language, Mac can use confident local Whisper language detection before the Apple pass. If no supported language or installed assets are available, or Apple fails, the confirming engine runs alone. Whisper is the local confirmer; the explicit Scribe choice still asks before upload. Only the confirming transcript reaches the editor and captions. Windows has no Apple pass and uses its selected confirming engine directly. See [Claude mode scheduling](ai.md#1612-claude-modes-scheduling-and-timings-2026-11-07).
+
 ### 10.1 API surface used
 
 Everything below is available from macOS 26, the deployment target. Names come from the Speech framework interface in the macOS 27 SDK.
@@ -1262,6 +1264,7 @@ The normalised `Transcript` lives only in the project file. It is not cached.
 - Writes are atomic: a temp file, then a rename.
 - Eviction follows `doc/architecture.md` §8.2: least recently used, with a 5 GB default cap, and never for entries an open project uses. Because the project file holds the transcript, eviction never loses work. It can only cost a repeat transcription of a re-imported file. Raw ElevenLabs results should be the last files evicted inside an entry, since they are small and were paid for.
 - Before an ElevenLabs upload, look up the entry. On a hit, skip the upload and show "Using the earlier ElevenLabs transcript of this file (no charge)." The same reuse applies to local engines.
+- Save the ElevenLabs response, including its transcription ID and words, before local alignment. Once mapped words are available, the running job also holds them and the original alignment inputs. If alignment fails, inline **Retry** uses those inputs directly, even if the cache becomes unavailable while the job is open. It does not extract audio again, check the provider key or fall back to an upload. Replace the project transcript only after alignment succeeds and the original project is still current.
 - A paid response is never overwritten. Before an ElevenLabs upload, a file at the entry path that is not this request's readable entry (it does not decode, or it has another key or schema; on macOS, anything but this key's own placeholder) is renamed to `<name>.unreadable-<unix ms>`, never replacing an existing file. If the rename fails, transcription stops with the cache-unavailable error. Set-aside files are never read back; eviction keeps them with `transcripts/` in its first pass and removes them only with the whole entry (`doc/architecture.md` §8.2).
 
 ### 14.4 Re-transcription

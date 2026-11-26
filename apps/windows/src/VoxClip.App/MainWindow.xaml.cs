@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.Pages;
 using VoxClip.App.Controls;
@@ -10,8 +11,10 @@ using System.Runtime.InteropServices;
 using Windows.Storage.Pickers;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.App;
 
 /// <summary>Native title bar, Explorer, document tabs and full-window status routing.</summary>
@@ -169,7 +172,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             if (editor is { } current)
             {
                 if (current.ViewModel.Busy) return RestartPreparation.Busy;
-                if (!await current.TrySaveBeforeLeavingAsync()) return RestartPreparation.SaveFailed;
+                // Paid takes in the open Rewrite hold the leave before it starts: nothing was saved, so nothing failed to save.
+                if (!await current.TrySaveBeforeLeavingAsync()) return current.LeaveHeldByPaidWork ? RestartPreparation.HeldByPaidWork : RestartPreparation.SaveFailed;
             }
             restartPrepared = true;
             return RestartPreparation.Ready;
@@ -214,7 +218,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// scope's row.</summary>
     private void PaneRowKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (editor is not { } page || ShowingHome || args.Key is not ((VirtualKey)219 or (VirtualKey)221) || !FocusInPane() || FocusedRow() is not { } row) return;
+        if (editor is not { } page || ShowingHome || !FocusInPane() || FocusedRow() is not { } row) return;
+        if (HandlePartKey(row, args, page.ViewModel)) { args.Handled = true; return; }
+        if (args.Key is not ((VirtualKey)219 or (VirtualKey)221)) return;
         var modifier = InputState.Down(VirtualKey.Control) || InputState.Down(VirtualKey.Menu) || InputState.Down(VirtualKey.Shift);
         var step = ShortcutPolicy.RowClipStep(args.Key == (VirtualKey)219 ? '[' : ']', row.Kind, modifier);
         if (step == 0) return;
@@ -278,6 +284,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (App.Restart.IsPreparing) return;
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
+        var importClock = newImport && !demo ? new ClaudeModeClock() : null;
+        importClock?.Begin(ClaudeModeStage.Ingest);
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
         if (ShellNavigation.Route(via, existing is not null, editor is not null, fullPath) == ShellRoute.ShowHoldingWindow) { existing!.Activate(); existing.ShowOpenProject(); return; }
         await navigation.WaitAsync();
@@ -321,7 +329,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             }
             else
             {
+                importClock?.Begin(ClaudeModeStage.Probe);
                 var media = await App.Services.Probe.ProbeAsync(fullPath, lifetime.Token);
+                importClock?.End(ClaudeModeStage.Probe);
                 var contentKey = await App.Services.Projects.ComputeContentKeyAsync(fullPath, null, lifetime.Token);
                 project = ProjectFactory.Create(fullPath, media, contentKey);
                 mediaPath = fullPath;
@@ -365,7 +375,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                     // Keep the cache under its limit after each import, once the new project's editor holds its lease (architecture §8.2).
                     App.Services.CacheUpkeep.Imported();
                     // A newly imported video: Claude mode runs on it once it is transcribed (design §6.7).
-                    incoming.ViewModel.ArmClaudeMode();
+                    importClock?.End(ClaudeModeStage.Ingest);
+                    incoming.ViewModel.ArmClaudeMode(importClock);
                     await incoming.PromptTranscriptionAsync();
                 }
             }
@@ -704,6 +715,31 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void ClipMenuOpening(object? sender, object args)
     {
         if (sender is not MenuFlyout menu || menu.Items.OfType<MenuFlyoutSubItem>().FirstOrDefault() is not { Tag: string id } tones) return;
+        foreach (var old in menu.Items.OfType<MenuFlyoutItem>().Where(item => item.Tag is WholeClipIntent or StoryVoiceActions).ToArray()) menu.Items.Remove(old);
+        AutomationProperties.SetHelpText(tones, "");
+        if (editor is { } page && page.ViewModel.Project.Edits.Clips.Any(clip => clip.Id == id))
+        {
+            if (page.ViewModel.StoryVoice(id) is { } story)
+            {
+                tones.Items.Clear();
+                tones.IsEnabled = false;
+                AutomationProperties.SetHelpText(tones, story.RewriteReason);
+                menu.Items.Insert(menu.Items.IndexOf(tones) + 1, new MenuFlyoutItem { Text = story.RewriteReason, IsEnabled = false, Tag = story });
+                AddVoice("Revoice Whole Clip, with Lip Sync", WholeClipIntent.Revoice, false, story.LipSyncReason);
+                return;
+            }
+            var canVoice = RowEdits(id) && page.ViewModel.HasTranscript;
+            AddVoice("Revoice Whole Clip, with Lip Sync", WholeClipIntent.Revoice, canVoice, "Open an editable transcript to revoice this take.");
+            AddVoice("Redo Voice and Lip Sync", WholeClipIntent.RedoVoice, canVoice && WholeClipRevoice.IsRevoiced(id, page.ViewModel.Project),
+                canVoice ? "Use a whole-take revoice first." : "Open an editable transcript to revoice this take.");
+        }
+        void AddVoice(string title, WholeClipIntent intent, bool enabled, string reason)
+        {
+            var action = new MenuFlyoutItem { Text = title, Tag = intent, IsEnabled = enabled };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(action, enabled ? "" : reason);
+            action.Click += (_, _) => { ShowScope(id); editor?.OpenWholeTakeVoice(redo: intent == WholeClipIntent.RedoVoice); };
+            menu.Items.Insert(menu.Items.IndexOf(tones) + 1, action);
+        }
         tones.Items.Clear();
         if (editor?.ViewModel is not { ShowsToneStrip: true } model || !RowEdits(id)) { tones.IsEnabled = false; return; }
         tones.IsEnabled = true;
@@ -862,6 +898,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             case SidebarKind.Clip or SidebarKind.Suggestion: ShowScope(row.ClipId); break;
             case SidebarKind.Outline:
                 ShowScope(editor?.ViewModel.State?.ActiveClipId, keepSelection: true);
+                if (row.PartId is { } partId) editor?.ViewModel.SelectPart(partId);
                 editor?.RevealOutline(row.WordIndex);
                 SyncSelection();
                 break;
@@ -898,7 +935,6 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         WindowNotice.Message = message;
         WindowNotice.IsOpen = true;
         RefreshShellStatus();
-        App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", $"action={action} code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)} inner={exception.GetBaseException().GetType().Name} hresult=0x{exception.GetBaseException().HResult:X8}");
     }
     /// <summary>Whole-window drop target: overlay copy from design §7 and §13.</summary>
     private async void FileDragOver(object sender, DragEventArgs args)
@@ -1021,6 +1057,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                     RestartResult.Busy => "Finish or cancel transcription, clip search or export before restarting. Your edits are still here.",
                     RestartResult.TransitionActive => "Finish opening or closing the project, then try restarting. Your edits are still here.",
                     RestartResult.SaveFailed => "Could not save every open project. Your projects are still open with their edits. Use Save project as… or check the folder, then try again.",
+                    RestartResult.HeldByPaidWork => RestartNotice.HeldByPaidWork,
                     RestartResult.SettingsFailed => "Could not save settings. Your projects are still open. Check the settings folder, then try again.",
                     RestartResult.UpdateFailed => "Could not restart for the update. Your projects are still open with their edits. Try again when ready.",
                     _ => "An update restart is already in progress."
@@ -1031,7 +1068,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             WindowNotice.IsOpen = true;
         }
         catch (OperationCanceledException) { }
-        catch (HttpRequestException) when (manual) { WindowNotice.ActionButton = null; WindowNotice.Message = "Couldn't check for updates. You're offline."; WindowNotice.Severity = InfoBarSeverity.Warning; WindowNotice.IsOpen = true; }
+        catch (HttpRequestException exception) when (manual) { UiError.WriteFailure(exception, "Update"); WindowNotice.ActionButton = null; WindowNotice.Message = "Couldn't check for updates. You're offline."; WindowNotice.Severity = InfoBarSeverity.Warning; WindowNotice.IsOpen = true; }
         catch (Exception exception) { if (manual) ShowError(exception, "Update"); else App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "update", "automatic check unavailable"); }
     }
     private async void WindowClosed(object sender, WindowEventArgs args)

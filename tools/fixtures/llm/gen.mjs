@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as reference from './reference.mjs'
-import { appleSchema, canonicalRequest, clipInstruction, effortLevels, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
+import { appleSchema, autopilotSchemaRequests, canonicalRequest, clipInstruction, effortLevels, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
 import { candidate, f1Words, f1Rendered, fixedVectors, timeVectors, finalizeVectors, snapVectors, w1Bounds, tightenVectors, t1Entries, u100Words, syntheticWords, randomValues } from './vectors.mjs'
 import { patchRewriteRequest, voiceLabEstimate, voiceRewriteRequest } from './voicelab.mjs'
 
@@ -17,6 +17,9 @@ const sourceBytes = await Promise.all(inputPaths.map(path => readFile(join(root,
 const [clipFinder, aiTighten, catalog] = sourceBytes.map(text => JSON.parse(text))
 const prompts = { clipFinder, aiTighten }
 const sourceHashes = Object.fromEntries(inputPaths.map((path, index) => [path, sha256(sourceBytes[index].replace(/\r\n/g, '\n'))]))
+const autopilotPath = 'shared/prompts/clip-autopilot.json'
+const autopilotBytes = (await readFile(join(root, autopilotPath), 'utf8')).replace(/\r\n/g, '\n')
+const clipAutopilot = JSON.parse(autopilotBytes)
 // The Voice Lab request datasets and the Codex output-schema cases track their prompt inputs.
 const voiceLabPaths = { voiceRewrite: 'shared/prompts/voice-rewrite.json', patchRewrite: 'shared/prompts/patch-rewrite.json', wordingFit: 'shared/prompts/voice-rewrite-fit.json' }
 const voiceLabBytes = Object.fromEntries(await Promise.all(Object.entries(voiceLabPaths).map(async ([name, path]) => [name, await readFile(join(root, path), 'utf8')])))
@@ -122,6 +125,25 @@ for (const [id, preset, candidates] of finalizeCases) {
 const sameStartInput = { words: { generator: 'U100' }, preset: 'custom', candidates: [candidate('lower score', 20, 25, 7), candidate('higher score', 20, 30, 8)], snap: false, cutWordIds: [], windowCount: 1 }
 equal(finalize(sameStartInput).map(clip => clip.title), ['higher score', 'lower score'], 'same-start clips retain selection order')
 add('finalize-clips', 'same-start-selection-order', 'finalize-clips', sameStartInput, finalize(sameStartInput), 'doc/spec/ai.md §11.7 step 8')
+const issue27Instruction = "clip together where I talk about the chain of moving from x11.social to VoxConvo to SuperScribe. The most important part is that SuperScribe set me free: I automated my job, that gave me free time, which in turn helps me develop SuperScribe, and now I'm a couple of days away from my first business clients."
+const issue27Lines = [
+  [272, 'My first client is probably my, uh, freelance client.'],
+  [488, 'I have automated my job with Superscribe.'],
+  [494, "Most of the day, I don't even have to look what's going on."],
+  [879, 'The x11.social led to VoxConvo, and VoxConvo led to SuperScribe.']
+]
+const issue27Words = issue27Lines.flatMap(([start, line]) => line.split(' ').map((text, offset) => ({ text, start: start + offset * 0.35, end: start + offset * 0.35 + 0.3 })))
+  .map((word, index) => ({ ...word, index, id: `w${index}` }))
+const issue27Missing = 'The exact phrase “set me free” and the timing “a couple of days away” are not spoken.'
+const issue27Title = 'From x11.social to SuperScribe'
+const issue27Reason = 'The chain leads to “I have automated my job with Superscribe”.'
+const issue27Reply = { clips: [{ title: issue27Title, reason: `${issue27Reason} “SuperScribe set me free”`, score: 9,
+  parts: [{ start_line: 4, end_line: 4 }, { start_line: 2, end_line: 3 }, { start_line: 1, end_line: 1 }], not_in_take: issue27Missing }] }
+const issue27Parts = [[29, 38], [9, 28], [0, 8]]
+add('finalize-clips', 'issue-27-ordered-story', 'finalize-clips', { words: issue27Words, preset: 'custom', instructions: issue27Instruction, reply: issue27Reply,
+  candidates: [{ title: issue27Title, reason: issue27Reply.clips[0].reason, score: 9, parts: issue27Parts.map(([start_word, end_word]) => ({ start_word, end_word })), not_in_take: issue27Missing }], snap: false },
+  [{ title: issue27Title, reason: issue27Reason, score: 9, startWord: 0, endWord: 38, parts: issue27Parts, notInTake: issue27Missing }], 'issue #27; doc/spec/ai.md §11.7',
+  'Three beats excerpted verbatim from the lead’s hand-cut take, in source order with approximate word timing; the replayed reply orders the chain, automation and first client as requested.')
 equal(datasets.get('finalize-clips').find(test => test.id === 'invalid-numbers').expected.map(clip => clip.title), ['valid'], 'non-finite values rejected individually')
 equal(datasets.get('finalize-clips').find(test => test.id === 'trim-utf16-surrogate').expected[0].title, 'T'.repeat(119), 'surrogate-safe title truncation')
 for (const preset of clipFinder.presets) {
@@ -273,6 +295,8 @@ for (const preset of clipFinder.presets) {
     }
   }
 }
+renderCase('clip-finder-requests', 'issue-27-custom-story-schema', 'clipFinder', f1Words, formattedF1.lines, 'custom', issue27Instruction)
+renderCase('clip-finder-requests', 'pricing-single-part-schema', 'clipFinder', f1Words, formattedF1.lines, 'best', 'clips about pricing')
 for (const strength of aiTighten.request.strengths) {
   for (const [variant, instructions] of [['plain', ''], ['instructions', '  Keep names and numbers.  ']]) {
     renderCase('ai-tighten-requests', `${strength.id}-${variant}-single`, 'aiTighten', f1Words, formattedF1.lines, strength.id, instructions)
@@ -573,7 +597,7 @@ for (const [id, input, expected] of [
 ]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', ...input }, expected,
   'doc/spec/ai.md §4.5; §6.9', 'LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.')
 const datasetSources = { 'voice-rewrite-requests': voiceLabSources('voiceRewrite'), 'patch-rewrite-requests': voiceLabSources('patchRewrite'),
-  'connector-requests': { ...sourceHashes, [voiceLabPaths.voiceRewrite]: voiceLabSources('voiceRewrite')[voiceLabPaths.voiceRewrite], ...voiceLabSources('patchRewrite') },
+  'connector-requests': { ...sourceHashes, [autopilotPath]: sha256(autopilotBytes), [voiceLabPaths.voiceRewrite]: voiceLabSources('voiceRewrite')[voiceLabPaths.voiceRewrite], ...voiceLabSources('patchRewrite') },
   'cli-replies': { ...voiceLabSources('voiceRewrite'), 'shared/catalog/llm-providers.json': sourceHashes['shared/catalog/llm-providers.json'] } }
 for (const [suffix, stderr, message, classified = 'cliFailed'] of [
   ['leading-blank', '\n  Request failed.  \nignored', 'Request failed.'],
@@ -614,6 +638,20 @@ for (const name of ['voiceRewrite', 'patchRewrite']) {
   }
   checkRequired(JSON.parse(expected.files['<io>/schema.json']))
   add('connector-requests', `codex-strict-${name}`, 'connector-request', { request, connector: 'codex', options: {} }, expected, 'doc/spec/ai.md §2.2; §6.9')
+}
+const autopilot = autopilotSchemaRequests(clipAutopilot)
+const momentFields = autopilot.moments.schema.properties.clips.items.properties
+const planFields = autopilot.plan.schema.properties
+equal(momentFields.kind.enum, ['stretch', 'story', 'showreel'], 'Autopilot moment shapes')
+for (const parts of [momentFields.parts, planFields.parts]) {
+  equal([parts.minItems, parts.maxItems, ...parts.items.required], [1, 10, 'startWord', 'endWord'], 'Autopilot parts contract')
+}
+assert(autopilot.plan.instruction.startsWith('Plan the clip made of these parts, in this order: words 45–64, 5–24.'))
+for (const [stage, excerpt] of Object.entries(autopilot)) {
+  reference.validateSchema(excerpt.schema)
+  const request = { ...testRequest, ...excerpt }
+  add('connector-requests', `codex-strict-autopilot-${stage}`, 'connector-request', { request, connector: 'codex', options: {} },
+    renderConnector(request, connectors.codex, catalog), 'doc/spec/ai.md §6.9; §16', 'Autopilot v12 schema and representative request text; connector replay only.')
 }
 const variants = [
   ['anthropic-no-fallback-beta', 'anthropic', { serverSideFallback: false }],

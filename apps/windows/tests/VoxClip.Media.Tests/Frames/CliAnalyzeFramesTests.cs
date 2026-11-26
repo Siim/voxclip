@@ -115,12 +115,11 @@ public sealed class CliAnalyzeFramesTests : IDisposable
 
     /// <summary>The whole CLI with no face models installed: <c>modelMissing</c>, exit 7, the line that says so, and nothing measured or
     /// cached. A missing clip or a wrong pair of options is a usage error (exit 2), as on the Mac. The run is in-process, so it skips when
-    /// the installed CLI has faces (the catalogue enabled, or <see cref="OnnxFrameFaces.OverrideVariable"/> set for W3/W8's runs).</summary>
+    /// the installed CLI has faces (the catalogue enabled, or the Debug developer override).</summary>
     [Fact]
     public async Task WithFacesUnavailableTheCliFailsWithTheMacsCodeAndLine()
     {
-        Assert.SkipWhen(new FrameModelCatalog().Enabled || OnnxFrameFaces.Overridden(),
-            "The face models are installed for this run (the catalogue is enabled or VOXCLIP_FRAME_FACES=1), so the CLI's faces-unavailable path can't be reached.");
+        Assert.SkipWhen(ShouldLoadFaceModels(), "The face models are enabled for this run.");
         var (project, key) = await ProjectAsync();
         var (exit, output, _) = await RunAsync("analyze-frames", "--open", project, "--clip", "fq-clip-1", "--json");
         Assert.Equal(7, exit);
@@ -133,28 +132,33 @@ public sealed class CliAnalyzeFramesTests : IDisposable
 
         var (human, _, errors) = await RunAsync("analyze-frames", "--open", project, "--clip", "fq-clip-1");
         Assert.Equal(7, human);
-        Assert.Contains("The face models aren't installed on this PC", errors, StringComparison.Ordinal);
+        Assert.Contains(FrameFaces.UnavailableMessage, errors, StringComparison.Ordinal);
 
         Assert.Equal(2, (await RunAsync("analyze-frames", "--open", project, "--json")).Exit);
         Assert.Equal(2, (await RunAsync("analyze-frames", "--open", project, "--transcript", project, "--json")).Exit);
         Assert.Equal(2, (await RunAsync("analyze-frames", "--open", project, "--clip", "c", "--words", "0:1", "--json")).Exit);
     }
 
-    /// <summary>The installed CLI's face source is the bundled models (W3) only while the catalogue is enabled or the developer override
-    /// (<see cref="OnnxFrameFaces.OverrideVariable"/>) is set; the shipped catalogue is off, so a plain run has none.</summary>
+    /// <summary>The installed CLI follows the catalogue in Release and allows the developer override only in Debug.</summary>
     [Fact]
     public void TheInstalledFaceSourceFollowsTheCatalogueAndTheOverride()
     {
         var installed = CliFrameSources.Installed();
         try
         {
-            Assert.Equal(new FrameModelCatalog().Enabled || OnnxFrameFaces.Overridden(), installed.Faces is OnnxFrameFaces);
+            Assert.Equal(ShouldLoadFaceModels(), installed.Faces is OnnxFrameFaces);
         }
         finally
         {
             (installed.Faces as IDisposable)?.Dispose();
         }
     }
+
+    private static bool ShouldLoadFaceModels() => new FrameModelCatalog().Enabled
+#if DEBUG
+        || Environment.GetEnvironmentVariable("VOXCLIP_FRAME_FACES") == "1"
+#endif
+        ;
 
     /// <summary>With faces but no text recognizer (this portable CLI has no Windows OCR), nothing is measured either.</summary>
     [Fact]

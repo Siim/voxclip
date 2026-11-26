@@ -17,12 +17,39 @@ public enum ClipOrigin
     [JsonStringEnumMemberName("ai")] Ai
 }
 
+/// <summary>Optional label for a multi-part clip; never used for playback.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<StoryClipKind>))]
+public enum StoryClipKind
+{
+    /// <summary>A story told in the chosen order.</summary>
+    [JsonStringEnumMemberName("story")] Story,
+    /// <summary>A collection of highlights.</summary>
+    [JsonStringEnumMemberName("showreel")] Showreel
+}
+
+/// <summary>One inclusive source range in play order, with stable identity and optional face reframe.</summary>
+public sealed record ClipPart(string Id, string StartWordId, string EndWordId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null);
+
+/// <summary>One inclusive range in a persisted AI suggestion.</summary>
+public sealed record ClipWordRange(string StartWordId, string EndWordId);
+
 /// <summary>Inclusive word-id range; editing §2.5 and project schema. A range never rewrites cuts. <paramref name="LeadInSeconds"/>
 /// (schema v4, ADR-R48 part 2) opens the clip up to 0.6 s before its first word, inside the pause before it (never across the
 /// word before); omitted when null. Moving the clip's first word drops it.</summary>
 public sealed record ClipRange(string Id, string StartWordId, string EndWordId, string? Title,
     ClipOrigin Origin, string? AiResultId, int? AiClipIndex, bool Selected,
-    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] double? LeadInSeconds = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? LeadInSeconds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ClipPart>? Parts = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] StoryClipKind? Kind = null)
+{
+    /// <summary>Ordered playback ranges; synthesizes one part for an ordinary clip.</summary>
+    [JsonIgnore] public IReadOnlyList<ClipPart> PlayParts => Parts is { Count: > 0 } ? Parts : [new(Id, StartWordId, EndWordId)];
+
+    /// <summary>Resolve ordered ranges to inclusive transcript indices, or null for invalid references or overlap.</summary>
+    public IReadOnlyList<(int Start, int End)>? PlayPartIndices(IReadOnlyList<TimedWord> words) =>
+        StoryClips.Indices(PlayParts.Select(part => (part.StartWordId, part.EndWordId)), words);
+}
 
 /// <summary>Immutable editor snapshot; editing §2.5.</summary>
 public sealed record EditState(TranscriptModel Transcript, IReadOnlyList<Pause> Pauses, double PauseThresholdSeconds,
@@ -60,6 +87,7 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     private long outputSamples = NormalizeOutputSamples(Kept, OutputSamples);
     private IReadOnlyList<Join> joins = NormalizeJoins(SampleRate, TotalSamples, Kept, Joins);
     private GainPart[] gainParts = BuildGainParts(SampleRate, TotalSamples, Kept);
+    private SourceMapEntry[] sourceIndex = EditingPlanner.SourceIndex(Kept);
 
     /// <summary>Native audio sample rate. A record copy rebuilds its gain table when changed.</summary>
     public double SampleRate { get => sampleRate; init { sampleRate = value; RebuildDerived(); } }
@@ -72,11 +100,15 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     /// <summary>Joins derived from kept intervals and source bounds, editing §2.7.</summary>
     public IReadOnlyList<Join> Joins { get => joins; init { } }
 
+    /// <summary>Output sample at the start of each nonempty part after the first.</summary>
+    [JsonIgnore] public IReadOnlyList<long> PartSeams { get; init; } = [];
+
     private void RebuildDerived()
     {
         outputSamples = Kept.Sum(part => part.EndSample - part.StartSample);
         joins = EditingPlanner.BuildJoins(SampleRate, TotalSamples, Kept);
         gainParts = BuildGainParts(SampleRate, TotalSamples, Kept);
+        sourceIndex = EditingPlanner.SourceIndex(Kept);
     }
 
     private static long NormalizeOutputSamples(IReadOnlyList<MediaInterval> intervals, long supplied)
@@ -111,17 +143,15 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     /// <summary>Output duration; editing §2.7.</summary>
     public double Duration => OutputSamples / SampleRate;
     /// <summary>Source to edited time; editing §7.4.</summary>
-    public double MapTime(double source)
+    public double MapTime(double source) => MapTime(source, false);
+    internal double MapTime(double source, bool end)
     {
         var sample = EditingMath.ClampSample(double.IsFinite(source) ? source : 0, SampleRate, TotalSamples);
-        long removed = 0;
-        for (var index = 0; index < Cuts.Count; index++)
-        {
-            var cut = Cuts[index];
-            if (cut.StartSample >= sample) break;
-            removed += Math.Min(sample, cut.EndSample) - cut.StartSample;
-        }
-        return Math.Clamp(sample - removed, 0, OutputSamples) / SampleRate;
+        var probe = end && PartSeams.Count > 0 && sample > 0 ? sample - 1 : sample;
+        var index = EditingPlanner.FindSource(sourceIndex, probe, entry => entry.Source.StartSample);
+        if (index < 0) return 0;
+        var entry = sourceIndex[index];
+        return Math.Min(entry.OutputEnd, entry.OutputStart + sample - entry.Source.StartSample) / SampleRate;
     }
     /// <summary>Edited to source time; editing §7.4.</summary>
     public double SourceTime(double edited)
@@ -170,7 +200,8 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
 }
 
 /// <summary>Edited-timeline word, derived and never stored; editing §2.8.</summary>
-public sealed record CaptionWord(string Id, string Text, double Start, double End);
+public sealed record CaptionWord(string Id, string Text, double Start, double End,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? StartsPart = null);
 
 /// <summary>Editor operations; editing §6. Reducers are pure and one operation is one undo step.</summary>
 public abstract record EditOperation
@@ -201,6 +232,10 @@ public abstract record EditOperation
     public sealed record AddAiClips(string ResultId, IReadOnlyList<AiClip> Clips) : EditOperation;
     /// <summary>Move inclusive clip edges without changing cuts; editing §6.3.</summary>
     public sealed record UpdateClip(string Id, int StartIndex, int EndIndex) : EditOperation;
+    /// <summary>Replace the ordered parts and recompute the hull as one edit.</summary>
+    public sealed record SetClipParts(string Id, IReadOnlyList<ClipPart> Parts) : EditOperation;
+    /// <summary>Make an ordinary clip from a part without changing the cut set.</summary>
+    public sealed record MakeClipOfPart(string ClipId, string PartId) : EditOperation;
     /// <summary>Set trimmed title or clear it; editing §6.3.</summary>
     public sealed record RenameClip(string Id, string? Title) : EditOperation;
     /// <summary>Set the export checkbox only; editing §6.3.</summary>
@@ -226,6 +261,17 @@ public static class EditingEngine
     public static EditState? FromProject(Project project) => EditingProject.FromProject(project);
     /// <summary>Store only persistent editing fields and prune removed clip captions; editing §10.4–10.7 and plan W3.</summary>
     public static Project ApplyToProject(Project project, EditState state) => EditingProject.ApplyToProject(project, state);
+    /// <summary>Apply one operation with project-wide paid-work and placement checks.</summary>
+    public static Project ApplyEditing(Project project, EditOperation operation)
+    {
+        if (FromProject(project) is not { } state) return project;
+        var changed = Reduce(state, operation, project);
+        return ReferenceEquals(state, changed) ? project : ApplyToProject(project, changed);
+    }
+
+    /// <summary>Reduce one operation using the project for paid-work and placement checks.</summary>
+    public static EditState Reduce(EditState state, EditOperation operation, Project project) =>
+        EditingSession.Reduce(state, operation, project.Ai.Results, project);
     /// <summary>Compute scoped counts and gates without changing the snapshot; editing §6.4.</summary>
     public static EditSummary Summarize(EditState state) => EditingSession.Summarize(state);
     /// <summary>Reduce one undoable operation.</summary>
@@ -239,6 +285,16 @@ public static class EditingEngine
     public static IReadOnlyList<EditSegment> BuildSegments(EditState state, double duration) => EditingSession.BuildSegments(state);
     /// <summary>Words for captions after cuts and corrections.</summary>
     public static IReadOnlyList<CaptionWord> CaptionWords(EditState state, EditPlan plan) => CaptionCopy(BuildSegments(state, plan.TotalSamples / plan.SampleRate), plan);
+
+    /// <summary>Build the selected clip or the full take, respecting ordered parts.</summary>
+    public static EditPlan BuildPlan(EditState state, double duration, double rate) =>
+        state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId) is { Parts: not null } story
+            ? BuildStoryPlan(state, story, duration, rate)
+            : BuildEditPlan(BuildSegments(state, duration), duration, rate, state.PauseKeepSeconds);
+
+    /// <summary>Build a story by concatenating its single-range plans on the same sample grid.</summary>
+    public static EditPlan BuildStoryPlan(EditState state, ClipRange clip, double duration, double rate) =>
+        EditingPlanner.BuildStoryPlan(state, clip, duration, rate);
     /// <summary>Derive transcript copy from current speech text, never split a multi-word correction, editing §6.5.</summary>
     public static string TranscriptText(EditState state)
         => string.Join(" ", state.Transcript.Words.Where(word => word.Kind == Shared.WordKind.Word).Select(word => state.Corrections.GetValueOrDefault(word.Id, word.Text)));
@@ -247,8 +303,9 @@ public static class EditingEngine
         => EditingPlanner.CutRange(segments, index, duration, pauseKeepSeconds);
     /// <summary>Map valid kept speech words independently, preserving corrected text exactly, editing §7.6.</summary>
     public static IReadOnlyList<CaptionWord> CaptionCopy(IReadOnlyList<EditSegment> segments, EditPlan plan)
-        => segments.Where(segment => segment.Kind == EditSegmentKind.Word && (segment.WordKind ?? Shared.WordKind.Word) == Shared.WordKind.Word && !segment.Cut && EditingPlanner.Valid(segment))
-            .Select(segment => new CaptionWord(segment.Id, segment.Text ?? "", plan.MapTime(segment.Start), plan.MapTime(segment.End))).Where(word => word.End > word.Start).ToArray();
+        => plan.PartSeams.Count > 0 ? EditingPlanner.StoryCaptions(segments, plan)
+            : segments.Where(segment => segment.Kind == EditSegmentKind.Word && (segment.WordKind ?? Shared.WordKind.Word) == Shared.WordKind.Word && !segment.Cut && EditingPlanner.Valid(segment))
+                .Select(segment => new CaptionWord(segment.Id, segment.Text ?? "", plan.MapTime(segment.Start), plan.MapTime(segment.End))).Where(word => word.End > word.Start).ToArray();
 }
 
 /// <summary>Immutable undo/redo snapshots; editing §6.</summary>

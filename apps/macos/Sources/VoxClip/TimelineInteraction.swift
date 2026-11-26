@@ -109,7 +109,7 @@ import VoxClipCore
         canvas.followPlayhead()
     }
     private func trimTarget(_ point: NSPoint) -> (ClipRange, Bool)? {
-        guard model.capabilities.edit, let clip = model.activeClip, let range = canvas.content.inOut else { return nil }
+        guard model.capabilities.edit, let clip = model.activeClip, clip.parts == nil, let range = canvas.content.inOut else { return nil }
         let lower = canvas.headerWidth + canvas.viewport.x(range.lowerBound)
         let upper = canvas.headerWidth + canvas.viewport.x(range.upperBound)
         let left = abs(point.x - lower), right = abs(point.x - upper)

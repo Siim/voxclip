@@ -152,6 +152,32 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.statusClipStyle?.text == "✦ Claude does it all · top 3 · ≤$2")
     }
 
+    @Test func claudeModeReviewsAStoryInPlayOrderWithDecisionReasons() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        var story = MakeItPostableTestsPlan.main
+        story.orderedParts = [.init(startWord: 6, endWord: 7), .init(startWord: 2, endWord: 4)]
+        story.rewrites = []
+        story.cuts = []
+        story.pauseCuts = []
+        story.look = .init(id: .warm, reason: "Keep the take personal.")
+        editor.makeIt.services?.plan = { request, _, _, _ in
+            #expect(request.creativeShapes)
+            return ClipAutopilotSeries(plans: [story])
+        }
+        editor.makeTopPostable(1, budget: MakeItBudget(cap: 2), only: ["clip-main"])
+        await editor.makeIt.waitForQueue()
+        let run = try #require(editor.makeIt.run(for: "clip-main"))
+        let card = try #require(editor.creativeProposalData(run))
+        #expect(card.source == "Story · made by Claude")
+        #expect(card.parts.map(\.start) == [editor.words[6].start, editor.words[2].start])
+        #expect(card.groups.map(\.id) == CreativeProposalGroup.Section.allCases)
+        #expect(card.groups.first(where: { $0.id == .picture })?.items.contains { !$0.reason.isEmpty } == true)
+        #expect(card.cost?.contains("of your $2 limit") == true)
+        #expect(editor.project.edits.clips.first(where: { $0.id == run.clipID })?.kind == .story)
+    }
+
     /// Through the real Find Clips on a newly opened video: a scripted Claude Code on its plan answers, Find Clips sends with
     /// no click, and once its task has ended (and released the AI lease) the run starts by itself.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))
@@ -272,11 +298,14 @@ private final class ClaudeCalls: Sendable {
         nonisolated let id: ConnectorID = .claudeCode
         let reply: String
         var status: ConnectorStatus
+        var failures: [LLMError]
         private var gate: CheckedContinuation<Void, Never>?
         private var open = false
         private(set) var checks = 0
         private(set) var requests = 0
-        init(reply: String, status: ConnectorStatus, gated: Bool) { self.reply = reply; self.status = status; open = !gated }
+        init(reply: String, status: ConnectorStatus, gated: Bool, failures: [LLMError]) {
+            self.reply = reply; self.status = status; open = !gated; self.failures = failures
+        }
         func set(_ next: ConnectorStatus) { status = next }
         func release() { open = true; gate?.resume(); gate = nil }
         func status() async -> ConnectorStatus {
@@ -287,7 +316,11 @@ private final class ClaudeCalls: Sendable {
         func knownCLIAuthMethod() async -> String? { status == .ready ? "claude.ai" : nil }
         func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture", name: "Fixture", contextTokens: 128_000, source: .curated)] }
         func contextTokens(model: String) -> Int? { 128_000 }
-        func send(_ request: LLMRequest, model: String) -> RawCompletion { requests += 1; return RawCompletion(text: reply, model: model, stop: .complete) }
+        func send(_ request: LLMRequest, model: String) throws -> RawCompletion {
+            requests += 1
+            if !failures.isEmpty { throw failures.removeFirst() }
+            return RawCompletion(text: reply, model: model, stop: .complete)
+        }
     }
 
     private struct NewVideo {
@@ -298,7 +331,7 @@ private final class ClaudeCalls: Sendable {
     }
 
     /// A newly imported, transcribed video with no clips, Claude mode on and Claude Code chosen, before any status check.
-    private func newVideo(status: ConnectorStatus, gated: Bool) throws -> NewVideo {
+    private func newVideo(status: ConnectorStatus, gated: Bool, failures: [LLMError] = []) throws -> NewVideo {
         _ = NSApplication.shared
         let app = AppModel(settingsStore: RegressionSettingsStore())
         app.loadCatalogue()
@@ -307,7 +340,8 @@ private final class ClaudeCalls: Sendable {
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         var project = try DebugExplorer.fiveQuestions(from: base)
         project.edits.clips = []; project.ai.results = []
-        let fake = GatedClaudeCode(reply: try DebugRewriteSmoke.claudeModeFindReply(words: project.transcript?.words ?? []), status: status, gated: gated)
+        let fake = GatedClaudeCode(reply: try DebugRewriteSmoke.claudeModeFindReply(words: project.transcript?.words ?? []),
+                                   status: status, gated: gated, failures: failures)
         app.connectorOverride = { _ in fake }
         app.connectorConsentOverride = { _, _, _ in true }
         #expect(app.set("llm.connector", .string("claude-code")))
@@ -334,6 +368,126 @@ private final class ClaudeCalls: Sendable {
     private func setUpShown(_ phase: ClaudeModeState.Phase) -> Bool {
         if case .blocked(.setUp) = phase { return true }
         return false
+    }
+
+    @Test(.timeLimit(.minutes(1))) func unavailableFindModelBlocksAfterOneRequest() async throws {
+        let video = try newVideo(status: .ready, gated: false, failures: [.modelNotFound("missing-model")])
+        let editor = video.editor
+        defer { editor.close() }
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        await editor.claudeMode.detection?.value
+        _ = try await TestDeadline.value(editor.findTask, "first Find Clips")
+        await editor.claudeMode.afterFind?.value
+        _ = try await TestDeadline.value(editor.findTask, "any repeated Find Clips")
+        #expect(await video.fake.requests == 1)
+        guard case .blocked(let blocker) = editor.claudeMode.phase else {
+            Issue.record("Find Clips did not show a blocker: \(editor.claudeMode.phase)")
+            return
+        }
+        #expect(blocker.reason.contains("missing-model"))
+        #expect(blocker.action == "AI Settings…")
+        editor.fixClaudeModeBlocker()
+        #expect(video.app.settingsPane == "ai")
+        editor.claudeModeContinue()
+        #expect(await video.fake.requests == 1)
+    }
+
+    private struct FindRetryCase: Decodable {
+        enum Failure: String, Decodable {
+            case modelNotFound, cliSignedOut, quotaExceeded, network, timeout
+
+            var error: LLMError {
+                switch self {
+                case .modelNotFound: .modelNotFound("missing-model")
+                case .cliSignedOut: .cliSignedOut
+                case .quotaExceeded: .quotaExceeded
+                case .network: .network
+                case .timeout: .timeout
+                }
+            }
+        }
+
+        let name: String
+        let failures: [Failure]
+        let requests: Int
+        let retrySeconds: [Int]
+        let action: String
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: ["unavailable model", "signed out", "out of quota", "network stays down", "recovers after a timeout"])
+    func findFailuresStopOrRetryTheRun(_ name: String) async throws {
+        let shared = try SharedResources.locate()
+        let fixture = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/clips-mode/find-retry-cases.json"))
+        let cases = try JSONDecoder().decode([FindRetryCase].self, from: fixture)
+        let retryCase = try #require(cases.first { $0.name == name })
+        let video = try newVideo(status: .ready, gated: false, failures: retryCase.failures.map(\.error))
+        let editor = video.editor
+        var delays: [Duration] = []
+        editor.claudeMode.waitForFindRetry = { [weak editor] delay in
+            delays.append(delay)
+            editor?.claudeModeContinue()
+        }
+        defer { editor.close() }
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        await editor.claudeMode.detection?.value
+        while let find = editor.findTask {
+            _ = try await TestDeadline.value(find, "Find Clips")
+            await editor.claudeMode.afterFind?.value
+            if editor.findTask == find { break }
+        }
+        _ = try await TestDeadline.value(editor.claudeMode.task, "the run")
+        editor.claudeModeContinue()
+        let requests = await video.fake.requests
+        #expect(requests == retryCase.requests)
+        let expectedDelays = retryCase.retrySeconds.map { Duration.seconds($0) }
+        #expect(delays == expectedDelays)
+        if retryCase.action == "done" {
+            #expect(editor.claudeMode.phase == .done && editor.claudeModeReady.count == 3)
+            return
+        }
+        guard case .blocked(let blocker) = editor.claudeMode.phase else {
+            Issue.record("Find Clips did not show a blocker: \(editor.claudeMode.phase)")
+            return
+        }
+        #expect(blocker.action == (retryCase.action == "settings" ? "AI Settings…" : "Find Clips Again"))
+        #expect(blocker.reason.hasSuffix("Your edits are saved."))
+    }
+
+    @Test(.timeLimit(.minutes(1))) func declinedFindApprovalWaitsWithoutSending() async throws {
+        let video = try newVideo(status: .ready, gated: false)
+        let editor = video.editor
+        defer { editor.close() }
+        var approvals = 0
+        video.app.connectorConsentOverride = { _, _, _ in approvals += 1; return false }
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        await editor.claudeMode.detection?.value
+        _ = try await TestDeadline.value(editor.findTask, "declined Find Clips")
+        await editor.claudeMode.afterFind?.value
+        editor.claudeModeContinue()
+        #expect(approvals == 1)
+        #expect(await video.fake.requests == 0)
+        guard case .blocked(.approveSend(let reason)) = editor.claudeMode.phase else {
+            Issue.record("Find Clips did not wait for approval: \(editor.claudeMode.phase)")
+            return
+        }
+        #expect(reason.contains("waits for your OK"))
+    }
+
+    @Test(.timeLimit(.minutes(1))) func cancelledFindDoesNotRestartOrShowAnError() async throws {
+        let video = try newVideo(status: .ready, gated: false, failures: [.cancelled])
+        let editor = video.editor
+        defer { editor.close() }
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        await editor.claudeMode.detection?.value
+        _ = try await TestDeadline.value(editor.findTask, "cancelled Find Clips")
+        await editor.claudeMode.afterFind?.value
+        editor.claudeModeContinue()
+        #expect(await video.fake.requests == 1)
+        #expect(editor.claudeMode.phase == .idle && editor.clipError == nil)
     }
 
     /// The user's MVP53 case: the transcript lands before Claude Code's status check has run. The card waits on the check,
@@ -990,7 +1144,7 @@ extension ClaudeModeTests {
                 #expect(row.text == "Finish the whole clip in Rewrite: its paid voice is kept")
                 #expect(editor.claudeMode.budget?.spent == Decimal(string: "0.06"), "only the whole clip's voice was paid")
             } else {
-                #expect(stubs.rewords.isEmpty && stubs.voices.count == 1 && stubs.lipsyncs == [.lipsync2], "laid out, never a longer wording")
+                #expect(stubs.rewords.isEmpty && stubs.voices.count == 1 && stubs.lipsyncs == [.sync3], "laid out, never a longer wording")
                 guard case .revoiced? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
                 #expect(row.text == "Revoiced the whole clip in your voice, lip synced")
                 #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")

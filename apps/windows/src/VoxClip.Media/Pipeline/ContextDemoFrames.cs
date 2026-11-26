@@ -8,7 +8,7 @@ using VoxClip.Media.Ffmpeg;
 namespace VoxClip.Media.Pipeline;
 
 /// <summary>Where the composer reads a screen recording's frames: the frame at a time in the asset, and the asset's own rotation.</summary>
-internal interface IContextDemoFrames : IDisposable
+internal interface IVideoLayerFrames : IDisposable
 {
     (PixelBuffer Frame, int Rotation) Read(string assetId, double sourceTime, CancellationToken ct);
 }
@@ -17,7 +17,7 @@ internal interface IContextDemoFrames : IDisposable
 /// regular file, no links on its canonical path, its byte size, an MP4 brand, its SHA-256 and its pixel size) while it is copied into
 /// a private snapshot that the render holds until it releases it, then decoded from there. A missing or changed file stops the
 /// render with <see cref="ContextDemoRendering.AssetMessage"/>; no black or older frame stands in for it.</summary>
-internal sealed class ContextDemoFrames : IContextDemoFrames
+internal sealed class ContextDemoFrames : IVideoLayerFrames
 {
     internal const long MaximumBytes = 64 * 1024 * 1024;
     private static readonly string[] Brands = ["isom", "iso2", "mp41", "mp42", "avc1", "M4V "];

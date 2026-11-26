@@ -1,0 +1,1135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/harness-timeline.schema.json",
+  "title": "VoxClip harness timeline v2",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "clipId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "An existing clip id from read_clips."
+    },
+    "newClip": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "stretch",
+            "story",
+            "showreel"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "kind",
+        "title"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "endWord": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "startWord",
+          "endWord"
+        ]
+      }
+    },
+    "cuts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "endWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kind": {
+            "enum": [
+              "filler",
+              "stumble",
+              "repeat",
+              "falseStart",
+              "tangent",
+              "other"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "startWord",
+          "endWord",
+          "kind",
+          "reason"
+        ]
+      }
+    },
+    "pauseCuts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "afterWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "afterWord",
+          "reason"
+        ]
+      }
+    },
+    "corrections": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "word": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "heard": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "word",
+          "heard",
+          "text",
+          "reason"
+        ]
+      }
+    },
+    "captionStyle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 900
+        }
+      },
+      "required": [
+        "family",
+        "weight"
+      ]
+    },
+    "case": {
+      "enum": [
+        "upper",
+        "lower",
+        "asSaid"
+      ]
+    },
+    "wordsPerCaption": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 12
+    },
+    "look": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "enum": [
+            "original",
+            "muted",
+            "warm",
+            "bw"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "speed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "rate"
+      ]
+    },
+    "hook": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "postText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "coverTitle": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trackId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "brief": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "fadeIn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "fadeOut": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "duckDb": {
+          "type": "number",
+          "minimum": -24,
+          "maximum": 0
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "startWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "endWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "songFrom": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1800
+              },
+              "loop": {
+                "type": "boolean"
+              },
+              "gainDb": {
+                "type": "number",
+                "minimum": -40,
+                "maximum": 12
+              },
+              "fadeIn": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "fadeOut": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              }
+            },
+            "required": [
+              "startWord",
+              "endWord"
+            ]
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "trackId"
+          ]
+        },
+        {
+          "required": [
+            "brief"
+          ]
+        }
+      ]
+    },
+    "effects": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "clip-plan-effect.schema.json"
+      },
+      "description": "Use any clip-plan entry. Footage references a sourceKey from read_clips. Asset requests are reviewed in VoxClip; this tool never sends or spends."
+    },
+    "rewrites": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "endWord": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "startWord",
+          "endWord",
+          "text",
+          "reason"
+        ]
+      }
+    },
+    "edits": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "trim"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "edge": {
+                "enum": [
+                  "start",
+                  "end"
+                ]
+              },
+              "toWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "edge",
+              "toWord"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "splitAll"
+              },
+              "atWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "atWord"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "fade"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "edge": {
+                "enum": [
+                  "in",
+                  "out"
+                ]
+              },
+              "seconds": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "edge",
+              "seconds"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "setGain"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "db": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "db"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "addGainPoint"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "atWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "db": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "atWord",
+              "db"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "moveGainPoint"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fromSeconds": {
+                "type": "number",
+                "minimum": 0
+              },
+              "toWord": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "db": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "fromSeconds",
+              "toWord",
+              "db"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "removeGainPoint"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "atSeconds": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "atSeconds"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "slip"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bySeconds": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "bySeconds"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "setLoop"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "enabled"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "setDuck"
+              },
+              "track": {
+                "type": "string",
+                "minLength": 1
+              },
+              "db": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "track",
+              "db"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "move"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "toWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "toWord"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "nudge"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "frames": {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "frames"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "nudge"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "words": {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "words"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "split"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "atWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "atWord"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "duplicate"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "toWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "item"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "delete"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "op",
+              "item"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "move"
+              },
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "toWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "items",
+              "toWord"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "nudge"
+              },
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "frames": {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "op",
+              "items",
+              "frames"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "nudge"
+              },
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "words": {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "op",
+              "items",
+              "words"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "split"
+              },
+              "items": {
+                "type": "array",
+                "minItems": 0,
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "atWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "items",
+              "atWord"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "duplicate"
+              },
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "toWord": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "op",
+              "items"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "delete"
+              },
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "op",
+              "items"
+            ]
+          }
+        ]
+      }
+    },
+    "musicTrackId": {
+      "type": "string",
+      "minLength": 1,
+      "deprecated": true
+    },
+    "generateMusic": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "deprecated": true
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "oneOf": [
+    {
+      "required": [
+        "clipId"
+      ]
+    },
+    {
+      "required": [
+        "newClip"
+      ]
+    }
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "parts"
+      ]
+    },
+    {
+      "required": [
+        "cuts"
+      ]
+    },
+    {
+      "required": [
+        "pauseCuts"
+      ]
+    },
+    {
+      "required": [
+        "corrections"
+      ]
+    },
+    {
+      "required": [
+        "captionStyle"
+      ]
+    },
+    {
+      "required": [
+        "font"
+      ]
+    },
+    {
+      "required": [
+        "case"
+      ]
+    },
+    {
+      "required": [
+        "wordsPerCaption"
+      ]
+    },
+    {
+      "required": [
+        "look"
+      ]
+    },
+    {
+      "required": [
+        "speed"
+      ]
+    },
+    {
+      "required": [
+        "hook"
+      ]
+    },
+    {
+      "required": [
+        "title"
+      ]
+    },
+    {
+      "required": [
+        "postText"
+      ]
+    },
+    {
+      "required": [
+        "coverTitle"
+      ]
+    },
+    {
+      "required": [
+        "music"
+      ]
+    },
+    {
+      "required": [
+        "effects"
+      ]
+    },
+    {
+      "required": [
+        "rewrites"
+      ]
+    },
+    {
+      "required": [
+        "edits"
+      ]
+    },
+    {
+      "required": [
+        "musicTrackId"
+      ]
+    },
+    {
+      "required": [
+        "generateMusic"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "newClip"
+        ]
+      },
+      "then": {
+        "required": [
+          "parts"
+        ],
+        "if": {
+          "properties": {
+            "newClip": {
+              "properties": {
+                "kind": {
+                  "const": "stretch"
+                }
+              }
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "parts": {
+              "maxItems": 1
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "parts": {
+              "minItems": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "edits"
+        ]
+      },
+      "then": {
+        "required": [
+          "clipId"
+        ]
+      }
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "music",
+              "musicTrackId"
+            ]
+          },
+          {
+            "required": [
+              "music",
+              "generateMusic"
+            ]
+          },
+          {
+            "required": [
+              "musicTrackId",
+              "generateMusic"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

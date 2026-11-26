@@ -20,7 +20,7 @@ import Testing
         #expect(v2.schemaVersion == 2 && v2.voiceLab.segments.count == 1)
         #expect(try JSONProjectStore.decode(JSONProjectStore.encode(v2)) == v2)
         var future = try #require(JSONSerialization.jsonObject(with: v1Data) as? [String: Any])
-        future["schemaVersion"] = 5
+        future["schemaVersion"] = 7
         #expect(throws: VoxClipError.projectTooNew) { try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: future)) }
         var unknown = v2; unknown.extensions = ["example.keep": .object(["nested": .array([.number(7)])])]
         #expect(try JSONProjectStore.decode(JSONProjectStore.encode(unknown)).extensions == unknown.extensions)
@@ -63,6 +63,19 @@ import Testing
         #expect(throws: VoiceLabProjectError.invalidRange) { try VoiceLabProject.validate(changed) }
         changed = good; var overlap = changed.voiceLab.segments[0]; overlap.id = "vl-overlap"; changed.voiceLab.segments.append(overlap)
         #expect(throws: VoiceLabProjectError.overlappingReplacement) { try VoiceLabProject.validate(changed) }
+    }
+
+    @Test func partEditPreservesPaidWholeClipAsACopy() throws {
+        let original = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/whole-clip-revoice-project.voxclip"))
+        let parts = [ClipPart(id: "second", startWordId: "w2", endWordId: "w2"),
+                     ClipPart(id: "first", startWordId: "w1", endWordId: "w1")]
+        var project = original
+        try project.applyEditing(.setClipParts(id: "clip-main", parts: parts))
+        #expect(project.edits.clips.first == original.edits.clips.first)
+        #expect(project.edits.clips.last?.playParts == parts)
+        #expect(project.edits.clips.last?.id == project.edits.activeClipId)
+        #expect(project.voiceLab == original.voiceLab)
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(project)).voiceLab == original.voiceLab)
     }
 
     @Test func passageAndFullTakeUseCanonicalPieces() throws {

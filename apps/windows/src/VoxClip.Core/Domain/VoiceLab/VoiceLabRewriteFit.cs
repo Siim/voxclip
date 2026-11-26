@@ -101,6 +101,9 @@ public static class VoiceLabRewriteFit
             !double.IsFinite(duration) || duration <= 0 || EditingMath.Round(duration * assetSampleRate) != plan.OutputFrames ||
             !double.IsFinite(output) || output <= 0 || output >= long.MaxValue) return false;
         var source = plan.WindowEndSample - plan.WindowStartSample;
+        if (plan.EditedTimeline && plan.VideoCuts.Count != 0) return VoiceLabNaturalPacing.ValidCuts(
+            new(VoiceLabVideoMode.Cut, plan.WindowStartSample, plan.WindowEndSample, (long)output, plan.PictureSpeed,
+                VoiceLabNaturalPacing.EDITED_CUT_ZOOM, 0.5, 0.5, null, null, null, null, null, null, null, plan.VideoCuts), sourceSampleRate);
         if (fit is VoiceLabFitResult.Exact && source == output) return true;
         var speed = source / output;
         return double.IsFinite(speed) && speed >= MinimumVideoSpeed && speed <= MaximumVideoSpeed;

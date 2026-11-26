@@ -127,7 +127,7 @@ enum ClipBarMetrics {
     }
     /// Rewrite can run on the scope now (V13): AI editing is available and there are words. Text Rewrite needs no
     /// selection and no Voice Lab.
-    var rewriteAvailable: Bool { RewriteEntryPolicy.canRun(editable: model.capabilities.ai, scope: model.rewriteScopeNow) }
+    var rewriteAvailable: Bool { model.storyRewriteReason() == nil && RewriteEntryPolicy.canRun(editable: model.capabilities.ai, scope: model.rewriteScopeNow) }
     var rewriteRunning: Bool { model.rewrite?.task.state == .running && !model.sendConfirmation.isPresented }
     /// The Tighten toast shows until the project changes again or the tab moves.
     var toastShown: Bool {
@@ -162,11 +162,13 @@ enum ClipBarMetrics {
         if !toastShown, tightened != nil { tightened = nil; toastEnd?.cancel() }
         let running = scoped && rewriteRunning
         let canRewrite = scoped && rewriteAvailable
+        let storyReason = model.storyRewriteReason()
         // Read-only: the verbs and the Ask field stay in place, dimmed, and say why (v5 f24).
         let note = readOnly ? model.mediaReadOnlyNote : nil
         for control in [rewrite, tighten, hook, askButton] as [NSControl] where control.isEnabled == readOnly { control.isEnabled = !readOnly }
         if ask.isEnabled == readOnly { ask.isEnabled = !readOnly }
-        rewrite.isHidden = !readOnly && (!canRewrite || running)
+        rewrite.isEnabled = !readOnly && storyReason == nil
+        rewrite.isHidden = !readOnly && !(scoped && storyReason != nil) && (!canRewrite || running)
         let matchesRewriteScope = model.rewrite.map { $0.rewriteScope == model.rewriteScopeNow } == true
         rewrite.isOn = matchesRewriteScope
         // The chosen AI asks before each send (C8): "Rewrite…", as Edit › Rewrite's title (design.md §3.1).
@@ -174,8 +176,8 @@ enum ClipBarMetrics {
         rewrite.symbol = failure != nil ? "exclamationmark.triangle" : "sparkles"
         rewrite.label = failure != nil ? "Rewrite failed" : model.rewriteAsksFirst ? "Rewrite…" : "Rewrite"
         let names = rewriteNames
-        rewrite.setAccessibilityLabel(failure.map { "\(names.verb). \($0). Try Again" } ?? names.verb)
-        rewrite.toolTip = note ?? failure.map { "\($0). Try Again (⇧⌘R)" } ?? "\(names.verb) (⇧⌘R)"
+        rewrite.setAccessibilityLabel(storyReason.map { "\(names.verb). \($0)" } ?? failure.map { "\(names.verb). \($0). Try Again" } ?? names.verb)
+        rewrite.toolTip = storyReason ?? note ?? failure.map { "\($0). Try Again (⇧⌘R)" } ?? "\(names.verb) (⇧⌘R)"
         let askName = names.ask
         let placeholder = names.ask + (model.showsScopeToneStrip ? Self.tonePointer : "")
         if ask.placeholder != placeholder { ask.placeholder = placeholder }

@@ -16,6 +16,92 @@
       "chip": "Voice and lip movement generated with AI"
     },
     {
+      "id": "selected-voice",
+      "patches": [
+        {
+          "path": "/voiceLab/wholeClipRevoices/0/match",
+          "value": null
+        },
+        {
+          "path": "/voiceLab/segments/0/qa/speakerScore",
+          "value": null
+        },
+        {
+          "path": "/voiceLab/segments/0/candidates/0/recipe/qa",
+          "value": {
+            "transcriptTokens": 2,
+            "transcriptExact": true,
+            "transcriptMatch": 1,
+            "lufsJumpLu": 0.2,
+            "peakDbfs": -1,
+            "speakerScore": null,
+            "speakerThreshold": null,
+            "speakerModel": null,
+            "speakerPassed": null,
+            "outputSpeakerCheckSkipped": true
+          }
+        },
+        {
+          "path": "/voiceLab/segments/0/candidates/1/recipe/qa",
+          "value": {
+            "transcriptTokens": 2,
+            "transcriptExact": true,
+            "transcriptMatch": 1,
+            "lufsJumpLu": 0.2,
+            "peakDbfs": -1,
+            "speakerScore": null,
+            "speakerThreshold": null,
+            "speakerModel": null,
+            "speakerPassed": null,
+            "outputSpeakerCheckSkipped": true
+          }
+        },
+        {
+          "path": "/voiceLab/segments/1/qa/speakerScore",
+          "value": null
+        },
+        {
+          "path": "/voiceLab/segments/1/candidates/0/recipe/qa",
+          "value": {
+            "transcriptTokens": 2,
+            "transcriptExact": true,
+            "transcriptMatch": 1,
+            "lufsJumpLu": 0.2,
+            "peakDbfs": -1,
+            "speakerScore": null,
+            "speakerThreshold": null,
+            "speakerModel": null,
+            "speakerPassed": null,
+            "outputSpeakerCheckSkipped": true
+          }
+        },
+        {
+          "path": "/voiceLab/segments/1/candidates/1/recipe/qa",
+          "value": {
+            "transcriptTokens": 2,
+            "transcriptExact": true,
+            "transcriptMatch": 1,
+            "lufsJumpLu": 0.2,
+            "peakDbfs": -1,
+            "speakerScore": null,
+            "speakerThreshold": null,
+            "speakerModel": null,
+            "speakerPassed": null,
+            "outputSpeakerCheckSkipped": true
+          }
+        }
+      ],
+      "outputSpeakerCheckSkipped": true,
+      "revoiced": true,
+      "kinds": [
+        "lipsync",
+        "revoice",
+        "tts"
+      ],
+      "postText": "Voice and lip movement generated with AI.",
+      "chip": "Voice and lip movement generated with AI"
+    },
+    {
       "id": "no-match-yet",
       "patches": [
         {
@@ -810,7 +896,7 @@
       "patches": [
         {
           "path": "/schemaVersion",
-          "value": 5
+          "value": 7
         }
       ],
       "tooNew": true

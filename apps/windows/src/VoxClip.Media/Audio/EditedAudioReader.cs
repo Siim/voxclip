@@ -135,8 +135,8 @@ internal sealed unsafe class EditedAudioReader : IDisposable
         }
     }
 
-    internal static Task WriteWaveAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish = true)
-        => EditedWaveWriter.WriteAsync(snapshot, path, ct, publish);
+    internal static Task WriteWaveAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish = true, bool includeMusic = false)
+        => EditedWaveWriter.WriteAsync(snapshot, path, ct, publish, includeMusic: includeMusic);
 
     public void Dispose() { mixer?.Dispose(); resample.Dispose(); decoder.Dispose(); }
 }

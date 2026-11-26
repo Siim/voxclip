@@ -17,7 +17,7 @@ internal sealed partial class RewriteSession
     internal bool IsGeneratingBatch { get; private set; }
     /// <summary>Every phrase is ready, kept as recorded or blocked by the guard, and at least one take or text fix applies. Use keeps a
     /// blocked phrase's original audio with no click first (Mac <c>canAccept</c> over the selected phrases, <c>blockedUseLine</c>).</summary>
-    internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 && Collision is null &&
+    internal bool CanAcceptAll => GenerationIsCurrent && !WholeClipBusy && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 && Collision is null &&
         generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.LeftOut || window.WaitsOnBlock || window.ReadyToAccept) &&
         (generationWindows.Any(window => !window.LeftOut && !window.WaitsOnBlock) || LocalOperations().Count > 0);
     /// <summary>Beside Use (Mac <c>blockedUseLine</c>): what it does with the blocked phrases still waiting; null when none waits.</summary>
@@ -124,7 +124,6 @@ internal sealed partial class RewriteSession
             var window = reusable ? previous[index] : generationFactory(index);
             window.FixedModelId = synthesisModel;
             window.ShareVoiceChecks(VoiceChecks, index);
-            if (AutoFix.Armed) window.KeepEveryTake();
             generationWindows.Add(window);
             if (!reusable) { ApplyRememberedBlock(window, desired.ElementAtOrDefault(index)); PreferVideoVoice(window); window.Changed += GenerationChanged; }
             else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();
@@ -287,7 +286,7 @@ internal sealed partial class RewriteSession
         "The price of the next phrases changed while takes were made, so nothing more was sent. Finished takes are kept. Get a fresh price for the rest.";
 
     /// <summary>A phrase the guard settled is skipped by the run (nothing is sent for it); a run of only settled phrases is not offered.</summary>
-    internal bool CanGenerateAll => GenerationIsCurrent && !IsGeneratingBatch && PreparedBatch is not null &&
+    internal bool CanGenerateAll => GenerationIsCurrent && !WholeClipBusy && !IsGeneratingBatch && PreparedBatch is not null &&
         generationWindows.All(window => window.CanExecute || window.Blocked is not null && !window.IsRunning && !window.IsPreparing) &&
         generationWindows.Any(window => window.Blocked is null && !window.LeftOut);
     internal void MarkBatchEstimateShown(VoiceLabTakeRunParts batch)
@@ -481,17 +480,10 @@ internal sealed partial class RewriteSession
     /// <summary>Mac <c>logFailure</c>: one line "rewrite failure stage={stage} type=… case=…" with no provider text.</summary>
     internal void LogFailure(Exception error, string stage)
     {
-        if (error is OperationCanceledException) return;
+        if (UiError.IsCancellation(error)) return;
         Log?.Write(VoxClip.Core.Services.Logging.LogLevel.Warn, "rewrite", $"rewrite failure stage={stage} " + FailureKind(error));
     }
     /// <summary>An error's type and case, with no associated text (Mac <c>failureKind</c>): "type=VoiceLabProjectException case=VideoModeUnsupported".</summary>
-    internal static string FailureKind(Exception error) => "type=" + error.GetType().Name + error switch
-    {
-        VoiceLabProjectException project => " case=" + project.Code,
-        VoiceLabGeometryException geometry => " case=" + geometry.Code,
-        VoiceLabException voiceLab => " case=" + voiceLab.Kind,
-        VoiceConsentException consent => " case=" + consent.Kind,
-        _ => ""
-    };
+    internal static string FailureKind(Exception error) => UiError.FailureKind(error);
     internal static string UnusableNote(int phrase) => $"Phrase {phrase} couldn't be made part of the video, so it keeps your original audio.";
 }

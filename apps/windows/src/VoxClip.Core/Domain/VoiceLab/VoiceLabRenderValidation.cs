@@ -177,6 +177,10 @@ public static class VoiceLabRenderValidation
         Require(video.Mode is VoiceLabVideoMode.Cut or VoiceLabVideoMode.Lipsync || video.Cuts is null, VoiceLabProjectErrorCode.InvalidSegment);
         var joinAllowed = qa.JoinAdvisory?.Validates(qa.LufsJumpLu, recipe.Provenance.CreatedAt) ?? (Math.Abs(qa.LufsJumpLu) <= 2);
         Require(double.IsFinite(qa.LufsJumpLu) && joinAllowed && double.IsFinite(qa.PeakDbfs) && qa.PeakDbfs < 0, VoiceLabProjectErrorCode.QaRejected);
+        if (qa.OutputSpeakerCheckSkipped is not null)
+            Require(qa.OutputSpeakerCheckSkipped == true && segment.Kind == VoiceLabSegmentKind.Tts && recipe.VoiceSource == VoiceLabVoiceSource.Own &&
+                qa.SpeakerScore is null && qa.SpeakerThreshold is null && qa.SpeakerModel is null && qa.SpeakerPassed is null &&
+                qa.ShortSpeech is null, VoiceLabProjectErrorCode.QaRejected);
         if (segment.Kind == VoiceLabSegmentKind.Tts)
         {
             Require(recipe.VoiceSource == VoiceLabVoiceSource.Own, VoiceLabProjectErrorCode.ConsentUnverified);
@@ -204,7 +208,7 @@ public static class VoiceLabRenderValidation
             Require(voice is not null && recipe.Provenance.ConsentRecordId == voice.ConsentRecordId &&
                 recipe.Provenance.VoiceId == voice.VoiceId && recipe.Provenance.Provider == voice.Provider &&
                 recipe.ConsentVerifiedAt is { } verified && verified <= recipe.Provenance.CreatedAt, VoiceLabProjectErrorCode.ConsentUnverified);
-            if (segment.Kind == VoiceLabSegmentKind.Tts)
+            if (segment.Kind == VoiceLabSegmentKind.Tts && qa.OutputSpeakerCheckSkipped != true)
             {
                 if (qa.ShortSpeech is { Mode: VoiceLabShortSpeechMode.Unmeasured } evidence)
                     Require(evidence.IsValid && evidence.RecordId == voice!.ConsentRecordId && qa.SpeakerScore is null && qa.SpeakerPassed == false &&

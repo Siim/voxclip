@@ -18,6 +18,8 @@ import VoxClipMedia
     var savingKey = false
     var error: String?
     var readiness: Readiness?
+    var appleDraftAvailability: ClaudeTranscriptionChoice.Apple?
+    var claudeConfirmationEngine: TranscriptEngine?
     var selectedModel: ModelDescriptor?
     var again = false
     var againConfirmed = false
@@ -40,6 +42,7 @@ import VoxClipMedia
     var pendingCost: Double?
     var completion: String?
     var completedAt: Date?
+    var pendingAlignment: (project: Project, retry: TranscriptionAlignmentRetry)?
     @ObservationIgnored var revision = 0
     @ObservationIgnored var activeRun: ApprovedRun?
     @ObservationIgnored private var downloadRevision = 0
@@ -54,6 +57,7 @@ import VoxClipMedia
     #if DEBUG
     @ObservationIgnored var readinessOverride: ((TranscriptionPlan) async -> Readiness)?
     @ObservationIgnored var runOverride: ((TranscriptionPlan) async throws -> Transcript)?
+    @ObservationIgnored var runOverrideUsesAudio = false
     @ObservationIgnored var requestRunOverride: ((ApprovedRun) async throws -> TranscriptionResult)?
     @ObservationIgnored var leaseOverride: ((String) async -> CacheKeyLease)?
     @ObservationIgnored var runErrorOverride: ((any Error) async -> String)?
@@ -61,8 +65,23 @@ import VoxClipMedia
 
     init(model: EditorModel) { self.model = model }
     var paid: Bool { engine == "elevenlabs" }
+    var confirmsClaudeTranscript: Bool { model.claudeModeWaitsForTranscript && !again && model.project.transcript == nil }
+
+    var claudeTranscriptionChoice: ClaudeTranscriptionChoice {
+        let preferred = model.app.string("transcription.engineMode", fallback: "local")
+        let takingChoice = confirmsClaudeTranscript && phase != .hidden
+        let spoken = takingChoice ? language : model.app.string("transcription.language", fallback: "auto")
+        let availability = appleDraftAvailability ?? (spoken == "auto" ? .unavailable : .unknown)
+        let mode: String
+        if takingChoice, preferred != "ask" { mode = engine }
+        else if let claudeConfirmationEngine { mode = claudeConfirmationEngine == .elevenlabs ? "elevenlabs" : "local" }
+        else { mode = preferred }
+        return ClaudeTranscriptionChoice(mode: mode, apple: availability)
+    }
     var isVisible: Bool { phase != .hidden || cancelledNote != nil }
     var isRunning: Bool { phase == .running }
+    var retryingAlignment: Bool { isRunning && pendingAlignment != nil }
+    var alignmentRetryCopy: String { "Retry aligns the saved words on this computer. Nothing is uploaded or billed." }
     var isDownloading: Bool { installing != nil || systemDownloading }
     var terms: [String] { keyterms.split(whereSeparator: { $0 == "," || $0.isNewline }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
     var estimate: Double? {
@@ -93,11 +112,13 @@ import VoxClipMedia
             && model.sourceDuration.isFinite && model.sourceDuration > 0
     }
     var canStart: Bool {
+        if let pendingAlignment { return mediaReady && phase == .choosing && pendingAlignment.project == model.project }
         guard mediaReady, phase == .choosing, readiness != nil, !savingKey else { return false }
         if paid { return hasKey && estimate != nil }
         return readiness == .ready || needsDownload || speechDidNotAnswer
     }
     var primaryTitle: String {
+        if pendingAlignment != nil { return "Retry" }
         if speechDidNotAnswer { return "Retry" }
         if again && !againConfirmed { return "Transcribe Again" + (paid ? " · " + price : "") }
         if paid { return (error == nil ? "Upload and Transcribe" : "Retry") + " · " + price }
@@ -105,6 +126,7 @@ import VoxClipMedia
         return needsDownload ? "Download and Transcribe" : "Transcribe"
     }
     var cancelCopy: String {
+        if retryingAlignment { return "Nothing is uploaded or billed for this retry." }
         let evidence = activeRun?.evidence.snapshot
         let uploaded = evidence.map { $0.uploadStarted && !$0.fromCache } ?? uploadStarted
         return uploaded ? "If you cancel now, ElevenLabs may still bill audio it already received." : "Nothing has been sent yet. Cancel now and nothing is billed."
@@ -170,8 +192,18 @@ import VoxClipMedia
         model.armClaudeMode()
         await open(automatic: true)
     }
+    func changeOptions() async {
+        guard !isRunning else { return }
+        pendingAlignment = nil
+        await open(again: again)
+    }
     func open(automatic: Bool = false, again: Bool = false) async {
         guard !isRunning else { return }
+        if pendingAlignment?.project == model.project {
+            phase = .choosing; cancelledNote = nil
+            return
+        }
+        pendingAlignment = nil
         startedOnImport = false
         revision += 1
         let request = revision
@@ -183,6 +215,11 @@ import VoxClipMedia
         let preferred = model.app.string("transcription.engineMode", fallback: "local")
         // Settings' “On this Mac” routes English to Apple's installed engine; a Whisper choice in this block stays explicit.
         engine = preferred == "elevenlabs" ? "elevenlabs" : preferred == "apple" || (preferred == "local" && language == "en") ? "apple" : "local"
+        if confirmsClaudeTranscript {
+            engine = ClaudeTranscriptionChoice(mode: preferred, apple: .unknown).confirmation == .elevenlabs ? "elevenlabs" : "local"
+        }
+        appleDraftAvailability = nil
+        claudeConfirmationEngine = nil
         modelID = ""
         phase = .choosing
         await loadPriceAndKey(request: request)
@@ -193,6 +230,17 @@ import VoxClipMedia
             startApprovedRun()
             startedOnImport = activeRun != nil
         }
+    }
+    func startLocalForRecordingFolder() async -> Bool {
+        guard !isRunning, mediaReady, !model.transcribed else { return false }
+        revision += 1
+        phase = .choosing
+        engine = "local"
+        language = model.app.string("transcription.language", fallback: "auto")
+        await refreshChoice()
+        guard !Task.isCancelled, readiness == .ready, !paid else { return false }
+        startApprovedRun()
+        return activeRun != nil
     }
     private func loadPriceAndKey(request: Int) async {
         let available = await model.app.providerKeyStore.hasKey(for: "elevenlabs")
@@ -214,8 +262,9 @@ import VoxClipMedia
         spendToday = total.amount; spendUncertain = total.uncertain
     }
     func choicesChanged() {
-        guard !isRunning else { return }
+        guard !isRunning, pendingAlignment == nil else { return }
         revision += 1
+        appleDraftAvailability = nil
         error = nil; cancelledNote = nil; readiness = nil; savingKey = false; key = ""; keyGuard.reset()
         choiceTask?.cancel()
         choiceTask = Task { [weak self, model] in await self?.refreshChoice(); _ = model }
@@ -231,12 +280,7 @@ import VoxClipMedia
             selectedModel = selected
             let adapter = await adapter()
             let plan = makePlan()
-            let status: Readiness
-            #if DEBUG
-            if let readinessOverride { status = await readinessOverride(plan) } else { status = await adapter.readiness(for: plan) }
-            #else
-            status = await adapter.readiness(for: plan)
-            #endif
+            let status = await status(for: plan, using: adapter)
             guard request == revision, !Task.isCancelled, selection == [engine, language, modelID], phase == .choosing else { return }
             readiness = status
             if case .needsKey = status { hasKey = false }
@@ -246,10 +290,17 @@ import VoxClipMedia
             }
             keyGuard.reset()
         } catch {
-            let message = await model.app.safeError(error)
+            let message = await model.app.safeError(error, context: .transcribe)
             guard request == revision, !Task.isCancelled, selection == [engine, language, modelID], phase == .choosing else { return }
             self.error = message
         }
+    }
+
+    func status(for plan: TranscriptionPlan, using engine: any Transcriber) async -> Readiness {
+        #if DEBUG
+        if let readinessOverride { return await readinessOverride(plan) }
+        #endif
+        return await engine.readiness(for: plan)
     }
     func makePlan() -> TranscriptionPlan {
         TranscriptionPlan(engine: paid ? .elevenlabs : engine == "apple" ? .appleSpeech : .whispercpp,
@@ -264,7 +315,11 @@ import VoxClipMedia
                 return await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, session: scribeSession, catalog: BundledModelCatalog(shared: shared), logger: model.app.log)
             }
             return await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, logger: model.app.log)
-        default: return WhisperCppTranscriber(logger: model.app.log)
+        default:
+            if let shared = model.app.shared {
+                return WhisperCppTranscriber(catalog: BundledModelCatalog(shared: shared), locations: model.app.locations, logger: model.app.log)
+            }
+            return WhisperCppTranscriber(logger: model.app.log)
         }
     }
     func saveKey() async {
@@ -286,6 +341,10 @@ import VoxClipMedia
     func pressReturn(timestamp: TimeInterval, now: TimeInterval, repeatKey: Bool, command: Bool, focusedPrimary: Bool = false) {
         // f25 is destructive: neither a default Return nor ⌘Return is its confirmation.
         guard !repeatKey else { return }
+        if pendingAlignment != nil {
+            if focusedPrimary || command { activate() }
+            return
+        }
         if again {
             guard focusedPrimary, !command else { return }
         }
@@ -295,6 +354,7 @@ import VoxClipMedia
     /// The click is approval. Saving a key, consent already on disk and download completion never reach a paid send.
     func activate() {
         guard canStart else { return }
+        if pendingAlignment != nil { startApprovedRun(); return }
         if speechDidNotAnswer { choicesChanged(); return }
         guard terms.count <= 100, !terms.contains(where: { $0.count > 50 }) else { error = "Use at most 100 keyterms, each up to 50 characters."; return }
         downloadBaseline = !paid && needsDownload ? model.project : nil
@@ -382,7 +442,9 @@ import VoxClipMedia
     }
     func close() {
         downloadBaseline = nil
+        pendingAlignment = nil
         activeRun?.cancelled = true
+        if let activeRun { settleRewrite(activeRun, restore: false) }
         activeRun?.watch?.cancel(); activeRun = nil
         revision += 1; choiceTask?.cancel(); installTask?.cancel(); model.workTask?.cancel()
         if let installing { model.app.modelLibrary.cancelTranscriptionDownload(modelID: installing.id) }
@@ -393,20 +455,31 @@ import VoxClipMedia
         pendingCost = nil; model.progress = nil; model.progressFraction = nil; model.progressStage = nil
     }
     func startApprovedRun(paidApproval: Bool = false) {
-        guard mediaReady, phase == .choosing, !isRunning, !paid || paidApproval else { return }
-        let plan = makePlan(), cost = paid ? estimate : nil
-        let baseline = downloadBaseline ?? model.project
+        let retry = pendingAlignment?.retry
+        guard mediaReady, phase == .choosing, !isRunning, !paid || paidApproval || retry != nil,
+              retry == nil || canStart, !confirmsClaudeTranscript || engine != "apple" else { return }
+        let turn = revision, currentProject = model.project
+        if model.openRewrite?.hasUnusedPaidWork == true {
+            guard model.closeRewrite(returnFocus: false, onDiscard: { [weak self] in
+                guard let self, revision == turn, model.project == currentProject else { return }
+                startApprovedRun(paidApproval: paidApproval)
+            }) else { return }
+        }
+        let plan = makePlan(), cost = paid && retry == nil ? estimate : nil
+        if confirmsClaudeTranscript { claudeConfirmationEngine = plan.engine }
+        let baseline = pendingAlignment?.project ?? downloadBaseline ?? model.project
         downloadBaseline = nil
-        if remember { model.app.set("transcription.language", .string(language)) }
+        if remember && retry == nil { model.app.set("transcription.language", .string(language)) }
         model.findTask?.cancel(); model.sendConfirmation.cancel()
-        model.rewriteOpenTask?.cancel()
-        // Stop new AI work while retaining the review until replacement actually succeeds.
-        model.openRewrite?.sending?.cancel()
-        model.openRewrite?.actionTask?.cancel()
-        model.openRewrite?.takesTask?.cancel()
         phase = .running; error = nil; cancelledNote = nil; progress = nil; uploadStarted = false; runStage = 0; pendingCost = cost
         revision += 1
-        let request = ApprovedRun(revision: revision, project: baseline, plan: plan, cost: cost)
+        let request = ApprovedRun(revision: revision, project: baseline, plan: plan, cost: cost, alignmentRetry: retry)
+        model.cancelRewriteOpen()
+        if let rewrite = model.openRewrite {
+            rewrite.sending?.cancel(); rewrite.actionTask?.cancel(); rewrite.takesTask?.cancel()
+            request.suspendedRewrite = (rewrite, model.proposal)
+            model.openRewrite = nil; model.proposal = nil
+        }
         activeRun = request
         model.workTask = Task { [weak self, model] in
             guard let self else { return }

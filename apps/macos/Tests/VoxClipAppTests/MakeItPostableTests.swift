@@ -17,6 +17,15 @@ private final class Calls: Sendable {
     func record(_ call: String) { value.withLock { $0.append(call) } }
 }
 
+private struct RefusingAssetHTTP: MusicHTTP {
+    let calls: Calls
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        calls.record("asset request")
+        throw URLError(.unsupportedURL)
+    }
+}
+
 /// ✦ Make it postable (doc/design.md §6.7) on a demo editor with its own data folder: the planner, the voice and the
 /// music sources are stubs, so nothing is sent, paid or read from the keychain.
 @Suite("Make it postable", .serialized, .offlineFixtures)
@@ -66,13 +75,13 @@ private final class Calls: Sendable {
     private func fixture(plan: ClipAutopilotPlan = Self.plan(), candidates: [MusicCandidate]? = nil,
                          notes: [MusicSource: String] = [:],
                          voice: MakeItRewriteOutcome = MakeItRewriteOutcome(result: .voiced(segments: []), spent: Decimal(string: "0.01")!),
-                         suggestion: Bool = false) throws -> Fixture {
+                         suggestion: Bool = false, projectFixture: String = "passage-render-v3") throws -> Fixture {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-make-it-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
         let shared = try SharedResources.locate()
-        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/\(projectFixture).voxclip")))
         if suggestion {
             let result = ProjectAIResult(id: "result-1", createdAt: Date(timeIntervalSince1970: 0), provider: "claude-code", model: "fixture",
                 preset: .best, inputSha256: String(repeating: "0", count: 64),
@@ -105,6 +114,18 @@ private final class Calls: Sendable {
     }
 
     private func step(_ undo: UndoManager, _ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
+
+    @Test func anIllustrationOverTheCapDoesNotDispatch() async throws {
+        let fixture = try fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let run = MakeItRun(clipID: "clip-main", cap: 0)
+        let asset = ClipPlanAsset(id: "fixture-illustration", kind: .illustration, clipID: run.clipID, start: 1, end: 2, text: "a paper boat")
+        let operation = ClipAutopilotOperation(id: "fixture-illustration", decision: .overlay, action: .asset(asset), reason: "Show the example.")
+        let row = await fixture.editor.makeItAssetStep(asset, operation: operation, run: run, client: ClipPlanAssets(http: RefusingAssetHTTP(calls: fixture.calls)))
+        #expect(row.text.contains("over the spend cap"))
+        #expect(fixture.calls.all.isEmpty)
+        #expect(fixture.editor.project.clipEffects == fixture.original.clipEffects)
+    }
 
     private func run(_ fixture: Fixture, clip: String = "clip-main") async throws -> MakeItRun {
         await fixture.editor.makeIt.refreshVoiceReady(fixture.editor)
@@ -311,6 +332,144 @@ private final class Calls: Sendable {
         let result = try await run(fixture)
         #expect(fixture.editor.currentMusic?.source == .generated && result.spent == Decimal(string: "0.001")!)
         #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch eleven-1"])
+    }
+
+    @Test(arguments: [true, false]) func undoThenChangeReusesPaidMusicAndKeepsTheOriginalCap(reuseByID: Bool) async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false), candidates: [Self.generated("0.001")])
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let first = try await run(fixture)
+        let track = try #require(fixture.editor.currentMusic)
+        let file = MusicRenderInput.url(for: track.asset, dataRoot: fixture.root)
+        fixture.editor.undoCreativeProposal(first)
+        #expect(fixture.editor.currentMusic == nil)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        fixture.editor.makeIt.services?.plan = { request, _, _, _ in
+            #expect(request.revision?.instruction == "Change the title")
+            #expect(request.musicTracks[track.id] == track.title)
+            var revised = try #require(request.revision?.plan)
+            revised.title = "A revised title"
+            revised.savedMusicTrackId = reuseByID ? track.id : nil
+            return ClipAutopilotSeries(plans: [revised])
+        }
+        fixture.editor.reviseCreativeProposal(first, instruction: "Change the title")
+        await first.task?.value
+        let revised = try #require(fixture.editor.makeIt.run(for: first.clipID))
+        #expect(revised.phase == .ready)
+        #expect(revised.plan?.title == "A revised title")
+        #expect(fixture.editor.currentMusic?.asset == track.asset)
+        #expect(revised.spent == first.spent && revised.cap == first.cap)
+        #expect(fixture.calls.all.filter { $0.hasPrefix("fetch") } == ["fetch eleven-1"])
+    }
+
+    @Test func undoThenChangeReusesAnUnchangedPaidPhrase() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false))
+        let editor = fixture.editor
+        defer { editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let segment = try #require(editor.project.voiceLab.segments.first)
+        let asset = try #require(editor.project.voiceLab.assets?.first { $0.id == segment.audio.assetId })
+        let file = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(asset.file)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Self.wav().write(to: file)
+        editor.document.replaceProject(try VoiceLabProject.setEnabled(false, id: segment.id, in: editor.project))
+        editor.refresh()
+        editor.makeIt.services?.voice = { _, editor in
+            fixture.calls.record("voice charge")
+            do {
+                editor.replace(try VoiceLabProject.setEnabled(true, id: segment.id, in: editor.project), name: "Use take")
+                return MakeItRewriteOutcome(result: .voiced(segments: [segment.id]), spent: 0.01)
+            } catch {
+                Issue.record("Couldn't place the fixture take: \(error)")
+                return MakeItRewriteOutcome(result: .unavailable("Fixture take failed"))
+            }
+        }
+        let first = try await run(fixture)
+        #expect(first.phase == .ready && first.spent == 0.01)
+        editor.undoCreativeProposal(first)
+        #expect(editor.project.voiceLab.segments.first?.enabled == false)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        editor.makeIt.services?.plan = { request, _, _, _ in
+            var revised = try #require(request.revision?.plan)
+            revised.title = "A revised title"
+            return ClipAutopilotSeries(plans: [revised])
+        }
+        editor.reviseCreativeProposal(first, instruction: "Change the title")
+        await first.task?.value
+        let revised = try #require(editor.makeIt.run(for: first.clipID))
+        #expect(revised.phase == .ready && revised.plan?.title == "A revised title")
+        #expect(editor.project.voiceLab.segments.first?.enabled == true)
+        #expect(revised.spent == first.spent)
+        #expect(fixture.calls.all.filter { $0 == "voice charge" }.count == 1)
+    }
+
+    @Test func undoThenChangeDoesNotOfferToRaiseTheVideoCap() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false, rewrite: false),
+                                  voice: MakeItRewriteOutcome(result: .overCap(nextUSD: 3)), suggestion: true)
+        let editor = fixture.editor
+        defer { editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let budget = MakeItBudget(cap: 2)
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.makeTopPostable(1, budget: budget)
+        await editor.makeIt.waitForQueue()
+        let first = try #require(editor.makeIt.run(for: "clip-main"))
+        editor.undoCreativeProposal(first)
+        editor.makeIt.services?.plan = { _, _, _, _ in ClipAutopilotSeries(plans: [Self.plan(music: false)]) }
+        editor.reviseCreativeProposal(first, instruction: "Make the verb stronger")
+        for _ in 0..<20_000 where editor.makeIt.active != nil && budget.needed == nil { await Task.yield() }
+        #expect(budget.needed == nil)
+        budget.decline()
+        await first.task?.value
+        let revised = try #require(editor.makeIt.run(for: first.clipID))
+        #expect(revised.phase == .ready && revised.spent == 0 && budget.approved == 2)
+        #expect(revised.rows.contains { $0.text.hasPrefix("Kept your words") })
+    }
+
+    @Test func undoThenChangeReusesTheWholeClipVoiceAndLipSync() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false), suggestion: true, projectFixture: "whole-clip-revoice-project")
+        let editor = fixture.editor
+        defer { editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        var project = editor.project
+        let segment = try #require(project.voiceLab.segments.first)
+        var record = try #require(project.voiceLab.wholeClipRevoices?.first)
+        record.segmentIds = [segment.id]
+        let audio = try #require(project.voiceLab.assets?.first { $0.id == segment.audio.assetId })
+        let videoID = try #require(segment.candidates.first?.recipe?.video.assetId)
+        let video = try #require(project.voiceLab.videoAssets?.first { $0.id == videoID })
+        let files = [audio.file, video.file].map { fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent($0) }
+        for file in files {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data([0]).write(to: file)
+        }
+        project.voiceLab.wholeClipRevoices = nil
+        editor.document.replaceProject(try VoiceLabProject.setEnabled(false, id: segment.id, in: project))
+        editor.refresh()
+        let first = try await claudeModeRun(fixture) { _ in
+            fixture.calls.record("lip-sync charge")
+            do {
+                var current = try VoiceLabProject.setEnabled(true, id: segment.id, in: editor.project)
+                current.voiceLab.wholeClipRevoices = [record]
+                editor.replace(current, name: "Use lip sync")
+                return .revoiced(record, spent: 1.50)
+            } catch {
+                Issue.record("Couldn't place the fixture lip sync: \(error)")
+                return .failed("Fixture lip sync failed", spent: 0)
+            }
+        }
+        #expect(first.spent == 1.50 && editor.project.voiceLab.wholeClipRevoices == [record])
+        editor.undoCreativeProposal(first)
+        #expect(editor.project.voiceLab.wholeClipRevoices == nil)
+        #expect(files.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+        editor.makeIt.services?.plan = { request, _, _, _ in
+            var revised = try #require(request.revision?.plan)
+            revised.title = "A revised title"
+            return ClipAutopilotSeries(plans: [revised])
+        }
+        editor.reviseCreativeProposal(first, instruction: "Change the title")
+        await first.task?.value
+        let revised = try #require(editor.makeIt.run(for: first.clipID))
+        #expect(revised.phase == .ready && revised.spent == first.spent)
+        #expect(editor.project.voiceLab.wholeClipRevoices == [record])
+        #expect(fixture.calls.all.filter { $0 == "lip-sync charge" }.count == 1)
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") })
     }
 
     @Test(arguments: ["Add an ElevenLabs key in Settings to make music for this clip.", "No current estimate is available."])
@@ -926,7 +1085,8 @@ private final class Calls: Sendable {
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         editor.makeIt.services?.wholeClipQuote = { request, editor in
             if editor.openRewrite?.wholeClip == nil,
-               let session = MakeItRewriteDriver.openSession(editor: editor, range: request.range, text: MakeItServices.wholeClipPassage(request, editor: editor)) {
+               let session = MakeItRewriteDriver.openSession(editor: editor, clipID: request.clipID, range: request.range,
+                                                             text: MakeItServices.wholeClipPassage(request, editor: editor)) {
                 try? DebugRewriteGeneration.install("voice", in: session)
                 let whole = WholeClipRevoiceSession()
                 session.configureWholeClip(whole)
@@ -936,7 +1096,7 @@ private final class Calls: Sendable {
                 backend.script = live.script
                 backend.voiceReadiness = live.voiceReadiness
                 backend.voice = { script, progress in
-                    stubs.isCurrent = session.wholeClipInputsCurrency()
+                    stubs.isCurrent = session.wholeClipInputsStillCurrent()
                     try await beforeVoice()
                     return try await stubbed.voice(script, progress)
                 }
@@ -950,7 +1110,7 @@ private final class Calls: Sendable {
     }
 
     /// makeit-false-stale-double-pay: the run's own "Make it postable" edit dirties the document, and an autosave lands
-    /// while the voice is made. A save changes nothing the voice and lip sync are made from (`wholeClipInputsCurrency`), so
+    /// while the voice is made. A save changes nothing the voice and lip sync are made from (`wholeClipInputsStillCurrent`), so
     /// the run ends revoiced and no phrase is voiced on top. It used to go stale at the Fit, drop the paid voice and pay for
     /// the patch.
     @Test func anAutosaveDuringTheVoiceStillRevoicesAndNeverPatches() async throws {

@@ -16,7 +16,11 @@ Assets are local H.264 MP4, at most 30 seconds, with even dimensions up to 1920 
 
 ## Recording and review
 
-Opening a panel or choosing a source does not begin recording, run a project command, inspect accessibility controls, request permission or send provider requests. Screen Recording access is checked through an explicit user action. Start uses a current, single-use reviewed request and an exact window/process binding. It never falls back to recording the desktop, microphone or system audio.
+Opening a panel or choosing a source does not begin recording, run a project command, inspect accessibility controls, request permission or send provider requests. **Refresh App Windows**, **Review Capture** and **Start Recording** check Screen Recording access when needed. **Inspect Selected Window** checks Accessibility; review and start also check it when the plan includes app actions. Manual window recording does not need Accessibility.
+
+For each missing permission VoxClip asks macOS once. If access is still off, the blocked action stays visible and disabled beside **Open Screen Recording Settings** or **Open Accessibility Settings**. When VoxClip becomes active again it checks access and resumes only the step the user started, provided its inputs are still current. Review never starts recording, and inspection never runs an app action. If macOS asks to quit and reopen after enabling Screen Recording, reopen the project and start the step again.
+
+Start uses a current, single-use reviewed request and an exact window/process binding. It never falls back to recording the desktop, microphone or system audio.
 
 The native writer finalizes an H.264 MP4 and verifies the local result before offering placement. The retained-file budget is strict. ScreenCaptureKit has no per-writer kernel byte quota, so polling and finalization may discard a file after a short transient overshoot. Operating-system enumeration and termination cannot be promised to finish at an exact deadline.
 
@@ -26,7 +30,7 @@ For webpage demos, the app owns the browser window and binds capture to that exa
 
 Code-project setup separates bounded folder inspection, exact command review and explicit Start/Stop. Choosing or inspecting a folder does not run a command or install dependencies. The existing executor limits a plan to three commands, 60 seconds each and 90 seconds overall, with exact executable/argument/working-directory and minimal-environment review. Approved commands can execute project hooks and use the network; this executor is not a sandbox. A running preview URL or app window can be selected separately for capture.
 
-The desktop route can record while the user operates the selected window, or execute an explicitly reviewed set of native Accessibility actions. Access checks and inspection run only from explicit buttons. Focus, press, native scroll, nonsecret value replacement and pause actions bind to the exact inspected window and process launch, and Start begins capture before executing them. Cancellation drains recording and actions before releasing the window. Unsupported exact-window mapping fails inline; there is no title, geometry or desktop fallback. The native implementation currently has a guarded private window-ID SPI fallback, which remains a distribution gate until supported mapping is verified.
+The desktop route can record while the user operates the selected window, or execute an explicitly reviewed set of native Accessibility actions. Focus, press, native scroll, nonsecret value replacement and pause actions bind to the exact inspected window and process launch, and Start begins capture before executing them. Cancellation drains recording and actions before releasing the window. Unsupported exact-window mapping fails inline; there is no title, geometry or desktop fallback. The native implementation currently has a guarded private window-ID SPI fallback, which remains a distribution gate until supported mapping is verified.
 
 Placement, trim, move, replace, removal and motion edits replace one Project snapshot and use one Undo transaction. Removing a clip removes its motion cues in the same transaction. An explicit transcript replacement or different-content relink invalidates source-bound demo/motion plans; a matching-source relink preserves them.
 

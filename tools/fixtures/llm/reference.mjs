@@ -248,7 +248,7 @@ export function verifyTighten({ entries, edits }, prompt) {
 }
 
 export function validateSchema(schema, path = '$') {
-  const allowed = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum'])
+  const allowed = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minItems', 'maxItems'])
   assert(schema && typeof schema === 'object' && !Array.isArray(schema), `${path}: schema must be an object`)
   for (const keyword of Object.keys(schema)) assert(allowed.has(keyword), `${path}: unsupported keyword ${keyword}`)
   assert(['object', 'array', 'string', 'integer', 'number', 'boolean'].includes(schema.type), `${path}: unsupported type`)
@@ -258,7 +258,10 @@ export function validateSchema(schema, path = '$') {
     assert.equal(new Set(schema.required).size, schema.required.length, `${path}: duplicate required property`)
     for (const [name, child] of Object.entries(schema.properties)) validateSchema(child, `${path}.${name}`)
   } else assert(!('properties' in schema || 'required' in schema || 'additionalProperties' in schema), `${path}: object-only keywords`)
-  if (schema.type === 'array') validateSchema(schema.items, `${path}[]`)
-  else assert(!('items' in schema), `${path}: items on non-array`)
+  if (schema.type === 'array') {
+    const min = schema.minItems ?? 0, max = schema.maxItems ?? Number.MAX_SAFE_INTEGER
+    assert(Number.isSafeInteger(min) && Number.isSafeInteger(max) && min >= 0 && max >= min, `${path}: array bounds`)
+    validateSchema(schema.items, `${path}[]`)
+  } else assert(!('items' in schema || 'minItems' in schema || 'maxItems' in schema), `${path}: array-only keywords`)
   if ('enum' in schema) assert(schema.type === 'string' && schema.enum.length > 0 && schema.enum.every(value => typeof value === 'string'), `${path}: enum must contain strings`)
 }

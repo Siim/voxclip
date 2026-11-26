@@ -129,34 +129,47 @@ enum TranscriptGutter {
         var barTop: CGFloat?
         var barBottom: CGFloat?
         var suggested: Bool
+        var partIndex: Int? = nil
     }
     static let margin: CGFloat = 64
-    private(set) var band: Band?
+    private(set) var bands: [Band] = []
+    var band: Band? { bands.first }
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func isAccessibilityElement() -> Bool { false }
 
     /// Shows `band`, clipped to `visible` and the margin, across `width`; nil hides it.
     func show(_ band: Band?, visible: CGRect, width: CGFloat) {
-        guard let band, case let top = max(band.top, visible.minY - Self.margin), case let bottom = min(band.bottom, visible.maxY + Self.margin), bottom > top else {
-            self.band = nil
+        showBands(band.map { [$0] } ?? [], visible: visible, width: width)
+    }
+
+    func showBands(_ bands: [Band], visible: CGRect, width: CGFloat) {
+        let bands = bands.filter { $0.top < visible.maxY + Self.margin && $0.bottom > visible.minY - Self.margin }
+        guard let first = bands.map(\.top).min(), let last = bands.map(\.bottom).max(),
+              case let top = max(first, visible.minY - Self.margin), case let bottom = min(last, visible.maxY + Self.margin), bottom > top else {
+            self.bands = []
             if !isHidden { isHidden = true }
             return
         }
         let frame = NSRect(x: 0, y: top, width: width, height: bottom - top)
-        if self.frame != frame || self.band != band || isHidden { needsDisplay = true }
-        self.band = band
+        if self.frame != frame || self.bands != bands || isHidden { needsDisplay = true }
+        self.bands = bands
         if self.frame != frame { self.frame = frame }
         if isHidden { isHidden = false }
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let band, let context = NSGraphicsContext.current?.cgContext else { return }
-        context.setFillColor(DesignValues.nsColor("editor.band").cgColor)
-        context.fill(bounds)
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        for band in bands { draw(band, in: context) }
+    }
+
+    private func draw(_ band: Band, in context: CGContext) {
+        let color = band.partIndex.map { StoryClipPresentation.nsColor($0) }
+        context.setFillColor((color?.withAlphaComponent(0.11) ?? DesignValues.nsColor("editor.band")).cgColor)
+        context.fill(CGRect(x: 0, y: band.top - frame.minY, width: bounds.width, height: band.bottom - band.top))
         let lower = max(0, (band.barTop ?? frame.minY) - frame.minY), upper = min(bounds.height, (band.barBottom ?? frame.maxY) - frame.minY)
         guard upper > lower else { return }
-        let clip = DesignValues.nsColor("clip.label").cgColor
+        let clip = (color ?? DesignValues.nsColor("clip.label")).cgColor
         if band.suggested {
             // Dashes start at the bar's top, or at the document's top while that is off screen,
             // so they stay put as the view moves.
@@ -170,6 +183,11 @@ enum TranscriptGutter {
             context.setFillColor(clip)
             context.addPath(CGPath(roundedRect: CGRect(x: TranscriptGutter.rangeBarX, y: lower, width: TranscriptGutter.rangeBarWidth, height: upper - lower), cornerWidth: 1, cornerHeight: min(1, (upper - lower) / 2), transform: nil))
             context.fillPath()
+        }
+        if let index = band.partIndex, let color, let top = band.barTop {
+            let label = "\(index + 1)" as NSString
+            let font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
+            label.draw(at: NSPoint(x: TranscriptGutter.rangeBarX + 4, y: top - frame.minY), withAttributes: [.font: font, .foregroundColor: color])
         }
     }
 }

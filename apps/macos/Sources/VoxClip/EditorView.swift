@@ -139,7 +139,15 @@ import VoxClipCore
         VStack(spacing: 0) {
             // The scope bar's "Rewrite as" strip (design.md §6.3.1), always under the clip bar's field while Rewrite can run.
             if model.showsScopeToneStrip { ScopeToneStrip(model: model) }
+            if let reason = model.storyRewriteReason(), let clip = model.activeClip {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(reason).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    StoryPartClipButtons(model: model, clip: clip, includesAll: false)
+                }.font(VCType.small.font()).padding(.horizontal, 12).padding(.vertical, 4)
+            }
             ConnectorConfirmationView(confirmation: model.sendConfirmation, model: model)
+            HarnessReview(model: model, shell: shell)
             if model.document.demo {
                 Label { Text("Demo project with no video. ").fontWeight(.semibold) + Text("Changes aren't saved to the fixture.") } icon: { Image(systemName: "info.circle") }
                     .font(.system(size: 13)).foregroundStyle(DesignValues.color("text.primary"))
@@ -159,6 +167,7 @@ import VoxClipCore
                 .onAppear { findFocused = true }
             }
             if let notice = shell.notice { InlineNotice(text: notice) }
+            if let notice = model.projectSaveNotice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
             // A preview failure over the player shows on the stage, with Reload Preview (design.md §5.4.4 g).
             if let error = model.previewError, !error.isEmpty, model.stagePreviewError == nil { InlineNotice(text: error) }

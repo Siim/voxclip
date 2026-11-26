@@ -19,7 +19,9 @@ public enum AskClaudeRowStatus
     /// <summary>The editor cannot make it yet; the row says why and that nothing changed.</summary>
     Later,
     /// <summary>A speed for part of a clip: the row offers that speed for the whole clip.</summary>
-    WholeClip
+    WholeClip,
+    /// <summary>Waits for the inline asset action.</summary>
+    Asset
 }
 
 /// <summary>One row of an Ask Claude answer: the operation, what it shows, and whether it is in the project. Twin of the Mac
@@ -59,6 +61,7 @@ public sealed class AskClaudeRun(string instruction, AskClaudeSelection selectio
 #pragma warning restore CS1591
     /// <summary>The project before the answer applied: Undo reads previous corrections, cuts, ducking and speed from it.</summary>
     public Project? Base { get; set; }
+    internal Dictionary<string, VoxClip.Core.Domain.Editing.TimelineEditUndo> TimelineUndo { get; } = [];
     /// <summary>Rows in the project now.</summary>
     public int AppliedCount => Rows.Count(row => row.Status == AskClaudeRowStatus.Applied);
 }
@@ -71,6 +74,7 @@ public sealed record AskClaudeAsk(string Instruction, AskClaudeSelection Selecti
 /// (<see cref="IAskClaudeVision"/>, FaceDetector and OcrEngine) looks at the picture; tests pass stubs.</summary>
 public sealed class AskClaudeServices
 {
+    internal PlanAssetServices? Assets { get; init; }
     /// <summary>Sends one request and returns Claude's checked answer; throws on a failure, cancellation or a declined confirmation.</summary>
     public required Func<AskClaudeAsk, CancellationToken, Task<AskClaudeAnswer>> Ask { get; init; }
     /// <summary>Whether an AI is chosen: ✦ Ask Claude shows only then.</summary>
@@ -86,6 +90,9 @@ public sealed class AskClaudeServices
 /// <summary>The editor's Ask Claude state (design §6.8): the inline field, the run, the timeline range and the open Adjust row.</summary>
 public sealed class AskClaudeState
 {
+    internal string? AssetWorking { get; set; }
+    internal CancellationTokenSource? AssetCancellation { get; set; }
+    internal bool? IllustrationReady { get; set; }
     /// <summary>The field's placeholder: it takes both kinds of request, and Claude decides.</summary>
     public const string Placeholder = "Say what to change: reword it, bleep it, blur, add a title…";
 

@@ -79,6 +79,24 @@ extension EditorModel {
         }
     }
 
+    func makeItFootageDescriptions(_ sources: [MediaReference]) async throws -> [String: String] {
+        let analyzer = FrameAnalyzer(cache: FrameAnalysisCache(locations: app.locations))
+        var descriptions: [String: String] = [:]
+        for source in sources.lazy.filter({ $0.video != nil }).prefix(32) {
+            try Task.checkCancellation()
+            guard source.durationSeconds.isFinite, source.durationSeconds > 0, FileManager.default.fileExists(atPath: source.absolutePath) else { continue }
+            let times = [0.15, 0.5, 0.85].map { $0 * source.durationSeconds }
+            guard let found = try? await analyzer.observations(source: URL(fileURLWithPath: source.absolutePath), contentKey: source.contentKey,
+                                                               times: times, tolerance: FrameAnalyzer.sentenceTolerance), !found.frames.isEmpty else { continue }
+            descriptions[source.footageKey] = found.frames.map { frame in
+                let time = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), frame.time)
+                return "\(time)s: \(frame.faceCount) faces, \(frame.screens.count) screen-like regions, \(frame.textRects.count) text boxes"
+            }.joined(separator: "; ")
+        }
+        try Task.checkCancellation()
+        return descriptions
+    }
+
     /// The AI the plan goes to, as the frames see it.
     func liveFrameAI() async -> MakeItFrameAI? {
         guard let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }),
@@ -179,7 +197,8 @@ extension EditorModel {
     func makeItClipTime(_ source: Double, clipID: String) -> String {
         guard let timeline = try? RenderCallerInputs.timeline(project: project, clipID: clipID) else { return AIText.formatTime(source) }
         let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
-        return AIText.formatTime(ClipSpeedTiming(speed: speed).rendered(timeline.mapTime(source)))
+        let timing = ClipSpeedTiming(speed: speed, timeline: timeline, effects: ClipEffects.rendered(in: project, clipID: clipID))
+        return AIText.formatTime(timing.rendered(timeline.mapTime(source)))
     }
 
     // MARK: The rows
@@ -284,10 +303,11 @@ extension EditorModel {
     /// "Cover frame chosen": Claude's pick among the three best measured frames, or the best when it named none.
     private func makeItCoverRow(_ record: MakeItFrameRecord, plan: ClipAutopilotPlan, run: MakeItRun) -> MakeItRow? {
         guard let (next, cover) = ClipPicture.cover(project, clipID: run.clipID, frames: record.sent, plan: plan) else { return nil }
-        run.inverses[Self.makeItCoverID] = .cover(clipID: run.clipID, previous: cover.previous)
+        run.inverses[Self.makeItCoverID] = .cover(clipID: run.clipID, previous: cover.previous, previousTitle: cover.previousTitle)
         replace(next, name: "Make it postable")
         let detail = cover.reason ?? "Eyes open, the clearest look measured on this Mac"
-        return MakeItRow(id: Self.makeItCoverID, text: "Cover frame chosen", detail: detail + " · saved next to the export as a cover image",
+        let title = cover.title.map { " · Title: \($0)" } ?? ""
+        return MakeItRow(id: Self.makeItCoverID, text: "Cover frame chosen", detail: detail + title + " · saved next to the export as a cover image",
                          play: cover.candidate.time, undoable: true, change: .cover, frames: makeItCoverFrames(record, picked: cover.candidate.time))
     }
 

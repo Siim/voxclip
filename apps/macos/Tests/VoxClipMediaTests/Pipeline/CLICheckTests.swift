@@ -15,14 +15,17 @@ private actor OneClipStub: LLMConnector {
     func contextTokens(model: String) -> Int? { 200_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         if request.feature == .clipFinder {
-            let clips: [[String: Any]] = [["title": "Ship day", "reason": "A clear line.", "score": 8, "start_line": lines.lowerBound, "end_line": lines.upperBound]]
+            let clips: [[String: Any]] = [["title": "Ship day", "reason": "A clear line.", "score": 8, "parts": [["start_line": lines.lowerBound, "end_line": lines.upperBound]], "not_in_take": ""]]
             return RawCompletion(text: String(decoding: try JSONSerialization.data(withJSONObject: ["clips": clips]), as: UTF8.self), model: model, stop: .complete)
         }
         guard let span = request.instruction.firstMatch(of: #/Plan the clip from word (\d+) to word (\d+)/#), let start = Int(span.1), let end = Int(span.2) else {
             throw LLMError.invalidOutput(reason: "not a Claude mode clip plan")
         }
         var reply: [String: Any] = [:]
-        let numbers: [String: Int] = ["startWord": start, "endWord": end, "captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 8]
+        // Plan v12: the clip is its ordered parts (one here), with `not_in_take` and `musicTrackId` always present.
+        let numbers: [String: Int] = ["captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 8]
+        reply["parts"] = [["startWord": start, "endWord": end]]
+        reply["not_in_take"] = ""; reply["musicTrackId"] = ""
         let texts: [String: String] = ["title": "Ship day", "hook": "", "lengthReason": "", "captionStyle": "vox-bold", "captionReason": "punchy",
                                        "captionFont": "Roboto", "captionCase": "upper", "look": "original", "lookReason": "", "speedReason": "",
                                        "postText": "We ship.", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]

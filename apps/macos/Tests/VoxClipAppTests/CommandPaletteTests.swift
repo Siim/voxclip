@@ -110,6 +110,16 @@ import Testing
         #expect(MenuCommandIndex.items().contains { $0.menuItem.tag == 38 })
         app.settings.values["voiceLab.enabled"] = .bool(true)
         #expect(MenuCommandIndex.items().contains { $0.menuItem.tag == 39 })
+        let voiceCommands = MenuCommandIndex.items()
+        for query in ["revoice", "voice", "lip"] {
+            let tags = Set(MenuCommandIndex.matching(query, in: voiceCommands).map(\.menuItem.tag))
+            #expect(tags.isSuperset(of: [65, 67]))
+        }
+        let whole = try #require(voiceCommands.first { $0.menuItem.tag == 65 })
+        let before = editor.project
+        #expect(MenuCommandIndex.run(whole))
+        #expect(editor.openRewrite?.wholeClip?.wholeSelected == true)
+        #expect(editor.openRewrite?.wholeClip?.running == false && editor.project == before)
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let editorSource = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/EditorView.swift"), encoding: .utf8)
         let home = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/HomeView.swift"), encoding: .utf8)

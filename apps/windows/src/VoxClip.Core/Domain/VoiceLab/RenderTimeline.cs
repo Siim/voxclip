@@ -13,4 +13,6 @@ public abstract record RenderTimeline
     public double Duration => OutputSamples / SampleRate;
     public double SourceTime(double edited) => this switch { Legacy item => item.Plan.SourceTime(edited), VoiceLab item => item.Plan.SourceTime(edited), _ => throw new InvalidOperationException() };
     public double MapTime(double source) => this switch { Legacy item => item.Plan.MapTime(source), VoiceLab item => item.Plan.MapTime(source), _ => throw new InvalidOperationException() };
+    /// <summary>A half-open range ends on the source piece to its left, which may play later than its neighbour.</summary>
+    public double MapEndTime(double source) => this switch { Legacy item => item.Plan.MapTime(source, true), VoiceLab item => item.Plan.MapTime(source, true), _ => throw new InvalidOperationException() };
 }

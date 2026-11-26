@@ -50,7 +50,7 @@ public sealed class ClipAutopilotStreamingTests
         reply["startWord"] = int.Parse(span.Groups[1].Value, CultureInfo.InvariantCulture);
         reply["endWord"] = int.Parse(span.Groups[2].Value, CultureInfo.InvariantCulture);
         foreach (var key in new[] { "cuts", "pauseCuts", "corrections", "rewrites", "zooms" }) reply[key] = new JsonArray();
-        return reply.ToJsonString();
+        return Sendable(reply).ToJsonString();
     }
 
     private static ScriptedConnector Stub(Hold hold) => new(ConnectorId.Ollama, async (request, model, ct) =>

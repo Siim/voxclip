@@ -1,5 +1,18 @@
 namespace VoxClip.App.ViewModels;
 
+internal sealed class FalCleanupNotice
+{
+    internal const string Message = "This fal.ai key can't delete finished results. Your video stays on fal.ai until it expires. Use a key with the FULL preset to delete it.";
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> denied = new(StringComparer.Ordinal);
+    internal event Action? Changed;
+    internal void MarkDenied(string fingerprint)
+    {
+        if (denied.TryAdd(fingerprint, 0)) Changed?.Invoke();
+    }
+    internal bool AppliesTo(string? key) => key is { Length: > 0 } &&
+        denied.ContainsKey(VoxClip.Core.Services.VoiceLab.FalLipsyncProvider.KeyFingerprint(key));
+}
+
 internal static class VoiceLabCopy
 {
     internal const string StopLooking = "I've checked my ElevenLabs account — stop looking";
@@ -61,11 +74,9 @@ internal static class VoiceLabCopy
     internal const string EmptyStorage = "Nothing is stored yet.";
 }
 
-/// <summary>Restore the lip-sync provider rows together when lip sync ships (M3+). Stored keys and caps remain intact.</summary>
+/// <summary>Whole-clip lip sync uses fal.ai; the Windows voice gate still controls native availability.</summary>
 internal static class LipSyncAvailability
 {
     internal static readonly bool Shipped = false;
-    internal static IReadOnlyList<(string Id, string Label)> SettingsProviders => Shipped
-        ? [("elevenlabs", "ElevenLabs"), ("fal", "fal.ai"), ("syncso", "sync.so")]
-        : [("elevenlabs", "ElevenLabs")];
+    internal static IReadOnlyList<(string Id, string Label)> SettingsProviders => [("elevenlabs", "ElevenLabs"), ("fal", "fal.ai")];
 }

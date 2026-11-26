@@ -18,7 +18,7 @@ extension EditState {
     func filler(_ word: TimedWord) -> Bool { word.kind == .unlabeledSpeech || (word.kind == .word && EditingPrimitives.filler(textOf(word))) }
 
     public var summary: EditSummary {
-        let bounds = clipIndices(activeClip, words: transcript.words)
+        let bounds = activeClip?.playPartIndices(in: transcript.words)
         let words = transcript.words.enumerated().filter { inScope($0.offset, bounds: bounds) }.map(\.element)
         let scopedPauses = pauses.filter { pauseInScope($0, bounds: bounds) }
         let fillers = words.filter { !cutWordIds.contains($0.id) && filler($0) }.count
@@ -30,15 +30,15 @@ extension EditState {
     }
 }
 
-func inScope(_ index: Int, bounds: ClosedRange<Int>?) -> Bool { bounds?.contains(index) ?? true }
-func pauseInScope(_ pause: Pause, bounds: ClosedRange<Int>?) -> Bool {
-    inScope(pause.afterIndex, bounds: bounds) && inScope(pause.afterIndex + 1, bounds: bounds)
+func inScope(_ index: Int, bounds: [ClosedRange<Int>]?) -> Bool { bounds?.contains { $0.contains(index) } ?? true }
+func pauseInScope(_ pause: Pause, bounds: [ClosedRange<Int>]?) -> Bool {
+    bounds?.contains { $0.contains(pause.afterIndex) && $0.contains(pause.afterIndex + 1) } ?? true
 }
 
-func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [ProjectAIResult]? = nil) -> EditState {
+func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [ProjectAIResult]? = nil, project: Project? = nil) throws -> EditState {
     var result = state
     let words = state.transcript.words
-    let bounds = clipIndices(state.activeClip, words: words)
+    let bounds = state.activeClip?.playPartIndices(in: words)
     let wordIDs = Set(words.map(\.id)), pauseIDs = Set(state.pauses.map(\.id))
     func isCut(_ id: String) -> Bool { pauseIDs.contains(id) ? result.cutPauseIds.contains(id) : wordIDs.contains(id) && result.cutWordIds.contains(id) }
     func setCut(_ id: String, _ cut: Bool) {
@@ -51,7 +51,7 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
     func validClipID(_ id: String) -> Bool { id.range(of: "\\A(?:" + EditingLimits.clipIDPattern + ")\\z", options: .regularExpression) != nil }
     func validClip(_ clip: ClipRange) -> Bool {
         guard validClipID(clip.id), (clip.title?.unicodeScalars.count ?? 0) <= EditingLimits.maxClipTitleScalars,
-              clipIndices(clip, words: words) != nil, clip.aiResultId.map(validClipID) ?? true,
+              clip.playPartIndices(in: words) != nil, StoryClips.valid(clip, words: words), clip.aiResultId.map(validClipID) ?? true,
               (clip.aiClipIndex ?? 0) >= 0 else { return false }
         guard let aiResults else { return true }
         guard let id = clip.aiResultId else { return clip.aiClipIndex == nil }
@@ -80,7 +80,10 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
     case .setActiveClip(let id):
         if id == nil || state.clips.contains(where: { $0.id == id }) { result.activeClipId = id }
     case .addClip(var clip):
-        if validClip(clip), !result.clips.contains(where: { $0.id == clip.id }) { clip.selected = true; result.clips.append(clip) }
+        if validClip(clip), !result.clips.contains(where: { $0.id == clip.id }) {
+            if let project, clip.parts != nil { try StoryClips.validatePlacement(clip, project: project, words: words) }
+            clip.selected = true; result.clips.append(clip)
+        }
     case .addAIClips(let resultID, let clips):
         guard validClipID(resultID) else { return state }
         if let aiResults {
@@ -89,15 +92,48 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
         for (index, prepared) in clips.enumerated() {
             var clip = prepared
             clip.origin = .ai; clip.aiResultId = resultID; clip.aiClipIndex = index; clip.selected = true
-            guard validClip(clip), !result.clips.contains(where: { $0.id == clip.id || ($0.startWordId == clip.startWordId && $0.endWordId == clip.endWordId) }) else { continue }
+            guard validClip(clip), !result.clips.contains(where: { $0.id == clip.id || $0.playParts.map { ClipWordRange(startWordId: $0.startWordId, endWordId: $0.endWordId) } == clip.playParts.map { ClipWordRange(startWordId: $0.startWordId, endWordId: $0.endWordId) } }) else { continue }
+            if let project, clip.parts != nil { try StoryClips.validatePlacement(clip, project: project, words: words) }
             result.clips.append(clip)
         }
     case .updateClip(let id, let start, let end):
-        if start >= 0, end >= start, end < words.count, let index = result.clips.firstIndex(where: { $0.id == id }) {
+        if start >= 0, end >= start, end < words.count, let index = result.clips.firstIndex(where: { $0.id == id && $0.parts == nil }) {
             // An opening lead-in was chosen for the clip's first word (ADR-R48): a new first word drops it.
             if result.clips[index].startWordId != words[start].id { result.clips[index].leadInSeconds = nil }
             result.clips[index].startWordId = words[start].id; result.clips[index].endWordId = words[end].id
         }
+    case .setClipParts(let id, let parts, let kind):
+        guard let index = result.clips.firstIndex(where: { $0.id == id }), let first = parts.first,
+              let ranges = StoryClips.indices(parts.map { ($0.startWordId, $0.endWordId) }, words: words),
+              let lower = ranges.map(\.lowerBound).min(), let upper = ranges.map(\.upperBound).max() else { return state }
+        let original = result.clips[index]
+        var clip = original
+        clip.parts = parts.count > 1 ? parts : nil
+        clip.kind = clip.parts != nil ? kind ?? original.kind ?? .story : nil
+        clip.startWordId = words[lower].id; clip.endWordId = words[upper].id
+        if original.playParts.first?.startWordId != first.startWordId { clip.leadInSeconds = nil }
+        guard clip != original, validClip(clip) else { return state }
+        if let project {
+            let before = StoryClips.times(original, words: words), after = StoryClips.times(clip, words: words)
+            let keyed = project.voiceLab.wholeClipRevoices?.contains { $0.clipId == id } == true
+            let losesLipsync = StoryClips.lipsyncWindows(project).contains { window in
+                before.contains { StoryClips.overlaps($0, window) } && !after.contains { StoryClips.overlaps($0, window) }
+            }
+            if (keyed && before != after) || losesLipsync {
+                clip.id = uniqueID(id, suffix: "story")
+                clip.title = String(((original.title ?? "Clip \(index + 1)") + " story").prefix(EditingLimits.maxClipTitleScalars))
+                try StoryClips.validatePlacement(clip, project: project, words: words)
+                result.clips.append(clip); result.activeClipId = clip.id
+                return result
+            }
+            try StoryClips.validatePlacement(clip, project: project, words: words)
+        }
+        result.clips[index] = clip
+    case .makeClipOfPart(let clipId, let partId):
+        guard let clip = result.clips.first(where: { $0.id == clipId }), let part = clip.playParts.first(where: { $0.id == partId }) else { return state }
+        let id = uniqueID(clipId, suffix: "part")
+        result.clips.append(ClipRange(id: id, startWordId: part.startWordId, endWordId: part.endWordId))
+        result.activeClipId = id
     case .renameClip(let id, let title):
         if validClipID(id), let index = result.clips.firstIndex(where: { $0.id == id }) {
             let trimmed = title.map(EditingPrimitives.jsTrim)
@@ -117,27 +153,43 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
         }
     }
     return result
+
+    func uniqueID(_ original: String, suffix: String) -> String {
+        var number = 1
+        while true {
+            let ending = number == 1 ? "-\(suffix)" : "-\(suffix)-\(number)"
+            let id = String(original.prefix(64 - ending.count)) + ending
+            if !result.clips.contains(where: { $0.id == id }) { return id }
+            number += 1
+        }
+    }
 }
 
 extension Project {
     public mutating func applyEditing(_ command: EditCommand) throws {
         guard let transcript else { return }
-        edits = EditReducer.reduce(try EditState(transcript: transcript, edits: edits), command: command, aiResults: ai.results).projectEdits
+        let state = try EditState(transcript: transcript, edits: edits)
+        let changed = try reduceEditingState(state, command: command, aiResults: ai.results, project: self)
+        guard changed != state else { return }
+        var next = self
+        next.edits = changed.projectEdits
         if case .removeClip(let id) = command {
-            share.captions.removeValue(forKey: id)
-            motionCues.removeAll { $0.clipID == id }
-            music.removeAll { $0.clipId == id }
-            clipEffects.removeAll { $0.clipId == id }
-            clipControls.removeAll { $0.clipId == id }
-            captionTranslations.removeAll { $0.clipId == id }
+            next.share.captions.removeValue(forKey: id)
+            next.motionCues.removeAll { $0.clipID == id }
+            next.music.removeAll { $0.clipId == id }
+            next.clipEffects.removeAll { $0.clipId == id }
+            next.clipControls.removeAll { $0.clipId == id }
+            next.captionTranslations.removeAll { $0.clipId == id }
         }
         // A whole-clip revoice names its clip: when any command removes that clip, its record goes in the same step.
-        WholeClipRevoice.pruneDangling(&self)
+        WholeClipRevoice.pruneDangling(&next)
+        self = try StoryClips.forWriting(next)
     }
 
     public mutating func replaceTranscript(_ replacement: Transcript) {
         transcript = replacement
         edits = ProjectEdits(pauseThresholdSeconds: replacement.refined ? 0.8 : 1, pauseKeepSeconds: edits.pauseKeepSeconds)
+        if schemaVersion == 5 { schemaVersion = 4 }
         ai = ProjectAI()
         share = ProjectShare()
         voiceLab.segments = [] // New source words invalidate replacement ranges; retain paid assets.

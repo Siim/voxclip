@@ -1209,6 +1209,90 @@ public sealed partial class VoiceLabTakeRunTests
         Assert.All(result.Rows, row => Assert.False(row.Selectable));
         Assert.Null(result.Best);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SelectedVoiceReusesSpeakerRejectedTakeAndBuysOnlyItsWordCheck(bool wrongWords)
+    {
+        await using var fixture = new Fixture();
+        fixture.SpeakerFailure = true;
+        var legacyQuote = await fixture.Prepare();
+        var legacy = await fixture.Run.ExecuteAsync(legacyQuote, true, ct: Token);
+        Assert.Equal(3, legacy.Rows.Count);
+        Assert.All(legacy.Rows, row => Assert.Equal(new[] { VoiceLabTakeQaFailure.Speaker }, row.Qa!.Failures));
+        var previousWordChecks = fixture.Remote.Qa;
+        var previousSyntheses = fixture.Remote.Seeds.Count;
+        var previousEmbeddings = fixture.Embedded.Count;
+        await fixture.Run.InvalidateAsync();
+
+        var input = fixture.Input with { ChecksGeneratedSpeaker = false };
+        var quote = await fixture.Run.PrepareAsync(input, Token);
+        var take = Assert.Single(quote.Takes);
+        Assert.NotNull(take.AdoptedAsset);
+        Assert.Equal(take.Qa, Assert.Single(quote.PricedActions));
+        Assert.Equal(take.Qa.Estimate.Usd, quote.Estimate.Usd);
+        fixture.Remote.Mismatches = wrongWords ? previousWordChecks + 1 : 0;
+        var row = Assert.Single((await fixture.Run.ExecuteAsync(quote, true, ct: Token)).Rows);
+        Assert.Equal(!wrongWords, row.Selectable);
+        Assert.Null(row.Qa!.SpeakerScore);
+        Assert.Equal(previousEmbeddings, fixture.Embedded.Count);
+        Assert.Equal(previousSyntheses, fixture.Remote.Seeds.Count);
+        Assert.Equal(previousWordChecks + 1, fixture.Remote.Qa);
+        if (wrongWords)
+        {
+            Assert.Equal(new[] { VoiceLabTakeQaFailure.Transcript }, row.Qa.Failures);
+            return;
+        }
+        var (publication, consent) = await fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UtcNow, Token);
+        var published = new VoiceLabPublishedTake(publication.Assets, publication.Audio, publication.OutDuration, publication.Words, publication.Chunks);
+        var recipe = VoiceLabRecipeBuilder.Candidate(row, input, published, consent, DateTimeOffset.UtcNow).Recipe!;
+        Assert.True(recipe.Qa.OutputSpeakerCheckSkipped);
+        Assert.Null(recipe.Qa.SpeakerScore);
+        Assert.Null(recipe.Qa.SpeakerThreshold);
+        Assert.Null(recipe.Qa.SpeakerModel);
+        Assert.Null(recipe.Qa.SpeakerPassed);
+        Assert.Null(recipe.Qa.ShortSpeech);
+    }
+
+    [Fact]
+    public async Task SelectedVoiceShortTakeIsReadyWhenItsWordAndAcousticChecksPass()
+    {
+        await using var fixture = new Fixture(input => input with { ChecksGeneratedSpeaker = false }) { VoicedFrames = 0 };
+        var quote = await fixture.Prepare();
+        VoiceLabTakeRow? first = null;
+        var result = await fixture.Run.ExecuteAsync(quote, true, rows =>
+        {
+            first ??= rows.FirstOrDefault();
+            return Task.CompletedTask;
+        }, Token);
+        Assert.Same(Assert.Single(result.Rows), first);
+        Assert.True(first!.AutomaticallySelectable);
+        Assert.Null(first.ShortPhraseCopy);
+        Assert.Empty(fixture.Embedded);
+        Assert.NotEmpty(fixture.Speech);
+        Assert.Single(fixture.Remote.Seeds);
+        Assert.Equal(1, fixture.Remote.Qa);
+    }
+
+    [Fact]
+    public async Task SelectedVoiceTakeForAnEditedClipDoesNotBuyASpeakerRetry()
+    {
+        await using var fixture = new Fixture(input => input with
+        {
+            EditedLayout = new([], 0.5),
+            ChecksGeneratedSpeaker = false,
+        }) { SpeakerFailure = true };
+        var quote = await fixture.Prepare();
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        var row = Assert.IsType<VoiceLabTakeRow>(result.BestAutomatic);
+        Assert.True(row.Qa!.OutputSpeakerCheckSkipped);
+        Assert.Null(row.Qa.SpeakerScore);
+        Assert.NotEmpty(fixture.Speech);
+        Assert.Empty(fixture.Embedded);
+        Assert.Single(fixture.Remote.Seeds);
+        Assert.Equal(1, fixture.Remote.Qa);
+    }
+
     [Fact]
     public async Task ApprovedRemainderSurvivesExpiryButChangedInputsStopAndDiscardIt()
     {

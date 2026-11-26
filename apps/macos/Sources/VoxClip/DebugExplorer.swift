@@ -1057,7 +1057,7 @@ actor FixtureClipConnector: LLMConnector {
     func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 128000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
-        let clips = spans.enumerated().map { "{\"title\":\"Suggestion \($0.offset + 1)\",\"reason\":\"One idea, cleanly said\",\"score\":\(8 - $0.offset),\"start_line\":\($0.element.0),\"end_line\":\($0.element.1)}" }
+        let clips = spans.enumerated().map { "{\"title\":\"Suggestion \($0.offset + 1)\",\"reason\":\"One idea, cleanly said\",\"score\":\(8 - $0.offset),\"parts\":[{\"start_line\":\($0.element.0),\"end_line\":\($0.element.1)}],\"not_in_take\":\"\"}" }
         return RawCompletion(text: "{\"clips\":[\(clips.joined(separator: ","))]}", model: answeringModel ?? model, stop: .complete)
     }
 }

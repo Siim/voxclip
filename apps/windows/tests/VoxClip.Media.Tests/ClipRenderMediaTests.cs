@@ -7,7 +7,9 @@ using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Cli;
 using VoxClip.Media.Audio;
+using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
+using VoxClip.Media.VoiceLab;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -20,6 +22,114 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
 {
     private const int Rate = 48_000;
     private static JsonElement Cases() => FixtureLoader.ReadJson("fixtures/clip-render/clip-render-cases.json").RootElement.Clone();
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "RequiresFFmpeg")]
+    public async Task StoryRenderKeepsSourceOrderAndPreviewFramingAtSeams(bool mp4)
+    {
+        await NativeTest.RequireAsync(windows: mp4);
+        var ct = TestContext.Current.CancellationToken;
+        using var document = FixtureLoader.ReadJson("fixtures/fcpxml/story.json");
+        var story = document.RootElement;
+        static long Samples(double time) => (long)Math.Round(time * Rate);
+        var kept = story.GetProperty("kept").EnumerateArray().Select(part => new MediaInterval(Samples(part[0].GetDouble()), Samples(part[1].GetDouble()))).ToArray();
+        var seams = story.GetProperty("partSeams").EnumerateArray().Select(item => Samples(item.GetDouble())).ToArray();
+        var source = NativePipelineTests.Fixture("bars-two-audio.mkv");
+        var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
+        var plan = new EditPlan(Rate, Samples(media.DurationSeconds), [], kept, kept.Sum(part => part.EndSample - part.StartSample), []) { PartSeams = seams };
+        var style = new ClipRenderInput(null, null) { PartReframes =
+            [(new(3, 3.5), new(ReframeSettings.FaceMode, CenterX: .19, CenterY: .45)),
+             (new(.5, 1.3), new(ReframeSettings.FaceMode, CenterX: .31, CenterY: .45)),
+             (new(2.5, 3), new(ReframeSettings.FaceMode, CenterX: .81, CenterY: .45))] };
+        const ExportAspect aspect = ExportAspect.Portrait;
+        const ExportQuality quality = ExportQuality.Standard;
+        var exportOutput = ClipControlsRendering.Output(media.OrientedSize, media.Video!.FrameRate, aspect, quality, style.Controls);
+        var snapshot = new ComposeSnapshot(media, plan, null, exportOutput) { Clip = style };
+        var directory = Directory.CreateTempSubdirectory("voxclip-story-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, mp4 ? "story.mp4" : "story.wav");
+            if (mp4)
+                await new Exporter().ExportAsync(new(snapshot, new ExportTarget.Clip("story"), aspect, quality, path, null)
+                    { Loudness = VoxClip.Core.Domain.Loudness.ExportLoudness.Off }, null, ct);
+            else await EditedAudioReader.WriteWaveAsync(snapshot, path, ct);
+            await MediaThread.Run("vc-test-story", () =>
+            {
+                using var sourceAudio = new AudioDecoder(source, 2);
+                using var renderedAudio = new AudioDecoder(path, 2);
+                var original = new float[Samples(4) * 2];
+                Assert.True(sourceAudio.Read(original, original.Length / 2, ct) >= Samples(3.5));
+                var rendered = new float[plan.OutputSamples * 2];
+                Assert.Equal(plan.OutputSamples, renderedAudio.Read(rendered, rendered.Length / 2, ct));
+                var cursor = 0L;
+                foreach (var part in kept)
+                {
+                    var strongest = Enumerable.Range(-32, 65).Max(shift =>
+                    {
+                        var dot = 0.0; var left = 0.0; var right = 0.0;
+                        for (var index = 2400; index < 9600; index++)
+                        {
+                            var before = original[(part.StartSample + index) * 2];
+                            var after = rendered[(cursor + index + shift) * 2];
+                            dot += before * after; left += before * before; right += after * after;
+                        }
+                        return dot / Math.Sqrt(left * right);
+                    });
+                    Assert.True(strongest > .90, $"Source {part.StartSample} at output {cursor}: {strongest}");
+                    cursor += part.EndSample - part.StartSample;
+                }
+                if (!mp4)
+                    foreach (var seam in seams)
+                    {
+                        Assert.InRange(Math.Abs(rendered[(seam - 1) * 2]), 0, .001);
+                        Assert.InRange(Math.Abs(rendered[seam * 2]), 0, .001);
+                    }
+
+                var timeline = new TimelineCursor(plan);
+                using var decoder = new VideoDecoder(source, hardware: false);
+                using var exported = mp4 ? new VideoDecoder(path, hardware: false) : null;
+                var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot);
+                var centers = new List<byte[]>();
+                var previewSize = new PixelSize(108, 192);
+                var preview = AllocateFrame(previewSize);
+                var reference = AllocateFrame(previewSize);
+                var unencoded = exported is null ? AllocateFrame(exportOutput.Size) : null;
+                foreach (var time in seams.Prepend(0L).Select(sample => sample / (double)Rate))
+                {
+                    var sourceTime = timeline.Source(time);
+                    var decoded = decoder.ReadAt(sourceTime, false, ct);
+                    composer.Compose(decoded, preview, snapshot, time, true, ct);
+                    composer.Compose(decoded, reference, snapshot, time, false, ct);
+                    var difference = 0.0;
+                    for (var offset = 0; offset < preview.Pixels.Length; offset += 4)
+                        for (var channel = 0; channel < 3; channel++)
+                            difference += Math.Abs(preview.Pixels.Span[offset + channel] - reference.Pixels.Span[offset + channel]);
+                    Assert.InRange(difference / (previewSize.Width * previewSize.Height * 3), 0, 3);
+                    var pixel = CenterPixel(preview);
+                    centers.Add(pixel);
+                    var output = exported?.ReadAt(time, false, ct) ?? unencoded!;
+                    if (exported is null) composer.Compose(decoded, output, snapshot, time, false, ct);
+                    else Assert.InRange(Math.Abs(exported.Position - time), 0, 0.5 / exportOutput.FrameRate);
+                    Assert.Equal(exportOutput.Size, new PixelSize(output.Width, output.Height));
+                    var actual = CenterPixel(output);
+                    Assert.All(pixel.Zip(actual), pair => Assert.InRange(Math.Abs(pair.First - pair.Second), 0, 15));
+                }
+                Assert.Equal(3, centers.Select(Convert.ToHexString).Distinct().Count());
+                Assert.Equal(0, snapshot.Timeline.MapTime(3));
+                Assert.Equal(plan.Duration, snapshot.Timeline.MapEndTime(3));
+                return true;
+            }, ct);
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static PixelBuffer AllocateFrame(PixelSize size)
+        => new(new byte[size.Width * size.Height * 4], size.Width, size.Height, size.Width * 4);
+
+    private static byte[] CenterPixel(PixelBuffer frame)
+        => frame.Pixels.Slice((frame.Height / 2) * frame.Stride + (frame.Width / 2) * 4, 3).ToArray();
 
     private static ProjectClipControls Controls(double speed = 1, ClipLook look = ClipLook.Original, double gain = 0, double fadeIn = 0,
         double fadeOut = 0, bool mute = false, bool flip = false, int rotation = 0)
@@ -185,6 +295,35 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         var inside = ((int)(0.42 * Rate), (int)(0.78 * Rate));
         Assert.True(Amplitude(mixed, inside.Item1, inside.Item2, 441) < 0.005);
         Assert.Equal(0.25, Amplitude(mixed, inside.Item1, inside.Item2, 1_000), 2);
+    }
+
+    [Fact]
+    public void SlippedSoundPlaysAcrossACutAtItsOwnLengthWithFadesAndEnvelope()
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-sound-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "sound.wav");
+            var pcm = new short[Rate];
+            pcm.AsSpan(0, Rate / 2).Fill(4096);
+            pcm.AsSpan(Rate / 2).Fill(16384);
+            File.WriteAllBytes(path, new VoiceLabWavePcm(Rate, 1, 16, false, System.Runtime.InteropServices.MemoryMarshal.AsBytes(pcm.AsSpan()).ToArray()).Bytes());
+            var effect = new ClipEffect("sound", null, "sound", .75, 1.25)
+            {
+                Sound = new("library", null, "sound.wav", 1), MediaOffsetSeconds = .5, FadeInSeconds = .25,
+                FadeOutSeconds = .25, GainPoints = [new(0, -12), new(.25, 0)]
+            };
+            var plan = TestPlan.FromKept(Rate, 3 * Rate, [new(0, Rate / 2), new(Rate, 3 * Rate)]);
+            var snapshot = Snapshot(new(Controls(2), new([effect], new Dictionary<string, string> { [effect.Id] = path })), 3 * Rate) with { Plan = plan };
+            using var reader = Reader(snapshot, frames: plan.OutputSamples, amplitude: 0);
+            var samples = Left(reader);
+            Assert.Equal(0, samples[(int)(.25 * Rate)]);
+            Assert.Equal(.125297, samples[(int)(.375 * Rate)], 6);
+            Assert.Equal(.5f, samples[Rate / 2]);
+            Assert.Equal(.25f, samples[(int)(.625 * Rate)]);
+            Assert.Equal(0, samples[(int)(.75 * Rate)]);
+        }
+        finally { directory.Delete(recursive: true); }
     }
 
     [Fact]
@@ -677,6 +816,23 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         for (var index = 0; index < frame.Pixels.Length; index += 4)
             if (frame.Pixels.Span[index + 2] > 200 && frame.Pixels.Span[index + 1] > 150 && frame.Pixels.Span[index] < 90) count++;
         return count;
+    }
+
+    [Fact]
+    public void AColourLookDissolvesFromTheBaseGradeAndKeepsTheLegacyHardCut()
+    {
+        var frame = SyntheticFrame();
+        var warm = Controls(look: ClipLook.Warm);
+        var look = new ClipEffect("fx-look", "c", "colourLook", 1, 3) { Look = "bw" };
+        var baseGrade = Finish(frame, new(warm, null));
+        var fullGrade = Finish(frame, new(Controls(look: ClipLook.Bw), null));
+        Assert.Equal(fullGrade.Pixels.ToArray(), Finish(frame, new(warm, Effects(look)), 1).Pixels.ToArray());
+        var faded = new ClipRenderInput(warm, Effects(look with { FadeInSeconds = .5 }));
+        Assert.Equal(baseGrade.Pixels.ToArray(), Finish(frame, faded, 1).Pixels.ToArray());
+        var midpoint = Finish(frame, faded, 1.25);
+        var expected = baseGrade.Pixels.ToArray().Zip(fullGrade.Pixels.ToArray(), (first, second) => (byte)Math.Round((first + second) / 2.0));
+        Assert.Equal(expected, midpoint.Pixels.ToArray());
+        Assert.Equal(fullGrade.Pixels.ToArray(), Finish(frame, faded, 2.99).Pixels.ToArray());
     }
 
     [Fact]

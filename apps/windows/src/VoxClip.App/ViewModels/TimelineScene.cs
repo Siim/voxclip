@@ -27,12 +27,30 @@ internal sealed class TimelineScene
     private readonly Dictionary<string, int> wordIndices = new(StringComparer.Ordinal);
     private readonly bool[][] flags = Enumerable.Range(0, 4).Select(_ => new bool[Bins]).ToArray();
     internal TimelineTileCache Tiles { get; } = new();
-    internal void Build(EditorViewModel model, EditPlan plan, TimelineWindow window, IReadOnlyList<float> waveform, double width, bool edited)
+    internal void Build(EditorViewModel model, EditPlan plan, TimelineWindow window, IReadOnlyList<float> waveform, double width, bool edited, TimelineStory? story = null)
     {
         BuildVersion++;
         VisitedWords = 0;
         foreach (var layer in Layers) layer.Clear();
         Clips.Clear();
+        if (story is not null)
+        {
+            if (model.HasSelection) MarkStoryBand(model.SelectionStart, model.SelectionEnd, 8);
+            MarkStoryBand(model.RewriteStart, model.RewriteEnd, 10);
+            return;
+        }
+        void MarkStoryBand(int first, int last, int layer)
+        {
+            foreach (var part in model.ClipParts)
+            {
+                var start = Math.Max(first, part.First);
+                var end = Math.Min(last, part.Last);
+                if (start > end || first < 0) continue;
+                var left = Math.Clamp(window.X(story!.Display(model.Words[start].Start, edited), width), 0, width);
+                var right = Math.Clamp(window.X(story.Display(model.Words[end].End, edited), width), 0, width);
+                if (right > left) Layers[layer].Add(new(left, 0, right - left, 30));
+            }
+        }
         double Display(double source) => edited ? plan.MapTime(source) : source;
         double Source(double displayed) => edited ? plan.SourceTime(displayed) : displayed;
         var bins = Math.Clamp((int)Math.Ceiling(width), 1, Bins);
@@ -112,9 +130,9 @@ internal sealed class TimelineScene
         }
         if (model.HasSelection) Band(model.SelectionStart, model.SelectionEnd, 8, 9, 1.5);
         Band(model.RewriteStart, model.RewriteEnd, 10, 11, 1);
-        foreach (var clip in model.Clips)
+        foreach (var (clip, part) in model.Clips.SelectMany(clip => clip.Clip.PlayParts.Select(part => (clip, part))))
         {
-            var first = wordIndices.GetValueOrDefault(clip.Clip.StartWordId, -1); var last = wordIndices.GetValueOrDefault(clip.Clip.EndWordId, -1);
+            var first = wordIndices.GetValueOrDefault(part.StartWordId, -1); var last = wordIndices.GetValueOrDefault(part.EndWordId, -1);
             if (first < 0 || last < first) continue;
             var start = Display(model.Words[first].Start); var end = Display(model.Words[last].End);
             if (end < window.Start || start > window.End) continue;

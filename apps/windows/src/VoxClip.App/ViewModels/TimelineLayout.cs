@@ -47,7 +47,7 @@ internal static class TimelineLayout
         var duration = model.Project.Media.Source.DurationSeconds;
         var rate = model.Project.Media.Source.Audio?.SampleRate ?? 48000;
         if (model.State is { } state)
-            return EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state with { ActiveClipId = null }, duration), duration, rate, state.PauseKeepSeconds);
+            return EditingEngine.BuildPlan(model.IsStoryClip ? state : state with { ActiveClipId = null }, duration, rate);
         var samples = (long)Math.Floor(duration * rate + 0.5);
         return new(rate, samples, [], [new(0, samples)], samples, []);
     }
@@ -122,10 +122,12 @@ internal readonly record struct TimelineTrackGeometry
     internal double AudioTop { get; }
     internal double CaptionTop { get; }
     internal double EffectsTop { get; }
+    internal double MusicTop { get; }
     internal double VideoHeight { get; }
     internal double AudioHeight { get; }
     internal double CaptionHeight { get; }
     internal double EffectsHeight { get; }
+    internal double MusicHeight { get; }
     internal double Height { get; }
     internal TimelineTrackGeometry(int size, bool video, bool captions, bool effects)
     {
@@ -134,10 +136,12 @@ internal readonly record struct TimelineTrackGeometry
         AudioHeight = size switch { 0 => 32, 2 => 64, _ => 44 };
         CaptionHeight = captions ? size switch { 0 => 20, 2 => 28, _ => 24 } : 0;
         EffectsHeight = effects ? size switch { 0 => 20, 2 => 28, _ => 24 } : 0;
+        MusicHeight = size switch { 0 => 20, 2 => 28, _ => 24 };
         VideoTop = TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight + 1;
         AudioTop = VideoTop + (video ? VideoHeight + 1 : 0);
         CaptionTop = AudioTop + AudioHeight + 1;
         EffectsTop = CaptionTop + (captions ? CaptionHeight + 1 : 0);
-        Height = EffectsTop + EffectsHeight + 10;
+        MusicTop = EffectsTop + (effects ? EffectsHeight + 1 : 0);
+        Height = MusicTop + MusicHeight + 10;
     }
 }

@@ -79,7 +79,7 @@ struct RewriteFailureCopyTests {
         #expect(RewriteSession.failureKind(ClipTakePlan.Failure.placement(.geometry(.unknownWord("w1")), index: 3))
             == "type=ClipTakePlan.Failure case=placement.geometry.unknownWord")
         #expect(RewriteSession.failureKind(ClipTakePlan.Failure.tooManyPhrases(count: 140)) == "type=ClipTakePlan.Failure case=tooManyPhrases")
-        #expect(RewriteSession.failureKind(Unknown()).hasPrefix("type=RewriteFailureCopyTests.Unknown domain="))
+        #expect(RewriteSession.failureKind(Unknown()) == "type=RewriteFailureCopyTests.Unknown")
         for error in Self.everyCase {
             let line = RewriteSession.failureKind(error)
             #expect(line.range(of: #"\A[A-Za-z0-9_.= -]+\z"#, options: .regularExpression) != nil, "\(line)")

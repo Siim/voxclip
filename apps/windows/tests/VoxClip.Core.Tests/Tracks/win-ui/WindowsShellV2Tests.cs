@@ -161,7 +161,8 @@ public sealed class WindowsShellV2Tests
         Assert.Contains("PointerExited=\"ClipRowPointerExited\"", clip);
         Assert.Contains("Visibility=\"{x:Bind ShowsActions, Mode=OneWay}\"", clip);
         Assert.Contains("Visibility=\"{x:Bind ShowsDuration, Mode=OneWay}\"", clip);
-        Assert.Contains("<Grid ColumnSpacing=\"8\" MinHeight=\"32\">", clip);
+        Assert.Contains("MinHeight=\"32\">", clip);
+        Assert.Contains("Text=\"{x:Bind Badge, Mode=OneWay}\"", clip);
         // The row ✦ is Make it postable (design §6.7); Rewrite stays in the row's menu.
         Assert.Contains("Click=\"MakeItClipClicked\" Tapped=\"RowButtonTapped\"", clip);
         Assert.Contains("Click=\"MoreClipClicked\" Tapped=\"RowButtonTapped\"", clip);
@@ -266,6 +267,19 @@ public sealed class WindowsShellV2Tests
         tabs.Reconcile(model.Clips);
         Assert.Single(tabs.Items);
         Assert.Null(tabs.ActiveClipId);
+    }
+
+    [Fact]
+    public void CyclingToAStoryClipSelectsItsFirstPlayedPart()
+    {
+        var project = Model().Project;
+        var words = project.Transcript!.Words;
+        var clip = new ClipRange("story", words[0].Id, words[4].Id, null, ClipOrigin.Manual, null, null, true, Parts:
+            [new("later", words[3].Id, words[4].Id), new("earlier", words[0].Id, words[1].Id)]);
+        var model = new EditorViewModel(project with { SchemaVersion = 5, Edits = project.Edits with { Clips = [clip] } });
+        model.CycleClip(1);
+        Assert.Equal(clip.Id, model.State?.ActiveClipId);
+        Assert.Equal(3, model.SelectionStart);
     }
 
     [Fact]

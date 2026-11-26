@@ -187,21 +187,41 @@ public struct TranscriptionResult: Sendable {
         self.fromCache = fromCache
     }
 }
+public struct TranscriptionAlignmentRetry: Sendable {
+    public let providerRequestID: String?
+    private let align: @Sendable () throws -> Transcript
+
+    init(providerRequestID: String?, align: @escaping @Sendable () throws -> Transcript) {
+        self.providerRequestID = providerRequestID
+        self.align = align
+    }
+
+    @concurrent public func finish() async throws -> Transcript {
+        try Task.checkCancellation()
+        let transcript = try align()
+        try Task.checkCancellation()
+        return transcript
+    }
+}
 public final class TranscriptionEvidence: Sendable {
     public struct Snapshot: Sendable {
         public var uploadStarted = false
         public var fromCache = false
+        public fileprivate(set) var alignmentRetry: TranscriptionAlignmentRetry?
     }
     private let state = Mutex(Snapshot())
     public init() {}
     public var snapshot: Snapshot { state.withLock { $0 } }
     public func recordUploadStarted() { state.withLock { $0.uploadStarted = true } }
     public func recordCacheHit() { state.withLock { $0.fromCache = true } }
+    func recordAlignmentReady(_ retry: TranscriptionAlignmentRetry) { state.withLock { $0.alignmentRetry = retry } }
 }
 /// One import pipeline with immutable output; transcription §5, §7 and §13.4.
 public actor TranscriptionService {
+    typealias Aligner = @Sendable (RawTranscript, ExtractedAudio, AudioEnvelope?, String) throws -> Transcript
     private let locations: DataLocations
     private let catalog: BundledModelCatalog?
+    private let aligner: Aligner
     /// The app-wide queue every public initializer shares; tests pass a private one.
     let gate: SpeechJobGate
     private var active = false
@@ -211,9 +231,12 @@ public actor TranscriptionService {
         locations = DataLocations()
         catalog = (try? SharedResources.locate()).map { BundledModelCatalog(shared: $0) }
         gate = .shared
+        aligner = Self.align
     }
     public init(locations: DataLocations, catalog: BundledModelCatalog? = nil) { self.init(locations: locations, catalog: catalog, gate: .shared) }
-    init(locations: DataLocations, catalog: BundledModelCatalog? = nil, gate: SpeechJobGate) { self.locations = locations; self.catalog = catalog; self.gate = gate }
+    init(locations: DataLocations, catalog: BundledModelCatalog? = nil, gate: SpeechJobGate, align: @escaping Aligner = TranscriptionService.align) {
+        self.locations = locations; self.catalog = catalog; self.gate = gate; aligner = align
+    }
     public func detectLanguage(_ request: TranscriptionRequest, using detector: any SpeechLanguageDetector) async throws -> SpeechLanguageDetection {
         guard !active else { throw VoxClipError.transcriptionFailed("This project already has a transcription job") }
         active = true
@@ -306,7 +329,7 @@ public actor TranscriptionService {
                         reporter.report(value)
                     }
                     fromCache = false
-                    try Task.checkCancellation()
+                    if local { try Task.checkCancellation() }
                     if (try? SpeechRawCacheEntry.read(url))?.key != key {
                         let entry = SpeechRawCacheEntry(key: key, raw: raw, providerResponse: nil)
                         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -314,14 +337,16 @@ public actor TranscriptionService {
                     }
                 }
             }
-            reporter.report(TranscriptionProgress(stage: .aligning, fraction: 0))
-            let grouped = try WordAssembler.group(raw.tokens, rule: raw.grouping, timelineStart: request.audio.timelineStart)
-            let imported = try SpeechEditingImportAdapter.pipeline(grouped, envelope: envelope, timing: raw.timing, verbatim: raw.verbatim, duration: request.audio.durationSeconds)
-            let words = imported.words
-            guard words.contains(where: { $0.kind == .word }) else { throw VoxClipError.noSpeech }
-            let refined = imported.refined
+            let aligner = self.aligner
+            if !local, let evidence, raw.tokens.contains(where: { ($0.kind ?? .word) == .word }) {
+                evidence.recordAlignmentReady(TranscriptionAlignmentRetry(providerRequestID: raw.providerRequestID) {
+                    try aligner(raw, request.audio, envelope, rawKey)
+                })
+            }
             try Task.checkCancellation()
-            let result = Transcript(words: words, language: raw.language, languageProbability: raw.languageProbability, durationSeconds: request.audio.durationSeconds, engine: raw.engine, verbatim: raw.verbatim, refined: refined, rawKey: rawKey, createdAt: Date())
+            reporter.report(TranscriptionProgress(stage: .aligning, fraction: 0))
+            let result = try aligner(raw, request.audio, envelope, rawKey)
+            try Task.checkCancellation()
             reporter.report(TranscriptionProgress(stage: .aligning, fraction: 1))
             await reporter.finish()
             delivery.continuation.finish()
@@ -333,6 +358,13 @@ public actor TranscriptionService {
             if Task.isCancelled || error is CancellationError { throw VoxClipError.cancelled }
             throw error
         }
+    }
+    static func align(_ raw: RawTranscript, audio: ExtractedAudio, envelope: AudioEnvelope?, rawKey: String) throws -> Transcript {
+        let grouped = try WordAssembler.group(raw.tokens, rule: raw.grouping, timelineStart: audio.timelineStart)
+        let imported = try SpeechEditingImportAdapter.pipeline(grouped, envelope: envelope, timing: raw.timing, verbatim: raw.verbatim, duration: audio.durationSeconds)
+        guard imported.words.contains(where: { $0.kind == .word }) else { throw VoxClipError.noSpeech }
+        return Transcript(words: imported.words, language: raw.language, languageProbability: raw.languageProbability, durationSeconds: audio.durationSeconds,
+                          engine: raw.engine, verbatim: raw.verbatim, refined: imported.refined, rawKey: rawKey, createdAt: Date())
     }
     public func progress() -> AsyncStream<TranscriptionProgress> {
         let identifier = UUID()

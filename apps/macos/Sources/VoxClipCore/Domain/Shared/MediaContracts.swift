@@ -249,9 +249,11 @@ public struct RenderRequest: Sendable, Equatable {
     public var music: MusicRenderInput?
     /// The effects drawn on the picture and mixed into the audio (ai.md §18.5); nil keeps the render exactly as before.
     public var effects: ClipEffectsRenderInput?
+    public var footage: [ClipFootageRenderInput] = []
     /// The clip's speed, frame, look, volume, fades, mute, flip and rotation (design.md §6.9); nil, or the defaults, render
     /// exactly as before.
     public var clipControls: ProjectClipControls?
+    public var partReframes: [StoryPartReframe] = []
     public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil, voiceLab: VoiceLabRenderInput? = nil, contextDemo: ContextDemoRenderInput? = nil, contextDemoRoot: URL? = nil, motionCues: [MotionCue] = [], motionClipID: String? = nil, reduceMotion: Bool = false, sourceContentKey: String? = nil) {
         self.sourceURL = sourceURL; self.plan = plan; self.captions = captions; self.style = style; self.placement = placement; self.output = output; self.forPreview = forPreview
         self.captionLayout = captionLayout
@@ -262,6 +264,14 @@ public struct RenderRequest: Sendable, Equatable {
         self.motionClipID = motionClipID
         self.reduceMotion = reduceMotion
         self.sourceContentKey = sourceContentKey
+    }
+}
+public struct StoryPartReframe: Sendable, Equatable {
+    public let source: TimeRange
+    public let reframe: ReframeSettings
+
+    public init(source: TimeRange, reframe: ReframeSettings) {
+        self.source = source; self.reframe = reframe
     }
 }
 /// Export selection, never a rewrite of global cuts; architecture §4.9.
@@ -292,7 +302,8 @@ public struct ExportJob: Sendable, Equatable {
 public struct ExportCover: Sendable, Equatable {
     /// Seconds into the exported video.
     public var seconds: Double
-    public init(seconds: Double) { self.seconds = seconds }
+    public let title: String?
+    public init(seconds: Double, title: String? = nil) { self.seconds = seconds; self.title = title }
 
     /// The JPEG beside `video`: its base name with `-cover.jpg`.
     public static func url(for video: URL) -> URL {
@@ -303,10 +314,10 @@ public struct ExportCover: Sendable, Equatable {
     /// The cover of `clipID` in a render of it: the clip's `coverSeconds` (a source second) at its place in the render, its
     /// speed applied, kept inside the video. Nil when the clip has no cover.
     public static func forClip(_ clipID: String?, in project: Project, render: RenderRequest) -> ExportCover? {
-        guard let clipID, let source = ClipControlsProject.controls(for: clipID, in: project)?.coverSeconds else { return nil }
+        guard let clipID, let controls = ClipControlsProject.controls(for: clipID, in: project), let source = controls.coverSeconds else { return nil }
         let rendered = render.speedTiming.rendered(render.timeline.mapTime(source))
         let last = max(0, render.renderedDuration - 1 / max(1, render.output.fps))
-        return ExportCover(seconds: min(max(0, rendered), last))
+        return ExportCover(seconds: min(max(0, rendered), last), title: controls.coverTitle)
     }
 }
 

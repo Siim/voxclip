@@ -15,7 +15,7 @@ enum FoundationModelsSchema {
         let allowed: Set<String>
         switch type {
         case "object": allowed = ["type", "properties", "required", "additionalProperties"]
-        case "array": allowed = ["type", "items"]
+        case "array": allowed = ["type", "items", "minItems", "maxItems"]
         case "string": allowed = ["type", "enum"]
         default: allowed = ["type"]
         }
@@ -47,7 +47,8 @@ enum FoundationModelsSchema {
             guard let item = schema["items"] else { throw invalid("An array needs an item schema.") }
             return try DynamicGenerationSchema(
                 arrayOf: dynamic(item, name: name + "_item", clipBudget: clipBudget),
-                maximumElements: isClips ? clipBudget : nil
+                minimumElements: schema["minItems"].flatMap { if case .number(let value) = $0 { Int(exactly: value) } else { nil } },
+                maximumElements: (isClips ? clipBudget : nil) ?? schema["maxItems"].flatMap { if case .number(let value) = $0 { Int(exactly: value) } else { nil } }
             )
         case "string":
             if let enumeration = schema["enum"] {

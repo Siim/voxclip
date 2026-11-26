@@ -27,7 +27,7 @@ public sealed partial class EditorPage
             Available = () => root is not null && App.Services.Get("llm.connector", "").Length > 0,
             CostLine = () => AskClaudeCost(App.Services.Get("llm.connector", "")),
             Vision = new WindowsAskClaudeVision(() => !demo && media is { Video: not null } info && MediaPath is { } path ? (path, info.Video.RotationDegrees, info.OrientedSize) : null),
-            Prices = prices
+            Prices = prices, Assets = ViewModel.MakeIt.Services?.Assets
         };
         ViewModel.AskClaudeShown += (_, _) => ShowAskClaudePanel();
         ViewModel.AskClaudeClosed += (_, _) => askClaudePanel?.RequestClose();

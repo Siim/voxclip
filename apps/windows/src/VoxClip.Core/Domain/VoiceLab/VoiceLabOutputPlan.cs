@@ -16,6 +16,10 @@ public sealed record VoiceLabOutputPiece(VoiceLabOutputPieceKind Kind, long Sour
 public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSamples, IReadOnlyList<VoiceLabOutputPiece> Pieces,
     IReadOnlyList<CaptionWord> Captions, VoiceLabOutputScope Scope)
 {
+    private readonly IReadOnlyList<VoiceLabOutputPiece> pieces = Pieces;
+    private VoiceLabOutputPiece[] sourceIndex = Pieces.OrderBy(piece => piece.SourceStartSample).ToArray();
+    public IReadOnlyList<VoiceLabOutputPiece> Pieces { get => pieces; init { pieces = value; sourceIndex = value.OrderBy(piece => piece.SourceStartSample).ToArray(); } }
+    public IReadOnlyList<long> PartSeams { get; init; } = [];
     public IReadOnlyDictionary<string, IReadOnlyList<VoiceLabVideoCut>> VideoCuts { get; init; } = new Dictionary<string, IReadOnlyList<VoiceLabVideoCut>>();
     public long OutputSamples => Pieces.Count == 0 ? 0 : Pieces[^1].OutputEndSample;
     public double Duration => OutputSamples / SampleRate;
@@ -24,14 +28,15 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
     {
         if (RequiresSyntheticRendering) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.UnsupportedRendering);
     }
-    public double MapTime(double source)
+    public double MapTime(double source) => MapTime(source, false);
+    internal double MapTime(double source, bool end)
     {
         var sample = (long)Math.Clamp(EditingMath.Round(double.IsFinite(source) ? source * SampleRate : 0), 0, TotalSourceSamples);
-        long prior = 0;
-        foreach (var piece in Pieces)
-        {
-            if (sample < piece.SourceStartSample) return prior / SampleRate;
-            if (sample <= piece.SourceEndSample)
+        var probe = end && PartSeams.Count > 0 && sample > 0 ? sample - 1 : sample;
+        var index = EditingPlanner.FindSource(sourceIndex, probe, piece => piece.SourceStartSample);
+        if (index < 0) return 0;
+        var piece = sourceIndex[index];
+        if (sample <= piece.SourceEndSample)
             {
                 if (piece.SegmentId is { } id && VideoCuts.TryGetValue(id, out var cuts) && cuts.Count > 0)
                 {
@@ -44,9 +49,7 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
                 var fraction = (double)(sample - piece.SourceStartSample) / (piece.SourceEndSample - piece.SourceStartSample);
                 return (piece.OutputStartSample + fraction * (piece.OutputEndSample - piece.OutputStartSample)) / SampleRate;
             }
-            prior = piece.OutputEndSample;
-        }
-        return Duration;
+        return piece.OutputEndSample / SampleRate;
     }
     public double SourceTime(double edited)
     {
@@ -89,7 +92,7 @@ public static class VoiceLabOutputPlanner
 {
     public static VoiceLabOutputPlan Build(Project project, VoiceLabOutputScope scope) => Build(project, scope, null, null);
     private sealed record Replacement(string Id, double Start, double End, double OutDuration, VoiceLabAudio? Audio);
-    internal static VoiceLabOutputPlan Build(Project project, VoiceLabOutputScope scope, VoiceLabWindow? window, string? pendingId)
+    internal static VoiceLabOutputPlan Build(Project project, VoiceLabOutputScope scope, VoiceLabWindow? window, string? pendingId, ClipRange? part = null)
     {
         VoiceLabProject.Validate(project);
         if (project.Transcript is not { } transcript) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
@@ -103,21 +106,24 @@ public static class VoiceLabOutputPlanner
         TimeRange? clipRange = null;
         if (scope.ClipId is { } clipId)
         {
-            var clip = state.Clips.FirstOrDefault(item => item.Id == clipId);
+            var clip = part ?? state.Clips.FirstOrDefault(item => item.Id == clipId);
             if (clip is null) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
             var words = transcript.Words;
-            var first = -1; var last = -1;
-            for (var i = 0; i < words.Count; i++)
+            if (clip.Parts is not null)
             {
-                if (words[i].Id == clip.StartWordId) first = i;
-                if (words[i].Id == clip.EndWordId) last = i;
+                if (window is not null || !StoryClips.Valid(clip, words)) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
+                StoryClips.ValidatePlacement(clip, project, words);
+                var plans = EditingPlanner.SinglePartClips(clip).Select(single => Build(project, scope, null, null, single));
+                return Concatenate(plans, scope, rate, total);
             }
-            if (first < 0 || last < first) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
-            clipRange = EditingAlgorithms.ClipTimes(words, first, last, clip.LeadInSeconds);
+            if (clip.PlayPartIndices(words) is not { Count: 1 } ranges) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
+            if (part is not null) state = state with { Clips = [part] };
+            clipRange = EditingAlgorithms.ClipTimes(words, ranges[0].Start, ranges[0].End, clip.LeadInSeconds);
         }
         var enabled = project.VoiceLab.Segments.Where(segment => segment.Enabled &&
-            (clipRange is null || grid.Sample(segment.Replace.End) > grid.Sample(clipRange.Value.Start) &&
-                grid.Sample(segment.Replace.Start) < grid.Sample(clipRange.Value.End)))
+            (clipRange is null || (part is not null
+                ? grid.Contains(clipRange.Value.Start, clipRange.Value.End, segment.Replace.Start, segment.Replace.End)
+                : grid.Sample(segment.Replace.End) > grid.Sample(clipRange.Value.Start) && grid.Sample(segment.Replace.Start) < grid.Sample(clipRange.Value.End))))
             .OrderBy(segment => segment.Replace.Start).ToArray();
         if (clipRange is { } range && enabled.Any(segment => !grid.Contains(range.Start, range.End, segment.Replace.Start, segment.Replace.End)))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
@@ -191,7 +197,8 @@ public static class VoiceLabOutputPlanner
             Append(VoiceLabOutputPieceKind.Source, position, interval.EndSample, interval.EndSample - position);
         }
         var plan = new VoiceLabOutputPlan(rate, total, pieces, [], scope);
-        plan = plan with { VideoCuts = enabled.Where(segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe?.Video.Mode == VoiceLabVideoMode.Cut)
+        plan = plan with { VideoCuts = enabled.Where(segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe?.Video is
+                { Mode: VoiceLabVideoMode.Cut or VoiceLabVideoMode.Lipsync, Cuts.Count: > 0 })
             .ToDictionary(segment => segment.Id, segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe!.Video.Cuts!) };
         if (enabled.Length == 0) return plan with { Captions = EditingEngine.CaptionCopy(segments, basePlan) };
         var captions = new List<CaptionWord>();
@@ -223,5 +230,28 @@ public static class VoiceLabOutputPlanner
         }
         captions.Sort((left, right) => left.Start == right.Start ? StringComparer.Ordinal.Compare(left.Id, right.Id) : left.Start.CompareTo(right.Start));
         return plan with { Captions = captions };
+    }
+
+    private static VoiceLabOutputPlan Concatenate(IEnumerable<VoiceLabOutputPlan> plans, VoiceLabOutputScope scope, double rate, long total)
+    {
+        var pieces = new List<VoiceLabOutputPiece>();
+        var captions = new List<CaptionWord>();
+        var seams = new List<long>();
+        var cuts = new Dictionary<string, IReadOnlyList<VoiceLabVideoCut>>();
+        long offset = 0;
+        foreach (var plan in plans.Where(plan => plan.Pieces.Count > 0))
+        {
+            if (offset > long.MaxValue - plan.OutputSamples) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidRange);
+            if (offset > 0) seams.Add(offset);
+            pieces.AddRange(plan.Pieces.Select(piece => piece with { OutputStartSample = piece.OutputStartSample + offset,
+                OutputEndSample = piece.OutputEndSample + offset }));
+            captions.AddRange(EditingPlanner.ShiftCaptions(plan.Captions, offset, rate, captions.Count > 0));
+            foreach (var cut in plan.VideoCuts) cuts.TryAdd(cut.Key, cut.Value);
+            offset += plan.OutputSamples;
+        }
+        var sorted = pieces.OrderBy(piece => piece.SourceStartSample).ToArray();
+        if (sorted.Zip(sorted.Skip(1)).Any(pair => pair.First.SourceEndSample > pair.Second.SourceStartSample))
+            throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidRange);
+        return new(rate, total, pieces, captions, scope) { PartSeams = seams, VideoCuts = cuts };
     }
 }

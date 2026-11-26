@@ -7,7 +7,8 @@ namespace VoxClip.Media.Audio;
 
 internal static class EditedWaveWriter
 {
-    internal static async Task WriteAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish, string? scratchRoot = null)
+    internal static async Task WriteAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish, string? scratchRoot = null,
+        bool includeMusic = false)
     {
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
         if (snapshot.Timeline.OutputSamples <= 0)
@@ -19,9 +20,11 @@ internal static class EditedWaveWriter
             protectedPaths.AddRange(project.VoiceLab.Assets?.Select(asset =>
                 Path.Combine(input.PaidRoot, project.Id, Path.GetFileName(asset.File))) ?? []);
         }
+        if (snapshot.Clip?.Music is { } music) protectedPaths.Add(music.AssetPath);
         OutputSafety.Validate(protectedPaths, [path]);
         var destination = OutputSafety.Resolve(path);
-        var dataBytes = VoiceLabCapacity.Bytes(snapshot.Timeline.OutputSamples, 2 * sizeof(float));
+        var mixed = includeMusic && snapshot.Clip?.Music is not null;
+        var dataBytes = VoiceLabCapacity.Bytes(mixed ? snapshot.RenderedSamples : snapshot.Timeline.OutputSamples, 2 * sizeof(float));
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } &&
             dataBytes > uint.MaxValue - 36L)
             throw new VoxClipException(VoxClipErrorCode.ExportFailed,
@@ -42,7 +45,9 @@ internal static class EditedWaveWriter
                 using (var stage = OutputSafety.CreatePartial(partial))
                 {
                     owned = true;
-                    using var audio = RenderedAudioReader.OpenEditedVoice(snapshot, rate, session, ct);
+                    using var audio = mixed
+                        ? RenderedAudioReader.Open(snapshot, rate, session: session, ct: ct, music: MusicBed.Stage(snapshot, rate, session, ct))
+                        : RenderedAudioReader.OpenEditedVoice(snapshot, rate, session, ct);
                     using var output = new WaveWriter(stage, rate, 2, true);
                     var samples = new float[8192];
                     int count;

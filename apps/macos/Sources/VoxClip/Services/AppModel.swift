@@ -160,6 +160,13 @@ extension ProviderChoice {
     var providerStatus: [String: String] = [:]
     var knownCLIAuthMethods: [String: String] = [:]
     var detectedConnectorStatus: [String: ConnectorStatus] = [:]
+    var codexDraftModel: String?
+    private(set) var codexLiveModels: [LLMModel]?
+    private(set) var codexModelListWarning: String?
+    private(set) var codexModelsRefreshing = false
+    private(set) var codexFallbacks: [String: String] = [:]
+    @ObservationIgnored private var codexConnector: (path: String, cli: CLIConnector)?
+    @ObservationIgnored private var codexRefreshID: UUID?
     func consentCopy(_ provider: ProviderChoice, action: ConnectorConsentAction, wordCount: Int) -> String {
         provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")],
                              serverHost: localServerHost(provider))
@@ -181,6 +188,57 @@ extension ProviderChoice {
         }
         detectedConnectorStatus[provider.id] = result
         return result
+    }
+
+    func savedModel(for provider: ProviderChoice) -> String {
+        string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
+    }
+
+    func effectiveModel(for provider: ProviderChoice) -> String {
+        let saved = savedModel(for: provider)
+        return provider.id == "codex" ? codexFallbacks[saved] ?? saved : saved
+    }
+
+    func codexFallbackMessage(for model: String) -> String? {
+        guard let fallback = codexFallbacks[model] else { return nil }
+        return "Using \(fallback) this session. Codex doesn't offer \(model)."
+    }
+
+    func modelChoices(for provider: ProviderChoice, refreshed: [LLMModel] = []) -> [ProviderChoice.Model] {
+        let live = provider.id == "codex" ? codexLiveModels ?? [] : refreshed
+        let known = Set(provider.models.map(\.id))
+        return provider.models + live.filter { !known.contains($0.id) }.map {
+            ProviderChoice.Model(id: $0.id, name: $0.name, tier: $0.tier)
+        }
+    }
+
+    func modelUnavailable(_ model: String, for provider: ProviderChoice) -> Bool {
+        guard provider.id == "codex", let codexLiveModels,
+              provider.models.contains(where: { $0.id == model }) else { return false }
+        return !codexLiveModels.contains { $0.id == model }
+    }
+
+    func chooseModel(_ model: String, for provider: ProviderChoice) {
+        guard !modelUnavailable(model, for: provider) else { return }
+        if provider.id == "codex" { codexDraftModel = model == savedModel(for: provider) ? nil : model }
+        else { set("llm.model.\(provider.id)", .string(model)) }
+    }
+
+    func refreshCodexModels(force: Bool = false) async {
+        guard !(Self.isTestSession || TestProcess.isRunning) || connectorOverride != nil else { return }
+        guard !codexModelsRefreshing, let cli = connector("codex") as? CLIConnector else { return }
+        let path = string("llm.cliPath.codex")
+        let refreshID = UUID()
+        codexRefreshID = refreshID
+        codexModelsRefreshing = true
+        defer { if codexRefreshID == refreshID { codexModelsRefreshing = false } }
+        if !force, codexLiveModels != nil, await cli.hasLiveModels { return }
+        guard let models = try? await cli.models(refresh: true) else { return }
+        let isLive = await cli.hasLiveModels
+        let warning = await cli.refreshWarning
+        guard !Task.isCancelled, codexRefreshID == refreshID, path == string("llm.cliPath.codex") else { return }
+        codexLiveModels = isLive ? models : nil
+        codexModelListWarning = warning
     }
     /// Each open project's content key by project id. The cache leases of open projects are held per editor
     /// (`EditorModel.holdCacheEntry`), not here, because two windows can show the same project id.
@@ -250,8 +308,11 @@ extension ProviderChoice {
     var testingProviders: Set<String> = []
     @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }
+    let falLipsyncCleanupNotice = FalLipsyncCleanupNotice()
     @ObservationIgnored lazy var captions = CaptionHandoff(shared: shared)
     @ObservationIgnored lazy var exportLedger = ExportLedger(file: locations.root.appendingPathComponent("exports.json"))
+    @ObservationIgnored lazy var postingHelpArchive = PostingHelpArchive(root: locations.root.appendingPathComponent("PostingHelp", isDirectory: true))
+    @ObservationIgnored lazy var voxConvo = VoxConvoConnection(secrets: secrets)
     @ObservationIgnored lazy var appleSpeechAssets = AppleSpeechAssetLibrary(app: self)
 
     /// `locations` defaults to the user's data folder, or `VOXCLIP_DATA_DIR`; tests pass their own.
@@ -277,9 +338,9 @@ extension ProviderChoice {
         self.updates = updates
         self.modelDownloader = modelDownloader
         do { shared = try SharedResources.locate() }
-        catch { shared = nil; startupError = .sharedResourcesMissing }
+        catch { shared = nil; reportStartupFailure(error) }
         // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export sheet.
-        if shared != nil { do { try SharePostText.preflight() } catch { startupError = .sharedResourcesMissing } }
+        if shared != nil { do { try SharePostText.preflight() } catch { reportStartupFailure(error) } }
         loadCatalogue()
     }
 
@@ -296,6 +357,8 @@ extension ProviderChoice {
         let scratchRoot = locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
         do {
             let swept = try await Task.detached(priority: .utility) {
+                // Saved Rewrite proposals 60 days unused go at launch too, not only when one is read (voice-lab §3.5).
+                RewriteSavedProposalStore.sweepStale(paidRoot: paidRoot)
                 _ = try VoiceLabAssetStore.recoverStalePartials(paidRoot: paidRoot)
                 try VoiceLabAssetRetention.discoverUnlisted(paidRoot: paidRoot)
                 // Scratch copies of takes that a quit, crash or relaunch left behind (their owner is gone); paid files stay.
@@ -320,7 +383,7 @@ extension ProviderChoice {
             pendingSettings.removeAll()
         } catch {
             loadingSettings = false
-            notice = await safeError(error, context: "Settings could not be loaded.")
+            notice = await safeError(error, context: .settings, messageContext: "Settings could not be loaded.")
             return
         }
         if !Self.isTestSession {
@@ -391,6 +454,16 @@ extension ProviderChoice {
         // A lower cache limit is enforced at once, in the background (architecture §8.2).
         let lowersCacheLimit = if key == "cache.limitGB", case .number(let limit) = value { limit < number(key, fallback: 5) } else { false }
         settings.values[key] = value
+        if key == "llm.cliPath.codex" {
+            codexConnector = nil
+            detectedConnectorStatus["codex"] = nil
+            codexRefreshID = nil
+            codexModelsRefreshing = false
+            codexLiveModels = nil
+            codexModelListWarning = nil
+            codexFallbacks = [:]
+            codexDraftModel = nil
+        }
         if lowersCacheLimit { requestCacheEviction() }
         if key.hasPrefix("llm.baseUrl."), LocalServerAddress.remoteHost(string(key)) != serverHost {
             let consent = "llm.cloudConsent.\(key.dropFirst("llm.baseUrl.".count))"
@@ -420,7 +493,7 @@ extension ProviderChoice {
                 try await settingsStore.save(settings)
             } catch is CancellationError {} catch {
                 guard let self else { return }
-                notice = await safeError(error, context: "Settings could not be saved.")
+                notice = await safeError(error, context: .settings, messageContext: "Settings could not be saved.")
             }
         }
     }
@@ -432,7 +505,7 @@ extension ProviderChoice {
         await pending?.value
         guard settingsLoaded else { return }
         do { try await settingsStore.save(settings); try await settingsStore.flush() }
-        catch { notice = await safeError(error, context: "Settings could not be saved.") }
+        catch { notice = await safeError(error, context: .settings, messageContext: "Settings could not be saved.") }
     }
     private func startVoiceRecovery() {
         voiceRecoveryTask = Task { [weak self] in
@@ -534,17 +607,17 @@ extension ProviderChoice {
     var appearance: ColorScheme? {
         switch string("general.appearance", fallback: "system") { case "dark": .dark; case "light": .light; default: nil }
     }
-    func safeError(_ error: any Error, context: String = "") async -> String {
-        let provider = providers.first { context == "ai:\($0.label)" || context == "ai-test:\($0.label)" }
-        let message = UserMessages.message(error, context: context, model: provider.map { string("llm.model.\($0.id)", fallback: $0.defaultModel ?? "the selected model") } ?? "the selected model", installHint: provider?.cli?.installHint, signInHint: provider?.cli?.signInHint, connectorID: provider?.id)
+    func safeError(_ error: any Error, context: FailureContext, messageContext: String = "") async -> String {
+        guard !FailureDiagnostic.isCancellation(error) else { return "" }
+        let provider = providers.first { messageContext == "ai:\($0.label)" || messageContext == "ai-test:\($0.label)" }
+        let message = UserMessages.message(error, context: messageContext, model: provider.map { string("llm.model.\($0.id)", fallback: $0.defaultModel ?? "the selected model") } ?? "the selected model", installHint: provider?.cli?.installHint, signInHint: provider?.cli?.signInHint, connectorID: provider?.id)
         guard !message.isEmpty else { return "" }
         await logFailure(error, context: context)
         return await log.redact(message)
     }
-    /// Writes a failure's code to the app log, never its text: "llm: code=operationFailed" for an AI context.
-    func logFailure(_ error: any Error, context: String) async {
-        let category = context.hasPrefix("ai") ? "llm" : context == "export" ? "export" : "settings"
-        await log.write(LogEntry(level: .error, category: category, message: "code=\((error as? VoxClipError)?.code.rawValue ?? (error is LLMError ? "llmFailure" : "operationFailed"))"))
+    func logFailure(_ error: any Error, context: FailureContext) async {
+        guard !FailureDiagnostic.isCancellation(error) else { return }
+        await log.write(LogEntry(level: .error, category: context.rawValue, message: FailureDiagnostic.describe(error)))
     }
     func checkUpdates(manual: Bool) async {
         do {
@@ -559,7 +632,7 @@ extension ProviderChoice {
             }
             await log.write(LogEntry(level: .info, category: "update", message: update == nil ? "check=current" : "check=available"))
         } catch {
-            await log.write(LogEntry(level: .warn, category: "update", message: "check=failed"))
+            await logFailure(error, context: .update)
             if manual {
                 let offline = (error as? VoxClipError) == .offline || (error as? URLError).map { [.notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed].contains($0.code) } == true
                 notice = offline ? "Couldn't check for updates. You're offline." : "Couldn't check for updates. Try again later."
@@ -572,7 +645,11 @@ extension ProviderChoice {
             let data = try Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))
             providers = try JSONDecoder().decode(ProviderCatalogue.self, from: data).connectors.filter { $0.platforms.contains("macos") && $0.enabled != false }
             styles = try CaptionStyleLibrary(shared: shared).styles
-        } catch { startupError = .sharedResourcesMissing }
+        } catch { reportStartupFailure(error) }
+    }
+    private func reportStartupFailure(_ error: any Error) {
+        startupError = .sharedResourcesMissing
+        Task { await logFailure(error, context: .startup) }
     }
     func connector(_ id: String) -> any LLMConnector {
         if let connectorOverride { return connectorOverride(id) }
@@ -583,8 +660,23 @@ extension ProviderChoice {
         let provider = providers.first { $0.id == id }
         let base = string("llm.baseUrl.\(id)", fallback: provider?.baseUrl ?? "")
         let path = string("llm.cliPath.\(id)")
+        if selected == .codex {
+            if let codexConnector, codexConnector.path == path { return codexConnector.cli }
+            let cli = CLIConnector(id: selected, catalog: catalog, log: log,
+                executable: path.isEmpty ? nil : URL(fileURLWithPath: (path as NSString).expandingTildeInPath),
+                onModelFallback: { [weak self] missing, replacement in
+                    await self?.recordCodexFallback(from: missing, to: replacement, path: path)
+                })
+            codexConnector = (path, cli)
+            return cli
+        }
         return StubLLMConnector(id: selected, keys: secrets, catalog: catalog, log: log,
             baseURL: base.isEmpty ? nil : URL(string: base), cliPath: path.isEmpty ? nil : path)
+    }
+
+    private func recordCodexFallback(from missing: String, to replacement: String, path: String) {
+        guard path == string("llm.cliPath.codex") else { return }
+        codexFallbacks[missing] = replacement
     }
     func revealLogs() { try? FileManager.default.createDirectory(at: locations.logs, withIntermediateDirectories: true); NSWorkspace.shared.open(locations.logs) }
     func diagnostics() async -> String {

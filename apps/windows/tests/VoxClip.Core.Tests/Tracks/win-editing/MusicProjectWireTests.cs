@@ -39,7 +39,7 @@ public sealed class MusicProjectWireTests
             var id = item!["id"]!.GetValue<string>();
             var input = Applied(item);
             var project = ProjectSerialization.Deserialize(input.ToJsonString());
-            Assert.Equal(4, project.SchemaVersion);
+            Assert.Equal(input["schemaVersion"]!.GetValue<int>(), project.SchemaVersion);
             var encoded = ProjectSerialization.Serialize(project);
             Assert.Equal(encoded, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(encoded)));
             var saved = JsonNode.Parse(encoded)!.AsObject();

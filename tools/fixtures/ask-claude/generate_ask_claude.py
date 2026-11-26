@@ -73,13 +73,15 @@ def instruction(prompt, doc, case):
                                                            'width': number(item['width']), 'height': number(item['height']), 'text': reads}))
     tools = '\n'.join(fill(request['toolLine'], tool) for tool in prompt['toolbox'])
     return fill(request['instruction'], {'instruction': case['instruction'], 'selection': selection, 'words': lines, 'before': before,
-                                         'after': after, 'clip': clip, 'frame': frame, 'current': request['nothingCurrent'],
+                                         'after': after, 'clip': clip, 'frame': frame,
+                                         'current': f'Timeline item clip:clip-main (clip), words [0–{len(words) - 1}]',
                                          'detections': '\n'.join(detections) if detections else request['noDetections'], 'toolbox': tools})
 
 
 def op(kind, **fields):
     value = {'kind': kind, 'startWord': -1, 'endWord': -1, 'start': -1, 'end': -1, 'text': '', 'target': '', 'x': 0, 'y': 0, 'width': 0,
-             'height': 0, 'tracking': '', 'position': '', 'rate': 0, 'scale': 0, 'sound': '', 'language': '', 'choice': '', 'reason': f'{kind} reason'}
+             'height': 0, 'tracking': '', 'position': '', 'rate': 0, 'scale': 0, 'sound': '', 'language': '',
+             'query': '', 'prompt': '', 'look': '', 'choice': '', 'reason': f'{kind} reason'}
     value.update(fields)
     return value
 
@@ -153,6 +155,10 @@ def generated():
                      'wordIds': [f'w{i + 1}' for i in range(15, 18)]}],
          'repairs': 1},
     ]
+    replies.append({'id': 'trim-existing-timeline', 'selection': {'words': [0, 7]}, 'clipID': 'clip-main', 'detections': [],
+                    'reply': {'summary': 'Trimmed the opening.', 'ops': [op('timelineEdit', reason='Skip the first word.',
+                        edits=[{'op': 'trim', 'item': 'clip:clip-main', 'edge': 'start', 'toWord': 1}])]},
+                    'expect': [{'decision': 'timeline', 'kind': 'timelineEdit'}], 'repairs': 0})
     prompt_sha = hashlib.sha256(PROMPT.read_bytes()).hexdigest()
     return {'format': 'voxclip-ask-claude/1', 'promptSha256': prompt_sha, 'project': doc, 'requests': [request], 'replies': replies}
 

@@ -18,7 +18,7 @@ public static class ProjectSerialization
             {
                 if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var number))
                     throw new JsonException("Invalid project schema version.");
-                if (number > 4)
+                if (number > TimelineEditFields.Version)
                     throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
                 if (number >= 3) ValidateV3EnumWire(document.RootElement);
             }
@@ -92,6 +92,7 @@ public static class ProjectSerialization
     /// <summary>UTF8-compatible JSON with stable timestamps and LF terminator; source word doubles retain round-trip precision.</summary>
     public static string Serialize(Project project)
     {
+        project = StoryClips.ForWriting(TimelineEditFields.Promoting(project));
         Validate(project);
         var json = JsonSerializer.Serialize(project, ProjectJsonContext.Default.Project) + "\n";
         VoxClip.Core.Services.Project.ProjectValidation.Validate(json);
@@ -100,8 +101,8 @@ public static class ProjectSerialization
     /// <summary>Validate supported format, voice policy, context/motion invariants and immutable word timings.</summary>
     public static void Validate(Project project)
     {
-        if (project.SchemaVersion > 4) throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-        if (project.Format != "voxclip-project" || project.SchemaVersion is not (1 or 2 or 3 or 4))
+        if (project.SchemaVersion > TimelineEditFields.Version) throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
+        if (project.Format != "voxclip-project" || project.SchemaVersion is < 1 or > TimelineEditFields.Version)
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Invalid project format.");
         if (project.Transcript is { } transcript)
         {
@@ -121,5 +122,6 @@ public static class ProjectSerialization
         VoxClip.Core.Domain.Effects.ClipEffects.Validate(project);
         VoxClip.Core.Domain.Clips.ClipControlsProject.Validate(project);
         VoxClip.Core.Domain.Captions.CaptionTranslations.Validate(project);
+        StoryClips.Validate(project);
     }
 }

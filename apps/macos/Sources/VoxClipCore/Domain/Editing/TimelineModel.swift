@@ -28,11 +28,18 @@ public struct TimelinePiece: Sendable, Equatable {
     public func range(on axis: TimelineAxis) -> Range<Double> { axis == .edited ? edited : source }
 }
 
-/// The pieces of one render timeline, in play order. Both their source and their edited
-/// ranges ascend, so a lane finds the visible ones by binary search: O(log n) plus what shows.
+/// The pieces of one render timeline, in play order, with a separate Source-axis index.
 public struct TimelinePieces: Sendable, Equatable {
     public let pieces: [TimelinePiece]
-    public init(_ pieces: [TimelinePiece]) { self.pieces = pieces }
+    private let sourcePieces: [TimelinePiece]
+    private let partSeams: Set<Double>
+    public init(_ pieces: [TimelinePiece]) { self.init(pieces, partSeams: []) }
+
+    private init(_ pieces: [TimelinePiece], partSeams: Set<Double>) {
+        self.pieces = pieces
+        sourcePieces = pieces.sorted { $0.source.lowerBound < $1.source.lowerBound }
+        self.partSeams = partSeams
+    }
 
     /// The kept intervals of a legacy plan, butted in output order, or a Voice Lab plan's pieces.
     public init(_ timeline: RenderTimeline) {
@@ -48,23 +55,27 @@ public struct TimelinePieces: Sendable, Equatable {
                                             edited: Double(output) / rate..<Double(output + length) / rate))
                 output += length
             }
-            self.pieces = pieces
+            self.init(pieces, partSeams: Set(plan.partSeams.map { Double($0) / rate }))
         case .voiceLab(let plan):
             let rate = plan.sampleRate
-            pieces = plan.pieces.filter { $0.outputEndSample > $0.outputStartSample }.map { piece in
+            let pieces = plan.pieces.filter { $0.outputEndSample > $0.outputStartSample }.map { piece in
                 TimelinePiece(source: Double(piece.sourceStartSample) / rate..<Double(max(piece.sourceStartSample, piece.sourceEndSample)) / rate,
                               edited: Double(piece.outputStartSample) / rate..<Double(piece.outputEndSample) / rate,
                               kind: piece.kind == .synth ? .ai : .kept)
             }
+            self.init(pieces, partSeams: Set(plan.partSeams.map { Double($0) / rate }))
         }
     }
+
+    /// The array addressed by the indices returned for this axis.
+    public func pieces(on axis: TimelineAxis) -> [TimelinePiece] { axis == .source ? sourcePieces : pieces }
 
     /// The scope's output length: where the last piece ends.
     public var editedDuration: Double { pieces.last?.edited.upperBound ?? 0 }
 
     /// The take range the pieces span, or nil when nothing plays.
     public var sourceSpan: Range<Double>? {
-        guard let first = pieces.first, let last = pieces.last else { return nil }
+        guard let first = sourcePieces.first, let last = sourcePieces.last else { return nil }
         return first.source.lowerBound..<max(first.source.lowerBound, last.source.upperBound)
     }
 
@@ -72,7 +83,16 @@ public struct TimelinePieces: Sendable, Equatable {
     /// continue from the piece before it (notes.md §6: each cut closes to ONE 1 pt seam). A
     /// Voice Lab patch continues its neighbours' take time, so it has no seam of its own.
     public func isSeam(at index: Int) -> Bool {
-        index > 0 && index < pieces.count && pieces[index].source.lowerBound - pieces[index - 1].source.upperBound > 1e-6
+        index > 0 && index < pieces.count && (isPartSeam(at: index) || abs(pieces[index].source.lowerBound - pieces[index - 1].source.upperBound) > 1e-6)
+    }
+
+    /// Whether this play-order piece begins a new part, even if its source is adjacent.
+    public func isPartSeam(at index: Int) -> Bool {
+        pieces.indices.contains(index) && partSeams.contains(pieces[index].edited.lowerBound)
+    }
+
+    public func isBackwardPartSeam(at index: Int) -> Bool {
+        index > 0 && isPartSeam(at: index) && pieces[index].source.lowerBound < pieces[index - 1].source.upperBound
     }
 
     /// Where each seam is on Edited: the start of every piece that starts one.
@@ -83,7 +103,7 @@ public struct TimelinePieces: Sendable, Equatable {
     public func gaps(within span: Range<Double>, minimum: Double = 0.02) -> [Range<Double>] {
         var gaps: [Range<Double>] = []
         var covered = span.lowerBound
-        for piece in pieces[indices(overlapping: span, on: .source)] {
+        for piece in sourcePieces[indices(overlapping: span, on: .source)] {
             if piece.source.lowerBound - covered > minimum { gaps.append(covered..<piece.source.lowerBound) }
             covered = max(covered, piece.source.upperBound)
         }
@@ -93,6 +113,7 @@ public struct TimelinePieces: Sendable, Equatable {
 
     /// The pieces that overlap `range` on `axis`.
     public func indices(overlapping range: Range<Double>, on axis: TimelineAxis) -> Range<Int> {
+        let pieces = pieces(on: axis)
         var lower = 0, upper = pieces.count
         while lower < upper {
             let middle = (lower + upper) / 2

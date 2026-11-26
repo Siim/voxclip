@@ -34,6 +34,7 @@ actor LipsyncFixtureBarrier {
 actor LipsyncFixtureHTTP: LipsyncHTTPClient {
     enum Reply: Sendable {
         case json(Int, String)
+        case etag(String)
         case held(String, LipsyncFixtureBarrier)
         case network
         /// An answer with a `Retry-After` of the given seconds.
@@ -50,6 +51,7 @@ actor LipsyncFixtureHTTP: LipsyncHTTPClient {
         guard !replies.isEmpty else { Issue.record("Unexpected fixture request"); throw LipsyncError.network }
         switch replies.removeFirst() {
         case .json(let status, let body): return .init(status: status, body: Data(body.utf8))
+        case .etag(let etag): return .init(status: 200, body: Data(), contentType: nil, etag: etag)
         case .held(let body, let barrier): await barrier.block(); return .init(status: 200, body: Data(body.utf8))
         case .network: throw LipsyncError.network
         case .retry(let status, let body, let seconds): return .init(status: status, body: Data(body.utf8), retryAfter: seconds)
@@ -122,10 +124,12 @@ enum LipsyncProviderFixtures {
 
     static func provider(_ http: any LipsyncHTTPClient, clock: LipsyncFixtureClock = LipsyncFixtureClock(),
                          keys: LipsyncFixtureKeys = LipsyncFixtureKeys(), spend: VoiceLabSpendLedger? = nil,
-                         logger: (any Redacting)? = nil, queue: LipsyncProviderQueue? = nil) throws -> FalLipsyncProvider {
+                         logger: (any Redacting)? = nil, queue: LipsyncProviderQueue? = nil,
+                         onCleanupDenial: (@Sendable (String) async -> Void)? = nil) throws -> FalLipsyncProvider {
         let prices = try VoiceLabPriceCatalog.load(shared: SharedResources(root: FixtureLoader.sharedRoot()))
         return FalLipsyncProvider(keys: keys, prices: prices, http: http, logger: logger ?? RedactingLogger(homeDirectory: "/synthetic-home"),
-                                 spend: spend, now: { clock.now() }, monotonic: { clock.uptime() }, sleep: { clock.sleep($0) }, queue: queue)
+                                 spend: spend, now: { clock.now() }, monotonic: { clock.uptime() }, sleep: { clock.sleep($0) }, queue: queue,
+                                 onCleanupDenial: onCleanupDenial)
     }
 
     /// One account slot shared by every provider a test makes over `clock` (the app's `.shared`, in a test).

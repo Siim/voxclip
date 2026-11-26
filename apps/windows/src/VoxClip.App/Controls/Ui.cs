@@ -4,9 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
-using VoxClip.Core.Services.Logging;
 using VoxClip.Core.Services.Models;
 
 namespace VoxClip.App.Controls;
@@ -111,7 +109,7 @@ internal static class Ui
     internal static async Task RunAsync(InfoBar notice, Func<Task> action, string feature)
     {
         try { await action(); }
-        catch (OperationCanceledException) { StartupDiagnostics.Log.Write(LogLevel.Info, "ui", feature + " cancelled."); }
+        catch (OperationCanceledException) { }
         catch (Exception exception)
         {
             var message = UiError.Message(exception, feature);

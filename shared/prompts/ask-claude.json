@@ -91,8 +91,8 @@
     {
       "kind": "lowerThird",
       "group": "Overlays",
-      "fields": "start, end, text, position",
-      "use": "A name or label strip near the bottom. position: bottomLeft or bottomRight."
+      "fields": "startWord, endWord, text, reason",
+      "use": "Bring in a name or label strip on a kept phrase in a clip. Set target to planEffect. For a time-only selection use start, end, text and position instead."
     },
     {
       "kind": "sticker",
@@ -122,7 +122,7 @@
       "kind": "speed",
       "group": "Timing",
       "fields": "start, end, rate",
-      "use": "Plays that stretch faster or slower: rate 0.5 to 2, never 1. The voice keeps its pitch."
+      "use": "Set the entire clip's speed (rate 0.5 to 2, never 1). For just a kept phrase use speedForPart. The voice keeps its pitch."
     },
     {
       "kind": "freeze",
@@ -139,8 +139,50 @@
     {
       "kind": "zoom",
       "group": "Timing",
-      "fields": "start, end, scale",
-      "use": "A punch-in for that stretch: scale 1.05 to 1.35."
+      "fields": "startWord, endWord, scale, reason",
+      "use": "Ease into and out of a closer frame on a kept phrase in a clip, scale 1.05 to 1.35. Set target to planEffect. For a time-only selection use start, end and scale instead."
+    },
+    {
+      "kind": "punchIn",
+      "group": "Timing",
+      "fields": "startWord, endWord, scale, reason",
+      "use": "Cut straight to a closer frame on a kept phrase in a clip, scale 1.05 to 1.35."
+    },
+    {
+      "kind": "motionTitle",
+      "group": "Overlays",
+      "fields": "startWord, endWord, text, reason",
+      "use": "Bring a short title in at the top on a kept phrase in a clip."
+    },
+    {
+      "kind": "emojiPop",
+      "group": "Overlays",
+      "fields": "startWord, endWord, text, reason",
+      "use": "Pop one of the sticker emoji on a kept phrase in a clip."
+    },
+    {
+      "kind": "soundEffect",
+      "group": "Timing",
+      "fields": "startWord, endWord, query, reason",
+      "use": "Search Openverse for a brief sound accent on kept words in a clip. Use a short, generic audio query, never personal details."
+    },
+    {
+      "kind": "illustration",
+      "group": "Overlays",
+      "fields": "startWord, endWord, prompt, reason",
+      "use": "Suggest one generated cutaway for kept words in a clip. Use a standalone picture prompt without personal details or quoted speech. Generation requires a priced click."
+    },
+    {
+      "kind": "colourLook",
+      "group": "Overlays",
+      "fields": "startWord, endWord, look, reason",
+      "use": "Grade the picture over kept words in a clip only. Use original, muted, warm or bw."
+    },
+    {
+      "kind": "speedForPart",
+      "group": "Timing",
+      "fields": "startWord, endWord, rate, reason",
+      "use": "Play kept words in a clip at 0.5 to 2 times the normal pace, keeping the voice's pitch."
     },
     {
       "kind": "correction",
@@ -165,6 +207,12 @@
       "group": "Sound",
       "fields": "text",
       "use": "Changes the clip's background music: text describes the mood. Generated music is paid; the creator approves it with one click."
+    },
+    {
+      "kind": "timelineEdit",
+      "group": "Timeline",
+      "fields": "edits: [{op, item or items, toWord, atWord, edge, seconds, db, frames, words, fromSeconds, atSeconds, bySeconds, enabled, track}]",
+      "use": "Edit existing timeline items by the IDs listed under Current. Use move/duplicate (toWord), nudge (signed frames or words), trim (start/end and toWord), split/splitAll (atWord), fade (in/out and seconds), setGain (db), addGainPoint (atWord and db), moveGainPoint (fromSeconds, toWord and db), removeGainPoint (atSeconds), slip (signed bySeconds), setLoop (enabled), setDuck (track and db), or delete. Supply only applicable fields; if required by the response format, use an empty string or array, false, or zero for unused fields, and -1 for an omitted duplicate toWord. These edits never spend."
     },
     {
       "kind": "duck",
@@ -248,10 +296,39 @@
               "scale",
               "sound",
               "language",
+              "query",
+              "prompt",
+              "look",
               "choice",
               "reason"
             ],
             "properties": {
+              "edits": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["op"],
+                  "properties": {
+                    "op": {"type": "string"},
+                    "item": {"type": "string"},
+                    "items": {"type": "array", "items": {"type": "string"}},
+                    "toWord": {"type": "integer"},
+                    "atWord": {"type": "integer"},
+                    "edge": {"type": "string"},
+                    "seconds": {"type": "number"},
+                    "db": {"type": "number"},
+                    "frames": {"type": "integer"},
+                    "words": {"type": "integer"},
+                    "fromSeconds": {"type": "number"},
+                    "atSeconds": {"type": "number"},
+                    "bySeconds": {"type": "number"},
+                    "enabled": {"type": "boolean"},
+                    "track": {"type": "string"}
+                  }
+                }
+              },
               "kind": {
                 "type": "string"
               },
@@ -303,6 +380,9 @@
               "language": {
                 "type": "string"
               },
+              "query": {"type": "string"},
+              "prompt": {"type": "string"},
+              "look": {"type": "string"},
               "choice": {
                 "type": "string"
               },

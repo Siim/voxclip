@@ -177,7 +177,8 @@ public sealed class CliCheckTests : IDisposable
                 var (start, end) = (int.Parse(span.Groups[1].Value), int.Parse(span.Groups[2].Value));
                 reply = new JsonObject
                 {
-                    ["startWord"] = start, ["endWord"] = end, ["title"] = "Planned " + start, ["hook"] = "We ship every week", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
+                    ["parts"] = new JsonArray(new JsonObject { ["startWord"] = start, ["endWord"] = end }), ["not_in_take"] = "", ["musicTrackId"] = "",
+                    ["title"] = "Planned " + start, ["hook"] = "We ship every week", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
                     ["corrections"] = new JsonArray(), ["rewrites"] = new JsonArray(), ["captionStyle"] = "vox-highlight", ["captionFont"] = "Roboto", ["captionWeight"] = 900,
                     ["captionCase"] = "upper", ["wordsPerCaption"] = 3, ["captionReason"] = "", ["look"] = "original", ["lookReason"] = "", ["speed"] = 1, ["speedReason"] = "",
                     ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
@@ -189,7 +190,7 @@ public sealed class CliCheckTests : IDisposable
             return Task.FromResult(new RawCompletion(reply, null, model, new StopKind.Complete(), null, null));
         }
         private static JsonObject Clip(string title, int score, int first, int last) =>
-            new() { ["title"] = title, ["reason"] = title + " lands.", ["score"] = score, ["start_line"] = first, ["end_line"] = last };
+            new() { ["title"] = title, ["reason"] = title + " lands.", ["score"] = score, ["parts"] = new JsonArray(new JsonObject { ["start_line"] = first, ["end_line"] = last }), ["not_in_take"] = "" };
     }
 
     private async Task<JsonObject> AutopilotAsync(MediaInfo media, string project, string outDir, params string[] extra)

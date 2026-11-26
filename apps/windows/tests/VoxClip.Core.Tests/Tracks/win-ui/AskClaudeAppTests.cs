@@ -53,6 +53,7 @@ public sealed class AskClaudeAppTests
         {
             ["kind"] = kind, ["startWord"] = -1, ["endWord"] = -1, ["start"] = -1, ["end"] = -1, ["text"] = "", ["target"] = "", ["x"] = 0, ["y"] = 0,
             ["width"] = 0, ["height"] = 0, ["tracking"] = "", ["position"] = "", ["rate"] = 0, ["scale"] = 0, ["sound"] = "", ["language"] = "",
+            ["query"] = "", ["prompt"] = "", ["look"] = "",
             ["choice"] = "", ["reason"] = kind + " because it was asked"
         };
         foreach (var (key, field) in fields) value[key] = field;
@@ -60,6 +61,24 @@ public sealed class AskClaudeAppTests
     }
 
     internal static string Reply(params JsonObject[] ops) => new JsonObject { ["summary"] = "Done as asked.", ["ops"] = new JsonArray(ops) }.ToJsonString();
+
+    [Fact]
+    public async Task TimelineRowsApplyAndUndoWithoutApplyingARefusedEdit()
+    {
+        var (editor, _) = Open(Reply(
+            Op("timelineEdit", ("edits", JsonNode.Parse("""[{"op":"trim","item":"clip:c1","edge":"start","toWord":11}]""")!)),
+            Op("timelineEdit", ("edits", JsonNode.Parse("""[{"op":"delete","items":["missing"]}]""")!))));
+        editor.SetScope("c1");
+        Assert.True(editor.OpenAskClaudeOnClip("c1"));
+        var original = editor.Project.Edits.Clips[0];
+        await AskAsync(editor, "Trim the start");
+        var rows = Assert.IsType<AskClaudeRun>(editor.AskClaude.Run).Rows;
+        Assert.Equal(AskClaudeRowStatus.Applied, rows[0].Status);
+        Assert.Equal("Select an item on this timeline.", rows[1].Reason);
+        Assert.Equal(editor.Project.Transcript!.Words[11].Id, editor.Project.Edits.Clips[0].StartWordId);
+        Assert.True(editor.UndoAskClaudeRow(rows[0].Id));
+        Assert.Equal(original, editor.Project.Edits.Clips[0]);
+    }
 
     /// <summary>The 80-word editor with clip c1 on words 10–40, the real Ask Claude service on <paramref name="fake"/>, and prices.</summary>
     internal static (EditorViewModel Editor, Fake Fake) Open(string? reply = null, IAskClaudeVision? vision = null, bool available = true)
@@ -145,7 +164,7 @@ public sealed class AskClaudeAppTests
         Assert.StartsWith("Voice it · about $", run.Rows[3].Price, StringComparison.Ordinal);
         // A speed on Full Take words that no clip holds: a clip plays at one speed, so the row says why and changes nothing.
         Assert.Null(EditorViewModel.StretchClip(run.Rows[4].Operation, editor.Project));
-        Assert.Equal((AskClaudeRowStatus.Later, "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."), (run.Rows[4].Status, run.Rows[4].Reason));
+        Assert.Equal((AskClaudeRowStatus.Later, "Ask on a clip to change its speed. Nothing changed."), (run.Rows[4].Status, run.Rows[4].Reason));
         Assert.Equal(["bleep", "title", "sound"], Kinds(editor));
         Assert.Equal(3, run.AppliedCount);
         Assert.Equal("“word2 word3 word4 word5”", run.Label);

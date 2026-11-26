@@ -10,6 +10,7 @@ public struct CaptionWord: Codable, Sendable, Equatable {
     public var start: Double
     /// end; Captioned word on the edited timeline; editing §2.8.
     public var end: Double
+    public var startsPart: Bool = false
 
     /// Creates an explicit value without I/O or generated identifiers.
     public init(id: String, text: String, start: Double, end: Double) {
@@ -24,6 +25,7 @@ public struct CaptionWord: Codable, Sendable, Equatable {
         case text
         case start
         case end
+        case startsPart
     }
 
     public init(from decoder: any Decoder) throws {
@@ -32,6 +34,7 @@ public struct CaptionWord: Codable, Sendable, Equatable {
         self.text = try values.decode(String.self, forKey: .text)
         self.start = try values.decode(Double.self, forKey: .start)
         self.end = try values.decode(Double.self, forKey: .end)
+        self.startsPart = try values.decodeIfPresent(Bool.self, forKey: .startsPart) ?? false
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -40,6 +43,7 @@ public struct CaptionWord: Codable, Sendable, Equatable {
         try values.encode(self.text, forKey: .text)
         try values.encode(self.start, forKey: .start)
         try values.encode(self.end, forKey: .end)
+        if startsPart { try values.encode(true, forKey: .startsPart) }
     }
 
 }

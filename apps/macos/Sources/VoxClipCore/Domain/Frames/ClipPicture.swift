@@ -38,9 +38,10 @@ public enum ClipPicture {
     /// The clip as its opening scan sees it: nil when the clip is gone or its first item is cut.
     public static func openingClip(_ project: Project, clipID: String) -> FrameClip? {
         guard let transcript = project.transcript, let range = project.edits.clips.first(where: { $0.id == clipID }),
-              let first = transcript.words.firstIndex(where: { $0.id == range.startWordId }),
-              let clip = FrameClip(transcript: transcript, clip: range, cutWordIds: Set(project.edits.cutWordIds)),
-              clip.kept.first == first else { return nil }
+              let first = range.playPartIndices(in: transcript.words)?.first,
+              let clip = FrameClip(words: transcript.words, first: first.lowerBound, last: first.upperBound,
+                                   cutWordIds: Set(project.edits.cutWordIds)),
+              clip.kept.first == first.lowerBound else { return nil }
         return clip
     }
 
@@ -157,15 +158,24 @@ public enum ClipPicture {
         public var reason: String?
         /// The cover it replaced (the row's Undo).
         public var previous: Double?
+        public var title: String?
+        public var previousTitle: String?
     }
 
     /// The reply's pick among the cover candidates, or the best measured one when it named none. Nil without candidates.
     public static func cover(_ project: Project, clipID: String, frames: ClipAutopilotFrames, plan: ClipAutopilotPlan) -> (project: Project, cover: Cover)? {
-        let named = plan.frames?.cover.flatMap { frames.coverCandidate($0.id) }
-        guard let candidate = named ?? frames.cover.first, let controls = ClipControlsProject.controls(for: clipID, in: project),
-              let next = settingControls(clipID, in: project, { $0.coverSeconds = candidate.time }) else { return nil }
+        var candidates = frames.cover
+        if let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == clipID }), clip.parts != nil {
+            guard let first = StoryClips.times(clip, words: transcript.words).first else { return nil }
+            candidates = candidates.filter { first.start <= $0.time && $0.time < first.end }
+        }
+        let named = plan.frames?.cover.flatMap { choice in candidates.first { $0.id == choice.id } }
+        let title = named == nil || plan.frames?.cover?.fallback == true ? nil : plan.frames?.cover?.title.flatMap(ClipHookTitle.text)
+        guard let candidate = named ?? candidates.first, let controls = ClipControlsProject.controls(for: clipID, in: project),
+              let next = settingControls(clipID, in: project, { $0.coverSeconds = candidate.time; $0.coverTitle = title }) else { return nil }
         let reason = named == nil ? nil : plan.frames?.cover.flatMap { $0.fallback || $0.reason.isEmpty ? nil : $0.reason }
-        return (next, Cover(candidate: candidate, named: named != nil, reason: reason, previous: controls.coverSeconds))
+        return (next, Cover(candidate: candidate, named: named != nil, reason: reason, previous: controls.coverSeconds,
+                            title: title, previousTitle: controls.coverTitle))
     }
 
     // MARK: All four

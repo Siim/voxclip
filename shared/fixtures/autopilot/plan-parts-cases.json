@@ -1,0 +1,963 @@
+{
+  "schema": "voxclip-autopilot-parts/1",
+  "sources": {
+    "shared/prompts/clip-autopilot.json": "100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672"
+  },
+  "transcript": {
+    "words": [
+      {
+        "id": "w0",
+        "text": "beat0",
+        "start": 0.0,
+        "end": 0.5
+      },
+      {
+        "id": "w1",
+        "text": "beat1",
+        "start": 0.5,
+        "end": 1.0
+      },
+      {
+        "id": "w2",
+        "text": "beat2",
+        "start": 1.0,
+        "end": 1.5
+      },
+      {
+        "id": "w3",
+        "text": "beat3",
+        "start": 1.5,
+        "end": 2.0
+      },
+      {
+        "id": "w4",
+        "text": "beat4",
+        "start": 2.0,
+        "end": 2.5
+      },
+      {
+        "id": "w5",
+        "text": "beat5",
+        "start": 2.5,
+        "end": 3.0
+      },
+      {
+        "id": "w6",
+        "text": "beat6",
+        "start": 3.0,
+        "end": 3.5
+      },
+      {
+        "id": "w7",
+        "text": "beat7",
+        "start": 3.5,
+        "end": 4.0
+      },
+      {
+        "id": "w8",
+        "text": "beat8",
+        "start": 4.0,
+        "end": 4.5
+      },
+      {
+        "id": "w9",
+        "text": "beat9",
+        "start": 4.5,
+        "end": 5.0
+      },
+      {
+        "id": "w10",
+        "text": "beat10",
+        "start": 5.0,
+        "end": 5.5
+      },
+      {
+        "id": "w11",
+        "text": "beat11",
+        "start": 5.5,
+        "end": 6.0
+      },
+      {
+        "id": "w12",
+        "text": "beat12",
+        "start": 6.0,
+        "end": 6.5
+      },
+      {
+        "id": "w13",
+        "text": "beat13",
+        "start": 6.5,
+        "end": 7.0
+      },
+      {
+        "id": "w14",
+        "text": "beat14",
+        "start": 7.0,
+        "end": 7.5
+      },
+      {
+        "id": "w15",
+        "text": "beat15",
+        "start": 7.5,
+        "end": 8.0
+      },
+      {
+        "id": "w16",
+        "text": "beat16",
+        "start": 8.0,
+        "end": 8.5
+      },
+      {
+        "id": "w17",
+        "text": "beat17",
+        "start": 8.5,
+        "end": 9.0
+      },
+      {
+        "id": "w18",
+        "text": "beat18",
+        "start": 9.0,
+        "end": 9.5
+      },
+      {
+        "id": "w19",
+        "text": "beat19",
+        "start": 9.5,
+        "end": 10.0
+      },
+      {
+        "id": "w20",
+        "text": "beat20",
+        "start": 10.0,
+        "end": 10.5
+      },
+      {
+        "id": "w21",
+        "text": "beat21",
+        "start": 10.5,
+        "end": 11.0
+      },
+      {
+        "id": "w22",
+        "text": "beat22",
+        "start": 11.0,
+        "end": 11.5
+      },
+      {
+        "id": "w23",
+        "text": "beat23",
+        "start": 11.5,
+        "end": 12.0
+      },
+      {
+        "id": "w24",
+        "text": "beat24",
+        "start": 12.0,
+        "end": 12.5
+      },
+      {
+        "id": "w25",
+        "text": "beat25",
+        "start": 12.5,
+        "end": 13.0
+      },
+      {
+        "id": "w26",
+        "text": "beat26",
+        "start": 13.0,
+        "end": 13.5
+      },
+      {
+        "id": "w27",
+        "text": "beat27",
+        "start": 13.5,
+        "end": 14.0
+      },
+      {
+        "id": "w28",
+        "text": "beat28",
+        "start": 14.0,
+        "end": 14.5
+      },
+      {
+        "id": "w29",
+        "text": "beat29",
+        "start": 14.5,
+        "end": 15.0
+      },
+      {
+        "id": "w30",
+        "text": "beat30",
+        "start": 15.0,
+        "end": 15.5
+      },
+      {
+        "id": "w31",
+        "text": "beat31",
+        "start": 15.5,
+        "end": 16.0
+      },
+      {
+        "id": "w32",
+        "text": "beat32",
+        "start": 16.0,
+        "end": 16.5
+      },
+      {
+        "id": "w33",
+        "text": "beat33",
+        "start": 16.5,
+        "end": 17.0
+      },
+      {
+        "id": "w34",
+        "text": "beat34",
+        "start": 17.0,
+        "end": 17.5
+      },
+      {
+        "id": "w35",
+        "text": "beat35",
+        "start": 17.5,
+        "end": 18.0
+      },
+      {
+        "id": "w36",
+        "text": "beat36",
+        "start": 18.0,
+        "end": 18.5
+      },
+      {
+        "id": "w37",
+        "text": "beat37",
+        "start": 18.5,
+        "end": 19.0
+      },
+      {
+        "id": "w38",
+        "text": "beat38",
+        "start": 19.0,
+        "end": 19.5
+      },
+      {
+        "id": "w39",
+        "text": "beat39",
+        "start": 19.5,
+        "end": 20.0
+      },
+      {
+        "id": "w40",
+        "text": "beat40",
+        "start": 20.0,
+        "end": 20.5
+      },
+      {
+        "id": "w41",
+        "text": "beat41",
+        "start": 20.5,
+        "end": 21.0
+      },
+      {
+        "id": "w42",
+        "text": "beat42",
+        "start": 21.0,
+        "end": 21.5
+      },
+      {
+        "id": "w43",
+        "text": "beat43",
+        "start": 21.5,
+        "end": 22.0
+      },
+      {
+        "id": "w44",
+        "text": "beat44",
+        "start": 22.0,
+        "end": 22.5
+      },
+      {
+        "id": "w45",
+        "text": "beat45",
+        "start": 22.5,
+        "end": 23.0
+      },
+      {
+        "id": "w46",
+        "text": "beat46",
+        "start": 23.0,
+        "end": 23.5
+      },
+      {
+        "id": "w47",
+        "text": "beat47",
+        "start": 23.5,
+        "end": 24.0
+      },
+      {
+        "id": "w48",
+        "text": "beat48",
+        "start": 24.0,
+        "end": 24.5
+      },
+      {
+        "id": "w49",
+        "text": "beat49",
+        "start": 24.5,
+        "end": 25.0
+      },
+      {
+        "id": "w50",
+        "text": "beat50",
+        "start": 25.0,
+        "end": 25.5
+      },
+      {
+        "id": "w51",
+        "text": "beat51",
+        "start": 25.5,
+        "end": 26.0
+      },
+      {
+        "id": "w52",
+        "text": "beat52",
+        "start": 26.0,
+        "end": 26.5
+      },
+      {
+        "id": "w53",
+        "text": "beat53",
+        "start": 26.5,
+        "end": 27.0
+      },
+      {
+        "id": "w54",
+        "text": "beat54",
+        "start": 27.0,
+        "end": 27.5
+      },
+      {
+        "id": "w55",
+        "text": "beat55",
+        "start": 27.5,
+        "end": 28.0
+      },
+      {
+        "id": "w56",
+        "text": "beat56",
+        "start": 28.0,
+        "end": 28.5
+      },
+      {
+        "id": "w57",
+        "text": "beat57",
+        "start": 28.5,
+        "end": 29.0
+      },
+      {
+        "id": "w58",
+        "text": "beat58",
+        "start": 29.0,
+        "end": 29.5
+      },
+      {
+        "id": "w59",
+        "text": "beat59",
+        "start": 29.5,
+        "end": 30.0
+      }
+    ]
+  },
+  "scope": [
+    0,
+    59
+  ],
+  "footageSources": {
+    "companion": 12
+  },
+  "musicTrackId": "saved-bed",
+  "moments": [
+    {
+      "reply": {
+        "clips": [
+          {
+            "kind": "story",
+            "parts": [
+              {
+                "startWord": 36,
+                "endWord": 43
+              },
+              {
+                "startWord": 0,
+                "endWord": 7
+              },
+              {
+                "startWord": 24,
+                "endWord": 31
+              }
+            ],
+            "not_in_take": "The slogan was not spoken."
+          },
+          {
+            "kind": "stretch",
+            "parts": [
+              {
+                "startWord": 8,
+                "endWord": 23
+              }
+            ]
+          },
+          {
+            "kind": "stretch",
+            "parts": [
+              {
+                "startWord": 1,
+                "endWord": 20
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "kind": "story",
+          "parts": [
+            [
+              36,
+              43
+            ],
+            [
+              0,
+              7
+            ],
+            [
+              24,
+              31
+            ]
+          ]
+        },
+        {
+          "kind": "stretch",
+          "parts": [
+            [
+              8,
+              23
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "reply": {
+        "clips": [
+          {
+            "kind": "showreel",
+            "parts": [
+              {
+                "startWord": 48,
+                "endWord": 55
+              },
+              {
+                "startWord": 12,
+                "endWord": 19
+              },
+              {
+                "startWord": 32,
+                "endWord": 39
+              },
+              {
+                "startWord": 0,
+                "endWord": 7
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "kind": "showreel",
+          "parts": [
+            [
+              48,
+              55
+            ],
+            [
+              12,
+              19
+            ],
+            [
+              32,
+              39
+            ],
+            [
+              0,
+              7
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "plans": [
+    {
+      "id": "effect-seam-and-footage",
+      "offered": [
+        {
+          "startWord": 36,
+          "endWord": 43
+        },
+        {
+          "startWord": 0,
+          "endWord": 7
+        },
+        {
+          "startWord": 24,
+          "endWord": 31
+        }
+      ],
+      "reply": {
+        "parts": [
+          {
+            "startWord": 36,
+            "endWord": 43
+          },
+          {
+            "startWord": 0,
+            "endWord": 7
+          },
+          {
+            "startWord": 24,
+            "endWord": 31
+          }
+        ],
+        "effects": [
+          {
+            "kind": "motionTitle",
+            "startWord": 6,
+            "endWord": 25,
+            "reason": "Make this beat land.",
+            "text": "Crosses the seam"
+          },
+          {
+            "kind": "bRoll",
+            "startWord": 36,
+            "endWord": 37,
+            "reason": "Make this beat land.",
+            "footage": {
+              "sourceKey": "companion",
+              "start": 1
+            }
+          },
+          {
+            "kind": "screenshot",
+            "startWord": 0,
+            "endWord": 1,
+            "reason": "Make this beat land.",
+            "footage": {
+              "sourceKey": "companion",
+              "start": 2
+            }
+          },
+          {
+            "kind": "videoStack",
+            "startWord": 24,
+            "endWord": 25,
+            "reason": "Make this beat land.",
+            "footage": {
+              "sourceKey": "companion",
+              "start": 3
+            }
+          },
+          {
+            "kind": "bRoll",
+            "startWord": 2,
+            "endWord": 3,
+            "reason": "Make this beat land.",
+            "footage": {
+              "sourceKey": "not-offered",
+              "start": 1
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "story",
+        "parts": [
+          [
+            36,
+            43
+          ],
+          [
+            0,
+            7
+          ],
+          [
+            24,
+            31
+          ]
+        ],
+        "seconds": 12,
+        "effects": [
+          "bRoll",
+          "screenshot",
+          "videoStack"
+        ]
+      }
+    },
+    {
+      "id": "can-tighten-drop-and-reorder",
+      "offered": [
+        {
+          "startWord": 36,
+          "endWord": 43
+        },
+        {
+          "startWord": 0,
+          "endWord": 7
+        },
+        {
+          "startWord": 24,
+          "endWord": 31
+        }
+      ],
+      "reply": {
+        "parts": [
+          {
+            "startWord": 1,
+            "endWord": 6
+          },
+          {
+            "startWord": 26,
+            "endWord": 31
+          }
+        ]
+      },
+      "expect": {
+        "kind": "story",
+        "parts": [
+          [
+            1,
+            6
+          ],
+          [
+            26,
+            31
+          ]
+        ],
+        "seconds": 6,
+        "effects": []
+      }
+    },
+    {
+      "id": "adjacent-parts-keep-their-seam",
+      "offered": [
+        {
+          "startWord": 8,
+          "endWord": 15
+        },
+        {
+          "startWord": 0,
+          "endWord": 7
+        }
+      ],
+      "reply": {
+        "parts": [
+          {
+            "startWord": 8,
+            "endWord": 15
+          },
+          {
+            "startWord": 0,
+            "endWord": 7
+          }
+        ],
+        "cuts": [
+          {
+            "startWord": 7,
+            "endWord": 7,
+            "kind": "filler",
+            "reason": "Remove a filler."
+          },
+          {
+            "startWord": 8,
+            "endWord": 8,
+            "kind": "filler",
+            "reason": "Remove a filler."
+          }
+        ],
+        "corrections": [
+          {
+            "word": 6,
+            "heard": "beat8",
+            "text": "fixed",
+            "reason": "Correct the spelling."
+          }
+        ]
+      },
+      "expect": {
+        "kind": "story",
+        "parts": [
+          [
+            8,
+            15
+          ],
+          [
+            0,
+            7
+          ]
+        ],
+        "seconds": 7,
+        "effects": [],
+        "cuts": [
+          [
+            7,
+            7
+          ],
+          [
+            8,
+            8
+          ]
+        ],
+        "corrections": []
+      }
+    },
+    {
+      "id": "cannot-extend-into-gap",
+      "offered": [
+        {
+          "startWord": 36,
+          "endWord": 43
+        },
+        {
+          "startWord": 0,
+          "endWord": 7
+        },
+        {
+          "startWord": 24,
+          "endWord": 31
+        }
+      ],
+      "reply": {
+        "parts": [
+          {
+            "startWord": 35,
+            "endWord": 43
+          }
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "showreel-with-saved-bed",
+      "kind": "showreel",
+      "offered": [
+        {
+          "startWord": 48,
+          "endWord": 55
+        },
+        {
+          "startWord": 12,
+          "endWord": 19
+        },
+        {
+          "startWord": 32,
+          "endWord": 39
+        },
+        {
+          "startWord": 0,
+          "endWord": 7
+        }
+      ],
+      "reply": {
+        "parts": [
+          {
+            "startWord": 48,
+            "endWord": 55
+          },
+          {
+            "startWord": 12,
+            "endWord": 19
+          },
+          {
+            "startWord": 32,
+            "endWord": 39
+          },
+          {
+            "startWord": 0,
+            "endWord": 7
+          }
+        ],
+        "effects": [
+          {
+            "kind": "motionTemplate",
+            "startWord": 48,
+            "endWord": 49,
+            "reason": "Make this beat land.",
+            "template": {
+              "name": "logoSting",
+              "text": "Vox",
+              "from": 0,
+              "to": 0
+            }
+          }
+        ],
+        "musicTrackId": "saved-bed"
+      },
+      "expect": {
+        "kind": "showreel",
+        "parts": [
+          [
+            48,
+            55
+          ],
+          [
+            12,
+            19
+          ],
+          [
+            32,
+            39
+          ],
+          [
+            0,
+            7
+          ]
+        ],
+        "seconds": 16,
+        "effects": [
+          "motionTemplate"
+        ],
+        "musicTrackId": "saved-bed"
+      }
+    },
+    {
+      "id": "showreel-without-music",
+      "kind": "showreel",
+      "offered": [
+        {
+          "startWord": 48,
+          "endWord": 55
+        },
+        {
+          "startWord": 12,
+          "endWord": 19
+        },
+        {
+          "startWord": 32,
+          "endWord": 39
+        },
+        {
+          "startWord": 0,
+          "endWord": 7
+        }
+      ],
+      "reply": {
+        "parts": [
+          {
+            "startWord": 48,
+            "endWord": 55
+          },
+          {
+            "startWord": 12,
+            "endWord": 19
+          },
+          {
+            "startWord": 32,
+            "endWord": 39
+          },
+          {
+            "startWord": 0,
+            "endWord": 7
+          }
+        ],
+        "effects": [
+          {
+            "kind": "motionTemplate",
+            "startWord": 48,
+            "endWord": 49,
+            "reason": "Make this beat land.",
+            "template": {
+              "name": "logoSting",
+              "text": "Vox",
+              "from": 0,
+              "to": 0
+            }
+          }
+        ],
+        "musicTrackId": "unknown"
+      },
+      "expect": null
+    },
+    {
+      "id": "music-shape-on-the-picked-track",
+      "reply": {
+        "startWord": 12,
+        "endWord": 19,
+        "musicPick": 0,
+        "music": [
+          {
+            "title": "Warm pulse",
+            "mood": "focused",
+            "prompt": "Instrumental warm synth at 100 BPM",
+            "reason": "Leave room for the words.",
+            "underVoiceDb": 18,
+            "fadeIn": 0.5,
+            "fadeOut": 1,
+            "duckDb": -8,
+            "segments": [
+              {
+                "startWord": 14,
+                "endWord": 18,
+                "songFrom": 2,
+                "loop": false,
+                "gainDb": -3
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "kind": "stretch",
+        "parts": [
+          [
+            12,
+            19
+          ]
+        ],
+        "seconds": 4,
+        "effects": [],
+        "musicShape": {
+          "fadeIn": 0.5,
+          "fadeOut": 1,
+          "duckDb": -8,
+          "segments": [
+            {
+              "startWord": 14,
+              "endWord": 18,
+              "songFrom": 2,
+              "loop": false,
+              "gainDb": -3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "legacy-span",
+      "reply": {
+        "startWord": 12,
+        "endWord": 19
+      },
+      "expect": {
+        "kind": "stretch",
+        "parts": [
+          [
+            12,
+            19
+          ]
+        ],
+        "seconds": 4,
+        "effects": []
+      }
+    }
+  ]
+}

@@ -87,6 +87,9 @@ import VoxClipCore
                 }
                 Divider()
                 Button("Keep Tab Open") { shell.pinExplorerRows(rows) }
+            } else if rows.count == 1, case .outline(let position) = rows.first,
+                      let editor = shell.editor, let entry = shell.outlineEntries.first(where: { $0.id == position }), entry.partID != nil {
+                StoryOutlineMenu(shell: shell, editor: editor, entry: entry)
             }
         } primaryAction: { rows in shell.pinExplorerRows(rows) }
         .focused($listFocused)
@@ -110,13 +113,28 @@ import VoxClipCore
                 shell.sidebarOverlay = false
                 return .handled
             }
-            .onKeyPress(keys: [.upArrow, .downArrow]) { _ in
+            .onKeyPress(keys: [.upArrow, .downArrow]) { key in
+                if key.modifiers == [.option, .command], let editor = shell.editor,
+                   case .outline = shell.selection, let parts = editor.activeClip?.parts {
+                    let position = editor.selectedStoryPartIndex
+                    let destination = position + (key.key == .upArrow ? -1 : 1)
+                    if parts.indices.contains(destination) {
+                        editor.moveStoryPart(parts[position].id, to: destination)
+                        if editor.selectedStoryPartIndex == destination { shell.choose(.outline(destination), byClick: false) }
+                    }
+                    return .handled
+                }
                 guard shell.renaming == nil, let id = shell.editor?.focusedSuggestion, shell.editor?.isSuggestion(id) == true else { return .ignored }
                 shell.selection = .clip(id)
                 return .handled
             }
             .onDeleteCommand {
-                guard shell.renaming == nil, let editor = shell.editor, !editor.actOnFocusedSuggestion(keep: false), case .clip(let id) = shell.selection else { return }
+                guard shell.renaming == nil, let editor = shell.editor else { return }
+                if case .outline = shell.selection, let parts = editor.activeClip?.parts {
+                    editor.removeStoryPart(parts[editor.selectedStoryPartIndex].id)
+                    return
+                }
+                guard !editor.actOnFocusedSuggestion(keep: false), case .clip(let id) = shell.selection else { return }
                 if editor.isSuggestion(id) { editor.dismiss(id) } else { editor.removeClip(id) }
             }
     }
@@ -157,9 +175,15 @@ import VoxClipCore
             Section {
                 if shell.explorerExpanded(.outline) {
                     ForEach(outline) { entry in
-                        ExplorerOutlineRow(entry: entry, selectedFocused: shell.selection == .outline(entry.id) && listFocused)
-                            .tag(SidebarItem.outline(entry.id)).id(SidebarItem.outline(entry.id))
+                        Group {
+                            if entry.partID != nil {
+                                StoryOutlineRow(shell: shell, editor: editor, entry: entry)
+                            } else {
+                                ExplorerOutlineRow(entry: entry, selectedFocused: shell.selection == .outline(entry.id) && listFocused)
+                            }
+                        }.tag(SidebarItem.outline(entry.id)).id(SidebarItem.outline(entry.id))
                     }
+                    if editor.activeClip != nil { StoryOutlineAdd(editor: editor).selectionDisabled() }
                 }
             } header: { ExplorerHeader(shell: shell, section: .outline, count: outline.count) }
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.outline.accessibilityLabel(count: outline.count))
@@ -171,8 +195,8 @@ import VoxClipCore
                     if editor.clipError == EditorModel.noClipsMatched { NoMatchRow(editor: editor).selectionDisabled() }
                     if suggestions.count > 1, editor.capabilities.ai { MakeTopRow(editor: editor, count: min(3, suggestions.count)).selectionDisabled() }
                     ForEach(suggestions, id: \.id) { clip in
-                        ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: listFocused && editor.focusedSuggestion == clip.id,
-                                selectedFocused: shell.selection == .clip(clip.id) && listFocused)
+                        SuggestedClipCard(shell: shell, editor: editor, clip: clip, focused: listFocused && editor.focusedSuggestion == clip.id,
+                                          selectedFocused: shell.selection == .clip(clip.id) && listFocused)
                             .tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
                     }
                 }
@@ -191,6 +215,11 @@ import VoxClipCore
     let section: ExplorerSection
     let count: Int
     private var title: String { section == .take ? shell.projectTitle : section.title }
+    private func outlineScope(_ editor: EditorModel) -> String {
+        let name = editor.scopeName(shell.tabs.active.clipID)
+        guard let parts = editor.activeClip?.parts else { return name }
+        return "\(name) · \(parts.count) parts"
+    }
     var accessibilityName: String { section.accessibilityLabel(count: count, title: title) }
     var body: some View {
         Button { shell.setExplorerExpanded(section, !shell.explorerExpanded(section)) } label: {
@@ -202,8 +231,8 @@ import VoxClipCore
                 Spacer(minLength: 0)
                 if section == .outline, let editor = shell.editor {
                     ViewThatFits(in: .horizontal) {
-                        Text(editor.scopeName(shell.tabs.active.clipID)).font(.system(size: 11)).fixedSize()
-                            .columnLayoutEvidence("explorer.header.trailing.outline", text: editor.scopeName(shell.tabs.active.clipID))
+                        Text(outlineScope(editor)).font(.system(size: 11)).fixedSize()
+                            .columnLayoutEvidence("explorer.header.trailing.outline", text: outlineScope(editor))
                         Color.clear.frame(width: 0, height: 0)
                     }
                 } else if section != .take {
@@ -299,6 +328,7 @@ import VoxClipCore
         let number = editor.clipNumber(clip.id) ?? 0
         let emphasized = selectedFocused && activeState == .key
         let duration = editor.editedDuration(clip)
+        let metadata = StoryClipPresentation.metadata(clip, editedDuration: duration)
         let exportStatus: ClipExportStatus = suggested ? .none : editor.exportRowStatus(clip.id)
         HStack(spacing: 8) {
             Text("\(number)").font(DesignValues.mono(10)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize().frame(minWidth: 13).accessibilityHidden(true)
@@ -313,8 +343,15 @@ import VoxClipCore
                     .columnLayoutEvidence("explorer.clipTitle", text: title)
             }
             Spacer(minLength: 0)
+            if let badge = metadata.badge {
+                Text(badge).font(DesignValues.mono(10)).fixedSize()
+                    .foregroundStyle(SidebarStyle.meta(emphasized))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(.secondary.opacity(0.13), in: RoundedRectangle(cornerRadius: 4))
+                    .columnLayoutEvidence("explorer.clipParts", text: badge)
+            }
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
-            if showsActions {
+            if showsActions, metadata.badge == nil {
                 HStack(spacing: 2) {
                     if editor.canMakeItPostable(clip.id) {
                         MakeItRowButton(model: editor, clipID: clip.id) { editor.makeItPostable(clip.id) }
@@ -336,7 +373,7 @@ import VoxClipCore
                 }
                 .fixedSize().foregroundStyle(SidebarStyle.meta(emphasized))
                 .columnLayoutEvidence("explorer.clipActions")
-            } else if let state = editor.claudeClipState(clip.id) {
+            } else if metadata.badge == nil, let state = editor.claudeClipState(clip.id) {
                 // Claude mode's pill stands in for the score and length while Claude makes this clip, and after.
                 ClaudeClipPill(state: state)
             } else {
@@ -345,8 +382,8 @@ import VoxClipCore
                         .help("Score \(score)/10").accessibilityHidden(true)
                         .columnLayoutEvidence("explorer.clipScore", text: "\(score)")
                 }
-                Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
-                    .columnLayoutEvidence("explorer.clipDuration", text: durationLabel(duration))
+                Text(metadata.length).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
+                    .columnLayoutEvidence("explorer.clipDuration", text: metadata.length)
             }
         }
         .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
@@ -394,12 +431,71 @@ import VoxClipCore
 
     /// A suggestion's reason and score, "8/10 · Strong hook, one idea"; the planner's score once Make it postable ran.
     private var reason: String {
-        guard let resultID = clip.aiResultId, let index = clip.aiClipIndex,
-              let result = editor.project.ai.results.first(where: { $0.id == resultID }), index < result.clips.count else { return "" }
-        let found = result.clips[index]
+        guard let found = editor.foundSuggestion(clip) else { return "" }
         return "\(editor.suggestionScore(clip) ?? found.score)/10 · \(found.reason)"
     }
 
+}
+
+@MainActor struct SuggestedClipCard: View {
+    let shell: WorkspaceShell
+    let editor: EditorModel
+    let clip: ClipRange
+    var focused = false
+    var selectedFocused = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if let details = editor.suggestedCardDetails(clip) {
+                Text(details.badge).font(DesignValues.mono(10).weight(.semibold))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(DesignValues.color("ai.tint").opacity(0.15), in: Capsule())
+                    .columnLayoutEvidence("suggested.shape", text: details.badge)
+                clipRow
+                Text(details.summary).foregroundStyle(.secondary)
+                ProposalPartsStrip(parts: details.parts)
+                if !details.reason.isEmpty { Text(details.reason).fixedSize(horizontal: false, vertical: true) }
+                if let missing = details.missing {
+                    Text(missing).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .columnLayoutEvidence("suggested.notInTake", text: missing)
+                }
+                if focused || shell.selection == .clip(clip.id) { actions }
+            } else { clipRow }
+        }
+        .font(VCType.small.font())
+        .padding(.vertical, 6)
+        .columnLayoutEvidence("suggested.card")
+    }
+
+    private var clipRow: some View {
+        ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: focused, selectedFocused: selectedFocused)
+    }
+
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Button("Keep") { editor.keep(clip.id) }.buttonStyle(.borderedProminent).disabled(!editor.capabilities.edit)
+                Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
+            }
+            Button(editor.makeItTitle(clipID: clip.id)) { editor.makeItPostable(clip.id) }
+                .disabled(!editor.canMakeItPostable(clip.id))
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+}
+
+@MainActor extension EditorModel {
+    func suggestedCardDetails(_ clip: ClipRange) -> (badge: String, summary: String, parts: [ProposalStripPart], reason: String, missing: String?)? {
+        guard let found = foundSuggestion(clip), let ranges = clip.playPartIndices(in: words) else { return nil }
+        let parts = ProposalStripPart.from(ranges.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }, words: words)
+        let kind: ClipProposal.NewClip.Kind = parts.count == 1 ? .stretch : clip.kind == .showreel ? .showreel : .story
+        let score = suggestionScore(clip) ?? found.score
+        let locations = parts.count > 1 ? "in your order, from \(parts.count) places in the take" : parts.first.map { "\(durationLabel($0.start))–\(durationLabel($0.start + $0.duration))" }
+        let summary = [durationLabel(editedDuration(clip)), "\(score)/10", locations].compactMap { $0 }.joined(separator: " · ")
+        let missing = found.notInTake.flatMap { $0.isEmpty ? nil : "Not in this take: \($0)" }
+        return (kind.cardLabel(parts: parts.count), summary, parts.count > 1 ? parts : [], found.reason, missing)
+    }
 }
 
 /// One menu definition for the native List and the standalone DEBUG rows.
@@ -418,6 +514,19 @@ import VoxClipCore
                 RewriteAsMenuItems(model: editor, place: "explorerMenu.\(clip.id)") { shell.rewriteExplorerClip(clip.id, as: $0) }
             }
         }
+        if let parts = clip.parts {
+            Button("Rewrite As") {}.disabled(true).help(StoryClipPresentation.rewriteReason)
+            Button("Revoice Whole Clip, with Lip Sync") {}.disabled(true)
+                .help(StoryClipPresentation.lipSyncReason(partCount: parts.count))
+            Button("Voice Options") { editor.openExplorerWholeClipVoice(clip.id) }
+        } else {
+            Button("Revoice Whole Clip, with Lip Sync") { editor.openExplorerWholeClipVoice(clip.id) }
+        }
+        Button("Voice Only the Changed Phrases") { editor.openExplorerWholeClipVoice(clip.id, whole: false) }
+            .disabled(clip.parts != nil).help(clip.parts == nil ? "" : StoryClipPresentation.rewriteReason)
+        Button("Redo Voice and Lip Sync") { editor.openExplorerWholeClipVoice(clip.id) }
+            .disabled(clip.parts != nil).help(clip.parts.map { StoryClipPresentation.lipSyncReason(partCount: $0.count) } ?? "")
+            .disabled(!WholeClipRevoice.isRevoiced(clipId: clip.id, in: editor.project))
         // ✦ Ask Claude on the whole clip (design.md §6.8): the clip opens and the right panel takes the request.
         // Offered only when it can act: an editable project with an AI, on a kept clip.
         if editor.canAskClaude, editor.project.edits.clips.contains(where: { $0.id == clip.id }) {

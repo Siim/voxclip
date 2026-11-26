@@ -206,6 +206,7 @@ struct VoiceLabTakeRunTests {
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
+                         laterSpeaker: VoiceSpeakerCheck? = nil,
                          background: (left: Double, right: Double, run: Double)? = nil,
                          boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, pace: Double? = nil, hardJoinSmoothing: Bool = false, audioTags: [VoiceLabAudioTag] = []) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
@@ -313,8 +314,8 @@ struct VoiceLabTakeRunTests {
         let speakerCheck = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: drift, voicedFraction: voicedFraction, rejectGeneratedVAD: rejectGeneratedVAD,
             generatedRawFrames: rawFrames), calibratedThreshold: 0.45)
         let storage = VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
-        let makeRun: () -> VoiceLabTakeRun = {
-            VoiceLabTakeRun(client: client, store: store, speaker: speakerCheck, storage: storage, dispatchIfCurrent: { request, start in
+        let makeRun: (VoiceSpeakerCheck) -> VoiceLabTakeRun = { speaker in
+            VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { request, start in
                 if let boundary { try await boundary(request, start); return }
                 var spent: Decimal?
                 if http.value.withLock({ $0.recordsSpend }) { spent = await ledger.total(provider: "elevenlabs", at: clock.now())?.usd ?? 0 }
@@ -327,7 +328,7 @@ struct VoiceLabTakeRunTests {
                 }
             }) { http.value.withLock { $0.current } }
         }
-        let run = makeRun(), later = makeRun()
+        let run = makeRun(speakerCheck), later = makeRun(laterSpeaker ?? speakerCheck)
         let choices = try await run.discover(language: "en")
         #expect(choices.voices.map(\.id) == (initial.remoteRequiresVerification ? [] : [record.id]))
         let rate = 24_000
@@ -984,6 +985,53 @@ struct VoiceLabTakeRunTests {
             #expect(result.rows.allSatisfy { $0.receipt != nil && $0.qaReceipt == nil && $0.qa?.values.transcriptMatch == nil })
         }
     }
+    @Test(arguments: [false, true], [false, true]) func selectedVoiceChecksWordsInsteadOfGeneratedSpeaker(wrongWords: Bool, editedLayout: Bool) async throws {
+        let fixture = try await fixture({ $0.mismatchCount = wrongWords ? 1 : 0 }, drift: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        var input = fixture.input
+        input.checksGeneratedSpeaker = false
+        if editedLayout { input.editedLayout = VoiceLabEditedLayout(cuts: [], pauseBoundSeconds: 0.2, maximumPictureSpeed: 1.2) }
+        let quote = try await fixture.run.prepare(input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(sent(fixture) == (1, 1))
+        #expect(row.voiceCheck == .selectedVoice)
+        #expect(row.qa?.values.speakerScore == nil)
+        #expect(row.qa?.values.peakDbfs != nil)
+        #expect(row.selectable == !wrongWords)
+        #expect(row.qa?.hardFailures == (wrongWords ? [.transcript] : []))
+    }
+
+    @Test(arguments: ["pass", "wrong words", "revoked"]) func phraseReusesSpeakerRejectedTakeWithoutBuyingSynthesis(_ scenario: String) async throws {
+        let speaker = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: true), calibratedThreshold: 0.45)
+        let fixture = try await fixture({ $0.mismatchCount = scenario == "wrong words" ? 1 : 0 }, drift: true, laterSpeaker: speaker)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let oldQuote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let oldResult = try await fixture.run.execute(oldQuote, approved: true)
+        #expect(oldResult.rows.first?.failure == .qa([.speaker]))
+        let saved = try #require(journal(fixture).first)
+        await fixture.run.invalidate()
+
+        var input = fixture.input
+        input.checksGeneratedSpeaker = false
+        let quote = try await fixture.later.prepare(input, candidates: 1)
+        #expect(quote.takes.first?.adoptedAsset == saved.assetFile)
+        #expect(quote.takes.first?.synthesis.estimate.usd == 0)
+        if scenario == "revoked" {
+            try await fixture.store.markDeleted(input.recordID, at: fixture.clock.now())
+            await #expect(throws: (any Error).self) { try await fixture.later.execute(quote, approved: true) }
+            #expect(sent(fixture) == (1, 0))
+            return
+        }
+        let result = try await fixture.later.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(sent(fixture) == (1, 1))
+        #expect(row.receipt?.requestID.uuidString.lowercased() == saved.requestID)
+        #expect(row.selectable == (scenario == "pass"))
+        #expect(row.qa?.hardFailures == (scenario == "pass" ? [] : [.transcript]))
+        #expect(journal(fixture).first?.adoptableForSelectedVoice == (scenario == "pass"))
+    }
+
     /// Recovery buys nothing: one synthesis and one Scribe request per take, as approved, never a fallback request.
     @Test(arguments: [false, true]) func missingOrMalformedAlignmentDoesNotBuyUnspecifiedFallback(malformed: Bool) async throws {
         let fixture = try await fixture { $0.missingAlignment = !malformed; $0.malformedAlignment = malformed }; defer { try? FileManager.default.removeItem(at: fixture.root) }

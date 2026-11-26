@@ -98,14 +98,17 @@ private actor LatencyStub: LLMConnector {
         if Task.isCancelled { throw LLMError.cancelled }
         // A plan with nothing to cut, built in typed parts so it type-checks quickly.
         var reply: [String: Any] = [:]
-        let numbers: [String: Int] = ["startWord": start, "endWord": end, "captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 9 - rank]
+        let numbers: [String: Int] = ["captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 9 - rank]
         let texts: [String: String] = ["title": "Clip \(rank)", "hook": "Hook \(rank)", "lengthReason": "", "captionStyle": "vox-bold", "captionReason": "punchy",
                                        "captionFont": "Roboto", "captionCase": "upper", "look": "original", "lookReason": "", "speedReason": "",
                                        "postText": "Post \(rank).", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]
         let lists = ["corrections", "cuts", "pauseCuts", "rewrites", "zooms", "music", "questions"]
         for (key, value) in numbers { reply[key] = value }
+        reply["parts"] = [["startWord": start, "endWord": end]]
+        reply["not_in_take"] = ""; reply["musicTrackId"] = ""
         for (key, value) in texts { reply[key] = value }
         for key in lists { reply[key] = [Any]() }
+        reply["music"] = [["title": "Pulse", "mood": "driven", "prompt": "Instrumental, 120 BPM", "reason": "pace", "underVoiceDb": 18]]
         reply["frames"] = ["blur": [Any](), "cover": ["id": "", "reason": ""]]
         return RawCompletion(text: String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self), model: model, stop: .complete)
     }
@@ -173,7 +176,7 @@ private func findReply(_ transcript: Transcript) throws -> String {
         let first = words.firstIndex { $0.start >= Double(index) * 330 + 30 } ?? 0
         let last = words.lastIndex { $0.end <= words[first].start + 35 } ?? first
         let lines = ClipRequestBuilder.lineRange(of: first...last, words: words)
-        return ["title": "Moment \(index + 1)", "reason": "Idea \(index + 1).", "score": 9 - index, "start_line": lines.lowerBound, "end_line": lines.upperBound]
+        return ["title": "Moment \(index + 1)", "reason": "Idea \(index + 1).", "score": 9 - index, "parts": [["start_line": lines.lowerBound, "end_line": lines.upperBound]], "not_in_take": ""]
     }
     return String(decoding: try JSONSerialization.data(withJSONObject: ["clips": clips]), as: UTF8.self)
 }
@@ -198,6 +201,7 @@ struct CLIAutopilotTests {
         let mostPlansAtOnce: Int
         let timings: JSONValue
         let clips: [JSONValue]
+        let music: [ProjectMusic]
         /// When the frame pass finished, or -1 without one.
         var frames = -1.0
         var frameCount = 0
@@ -207,7 +211,7 @@ struct CLIAutopilotTests {
 
     /// The stub benchmark scene: the CLI's own pipeline (Find Clips, the top three planned at once, each applied as it is
     /// ready) over three latency stubs on virtual time.
-    private func benchmark(shape: LatencyShape = LatencyShape(), frames: Bool = false) async throws -> Run {
+    private func benchmark(shape: LatencyShape = LatencyShape(), frames: Bool = false, savedMusic: Bool = false) async throws -> Run {
         let transcript = benchmarkTranscript()
         let timeline = Timeline()
         let reply = try findReply(transcript)
@@ -216,14 +220,28 @@ struct CLIAutopilotTests {
         let shared = try SharedResources.locate()
         let catalog = try LLMCatalog(shared: shared)
         let clock = ClaudeModeClock()
-        let project = try benchmarkProject(transcript)
+        var project = try benchmarkProject(transcript)
+        let dataRoot = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: dataRoot) }
+        if savedMusic {
+            let fixture = try ProjectJSON.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/music/music-project.voxclip")))
+            var entry = try #require(fixture.music.last)
+            entry.asset.file = project.id + "/music-pulse.wav"
+            entry.title = "Pulse"
+            let asset = MusicRenderInput.url(for: entry.asset, dataRoot: dataRoot)
+            try FileManager.default.createDirectory(at: asset.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let wave = try PCMFile(url: asset, rate: 48_000, channels: 1, float: true)
+            try wave.finish(expectedFrames: 384_000)
+            project = try MusicProject.setting(entry, clipId: nil, in: project)
+        }
+        let start = project
         let pass = frames ? VideoFramePass(analyzer: FrameAnalyzer(vision: BlankVision(), decoder: PassDecoder(timeline: timeline), cache: nil),
                                            source: URL(fileURLWithPath: project.media.source.absolutePath),
                                            contentKey: project.media.source.contentKey, words: transcript.words) : nil
         let run = Task {
-            try await CLIWorkflow.autopilot(project: project, connector: main, lanes: lanes, model: "fixture", preset: .best, count: 3,
+            try await CLIWorkflow.autopilot(project: start, connector: main, lanes: lanes, model: "fixture", preset: .best, count: 3,
                                             shared: shared, catalog: catalog, clock: clock, report: AutopilotReport(quiet: true),
-                                            frames: pass, images: true) { _, _, _ in
+                                            frames: pass, images: true, dataRoot: dataRoot) { _, _, _ in
                 await timeline.take()
                 return []
             }
@@ -249,13 +267,37 @@ struct CLIAutopilotTests {
         var findImages = 0
         for stub in [main] + lanes { findImages += await stub.findImages }
         return Run(find: finished.first { $0.tag == "find" }?.at ?? -1, plans: plans, taken: await timeline.taken,
-                   mostPlansAtOnce: await timeline.mostPlansAtOnce, timings: clock.json(), clips: made.clips,
+                   mostPlansAtOnce: await timeline.mostPlansAtOnce, timings: clock.json(), clips: made.clips, music: made.project.music,
                    frames: finished.first { $0.tag == "frames" }?.at ?? -1, frameCount: pass?.frameCount ?? 0, shown: shown, findImages: findImages)
     }
 
     /// The whole video's frame pass starts with Find Clips and does not delay it (ADR-R48 part 2): on virtual time it runs
     /// from 0 beside Find Clips' 77 s, Find Clips still finishes at 77 s and the plans start then, and each plan request
     /// carries its clip's frames. `--timings` gains `frames` and each clip's `opening`.
+    @Test(.timeLimit(.minutes(1)))
+    func musicWithoutAMatchingLocalTrackStaysPending() async throws {
+        let run = try await benchmark()
+        #expect(run.clips.count == 3)
+        for clip in run.clips {
+            #expect(clip[ai: "music"] == .string("pending"))
+            #expect(clip[ai: "pending"].aiArray.contains(.string("music")))
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func matchingLocalTrackIsAttachedWithoutChangingTheOriginal() async throws {
+        let run = try await benchmark(savedMusic: true)
+        #expect(run.clips.count == 3 && run.music.count == 4)
+        for clip in run.clips {
+            let entry = try #require(run.music.first { $0.clipId == clip[ai: "clipId"].aiString })
+            let report = clip[ai: "music"]
+            #expect(report[ai: "trackId"] == .string(entry.id))
+            #expect(report[ai: "gainDb"] == .number(-24.5) && report[ai: "ducking"] == .bool(false))
+            #expect(!clip[ai: "pending"].aiArray.contains(.string("music")))
+        }
+        #expect(run.music.first?.id == "music-full" && run.music.first?.clipId == nil)
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func theFramePassRunsBesideFindClipsAndEachPlanCarriesItsFrames() async throws {
         let shape = LatencyShape()

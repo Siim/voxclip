@@ -13,9 +13,26 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 public sealed class PipelineTests
 {
     private static ClipFinderRequest Input(int count = 100) => new(Words(count), new Dictionary<string, string>(), new HashSet<string>(), ClipPreset.Best, "  Funny bits  ", "en", ConnectorId.OpenAI, "gpt-5.6-terra", Snap: false);
-    // Prompt version 2 replies name lines: Words(count) has 41 words a line, so line 1 is w0–w40.
+    // Words(count) has 41 words a line, so line 1 is w0–w40.
     private static RawCompletion Clips(string model, int start = 1, int end = 1, string title = "Clip") => new(null,
-        new JsonObject { ["clips"] = new JsonArray(new JsonObject { ["title"] = title, ["reason"] = "A complete thought.", ["score"] = 9, ["start_line"] = start, ["end_line"] = end }) }, model, new StopKind.Complete(), null, null);
+        new JsonObject { ["clips"] = new JsonArray(new JsonObject { ["title"] = title, ["reason"] = "A complete thought.", ["score"] = 9, ["parts"] = new JsonArray(new JsonObject { ["start_line"] = start, ["end_line"] = end }), ["not_in_take"] = "" }) }, model, new StopKind.Complete(), null, null);
+
+    [Fact]
+    public async Task CustomStoryUsesTheRequestedPlaybackOrderAndDropsInventedQuotes()
+    {
+        var vector = Fixture("finalize-clips")["cases"]!.AsArray().Single(item => item!["id"]!.GetValue<string>() == "issue-27-ordered-story")!;
+        var source = vector["input"]!;
+        var expected = vector["expected"]![0]!;
+        var input = Input() with { Preset = ClipPreset.Custom, Instructions = source["instructions"]!.GetValue<string>(), Words = SharedFixtureTests.WordsFrom(source["words"]!) };
+        var connector = new ScriptedConnector(ConnectorId.OpenAI, (_, model, _) => Task.FromResult(new RawCompletion(null, source["reply"]!.AsObject(), model, new StopKind.Complete(), null, null)));
+        var finder = new ClipFinder(Catalog(), new MemoryKeys(), new Redactor(), _ => connector);
+        var result = await finder.FindClipsAsync(input, null, TestContext.Current.CancellationToken);
+        var clip = Assert.Single(result.Clips);
+        Assert.Equal(new[] { "w29", "w9", "w0" }, clip.Parts!.Select(part => part.StartWordId));
+        Assert.Equal(new[] { "w38", "w28", "w8" }, clip.Parts!.Select(part => part.EndWordId));
+        Assert.Equal(expected["reason"]!.GetValue<string>(), clip.Reason);
+        Assert.Equal(expected["notInTake"]!.GetValue<string>(), clip.NotInTake);
+    }
 
     [Fact]
     public async Task EarlierFallbackIsRetainedWhenLaterWindowsUseThePrimary()

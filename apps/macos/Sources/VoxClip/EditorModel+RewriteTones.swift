@@ -103,6 +103,7 @@ extension EditorModel {
     /// instruction, so the creator can tweak it and press Rewrite again. The AI step is free on a plan; voicing stays a
     /// priced click.
     func rewriteAs(_ item: RewriteStripItem, scope: RewriteScope? = nil) {
+        if let reason = storyRewriteReason(for: scope ?? rewriteScopeNow) { announce(reason); return }
         rewriteInstruction = item.instruction
         runRewrite(scope: scope, instruction: item.instruction, verb: "Rewrite")
         announce("Rewriting as \(item.title.replacingOccurrences(of: "✦ ", with: ""))")
@@ -112,6 +113,7 @@ extension EditorModel {
     func rewriteAs(text: String, scope: RewriteScope? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if let reason = storyRewriteReason(for: scope ?? rewriteScopeNow) { announce(reason); return }
         rewriteInstruction = ClipBarView.limited(trimmed)
         runRewrite(scope: scope, instruction: rewriteInstruction, verb: "Rewrite")
     }
@@ -120,6 +122,7 @@ extension EditorModel {
     /// rewrite, and media that is not waiting to be found.
     var showsScopeToneStrip: Bool {
         transcribed && capabilities.edit && capabilities.ai && mediaReadOnlyNote == nil && rewriteToneCatalogLoaded
+            && storyRewriteReason() == nil
             && RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: rewriteScopeNow)
     }
     var rewriteToneCatalogLoaded: Bool { app.rewriteToneCatalog != nil }

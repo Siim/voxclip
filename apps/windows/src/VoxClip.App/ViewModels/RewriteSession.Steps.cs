@@ -205,7 +205,6 @@ internal sealed partial class RewriteSession
         if (!IsPricedAfresh(index))
         {
             // A fresh quote: the account may have changed since the failure (a key, credit or permission).
-            window.KeepEveryTake();
             await window.InputsChangedAsync(preserveReview: true);
             if (window.Quote is { } quote) { window.MarkEstimateShown(quote); AutoFix.Priced.Add(index); }
             Changed?.Invoke(this, EventArgs.Empty);
@@ -307,7 +306,7 @@ internal sealed partial class RewriteSession
             if (IncludedHunks.Count == 0) return new("Nothing is included. Your original words stay.", "Done", RewriteFooterAction.Done);
             if (LocalAction is { } local) return new($"{local} needs no new audio.", local, RewriteFooterAction.ApplyLocal);
             // Once an approved Get Price armed the fixes, the takes footer applies even if no take was paid (an account failure).
-            if (!HasPaidTakes && !AutoFix.Armed)
+            if (!HasSessionTakes && !AutoFix.Armed)
             {
                 // Every footer has a step forward (Mac `takePlanForward`, I10): a collision or a change still waiting on its wording keeps
                 // the speaker's words with one click.

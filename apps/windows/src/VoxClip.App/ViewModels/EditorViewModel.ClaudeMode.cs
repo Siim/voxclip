@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Settings;
 
 namespace VoxClip.App.ViewModels;
@@ -60,12 +61,12 @@ public sealed partial class EditorViewModel
     // MARK: The automatic run
 
     /// <summary>A newly imported video: Claude mode may run on it once it is transcribed.</summary>
-    public void ArmClaudeMode()
+    public void ArmClaudeMode(ClaudeModeClock? importClock = null)
     {
         if (ClaudeMode.Phase != ClaudeModePhase.Idle || IsReadOnly) return;
         ClaudeMode.Armed = true;
         // Numbers only: the transcribe stage runs from the video's arming until its transcript is in.
-        ClaudeMode.Clock = new();
+        ClaudeMode.Clock = importClock ?? new();
         if (!HasTranscript) ClaudeMode.Clock.Begin(ClaudeModeStage.Transcribe);
         if (ClaudeModeOn) ClaudeMode.Phase = ClaudeModePhase.Waiting;
         MakeItNotify();
@@ -78,35 +79,59 @@ public sealed partial class EditorViewModel
         // The whole video's frames are looked at beside Find Clips (ADR-R48), never before or in its way; nothing without faces.
         StartFramePass();
         if (!ClaudeMode.Armed || !ClaudeModeOn) return;
+        if (ClaudeMode.FindPending || ClaudeMode.Phase == ClaudeModePhase.Blocked) ClaudeMode.FindRetries = 0;
+        ClaudeMode.FindPending = true;
         ClaudeMode.Searched = true;
         ClaudeMode.Phase = ClaudeModePhase.Waiting;
         ClaudeMode.Blocker = null;
         ClaudeMode.Clock?.End(ClaudeModeStage.Transcribe);
         ClaudeMode.Clock?.Begin(ClaudeModeStage.Find);
         MakeItNotify();
-        ClaudeMode.AfterFind = AfterFindAsync(find);
+        ClaudeMode.AfterFind = AfterFindAsync(find, ++ClaudeMode.FindRevision);
     }
 
-    private async Task AfterFindAsync(Task find)
+    private static readonly int[] FindRetrySeconds = [2, 8, 30];
+
+    private async Task AfterFindAsync(Task find, int revision)
     {
+        await Task.Yield();
         try { await find; }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        if (revision != ClaudeMode.FindRevision) return;
         ClaudeMode.Clock?.End(ClaudeModeStage.Find);
-        await ClaudeModeContinueAsync();
+        var retry = false;
+        if (ClaudeModeOn && !isLeaving && ClaudeMode.Services is { } services && SuggestedClips.Count == 0 &&
+            services.FindErrorKind?.Invoke() is LlmErrorKind.Network or LlmErrorKind.Timeout or LlmErrorKind.CliNetworkUnreachable &&
+            ClaudeMode.FindRetries < FindRetrySeconds.Length)
+        {
+            var delay = TimeSpan.FromSeconds(FindRetrySeconds[ClaudeMode.FindRetries++]);
+            await services.WaitForRetry(delay);
+            if (revision != ClaudeMode.FindRevision) return;
+            retry = true;
+        }
+        ClaudeMode.FindPending = false;
+        await ClaudeModeContinueAsync(retry);
     }
 
     /// <summary>Goes as far as it can: starts the run when there are suggestions, starts Find Clips when it needs no approval, else
     /// says what blocks it.</summary>
-    public async Task ClaudeModeContinueAsync()
+    public Task ClaudeModeContinueAsync() => ClaudeModeContinueAsync(retry: false);
+
+    private async Task ClaudeModeContinueAsync(bool retry)
     {
         if (ClaudeMode.Services is not { } services || !ClaudeMode.Armed || !ClaudeModeOn || IsReadOnly || isLeaving || !HasTranscript) return;
         ClaudeMode.Clock?.End(ClaudeModeStage.Transcribe);
-        if (services.Finding()) { ClaudeMode.Phase = ClaudeModePhase.Waiting; MakeItNotify(); return; }
+        if (ClaudeMode.FindPending || services.Finding()) { ClaudeMode.Phase = ClaudeModePhase.Waiting; MakeItNotify(); return; }
         if (SuggestedClips.Count > 0) { StartClaudeMode(); return; }
-        // Claude finds by itself once per video: a find that added nothing (Windows keeps no empty result) is not run again.
-        if (project.Ai.Results.Count > 0 || services.FindProblem() is not null || ClaudeMode.Searched)
+        if (!retry && (project.Ai.Results.Count > 0 || services.FindProblem() is not null || ClaudeMode.Searched))
         {
-            Block(new ClaudeModeBlocker.FindAgain(services.FindProblem() ?? "Claude found no clip worth posting in this video."));
+            var reason = services.FindProblem() ?? "Claude found no clip worth posting in this video.";
+            Block(services.FindErrorKind?.Invoke() switch
+            {
+                LlmErrorKind.ModelNotFound or LlmErrorKind.CliSignedOut => new ClaudeModeBlocker.AiSettings(reason),
+                _ when services.FindNeedsApproval?.Invoke() is true => new ClaudeModeBlocker.ApproveSend("Claude waits for your OK to read the transcript and find clips. Your edits are saved."),
+                _ => new ClaudeModeBlocker.FindAgain(reason)
+            });
             return;
         }
         ClaudeMode.Phase = ClaudeModePhase.Waiting;
@@ -125,7 +150,13 @@ public sealed partial class EditorViewModel
     public void FixClaudeModeBlocker()
     {
         if (ClaudeMode.Phase != ClaudeModePhase.Blocked || ClaudeMode.Blocker is not { } blocker || ClaudeMode.Services is not { } services) return;
-        if (blocker is not ClaudeModeBlocker.SetUp) { ClaudeMode.Phase = ClaudeModePhase.Waiting; ClaudeMode.Blocker = null; MakeItNotify(); }
+        if (blocker is not (ClaudeModeBlocker.SetUp or ClaudeModeBlocker.AiSettings))
+        {
+            ClaudeMode.FindRetries = 0;
+            ClaudeMode.Phase = ClaudeModePhase.Waiting;
+            ClaudeMode.Blocker = null;
+            MakeItNotify();
+        }
         services.Fix(blocker);
     }
 

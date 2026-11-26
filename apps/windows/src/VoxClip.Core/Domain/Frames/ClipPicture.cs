@@ -48,9 +48,11 @@ public static class ClipPicture
     public static FrameClip? OpeningClip(Project project, string clipId)
     {
         if (project.Transcript is not { } transcript || project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is not { } range) return null;
-        var first = IndexOf(transcript.Words, range.StartWordId);
-        if (first < 0 || FrameClip.Make(transcript, range, project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal)) is not { } clip) return null;
-        return clip.Kept[0] == first ? clip : null;
+        var parts = range.PlayPartIndices(transcript.Words);
+        if (parts is not { Count: > 0 }) return null;
+        var (first, last) = parts[0];
+        var clip = FrameClip.Make(transcript.Words, first, last, project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal));
+        return clip?.Kept[0] == first ? clip : null;
     }
 
     /// <summary>The start moves back (<see cref="OpeningFrame.Choose"/>, never across a word) when the first frame of
@@ -191,16 +193,27 @@ public static class ClipPicture
     /// <param name="Named">The reply named this candidate; false when the local best was taken.</param>
     /// <param name="Reason">Claude's reason; null when it named none or fell back.</param>
     /// <param name="Previous">The cover it replaced (the row's Undo).</param>
-    public sealed record Cover(ClipAutopilotFrames.CoverCandidate Candidate, bool Named, string? Reason, double? Previous);
+    /// <param name="Title">Optional title for the selected cover.</param>
+    /// <param name="PreviousTitle">The title it replaced.</param>
+    public sealed record Cover(ClipAutopilotFrames.CoverCandidate Candidate, bool Named, string? Reason, double? Previous,
+        string? Title = null, string? PreviousTitle = null);
 
     /// <summary>The reply's pick among the cover candidates, or the best measured one when it named none. Null without candidates.</summary>
     public static (Project Project, Cover Cover)? CoverOf(Project project, string clipId, ClipAutopilotFrames frames, ClipAutopilotPlan plan)
     {
-        var named = plan.Frames?.CoverChoice is { } choice ? frames.CoverCandidateFor(choice.Id) : null;
-        if ((named ?? frames.Cover.FirstOrDefault()) is not { } candidate || ClipControlsProject.Controls(clipId, project) is not { } controls) return null;
-        if (SettingControls(clipId, project, current => current with { CoverSeconds = candidate.Time }) is not { } next) return null;
+        IEnumerable<ClipAutopilotFrames.CoverCandidate> candidates = frames.Cover;
+        if (project.Transcript is { } transcript && project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { Parts: not null } story)
+        {
+            if (StoryClips.Times(story, transcript.Words) is not { Count: > 0 } spans) return null;
+            var first = spans[0];
+            candidates = candidates.Where(candidate => first.Start <= candidate.Time && candidate.Time < first.End);
+        }
+        var named = plan.Frames?.CoverChoice is { } choice ? candidates.FirstOrDefault(candidate => candidate.Id == choice.Id) : null;
+        if ((named ?? candidates.FirstOrDefault()) is not { } candidate || ClipControlsProject.Controls(clipId, project) is not { } controls) return null;
+        var title = named is not null && plan.Frames?.CoverChoice is { Fallback: false, Title: { } text } ? ClipHookTitle.Text(text) : null;
+        if (SettingControls(clipId, project, current => current with { CoverSeconds = candidate.Time, CoverTitle = title }) is not { } next) return null;
         var reason = named is null ? null : plan.Frames?.CoverChoice is { Fallback: false, Reason.Length: > 0 } picked ? picked.Reason : null;
-        return (next, new(candidate, named is not null, reason, controls.CoverSeconds));
+        return (next, new(candidate, named is not null, reason, controls.CoverSeconds, title, controls.CoverTitle));
     }
 
     // MARK: All four

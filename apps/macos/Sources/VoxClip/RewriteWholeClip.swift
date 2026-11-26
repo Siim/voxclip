@@ -22,19 +22,56 @@ extension RewriteSession {
         }
     }
 
-    /// The card shows at the price step whenever the whole clip can be offered: Voice Lab on with voice changes in one
-    /// clip, a voice chosen and no paid patch takes. The pick only sets its default; after the patch is picked it is one
-    /// compact row ("Revoice the Whole Clip Instead · ≈ $X"), so the whole clip stays findable and redoable. A run keeps
-    /// it shown until it ends.
+    var wholeClipRecordScope: String? {
+        if case .fullTake = rewriteScope { return WholeClipRevoice.fullTakeID }
+        return wholeClipID
+    }
+
+    var usedWholeClip: WholeClipRevoiceRecord? {
+        guard let id = wholeClipRecordScope else { return nil }
+        let enabled = Set(project.voiceLab.segments.filter(\.enabled).map(\.id))
+        return project.voiceLab.wholeClipRevoices?.last { $0.clipId == id && !enabled.isDisjoint(with: $0.segmentIds) }
+    }
+
+    var wholeClipUnavailable: String? {
+        if let story = editor.storyClip(for: rewriteScope), let parts = story.parts {
+            return StoryClipPresentation.lipSyncReason(partCount: parts.count)
+        }
+        guard wholeClipRecordScope != nil else { return "Open Full Take or a clip first." }
+        guard let final = try? wholeClipReviewProject(), let video = final.media.source.video else {
+            return "Lip sync needs a video."
+        }
+        if let edited = wholeClipEditedPlan(final), LipsyncLimits.uploadSeconds(edited.duration + 2) > LipsyncLimits.maximumUploadSeconds {
+            return "Lip sync takes up to 5 min. Make a clip first."
+        }
+        guard (try? LipsyncWindowPreparation.uploadSize(video)) != nil else { return "Lip sync can’t use this video’s format." }
+        guard editor.app.voiceLabRewriteEnabled else { return "Turn on Voice Lab to revoice this take." }
+        guard wholeClipWords(final).contains(where: { $0.kind == .word && !final.edits.cutWordIds.contains($0.id) }) else {
+            return "There are no words to revoice."
+        }
+        guard envelope != nil else { return "Wait for the audio waveform." }
+        guard voiceSpendCurrent, !editor.capabilities.exporting, !editor.capabilities.aiBusy, !takesBusy else {
+            return "Finish the current work before revoicing."
+        }
+        guard usedRewriteReplacement == nil || wholeClipReplacement != nil else { return RewriteReplacement.undoCopy }
+        return nil
+    }
+
+    var changedPhrasesUnavailable: String? {
+        if let reason = editor.storyRewriteReason(for: rewriteScope) { return reason }
+        if wholeClipReplacement != nil { return "Go back to your recording to voice individual phrases." }
+        if !editor.app.voiceLabRewriteEnabled { return "Turn on Voice Lab to make takes." }
+        if wholeClipVoiceHunks.isEmpty { return "There are no changed phrases." }
+        return nil
+    }
+
     var offersWholeClip: Bool {
-        guard showsVoiceLab, wholeClipID != nil, generation?.selectedVoiceID != nil, !wholeClipVoiceHunks.isEmpty else { return false }
-        if let session = wholeClip, session.phase != .choose { return true }
-        return !hasPaidTakes
+        wholeClipRecordScope != nil
     }
 
     /// The card, made on first show and again for a new proposal; its price is fetched in the background (free).
     func wholeClipCard() -> PanelCard? {
-        guard offersWholeClip, let clip = wholeClipID else { return nil }
+        guard let clip = wholeClipRecordScope else { return nil }
         // A new proposal for the clip, in this Rewrite or a later one: the earlier pick and price were for other words.
         if let session = wholeClip, session.phase == .choose, session.proposalID != proposalID {
             wholeClip = nil
@@ -43,7 +80,7 @@ extension RewriteSession {
         if let session = wholeClip {
             // The changes on the card changed (one included or left out, or an edit under a stopped paid voice): the price
             // on its button (Revoice Whole Clip, Start Over) follows them.
-            if session.needsRequote {
+            if session.needsRequote, wholeClipUnavailable == nil {
                 Task { [weak self, weak session] in
                     await session?.refreshQuote()
                     self?.refreshWholeClipPanel()
@@ -62,8 +99,12 @@ extension RewriteSession {
         #endif
         wholeClip = session
         Task { [weak self, weak session] in
-            await session?.refreshQuote()
-            self?.refreshWholeClipPanel()
+            guard let self, let session, wholeClip === session else { return }
+            if wholeClipUnavailable == nil {
+                if !AppModel.isTestSession, !TestProcess.isRunning { await prepareUsedWholeClipVoice() }
+                await session.refreshQuote()
+            }
+            refreshWholeClipPanel()
         }
         return .wholeClip
     }
@@ -72,10 +113,73 @@ extension RewriteSession {
         if isOpen, case .proposal = task.state { showProposal() }
     }
 
-    /// The patch was picked for this clip: the card is one row, "Revoice the Whole Clip Instead · ≈ $X".
-    var wholeClipCompact: Bool {
-        guard let session = wholeClip, session.phase == .choose, let clip = wholeClipID, let pick = editor.wholeClipPicks[clip] else { return false }
-        return !pick.whole && pick.proposal == proposalID
+    func backToMyRecording() {
+        guard let record = usedWholeClip, backToMyRecordingUnavailable == nil else { return }
+        let before = editor.project
+        try? commitOwnEdit {
+            let next = editor.removingWholeClip(record, from: before)
+            try VoiceLabProject.validate(next)
+            editor.replace(next, name: "Back to My Recording")
+        }
+        guard editor.project != before else { return }
+        retireWholeClipVoicePlan()
+        wholeClip = nil
+        refreshWholeClipPanel()
+    }
+
+    var backToMyRecordingUnavailable: String? {
+        if hasUnusedPaidWork { return "Finish reviewing the new version first." }
+        if !voiceSpendCurrent || editor.capabilities.exporting { return "Finish the current work before going back to your recording." }
+        return nil
+    }
+
+    func wholeClipLipRedo() -> PanelAction? {
+        let model = WholeClipRevoice.Lipsync.standard
+        guard wholeClipLipRedoBlocker == nil, let record = usedWholeClip, let previous = wholeClip,
+              let source = try? wholeClipPictureRedoSource(record), let price = try? source.estimate(model).usd else { return nil }
+        return PanelAction(id: "wholeClipLipRedo",
+                           title: "Redo Lip Sync Only · " + VoiceLabCostPresentation.format(price), priced: price > 0) { [weak self, weak previous] in
+            guard let self, let previous, wholeClip === previous, usedWholeClip == record, wholeClipLipRedoBlocker == nil,
+                  let source = try? wholeClipPictureRedoSource(record), let amount = try? source.estimate(model).usd, amount <= price,
+                  let script = try? previous.backend?.script() else { return }
+            let next = WholeClipRevoiceSession()
+            next.proposalID = proposalID
+            configureWholeClip(next)
+            holdPictureRedo(next, source: source, script: script, model: model)
+            retireWholeClipVoicePlan()
+            wholeClip = next
+            next.runPictureRedo(model, approved: price)
+            watchWholeClip()
+        }
+    }
+
+    private var wholeClipLipRedoBlocker: String? {
+        if let reason = wholeClipUnavailable { return reason }
+        guard let session = wholeClip, session.phase == .used || session.phase == .choose else {
+            return "Finish reviewing the new version first."
+        }
+        guard session.keyAvailable else { return "Add a fal.ai key in Voice Lab settings to lip-sync this take." }
+        return nil
+    }
+
+    var wholeClipLipRedoUnavailable: String {
+        if let reason = wholeClipLipRedoBlocker { return reason }
+        guard let record = usedWholeClip, (try? wholeClipPictureRedoSource(record)) != nil else {
+            return "The saved voice and picture no longer match this edit."
+        }
+        return "A lip-sync price isn’t available for this take."
+    }
+
+    var wholeClipPrimaryUnavailable: String {
+        if editor.storyClip(for: rewriteScope) != nil, let reason = wholeClipUnavailable { return reason }
+        guard let session = wholeClip else { return "Open the Voice panel first." }
+        if session.wholeSelected || usedWholeClip != nil {
+            if let reason = wholeClipUnavailable { return reason }
+            if session.repeatedWordCheckPart != nil { return "Change the words before trying this voice again." }
+            if session.quoting || session.needsRequote { return "Getting the price…" }
+            return "A whole-take price isn’t available for these words."
+        }
+        return changedPhrasesUnavailable ?? "A price isn’t available for these phrases."
     }
 
     /// "Add fal.ai Key…": the lip sync needs the key, so nothing is priced without it (Settings › Voice Lab takes it, and
@@ -87,37 +191,28 @@ extension RewriteSession {
     /// The card's primary: "Revoice Whole Clip · ≈ $X" (the click approves the voice and the lip sync at that price), or
     /// "Voice Only the Changed Phrases" for the patch. With no fal.ai key the whole clip opens Settings for it.
     func wholeClipPrimary(retry: Bool = false) -> PanelAction? {
-        guard let session = wholeClip else { return nil }
-        guard session.wholeSelected || retry else {
-            return PanelAction(id: "wholeClipPatchPick", title: "Voice Only the Changed Phrases") { [weak self] in self?.patchInstead() }
+        guard editor.storyClip(for: rewriteScope) == nil else { return nil }
+        guard let session = wholeClip, session.repeatedWordCheckPart == nil else { return nil }
+        guard session.wholeSelected || retry || usedWholeClip != nil else {
+            guard changedPhrasesUnavailable == nil else { return nil }
+            return pricedTakeAction() ?? PanelAction(id: "wholeClipPatchPick", title: "Get Price") { [weak self] in self?.patchInstead() }
         }
+        if !retry, wholeClipUnavailable != nil { return nil }
         guard session.keyAvailable else { return wholeClipAddKeyAction() }
-        guard let usd = session.quote?.wholeUSD else { return nil }
+        if !retry, generation?.selectedVoiceID == nil {
+            return PanelAction(id: "wholeClipPrepare", title: generation == nil ? "Get Price" : "Make Your Voice") { [weak self] in
+                self?.prepareWholeClipVoice()
+            }
+        }
+        if !retry, session.quoting || session.needsRequote { return nil }
         // Try Again pays only what's left; a kept lip-sync result is re-imported for free ("Try Again · free").
-        let remaining = retry ? session.retryUSD ?? usd : usd
-        let price = remaining > 0 ? " · " + VoiceLabCostPresentation.format(remaining) : retry ? " · free" : ""
-        return PanelAction(id: retry ? "wholeClipRetry" : "wholeClipRevoice", title: (retry ? "Try Again" : "Revoice Whole Clip") + price, priced: remaining > 0) { [weak self] in
-            self?.startWholeClip()
-        }
-    }
-
-    /// The callout's chip over a large change: "Revoice the Whole Clip · ≈ $X". Nothing is spent until it is clicked.
-    func wholeClipChipAction() -> PanelAction? {
-        guard let session = wholeClip, session.phase == .choose, session.keyAvailable, let usd = session.quote?.wholeUSD else { return nil }
-        return PanelAction(id: "wholeClipChip", title: "Revoice the Whole Clip · " + VoiceLabCostPresentation.format(usd), priced: true) { [weak self] in
-            self?.wholeClip?.wholeSelected = true
-            self?.startWholeClip()
-        }
-    }
-
-    /// The compact card's row after the patch was picked: "Revoice the Whole Clip Instead · ≈ $X", its click the approval.
-    func wholeClipInsteadAction() -> PanelAction? {
-        guard let session = wholeClip, session.phase == .choose else { return nil }
-        guard session.keyAvailable else { return wholeClipAddKeyAction() }
-        guard let usd = session.quote?.wholeUSD else { return nil }
-        return PanelAction(id: "wholeClipInstead", title: "Revoice the Whole Clip Instead · " + VoiceLabCostPresentation.format(usd), priced: true) { [weak self] in
-            self?.wholeClip?.wholeSelected = true
-            self?.startWholeClip()
+        let redo = !retry && usedWholeClip != nil
+        guard let remaining = retry ? session.retryUSD : session.quote?.wholeUSD else { return nil }
+        let price = remaining > 0 ? " · " + VoiceLabCostPresentation.format(remaining) : " · free"
+        let title = retry ? "Try Again" : redo ? "Redo Voice and Lip Sync" : "Revoice Whole Take"
+        return PanelAction(id: retry ? "wholeClipRetry" : "wholeClipRevoice", title: title + price, priced: remaining > 0) { [weak self] in
+            if redo { self?.redoWholeClip(approved: remaining) }
+            else { self?.startWholeClip(approved: remaining) }
         }
     }
 
@@ -125,24 +220,6 @@ extension RewriteSession {
     func changeFewerWordsAction() -> PanelAction? {
         guard let advice = voiceBudget else { return nil }
         return budgetSteps(advice, freeChanges: 0).chips.first { $0.action.id == "changeFewerWords" }?.action
-    }
-
-    /// Review's upgrade: "Sharper Lip Sync · sync-3 · ≈ $X", re-running only the lip sync over the paid voice. After a lost
-    /// submit answer it is the user's own "I Checked fal.ai" button, which may charge twice.
-    func wholeClipUpgradeAction() -> PanelAction? {
-        guard let session = wholeClip, session.phase == .review, let usd = session.upgradeUSD, !session.automatic else { return nil }
-        let price = session.upgradeKept ? "free" : VoiceLabCostPresentation.format(usd)
-        if session.submissionUnconfirmed {
-            return PanelAction(id: "wholeClipUpgradeCheckedFal", title: "I Checked fal.ai · Sharper Lip Sync Again · \(price) (fal.ai may charge twice)",
-                               priced: true) { [weak self, weak session] in
-                session?.upgradeAfterCheckingFal()
-                self?.watchWholeClip()
-            }
-        }
-        return PanelAction(id: "wholeClipUpgrade", title: "Sharper Lip Sync · sync-3 · " + price, priced: !session.upgradeKept) { [weak self, weak session] in
-            session?.upgrade()
-            self?.watchWholeClip()
-        }
     }
 
     /// The stopped card's actions, the first one primary. Every one can succeed (design.md, Stopped):
@@ -164,10 +241,45 @@ extension RewriteSession {
             }
             actions.insert(voiceOnly, at: actions.firstIndex { $0.id == "wholeClipPatch" } ?? actions.endIndex)
         }
+        if let replacement = wholeClipReplacement {
+            actions.removeAll { $0.id == "wholeClipPatch" }
+            if usedWholeClip != nil, session.pictureRedoModel == nil {
+                actions.append(keepEarlierWholeClipAction())
+            } else if usedWholeClip == nil, !hasUnusedPaidWork { actions.append(undoRevoiceAction(replacement)) }
+            if actions.isEmpty { actions.append(task.close) }
+        }
         return actions
     }
 
+    private func keepEarlierWholeClipAction() -> PanelAction {
+        PanelAction(id: "wholeClipKeepUsed", title: "Keep the Earlier Version") { [weak self] in self?.discardWholeClip() }
+    }
+
     private func wholeClipStopActions(_ session: WholeClipRevoiceSession) -> [PanelAction] {
+        if session.pictureRedoModel != nil {
+            let back = keepEarlierWholeClipAction()
+            if session.failure?.atUse == true {
+                return [PanelAction(id: "wholeClipUseAgain", title: "Try Use Again · free") { [weak self] in self?.useWholeClipAgain() }, back]
+            }
+            if session.submissionUnconfirmed, let usd = session.checkedFalUSD {
+                let price = VoiceLabCostPresentation.format(usd)
+                let checked = PanelAction(id: "wholeClipCheckedFal", title: "I Checked fal.ai · Lip Sync Again · \(price) (fal.ai may charge twice)",
+                                          priced: usd > 0) { [weak self] in
+                    self?.wholeClip?.lipsyncAfterCheckingFal()
+                    self?.watchWholeClip()
+                }
+                return [checked, back]
+            }
+            return [wholeClipPrimary(retry: true), back].compactMap { $0 }
+        }
+        if let part = session.repeatedWordCheckPart, !session.stoppedForInputs {
+            return [
+                PanelAction(id: "wholeClipPatch", title: "Voice Only the Changed Phrases") { [weak self] in self?.patchInstead() },
+                PanelAction(id: "wholeClipEditWords", title: "Edit the Words") { [weak self] in
+                    self?.editWholeClipWords(part: part)
+                },
+            ]
+        }
         // Only a voice still held is one the patch drops: one let go (Start Over) is counted in the spend, not here.
         let paid = session.heldVoiceSpent > 0
         let patch = PanelAction(id: "wholeClipPatch", title: paid ? "Voice Only the Changed Phrases (drops the paid voice)" : "Voice Only the Changed Phrases") { [weak self] in
@@ -222,12 +334,69 @@ extension RewriteSession {
         return first ? [patch, retry] : [retry, patch]
     }
 
-    func startWholeClip(automatic: Bool = false, budget: Decimal? = nil) {
-        guard let session = wholeClip, let clip = wholeClipID, !session.running, !session.submissionUnconfirmed else { return }
+    func startWholeClip(automatic: Bool = false, budget: Decimal? = nil, approved: Decimal? = nil) {
+        guard let session = wholeClip, let clip = wholeClipRecordScope, !session.running, !session.submissionUnconfirmed,
+              session.repeatedWordCheckPart == nil else { return }
+        if let approved {
+            guard session.phase != .choose || wholeClipUnavailable == nil else { return }
+            guard !session.quoting, !session.needsRequote else { return }
+            let price = session.isStopped ? session.retryUSD : session.quote?.wholeUSD
+            guard let price, price <= approved else { return }
+        }
         editor.wholeClipPicks[clip] = WholeClipPick(whole: true, proposal: proposalID)
-        session.start(automatic: automatic, budget: budget)
+        if let model = session.pictureRedoModel, let approved { session.runPictureRedo(model, approved: approved) }
+        else { session.start(automatic: automatic, budget: budget) }
         editor.announce("Revoicing the whole clip.")
         watchWholeClip()
+    }
+
+    func selectWholeClipMode(_ whole: Bool) {
+        guard let session = wholeClip, session.phase == .choose, let id = wholeClipRecordScope else { return }
+        session.wholeSelected = whole
+        editor.wholeClipPicks[id] = WholeClipPick(whole: whole, proposal: proposalID)
+    }
+
+    func prepareWholeClipVoice() {
+        guard wholeClipUnavailable == nil else { return }
+        if generation != nil {
+            if generation?.voices.isEmpty == true { editor.openVoiceJob() }
+            return
+        }
+        takesTask = Task { [weak self] in
+            guard let self else { return }
+            await discoverVoices(resume: { [weak self] in self?.prepareWholeClipVoice() })
+            await wholeClip?.refreshQuote()
+            refreshWholeClipPanel()
+        }
+    }
+
+    private func prepareUsedWholeClipVoice() async {
+        guard let used = usedWholeClip, generation == nil, editor.app.bool("voiceLab.providerConsent.elevenlabs") else { return }
+        await discoverVoices()
+        if generation?.voices.contains(where: { $0.id == used.consentRecordId }) == true {
+            generation?.chooseVoice(used.consentRecordId)
+        }
+    }
+
+    private func redoWholeClip(approved: Decimal) {
+        guard wholeClipUnavailable == nil, let previous = wholeClip, let record = usedWholeClip,
+              previous.phase == .used || previous.phase == .choose else { return }
+        if previous.phase == .choose { startWholeClip(approved: approved); return }
+        let next = WholeClipRevoiceSession()
+        next.proposalID = proposalID
+        configureWholeClip(next)
+        #if DEBUG
+        editor.wholeClipSmoke?(self, next)
+        #endif
+        retireWholeClipVoicePlan()
+        wholeClip = next
+        Task { [weak self] in
+            guard let self else { return }
+            await next.refreshQuote()
+            guard wholeClip === next, usedWholeClip == record else { return }
+            startWholeClip(approved: approved)
+            refreshWholeClipPanel()
+        }
     }
 
     /// Refreshes the panel while the whole clip runs and once it ends.
@@ -254,8 +423,13 @@ extension RewriteSession {
 
     /// The patch, as before: the pick is kept for this clip and the card becomes its compact row.
     func patchInstead() {
-        guard let clip = wholeClipID else { return }
+        guard wholeClipReplacement == nil, let clip = wholeClipRecordScope else { return }
         editor.wholeClipPicks[clip] = WholeClipPick(whole: false, proposal: proposalID)
+        if wholeClip?.phase == .choose {
+            wholeClip?.wholeSelected = false
+            makeTakes()
+            return
+        }
         Task { [weak self] in
             await self?.wholeClip?.discard()
             self?.retireWholeClipVoicePlan()
@@ -265,10 +439,33 @@ extension RewriteSession {
         }
     }
 
+    private func editWholeClipWords(part: Int) {
+        let index = part - 1
+        let words: [String]
+        if let plan = wholeClipPlan, plan.phrases.indices.contains(index),
+           let first = editor.wordIndex[plan.phrases[index].window.firstWordId],
+           let last = editor.wordIndex[plan.phrases[index].window.lastWordId], first <= last {
+            words = editor.words[first...last].map(\.id)
+        } else if let parts = wholeClip?.script?.parts, parts.indices.contains(index) {
+            words = parts[index].sourceWordIds
+        } else { return }
+        let wordIDs = Set(words)
+        if let change = ownProposal?.changes.first(where: { includedVoice.contains($0.ordinal) && !wordIDs.isDisjoint(with: $0.span) }) {
+            editor.focusChange(change.ordinal)
+            if editor.openRewriteThreadOwnWords() { return }
+        }
+        guard let word = words.first(where: { !editor.cutWordIDs.contains($0) }) else { return }
+        editor.selectedPauseIDs = []
+        editor.selectedWordIDs = [word]
+        editor.beginCorrection()
+    }
+
     @discardableResult func useWholeClip() -> Task<Void, Never> {
         Task { [weak self] in
-            await self?.wholeClip?.use()
-            self?.refreshWholeClipPanel()
+            guard let self, let session = wholeClip else { return }
+            await session.use()
+            if session.phase == .used { await session.refreshQuote() }
+            refreshWholeClipPanel()
         }
     }
 
@@ -291,16 +488,28 @@ extension RewriteSession {
     /// Undo on Review: the original audio and video stay; the card offers the choice again.
     func discardWholeClip() {
         Task { [weak self] in
-            await self?.wholeClip?.discard()
-            self?.refreshWholeClipPanel()
+            guard let self, let session = wholeClip else { return }
+            await session.discard()
+            if usedWholeClip != nil { wholeClip = nil }
+            refreshWholeClipPanel()
         }
     }
 
     // MARK: The live steps
 
+    private func wholeClipReviewProject() throws -> Project {
+        let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+        return wholeClipReplacement?.removing(from: final) ?? final
+    }
+
+    private func wholeClipHunks(_ script: WholeClipScript, project: Project) -> [VoiceLabDiffHunk] {
+        script.hunks(words: wholeClipWords(project), cutWordIds: Set(project.edits.cutWordIds), cutPauseIds: Set(project.edits.cutPauseIds))
+    }
+
     /// The clip's transcript items, corrected, from the review's project.
     private func wholeClipWords(_ final: Project) -> [TimedWord] {
         let words = Self.corrected(final)
+        if case .fullTake = rewriteScope { return words }
         guard let id = wholeClipID, let clip = final.edits.clips.first(where: { $0.id == id }),
               let lower = words.firstIndex(where: { $0.id == clip.startWordId }),
               let upper = words.firstIndex(where: { $0.id == clip.endWordId }), lower <= upper else { return [] }
@@ -320,7 +529,7 @@ extension RewriteSession {
     /// The rule's inputs here: the clip's spoken words after its cuts, the words the whole clip re-voices, and the phrases
     /// that can't fit.
     var wholeClipRuleInputs: WholeClipRevoice.RuleInputs {
-        let final = (try? editor.voiceLabReviewProject(localCommands: localCommands)) ?? project
+        let final = (try? wholeClipReviewProject()) ?? project
         let cuts = Set(final.edits.cutWordIds)
         let spoken = wholeClipWords(final).filter { $0.kind == .word && !cuts.contains($0.id) }.count
         let revoiced = wholeClipVoiceHunks.reduce(0) { $0 + $1.newTokens.count }
@@ -332,13 +541,13 @@ extension RewriteSession {
         let editor = self.editor
         session.backend = WholeClipRevoiceSession.Backend(script: { [weak self] in
             guard let self else { throw CancellationError() }
-            let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+            let final = try wholeClipReviewProject()
             guard let script = WholeClipScript.assemble(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds),
                                                         voiceHunks: wholeClipVoiceHunks) else { throw ClipTakePlan.Failure.nothingToVoice }
             return script
         }, quote: { [weak self] script, model in
             guard let self else { throw CancellationError() }
-            return try wholeClipQuote(script, model: model)
+            return try await wholeClipQuote(script, model: model)
         }, voice: { [weak self] script, progress in
             guard let self else { throw CancellationError() }
             return try await wholeClipVoice(script, progress: progress)
@@ -374,9 +583,7 @@ extension RewriteSession {
         }, lipsyncPrice: { [weak self] model in
             guard let self, let catalog = wholeClipCatalog, let seconds = wholeClipLipsyncSeconds else { return nil }
             return try WholeClipRevoice.lipsyncPrice(videoSeconds: LipsyncLimits.uploadSeconds(seconds), lipsync: model, catalog: catalog).usd
-        }, match: { [weak self] voice in
-            await self?.wholeClipMatch(voice)
-        }, play: { [weak self] original in
+        }, match: { _ in nil }, play: { [weak self] original in
             self?.playWholeClip(original: original)
         }, use: { [weak self] voice, synced, match in
             guard let self else { throw CancellationError() }
@@ -412,21 +619,20 @@ extension RewriteSession {
         })
     }
 
-    private var wholeClipCatalog: VoiceLabPriceCatalog? {
+    var wholeClipCatalog: VoiceLabPriceCatalog? {
         prices ?? editor.app.shared.flatMap { try? VoiceLabPriceCatalog.load(shared: $0) }
     }
 
     /// The clip as edited (its cuts and tightened pauses applied) with no voice in it: the one timeline the whole clip's
     /// fit, layout, picture and lip sync read (ADR-R46).
     private func wholeClipEditedPlan(_ final: Project) -> VoiceLabOutputPlan? {
-        guard let id = wholeClipID else { return nil }
-        return try? VoiceLabOutputPlanner.build(final, scope: .clip(id))
+        try? VoiceLabOutputPlanner.build(final, scope: scope)
     }
 
     /// The parts' windows as edited, in seconds: each window without the clip's own cuts inside it. Before the voice's
     /// plan exists, the script's span on the clip as edited.
     var wholeClipEditedSeconds: Double? {
-        guard let final = try? editor.voiceLabReviewProject(localCommands: localCommands), let edited = wholeClipEditedPlan(final) else { return nil }
+        guard let final = try? wholeClipReviewProject(), let edited = wholeClipEditedPlan(final) else { return nil }
         if let phrases = wholeClipPlan?.phrases, !phrases.isEmpty {
             return phrases.reduce(0) { total, phrase in
                 let cuts = WholeClipRevoice.editedCuts(edited, startSample: phrase.window.startSample, endSample: phrase.window.endSample)
@@ -464,55 +670,101 @@ extension RewriteSession {
         return try? VoiceLabPhraseTiming.estimate(text: script.text, rate: max(rate, VoiceLabLengthBudget.providerRateFloor))
     }
 
-    private func wholeClipQuote(_ script: WholeClipScript, model: WholeClipRevoice.Lipsync) throws -> WholeClipRevoiceSession.Quote {
-        guard let catalog = wholeClipCatalog, let id = wholeClipID, let first = script.sentences.first, let last = script.sentences.last else {
+    private func wholeClipQuote(_ script: WholeClipScript, model: WholeClipRevoice.Lipsync) async throws -> WholeClipRevoiceSession.Quote {
+        guard let catalog = wholeClipCatalog, wholeClipRecordScope != nil, let first = script.sentences.first, let last = script.sentences.last else {
             throw VoxClipError.sharedResourcesMissing
         }
         // The lip sync is priced on the clip as edited, the video it gets, with Rewrite's one-second handles and the upload's
         // tail margin (LipsyncLimits.tailMarginSeconds).
-        let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+        let final = try wholeClipReviewProject()
         let edited = wholeClipEditedPlan(final)
         let seconds = (edited.map { $0.mapTime(last.end) - $0.mapTime(first.start) } ?? (last.end - first.start)) + 2
+        if wholeClipReplacement != nil {
+            guard let video = final.media.source.video else { throw LipsyncPreparationError.unsupportedVideo }
+            try LipsyncWindowPreparation.preflight(video: video, outputSeconds: seconds)
+            guard let envelope else { throw ClipTakePlan.Failure.noSelection }
+            let hunks = wholeClipHunks(script, project: final)
+            _ = try ClipTakePlan.preparePlan(project: final, scope: scope, envelope: envelope, hunks: hunks)
+        }
         let price = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
                                                videoSeconds: LipsyncLimits.uploadSeconds(seconds), lipsync: model, catalog: catalog)
+        guard let wordCheckUSD = Self.wordCheckUSD(catalog) else { throw VoxClipError.sharedResourcesMissing }
+        let journalPrice = try await wholeClipJournalPrice(script, final: final, catalog: catalog)
+        let wordChecksUSD = wordCheckUSD * Decimal(journalPrice?.parts ?? script.parts.count)
         let patchCharacters = wholeClipVoiceHunks.reduce(0) { $0 + $1.newTokens.joined(separator: " ").unicodeScalars.count }
-        let patch = takePlan?.estimate?.usd ?? (try? VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
+        let patch = wholeClipReplacement != nil ? nil : takePlan?.estimate?.usd ?? (try? VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
                                                                              units: Double(max(1, patchCharacters)), catalog: catalog))?.usd
         let inputs = wholeClipRuleInputs
         let voiceLab = editor.app.voiceLabSession
         let selected = generation?.voices.first { $0.id == generation?.selectedVoiceID }
         let anchor = voiceLab.anchorVoice(language: project.transcript?.language)
         let matched = selected != nil && selected?.id == preferredVoiceForVideo && selected?.id != anchor?.id
-        return .init(clipNumber: editor.clipNumber(id) ?? 1, clipSeconds: editor.makeItRenderedSeconds(id), spokenWords: inputs.spokenWords,
+        return .init(clipNumber: wholeClipClipNumber, clipSeconds: edited?.duration ?? seconds - 2, spokenWords: inputs.spokenWords,
                      reason: WholeClipRevoice.reason(inputs), patchUSD: patch, phrases: includedVoice.count,
-                     voiceUSD: price.voice.usd, lipsyncUSD: price.lipsync.usd,
+                     voiceUSD: journalPrice?.usd ?? price.voice.usd, lipsyncUSD: price.lipsync.usd,
                      voiceName: selected.map { VoiceLabSession.rebuildName($0.voiceName) } ?? "your voice",
-                     voiceNote: matched ? "matched to this video" : "")
+                     voiceNote: matched ? "matched to this video" : "", wordChecksUSD: wordChecksUSD,
+                     pricesJournaledVoice: journalPrice != nil || usedWholeClip != nil)
     }
 
-    private func retireWholeClipVoicePlan() {
+    private func wholeClipJournalPrice(_ script: WholeClipScript, final: Project, catalog: VoiceLabPriceCatalog) async throws
+        -> (usd: Decimal, parts: Int)? {
+        guard let recordID = generation?.selectedVoiceID, let envelope, let audio = final.media.source.audio else { return nil }
+        let locations = editor.app.locations
+        let paidRoot = locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        let projectID = final.id
+        guard let record = try? await VoiceConsentStore(locations: locations).load(recordID),
+              let phrases = try? ClipTakePlan.preparePlan(project: final, scope: scope, envelope: envelope,
+                                                         hunks: wholeClipHunks(script, project: final)) else { return nil }
+        let items = Self.corrected(final), cuts = Set(final.edits.cutWordIds)
+        let model = VoiceLabWordingFit.modelID
+        let redoVersion = usedWholeClip?.id
+        let keys = phrases.map { phrase in
+            let context = VoiceLabTakeInput.speechContext(items: items, cutWordIDs: cuts, window: phrase.window, sourceSampleRate: audio.sampleRate)
+            let text = VoiceLabAudioTags.requestText(words: phrase.text, tags: phrase.audioTags, modelID: model)
+            return VoiceLabTakeJournalKey(recordID: recordID, voiceID: record.voiceId, modelID: model,
+                language: final.transcript?.language ?? "en", requestText: text, previousText: context.previous, nextText: context.next,
+                pace: nil, redoVersion: redoVersion)
+        }
+        let adopted = await Task.detached(priority: .utility) {
+            VoiceLabTakeJournal.previewAdoptions(keys, projectID: projectID, paidRoot: paidRoot)
+        }.value
+        guard !adopted.isEmpty else { return nil }
+        var usd: Decimal = 0
+        for index in keys.indices where !adopted.contains(index) {
+            let price = try VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: model,
+                                                     units: Double(keys[index].requestText.unicodeScalars.count), catalog: catalog)
+            guard let partUSD = price.usd else { return nil }
+            usd += partUSD
+        }
+        return (usd, keys.count)
+    }
+
+    func retireWholeClipVoicePlan() {
         if !wholeClipPlanSettled { retiredWholeClipVoiceSpend += wholeClipPlan?.spent.usd ?? 0 }
         wholeClipPlan?.invalidate()
         wholeClipPlan = nil
         wholeClipPlanScript = nil
         wholeClipPlanSettled = false
+        wholeClipUsedPlanIdentity = nil
     }
 
     /// What the whole clip's paid voice and lip sync are made from (`Project.voiceTakeIdentity` over the clip): its words,
     /// cuts, pauses and corrections, the source and its clean audio. Save metadata, the tab, music, captions, colour,
     /// motion, other clips and VoxClip's own calibration writes are not part of it (voice-lab.md "What counts as an edit").
     func wholeClipIdentity(_ project: Project) -> Project? {
-        guard let id = wholeClipID else { return nil }
-        return project.voiceTakeIdentity(scope: .clip(id), enclosingClipID: id)
+        guard wholeClipRecordScope != nil else { return nil }
+        return project.voiceTakeIdentity(scope: wholeClipID.map(RewriteScope.clip) ?? .fullTake, enclosingClipID: wholeClipID)
     }
 
     /// The currency of what a whole-clip voice is made from, captured now: true while the Rewrite can spend on its voice
     /// (`voiceSpendCurrent`, never the AI connector) and the clip's identity is the one it was made over.
-    func wholeClipInputsCurrency() -> @MainActor () -> Bool {
+    func wholeClipInputsStillCurrent() -> @MainActor () -> Bool {
         let identity = wholeClipIdentity(editor.project)
         return { [weak self] in
             guard let self else { return false }
-            return voiceSpendCurrent && wholeClipIdentity(editor.project) == identity
+            let current = wholeClipIdentity(editor.project)
+            return voiceSpendCurrent && (current == identity || current == wholeClipUsedPlanIdentity)
         }
     }
 
@@ -562,6 +814,21 @@ extension RewriteSession {
         }
     }
 
+    /// The backstop before a restored voice is paid for: the click approved putting it back at its Try Again's price
+    /// (`approved`, `restoredRetryVoiceUSD`); a fresh price above it (a part's journal entry went after the card was priced,
+    /// or another run holds it) sends nothing and waits for its own click at the new price. The card is priced again from
+    /// the fresh plan: its price, and the parts the plan adopts, so a part voiced again also prices a new lip sync and the
+    /// line names the parts that come back.
+    func holdRestoredVoicePrice(_ plan: ClipTakePlan, approved: Decimal?) throws {
+        guard let approved, let fresh = plan.estimate?.usd, fresh <= approved else {
+            let fresh = plan.estimate?.usd
+            let back = plan.adoptedPhraseCount
+            if wholeClipPlan === plan { retireWholeClipVoicePlan() } else { plan.invalidate() }
+            if let fresh { wholeClip?.repriceRestoredVoice(fresh, partsBack: back) }
+            throw WholeClipRevoiceSession.Stop.noVoice("The price to put your paid voice back changed. Nothing new was sent. Review the new price before retrying.")
+        }
+    }
+
     /// The Voice step: a take plan over the script's parts, priced, then made under the click's approval (the session only
     /// asks for a voice it may pay for).
     private func wholeClipVoice(_ script: WholeClipScript, progress: @escaping @MainActor (String) -> Void) async throws -> WholeClipRevoiceSession.Voice {
@@ -591,11 +858,12 @@ extension RewriteSession {
             try checkWholeClipPlan(kept)
             // Parts paid while an edit made the plan stale are its own again after the Undo: never voiced twice.
             kept.acceptTakesMadeBeforeEdit()
+            try checkWholeClipWordFailures(kept, recordID: recordID)
             if let blocked = kept.phrases.first(where: { $0.blocked != nil }) {
                 throw Session.Unsent(error: Session.Stop.noVoice((blocked.blocked ?? "The voice is blocked.") + " Nothing new was sent."))
             }
             if !kept.unfinishedVoiceParts.isEmpty {
-                let approvedPrice = kept.unfinishedVoicePrice ?? wholeClip?.quote?.voiceUSD
+                let approvedPrice = kept.unfinishedVoicePrice ?? wholeClip?.quote?.voicePassUSD
                 await kept.prepareUnfinishedVoiceParts()
                 try Task.checkCancellation()
                 guard let approval = kept.approvalID, let approvedPrice, let freshPrice = kept.estimate?.usd else {
@@ -612,7 +880,8 @@ extension RewriteSession {
         }
         // The plan: free, and the same every time for the same clip, so a stop here is one Try Again would only repeat.
         // It is current while the clip's identity is the one captured now and the voice is the one it is made with.
-        let inputsCurrent = wholeClipInputsCurrency()
+        let inputsCurrent = wholeClipInputsStillCurrent()
+        let redoVersion = usedWholeClip?.id
         weak var created: ClipTakePlan?
         let model = VoiceLabWordingFit.modelID
         // A voice paid before a relaunch (`WholeClipRevoiceSession.restore`) is put back only with the voice and model it
@@ -622,12 +891,14 @@ extension RewriteSession {
         if let restored, restored.recordId != recordID || restored.model != model {
             throw Session.Stop.voiceInputsChanged(clip: wholeClipClipNumber, usd: wholeClip?.restoredVoices[restored] ?? 0, voiceSwitched: true)
         }
-        let restoredApproval = restored == nil ? nil : (wholeClip?.restoredVoiceUSD ?? wholeClip?.quote?.voiceUSD)
+        // The price Try Again showed for the voice (`retryUSD`'s voice part): the backstop below holds the fresh plan to it.
+        let restoredApproval = restored == nil ? nil : wholeClip?.restoredRetryVoiceUSD
         let plan: ClipTakePlan
         do {
-            let final = try editor.voiceLabReviewProject(localCommands: localCommands)
-            let hunks = script.hunks(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds), cutPauseIds: Set(final.edits.cutPauseIds))
-            let phraseInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })
+            let final = try wholeClipReviewProject()
+            let hunks = wholeClipHunks(script, project: final)
+            let phraseInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope,
+                checksGeneratedSpeaker: false, model: { created?.modelID ?? model })
             // One timeline: each part's take is laid out on the clip as edited, as generated (provider pace 1.0, never
             // stretched): a shorter take first speeds the picture up evenly to at most 1.2×, then its sentence-end pauses
             // grow within the project's pause threshold, then the picture's end is trimmed (ADR-R46, "Your own pace").
@@ -635,6 +906,7 @@ extension RewriteSession {
             let bound = final.edits.pauseThresholdSeconds
             let makeInput: @MainActor (ClipTakePlan.Phrase) async throws -> VoiceLabTakeInput = { phrase in
                 var input = try await phraseInput(phrase).replacingPace(nil)
+                input.redoVersion = redoVersion
                 input.editedLayout = VoiceLabEditedLayout(cuts: WholeClipRevoice.editedCuts(edited, startSample: phrase.window.startSample,
                                                                                              endSample: phrase.window.endSample), pauseBoundSeconds: bound,
                                                           maximumPictureSpeed: WholeClipRevoice.maximumPictureSpeed)
@@ -647,7 +919,7 @@ extension RewriteSession {
                 }, isCurrent: { [weak self] in
                     guard let self else { return false }
                     return inputsCurrent() && self.generation?.selectedVoiceID == recordID
-                }, acceptedChargesChanged: { [weak app = editor.app] in await app?.refreshMonthlySpend() })
+                }, acceptedChargesChanged: { [weak app = editor.app] in await app?.refreshMonthlySpend() }, wordCheckFailures: wordCheckFailures)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -680,25 +952,21 @@ extension RewriteSession {
         editor.wholeClipPrepared?(plan)
         #endif
         try Task.checkCancellation()
+        try checkWholeClipWordFailures(plan, recordID: recordID)
         if let blocked = plan.phrases.first(where: { $0.blocked != nil }) {
             throw Session.Unsent(error: Session.Stop.noVoice((blocked.blocked ?? "") + " Nothing was sent."))
         }
         guard plan.problem.isEmpty, let approval = plan.approvalID else {
             throw Session.Stop.noVoice(plan.problem.isEmpty ? "The voice couldn't be priced. Nothing was sent." : plan.problem)
         }
-        if restored != nil {
-            // The click approved putting the paid voice back at its Try Again's price; a fresh price above it (a part the
-            // journal no longer gives back) waits for its own click at the new price.
-            guard let approved = restoredApproval, let fresh = plan.estimate?.usd, fresh <= approved else {
-                let fresh = plan.estimate?.usd
-                retireWholeClipVoicePlan()
-                if let fresh { wholeClip?.repriceRestoredVoice(fresh) }
-                throw Session.Stop.noVoice("The price to put your paid voice back changed. Nothing new was sent. Review the new price before retrying.")
+        if restored != nil { try holdRestoredVoicePrice(plan, approved: restoredApproval) }
+        else if let wholeClip, wholeClip.quotedScript == script, let approved = wholeClip.journalVoiceApproval {
+            guard let fresh = plan.estimate?.usd, fresh <= approved else {
+                throw Session.Stop.noVoice("The price for the voice changed. Nothing new was sent. Review the new price before retrying.")
             }
         }
         progress("\(plan.phrases.count == 1 ? "one take" : "\(plan.phrases.count) parts, one take")")
         await plan.start(approved: true, quoteID: approval)
-        try Task.checkCancellation()
         return try finishWholeClipVoice(plan, script: script, recordID: recordID)
     }
 
@@ -706,7 +974,8 @@ extension RewriteSession {
         // Paid parts made while the clip changed are kept, never wrapped as "nothing was sent" (Undo makes them current).
         try checkWholeClipPlan(plan)
         plan.acceptTakesMadeBeforeEdit()
-        let edited = (try? editor.voiceLabReviewProject(localCommands: localCommands)).flatMap(wholeClipEditedPlan)
+        try checkWholeClipWordFailures(plan, recordID: recordID)
+        let edited = (try? wholeClipReviewProject()).flatMap(wholeClipEditedPlan)
         let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
         // The voice as said: each take's speech between its trims, before any pause of the layout.
         var seconds = 0.0
@@ -715,7 +984,6 @@ extension RewriteSession {
             guard let take = plan.automaticTake(phrase: phrase.id), let audio = take.row.audio, plan.select(take: take.id, phrase: phrase.id) else {
                 let row = phrase.takes.last?.row
                 let reason = phrase.blocked ?? row.flatMap(TakeFailurePresentation.reason(for:))
-                    ?? (row?.voiceCheck.evidence?.mode == .unmeasured ? "There wasn't enough speech to verify the voice for automatic use." : nil)
                     ?? (plan.problem.isEmpty ? "No verified take was available." : plan.problem)
                 let kept = plan.phrases.count - plan.unfinishedVoiceParts.count
                 let saved = kept > 0 ? " \(kept) verified \(kept == 1 ? "part is" : "parts are") kept for retry." : ""
@@ -739,6 +1007,14 @@ extension RewriteSession {
         wholeClipPlanSettled = true
         return .init(key: .init(script: script.text, recordId: recordID, model: plan.modelID ?? VoiceLabWordingFit.modelID), seconds: seconds,
                      parts: plan.phrases.count, usd: plan.spent.usd ?? 0, overrun: overrun)
+    }
+
+    private func checkWholeClipWordFailures(_ plan: ClipTakePlan, recordID: String) throws {
+        let unfinished = plan.unfinishedVoiceParts
+        if let part = unfinished.first(where: { plan.stoppedForRepeatedWords(phrase: $0) }) {
+            throw WholeClipRevoiceSession.Stop.repeatedWordCheck(part: part + 1, kept: plan.phrases.count - unfinished.count,
+                                                               recordID: recordID)
+        }
     }
 
     /// The whole clip's measured takes calibrate the speaking-rate estimate as the patch's do (`observeMeasuredTakes`): each
@@ -773,7 +1049,7 @@ extension RewriteSession {
         guard let connector, let shared = editor.app.shared else { return nil }
         struct Measured: Decodable { let shorterMeasuredFeedbackBlock: String; let shorterMeasuredPhraseLine: String }
         let template = try JSONDecoder().decode(Measured.self, from: Data(contentsOf: shared.root.appendingPathComponent("prompts/voice-rewrite-shorter-measured.json")))
-        let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+        let final = try wholeClipReviewProject()
         let original = wholeClipWords(final).filter { $0.kind == .word }.map(\.text).joined(separator: " ")
         let values = ["original": original, "proposed": script.text, "measuredSeconds": toFixed1(voiceSeconds), "slotSeconds": toFixed1(videoSeconds)]
         let line = template.shorterMeasuredPhraseLine.replacing(#/\{(original|proposed|measuredSeconds|slotSeconds)\}/#) { values[String($0.1)] ?? "" }
@@ -863,7 +1139,7 @@ extension RewriteSession {
     }
 
     /// The Lip sync step: every part's picture matched to its take, then one lip sync over the merged window. A lip sync of
-    /// this model already on the parts is the result, with nothing sent. Another model's (the sync-3 upgrade over lipsync-2)
+    /// this model already on the parts is the result, with nothing sent. A different saved model
     /// is set aside while it runs and put back if the new one fails or is cancelled, so the paid one is never lost.
     private func wholeClipLipsync(_ voice: WholeClipRevoiceSession.Voice, factor: Double, model: WholeClipRevoice.Lipsync,
                                   progress: @escaping @MainActor (Double?) -> Void) async throws -> WholeClipRevoiceSession.Synced {
@@ -880,52 +1156,63 @@ extension RewriteSession {
             guard !previous.isEmpty, previous.keys.allSatisfy({ plan.lipsync.applied[$0] == nil }) else { return }
             _ = plan.lipsync.restore(previous, matching: offer)
         }
-        let offer: RewriteLipsyncSession.Offer
+        var offer: RewriteLipsyncSession.Offer?
         do {
-            var prepared = try await plan.makeWholeClipLipsyncOffer(model: model)
+            let fresh = try await plan.makeWholeClipLipsyncOffer(model: model)
+            var prepared = await plan.lipsync.priceIndexed(fresh)
+            if wholeClip?.lipsyncMayPay != false, usedWholeClip != nil, let approved = wholeClip?.quote?.lipsyncUSD,
+               prepared.chargeUSD.map({ $0 <= approved }) != true {
+                throw Session.LipsyncFailed(error: ClipTakePlan.Failure.unknownSpend, local: true)
+            }
             // A kept result (Try Again · free) or one already paid for is put back for free; nothing new is paid.
             if wholeClip?.lipsyncKept == true || wholeClip?.lipsyncMayPay == false { prepared.mayPay = false }
             offer = prepared
-            // Only the user's "I Checked fal.ai" click starts past a lost submit answer (it may charge twice).
-            if wholeClip?.checkedFal == true { try plan.lipsync.startAfterCheckingFal(offer) } else { try plan.lipsync.startChecked(offer) }
-        } catch let error as LipsyncError {
-            putBack(nil)
-            throw Session.LipsyncFailed(error: error, local: true)
+            return try await runWholeClipLipsync(plan.lipsync, offer: prepared, factor: factor, progress: progress)
         } catch {
-            putBack(nil)
+            putBack(offer)
             throw error
         }
-        let watcher = Task { [weak plan] in
-            while let plan, plan.lipsync.running, !Task.isCancelled {
-                if case .running(_, let value) = plan.lipsync.states[offer.phraseIDs.first ?? 0] { progress(value) }
-                await plan.lipsync.waitForRun()
+    }
+
+    func runWholeClipLipsync(_ lipsync: RewriteLipsyncSession, offer: RewriteLipsyncSession.Offer, factor: Double,
+                            progress: @escaping @MainActor (Double?) -> Void) async throws -> WholeClipRevoiceSession.Synced {
+        typealias Session = WholeClipRevoiceSession
+        do {
+            try await lipsync.requireKey()
+            if wholeClip?.checkedFal == true { try lipsync.startAfterCheckingFal(offer) } else { try lipsync.startChecked(offer) }
+        } catch let error as LipsyncError {
+            throw Session.LipsyncFailed(error: error, local: true)
+        }
+        let watcher = Task { [weak lipsync] in
+            while let lipsync, lipsync.running, !Task.isCancelled {
+                if case .running(_, let value) = lipsync.states[offer.phraseIDs.first ?? 0] { progress(value) }
+                await lipsync.waitForRun()
             }
         }
         await withTaskCancellationHandler {
-            await plan.lipsync.waitForRun()
+            await lipsync.waitForRun()
         } onCancel: {
-            Task { @MainActor in for phrase in offer.phraseIDs { plan.lipsync.cancel(phrase) } }
+            Task { @MainActor in for phrase in offer.phraseIDs { lipsync.cancel(phrase) } }
         }
         watcher.cancel()
         // What the job came to is read before the cancel: a result fal.ai finished and billed is kept for a free Try Again
         // (C's set-aside), and its charge is counted, even when Cancel landed meanwhile.
-        for phrase in offer.phraseIDs where plan.lipsync.applied[phrase] == nil {
-            putBack(offer)
+        for phrase in offer.phraseIDs where lipsync.applied[phrase] == nil {
             // The job's own error, with its real case for the log, whether it failed on this Mac before fal.ai, what fal.ai
             // charged for it and whether its result is kept for a free Try Again.
-            if case .failed(_, _, let mayBill) = plan.lipsync.states[phrase] {
-                let error = plan.lipsync.errors[phrase] ?? LipsyncError.invalidResponse
+            if case .failed(_, _, let mayBill) = lipsync.states[phrase] {
+                let error = lipsync.errors[phrase] ?? LipsyncError.invalidResponse
                 let attempt = (error as? LipsyncAttemptFailure)?.attempt
                 throw Session.LipsyncFailed(error: error, local: RewriteLipsyncSession.isLocal(error),
                     usd: mayBill ? attempt?.estimate.usd : nil, requestID: attempt?.requestID,
-                    freeRetry: plan.lipsync.freeRetries.contains(phrase))
+                    freeRetry: lipsync.freeRetries.contains(phrase))
             }
             throw CancellationError()
         }
-        let result = offer.phraseIDs.first.flatMap { plan.lipsync.applied[$0]?.result }
+        let result = offer.phraseIDs.first.flatMap { lipsync.applied[$0]?.result }
         // The record's retime is the picture's even speed-up from the Fit step (1 at the clip's own pace). A re-imported
         // kept result costs what its billed attempt was quoted.
-        return .init(model: model, usd: result?.provenance.estimate.usd ?? offer.estimate.usd ?? 0, factor: factor,
+        return .init(model: offer.model, usd: result?.provenance.estimate.usd ?? offer.estimate.usd ?? 0, factor: factor,
                      requestID: result?.provenance.requestID, recovered: result?.recovered ?? false)
     }
 
@@ -944,21 +1231,6 @@ extension RewriteSession {
     /// The anchor the baseline belongs to, named as Settings › Voices names it ("siim"), never the video's own voice.
     var wholeClipAnchorName: String {
         editor.app.voiceLabSession.anchorVoice(language: nil).map { VoiceLabSession.rebuildName($0.voiceName) } ?? "your voice"
-    }
-
-    private func wholeClipMatch(_ voice: WholeClipRevoiceSession.Voice) async -> WholeClipRevoiceRecord.Match? {
-        guard let plan = wholeClipPlan else { return nil }
-        let language = project.transcript?.language ?? "en"
-        guard let check = try? await editor.app.speakerModelLibrary.check(language: language) else { return nil }
-        var scores: [Double] = []
-        for phrase in plan.phrases {
-            guard let take = phrase.selected, let audio = take.row.audio, let input = plan.measuredInput(take: take.id),
-                  let score = await VoicePerVideoMatch.score(take: audio, input: input, check: check) else { continue }
-            scores.append(score)
-        }
-        guard !scores.isEmpty else { return nil }
-        let baseline = editor.app.voiceLabSession.perVideoBook.anchorBaseline?.score
-        return .init(take: scores.reduce(0, +) / Double(scores.count), anchorBaseline: baseline, realSpeech: nil)
     }
 
     /// ▶ Play the result, or A/B: the recording as it is, from the clip's first revoiced word.
@@ -981,11 +1253,33 @@ extension RewriteSession {
         }
     }
 
+    func playUsedWholeClip(original: Bool) {
+        guard let record = usedWholeClip else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if original {
+                    let current = editor.renderSnapshot()
+                    let project = editor.removingWholeClip(record, from: current.project)
+                    let snapshot = EditorRenderSnapshot(project: project, state: current.state, plan: current.plan, reduceMotion: current.reduceMotion)
+                    let target = wholeClipID.map(ExportTarget.clip) ?? .fullEdit
+                    let request = try await editor.renderRequest(target: target, snapshot: snapshot)
+                    guard usedWholeClip == record, isOpen else { return }
+                    try await editor.preview.load(request)
+                } else {
+                    await editor.reloadPreview()
+                }
+                try await editor.preview.seek(to: 0, exact: true)
+                editor.preview.play()
+            } catch { editor.announce("Couldn’t play this version.") }
+        }
+    }
+
     /// Use Whole Clip: Rewrite's own commit of every part with its matched, lip-synced picture, and the project's record,
     /// as one undo step. A lip sync that was paid for and applied must be in it, or nothing goes in.
     private func useWholeClip(voice: WholeClipRevoiceSession.Voice, synced: WholeClipRevoiceSession.Synced,
                               match: WholeClipRevoiceRecord.Match?) async throws -> WholeClipRevoiceRecord {
-        guard let plan = wholeClipPlan, let clip = wholeClipID else { throw ClipTakePlan.Failure.stale }
+        guard let plan = wholeClipPlan, let clip = wholeClipRecordScope else { throw ClipTakePlan.Failure.stale }
         try checkWholeClipPlan(plan)
         let made = try await plan.acceptance()
         if wholeClip?.syncedEntries.isEmpty == false, made.videoAssets.isEmpty { throw WholeClipRevoiceSession.Stop.lipsyncMissing }
@@ -994,8 +1288,12 @@ extension RewriteSession {
             segmentIds: made.segments.map(\.id), script: voice.key.script, consentRecordId: made.voice?.consentRecordId ?? voice.key.recordId,
             videoRetime: synced.factor, lipsyncModel: synced.model.rawValue, usd: usd, match: match,
             createdAt: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)))
-        try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
-                                 localCommands: localCommands, videoAssets: made.videoAssets, wholeClip: record)
+        // Rewrite's own commit: the card shows it used (no R3), and ⌘Z puts the card back on Review (`commitOwnEdit`).
+        try commitOwnEdit {
+            try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
+                                     localCommands: localCommands, videoAssets: made.videoAssets, wholeClip: record, replacing: wholeClipReplacement)
+        }
+        wholeClipUsedPlanIdentity = wholeClipIdentity(editor.project)
         editor.announce("Whole clip revoiced. Undo takes it back.")
         return record
     }
@@ -1008,13 +1306,43 @@ extension RewriteSession {
         guard wholeClipPlanScript?.text == voice.key.script else { throw wholeClipInputsChanged(plan) }
         for phrase in Array(plan.lipsync.applied.keys) { plan.lipsync.undo(phrase) }
         let made = try await plan.acceptance()
-        try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
-                                 localCommands: localCommands, videoAssets: made.videoAssets)
+        try commitOwnEdit {
+            try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
+                                     localCommands: localCommands, videoAssets: made.videoAssets, replacing: wholeClipReplacement)
+        }
         editor.announce("Whole-clip voice put in without lip sync. Undo takes it back.")
     }
 }
 
 extension EditorModel {
+    func openWholeClipVoice(whole: Bool = true, clipID: String? = nil) {
+        let scope = clipID.map(RewriteScope.clip) ?? .fullTake
+        guard clipID == nil || project.edits.clips.contains(where: { $0.id == clipID }) else { return }
+        if let session = openRewrite, session.isOpen, session.rewriteScope == scope, case .proposal = session.task.state {
+            session.selectWholeClipMode(whole)
+            revealWholeClipVoice()
+            return
+        }
+        guard closeRewrite(returnFocus: false, onDiscard: { [weak self] in self?.openWholeClipVoice(whole: whole, clipID: clipID) }) else { return }
+        let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
+        let session = RewriteSession(editor: self, scope: scope, envelope: envelope, connector: nil, forClipID: clipID)
+        openRewrite = session
+        session.startVoicePanel(whole: whole)
+        revealWholeClipVoice()
+        transcriptRevision += 1
+    }
+
+    private func revealWholeClipVoice() {
+        guard app.shell.editor === self else { return }
+        if !app.shell.viewerShown { app.shell.toggleViewer() }
+        app.shell.choosePanelJob(.rewrite, for: self)
+    }
+
+    func openExplorerWholeClipVoice(_ id: String, whole: Bool = true) {
+        if app.shell.editor === self { app.shell.choose(.clip(id), byClick: false) }
+        openWholeClipVoice(whole: whole, clipID: id)
+    }
+
     /// Takes a used whole-clip revoice back out as one undo step: its segments off and its record removed. The clip's pick
     /// is cleared, so its card offers the whole clip again as the default.
     func removeWholeClip(_ record: WholeClipRevoiceRecord) {

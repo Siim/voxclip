@@ -121,10 +121,13 @@ public sealed class ClipPictureTests
     {
         var project = Tightened();
         var frames = Frames(true, new("C1", 1, 2.95, 0.8), new("C2", 2, 3.9, 0.7));
-        var named = ClipPicture.CoverOf(project, "clip-main", frames, Plan(new([], new("C2", "Eyes open, face centred"))))!.Value;
+        var named = ClipPicture.CoverOf(project, "clip-main", frames, Plan(new([], new("C2", "Eyes open, face centred", Title: "Ship every week"))))!.Value;
+        Assert.Equal("Ship every week", ClipControlsProject.Controls("clip-main", named.Project)?.CoverTitle);
         Assert.Equal(("C2", true, "Eyes open, face centred", (double?)null), (named.Cover.Candidate.Id, named.Cover.Named, named.Cover.Reason, named.Cover.Previous));
         Assert.Equal(3.9, ClipControlsProject.Controls("clip-main", named.Project)!.CoverSeconds);
         var unknown = ClipPicture.CoverOf(named.Project, "clip-main", frames, Plan(new([], new("C9", "a reason"))))!.Value;
+        Assert.Equal("Ship every week", unknown.Cover.PreviousTitle);
+        Assert.Null(ClipControlsProject.Controls("clip-main", unknown.Project)?.CoverTitle);
         Assert.Equal(("C1", false, (string?)null, (double?)3.9), (unknown.Cover.Candidate.Id, unknown.Cover.Named, unknown.Cover.Reason, unknown.Cover.Previous));
         var fallback = ClipPicture.CoverOf(project, "clip-main", frames, Plan(new([], new("C1", "the validator's", Fallback: true))))!.Value;
         Assert.Null(fallback.Cover.Reason);

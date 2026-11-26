@@ -65,9 +65,13 @@ import VoxClipCore
                     } else if CommandLine.arguments.contains("-makeItCaptures") {
                         // Offscreen Make it postable states (DebugMakeIt.swift), on the -layoutAudit launch path.
                         results = try await DebugMakeIt.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-creativeProposalCaptures") {
+                        results = try await DebugCreativeProposals.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-spacingCaptures") {
                         // Offscreen spacing captures (DebugSpacing.swift), on the -layoutAudit launch path.
                         results = try await DebugSpacing.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-storyClipCaptures") {
+                        results = try await DebugStoryClips.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-timelinePerformanceAudit") {
                         // Headless counterpart of the timeline portion of -uiPerformanceTest.
                         // Keep -layoutAudit so AppModel uses the test-session launch path.
@@ -116,7 +120,7 @@ import VoxClipCore
             Task {
                 await model.start()
                 do { try await DebugRewriteGeneration.show(state, app: model) }
-                catch { model.shell.notice = await model.safeError(error) }
+                catch { model.shell.notice = await model.safeError(error, context: .rewrite) }
             }
         }
         // Crash recovery and accent checks from a bundle.sh build (DebugProbes).
@@ -127,7 +131,7 @@ import VoxClipCore
                     let document = VoxClipDocument(project: try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[index + 1])), demo: true)
                     NSDocumentController.shared.addDocument(document)
                     if !(await model.shell.replaceProject(with: document)), !model.shell.holdsForPaidWork(document) { document.close() }
-                } catch { model.shell.notice = await model.safeError(error) }
+                } catch { model.shell.notice = await model.safeError(error, context: .projectOpen) }
             }
         }
         if AppModel.isTestSession {
@@ -369,6 +373,7 @@ import VoxClipCore
         case 44: if let id = selectedClipID { editor.removeClip(id) }
         case 45: if let id = selectedClipID { editor.presentExport(clipIDs: [id]) }
         case 62: if let id = makeItClipID(editor) { editor.makeItPostable(id) }
+        case 65, 66, 67: editor.openWholeClipVoice(whole: item.tag != 67, clipID: editor.project.edits.activeClipId)
         case 46: editor.seek(source: max(0, editor.sourceTime - 3))
         case 47: editor.seek(source: min(editor.sourceDuration, editor.sourceTime + 3))
         case 48: editor.copySelection()
@@ -448,7 +453,10 @@ import VoxClipCore
             return NSApp.keyWindow != nil
         }
         if item.action == #selector(performEditorCommand(_:)) {
-            if item.tag == 38 { item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take" }
+            if item.tag == 38 {
+                item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take"
+                item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
+            }
             switch item.tag {
             case 13: return mainWindowIsKey
             case 14: return mainWindowIsKey && model.shell.document != nil
@@ -492,7 +500,6 @@ import VoxClipCore
             }
             switch item.tag {
             case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
-            case 38: return RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: editor.rewriteScopeNow)
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
@@ -504,6 +511,18 @@ import VoxClipCore
                 guard let id = makeItClipID(editor) else { return false }
                 item.title = editor.makeItTitle(clipID: id).replacingOccurrences(of: "✦ Make it postable", with: "Make It Postable")
                 return editor.canMakeItPostable(id)
+            case 65, 66, 67:
+                let id = editor.project.edits.activeClipId
+                let scope = id.map(RewriteScope.clip) ?? .fullTake
+                let session = editor.rewrite.flatMap { $0.rewriteScope == scope ? $0 : nil }
+                let title: String = switch item.tag {
+                case 65: "Revoice Whole Take, with Lip Sync"
+                case 66: "Redo Voice and Lip Sync"
+                default: "Voice Only the Changed Phrases"
+                }
+                let price = item.tag == 67 ? session?.wholeClip?.quote?.patchUSD : session?.wholeClip?.quote?.wholeUSD
+                item.title = title + (price.map { " · " + VoiceLabCostPresentation.format($0) } ?? "")
+                return item.tag != 66 || WholeClipRevoice.isRevoiced(clipId: id ?? WholeClipRevoice.fullTakeID, in: editor.project)
             case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: commandEvent, responder: NSApp.keyWindow?.firstResponder)
             case 47: return editor.mediaResolved
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
@@ -646,6 +665,9 @@ import VoxClipCore
         command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Make It Postable", 62)
+        command(clip, "Revoice Whole Take, with Lip Sync", 65)
+        command(clip, "Redo Voice and Lip Sync", 66)
+        command(clip, "Voice Only the Changed Phrases", 67)
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
         // The clip bar's Keep ⇧⌘↩ on a suggestion's tab (impl-plan §3.2, V3b), a hidden alternate.
@@ -707,6 +729,7 @@ Voice Lab (only when you turn it on; each provider action requires your approval
 @MainActor func chooseFile(app: AppModel, projectsOnly: Bool = false, moviesOnly: Bool = false) {
     let panel = NSOpenPanel()
     panel.allowedContentTypes = projectsOnly ? [.voxclipProject] : moviesOnly ? [.movie] : [.voxclipProject, .movie]
+    panel.canChooseDirectories = !projectsOnly
     panel.allowsMultipleSelection = false
     if panel.runModal() == .OK, let url = panel.url { openFile(url, app: app) }
 }
@@ -715,7 +738,8 @@ Voice Lab (only when you turn it on; each provider action requires your approval
 @MainActor func openMovie(_ url: URL, app: AppModel) {
     Task { await app.shell.importVideo(url) }
 }
-@MainActor func importedDocument(_ url: URL, app: AppModel) async throws -> VoxClipDocument {
+@MainActor func importedDocument(_ url: URL, app: AppModel, clock: ClaudeModeClock = ClaudeModeClock()) async throws -> VoxClipDocument {
+    clock.begin(.ingest)
     await app.start()
     var project = try await VoxClipDocument(importing: url).project
     project.captions.styleId = app.string("captions.defaultStyleId", fallback: "vox-highlight")
@@ -723,6 +747,7 @@ Voice Lab (only when you turn it on; each provider action requires your approval
     let breath = app.string("editing.pauseBreath", fallback: "natural")
     project.edits.pauseKeepSeconds = breath == "tight" ? 0.05 : breath == "relaxed" ? 0.3 : 0.15
     let document = VoxClipDocument(project: project)
+    document.importClock = clock
     document.setMediaResolved(true)
     return document
 }
@@ -740,7 +765,11 @@ Voice Lab (only when you turn it on; each provider action requires your approval
     }
     func receive(_ urls: [URL]) {
         for url in urls {
-            if url.pathExtension.lowercased() == "voxclip" { projectOpener(url) }
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                let shell = AppModel.sharedModel.shell
+                shell.selection = .home
+                shell.cardImport.offer(url)
+            } else if url.pathExtension.lowercased() == "voxclip" { projectOpener(url) }
             else if ["mov", "mp4", "m4v"].contains(url.pathExtension.lowercased()) {
                 if let movieOpener { movieOpener(url) } else { bufferedMovies.append(url) }
             } else { AppModel.sharedModel.shell.notice = "VoxClip can't open \(url.pathExtension.uppercased()) files on Mac yet. Export the video as MP4 or MOV and try again." }

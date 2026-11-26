@@ -13,6 +13,19 @@ namespace VoxClip.Core.Tests.Tracks.WinCaptions;
 
 public sealed class CaptionDomainTests
 {
+    [Fact]
+    public async Task StoryPageBreakSurvivesAnEmptyFirstWord()
+    {
+        var data = CaptionDataLoader.Current;
+        var style = CaptionStyleResolver.Decode(FixtureLoader.ReadText("caption-styles/styles/vox-bold.json"), data);
+        style = style with { Layout = style.Layout with { MaxWords = 6, BreakOnGapSec = null } };
+        var request = new CaptionLayoutRequest(style, new(style.Id, default, null, new Dictionary<string, CaptionPosition>()), new(1080, 1920),
+            [new("before", "one", 0, .2), new("seam", " ", .21, .25, true), new("after", "two", .26, .5)], "en", 1);
+        var track = await CaptionLayoutBuilder.BuildAsync(request, new SnapshotShaper(), null, CancellationToken.None, data);
+        Assert.Equal(new[] { 1, 1 }, track.Pages.Select(page => page.Words.Count));
+        Assert.Equal(.2, track.Pages[0].End);
+    }
+
     [Theory]
     [InlineData("linear")]
     [InlineData("easeOutCubic")]

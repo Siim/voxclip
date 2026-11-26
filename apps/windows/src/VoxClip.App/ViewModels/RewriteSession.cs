@@ -71,10 +71,11 @@ internal sealed partial class RewriteSession : IDisposable
     internal string Problem => proposalProblem.Length > 0 ? proposalProblem : reviewProblem;
     internal VoiceLabPreparedAction? Prepared { get; private set; }
     internal VoiceLabCostPresentationResult? Estimate { get; private set; }
-    internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? "Rewrite" :
-        Connector?.Group == "local" ? "Rewrite · No charge" : VoiceLabCostPresentation.ButtonTitle("Rewrite", null, Estimate);
+    private string ProposalTitle => HasRestoredProposal ? "Rewrite Again" : "Rewrite";
+    internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? ProposalTitle :
+        Connector?.Group == "local" ? ProposalTitle + " · No charge" : VoiceLabCostPresentation.ButtonTitle(ProposalTitle, null, Estimate);
     internal string EstimateCopy => Estimate?.Text is { Length: > 0 } text ? text : Prepared is null ? "" : "No charge.";
-    internal bool CanPropose => IsOpen && !IsProposing && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly &&
+    internal bool CanPropose => IsOpen && !IsProposing && !WholeClipBusy && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly &&
         ReferenceEquals(Project, Editor.Project) && connectorIsCurrent() && contextIsCurrent() && BillingCurrent && estimateShown && Prepared is not null;
     internal void ConfigureInlineConsent(Func<CancellationToken, Task<bool>> authorize, Func<bool>? contextCurrent = null, bool localConsent = false)
     { consent = authorize; contextIsCurrent = contextCurrent ?? (() => true); requireLocalConsent = localConsent; }
@@ -153,6 +154,7 @@ internal sealed partial class RewriteSession : IDisposable
         ObserveMeasuredTakes();
         AdvanceAutoFix();
         ApplyPendingExpressions();
+        CheckWholeClipCurrent();
         Changed?.Invoke(this, EventArgs.Empty);
     }
     private void GenerationSelectionChanged(object? sender, EventArgs args)
@@ -197,19 +199,20 @@ internal sealed partial class RewriteSession : IDisposable
             read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
             silence.Incoming, silence.Outgoing, false, providerConsent,
             RewriteReview.MeasureTiming(this, combined, text, window, modelId, requestTags).Pace)
-            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue), AudioTags = requestTags };
+            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue),
+                AudioTags = requestTags, ChecksGeneratedSpeaker = false };
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
         int? insertionAfter = null, VoiceLabPriceCatalog? prices = null,
         Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null, Func<string, bool>? speakerCalibrated = null,
-        RewriteScope? scope = null)
+        RewriteScope? scope = null, string? forClipId = null)
     {
         Editor = editor;
         Project = editor.Project;
         Transcript = editor.Words.Select(word => word.Kind == WordKind.Word ? word with { Text = editor.DisplayText(word) } : word).ToArray();
         Source = insertionAfter is null ? Transcript.Skip(first).Take(last - first + 1).ToArray() : [];
-        Scope = Project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
+        Scope = (forClipId ?? Project.Edits.ActiveClipId) is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
         Envelope = envelope;
         Connector = connector;
         InsertionAfter = insertionAfter;
@@ -350,7 +353,8 @@ internal sealed partial class RewriteSession : IDisposable
     /// inline approval for a billed connector). Ask again cancels any rounds still running.</summary>
     internal async Task<bool> ProposeAsync(VoiceLabPreparedAction action, bool affirmative)
     {
-        if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action)) return false;
+        if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || ownsSavedProposal && HasPaidTakes) return false;
+        if (ownsSavedProposal) ForgetSavedProposal();
         StopWordingFit();
         var proposed = await SendRewriteAsync(action, affirmative);
         if (proposed && IsOpen) await BeginAutomaticWordingFitAsync();
@@ -408,6 +412,8 @@ internal sealed partial class RewriteSession : IDisposable
             ReaskProblem = ""; LastReask = null;
             ResetThreads();
             NewWords = resultText;
+            answeredInstruction = string.IsNullOrWhiteSpace(Instruction) && requestedScope is not null ? "Fix mistakes" : Instruction;
+            suppressProposalWrite = false;
             RefreshReview();
             ProposalRevision++;
             return true;
@@ -438,6 +444,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal void Edit(string text)
     {
         if (!IsOpen) return;
+        if (ownsSavedProposal && DeferPaidReviewChange(() => { Edit(text); return Task.FromResult(true); })) return;
         StopWordingFit();
         StopAutoFix();
         StopReask();
@@ -476,7 +483,9 @@ internal sealed partial class RewriteSession : IDisposable
     internal bool ApplyLocalChanges()
     {
         if (!IsOpen || LocalAction is null || !ReferenceEquals(Project, Editor.Project) || Editor.Busy || Editor.IsReadOnly || Editor.IsLeaving) return false;
-        return Editor.ApplyBatch(LocalOperations());
+        var applied = Editor.ApplyBatch(LocalOperations());
+        if (applied) ForgetSavedProposal();
+        return applied;
     }
 
     private IReadOnlyList<EditOperation> LocalOperations()
@@ -491,13 +500,19 @@ internal sealed partial class RewriteSession : IDisposable
         }
         return operations;
     }
-    internal Task<bool> ApplyTakeAsync() => ApplyReviewedWindowsAsync();
+    internal async Task<bool> ApplyTakeAsync()
+    {
+        var applied = await ApplyReviewedWindowsAsync();
+        if (applied) ForgetSavedProposal();
+        return applied;
+    }
 
-    private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
+    private void InvalidateProposal() { revision++; InvalidateWholeClip(); sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
     {
+        if (!voiceLabEnabled) InvalidateWholeClip();
         // Another AI connector ends what was proposed, but paid takes stay: they never read the connector.
-        if (!contextIsCurrent() || !connectorIsCurrent() && !HasPaidTakes) Dispose();
+        if (!contextIsCurrent() || !connectorIsCurrent() && !HoldsPaidWork) Dispose();
         else if (!voiceLabEnabled && Generation is not null)
         {
             generationFactory = null;
@@ -527,6 +542,7 @@ internal sealed partial class RewriteSession : IDisposable
             if (!HasPaidTakes) { TakeWindowsMoved = false; RefreshReview(preserveGenerations: true); }
             else FollowTakeWindows(!SameWindows());
         }
+        CheckWholeClipCurrent();
         Changed?.Invoke(this, EventArgs.Empty);
     }
     /// <summary>The line the review shows while <see cref="TakeWindowsMoved"/> (Mac <c>followTakeWindows</c>' question): why Use waits,
@@ -581,27 +597,33 @@ internal sealed partial class RewriteSession : IDisposable
     }
     /// <summary>A change that only inserts words has no source words to replace (Mac, ADR-R42): the video has no time for them.</summary>
     internal const string InsertionCopy = "This adds words where you said nothing, and the video has no time for them, so it stays as recorded. Your edits are saved.";
-    internal static string Refusal(Exception exception) => exception switch
+    internal static string Refusal(Exception exception)
     {
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } =>
-            $"This change is too close to the {(start ? "start" : "end")} of the take to blend in. Re-record this sentence instead.",
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } =>
-            InsertionCopy,
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.RoomToneUnavailable } =>
-            "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.",
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.NoVoicedAudio } or
-            VoiceLabAudioMathException { Code: VoiceLabAudioMathErrorCode.NoVoicedAudio } =>
-            "There isn't enough timed speech to estimate this change. Your edits are saved.",
-        RewriteGenerationException problem => problem.Message,
-        VoiceLabSourceAudioException source => source.Message + " Your edits are saved.",
-        VoiceLabGeometryException => "This change can't be placed in this take. Your edits are saved.",
-        VoiceLabLengthBudgetException => "There isn't enough timed speech to estimate this change. Your edits are saved.",
-        _ => UiError.Message(exception, "Rewrite")
-    };
+        UiError.WriteFailure(exception, "Rewrite");
+        return exception switch
+        {
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } =>
+                $"This change is too close to the {(start ? "start" : "end")} of the take to blend in. Re-record this sentence instead.",
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } =>
+                InsertionCopy,
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.RoomToneUnavailable } =>
+                "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.",
+            VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.NoVoicedAudio } or
+                VoiceLabAudioMathException { Code: VoiceLabAudioMathErrorCode.NoVoicedAudio } =>
+                "There isn't enough timed speech to estimate this change. Your edits are saved.",
+            RewriteGenerationException problem => problem.Message,
+            VoiceLabSourceAudioException source => source.Message + " Your edits are saved.",
+            VoiceLabGeometryException => "This change can't be placed in this take. Your edits are saved.",
+            VoiceLabLengthBudgetException => "There isn't enough timed speech to estimate this change. Your edits are saved.",
+            _ => UiError.Describe(exception, "Rewrite")
+        };
+    }
 
     public void Dispose()
     {
         if (!IsOpen) return;
+        PersistSavedProposal();
+        Changed -= SaveOnChanged;
         IsOpen = false;
         ResetThreads();
         StopReask();

@@ -144,14 +144,14 @@ public sealed class VoiceLabReleaseBoundaryTests
         Assert.Contains("connectorIsCurrent: () => App.Services.Get(\"llm.connector\", \"\") == connectorWireId", page);
         var opening = page[page.IndexOf("private async Task OpenRewriteAsync", StringComparison.Ordinal)..page.IndexOf("private static async Task RediscoverRewriteAsync", StringComparison.Ordinal)];
         Assert.DoesNotContain("if (!App.Services.VoiceLabEnabled", opening);
-        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite)", opening);
+        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(session);", opening);
         Assert.Equal(3, opening.Split("if (!CurrentOpening()) return;", StringSplitOptions.None).Length - 1);
-        Assert.Contains("ConfigureRewriteGeneration(rewrite)", opening);
+        Assert.Equal(1, opening.Split("ConfigureRewriteGeneration(", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("TurnOnAsync", opening);
         Assert.DoesNotContain("ProviderCatalog.ConsentAsync", opening);
         Assert.Contains("session.ConfigureInlineConsent", Source("Controls/RewritePanel.cs"));
         var transcript = ReleaseSource(Source("Controls/TranscriptView.cs"));
-        Assert.Contains("RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true }", transcript);
+        Assert.Contains("RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true, IsStoryClip: false }", transcript);
         Assert.Contains("cut, RewriteRequested is not null, CanRewrite", transcript);
         Assert.DoesNotContain("Insert Words…", transcript);
         Assert.DoesNotContain("voiceLab.betaNoticeAccepted", transcript);

@@ -1,7 +1,10 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VoxClip.Cli;
+using VoxClip.Core.Domain.Music;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Media.Audio;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -41,7 +44,8 @@ public sealed partial class CliAutopilotTests
                 var rewrite = $"{words[start + 2]} really {words[start + 4]}";
                 reply = new JsonObject
                 {
-                    ["startWord"] = start, ["endWord"] = end, ["title"] = "Planned " + start, ["hook"] = "A hook", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
+                    ["parts"] = new JsonArray(new JsonObject { ["startWord"] = start, ["endWord"] = end }), ["not_in_take"] = "", ["musicTrackId"] = "",
+                    ["title"] = "Planned " + start, ["hook"] = "A hook", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
                     ["corrections"] = new JsonArray(), ["rewrites"] = new JsonArray(new JsonObject { ["startWord"] = start + 2, ["endWord"] = start + 4, ["text"] = rewrite, ["reason"] = "a stumble" }),
                     ["captionStyle"] = "vox-bold", ["captionFont"] = "Roboto", ["captionWeight"] = 900, ["captionCase"] = "upper", ["wordsPerCaption"] = 3, ["captionReason"] = "",
                     ["look"] = "original", ["lookReason"] = "", ["speed"] = 1, ["speedReason"] = "", ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
@@ -53,7 +57,7 @@ public sealed partial class CliAutopilotTests
             return Task.FromResult(new RawCompletion(reply, null, model, new StopKind.Complete(), null, null));
         }
         private static JsonObject Clip(string title, int score, int first, int last) =>
-            new() { ["title"] = title, ["reason"] = title + " lands.", ["score"] = score, ["start_line"] = first, ["end_line"] = last };
+            new() { ["title"] = title, ["reason"] = title + " lands.", ["score"] = score, ["parts"] = new JsonArray(new JsonObject { ["start_line"] = first, ["end_line"] = last }), ["not_in_take"] = "" };
     }
 
     [GeneratedRegex("from word (\\d+) to word (\\d+)")]
@@ -79,7 +83,10 @@ public sealed partial class CliAutopilotTests
     private static Task<(JsonObject Fields, string Errors)> AutopilotAsync(Stub stub, params string[] arguments) => AutopilotAsync(stub, null, arguments);
 
     /// <summary>The same with the frame sources <paramref name="frames"/> (null: what this build installs).</summary>
-    private static async Task<(JsonObject Fields, string Errors)> AutopilotAsync(Stub stub, CliFrameSources? frames, params string[] arguments)
+    private static Task<(JsonObject Fields, string Errors)> AutopilotAsync(Stub stub, CliFrameSources? frames, params string[] arguments) =>
+        AutopilotWithDataAsync(stub, frames, null, arguments);
+
+    private static async Task<(JsonObject Fields, string Errors)> AutopilotWithDataAsync(Stub stub, CliFrameSources? frames, string? dataRoot, params string[] arguments)
     {
         var parsed = CliApplication.Parse(["autopilot", .. arguments]);
         Assert.Empty(parsed.Errors);
@@ -88,7 +95,7 @@ public sealed partial class CliAutopilotTests
         try
         {
             Console.SetError(errors);
-            var fields = await CliAutopilot.RunAsync(parsed, (_, _) => stub, TestContext.Current.CancellationToken, frameSources: frames);
+            var fields = await CliAutopilot.RunAsync(parsed, (_, _) => stub, TestContext.Current.CancellationToken, frameSources: frames, dataRoot: dataRoot);
             return (fields, errors.ToString());
         }
         finally { Console.SetError(previousError); }
@@ -100,6 +107,37 @@ public sealed partial class CliAutopilotTests
         var path = Path.Combine(folder, "five-questions.voxclip");
         File.Copy(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "projects", "five-questions.voxclip"), path);
         return path;
+    }
+
+    [Fact]
+    public async Task MatchingLocalTrackIsAttachedAndNotPending()
+    {
+        var path = Project();
+        var directory = Path.GetDirectoryName(path)!;
+        try
+        {
+            var project = ProjectSerialization.Deserialize(File.ReadAllText(path));
+            var fixture = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "music", "music-project.voxclip")));
+            var entry = fixture.Music[1] with { Title = "Pulse", Asset = fixture.Music[1].Asset with { File = project.Id + "/music-pulse.wav" } };
+            var asset = MusicRenderInput.PathFor(entry.Asset, directory);
+            Directory.CreateDirectory(Path.GetDirectoryName(asset)!);
+            using (var wave = new WaveWriter(File.Create(asset), 48_000, 1, true)) wave.Write(new float[384_000]);
+            var original = ProjectSerialization.Serialize(MusicProject.Setting(entry, null, project));
+            File.WriteAllText(path, original);
+            var (result, _) = await AutopilotWithDataAsync(new Stub(), null, directory,
+                "--open", path, "--connector", "ollama", "--model", "fixture", "--count", "2", "--json");
+            var clips = result["clips"]!.AsArray();
+            Assert.Equal(2, clips.Count);
+            Assert.Equal(new[] { "music-full-2", "music-full-3" }, clips.Select(clip => clip!["music"]!["trackId"]!.GetValue<string>()).Order(StringComparer.Ordinal));
+            foreach (var clip in clips)
+            {
+                Assert.Equal(-24.5, clip!["music"]!["gainDb"]!.GetValue<double>());
+                Assert.False(clip["music"]!["ducking"]!.GetValue<bool>());
+                Assert.DoesNotContain("music", clip["pending"]!.AsArray().Select(item => item!.GetValue<string>()));
+            }
+            Assert.Equal(original, File.ReadAllText(path));
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Fact]
@@ -118,9 +156,10 @@ public sealed partial class CliAutopilotTests
             Assert.Equal(2, clips.Count);
             foreach (var (clip, rank) in clips.Select((clip, index) => (clip!.AsObject(), index + 1)))
             {
-                Assert.Equal(["clipId", "endWordId", "outputs", "pending", "rank", "score", "startWordId", "title", "verdict"], clip.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+                Assert.Equal(["clipId", "endWordId", "music", "outputs", "pending", "rank", "score", "startWordId", "title", "verdict"], clip.Select(pair => pair.Key).Order(StringComparer.Ordinal));
                 Assert.Equal(rank, clip["rank"]!.GetValue<int>());
                 Assert.Equal(["rewrite", "music"], clip["pending"]!.AsArray().Select(item => item!.GetValue<string>()));
+                Assert.Equal("pending", clip["music"]!.GetValue<string>());
                 Assert.Empty(clip["outputs"]!.AsArray());
                 Assert.Matches("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", clip["clipId"]!.GetValue<string>());
             }
@@ -186,7 +225,7 @@ public sealed partial class CliAutopilotTests
             Assert.All(plans, request => Assert.Empty(request.Images));
             foreach (var clip in result["clips"]!.AsArray().Select(item => item!.AsObject()))
             {
-                Assert.Equal(["clipId", "endWordId", "frames", "outputs", "pending", "picture", "rank", "score", "startWordId", "title", "verdict"],
+                Assert.Equal(["clipId", "endWordId", "frames", "music", "outputs", "pending", "picture", "rank", "score", "startWordId", "title", "verdict"],
                     clip.Select(pair => pair.Key).Order(StringComparer.Ordinal));
                 var frames = clip["frames"]!.AsObject();
                 Assert.Equal(["blur", "cover", "imageTokens", "images", "sent"], frames.Select(pair => pair.Key).Order(StringComparer.Ordinal));
@@ -226,7 +265,7 @@ public sealed partial class CliAutopilotTests
             Assert.Empty(decoder.Reads);
             Assert.DoesNotContain(CliAutopilotFrames.FacesOnlyLine, errors, StringComparison.Ordinal);
             Assert.All(stub.Requests, request => Assert.DoesNotContain(Core.Domain.Frames.FrameSheet.SummaryHeader, request.Instruction, StringComparison.Ordinal));
-            Assert.All(result["clips"]!.AsArray(), clip => Assert.Equal(["clipId", "endWordId", "outputs", "pending", "rank", "score", "startWordId", "title", "verdict"],
+            Assert.All(result["clips"]!.AsArray(), clip => Assert.Equal(["clipId", "endWordId", "music", "outputs", "pending", "rank", "score", "startWordId", "title", "verdict"],
                 clip!.AsObject().Select(pair => pair.Key).Order(StringComparer.Ordinal)));
             Assert.DoesNotContain(result["timings"]!["stages"]!.AsArray(), stage => stage!["stage"]!.GetValue<string>() is "frames" or "opening");
         }

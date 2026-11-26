@@ -52,6 +52,22 @@ import Testing
         }
     }
 
+    @Test func storyTranslationsStayInsideOnePartAndKeepVersionFive() throws {
+        var project = try ProjectJSON.decode(FixtureLoader.data("fixtures/projects/interview-take.voxclip"))
+        let words = try #require(project.transcript?.words)
+        let parts = [ClipPart(id: "late", startWordId: words[5].id, endWordId: words[7].id),
+                     ClipPart(id: "early", startWordId: words[1].id, endWordId: words[3].id)]
+        let clip = ClipRange(id: "story", startWordId: words[1].id, endWordId: words[7].id, parts: parts, kind: .story)
+        try project.applyEditing(.addClip(clip))
+        #expect(throws: CaptionTranslationError.invalidEntry("Translate inside one part.")) {
+            try CaptionTranslations.translating(2...6, clipID: clip.id, language: "es", text: "hola", in: project)
+        }
+        let translated = try CaptionTranslations.translating(5...6, clipID: clip.id, language: "es", text: "hola", in: project)
+        #expect(translated.schemaVersion == 5)
+        #expect(translated.edits.clips.last == clip)
+        #expect(translated.captionTranslations.last?.text == "hola")
+    }
+
     @Test("Translating stores the words' captions (promoting to v4, replacing an overlap in its scope); undoing puts back the base's")
     func translatingAndUntranslating() throws {
         let legacy = try ProjectJSON.decode(FixtureLoader.data("fixtures/projects/interview-take.voxclip"))

@@ -139,7 +139,7 @@ EditState {
   clips: [ClipRange]                   // the clip range layer
   activeClipId: String?                // the selected clip, or null for the full take
 }
-ClipRange { id, startWordId, endWordId, title?, origin: manual | ai, aiResultId?, aiClipIndex?, selected: Bool }
+ClipRange { id, startWordId, endWordId, title?, origin: manual | ai, aiResultId?, aiClipIndex?, selected: Bool, parts?, kind? }
 ```
 
 `selected` means kept (design.md §2). A manual clip is always a kept clip; an AI clip is kept when `selected` is true and a suggestion when it is false. "All {n} clips" in the Export sheet exports the kept clips in transcript order. It never affects planning. `addClip` and `addAIClips` create clips with `selected = true`; the apps' Find Clips then clears `selected` on the clips it added, in the same undo step.
@@ -151,6 +151,14 @@ The clip is a **range layer**. Selecting a clip never writes cut flags. Words ou
 On Mac, clip and suggestion views hide surrounding transcript and timeline context by default. One in-memory **Show surrounding context** toggle reveals both, independently of Show cuts. It resets off when entering a different scope, while Full Take always stays full. Transcript rendering intersects the original source ranges without changing word IDs or timing; timeline display and overview bounds are separate from the playback plan. This view preference changes no project data, dirty state, Undo history, clip boundaries, source-to-edited mapping or export scope.
 
 Indices: a clip is resolved to item indices `[startIndex, endIndex]` with `0 <= startIndex <= endIndex < items.count`. Index-based APIs (session ops, `clipTimes`, the clip finder) use these indices. The project file stores ids.
+
+A story clip stores 2–12 `parts` in play order. Each part has a stable `id`, inclusive `startWordId` and `endWordId`, and an optional face `reframe`. Parts cannot share transcript items. The clip's outer IDs are the source hull, not what plays; `playParts` / `PlayParts` returns the ordered parts or synthesizes one part for an ordinary clip. `leadInSeconds` applies to the first part in play order. An optional `kind` (`story` or `showreel`) labels a multi-part clip and never affects playback.
+
+Preview and `voxclip-cli export --clip` on both platforms use the same part order and per-part framing. The opening and cover candidates come from the first part. Each part starts a new caption page, and the regular 5 ms audio joins apply without interrupting the music bed. A source interval ending at a boundary belongs to the part on its left in source time, even when that part plays later. Saved lip-sync video plays only when its whole window fits in the part. Export checks treat part joins as expected cuts and check the words next to them. The Mac FCPXML spine preserves the same play order and source jumps.
+
+`setClipParts` replaces the ordered parts and recomputes the hull in one edit. Passing one part collapses the clip to an ordinary range; passing none is rejected. `updateClip` cannot trim a multi-part clip. `makeClipOfPart` adds an ordinary clip without changing the project-wide cuts. Use the project-level reducer for part edits: it checks effects and lip-sync windows, and selects a new story copy instead of overwriting a clip when the part edit would invalidate paid work. The new clip ID lets callers announce the copy in the same undo step.
+
+Schema v5 carries story clips and their AI suggestion metadata (`parts` as word ranges, and `notInTake` of at most 200 characters). Without a story clip, writers keep the legacy suggestion fields and do not write v5. Removing the last story clip returns the document to v4. Legacy documents do not upgrade merely by loading and saving.
 
 ### 2.6 EditSegment (planner input)
 
@@ -176,7 +184,8 @@ EditPlan {
   sampleRate: Double
   totalSamples: Int64        // max(0, jsRound(duration * rate))
   cuts: [MediaInterval]      // sorted, disjoint, merged; consecutive cuts are separated by at least one kept sample
-  kept: [MediaInterval]      // complement of cuts in [0, totalSamples)
+  kept: [MediaInterval]      // complement of cuts in [0, totalSamples), in play order
+  partSeams: [Int64]         // output sample offsets between nonempty story parts
   outputSamples: Int64       // sum of kept lengths
   duration: Double           // outputSamples / rate
   mapTime(source) -> edited
@@ -621,6 +630,12 @@ The transcript string used for copying, share captions and the clip finder is de
 
 ## 7. Planning, time mapping and rendering rules
 
+For story clips, `EditPlan.build` / `EditingEngine.BuildPlan` run the ordinary planner for each `playParts` range and concatenate the kept spans in that order. `cuts` is the source-sorted complement of their union. The spans must be disjoint in source, but need not ascend in play order. Joins use the same 5 ms fades as ordinary clips. `RenderCallerInputs.timeline` / `Timeline` chooses this plan or its Voice Lab equivalent, which concatenates per-part plans with existing source-anchored patches intact.
+
+On either plan, source-to-edited lookup uses a source-sorted index carrying each span's output offset. A source gap maps to the preceding span's output end in source order, or zero if there is no preceding span. Caption words are mapped per part and shifted by its output offset; layout starts a new page at the next part. `TimelinePieces` exposes play-order seams via `isPartSeam` / `IsPartSeam`; use the Source-axis array for Source-axis indices.
+
+The Windows story render test compares framing at the opening and each part seam on the fixture's 30 fps output grid. It checks the center of each frame at its own resolution, both before encoding and in decoded MP4 output.
+
 ### 7.1 buildSegments
 
 ```text
@@ -717,7 +732,7 @@ sourceTime(e):                                // edited -> source
 cutContaining(t) = the first cut c with c.sa / rate <= t < c.sb / rate, or none     // fixtures: previewSkip
 ```
 
-These invariants hold for every plan (the generator's property checks: 300 random plans, 200 probes each, at 1k/16k/44.1k/48k):
+These invariants hold for ordinary ascending plans (the generator's property checks: 300 random plans, 200 probes each, at 1k/16k/44.1k/48k). Story plans retain the sample-grid round trips but can map source time non-monotonically:
 
 1. `mapTime(sourceTime(e)) == e` exactly for every sample-aligned `e` in `[0, outputSamples)`.
 2. `sourceTime(mapTime(s)) == jsRound(s·rate)/rate` for every `s` outside the cuts.
@@ -852,6 +867,8 @@ the platform project stores normalize injected runtime versions by the same rule
 
 - **macOS app.** `VoxClipDocument` uses the public macOS 26 `NSDocument` safe-writing lifecycle (architecture 2.6 and 7.1). Save and Save As snapshot the accepted project against the final destination URL before the temporary safe-write URL is chosen. A cross-folder Move uses that same safe writer for the destination and removes the original through file coordination; a same-folder Rename uses AppKit's coordinated native move because the relative media path does not change. Save Copy writes the target representation without adopting its location. Successful location-changing operations leave a portable `relativePath` immediately and a clean document and window if no later edit was accepted. An edit accepted after the write snapshot remains in memory, dirty and undoable while the file contains the earlier snapshot; both document and window stay marked edited after Move token completion. Failure or cancellation retains the prior file bytes, location and edited project. NSDocument's change-count token checkpoints a successful write; Undo and Redo return to and depart from the saved state without clearing later edits.
 - **Windows app and the CLI.** Every operation autosaves, debounced by about 1 s, and the file is also saved on close. Writes are atomic: write a temporary file in the same directory, flush it, then replace (Windows `File.Replace`, or `File.Move(temp, path, overwrite: true)` when there is no existing file; the macOS CLI uses `Data.write(options: .atomic)`).
+
+In debug test hosts, untitled Mac documents without an explicit autosave URL do not autosave into the system Autosave Information folder. This avoids macOS 27's smart-name suggestions in the test host. Tests still exercise native in-place autosave at isolated project URLs; app saves are unchanged.
 
 ### 10.3 Resolving the source media
 

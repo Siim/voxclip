@@ -12,21 +12,30 @@ import VoxClipCore
 enum ClaudeModeBlocker: Equatable {
     /// No AI is chosen, or the chosen CLI's status check found it missing, signed out or too old: Settings › AI.
     case setUp(String)
+    case aiSettings(String)
     /// The chosen AI bills each send to a key: Find Clips asks inline first.
     case approveSend(String)
     /// Find Clips failed or found nothing: Find Clips again.
     case findAgain(String)
 
     var reason: String {
-        switch self { case .setUp(let text), .approveSend(let text), .findAgain(let text): text }
+        switch self { case .setUp(let text), .aiSettings(let text), .approveSend(let text), .findAgain(let text): text }
     }
     var action: String {
         switch self {
         case .setUp: "Set Up Claude Code…"
+        case .aiSettings: "AI Settings…"
         case .approveSend: "Find Clips"
         case .findAgain: "Find Clips Again"
         }
     }
+}
+
+enum ClaudeModeFindOutcome {
+    case finished
+    case failed(any Error, connectorSignature: [String])
+    case needsApproval
+    case cancelled
 }
 
 /// The editor's Claude mode state for its video.
@@ -55,6 +64,15 @@ enum ClaudeModeBlocker: Equatable {
     @ObservationIgnored var task: Task<Void, Never>?
     /// Going on once Find Clips' task has ended.
     @ObservationIgnored var afterFind: Task<Void, Never>?
+    @ObservationIgnored var findNeedsAction = false
+    @ObservationIgnored var findRetries = 0
+    @ObservationIgnored var waitForFindRetry: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+
+    func cancelFindContinuation() {
+        afterFind?.cancel()
+        afterFind = nil
+        findRetries = 0
+    }
     /// The chosen CLI's short name while its free status check runs ("Checking Claude Code…"). A CLI no check has
     /// looked at yet is not missing: the card waits for the check before it says anything is wrong.
     var checking: String?
@@ -85,7 +103,31 @@ extension EditorModel {
         guard app.set(ClipsMode.key, .string(mode.rawValue)) else { return }
         clipStyleState.reopened = false
         announce(mode == .claude ? "Claude does it all, for every new video." : "You pick the clips. Claude suggests them.")
-        if mode == .claude { claudeModeContinue() } else if case .blocked = claudeMode.phase { claudeMode.phase = .idle }
+        if mode == .claude {
+            if claudeMode.armed, project.transcript?.engine.id == .appleSpeech {
+                claudeMode.armed = false
+                claudeMode.phase = .idle
+                return
+            }
+            if claudeModeWaitsForTranscript, !transcribed, transcription.engine == "apple", transcription.phase != .hidden {
+                let previous = workTask
+                transcription.close()
+                claudeMode.phase = .waiting
+                _ = claudeModeChecksConnector()
+                Task { [weak self] in
+                    await previous?.value
+                    guard let self, claudeModeWaitsForTranscript, !isLeaving, transcription.phase == .hidden else { return }
+                    await transcription.open(automatic: true)
+                }
+                return
+            }
+            claudeModeContinue()
+        } else if claudeMode.afterFind != nil {
+            claudeMode.cancelFindContinuation()
+            claudeMode.phase = .idle
+        } else if case .blocked = claudeMode.phase, !claudeMode.findNeedsAction {
+            claudeMode.phase = .idle
+        }
     }
 
     func setClaudeClipCount(_ count: Int) { _ = app.set(ClipsMode.countKey, .number(Double(count))) }
@@ -110,7 +152,9 @@ extension EditorModel {
     func armClaudeMode() {
         guard claudeMode.phase == .idle, !document.isVersion else { return }
         claudeMode.armed = true
-        claudeMode.clock = ClaudeModeClock()
+        claudeMode.clock = document.importClock ?? ClaudeModeClock()
+        claudeMode.clock?.end(.ingest)
+        document.importClock = nil
         claudeMode.clock?.begin(.transcribe)
         guard claudeModeOn else { return }
         claudeMode.phase = .waiting
@@ -129,24 +173,71 @@ extension EditorModel {
         claudeModeContinue()
     }
 
-    /// Find Clips ended (found, nothing, failed or cancelled). It is called from inside the find task, which still holds
-    /// `finding` and the project's AI lease, so Claude goes on once that task has ended.
-    func claudeModeFindEnded() {
+    /// Claude goes on only after the find task has ended and released the project's AI lease.
+    func claudeModeFindEnded(_ outcome: ClaudeModeFindOutcome = .finished) {
         guard claudeMode.armed, claudeModeOn else { return }
         claudeMode.clock?.end(.find)
         let find = findTask
         claudeMode.afterFind = Task { [weak self] in
             await find?.value
-            self?.claudeModeContinue()
+            guard let self, !Task.isCancelled else { return }
+            if claudeModeOn, case .failed(let error, let signature) = outcome,
+               await claudeModeRetryFind(error, connectorSignature: signature) { return }
+            guard !Task.isCancelled else { return }
+            claudeMode.afterFind = nil
+            guard claudeMode.armed, claudeModeOn, capabilities.edit else { return }
+            switch outcome {
+            case .finished where !suggestedClips.isEmpty:
+                claudeModeContinue()
+            case .finished:
+                let reason = clipError == Self.noClipsMatched ? nil : clipError
+                blockClaudeModeFind(.findAgain(reason ?? "Claude found no clip worth posting in this video."))
+            case .failed(let error, _):
+                let reason = clipError ?? "Could not find clips right now. Try again later. Your edits are saved."
+                switch error as? LLMError {
+                case .modelNotFound?, .cliSignedOut?: blockClaudeModeFind(.aiSettings(reason))
+                default: blockClaudeModeFind(.findAgain(reason))
+                }
+            case .needsApproval:
+                blockClaudeModeFind(.approveSend("Claude waits for your OK to read the transcript and find clips. Your edits are saved."))
+            case .cancelled:
+                claudeMode.findNeedsAction = true
+                claudeMode.phase = .idle
+            }
         }
+    }
+
+    private static let findRetryDelays: [Duration] = [.seconds(2), .seconds(8), .seconds(30)]
+
+    private func claudeModeRetryFind(_ error: any Error, connectorSignature: [String]) async -> Bool {
+        switch (error as? LLMError, error as? VoxClipError) {
+        case (.network?, _), (.timeout?, _), (.cliNetworkUnreachable?, _), (_, .offline?): break
+        default: return false
+        }
+        guard canFindClipsIfFree, connectorSignature == rewriteConnectorSignature,
+              claudeMode.findRetries < Self.findRetryDelays.count else { return false }
+        let delay = Self.findRetryDelays[claudeMode.findRetries]
+        claudeMode.findRetries += 1
+        do { try await claudeMode.waitForFindRetry(delay) } catch { return false }
+        guard !Task.isCancelled, claudeMode.armed, claudeModeOn, connectorSignature == rewriteConnectorSignature else { return false }
+        claudeMode.afterFind = nil
+        guard findClipsIfFree(retrying: true) else { return false }
+        claudeMode.clock?.begin(.find)
+        return true
+    }
+
+    private func blockClaudeModeFind(_ blocker: ClaudeModeBlocker) {
+        claudeMode.findNeedsAction = true
+        claudeMode.phase = .blocked(blocker)
     }
 
     /// Goes as far as it can: starts the run when there are suggestions, starts Find Clips when it is free, else says
     /// what blocks it.
     func claudeModeContinue() {
         guard claudeMode.armed, claudeModeOn, capabilities.edit, transcribed || project.transcript != nil else { return }
-        if finding { claudeMode.phase = .waiting; return }
+        if finding || claudeMode.afterFind != nil { claudeMode.phase = .waiting; return }
         if !suggestedClips.isEmpty { startClaudeMode(); return }
+        guard !claudeMode.findNeedsAction else { return }
         if claudeModeChecksConnector() { claudeMode.phase = .waiting; return }
         if project.ai.results.isEmpty, findClipsIfFree() { claudeMode.clock?.begin(.find); claudeMode.phase = .waiting; return }
         claudeMode.phase = .blocked(claudeModeBlocker)
@@ -202,7 +293,7 @@ extension EditorModel {
     /// Re-evaluates a card blocked on set-up or a send's OK, with a fresh status check. A failed Find Clips waits for its
     /// own Find Clips Again.
     func claudeModeRecheck() {
-        guard claudeMode.armed, claudeModeOn, case .blocked(let blocker) = claudeMode.phase else { return }
+        guard claudeMode.armed, claudeModeOn, !claudeMode.findNeedsAction, case .blocked(let blocker) = claudeMode.phase else { return }
         if case .findAgain = blocker { return }
         claudeMode.checked = nil
         claudeModeContinue()
@@ -248,11 +339,14 @@ extension EditorModel {
         guard case .blocked(let blocker) = claudeMode.phase else { return }
         switch blocker {
         case .setUp: openVoxClipSettings(pane: "ai")
+        case .aiSettings:
+            app.settingsPane = "ai"
+            openVoxClipSettings()
         case .approveSend, .findAgain:
             claudeMode.phase = .waiting
             clipError = nil
             claudeMode.clock?.begin(.find)
-            findClips()
+            retryFindClips()
         }
     }
 

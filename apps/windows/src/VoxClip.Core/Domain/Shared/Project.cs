@@ -88,11 +88,59 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
 public sealed record SavedBy(string App, string Version, string Platform);
 
 /// <summary>Source media wrapper; project schema $defs/mediaReference.</summary>
-public sealed record ProjectMedia(MediaReference Source);
+public sealed record ProjectMedia(MediaReference Source)
+{
+    /// <summary>Other recordings offered as companion picture sources.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<MediaReference>? AdditionalSources { get; init; }
+    /// <summary>Companion placements scoped to individual clips.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ProjectFootage>? Footage { get; init; }
+}
+
+/// <summary>A frame or moving segment in a companion recording.</summary>
+/// <param name="SourceKey">The companion's stable footage key.</param>
+/// <param name="Start">Start in companion-source seconds.</param>
+public sealed record FootageSelection(string SourceKey, double Start);
+
+/// <summary>A companion picture placement on the primary recording's timeline.</summary>
+/// <param name="Id">Unique placement identifier.</param>
+/// <param name="ClipId">Owning clip identifier.</param>
+/// <param name="Kind">Cutaway, still, or stacked video.</param>
+/// <param name="Start">Start in primary-source seconds.</param>
+/// <param name="End">End in primary-source seconds.</param>
+/// <param name="Footage">The companion source and its start time.</param>
+/// <param name="FadeInSeconds">Optional dissolve from the speaker.</param>
+/// <param name="FadeOutSeconds">Optional dissolve back to the speaker.</param>
+public sealed record ProjectFootage(string Id, [property: JsonPropertyName("clipID")] string ClipId,
+    string Kind, double Start, double End, FootageSelection Footage,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? FadeInSeconds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? FadeOutSeconds = null)
+{
+    /// <summary>Whether the selection fits inside its companion source.</summary>
+    public bool Fits(double duration, double? editedLength = null)
+    {
+        var length = editedLength ?? (End - Start);
+        return HasPlayableSource(duration) && double.IsFinite(length) && length > 0 &&
+            (Kind == "screenshot" || length <= duration - Footage.Start);
+    }
+
+    internal bool HasPlayableSource(double duration) => double.IsFinite(Start) && double.IsFinite(End) && Start >= 0 && End > Start &&
+        double.IsFinite(duration) && double.IsFinite(Footage.Start) && Footage.Start >= 0 && Footage.Start < duration &&
+        FadeInSeconds is null or (>= 0 and <= 2) && FadeOutSeconds is null or (>= 0 and <= 2);
+}
 
 /// <summary>Relinkable media reference; editing §10.3. Source content key does not change after a move.</summary>
 public sealed record MediaReference(string AbsolutePath, string? RelativePath, long SizeBytes,
-    double DurationSeconds, string ContentKey, VideoTrackInfo? Video, AudioTrackInfo? Audio);
+    double DurationSeconds, string ContentKey, VideoTrackInfo? Video, AudioTrackInfo? Audio)
+{
+    /// <summary>Full SHA-256 for an imported recording, separate from the sampled relink key.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? RecordingHash { get; init; }
+    /// <summary>The identity used in companion placement references.</summary>
+    [JsonIgnore]
+    public string FootageKey => RecordingHash ?? ContentKey;
+}
 
 /// <summary>Stored source video facts, before display rotation; project schema.</summary>
 public sealed record VideoTrackInfo(int Width, int Height, double FrameRate, int RotationDegrees);
