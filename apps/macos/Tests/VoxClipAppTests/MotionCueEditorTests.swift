@@ -190,10 +190,11 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(edited.count >= 2)
         model.toggleShowsCuts()
         #expect(model.project.motionCues == [value.cue])
-        let lane = MotionLane()
-        lane.state = MotionLane.State(viewport: TimelineViewport(axis: .source, ptPerSecond: 10, origin: 0, width: 800), cues: source, hasClip: true)
-        #expect(lane.cueID(at: NSPoint(x: lane.headerWidth + 130, y: 10)) == value.id)
-        #expect(lane.cueID(at: NSPoint(x: lane.headerWidth + 180, y: 10)) == nil)
+        let canvas = TimelineCanvasView(model: model)
+        defer { canvas.tearDown() }
+        let fragments = canvas.itemFragments.filter { $0.display.item.id == .motion(value.id) }
+        #expect(fragments.contains { $0.range.start <= 13 && $0.range.end > 13 })
+        #expect(!fragments.contains { $0.range.start <= 18 && $0.range.end > 18 })
     }
 
     @Test func cueLimitRejectsTheSixtyFifthAndFxControlIsDiscoverable() throws {
@@ -207,9 +208,9 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(model.clipMotionCues.count == 64 && !model.applyMotionCue(value))
         let canvas = TimelineCanvasView(model: model)
         defer { canvas.tearDown() }
-        #expect(!canvas.headers[3].button.isHidden)
-        #expect(canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues")
-        #expect(canvas.motion.state.cues == model.timelineMotionCues(on: model.timelineAxis))
+        #expect(!canvas.header(.effects).button.isHidden)
+        #expect(canvas.header(.effects).button.accessibilityLabel() == "Edit clip motion cues")
+        #expect(canvas.content.items.filter { $0.item.lane == .effects }.count == cues.count)
         canvas.openMotionCue(id: cues.first?.id)
         #expect(model.app.shell.panelJob(for: model) == .motion)
         #expect(model.motionCueEditing?.draft.original == cues.first)
@@ -261,7 +262,7 @@ private actor MotionCueTestSettings: SettingsStore {
         let before = model.project, steps = model.undoSteps
         let canvas = TimelineCanvasView(model: model, shell: shell)
         defer { canvas.tearDown() }
-        canvas.headers[3].button.performClick(nil)
+        canvas.header(.effects).button.performClick(nil)
         let editing = try #require(model.motionCueEditing)
         #expect(shell.panelJob(for: model) == .motion)
         #expect(editing.returnJob == .captions)

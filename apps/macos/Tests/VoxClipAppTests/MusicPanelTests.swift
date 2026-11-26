@@ -372,7 +372,7 @@ private actor DelayedCatalog {
         #expect(canvas.music.state.music?.title == "Quiet piano")
         #expect(canvas.music.accessibilityLabel() == "Music: Quiet piano, \u{2212}20 dB")
         shell.choosePanelJob(.export, for: fixture.editor)
-        canvas.headers[4].action?()
+        canvas.header(.music).action?()
         #expect(shell.panelJob(for: fixture.editor) == .music)
     }
 }

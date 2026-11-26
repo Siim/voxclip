@@ -17,8 +17,21 @@ import VoxClipCore
         case overview
         case range(anchor: Double, point: NSPoint, moved: Bool)
         case trim(clip: ClipRange, start: Bool, point: NSPoint, index: Int?, time: Double?)
+        case item(ItemDrag)
+        case marquee(point: NSPoint, original: Set<TimelineItemID>, additive: Bool)
+    }
+    private struct ItemDrag {
+        let fragment: TimelineItemFragment
+        let point: NSPoint
+        let edge: TimelineEdge?
+        let ids: [TimelineItemID]
+        let duplicate: Bool
     }
     private var drag: Drag?
+    private var itemCommand: TimelineEdit?
+    private var heldSnapKey = false
+    private var pointer: NSPoint?
+    private var pointerFlags: NSEvent.ModifierFlags = []
     private var context: Context?
     private(set) var selection: ClosedRange<Double>?
     private var keyAnchor: String?
@@ -33,14 +46,19 @@ import VoxClipCore
     private var current: Context { Context(axis: model.timelineAxis, scope: model.activeClip?.id, revision: model.projectRevision, showsSurroundingContext: model.showsSurroundingContext) }
     init(canvas: TimelineCanvasView) { self.canvas = canvas }
 
-    func cancel() { drag = nil; context = nil; selection = nil }
+    func cancel() {
+        drag = nil; context = nil; selection = nil; itemCommand = nil; pointer = nil; heldSnapKey = false
+        canvas.itemOverlay.preview = nil
+    }
     func reconcile() { if active, context != current { cancel() } }
     func inOut(_ range: ClosedRange<Double>?) -> ClosedRange<Double>? {
         guard let range, case .trim(_, let start, _, _, let time?)? = drag else { return range }
         return start ? min(time, range.upperBound)...range.upperBound : range.lowerBound...max(time, range.lowerBound)
     }
     private func time(_ point: NSPoint) -> Double { canvas.viewport.time(atX: Double(point.x - canvas.headerWidth)) }
-    private func snaps(_ event: NSEvent) -> Bool { !event.modifierFlags.contains(.option) && (model.timelineSnapping || event.modifierFlags.contains(.shift)) }
+    private func snaps(_ event: NSEvent) -> Bool {
+        !heldSnapKey && !event.modifierFlags.contains(.option) && (model.timelineSnapping || event.modifierFlags.contains(.shift))
+    }
 
     func mouseDown(_ event: NSEvent) {
         canvas.window?.makeFirstResponder(canvas)
@@ -48,7 +66,27 @@ import VoxClipCore
         let point = canvas.convert(event.locationInWindow, from: nil)
         guard point.x >= canvas.headerWidth, point.y >= 0, point.y < canvas.bounds.height - 10 else { return }
         context = current
-        if point.y < TimelineMetrics.overview.maxY {
+        if let hit = canvas.item(at: point) {
+            let id = hit.display.item.id
+            let additive = !event.modifierFlags.isDisjoint(with: [.shift, .command])
+            let original = model.timelineItemSelection
+            var selected: Set<TimelineItemID> = additive ? original : [id]
+            if additive, !selected.insert(id).inserted { selected.remove(id) }
+            if !additive, original.contains(id) { selected = original }
+            model.selectTimelineItems(selected)
+            if event.clickCount == 2 { canvas.openItem(id) }
+            else if selected.contains(id), hit.display.movable, model.capabilities.edit {
+                let edge = hit.edge(at: point)
+                let part = hit.display.item.lane == .video
+                let ids = edge == nil && !part ? [id] + canvas.selectedItemIDs.filter { $0 != id } : [id]
+                drag = .item(.init(fragment: hit, point: point, edge: edge, ids: ids,
+                                   duplicate: edge == nil && !part && event.modifierFlags.contains(.option)))
+            }
+        } else if canvas.isConnectedLane(at: point) {
+            let additive = !event.modifierFlags.isDisjoint(with: [.shift, .command])
+            drag = .marquee(point: point, original: model.timelineItemSelection, additive: additive)
+            if !additive { model.selectTimelineItems([]) }
+        } else if point.y < TimelineMetrics.overview.maxY {
             drag = .overview
             seekOverview(point)
         } else if point.y < TimelineMetrics.ruler.maxY, let target = trimTarget(point) {
@@ -56,6 +94,7 @@ import VoxClipCore
         } else if event.clickCount == 2, point.y >= TimelineMetrics.ruler.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
         } else {
+            model.selectTimelineItems([])
             drag = .range(anchor: time(point), point: point, moved: false)
             model.selectedWordIDs = []; model.selectedPauseIDs = []
             model.askClaude.timeRange = nil
@@ -67,6 +106,22 @@ import VoxClipCore
         reconcile()
         let point = canvas.convert(event.locationInWindow, from: nil)
         switch drag {
+        case .item(let transaction)?:
+            pointer = point; pointerFlags = event.modifierFlags
+            previewItem(transaction, at: point)
+        case .marquee(let start, let original, let additive)?:
+            guard hypot(point.x - start.x, point.y - start.y) >= 3 else {
+                model.selectTimelineItems(additive ? original : [])
+                canvas.itemOverlay.preview = nil; canvas.apply(); return
+            }
+            let rect = NSRect(x: min(point.x, start.x), y: min(point.y, start.y), width: max(1, abs(point.x - start.x)), height: max(1, abs(point.y - start.y)))
+                .intersection(canvas.itemClip)
+            let ids = Set(canvas.itemFragments.filter { fragment in
+                canvas.connectedLanes.contains { $0.kind == fragment.display.item.lane } && fragment.rect.intersects(rect)
+            }.map { $0.display.item.id })
+            model.selectTimelineItems(additive ? original.union(ids) : ids)
+            canvas.itemOverlay.preview = .init(rectangles: [rect], readout: nil, point: point, guide: nil, marquee: true)
+            canvas.apply()
         case .overview?: seekOverview(point)
         case .range(let anchor, let start, let moved)?:
             guard moved || hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
@@ -75,7 +130,10 @@ import VoxClipCore
             // Update immediately; Observation will take the same IDs on its next turn.
             canvas.renderContent()
         case .trim(let clip, let start, let press, _, let preview)?:
-            guard preview != nil || hypot(point.x - press.x, point.y - press.y) >= 3 else { return }
+            guard hypot(point.x - press.x, point.y - press.y) >= 3 else {
+                if preview != nil { drag = .trim(clip: clip, start: start, point: press, index: nil, time: nil); canvas.apply() }
+                return
+            }
             let snap = snaps(event)
             let index = model.timelineTrimIndex(clip, start: start, time: time(point), on: model.timelineAxis, snap: snap)
             let edge = index.flatMap { i -> Double? in
@@ -95,7 +153,9 @@ import VoxClipCore
         if active { mouseDragged(event) }
         let ended = drag
         let dragged = selection
+        let command = itemCommand
         cancel()
+        if let command { model.commitTimelineItemEdit(command) }
         // A dragged range is what the toolbar's ✦ Ask Claude asks about (design.md §6.8), in source seconds.
         if case .range(_, _, true)? = ended, let dragged {
             let axis = model.timelineAxis
@@ -107,6 +167,73 @@ import VoxClipCore
             canvas.renderContent(keepingZoom: true)
         } else { canvas.renderContent() }
         canvas.followPlayhead()
+    }
+
+    private func previewItem(_ transaction: ItemDrag, at point: NSPoint) {
+        guard hypot(point.x - transaction.point.x, point.y - transaction.point.y) >= 3 else {
+            itemCommand = nil; canvas.itemOverlay.preview = nil; return
+        }
+        let fragment = transaction.fragment
+        let display = fragment.display
+        let id = display.item.id
+        let scale = canvas.viewport.ptPerSecond
+        let delta = (point.x - transaction.point.x) / scale
+        let start = display.ranges.first?.start ?? display.marker ?? fragment.range.start
+        let end = display.ranges.last?.end ?? start
+        let base = transaction.edge == .end ? end : start
+        let raw = base + delta
+        let part = display.item.lane == .video
+        let locked = display.wordLocked || (part && transaction.edge != nil)
+        let excluded = Set(transaction.ids)
+        let target = locked || (!heldSnapKey && model.timelineSnapping && !pointerFlags.contains(.option))
+            ? canvas.snapItemTime(raw, excluding: excluded, wordsOnly: locked, reach: locked ? .infinity : 8 / scale)
+            : nil
+        let snapped = target ?? raw
+        let shift = snapped - base
+        var source = canvas.itemSourceTime(snapped)
+        let readout: String
+        var rectangles: [NSRect]
+        if let edge = transaction.edge {
+            if part, let span = model.timelineItemSpan(id) {
+                let original = edge == .start ? span.lowerBound : span.upperBound
+                source = max(0, original + delta)
+            } else if edge == .end, canvas.content.axis == .edited,
+                      let rate = model.renderTimeline?.sampleRate, snapped > 0 {
+                source = canvas.itemSourceTime(max(0, snapped - 1 / rate)) + 1 / rate
+            }
+            itemCommand = .trim(item: id, edge: edge, toSource: source)
+            let length = max(0, end - start + (edge == .start ? -shift : shift))
+            readout = "\(edge == .start ? "In" : "Out") \(timelineItemDelta(shift)) · \(String(format: "%.1f s", length))"
+            rectangles = canvas.itemFragments.filter { $0.display.item.id == id }.map { piece in
+                var rect = piece.rect
+                if edge == .start, piece.hasStart {
+                    rect.origin.x = min(rect.maxX - 1, rect.minX + shift * scale)
+                    rect.size.width = max(1, piece.rect.maxX - rect.minX)
+                } else if edge == .end, piece.hasEnd { rect.size.width = max(1, rect.width + shift * scale) }
+                return rect
+            }
+        } else {
+            if part { source = canvas.itemSourceTime(time(point)) }
+            itemCommand = transaction.duplicate ? .duplicate(items: transaction.ids, toAnchor: source) : .move(items: transaction.ids, toAnchor: source)
+            let word = model.word(at: source, nearest: true).map { " · on “\(model.text($0))”" } ?? ""
+            let cut = canvas.content.axis == .source && model.plan?.cutContaining(source) != nil ? " · \(TimelineItems.cutDropCopy)" : ""
+            readout = timelineItemDelta(shift) + word + cut
+            rectangles = canvas.itemFragments.filter { excluded.contains($0.display.item.id) }.map { $0.rect.offsetBy(dx: shift * scale, dy: 0) }
+        }
+        let guide = target.map { canvas.headerWidth + canvas.viewport.x($0) }
+        canvas.itemOverlay.preview = .init(rectangles: rectangles, readout: readout, point: point, guide: guide)
+    }
+
+    func flagsChanged(_ flags: NSEvent.ModifierFlags) {
+        pointerFlags = flags
+        if case .item(let transaction)? = drag, let pointer { previewItem(transaction, at: pointer) }
+    }
+
+    func keyUp(_ event: NSEvent) -> Bool {
+        guard event.keyCode == 45, heldSnapKey else { return false }
+        heldSnapKey = false
+        flagsChanged(event.modifierFlags)
+        return true
     }
     private func trimTarget(_ point: NSPoint) -> (ClipRange, Bool)? {
         guard model.capabilities.edit, let clip = model.activeClip, clip.parts == nil, let range = canvas.content.inOut else { return nil }
@@ -124,15 +251,28 @@ import VoxClipCore
     /// Menu equivalents handle transport first. These fallbacks also work when a canvas
     /// is hosted on its own; Command/Control/Option combinations pass to the responder.
     func keyDown(_ event: NSEvent) -> Bool {
+        if event.keyCode == 45, active, event.modifierFlags.isDisjoint(with: [.command, .control]) {
+            heldSnapKey = true
+            flagsChanged(event.modifierFlags)
+            return true
+        }
+        if let shortcut = TimelineItemShortcut(event), handleItemShortcut(shortcut) { return true }
         guard event.modifierFlags.isDisjoint(with: [.command, .control, .option]) else { return false }
         return key(event.keyCode, shift: event.modifierFlags.contains(.shift), characters: event.charactersIgnoringModifiers)
     }
     /// The SwiftUI pane's F6 stop forwards here too, retaining the same range anchor.
     func key(_ code: UInt16, shift: Bool, characters: String? = nil) -> Bool {
-        if code == 53, case .trim? = drag {
-            cancel(); canvas.apply(); return true
+        if code == 53 {
+            if active {
+                if case .marquee(_, let original, _)? = drag { model.selectTimelineItems(original) }
+                cancel(); canvas.renderContent(); return true
+            }
+            if !model.timelineItemSelection.isEmpty {
+                model.selectTimelineItems([]); canvas.apply(); return true
+            }
         }
         if code == 123 || code == 124 {
+            if shift { model.selectTimelineItems([]) }
             let direction = code == 123 ? -1 : 1
             if !shift || keySelection != model.selectedWordIDs { keyAnchor = nil; keyHead = nil }
             if shift, keyAnchor == nil { keyAnchor = (direction < 0 ? model.selectedIDs.last : model.selectedIDs.first) ?? model.word(at: model.sourceTime, nearest: true)?.id }

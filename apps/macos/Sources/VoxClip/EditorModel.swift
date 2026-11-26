@@ -34,13 +34,20 @@ struct EditorRenderSnapshot {
     var selectedWordIDs: Set<String> = [] {
         didSet {
             guard selectedWordIDs != oldValue else { return }
+            if !selectedWordIDs.isEmpty { selectTimelineItems([]) }
             rewriteOpenTask?.cancel()
             // Changing the selection ends an open inline correction, as a click elsewhere ends an inline rename.
             if correctionID != nil { endCorrection() }
             updateSelectionEnds(); refreshPendingSendScope()
         }
     }
-    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope() } } }
+    var selectedPauseIDs: Set<String> = [] {
+        didSet {
+            guard selectedPauseIDs != oldValue else { return }
+            if !selectedPauseIDs.isEmpty { selectTimelineItems([]) }
+            rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope()
+        }
+    }
     var previewStop: Double?
     var storyPartPlaybackEnd: Double?
     var selectedStoryPartID: String?
@@ -78,6 +85,8 @@ struct EditorRenderSnapshot {
     var timelineEffectID: String?
     private(set) var timelineEffectsRevision = 0
     var timelineSnapping = true
+    var timelineItemSelection: Set<TimelineItemID> = []
+    var timelineItemRefusal: String?
     /// The selection's first and last word or pause in reading order (a pause follows the
     /// word before it), one id when they are the same. A fold opens while one of them is in
     /// it (`openFoldEnds`), so what is selected always shows.

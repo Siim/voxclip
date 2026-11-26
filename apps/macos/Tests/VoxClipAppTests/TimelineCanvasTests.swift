@@ -18,6 +18,33 @@ private actor TimelineTestSettings: SettingsStore {
 /// waveform. No window is shown; each test has its own data folder.
 @Suite("v2 timeline", .serialized, .offlineFixtures)
 @MainActor struct TimelineCanvasTests {
+    @Test func aTitleDragWritesOneNamedUndoOnRelease() throws {
+        let app = try app()
+        var fixture = try project()
+        fixture.clipEffects = [ClipEffect(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                          start: 12, end: 13, text: "Faster edits")]
+        let model = editor(app, project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { window.close() }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        model.undoManager = undo
+        model.timelineSnapping = false
+        let point = NSPoint(x: canvas.headerWidth + canvas.viewport.x(model.timelineTime(source: 12.5, on: model.timelineAxis)),
+                            y: 80)
+        let end = NSPoint(x: point.x + canvas.viewport.ptPerSecond, y: point.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(!undo.canUndo && model.project.clipEffects.first?.start == 12)
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        undo.endUndoGrouping()
+        #expect(undo.undoActionName == "Move title" && model.undoSteps == 1)
+        #expect(model.project.clipEffects.first?.start == 13)
+        undo.undo()
+        #expect(model.project.clipEffects.first?.start == 12)
+    }
+
     private func app() throws -> AppModel {
         let parent = ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
         let root = parent.appendingPathComponent("voxclip-timeline-\(UUID().uuidString)", isDirectory: true)
@@ -396,7 +423,7 @@ private actor TimelineTestSettings: SettingsStore {
         defer { canvas.tearDown(); window.close() }
         canvas.renderContent()
         canvas.followPlayhead()
-        let y = TimelineMetrics.tracks[1].y + 10
+        let y = TimelineMetrics.audio.y + 10
         canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: TimelineMetrics.header + 300, y: y), in: canvas))
         canvas.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: 40, y: y), in: canvas))
         let early = canvas.viewport.time(atX: Double(40 - TimelineMetrics.header))
@@ -416,7 +443,7 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(try pixels.shows(40, y, "bg.window"))
         #expect(try pixels.shows(80, y, "bg.window"))
         // V1's bare lane under the wash (A1 draws the take's audio there).
-        #expect(try pixels.shows(TimelineMetrics.header + canvas.viewport.x(11), TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.videoPiece"))
+        #expect(try pixels.shows(TimelineMetrics.header + canvas.viewport.x(11), TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18, "tint.wash", over: "timeline.videoPiece"))
         let zoom = canvas.viewport.ptPerSecond
         canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 40, y: y), in: canvas))
         #expect(canvas.viewport.visible.contains(early) && canvas.viewport.ptPerSecond == zoom)
@@ -437,7 +464,7 @@ private actor TimelineTestSettings: SettingsStore {
         let pieces = model.timelinePieces.pieces
         let after = try #require(pieces.indices.dropFirst().first { pieces[$0].source.lowerBound - pieces[$0 - 1].source.upperBound > 1 })
         let seam = TimelineMetrics.header + CGFloat(canvas.viewport.x(pieces[after].edited.lowerBound))
-        let y = TimelineMetrics.tracks[1].y + 10
+        let y = TimelineMetrics.audio.y + 10
         let steps = model.undoSteps
         canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: seam + TimelineMetrics.reach + 3, y: y), in: canvas, clicks: 2))
         #expect(model.cutWordIDs == ["t14", "t15"] && model.undoSteps == steps)
@@ -500,14 +527,14 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.overlay.playhead.isHidden = false
         let viewport = canvas.viewport
         let play = TimelineMetrics.header + CGFloat(viewport.x(model.timelinePlayhead(on: axis)))
-        #expect(try pixels.showsLine(play, TimelineMetrics.tracks[1].y + 10, "tint.default", ground: ground))
+        #expect(try pixels.showsLine(play, TimelineMetrics.audio.y + 10, "tint.default", ground: ground))
         #expect(try pixels.shows(play, TimelineMetrics.ruler.y + 14, "tint.default"))
         let inOut = try #require(model.timelineInOut(on: axis))
         let inX = TimelineMetrics.header + CGFloat(viewport.x(inOut.lowerBound))
         #expect(try pixels.shows(inX + 0.75, TimelineMetrics.ruler.y + 12, "clip.label"))
         #expect(try pixels.shows(inX + 3, TimelineMetrics.ruler.y + 13, "bg.window"))
         #expect(try pixels.shows(inX - 6, TimelineMetrics.ruler.y + 13, "timeline.rulerOut"))
-        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18, axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
+        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18, axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
         let block = canvas.overview.x(try #require(model.timelineOverviewClips.first).source.lowerBound + 0.3)
         #expect(try pixels.shows(block, TimelineMetrics.overview.y + 12, "clip.label", alpha: 0.42, over: "timeline.lane"))
         // The header column and its hairline stay beside every lane.
@@ -1031,11 +1058,11 @@ private actor TimelineTestSettings: SettingsStore {
         for height in TrackHeight.allCases {
             shell.layout.trackHeight = height
             canvas.layoutSubtreeIfNeeded(); canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
-            #expect([canvas.video, canvas.audio, canvas.captions, canvas.motion, canvas.music, canvas.effects].map { $0.frame.height } == height.heights)
+            #expect(canvas.trackLanes.map { $0.frame.height } == height.heights)
         }
-        #expect(canvas.headers[0].button.isHidden)
-        #expect(canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
-        canvas.headers[1].action?()
+        #expect(canvas.header(.video).button.isHidden)
+        #expect(canvas.header(.captions).button.accessibilityLabel() == "CC Captions, shown")
+        canvas.header(.voice).action?()
         #expect(model.previewMuted)
         #expect(model.undoSteps == steps)
         shell.layout.windowWidth = 960
@@ -1641,7 +1668,7 @@ private actor TimelineTestSettings: SettingsStore {
         let pixels = try Pixels(canvas)
         #expect(try pixels.shows(x, TimelineMetrics.ruler.y + 20, "tint.default"))
         #expect(try pixels.shows(x, TimelineMetrics.ruler.y + 21, "tint.default"))
-        #expect(try pixels.shows(x, TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.videoPiece"))
+        #expect(try pixels.shows(x, TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18, "tint.wash", over: "timeline.videoPiece"))
         #expect(abs((canvas.overlay.wash.backgroundColor?.alpha ?? 0) - 0.07) < 0.001)
     }
 
@@ -1667,16 +1694,16 @@ private actor TimelineTestSettings: SettingsStore {
         defer { canvas.tearDown(); window.close() }
         #expect(canvas.headers.count == 6)
         // E1 lists Ask Claude's effects; it has no add button (design.md §6.8).
-        #expect(canvas.headers[5].accessibilityLabel() == "E1 Effects" && canvas.headers[5].button.isHidden)
-        #expect(canvas.headers[4].accessibilityLabel() == "M1 Music")
-        #expect(canvas.headers[4].button.accessibilityLabel() == "Choose background music" && canvas.headers[4].action != nil)
+        #expect(canvas.header(.titles).accessibilityLabel() == "T1 Titles & effects" && canvas.header(.titles).button.isHidden)
+        #expect(canvas.header(.music).accessibilityLabel() == "M1 Music")
+        #expect(canvas.header(.music).button.accessibilityLabel() == "Choose background music" && canvas.header(.music).action != nil)
         shell.layout.rightVisible = false
-        canvas.headers[4].action?()
+        canvas.header(.music).action?()
         #expect(shell.viewerShown && shell.panelJob(for: model) == .music)
         #expect(model.project.music.isEmpty) // Opening the browser never attaches or generates a track.
-        #expect(canvas.headers[3].accessibilityLabel() == "FX Motion")
-        #expect(canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues")
-        #expect(!canvas.headers[3].button.isHidden && canvas.headers[3].action != nil)
+        #expect(canvas.header(.effects).accessibilityLabel() == "FX Zoom, looks & speed")
+        #expect(canvas.header(.effects).button.accessibilityLabel() == "Edit clip motion cues")
+        #expect(!canvas.header(.effects).button.isHidden && canvas.header(.effects).action != nil)
         let expected: [CGFloat] = [20, 24, 28]
         for (index, height) in TrackHeight.allCases.enumerated() {
             shell.layout.trackHeight = height

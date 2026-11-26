@@ -195,7 +195,7 @@ import VoxClipCore
             canvas.verticalScroller.changed?(1)
             let expected: CGFloat = height == .small ? 20 : height == .medium ? 24 : 28
             results.append(.init(name: "FX \(height.label) height is \(Int(expected)) pt", passed: canvas.motion.frame.height == expected))
-            results.append(.init(name: "FX \(height.label) exposes the clip motion edit action", passed: !canvas.headers[3].button.isHidden && canvas.headers[3].action != nil && canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues"))
+            results.append(.init(name: "FX \(height.label) exposes the clip motion edit action", passed: !canvas.header(.effects).button.isHidden && canvas.header(.effects).action != nil && canvas.header(.effects).button.accessibilityLabel() == "Edit clip motion cues"))
             results.append(.init(name: "FX \(height.label) scrolls wholly into the tracks", passed: canvas.motion.frame.minY >= 0 && canvas.motion.frame.maxY <= canvas.trackClip.bounds.height))
             _ = try capture(canvas, name: "v2-timeline-motion-\(height.label.lowercased())", directory: directory)
         }
@@ -282,7 +282,7 @@ import VoxClipCore
             }
             let viewport = canvas.viewport
             let playX = TimelineMetrics.header + viewport.x(model.timelinePlayhead(on: axis))
-            let lineY = TimelineMetrics.tracks[1].y + 10
+            let lineY = TimelineMetrics.audio.y + 10
             check("\(name) draws the playhead as a 1 pt tint line through the tracks", matches(color(playX, lineY), "tint.default"))
             check("\(name) draws the playhead's head in the ruler's lower half", matches(color(playX, TimelineMetrics.ruler.y + 14), "tint.default"))
             let inX = TimelineMetrics.header + viewport.x(inOut.lowerBound)
@@ -291,7 +291,7 @@ import VoxClipCore
             if inX - 8 > TimelineMetrics.header {
                 check("\(name) darkens the ruler outside In/Out", matches(color(inX - 6, TimelineMetrics.ruler.y + 13), "timeline.rulerOut"))
             }
-            check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
+            check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18), axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
             let open = canvas.overview.x((model.timelineOverviewClips.first { $0.open }?.source.lowerBound ?? 0) + 0.3)
             // One 10 pt band (y 7–17), or two 8 pt rows (3.5–11.5 and 12.5–20.5) once clips overlap.
             check("\(name) draws the open clip's overview block at 42% clip.label",
@@ -299,7 +299,7 @@ import VoxClipCore
             check("\(name) has no red pixels", !hasRed(bitmap))
             check("\(name) draws filmstrip tiles and names only on wide V1 pieces", canvas.video.tiles > 0 && canvas.video.names > 0)
             check("\(name) fits CC words with a dim ellipsis and nothing below 24 pt", !canvas.captions.blocks.isEmpty && canvas.captions.ellipses > 0 && canvas.captions.textBlocks.allSatisfy { $0 >= 24 })
-            check("\(name) names the CC eye's current state", canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
+            check("\(name) names the CC eye's current state", canvas.header(.captions).button.accessibilityLabel() == "CC Captions, shown")
             results += audioChecks(name: name, canvas: canvas, model: model, matches: { matches(color($0, $1), $2, alpha: $3, over: $4) })
             // A playhead tick moves only the playhead layers: no lane draws again.
             let draws = lanes.map(\.draws)
