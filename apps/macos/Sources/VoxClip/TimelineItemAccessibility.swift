@@ -83,7 +83,7 @@ extension TimelineCanvasView {
     private func itemAccessibilityActions(_ item: TimelineItemDisplay) -> [NSAccessibilityCustomAction] {
         let id = item.item.id
         func action(_ title: String, _ perform: @escaping @MainActor (TimelineCanvasView) -> Void) -> NSAccessibilityCustomAction {
-            NSAccessibilityCustomAction(name: title) { [weak self] _ in
+            NSAccessibilityCustomAction(name: title) { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self else { return false }
                     perform(self)

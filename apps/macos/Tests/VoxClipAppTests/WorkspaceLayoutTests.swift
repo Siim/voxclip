@@ -36,7 +36,7 @@ private actor LaunchSettings: SettingsStore {
     @Test func aFreshWindowHasTheNotesSizes() {
         let shell = WorkspaceShell(app: AppModel())
         shell.windowWidth = 1280
-        #expect(shell.layout.explorerWidth == 224 && shell.rightWidth == 404 && shell.layout.timelineHeight == 242)
+        #expect(shell.layout.explorerWidth == 224 && shell.rightWidth == 404 && shell.layout.timelineHeight == 346)
         #expect(shell.layout.explorerVisible && shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
@@ -233,7 +233,7 @@ private actor LaunchSettings: SettingsStore {
         let app = AppModel()
         let layout = WorkspaceLayout(app: app)
         layout.workHeight = 776
-        #expect(layout.timelineHeight == 242)
+        #expect(layout.timelineHeight == 346)
         #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 676, rightWidth: 404) == 221)
         #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 576, rightWidth: 324) == 216)
         layout.workHeight = 456

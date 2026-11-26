@@ -48,6 +48,10 @@ extension EditorModel {
         commitTimelineItemEdit(.trim(item: id, edge: edge, toSource: timelineSourceTime(timelinePlayhead(on: timelineAxis), on: timelineAxis)))
     }
 
+    func timelineWordEdge(near time: Double, edge: TimelineEdge) -> Double? {
+        words.lazy.map { edge == .start ? $0.start : $0.end }.min { abs($0 - time) < abs($1 - time) }
+    }
+
     func selectTimelineItems(_ ids: Set<TimelineItemID>) {
         timelineItemRefusal = nil
         timelineItemSelection = ids

@@ -122,8 +122,20 @@ struct TimelineItemFragment: Equatable {
             let rect = fragment.rect
             let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
             context.addPath(path)
-            context.setFillColor(color.withAlphaComponent(fragment.display.item.hidden ? 0.28 : 0.65).cgColor)
-            context.fillPath()
+            if fragment.display.item.hidden {
+                context.setStrokeColor(color.cgColor)
+                context.strokePath()
+            } else {
+                context.setFillColor(color.withAlphaComponent(0.65).cgColor)
+                context.fillPath()
+            }
+            if !fragment.hasStart, !fragment.display.item.hidden {
+                context.setStrokeColor(NSColor.white.withAlphaComponent(0.7).cgColor)
+                context.move(to: CGPoint(x: rect.minX, y: rect.minY + 1))
+                context.addLine(to: CGPoint(x: rect.minX + 3, y: rect.midY))
+                context.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - 1))
+                context.strokePath()
+            }
             if state.selected.contains(fragment.display.item.id) {
                 context.addPath(path)
                 context.setStrokeColor(DesignValues.nsColor("text.primary").cgColor)
@@ -267,7 +279,7 @@ extension TimelineCanvasView {
 
     func itemSourceTime(_ time: Double) -> Double {
         if content.axis == .source { return model.timelineSourceTime(time, on: .source) }
-        guard let plan = model.plan else { return model.timelineSourceTime(time, on: .edited) }
+        guard let plan = itemPlan else { return model.timelineSourceTime(time, on: .edited) }
         if time >= plan.duration, let last = plan.kept.last { return Double(last.endSample) / plan.sampleRate }
         return TimelineItems.sourceAnchor(at: max(0, time), axis: .edited, plan: plan)
     }

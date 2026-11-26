@@ -876,6 +876,7 @@ import ApplicationServices
             results += try await DebugViewer.run(app: app, fixture: project, directory: destination)
             results += try await DebugCaptionsSection.run(app: app, fixture: project, directory: destination)
             results += try await DebugTimeline.run(app: app, fixture: project, directory: destination)
+            results.append(try DebugTimeline.directTitleDrag(app: app, fixture: project))
             try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("results-progress.json"), options: .atomic)
             results += try DebugProbes.colorReadbackChecks(directory: destination)
             results += try await DebugPersistence.run(app: app, fixture: project, directory: destination)

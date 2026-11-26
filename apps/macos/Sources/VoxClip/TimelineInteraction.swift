@@ -26,6 +26,7 @@ import VoxClipCore
         let edge: TimelineEdge?
         let ids: [TimelineItemID]
         let duplicate: Bool
+        let collapseOnClick: Bool
     }
     private var drag: Drag?
     private var itemCommand: TimelineEdit?
@@ -72,7 +73,8 @@ import VoxClipCore
             let original = model.timelineItemSelection
             var selected: Set<TimelineItemID> = additive ? original : [id]
             if additive, !selected.insert(id).inserted { selected.remove(id) }
-            if !additive, original.contains(id) { selected = original }
+            let preserveGroup = !additive && event.clickCount == 1 && hit.display.movable && original.contains(id)
+            if preserveGroup { selected = original }
             model.selectTimelineItems(selected)
             if event.clickCount == 2 { canvas.openItem(id) }
             else if selected.contains(id), hit.display.movable, model.capabilities.edit {
@@ -80,7 +82,7 @@ import VoxClipCore
                 let part = hit.display.item.lane == .video
                 let ids = edge == nil && !part ? [id] + canvas.selectedItemIDs.filter { $0 != id } : [id]
                 drag = .item(.init(fragment: hit, point: point, edge: edge, ids: ids,
-                                   duplicate: edge == nil && !part && event.modifierFlags.contains(.option)))
+                                   duplicate: edge == nil && !part && event.modifierFlags.contains(.option), collapseOnClick: preserveGroup))
             }
         } else if canvas.isConnectedLane(at: point) {
             let additive = !event.modifierFlags.isDisjoint(with: [.shift, .command])
@@ -90,6 +92,7 @@ import VoxClipCore
             drag = .overview
             seekOverview(point)
         } else if point.y < TimelineMetrics.ruler.maxY, let target = trimTarget(point) {
+            model.selectTimelineItems([])
             drag = .trim(clip: target.0, start: target.1, point: point, index: nil, time: nil)
         } else if event.clickCount == 2, point.y >= TimelineMetrics.ruler.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
@@ -156,6 +159,9 @@ import VoxClipCore
         let command = itemCommand
         cancel()
         if let command { model.commitTimelineItemEdit(command) }
+        else if case .item(let transaction)? = ended, transaction.collapseOnClick {
+            model.selectTimelineItems([transaction.fragment.display.item.id])
+        }
         // A dragged range is what the toolbar's ✦ Ask Claude asks about (design.md §6.8), in source seconds.
         if case .range(_, _, true)? = ended, let dragged {
             let axis = model.timelineAxis
@@ -185,18 +191,25 @@ import VoxClipCore
         let part = display.item.lane == .video
         let locked = display.wordLocked || (part && transaction.edge != nil)
         let excluded = Set(transaction.ids)
-        let target = locked || (!heldSnapKey && model.timelineSnapping && !pointerFlags.contains(.option))
-            ? canvas.snapItemTime(raw, excluding: excluded, wordsOnly: locked, reach: locked ? .infinity : 8 / scale)
-            : nil
+        let partEdge = part ? transaction.edge : nil
+        let sourceEdge = partEdge.flatMap { edge in model.timelineItemSpan(id).map { edge == .start ? $0.lowerBound : $0.upperBound } }
+        let sourceWordEdge = sourceEdge.flatMap { base in
+            partEdge.flatMap { edge in model.timelineWordEdge(near: base + delta, edge: edge) }
+        }
+        let target: Double?
+        if let sourceEdge, let sourceWordEdge { target = base + sourceWordEdge - sourceEdge }
+        else if part { target = nil }
+        else if locked || (!heldSnapKey && model.timelineSnapping && !pointerFlags.contains(.option)) {
+            target = canvas.snapItemTime(raw, excluding: excluded, wordsOnly: locked, reach: locked ? .infinity : 8 / scale)
+        } else { target = nil }
         let snapped = target ?? raw
         let shift = snapped - base
         var source = canvas.itemSourceTime(snapped)
         let readout: String
         var rectangles: [NSRect]
         if let edge = transaction.edge {
-            if part, let span = model.timelineItemSpan(id) {
-                let original = edge == .start ? span.lowerBound : span.upperBound
-                source = max(0, original + delta)
+            if let sourceWordEdge {
+                source = sourceWordEdge
             } else if edge == .end, canvas.content.axis == .edited,
                       let rate = model.renderTimeline?.sampleRate, snapped > 0 {
                 source = canvas.itemSourceTime(max(0, snapped - 1 / rate)) + 1 / rate

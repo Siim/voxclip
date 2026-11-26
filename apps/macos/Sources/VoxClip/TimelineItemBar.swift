@@ -46,11 +46,32 @@ import VoxClipCore
                     }
                 }
                 if let reason = item.item.reason { Text(reason).foregroundStyle(.secondary) }
+                if case .music(let id) = item.item.id, let track = model.currentMusic {
+                    musicDetails(track, id: id)
+                }
             }
             .fixedSize(horizontal: true, vertical: false)
             .frame(height: 24)
         }
         .scrollIndicators(.hidden)
+    }
+
+    private func musicDetails(_ track: ProjectMusic, id: String) -> some View {
+        let segment = track.segments?.first { $0.id == id }
+        let from = segment?.songFromSeconds ?? track.startOffsetSeconds
+        let fadeIn = segment?.fadeInSeconds ?? track.fadeInSeconds
+        let fadeOut = segment?.fadeOutSeconds ?? track.fadeOutSeconds
+        let gain = track.gainDb + (segment?.gainDb ?? 0)
+        let duck = track.duckDb ?? (track.ducking ? -12 : 0)
+        return Group {
+            Text("Song from \(timelineItemTime(from))")
+            Text("Fade in \(fadeIn, specifier: "%.1f") s")
+            Text("Fade out \(fadeOut, specifier: "%.1f") s")
+            Text("Volume \(gain, specifier: "%.1f") dB")
+            Text("Dips under voice \(duck, specifier: "%.1f") dB")
+            if segment?.loop ?? true { Text("Loop") }
+        }
+        .foregroundStyle(.secondary)
     }
 
     private func actions(_ items: [TimelineItemDisplay]) -> some View {
@@ -123,8 +144,7 @@ import VoxClipCore
 
     private func submit() {
         guard draft != formatted else { return }
-        if let value = Double(draft), value.isFinite, value >= 0, commit(value) {
-            draft = formatted
-        } else { draft = formatted }
+        if let value = Double(draft), value.isFinite, value >= 0 { _ = commit(value) }
+        draft = formatted
     }
 }

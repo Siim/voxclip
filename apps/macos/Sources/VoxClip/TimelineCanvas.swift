@@ -172,6 +172,8 @@ struct TimelineContent: Equatable {
     let overlay = TimelineOverlayView()
     let itemOverlay = TimelineItemOverlay()
     var itemFragments: [TimelineItemFragment] = []
+    private(set) var itemPlan: EditPlan?
+    private var itemLayoutRevision: Int?
     private(set) var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -TimelineViewport.margin, width: 944)
     private(set) var content = TimelineContent()
     /// The viewport fits the scope's Edited length and follows it; a pan that moves the
@@ -308,6 +310,7 @@ struct TimelineContent: Equatable {
     /// It reads no playhead, so playback never runs it.
     func renderContent(keepingZoom: Bool = false) {
         _ = model.transcriptRevision
+        let revision = model.projectRevision
         interaction.reconcile()
         let axis = model.timelineAxis
         var next = TimelineContent()
@@ -330,7 +333,12 @@ struct TimelineContent: Equatable {
         next.removed = axis == .source ? model.timelineRemovedRanges(next.pieces) : []
         next.words = next.waveform == nil ? model.timelineKeptWords : []
         next.cues = model.timelineCaptionCues(on: axis, removed: next.removed)
-        if let plan = model.itemEditPlan {
+        if itemLayoutRevision == revision, axis == content.axis, next.scope == content.scope {
+            next.itemLayout = content.itemLayout
+            next.items = content.items
+        } else if let plan = model.itemEditPlan {
+            itemLayoutRevision = revision
+            itemPlan = plan
             let layout = TimelineItems.layout(project: model.project, plan: plan, scope: model.itemEditScope, axis: axis)
             next.itemLayout = layout
             next.items = layout.items.map { item in
@@ -340,11 +348,17 @@ struct TimelineContent: Equatable {
                 }
                 return model.timelineItemDisplay(item, axis: axis, story: next.story, partRange: range)
             }
-        }
+        } else { itemPlan = nil; itemLayoutRevision = nil }
         if axis == .source, let story = next.story { next.useStorySource(story) }
         video.setSource(model.timelineFilmstripSource)
         video.mediaName = model.timelineMediaName
         let previous = content
+        if previous.scope != next.scope && rendered {
+            model.selectTimelineItems([])
+        } else if !model.timelineItemSelection.isEmpty {
+            let remaining = model.timelineItemSelection.intersection(next.items.lazy.map(\.item.id))
+            if remaining != model.timelineItemSelection { model.selectTimelineItems(remaining) }
+        }
         content = next
         if !rendered || next.scope != previous.scope || next.takeLength != previous.takeLength
             || next.showsSurroundingContext != previous.showsSurroundingContext {

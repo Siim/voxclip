@@ -16,4 +16,13 @@ import Testing
         #expect(!settings.contains("Snap clip edges") && !settings.contains("llm.clips.snapToLines"))
         #expect(!(try source("EditorModel.swift")).contains("llm.clips.snapToLines"))
     }
+
+    @Test func timelineButtonAndNUseTheSameViewSetting() throws {
+        let toolbar = try source("TimelinePanel.swift")
+        let shortcuts = try source("TimelineItemShortcut.swift")
+        #expect(toolbar.contains("Button { model.toggleTimelineSnapping() }"))
+        #expect(toolbar.contains("model.timelineSnapHint"))
+        #expect(toolbar.contains("model.timelineSnapping ? \"On\" : \"Off\""))
+        #expect(shortcuts.contains("case .snap: model.toggleTimelineSnapping()"))
+    }
 }

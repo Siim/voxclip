@@ -47,8 +47,8 @@ enum SidebarItem: Hashable {
     static let rightRange = Double(VCTokens.sizeRightColumnMin)...Double(VCTokens.sizeRightColumnMax)
     /// notes.md §6: the bottom panel defaults to 242, so V1, A1, CC, FX and M1 all show at track height M, when the window
     /// has room for it beside a 16:9 viewer and the panel's minimum body; else to 216 (the five-track default before M1).
-    static let timelineDefault = 242.0
-    static let timelineCompactDefault = 216.0
+    static let timelineDefault = 346.0
+    static let timelineCompactDefault = 300.0
     static let timelineRange = Double(ShellMetrics.timelineMinimum)...640.0
     /// impl-plan §3.5: the panel starts at its default or 40% of the work area's height, whichever is less.
     static let timelineShare = 0.4

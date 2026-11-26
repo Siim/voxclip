@@ -25,13 +25,13 @@ private actor TimelineTestSettings: SettingsStore {
                                           start: 12, end: 13, text: "Faster edits")]
         let model = editor(app, project: fixture)
         let (canvas, window) = windowed(model)
-        defer { window.close() }
+        defer { canvas.tearDown(); window.close(); model.close() }
         let undo = UndoManager()
         undo.groupsByEvent = false
         model.undoManager = undo
         model.timelineSnapping = false
-        let point = NSPoint(x: canvas.headerWidth + canvas.viewport.x(model.timelineTime(source: 12.5, on: model.timelineAxis)),
-                            y: 80)
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let point = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
         let end = NSPoint(x: point.x + canvas.viewport.ptPerSecond, y: point.y)
         canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas))
         canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
@@ -43,6 +43,124 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.project.clipEffects.first?.start == 13)
         undo.undo()
         #expect(model.project.clipEffects.first?.start == 12)
+    }
+
+    @Test func itemHitRegionsAndMarqueeFollowTheLanes() throws {
+        var fixture = try project()
+        let clip = try #require(fixture.edits.activeClipId)
+        fixture.clipEffects = [ClipEffect(id: "title", clipId: clip, kind: .title, start: 12, end: 13, text: "Faster edits"),
+                               ClipEffect(id: "sound", clipId: clip, kind: .bleep, start: 16, end: 16.8, wordIds: ["t16"])]
+        fixture.media.footage = [.init(id: "picture", clipID: clip, kind: .bRoll, start: 12, end: 13,
+                                       footage: .init(sourceKey: "picture-source", start: 0))]
+        fixture.motionCues = [.init(id: "zoom", clipID: clip, sourceStart: 12, sourceEnd: 13)]
+        let asset = MusicAsset(file: "demo.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 60)
+        fixture.music = [.init(id: "music", clipId: clip, asset: asset, source: .file, title: "Night Drive", license: .own)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        #expect(canvas.headers.map(\.trackID) == ["CC", "T1", "B1", "FX", "V1", "A1", "S1", "M1"])
+        for (id, lane): (TimelineItemID, TimelineItemLane) in [(.effect("title"), .titles), (.footage("picture"), .pictures),
+                                                               (.motion("zoom"), .effects), (.effect("sound"), .sounds), (.music("music"), .music)] {
+            let piece = try #require(canvas.itemFragments.first { $0.display.item.id == id })
+            let body = NSPoint(x: piece.rect.midX, y: piece.rect.midY)
+            #expect(canvas.item(at: body)?.display.item.lane == lane)
+            #expect(canvas.item(at: body)?.edge(at: body) == nil)
+            let start = NSPoint(x: piece.rect.minX + 1, y: piece.rect.midY)
+            #expect(canvas.item(at: start)?.edge(at: start) == .start)
+            let end = NSPoint(x: piece.rect.maxX - 1, y: piece.rect.midY)
+            #expect(canvas.item(at: end)?.edge(at: end) == .end)
+        }
+        let start = NSPoint(x: canvas.headerWidth + 1, y: canvas.effects.frame.midY + canvas.trackClip.frame.minY)
+        let end = NSPoint(x: canvas.headerWidth + canvas.viewport.x(4), y: canvas.motion.frame.midY + canvas.trackClip.frame.minY)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(canvas.itemOverlay.preview?.marquee == true)
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.timelineItemSelection == [.effect("title"), .footage("picture"), .motion("zoom")])
+    }
+
+    @Test func itemDragThresholdEscapeAndWordGuideLeaveUndoUntouched() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits")]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); model.undoManager = undo
+        let original = model.project
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let start = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let small = NSPoint(x: start.x + 2.99, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, small, in: canvas))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, small, in: canvas))
+        #expect(model.project == original && !undo.canUndo)
+        let word = model.timelineTime(source: 12, on: model.timelineAxis)
+        let end = NSPoint(x: start.x + canvas.viewport.ptPerSecond + 2, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        let preview = try #require(canvas.itemOverlay.preview)
+        #expect(preview.readout == "+0:01.0 · on “word”")
+        #expect(abs((preview.guide ?? 0) - (canvas.headerWidth + canvas.viewport.x(word))) < 0.01)
+        let endGrip = NSPoint(x: fragment.rect.maxX - 2, y: start.y)
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.project == original && !undo.canUndo && model.undoSteps == 0 && canvas.itemOverlay.preview == nil)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, endGrip, in: canvas))
+        let trim = NSPoint(x: endGrip.x + 0.4 * canvas.viewport.ptPerSecond, y: endGrip.y)
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, trim, in: canvas, flags: .option))
+        #expect(canvas.itemOverlay.preview?.readout == "Out +0:00.4 · 1.4 s")
+        #expect(canvas.itemOverlay.preview?.guide == nil)
+        canvas.keyDown(with: try timelineKey(53))
+    }
+
+    @Test func voiceOverCanMoveAnItemByWordAndExposesItsActions() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits")]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.selectTimelineItems([.effect("title")]); canvas.apply()
+        let title = try #require(canvas.itemAXElements[.effect("title")])
+        let label = try #require(title.accessibilityLabel())
+        #expect(label.hasPrefix("Title, Faster edits, ") && label.hasSuffix(", selected"))
+        #expect(title.accessibilityValue() is NSNumber)
+        #expect(Set(title.accessibilityCustomActions()?.map(\.name) ?? []).isSuperset(of: ["Move later a frame", "Trim start to playhead", "Split at playhead", "Duplicate", "Delete", "Open editor"]))
+        #expect(title.accessibilityPerformIncrement())
+        #expect(model.project.clipEffects.first?.start == 12)
+        #expect(title.accessibilityPerformDecrement())
+        #expect(model.project.clipEffects.first?.start == 11)
+    }
+
+    @Test func timelineNAndTheToolbarActionToggleTheSameStateAndFitRestoresTheViewport() throws {
+        let model = editor(try app(), project: try project())
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let fitted = canvas.viewport
+        canvas.zoom(by: 2)
+        #expect(canvas.viewport.ptPerSecond > fitted.ptPerSecond)
+        canvas.keyDown(with: try timelineKey(6, "Z", shift: true))
+        #expect(canvas.viewport == fitted)
+        let previous = model.timelineSnapping
+        canvas.keyDown(with: try timelineKey(45, "n"))
+        #expect(model.timelineSnapping != previous)
+        model.toggleTimelineSnapping()
+        #expect(model.timelineSnapping == previous)
+        #expect(model.timelineSnapHint == (previous ? "Snapping on (N)" : "Snapping off (N)"))
+    }
+
+    @Test func doubleClickOpensTheExistingEffectEditor() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits")]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let point = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas))
+        #expect(!model.timelineEffectsOpen)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas, clicks: 2))
+        #expect(model.timelineEffectsOpen && model.timelineEffectID == "title")
+        #expect(model.undoSteps == 0)
     }
 
     private func app() throws -> AppModel {
@@ -1083,9 +1201,10 @@ private actor TimelineTestSettings: SettingsStore {
         shell.layout.trackHeight = .medium
         canvas.setFrameSize(NSSize(width: 960, height: 155)) // 183 pt panel, including toolbar
         canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
-        #expect(canvas.captions.frame.minY >= canvas.trackClip.bounds.height)
+        canvas.verticalScroller.changed?(0)
+        #expect(canvas.captions.frame.maxY <= canvas.trackClip.bounds.height && canvas.audio.frame.minY >= canvas.trackClip.bounds.height)
         canvas.verticalScroller.changed?(1)
-        #expect(canvas.captions.frame.maxY <= canvas.trackClip.bounds.height)
+        #expect(canvas.music.frame.minY >= 0 && canvas.music.frame.maxY <= canvas.trackClip.bounds.height)
     }
 
     @Test(arguments: [CGFloat(1), 2], [NSAppearance.Name.aqua, .darkAqua]) func captionLaneFitsWholeWordsAndLeavesAOnePointSeam(backingScale: CGFloat, appearance: NSAppearance.Name) throws {
@@ -1692,8 +1811,7 @@ private actor TimelineTestSettings: SettingsStore {
         shell.layout.windowWidth = 1280
         let (canvas, window) = windowed(model, shell: shell)
         defer { canvas.tearDown(); window.close() }
-        #expect(canvas.headers.count == 6)
-        // E1 lists Ask Claude's effects; it has no add button (design.md §6.8).
+        #expect(canvas.headers.count == 8)
         #expect(canvas.header(.titles).accessibilityLabel() == "T1 Titles & effects" && canvas.header(.titles).button.isHidden)
         #expect(canvas.header(.music).accessibilityLabel() == "M1 Music")
         #expect(canvas.header(.music).button.accessibilityLabel() == "Choose background music" && canvas.header(.music).action != nil)

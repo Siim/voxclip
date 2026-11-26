@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, move, trim, split, duplicate and delete items directly in the eight timeline lanes, with snapping, keyboard controls and VoiceOver.
 - Claude Code, Codex and Ask Claude can trim, move and shape existing timeline items without spending; Claude does it all can shape the music it picks.
 - Windows previews and exports timeline fades, slipped sounds and music segments. B-roll plays at normal speed across cuts, and Undo restores its placement.
 - On Mac, preview and export play edited music and sounds with their fades and volume changes, B-roll stays at normal speed across cuts, and Final Cut Pro handoff keeps music segments and volume keyframes.

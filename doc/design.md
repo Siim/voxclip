@@ -731,7 +731,12 @@ There is no time readout and no "after cuts · source" label; the viewer bar own
 | Trim handles (clip scope) | 7×36 in `accent.text` at the clip edges, with invisible 24-wide hit regions. Dragging snaps to word boundaries and applies `updateClip` (one undo step, "Trim clip") |
 | Interaction | Click or drag anywhere on the 30 px track to scrub. ⇧-drag snaps to word starts. The hover tooltip names the word under the pointer ("cadence · 0:12.4"). Double-clicking a cut region restores it |
 
-No other zoom in v1. Full take always fits.
+**Direct editing on Mac.** From top to bottom: CC Captions (follow the words), T1 Titles & effects, B1 B-roll & pictures, FX Zoom, looks & speed, V1 Video (filmstrip and story parts), A1 Voice (waveform and cuts), S1 Sounds, and M1 Music. Overlapping connected items stack within their lane. Empty lanes keep their label and a hint. Large track height gives the audio lanes more room.
+
+- Click an item to select it; ⇧-click, ⌘-click, or drag a marquee from empty lane space to select several. Item selection replaces word selection. The inline item bar shows exact Start and Length, with Split, Duplicate, Delete and the item's editor. Double-click also opens that editor.
+- Drag the body to move; hold ⌥ at mouse-down to drag a copy. Drag either edge to trim. A resize cursor marks the edge and a live readout shows the change. On V1 drag a story part's edge to trim it by word, or drag the numbered band onto another part to reorder. Release to commit one named undo step; Esc cancels, and a drag under 3 pt does not edit.
+- The yellow guide snaps to words, the playhead and item edges within 8 pt. Press N or click Snapping to toggle it; hold ⌥ or N during a drag to suspend it. Bleeps and mutes always follow whole words. Refusals appear inline; they do not change the project or its undo history.
+- Use ⌘=, ⌘−, the zoom slider, or pinch to zoom. **Fit** (⇧Z) shows the entire open clip or full take.
 
 **Accessibility.**
 
@@ -2570,6 +2575,12 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Previous / next sentence | ⌥← / ⌥→ | Ctrl+← / → | |
 | Go to start / end | ⌘↑ / ⌘↓ (Home / End) | Ctrl+Home / Ctrl+End | |
 | Cut selection | ⌫ or ⌦ | Backspace or Delete | Restores if the whole selection is already cut |
+| Select item at playhead; next / previous item | Return; Tab / ⇧Tab | — | Timeline focus; Tab cycles when an item is selected |
+| Split item(s) / split all | B or ⌘B / ⇧⌘B | — | Split All includes speech |
+| Duplicate / delete item(s) | ⌘D / ⌫ or ⌦ | — | Timeline focus; does not edit words |
+| Nudge by frame / by word | , or . / ⇧, or ⇧. | — | Earlier / later; one undo per press |
+| Trim start / end to playhead | ⌥[ / ⌥] | — | One selected item |
+| Snapping / fit / cancel | N / ⇧Z / Esc | — | Esc cancels a drag before clearing item selection |
 | Restore selection | ⇧⌫ | Shift+Backspace | |
 | Correct word | Return, C, or double-click | Enter, C, or double-click | Esc cancels; Tab saves and moves on |
 | Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) | One step per command |
@@ -2801,6 +2812,8 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 ---
 
 ## 15. Accessibility
+
+- **Connected timeline items (Mac).** Each visible item has a VoiceOver element in its lane with kind, title, times and selection state. Increment and decrement move it by one word; the separate start and end controls trim one word at a time. Actions include frame nudges, trim to playhead, split, duplicate, delete and opening the item's editor. VoiceOver announces the result or the inline refusal.
 
 - **Screen readers.** The transcript is text (NSTextView / RichTextBlock), so VoiceOver and Narrator read it by word, line and paragraph. Each word's accessible description adds its state: "um, cut", "pause 1.4 seconds", "pause 1.6 seconds, cut", "cadence, playing", "it isn't a clip yet, AI modified". macOS: custom rotors (`accessibilityCustomRotors`) for Cuts, Pauses, Suggested fillers, Clips and AI words, plus Proposed changes while a Rewrite proposal is open (§6.3.5), and custom actions on the focused word (Cut, Restore, Correct, Play from here). Every command posts an announcement ("Cut 3 words", "Restored all cuts, corrections kept") via `NSAccessibility.post(element:notification: .announcementRequested, …)` or UIA `RaiseNotificationEvent`.
 - **Timeline** is a slider: "Playhead, 42 seconds of 2 minutes 15 after cuts, 12 cuts" in Edited, or "Playhead, 42 seconds of 3 minutes 10 source, 12 cuts" in Source. Times are spoken whole seconds ("42 seconds", "1 minute 05", "2 minutes 15"), never `m:ss.d`. Arrow keys step by word.
