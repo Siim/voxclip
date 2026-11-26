@@ -237,18 +237,25 @@ public static class MusicMix
             if (pieces.Count > 0) placements.Add(new(segment, new(offset, start, count), pieces));
         }
         var ordered = placements.OrderBy(placement => placement.Span.OutputStart).ToArray();
-        for (var index = 1; index < ordered.Length; index++)
-        {
-            var previous = ordered[index - 1];
-            var current = ordered[index];
-            var previousEnd = previous.Span.OutputStart + previous.Span.Count;
-            var overlap = Math.Min(crossfadeFrames, Math.Min(current.Span.Count, previousEnd - current.Span.OutputStart));
-            if (overlap <= 0) continue;
-            ordered[index - 1] = previous with { Span = previous.Span with
-                { Count = current.Span.OutputStart + overlap - previous.Span.OutputStart, FadeOut = overlap } };
-            ordered[index] = current with { Span = current.Span with { FadeIn = overlap } };
-        }
+        var spans = CrossfadeSpans(ordered.Select(placement => placement.Span).ToArray(), rate);
+        for (var index = 0; index < ordered.Length; index++) ordered[index] = ordered[index] with { Span = spans[index] };
         return ordered;
+    }
+
+    /// <summary>Hand off between start-ordered spans over at most two seconds using equal-power piece weights.</summary>
+    public static IReadOnlyList<LoopPiece> CrossfadeSpans(IReadOnlyList<LoopPiece> ordered, int rate)
+    {
+        var spans = ordered.ToArray();
+        for (var index = 1; index < spans.Length; index++)
+        {
+            var previous = spans[index - 1];
+            var current = spans[index];
+            var overlap = Math.Min(2L * rate, Math.Min(current.Count, previous.OutputStart + previous.Count - current.OutputStart));
+            if (overlap <= 0) continue;
+            spans[index - 1] = previous with { Count = current.OutputStart + overlap - previous.OutputStart, FadeOut = overlap };
+            spans[index] = current with { FadeIn = overlap };
+        }
+        return spans;
     }
 
     /// <summary>How a track of <paramref name="trackFrames"/> fills <paramref name="outputFrames"/> starting

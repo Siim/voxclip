@@ -327,6 +327,27 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void OverlappingSoundsHandOffWithAnEqualPowerCrossfade()
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-sound-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "sound.wav");
+            var pcm = Enumerable.Repeat((short)8192, Rate).ToArray();
+            File.WriteAllBytes(path, new VoiceLabWavePcm(Rate, 1, 16, false, System.Runtime.InteropServices.MemoryMarshal.AsBytes(pcm.AsSpan()).ToArray()).Bytes());
+            var first = new ClipEffect("first", null, "sound", .25, 1.25) { Sound = new("library", null, "sound.wav", 1) };
+            var second = first with { Id = "second", Start = .75, End = 1.75 };
+            var snapshot = Snapshot(new(null, new([second, first], new Dictionary<string, string> { [first.Id] = path, [second.Id] = path })));
+            using var reader = Reader(snapshot, amplitude: 0);
+            var samples = Left(reader);
+            Assert.Equal(.25, samples[Rate / 2], 5);
+            Assert.Equal(.25 * Math.Sqrt(2), samples[Rate], 5);
+            Assert.Equal(.25, samples[3 * Rate / 2], 5);
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
+    [Fact]
     public void TheEditedAudioOfAFasterClipStaysOneXAndCensoredWithoutATone()
     {
         var vector = Cases().GetProperty("effectsAtSpeed");
