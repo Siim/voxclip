@@ -36,7 +36,7 @@ private actor LaunchSettings: SettingsStore {
     @Test func aFreshWindowHasTheNotesSizes() {
         let shell = WorkspaceShell(app: AppModel())
         shell.windowWidth = 1280
-        #expect(shell.layout.explorerWidth == 224 && shell.rightWidth == 404 && shell.layout.timelineHeight == 346)
+        #expect(shell.layout.explorerWidth == 224 && shell.rightWidth == 404 && shell.layout.timelineHeight == 310)
         #expect(shell.layout.explorerVisible && shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
@@ -226,16 +226,13 @@ private actor LaunchSettings: SettingsStore {
         #expect(!shell.layout.explorerVisible && !shell.sidebarOverlay)
     }
 
-    /// impl-plan §3.5: the timeline starts at 242 (every track at M, M1 included) where a 16:9 viewer and the panel's
-    /// minimum body still fit above it, else down to 216, or 40% of a short work area; a dragged height is the user's
-    /// and is not clamped to it.
-    @Test func theTimelineStartsAt242OrFortyPercentOfTheWorkArea() {
+    @Test func theEightLaneTimelineStartsWithinFortyPercentOfTheWorkArea() {
         let app = AppModel()
         let layout = WorkspaceLayout(app: app)
         layout.workHeight = 776
-        #expect(layout.timelineHeight == 346)
-        #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 676, rightWidth: 404) == 221)
-        #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 576, rightWidth: 324) == 216)
+        #expect(layout.timelineHeight == 310)
+        #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 676, rightWidth: 404) == 270)
+        #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 576, rightWidth: 324) == 230)
         layout.workHeight = 456
         #expect(layout.timelineHeight == 182)
         layout.rememberTimelineHeight(260)

@@ -275,6 +275,22 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(model.focusedPane == .panel)
     }
 
+    @Test func doubleClickAnFXItemOpensItsExactMotionEditor() throws {
+        let model = try editor(); defer { model.close() }
+        let value = try draft(model, start: 12, end: 13)
+        #expect(model.applyMotionCue(value))
+        let canvas = TimelineCanvasView(model: model)
+        defer { canvas.tearDown() }
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .motion(value.id) })
+        let location = canvas.convert(NSPoint(x: fragment.rect.midX, y: fragment.rect.midY), to: nil)
+        let click = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [], timestamp: 0,
+            windowNumber: 0, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
+        let steps = model.undoSteps
+        canvas.mouseDown(with: click)
+        #expect(model.app.shell.panelJob(for: model) == .motion)
+        #expect(model.motionCueEditing?.draft.original?.id == value.id && model.undoSteps == steps)
+    }
+
     @Test func inlineDraftEditsApplyAsOneUndoStepAndCancelDoesNotUndoSavedWork() throws {
         let model = try editor(); defer { model.close() }
         let value = try draft(model)

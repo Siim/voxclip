@@ -84,7 +84,7 @@ enum SidebarItem: Hashable {
         return Self.fitted(app.number(Self.rightWidthKey, fallback: Self.rightColumnWidth(windowWidth: windowWidth, explorer: explorer)), windowWidth: windowWidth, explorer: explorer)
     }
     /// The timeline panel's height below its top edge: where the user last dragged that
-    /// edge, else 242 within 40% of the work area (impl-plan §3.5).
+    /// edge, else enough for the eight lanes within 40% of the work area.
     var timelineHeight: Double {
         // Maximized: everything but the columns' minimum and the 1 pt edge.
         if timelineMaximized { return (workHeight - Double(ShellMetrics.topMinimum) - 1).clamped(to: Self.timelineRange) }
@@ -98,7 +98,7 @@ enum SidebarItem: Hashable {
         timelineMaximized = false
         app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange)))
     }
-    /// V1, A1 and CC's height in the timeline (notes.md §6, impl-plan V9): the one the user
+    /// Lane height in the timeline (notes.md §6, impl-plan V9): the one the user
     /// last picked, kept for every project, else M.
     var trackHeight: TrackHeight {
         get { TrackHeight(rawValue: app.string(Self.trackHeightKey)) ?? .medium }

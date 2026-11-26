@@ -124,7 +124,8 @@ private actor TimelineTestSettings: SettingsStore {
         let label = try #require(title.accessibilityLabel())
         #expect(label.hasPrefix("Title, Faster edits, ") && label.hasSuffix(", selected"))
         #expect(title.accessibilityValue() is NSNumber)
-        #expect(Set(title.accessibilityCustomActions()?.map(\.name) ?? []).isSuperset(of: ["Move later a frame", "Trim start to playhead", "Split at playhead", "Duplicate", "Delete", "Open editor"]))
+        let actions = Set(title.accessibilityCustomActions()?.map(\.name) ?? [])
+        #expect(actions.isSuperset(of: ["Move later a frame", "Trim start to playhead", "Split at playhead", "Duplicate", "Delete", "Open editor"]))
         #expect(title.accessibilityPerformIncrement())
         #expect(model.project.clipEffects.first?.start == 12)
         #expect(title.accessibilityPerformDecrement())
@@ -161,6 +162,38 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas, clicks: 2))
         #expect(model.timelineEffectsOpen && model.timelineEffectID == "title")
         #expect(model.undoSteps == 0)
+    }
+
+    @Test func aV1PartBandReordersAndItsEdgeTrimsByWord() throws {
+        var fixture = try project()
+        fixture.edits.clips = [.init(id: "clip-1", startWordId: "t10", endWordId: "t29", parts: [
+            .init(id: "first", startWordId: "t10", endWordId: "t13"),
+            .init(id: "second", startWordId: "t25", endWordId: "t29")
+        ], kind: .story)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        func part(_ id: String) throws -> TimelineItemFragment {
+            try #require(canvas.itemFragments.first { $0.display.item.id == .part(id) })
+        }
+        func drag(_ start: NSPoint, _ end: NSPoint) throws {
+            canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+            undo.beginUndoGrouping()
+            canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+            undo.endUndoGrouping()
+        }
+        let first = try part("first").rect, second = try part("second").rect
+        try drag(.init(x: first.midX, y: first.midY), .init(x: second.midX, y: second.midY))
+        #expect(model.activeClip?.parts?.map(\.id) == ["second", "first"])
+        #expect(undo.undoActionName == "Move part")
+        undo.undo(); canvas.renderContent()
+        let edge = try part("second").rect
+        let start = NSPoint(x: edge.maxX - 1, y: edge.midY)
+        try drag(start, .init(x: start.x - canvas.viewport.ptPerSecond, y: start.y))
+        #expect(model.activeClip?.parts?.last?.endWordId == "t28")
+        #expect(undo.undoActionName == "Trim part 2")
     }
 
     private func app() throws -> AppModel {
