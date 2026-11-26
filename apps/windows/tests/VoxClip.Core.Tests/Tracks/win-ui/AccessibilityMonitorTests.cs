@@ -2,6 +2,7 @@
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
