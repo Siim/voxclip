@@ -6239,7 +6239,89 @@
      1.0
     ]
    ]
+  },
+  {
+   "sampleRate": 10,
+   "keepWhole": true,
+   "spans": [
+    {
+     "sourceStart": 0,
+     "outputStart": 0,
+     "count": 40,
+     "fadeIn": 0,
+     "fadeOut": 0
+    },
+    {
+     "sourceStart": 0,
+     "outputStart": 30,
+     "count": 30,
+     "fadeIn": 0,
+     "fadeOut": 0
+    },
+    {
+     "sourceStart": 0,
+     "outputStart": 45,
+     "count": 5,
+     "fadeIn": 0,
+     "fadeOut": 0
+    }
+   ],
+   "expected": [
+    {
+     "sourceStart": 0,
+     "outputStart": 0,
+     "count": 40,
+     "fadeIn": 0,
+     "fadeOut": 10
+    },
+    {
+     "sourceStart": 0,
+     "outputStart": 30,
+     "count": 30,
+     "fadeIn": 10,
+     "fadeOut": 0
+    },
+    {
+     "sourceStart": 0,
+     "outputStart": 45,
+     "count": 5,
+     "fadeIn": 0,
+     "fadeOut": 0
+    }
+   ],
+   "weightAt": [
+    [
+     0,
+     30,
+     39
+    ],
+    [
+     0,
+     9,
+     29
+    ],
+    [
+     0,
+     4
+    ]
+   ],
+   "weights": [
+    [
+     1.0,
+     0.996917334,
+     0.078459096
+    ],
+    [
+     0.078459096,
+     0.996917334,
+     1.0
+    ],
+    [
+     1.0,
+     1.0
+    ]
+   ]
   }
  ],
- "caseCount": 37
+ "caseCount": 38
 }

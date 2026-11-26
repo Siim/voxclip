@@ -233,7 +233,7 @@ internal static class EffectAudio
             sounds.Add(new(new(0, start, samples.Length / 2), samples, (float)Math.Pow(10, (effect.GainDb ?? 0) / 20)));
         }
         var ordered = sounds.OrderBy(sound => sound.Span.OutputStart).ToArray();
-        var spans = MusicMix.CrossfadeSpans(ordered.Select(sound => sound.Span).ToArray(), rate);
+        var spans = MusicMix.CrossfadeSpans(ordered.Select(sound => sound.Span).ToArray(), rate, keepWhole: true);
         for (var index = 0; index < ordered.Length; index++) ordered[index] = ordered[index] with { Span = spans[index] };
         return new(tones, ordered);
     }

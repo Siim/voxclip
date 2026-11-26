@@ -9059,7 +9059,7 @@ member VoxClip.Core.Domain.Music.MusicMix :: field public SilenceFloorDb
 member VoxClip.Core.Domain.Music.MusicMix :: method private ReplaceRuns(bool[],bool,int,bool,bool)
 member VoxClip.Core.Domain.Music.MusicMix :: method public BedGainDb(System.Nullable`1<double>,System.Nullable`1<double>,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public Crossfade(long,long)
-member VoxClip.Core.Domain.Music.MusicMix :: method public CrossfadeSpans(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,int)
+member VoxClip.Core.Domain.Music.MusicMix :: method public CrossfadeSpans(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,int,bool)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckFactor(System.Collections.Generic.IReadOnlyList`1<double>,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckingGainsDb(System.Collections.Generic.IReadOnlyList`1<bool>,bool)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckingGainsDb(System.Collections.Generic.IReadOnlyList`1<bool>,bool,double)

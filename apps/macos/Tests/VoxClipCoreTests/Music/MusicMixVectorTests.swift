@@ -28,7 +28,7 @@ struct MusicMixVectorTests {
         let cases = try Self.cases()
         #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "crossfadeSpans", "caseCount"])
         #expect(cases["format"]?.aiString == "voxclip-music-mix-cases/1")
-        #expect(cases["caseCount"]?.aiInt == 37)
+        #expect(cases["caseCount"]?.aiInt == 38)
         let constants = try #require(cases["constants"]?.aiObject)
         let expected: [String: Double] = [
             "frameSeconds": MusicMix.frameSeconds, "duckDb": MusicMix.duckDb, "attackSeconds": MusicMix.attackSeconds,
@@ -42,12 +42,13 @@ struct MusicMixVectorTests {
 
     @Test func crossfadeSpansAndWeightsReplay() throws {
         struct Vector: Decodable {
-            let sampleRate: Double, spans: [Piece], expected: [Piece], weightAt: [[Int]], weights: [[Double]]
+            let sampleRate: Double, spans: [Piece], expected: [Piece], weightAt: [[Int]], weights: [[Double]], keepWhole: Bool?
         }
         struct Fixture: Decodable { let crossfadeSpans: [Vector] }
         let fixture = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json"))
+        #expect(fixture.crossfadeSpans.contains { $0.keepWhole == true })
         for row in fixture.crossfadeSpans {
-            let spans = MusicMix.crossfadeSpans(row.spans.map(\.value), rate: row.sampleRate)
+            let spans = MusicMix.crossfadeSpans(row.spans.map(\.value), rate: row.sampleRate, keepingWhole: row.keepWhole ?? false)
             try #require(spans == row.expected.map(\.value))
             for (index, span) in spans.enumerated() {
                 for (frame, expected) in zip(row.weightAt[index], row.weights[index]) {

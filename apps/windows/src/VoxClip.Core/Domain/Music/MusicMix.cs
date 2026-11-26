@@ -242,8 +242,9 @@ public static class MusicMix
         return ordered;
     }
 
-    /// <summary>Hand off between start-ordered spans over at most two seconds using equal-power piece weights.</summary>
-    public static IReadOnlyList<LoopPiece> CrossfadeSpans(IReadOnlyList<LoopPiece> ordered, int rate)
+    /// <summary>Hand off between start-ordered spans over at most two seconds using equal-power piece weights. With
+    /// keepWhole (sounds), only an edge overlap that fits the hand-off crossfades, so no item loses samples.</summary>
+    public static IReadOnlyList<LoopPiece> CrossfadeSpans(IReadOnlyList<LoopPiece> ordered, int rate, bool keepWhole = false)
     {
         var spans = ordered.ToArray();
         for (var index = 1; index < spans.Length; index++)
@@ -251,7 +252,7 @@ public static class MusicMix
             var previous = spans[index - 1];
             var current = spans[index];
             var overlap = Math.Min(2L * rate, Math.Min(current.Count, previous.OutputStart + previous.Count - current.OutputStart));
-            if (overlap <= 0) continue;
+            if (overlap <= 0 || keepWhole && overlap != previous.OutputStart + previous.Count - current.OutputStart) continue;
             spans[index - 1] = previous with { Count = current.OutputStart + overlap - previous.OutputStart, FadeOut = overlap };
             spans[index] = current with { FadeIn = overlap };
         }

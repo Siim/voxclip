@@ -92,7 +92,8 @@ enum EffectAudio {
         }
         guard !tones.isEmpty || !sounds.isEmpty else { return nil }
         sounds.sort { $0.start < $1.start }
-        let spans = MusicMix.crossfadeSpans(sounds.map { .init(sourceStart: 0, outputStart: $0.start, count: $0.samples.count / 2) }, rate: rate)
+        let spans = MusicMix.crossfadeSpans(sounds.map { .init(sourceStart: 0, outputStart: $0.start, count: $0.samples.count / 2) }, rate: rate,
+                                            keepingWhole: true)
         try Task.checkCancellation()
         let directory = scratchRoot.appendingPathComponent("voxclip-effects-" + UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
