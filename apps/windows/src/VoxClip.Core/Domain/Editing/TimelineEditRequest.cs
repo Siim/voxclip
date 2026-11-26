@@ -29,7 +29,7 @@ public sealed class TimelineEditRequest
             {
                 "move" => ["toWord"], "trim" => ["edge", "toWord"], "split" or "splitAll" => ["atWord"],
                 "fade" => ["edge", "seconds"], "setGain" => ["db"], "setTrackGain" => ["track", "db"],
-                "dipGain" => ["fromSource", "toSource", "byDb"], "addGainPoint" => ["atWord", "db"],
+                "dipGain" => ["startWord", "endWord", "byDb"], "addGainPoint" => ["atWord", "db"],
                 "moveGainPoint" => ["fromSeconds", "toWord", "db"], "removeGainPoint" => ["atSeconds"],
                 "slip" => ["bySeconds"], "setLoop" => ["enabled"], "setDuck" => ["track", "db"],
                 "nudge" => fields.ContainsKey("words") && (!fields.ContainsKey("frames") ||
@@ -134,8 +134,8 @@ public sealed class TimelineEditRequest
                 Check(["track", "db"]);
                 return new TimelineEdit.SetTrackGain(Text("track"), Number("db"));
             case "dipGain":
-                Check(["item", "fromSource", "toSource", "byDb"]);
-                return new TimelineEdit.DipGain(Item(), Number("fromSource", unsigned: true), Number("toSource", unsigned: true), Number("byDb"));
+                Check(["item", "startWord", "endWord", "byDb"]);
+                return new TimelineEdit.DipGain(Item(), Anchor("startWord"), Anchor("endWord", end: true), Number("byDb"));
             case "addGainPoint":
                 Check(["item", "atWord", "db"]);
                 return new TimelineEdit.AddGainPoint(Item(), Anchor("atWord"), Number("db"));

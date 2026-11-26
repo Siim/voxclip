@@ -523,12 +523,12 @@
                 "type": "string",
                 "minLength": 1
               },
-              "fromSource": {
-                "type": "number",
+              "startWord": {
+                "type": "integer",
                 "minimum": 0
               },
-              "toSource": {
-                "type": "number",
+              "endWord": {
+                "type": "integer",
                 "minimum": 0
               },
               "byDb": {
@@ -538,8 +538,8 @@
             "required": [
               "op",
               "item",
-              "fromSource",
-              "toSource",
+              "startWord",
+              "endWord",
               "byDb"
             ]
           },
