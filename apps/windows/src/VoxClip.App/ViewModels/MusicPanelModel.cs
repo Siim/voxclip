@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Music;
@@ -178,8 +179,9 @@ public sealed class MusicPanelModel(EditorViewModel editor)
         if (editor.IsReadOnly || Current is not { } entry) return;
         var rounded = Math.Round(Math.Clamp(gainDb, -40, 0) * 2) / 2;
         if (rounded == entry.GainDb) return;
-        editor.SetMusic(entry with { GainDb = rounded }, entry.ClipId, "Change music volume");
-        Notify();
+        var session = new TimelineEditSession(editor, entry.ClipId);
+        if (session.Preview([new TimelineEdit.SetTrackGain(entry.Id, rounded)], "Change music volume") && session.Commit()) Notify();
+        else if (session.Reason is { } reason) editor.Notice = reason;
     }
 
     /// <summary>Dismisses the inline failure.</summary>

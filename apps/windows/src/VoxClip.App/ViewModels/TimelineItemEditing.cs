@@ -13,17 +13,9 @@ internal sealed record TimelineItemDetails(string Title, double Offset = 0, doub
     IReadOnlyList<GainPoint>? Points = null, ProjectMusic? Track = null)
 {
     internal double Level => Gain + TrackGain;
-    internal double Envelope(double time)
-    {
-        var points = Points ?? [];
-        if (points.Count == 0) return 0;
-        for (var index = 1; index < points.Count; index++)
-        {
-            var previous = points[index - 1]; var next = points[index];
-            if (time <= next.T) return previous.Db + (next.Db - previous.Db) * Math.Clamp((time - previous.T) / (next.T - previous.T), 0, 1);
-        }
-        return points[^1].Db;
-    }
+    internal double Envelope(double time) => MusicMix.EnvelopeDb(time, Points ?? []);
+    internal TimelineEdit SetGain(TimelineItemId item, double db) => Track is { Segments: null } track
+        ? new TimelineEdit.SetTrackGain(track.Id, db) : new TimelineEdit.SetGain(item, db - TrackGain);
 
     internal static TimelineItemDetails Read(Project project, string? scope, TimelineItem item)
     {
@@ -45,7 +37,7 @@ internal sealed record TimelineItemDetails(string Title, double Offset = 0, doub
     }
 }
 
-internal readonly record struct TimelineGestureEdit(IReadOnlyList<TimelineEdit> Edits, string Readout, double? Guide = null, string? Undo = null, string? Refusal = null);
+internal readonly record struct TimelineGestureEdit(IReadOnlyList<TimelineEdit> Edits, string Readout, double? Guide = null);
 
 internal static class TimelineItemEditing
 {
@@ -114,8 +106,10 @@ internal static class TimelineItemEditing
                 var media = item.Kind switch { "music" => "song", "sound" => "sound", _ => "recording" };
                 return new([new TimelineEdit.Slip(id, delta)], $"Slip {Delta(delta)} · {media} {Clock(details.Offset)} → {Clock(details.Offset + delta)}");
             case TimelineItemGesture.Volume:
-                var gain = Level(details.Gain + volumeDelta, item.Kind == "sound" ? -30 : -40, item.Kind == "sound" ? 6 : 12);
-                return new([new TimelineEdit.SetGain(id, gain)], Decibels(gain + details.TrackGain));
+                var gain = details.Track is { Segments: null }
+                    ? Level(details.Level + volumeDelta, -40, 0)
+                    : Level(details.Gain + volumeDelta, item.Kind == "sound" ? -30 : -40, item.Kind == "sound" ? 6 : 12) + details.TrackGain;
+                return new([details.SetGain(id, gain)], Decibels(gain));
             case TimelineItemGesture.Keyframe when keyframe is { } point:
                 var raw = Math.Clamp(destination, start, end);
                 var guide = snapping ? Snap(raw, false) : null;
@@ -123,20 +117,9 @@ internal static class TimelineItemEditing
                 return new([new TimelineEdit.MoveGainPoint(id, point.T, Source(Math.Clamp(guide ?? raw, start, end)), db)],
                     Decibels(details.Level + db), guide);
             case TimelineItemGesture.Dip when dipRange is { } range:
-                var ramp = Math.Min(.05, (range.End - range.Start) / 3);
                 var depth = Level(volumeDelta, -60, 0);
                 var readout = $"{Clock(range.Start)}–{Clock(range.End)} · {Decibels(depth)}";
-                if (ramp * plan.SampleRate < 2) return new([], readout, Refusal: "Select a longer range inside the item.");
-                if (depth == 0) return new([], readout);
-                var editedStart = item.EditedIntervals[0].Start;
-                double Local(double at) => (axis == TimelineAxis.Edited ? at : plan.MapTime(at)) - editedStart;
-                var removed = (details.Points ?? []).Where(point => point.T >= Local(range.Start) && point.T <= Local(range.End)).ToArray();
-                if ((details.Points?.Count ?? 0) - removed.Length + 4 > ItemShape.MaximumGainPoints)
-                    return new([], readout, Refusal: "An item can have up to 64 volume keyframes.");
-                double[] positions = [range.Start, range.Start + ramp, range.End - ramp, range.End];
-                return new([.. removed.Select(point => new TimelineEdit.RemoveGainPoint(id, point.T)), .. positions.Select((at, index) =>
-                    new TimelineEdit.AddGainPoint(id, Source(at), Level(details.Envelope(Local(at)) + (index is 1 or 2 ? depth : 0), -60, 12)))],
-                    readout, Undo: "Dip volume");
+                return new([new TimelineEdit.DipGain(id, Source(range.Start), Source(range.End), depth)], readout);
         }
 
         var trimming = gesture is TimelineItemGesture.Start or TimelineItemGesture.End;

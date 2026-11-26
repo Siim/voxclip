@@ -84,7 +84,7 @@ public sealed partial class TimelineView
                 Exact("Fade out", details.FadeOut, "s", editable, value => new TimelineEdit.Fade(id, TimelineEdge.End, value));
             }
             if (TimelineItemEditing.Audio(item))
-                Exact("Volume", details.Level, "dB", editable, value => new TimelineEdit.SetGain(id, value - details.TrackGain));
+                Exact("Volume", details.Level, "dB", editable, value => details.SetGain(id, value));
             if (TimelineItemEditing.CanSlip(item))
                 Exact(item.Kind switch { "music" => "Song from", "sound" => "Sound from", _ => "Recording from" }, details.Offset, "s", editable,
                     value => new TimelineEdit.Slip(id, value - details.Offset));

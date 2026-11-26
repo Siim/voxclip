@@ -170,11 +170,15 @@ public sealed class TimelineTests
         };
         TimelineGestureEdit Build(double change) => TimelineItemEditing.Build(gesture, item, details, [item.Id], layout, session.Plan,
             TimelineAxis.Source, model.Words, delta * change, -3 * change, 2.125, .08, false, details.Points![0], new(2.35, 2.65));
-        var early = Build(.5); session.Preview(early.Edits, early.Undo);
+        var early = Build(.5); session.Preview(early.Edits);
         var final = Build(1);
-        Assert.Null(final.Refusal);
         if (gesture == TimelineItemGesture.Slip) Assert.Equal("Slip +0:00.1 · sound 0:00.1 → 0:00.3", final.Readout);
-        Assert.True(session.Preview(final.Edits, final.Undo), session.Reason);
+        if (gesture == TimelineItemGesture.Dip)
+        {
+            Assert.IsType<TimelineEdit.DipGain>(Assert.Single(final.Edits));
+            Assert.Equal("0:02.4–0:02.7 · −3.0 dB", final.Readout);
+        }
+        Assert.True(session.Preview(final.Edits), session.Reason);
         Assert.Same(session.Baseline, model.Project);
         Assert.False(model.CanUndo);
         Assert.True(session.Commit(), session.Reason);

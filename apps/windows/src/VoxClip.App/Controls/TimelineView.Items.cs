@@ -377,9 +377,9 @@ public sealed partial class TimelineView
             var edit = TimelineItemEditing.Build(drag.Gesture, drag.Hit.Item, drag.Hit.Details, drag.Ids, layout, drag.Session.Plan,
                 ItemAxis, model.Words, delta, -dy * 46 / Math.Max(1, drag.Hit.Rect.Height - 10), ItemAt(position), 8 / scale,
                 snappingNow, drag.Point, audioBand);
-            drag.Session.Preview(edit.Edits, edit.Undo);
-            gestureReadout = edit.Refusal ?? drag.Session.Reason ?? edit.Readout;
-            itemGuide = edit.Refusal is null && drag.Session.Reason is null ? edit.Guide : null;
+            drag.Session.Preview(edit.Edits);
+            gestureReadout = drag.Session.Reason ?? edit.Readout;
+            itemGuide = drag.Session.Reason is null ? edit.Guide : null;
             itemFeedbackOrigin = position;
         }
         RedrawItems(); args.Handled = true; return true;
@@ -542,6 +542,11 @@ public sealed partial class TimelineView
             if (time < view.Start || time > view.End) ChangeWindow(new(time - view.Duration / 2, time + view.Duration / 2));
             return true;
         }
+        TimelineEdit Volume()
+        {
+            var details = TimelineItemDetails.Read(model.Project, model.Project.Edits.ActiveClipId, item);
+            return details.SetGain(item.Id, details.Level + (shortcut == TimelineShortcut.VolumeUp ? 1 : -1));
+        }
         TimelineEdit? edit = shortcut switch
         {
             TimelineShortcut.EarlierFrame => new TimelineEdit.Nudge(ids, TimelineNudge.Frames, -1),
@@ -552,8 +557,7 @@ public sealed partial class TimelineView
             TimelineShortcut.TrimEnd => new TimelineEdit.Trim(item.Id, TimelineEdge.End, model.SourceTime),
             TimelineShortcut.Duplicate => new TimelineEdit.Duplicate(ids),
             TimelineShortcut.Delete => selectedGainPoint is { } point ? new TimelineEdit.RemoveGainPoint(item.Id, point.T) : new TimelineEdit.Delete(ids),
-            TimelineShortcut.VolumeUp or TimelineShortcut.VolumeDown when TimelineItemEditing.Audio(item) => new TimelineEdit.SetGain(item.Id,
-                TimelineItemDetails.Read(model.Project, model.Project.Edits.ActiveClipId, item).Gain + (shortcut == TimelineShortcut.VolumeUp ? 1 : -1)),
+            TimelineShortcut.VolumeUp or TimelineShortcut.VolumeDown when TimelineItemEditing.Audio(item) => Volume(),
             _ => null
         };
         if (edit is null) return false;

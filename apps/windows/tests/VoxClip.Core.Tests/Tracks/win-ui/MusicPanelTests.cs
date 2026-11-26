@@ -132,6 +132,7 @@ public sealed class MusicPanelTests : IDisposable
         Assert.Equal("Sleep first.\n\nMusic: “Calm piano” by Someone, CC BY 4.0", MusicCredits.PostText("Sleep first.", editor.Music.Current));
         editor.Music.SetGain(-12.3);
         Assert.Equal((-12.5, "Change music volume"), (editor.Music.Current!.GainDb, editor.UndoActionName));
+        Assert.Equal(0, Assert.Single(editor.Music.Current.Segments!).GainDb);
         editor.Music.SetGain(-80);
         Assert.Equal(-40, editor.Music.Current!.GainDb);
         editor.Music.Remove();
