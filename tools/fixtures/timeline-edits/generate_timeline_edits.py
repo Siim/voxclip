@@ -204,7 +204,7 @@ def edit_vectors(project, templates, asset, track):
                gainDb=0, fadeInSeconds=track["fadeInSeconds"], fadeOutSeconds=track["fadeOutSeconds"])
     edit("bed", "setGain", dict(music=[dict(track, segments=[dict(bed, gainDb=-4)])]), "Change volume", edit_plan=plan((0.5, 8)),
          item=["music", track["id"]], db=-4)
-    edit("bed", "setTrackGain", dict(music=[dict(track, gainDb=-40, segments=[bed])]), "Change volume",
+    edit("bed", "setTrackGain", dict(music=[dict(track, gainDb=-40)]), "Change volume",
          edit_plan=plan((0.5, 8)), track=track["id"], db=-50)
     edit("bed", "setTrackGain", dict(schemaVersion=bases["bed"]["schemaVersion"]), "Change volume", label="bed/unchanged-track-gain",
          track=track["id"], db=track["gainDb"])

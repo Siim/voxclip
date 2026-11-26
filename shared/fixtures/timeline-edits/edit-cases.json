@@ -26740,19 +26740,7 @@
             "ducking": true,
             "fadeInSeconds": 0.5,
             "fadeOutSeconds": 1.5,
-            "startOffsetSeconds": 0,
-            "segments": [
-              {
-                "id": "music-main",
-                "anchorSeconds": 0.5,
-                "lengthSeconds": 7.5,
-                "songFromSeconds": 0,
-                "loop": true,
-                "gainDb": 0,
-                "fadeInSeconds": 0.5,
-                "fadeOutSeconds": 1.5
-              }
-            ]
+            "startOffsetSeconds": 0
           }
         ]
       },

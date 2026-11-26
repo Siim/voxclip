@@ -154,10 +154,8 @@ private struct TimelineReducer {
         case .setTrackGain(let track, let db):
             guard let index = project.music.firstIndex(where: { $0.id == track && $0.clipId == clock.scope }) else { throw Self.noItem }
             let gain = try level(db, range: ProjectMusic.gainRange)
-            if gain != project.music[index].gainDb {
-                try materialise(index)
-                project.music[index].gainDb = gain
-            }
+            // Track level only: a continuous bed stays a bed that follows the clip.
+            if gain != project.music[index].gainDb { project.music[index].gainDb = gain }
             return "Change volume"
         case .addGainPoint(let id, let source, let db):
             try gainPoint(id, removing: nil, adding: (source, db))

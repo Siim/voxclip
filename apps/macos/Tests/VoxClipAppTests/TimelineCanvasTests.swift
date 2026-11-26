@@ -137,16 +137,21 @@ private actor TimelineTestSettings: SettingsStore {
         undo.endUndoGrouping()
         #expect(model.timelineItemRefusal == nil)
         #expect(undo.undoActionName == name && model.undoSteps == 1)
-        let segment = try #require(model.currentMusic?.segments?.first)
-        switch gesture {
-        case .fade: #expect(segment.fadeInSeconds == 0.8)
-        case .volume: #expect(model.currentMusic?.gainDb == -17.5 && segment.gainDb == 0)
-        case .keyframe: #expect(segment.gainPoints == [.init(t: 1.5, db: 10)])
-        case .dip: #expect(segment.gainPoints?.map(\.db) == [0, -8, -8, 0])
-        case .gripSlip, .modifierSlip: #expect(segment.songFromSeconds == 44.5 && segment.anchorSeconds == 11)
-        case .loop:
-            #expect(abs(segment.lengthSeconds - 8) < 0.001)
-            #expect(canvas.content.musicGraphics.loops["music"]?.count == 1)
+        if gesture == .volume {
+            // Track level only: the bed stays one continuous bed that follows the clip.
+            #expect(model.currentMusic?.gainDb == -17.5 && model.currentMusic?.segments == nil)
+        } else {
+            let segment = try #require(model.currentMusic?.segments?.first)
+            switch gesture {
+            case .fade: #expect(segment.fadeInSeconds == 0.8)
+            case .volume: break
+            case .keyframe: #expect(segment.gainPoints == [.init(t: 1.5, db: 10)])
+            case .dip: #expect(segment.gainPoints?.map(\.db) == [0, -8, -8, 0])
+            case .gripSlip, .modifierSlip: #expect(segment.songFromSeconds == 44.5 && segment.anchorSeconds == 11)
+            case .loop:
+                #expect(abs(segment.lengthSeconds - 8) < 0.001)
+                #expect(canvas.content.musicGraphics.loops["music"]?.count == 1)
+            }
         }
         undo.undo()
         #expect(model.project.music == fixture.music)

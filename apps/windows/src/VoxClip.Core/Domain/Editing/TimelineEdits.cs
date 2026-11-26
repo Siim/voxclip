@@ -231,7 +231,8 @@ public static class TimelineEdits
                 {
                     var track = Project.Music.FirstOrDefault(track => track.Id == gain.Track && track.ClipId == clock.Scope) ?? throw new Refusal(NoItem);
                     var db = Level(gain.Db, -40, 0);
-                    if (db != track.GainDb) StoreTrack(Materialise(track) with { GainDb = db });
+                    // Track level only: a continuous bed stays a bed that follows the clip.
+                    if (db != track.GainDb) StoreTrack(track with { GainDb = db });
                     return "Change volume";
                 }
                 case TimelineEdit.DipGain dip:
