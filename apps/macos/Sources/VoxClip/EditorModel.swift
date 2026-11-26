@@ -674,6 +674,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var updateTask: Task<Void, Never>?
     @ObservationIgnored private var previewRevision: UInt64 = 0
+    var stagedTimelineDucking: (revision: Int, contour: TimelineDuckingContour)?
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
@@ -1834,10 +1835,14 @@ struct EditorRenderSnapshot {
             captionPages = request.captionLayout?.pages.map(\.page) ?? []
             if load { try await preview.load(request) } else { try await preview.update(request) }
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
+            stagedTimelineDucking = nativePreview?.musicDuckingGainsDb.map { gains in
+                (projectRevision, TimelineDuckingContour(gains: gains, timing: request.speedTiming))
+            }
             previewError = nil
         } catch is CancellationError {} catch {
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             preview.close(); isPlaying = false; previewStop = nil
+            stagedTimelineDucking = nil
             let message = await app.safeError(error, context: .preview)
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             previewError = message

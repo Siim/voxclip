@@ -110,6 +110,7 @@ struct TimelineContent: Equatable {
     var cues: [TimelineCue] = []
     var itemLayout: TimelineItemLayout?
     var items: [TimelineItemDisplay] = []
+    var musicGraphics = TimelineMusicGraphics()
     var clips: [TimelineOverviewClip] = []
     var story: StoryTimelineLayout?
     var partMarkers: [StoryTimelineLayout.Marker] = []
@@ -333,7 +334,8 @@ struct TimelineContent: Equatable {
         next.removed = axis == .source ? model.timelineRemovedRanges(next.pieces) : []
         next.words = next.waveform == nil ? model.timelineKeptWords : []
         next.cues = model.timelineCaptionCues(on: axis, removed: next.removed)
-        if itemLayoutRevision == revision, axis == content.axis, next.scope == content.scope {
+        let sameItems = itemLayoutRevision == revision && axis == content.axis && next.scope == content.scope
+        if sameItems {
             next.itemLayout = content.itemLayout
             next.items = content.items
         } else if let plan = model.itemEditPlan {
@@ -349,6 +351,15 @@ struct TimelineContent: Equatable {
                 return model.timelineItemDisplay(item, axis: axis, story: next.story, partRange: range)
             }
         } else { itemPlan = nil; itemLayoutRevision = nil }
+        let staged = model.stagedTimelineDucking
+        if let plan = itemPlan, let track = next.items.lazy.compactMap(\.audio?.music).first {
+            let contour = staged.flatMap { $0.revision == revision ? $0.contour : nil }
+            if sameItems && (contour == nil ? content.musicGraphics.usesFallback : content.musicGraphics.contour == contour) {
+                next.musicGraphics = content.musicGraphics
+            } else {
+                next.musicGraphics = model.timelineMusicGraphics(track: track, plan: plan, staged: contour)
+            }
+        }
         if axis == .source, let story = next.story { next.useStorySource(story) }
         video.setSource(model.timelineFilmstripSource)
         video.mediaName = model.timelineMediaName

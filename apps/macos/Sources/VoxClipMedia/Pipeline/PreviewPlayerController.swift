@@ -17,6 +17,9 @@ final class LeasedPlayerItem: AVPlayerItem {
     public let events: AsyncStream<PreviewEvent>
     public private(set) var isPlaying = false
     public private(set) var editedTime: Double = 0
+    public var musicDuckingGainsDb: [Double]? {
+        (player.currentItem as? LeasedPlayerItem)?.renderGraph.musicLease?.duckingGainsDb
+    }
     private let continuation: AsyncStream<PreviewEvent>.Continuation
     private var request: RenderRequest?
     private var observer: Any?

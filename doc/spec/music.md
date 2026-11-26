@@ -194,11 +194,13 @@ Choose **Music** in the header beneath the viewer to browse or change the curren
   automatic run counts the estimate against its cap when Eleven Music accepts the request, even if the returned
   audio cannot be imported.
 - No sheets or alerts; Add a file… uses the system file picker (listed in the pop-up inventory).
-- Picking a replacement keeps the current level, ducking and fades. Pick, Turn off and Volume go through the editor's
-  undoable replace and reload the preview.
+- Picking a replacement keeps the current level, ducking (including its depth), and fades. Pick, Turn off and Volume
+  go through the editor's undoable replace and reload the preview.
 
-The timeline's M1 lane, below FX, draws the track across the clip with ramps for its fades and "♪ title · −20 dB · dips
-under voice"; empty, it reads "Choose background music". The M1 header’s ♪ button opens Music.
+The timeline's M1 lane draws the whole-scope bed or each placed segment with its fades, volume line and ducking
+contour. The Volume slider changes the track level; each segment's line adds its own offset. The item bar's
+**Dips under voice** sets the depth; 0 dB turns ducking off. When M1 is empty, it reads "Choose background music".
+The M1 header’s ♪ button opens Music.
 
 ## 7. Tests
 

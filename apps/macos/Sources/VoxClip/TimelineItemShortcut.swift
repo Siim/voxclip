@@ -4,6 +4,7 @@ import VoxClipCore
 enum TimelineItemShortcut: Equatable {
     case split, splitAll, duplicate, delete, snap, fit, start, end, select, next, previous
     case nudge(Int, word: Bool)
+    case volume(Int), addKeyframe
 
     init?(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection([.shift, .command, .option, .control])
@@ -21,6 +22,9 @@ enum TimelineItemShortcut: Equatable {
         case (48, .shift): self = .previous
         case (43, []), (43, .shift): self = .nudge(-1, word: flags.contains(.shift))
         case (47, []), (47, .shift): self = .nudge(1, word: flags.contains(.shift))
+        case (24, .control): self = .volume(1)
+        case (27, .control): self = .volume(-1)
+        case (40, .option): self = .addKeyframe
         default: return nil
         }
     }
@@ -82,6 +86,14 @@ extension TimelineInteraction {
         case .start, .end:
             guard ids.count == 1, let id = ids.first else { return false }
             model.trimTimelineItemToPlayhead(id, edge: shortcut == .start ? .start : .end)
+        case .volume(let delta):
+            guard ids.count == 1, let item = connected.first(where: { $0.item.id == ids.first }), let audio = item.audio else { return false }
+            let db = (audio.gainDb + Double(delta)).clamped(to: audio.gainRange)
+            model.commitTimelineItemEdit(audio.setGain(item.item.id, db: db), announcement: "Volume \(timelineItemDecibels(db)).")
+        case .addKeyframe:
+            guard ids.count == 1, let item = connected.first(where: { $0.item.id == ids.first }),
+                  let command = model.timelineKeyframeAtPlayhead(item) else { return false }
+            model.commitTimelineItemEdit(command)
         }
         canvas.renderContent(keepingZoom: true)
         return true

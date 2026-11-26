@@ -55,6 +55,32 @@ extension EditorModel {
         commitTimelineItemEdit(.trim(item: id, edge: edge, toSource: timelineSourceTime(timelinePlayhead(on: timelineAxis), on: timelineAxis)))
     }
 
+    func timelineAddKeyframe(_ item: TimelineItemDisplay, source: Double, edited: Double) -> TimelineEdit? {
+        guard let audio = item.audio, let start = item.item.editedIntervals.first?.start else { return nil }
+        return .addGainPoint(item: item.item.id, atSource: source, db: MusicMix.envelopeDb(at: edited - start, points: audio.points))
+    }
+
+    func timelineKeyframeAtPlayhead(_ item: TimelineItemDisplay) -> TimelineEdit? {
+        let time = timelinePlayhead(on: timelineAxis)
+        let source = timelineSourceTime(time, on: timelineAxis)
+        let edited = timelineAxis == .edited ? time : timelinePlayhead(on: .edited)
+        return timelineAddKeyframe(item, source: source, edited: edited)
+    }
+
+    func timelineEditReason(_ command: TimelineEdit) -> String? {
+        guard capabilities.edit, let plan = itemEditPlan else { return "The timeline is not ready to edit." }
+        if case .failure(let refusal) = TimelineEdits.apply(command, project: project, plan: plan, scope: itemEditScope) {
+            return refusal.copy
+        }
+        return nil
+    }
+
+    func timelineFieldDisabledReason(_ item: TimelineItemDisplay) -> String? {
+        guard capabilities.writable, item.movable else { return "This item is read-only." }
+        guard capabilities.edit else { return "The timeline is not ready to edit." }
+        return item.item.hidden ? item.item.reason ?? "This item is hidden." : nil
+    }
+
     func timelineWordEdge(near time: Double, edge: TimelineEdge) -> Double? {
         words.lazy.map { edge == .start ? $0.start : $0.end }.min { abs($0 - time) < abs($1 - time) }
     }
@@ -89,29 +115,48 @@ extension EditorModel {
         }
     }
 
-    func timelineItemDisplay(_ item: TimelineItem, axis: TimelineAxis, story: StoryTimelineLayout?, partRange: Range<Double>? = nil) -> TimelineItemDisplay {
+    func timelineItemDisplay(_ item: TimelineItem, axis: TimelineAxis, story: StoryTimelineLayout?, partRange: Range<Double>? = nil,
+                             preview: Project? = nil) -> TimelineItemDisplay {
+        let project = preview ?? self.project
         let kind: String
         let title: String?
-        var pictureFades: TimelinePictureFades?
+        var fades: TimelineItemFades?
         var recordingStart: Double?
+        var audio: TimelineAudioItem?
         switch item.id {
         case .effect(let id):
             let effect = project.clipEffects.first { $0.id == id }
             kind = Self.itemKind(item.kind)
             title = effect?.text ?? effect?.sound?.title
-            if let effect, item.lane != .sounds, effect.kind != .speedForPart, effect.kind != .freeze {
-                pictureFades = .init(fadeIn: effect.fadeInSeconds ?? 0, fadeOut: effect.fadeOutSeconds ?? 0, maximum: 5)
+            if let effect, (item.lane != .sounds || effect.kind == .sound), effect.kind != .speedForPart, effect.kind != .freeze {
+                fades = .init(fadeIn: effect.fadeInSeconds ?? 0, fadeOut: effect.fadeOutSeconds ?? 0, maximum: 5)
+            }
+            if let effect, let sound = effect.sound, effect.kind == .sound {
+                audio = .init(gainDb: effect.gainDb ?? 0, gainRange: ClipEffect.gainRange, points: effect.gainPoints ?? [],
+                              length: effect.end - effect.start, mediaStart: effect.mediaOffsetSeconds ?? 0, mediaDuration: sound.durationSeconds)
             }
         case .footage(let id):
             kind = Self.itemKind(item.kind); title = nil
             if let footage = project.media.footage.first(where: { $0.id == id }) {
-                pictureFades = .init(fadeIn: footage.fadeInSeconds ?? 0, fadeOut: footage.fadeOutSeconds ?? 0, maximum: 2)
+                fades = .init(fadeIn: footage.fadeInSeconds ?? 0, fadeOut: footage.fadeOutSeconds ?? 0, maximum: 2)
                 if footage.kind != .screenshot { recordingStart = footage.footage.start }
             }
         case .motion:
             kind = "Zoom"; title = "Pan & Zoom"
-        case .music:
-            kind = "Music"; title = project.music.first { $0.clipId == itemEditScope }?.title
+        case .music(let id):
+            kind = "Music"
+            let track = project.music.first { $0.clipId == itemEditScope }
+            title = track?.title
+            if let track {
+                let segment = track.segments?.first { $0.id == id }
+                fades = .init(fadeIn: segment?.fadeInSeconds ?? track.fadeInSeconds,
+                              fadeOut: segment?.fadeOutSeconds ?? track.fadeOutSeconds, maximum: 10)
+                let length = segment?.lengthSeconds ?? item.editedIntervals.reduce(0) { $0 + $1.end - $1.start }
+                audio = .init(gainDb: track.gainDb + (segment?.gainDb ?? 0),
+                              gainRange: segment == nil ? ProjectMusic.gainRange : (track.gainDb - 40)...(track.gainDb + 12),
+                              points: segment?.gainPoints ?? [], length: length, mediaStart: segment?.songFromSeconds ?? track.startOffsetSeconds,
+                              mediaDuration: track.asset.durationSeconds, music: track, loop: segment?.loop ?? true)
+            }
         case .part(let id):
             kind = "Part"
             title = activeClip?.parts?.firstIndex { $0.id == id }.map { "Part \($0 + 1)" }
@@ -130,7 +175,7 @@ extension EditorModel {
         }
         let marker = item.marker.map { axis == .source ? story?.time(forSource: $0) ?? $0 : $0 }
         return .init(item: item, title: title ?? kind, kind: kind, ranges: ranges, marker: marker,
-                     pictureFades: pictureFades, recordingStart: recordingStart)
+                     fades: fades, recordingStart: recordingStart, audio: audio)
     }
 
     private static func itemKind(_ kind: String) -> String {

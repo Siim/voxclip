@@ -30,37 +30,40 @@ import VoxClipCore
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 Text(item.title).fontWeight(.semibold).lineLimit(1)
+                let disabledReason = model.timelineFieldDisabledReason(item)
                 if let span = model.timelineItemSpan(item.item.id) {
                     let start = item.ranges.first?.start ?? item.marker ?? span.lowerBound
                     let length = item.ranges.last.map { $0.end - start } ?? span.upperBound - span.lowerBound
-                    TimelineExactField(label: "Start", value: start, writable: item.movable && item.item.lane != .video && model.capabilities.edit) { time in
+                    let startReason = disabledReason ?? (item.item.lane == .video ? "Drag a story part to reorder it." : nil)
+                    TimelineExactField(label: "Start", value: start, disabledReason: startReason) { time in
                         guard let canvas = zoom.canvas else { return false }
                         return commit(.move(items: [item.item.id], toAnchor: canvas.itemSourceTime(time)))
                     }
+                    if let startReason, disabledReason == nil { Text(startReason).foregroundStyle(.secondary) }
                     if let word = model.word(at: span.lowerBound, nearest: true) {
                         Text("on “\(model.text(word))”").foregroundStyle(.secondary).lineLimit(1)
                     }
-                    TimelineExactField(label: "Length", value: length, writable: item.movable && model.capabilities.edit) { length in
+                    TimelineExactField(label: "Length", value: length, disabledReason: disabledReason) { length in
                         guard let canvas = zoom.canvas else { return false }
                         return commit(.trim(item: item.item.id, edge: .end, toSource: canvas.itemSourceTime(start + length)))
                     }
                 }
-                if let reason = item.item.reason { Text(reason).foregroundStyle(.secondary) }
-                if let fades = item.pictureFades {
-                    TimelineExactField(label: "Fade in", value: fades.fadeIn, writable: model.capabilities.edit) { value in
+                if let reason = disabledReason ?? item.item.reason { Text(reason).foregroundStyle(.secondary) }
+                if let fades = item.fades {
+                    TimelineExactField(label: "Fade in", value: fades.fadeIn, disabledReason: disabledReason) { value in
                         commit(.fade(item: item.item.id, edge: .start, seconds: value))
                     }
-                    TimelineExactField(label: "Fade out", value: fades.fadeOut, writable: model.capabilities.edit) { value in
+                    TimelineExactField(label: "Fade out", value: fades.fadeOut, disabledReason: disabledReason) { value in
                         commit(.fade(item: item.item.id, edge: .end, seconds: value))
                     }
                 }
                 if let from = item.recordingStart {
-                    TimelineExactField(label: "Recording from", value: from, writable: model.capabilities.edit) { value in
+                    TimelineExactField(label: "Recording from", value: from, disabledReason: disabledReason) { value in
                         commit(.slip(item: item.item.id, bySeconds: value - from))
                     }
                 }
-                if case .music(let id) = item.item.id, let track = model.currentMusic {
-                    musicDetails(track, id: id)
+                if let audio = item.audio {
+                    audioDetails(audio, item: item, disabledReason: disabledReason)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
@@ -69,22 +72,24 @@ import VoxClipCore
         .scrollIndicators(.hidden)
     }
 
-    private func musicDetails(_ track: ProjectMusic, id: String) -> some View {
-        let segment = track.segments?.first { $0.id == id }
-        let from = segment?.songFromSeconds ?? track.startOffsetSeconds
-        let fadeIn = segment?.fadeInSeconds ?? track.fadeInSeconds
-        let fadeOut = segment?.fadeOutSeconds ?? track.fadeOutSeconds
-        let gain = track.gainDb + (segment?.gainDb ?? 0)
-        let duck = track.duckDb ?? (track.ducking ? -12 : 0)
-        return Group {
-            Text("Song from \(timelineItemTime(from))")
-            Text("Fade in \(fadeIn, specifier: "%.1f") s")
-            Text("Fade out \(fadeOut, specifier: "%.1f") s")
-            Text("Volume \(gain, specifier: "%.1f") dB")
-            Text("Dips under voice \(duck, specifier: "%.1f") dB")
-            if segment?.loop ?? true { Text("Loop") }
+    @ViewBuilder private func audioDetails(_ audio: TimelineAudioItem, item: TimelineItemDisplay, disabledReason: String?) -> some View {
+        let id = item.item.id
+        TimelineExactField(label: "Volume", value: audio.gainDb, disabledReason: disabledReason, unit: "dB") { value in
+            commit(audio.setGain(id, db: value))
         }
-        .foregroundStyle(.secondary)
+        TimelineExactField(label: audio.offsetLabel, value: audio.mediaStart, disabledReason: disabledReason) { value in
+            commit(.slip(item: id, bySeconds: value - audio.mediaStart))
+        }
+        if let track = audio.music {
+            TimelineExactField(label: "Dips under voice", value: audio.duckDb, disabledReason: disabledReason, unit: "dB") { value in
+                commit(.setDuck(track: track.id, db: value))
+            }
+            let reason = disabledReason ?? model.timelineEditReason(.setLoop(item: id, !audio.loop))
+            Toggle("Loop", isOn: Binding(get: { audio.loop }, set: { value in _ = commit(.setLoop(item: id, value)) }))
+                .disabled(reason != nil).help(reason ?? "Loop the song when it ends.")
+                .accessibilityHint(reason ?? "Loop the song when it ends.")
+            if let reason, disabledReason == nil { Text(reason).foregroundStyle(.secondary) }
+        }
     }
 
     private func actions(_ items: [TimelineItemDisplay]) -> some View {
@@ -103,6 +108,13 @@ import VoxClipCore
                 }.disabled(blocked || speechSelected || splitReason != nil).help("Split at playhead (B)")
                 Button("Duplicate") { _ = commit(.duplicate(items: ids, toAnchor: nil)) }
                     .disabled(blocked || speechSelected).help("Duplicate item (⌘D)")
+                if let single {
+                    let keyframe = model.timelineKeyframeAtPlayhead(single)
+                    let reason = model.timelineFieldDisabledReason(single) ?? (keyframe.map { model.timelineEditReason($0) } ?? "Choose a sound or music item.")
+                    Button("Add keyframe") { if let keyframe { _ = commit(keyframe) } }
+                        .disabled(reason != nil).help(reason ?? "Add volume keyframe at playhead (⌥K)")
+                    if let reason, single.audio != nil { Text(reason).foregroundStyle(.secondary) }
+                }
                 Button("Delete") {
                     if commit(.delete(items: ids)) { model.selectTimelineItems([]) }
                 }.disabled(blocked || speechSelected).help("Delete item (⌫)")
@@ -114,10 +126,13 @@ import VoxClipCore
                         }.disabled(!model.capabilities.edit)
                     }
                     switch single.item.id {
-                    case .effect, .motion, .footage, .music:
-                        Button(single.item.lane == .music ? "Music…" : "Open Editor") { zoom.canvas?.openItem(single.item.id) }
+                    case .effect, .motion, .footage:
+                        Button("Open Editor") { zoom.canvas?.openItem(single.item.id) }
                     default: EmptyView()
                     }
+                    let musicSelected = single.item.lane == .music
+                    Button("Music…") { zoom.canvas?.openItem(single.item.id) }
+                        .disabled(!musicSelected).help(musicSelected ? "Open Music" : "Choose a music item.")
                 }
                 if let disabledReason { Text(disabledReason).foregroundStyle(.secondary) }
             }
@@ -137,7 +152,8 @@ import VoxClipCore
 @MainActor private struct TimelineExactField: View {
     let label: String
     let value: Double
-    let writable: Bool
+    let disabledReason: String?
+    var unit = "s"
     let commit: (Double) -> Bool
     @State private var draft = ""
     @FocusState private var focused: Bool
@@ -149,21 +165,24 @@ import VoxClipCore
             Text(label).foregroundStyle(.secondary)
             TextField(label, text: $draft)
                 .labelsHidden().monospacedDigit().frame(width: 65).controlSize(.small)
-                .accessibilityLabel("\(label) in seconds")
-                .disabled(!writable)
+                .accessibilityLabel("\(label) in \(unit == "dB" ? "decibels" : "seconds")")
+                .disabled(disabledReason != nil)
+                .help(disabledReason ?? "")
+                .accessibilityHint(disabledReason ?? "")
                 .focused($focused)
                 .onAppear { draft = formatted }
                 .onChange(of: value) { if !focused { draft = formatted } }
                 .onChange(of: focused) { if !focused { submit() } }
                 .onSubmit { submit(); focused = false }
                 .onExitCommand { draft = formatted; focused = false }
-            Text("s").foregroundStyle(.secondary)
+            Text(unit).foregroundStyle(.secondary)
         }
     }
 
     private func submit() {
+        guard disabledReason == nil else { draft = formatted; return }
         guard draft != formatted else { return }
-        if let value = Double(draft), value.isFinite, value >= 0 { _ = commit(value) }
+        if let value = Double(draft.replacingOccurrences(of: "−", with: "-")), value.isFinite, unit == "dB" || value >= 0 { _ = commit(value) }
         draft = formatted
     }
 }
