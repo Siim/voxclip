@@ -1084,11 +1084,11 @@ member VoxClip.App.Controls.TimelineView :: field private cueBackgrounds
 member VoxClip.App.Controls.TimelineView :: field private cueBlocks
 member VoxClip.App.Controls.TimelineView :: field private cueCuts
 member VoxClip.App.Controls.TimelineView :: field private disposed
-member VoxClip.App.Controls.TimelineView :: field private duckContour
 member VoxClip.App.Controls.TimelineView :: field private edited
 member VoxClip.App.Controls.TimelineView :: field private elapsed
 member VoxClip.App.Controls.TimelineView :: field private endHandle
 member VoxClip.App.Controls.TimelineView :: field private envelope
+member VoxClip.App.Controls.TimelineView :: field private fallbackDucking
 member VoxClip.App.Controls.TimelineView :: field private filmstrip
 member VoxClip.App.Controls.TimelineView :: field private filmstripRequest
 member VoxClip.App.Controls.TimelineView :: field private frame
@@ -1194,6 +1194,9 @@ member VoxClip.App.Controls.TimelineView :: field private soundFiles
 member VoxClip.App.Controls.TimelineView :: field private sourceClock
 member VoxClip.App.Controls.TimelineView :: field private sourceElapsed
 member VoxClip.App.Controls.TimelineView :: field private sourceFrames
+member VoxClip.App.Controls.TimelineView :: field private stagedDucking
+member VoxClip.App.Controls.TimelineView :: field private stagedDuckingProject
+member VoxClip.App.Controls.TimelineView :: field private stagedDuckingTiming
 member VoxClip.App.Controls.TimelineView :: field private startHandle
 member VoxClip.App.Controls.TimelineView :: field private stateMessage
 member VoxClip.App.Controls.TimelineView :: field private story
@@ -1235,6 +1238,7 @@ member VoxClip.App.Controls.TimelineView :: field private viewportTransform
 member VoxClip.App.Controls.TimelineView :: field private waveformRequest
 member VoxClip.App.Controls.TimelineView :: field private waveformUnavailable
 member VoxClip.App.Controls.TimelineView :: field private zoom
+member VoxClip.App.Controls.TimelineView :: method internal SetStagedDucking(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Core.Domain.Clips.ClipSpeedTiming)
 member VoxClip.App.Controls.TimelineView :: method internal SetTransport(string,string,bool)
 member VoxClip.App.Controls.TimelineView :: method internal SetWaveform(System.Collections.Generic.IReadOnlyList`1<float>)
 member VoxClip.App.Controls.TimelineView :: method internal ZoomItems(VoxClip.App.ViewModels.TimelineShortcut)
@@ -2075,6 +2079,7 @@ member VoxClip.App.Pages.EditorPage :: field private preview
 member VoxClip.App.Pages.EditorPage :: field private previewChanges
 member VoxClip.App.Pages.EditorPage :: field private previewClipId
 member VoxClip.App.Pages.EditorPage :: field private previewDuration
+member VoxClip.App.Pages.EditorPage :: field private previewProject
 member VoxClip.App.Pages.EditorPage :: field private previewSpeed
 member VoxClip.App.Pages.EditorPage :: field private previewStage
 member VoxClip.App.Pages.EditorPage :: field private previewStop
@@ -8007,8 +8012,8 @@ member VoxClip.App.ViewModels.TimelineFrame :: method private set_Translation(do
 member VoxClip.App.ViewModels.TimelineFrame :: method private set_TrimEnabled(bool)
 member VoxClip.App.ViewModels.TimelineFrame :: method public .ctor()
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method private PrintMembers(System.Text.StringBuilder)
-member VoxClip.App.ViewModels.TimelineGestureEdit :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>,string,System.Nullable`1<double>,string,string)
-member VoxClip.App.ViewModels.TimelineGestureEdit :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>&,string&,System.Nullable`1<double>&,string&,string&)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>,string,System.Nullable`1<double>)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>&,string&,System.Nullable`1<double>&)
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public Equals(VoxClip.App.ViewModels.TimelineGestureEdit)
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public Equals(object)
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public GetHashCode()
@@ -8016,15 +8021,11 @@ member VoxClip.App.ViewModels.TimelineGestureEdit :: method public ToString()
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Edits()
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Guide()
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Readout()
-member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Refusal()
-member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Undo()
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public op_Equality(VoxClip.App.ViewModels.TimelineGestureEdit,VoxClip.App.ViewModels.TimelineGestureEdit)
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public op_Inequality(VoxClip.App.ViewModels.TimelineGestureEdit,VoxClip.App.ViewModels.TimelineGestureEdit)
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Edits(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>)
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Guide(System.Nullable`1<double>)
 member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Readout(string)
-member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Refusal(string)
-member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Undo(string)
 member VoxClip.App.ViewModels.TimelineIntervalIndex :: field private root
 member VoxClip.App.ViewModels.TimelineIntervalIndex :: method internal .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.App.ViewModels.TimelineIntervalIndex :: method internal Query(double,double,System.Action`1<VoxClip.Core.Domain.Shared.TimedWord>)
@@ -8056,6 +8057,7 @@ member VoxClip.App.ViewModels.TimelineIntervalIndex+Node :: method public set_Ri
 member VoxClip.App.ViewModels.TimelineIntervalIndex+Node :: method public set_Starts(VoxClip.Core.Domain.Shared.TimedWord[])
 member VoxClip.App.ViewModels.TimelineItemDetails :: method internal Envelope(double)
 member VoxClip.App.ViewModels.TimelineItemDetails :: method internal Read(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method internal SetGain(VoxClip.Core.Domain.Editing.TimelineItemId,double)
 member VoxClip.App.ViewModels.TimelineItemDetails :: method internal get_Level()
 member VoxClip.App.ViewModels.TimelineItemDetails :: method private .ctor(VoxClip.App.ViewModels.TimelineItemDetails)
 member VoxClip.App.ViewModels.TimelineItemDetails :: method private PrintMembers(System.Text.StringBuilder)
@@ -8097,6 +8099,7 @@ member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Clock(doubl
 member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Connected(VoxClip.Core.Domain.Editing.TimelineItem)
 member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Decibels(double)
 member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Delta(double)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal DuckingDbAt(double,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Core.Domain.Clips.ClipSpeedTiming,System.Collections.Generic.IReadOnlyList`1<double>)
 member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Editable(VoxClip.Core.Domain.Editing.TimelineItem)
 member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Label(VoxClip.Core.Domain.Editing.TimelineItem,VoxClip.App.ViewModels.TimelineItemDetails,double,double,bool)
 member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Length(VoxClip.Core.Domain.Editing.TimelineItem)
