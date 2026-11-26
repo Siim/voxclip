@@ -211,8 +211,8 @@
     {
       "kind": "timelineEdit",
       "group": "Timeline",
-      "fields": "edits: [{op, item or items, toWord, atWord, edge, seconds, db, frames, words, fromSeconds, atSeconds, bySeconds, enabled, track}]",
-      "use": "Edit existing timeline items by the IDs listed under Current. Use move/duplicate (toWord), nudge (signed frames or words), trim (start/end and toWord), split/splitAll (atWord), fade (in/out and seconds), setGain (db), addGainPoint (atWord and db), moveGainPoint (fromSeconds, toWord and db), removeGainPoint (atSeconds), slip (signed bySeconds), setLoop (enabled), setDuck (track and db), or delete. Supply only applicable fields; if required by the response format, use an empty string or array, false, or zero for unused fields, and -1 for an omitted duplicate toWord. These edits never spend."
+      "fields": "edits: [{op, item or items, toWord, atWord, edge, seconds, db, frames, words, fromSeconds, atSeconds, bySeconds, enabled, track, fromSource, toSource, byDb}]",
+      "use": "Edit existing timeline items by the IDs listed under Current. Use move/duplicate (toWord), nudge (signed frames or words), trim (start/end and toWord), split/splitAll (atWord), fade (in/out and seconds), setGain (db), setTrackGain (track and db), dipGain (fromSource and toSource in take seconds, negative byDb), addGainPoint (atWord and db), moveGainPoint (fromSeconds, toWord and db), removeGainPoint (atSeconds), slip (signed bySeconds), setLoop (enabled), setDuck (track and db), or delete. Supply only applicable fields; if required by the response format, use an empty string or array, false, or zero for unused fields, and -1 for an omitted duplicate toWord. These edits never spend."
     },
     {
       "kind": "duck",
@@ -319,6 +319,9 @@
                     "edge": {"type": "string"},
                     "seconds": {"type": "number"},
                     "db": {"type": "number"},
+                    "fromSource": {"type": "number"},
+                    "toSource": {"type": "number"},
+                    "byDb": {"type": "number"},
                     "frames": {"type": "integer"},
                     "words": {"type": "integer"},
                     "fromSeconds": {"type": "number"},

@@ -189,8 +189,15 @@ public static class MusicMix
         if (seconds < 0 || seconds >= length) return 0;
         var fade = FadeFactor(seconds, length, shape.FadeInSeconds ?? 0, shape.FadeOutSeconds ?? 0);
         if (fade == 0 || shape.GainPoints is not { Count: > 0 } points) return fade;
-        if (seconds <= points[0].T) return fade * Math.Pow(10, points[0].Db / 20);
-        if (seconds >= points[^1].T) return fade * Math.Pow(10, points[^1].Db / 20);
+        return fade * Math.Pow(10, EnvelopeDb(seconds, points) / 20);
+    }
+
+    /// <summary>Interpolate item-local gain in dB, holding the endpoints outside the keyed range.</summary>
+    public static double EnvelopeDb(double seconds, IReadOnlyList<GainPoint> points)
+    {
+        if (points.Count == 0) return 0;
+        if (seconds <= points[0].T) return points[0].Db;
+        if (seconds >= points[^1].T) return points[^1].Db;
         var lower = 0;
         var upper = points.Count - 1;
         while (upper - lower > 1)
@@ -201,8 +208,7 @@ public static class MusicMix
         }
         var first = points[lower];
         var second = points[upper];
-        var db = first.Db + (second.Db - first.Db) * (seconds - first.T) / (second.T - first.T);
-        return fade * Math.Pow(10, db / 20);
+        return first.Db + (second.Db - first.Db) * ((seconds - first.T) / (second.T - first.T));
     }
 
     /// <summary>One stretch of the source track placed in the bed. Neighbours overlap by FadeIn/FadeOut frames.</summary>

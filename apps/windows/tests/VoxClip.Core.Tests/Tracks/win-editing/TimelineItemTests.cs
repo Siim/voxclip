@@ -155,6 +155,8 @@ public sealed class TimelineItemTests
             "splitAll" => new TimelineEdit.SplitAll(source),
             "fade" => new TimelineEdit.Fade(Item(), edge, Number(row, "seconds")),
             "setGain" => new TimelineEdit.SetGain(Item(), db),
+            "setTrackGain" => new TimelineEdit.SetTrackGain(Text(row, "track"), db),
+            "dipGain" => new TimelineEdit.DipGain(Item(), Number(row, "fromSource"), Number(row, "toSource"), Number(row, "byDb")),
             "addGainPoint" => new TimelineEdit.AddGainPoint(Item(), source, db),
             "moveGainPoint" => new TimelineEdit.MoveGainPoint(Item(), old, source, db),
             "removeGainPoint" => new TimelineEdit.RemoveGainPoint(Item(), old),

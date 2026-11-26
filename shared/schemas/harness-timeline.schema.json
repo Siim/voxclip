@@ -496,6 +496,58 @@
             "additionalProperties": false,
             "properties": {
               "op": {
+                "const": "setTrackGain"
+              },
+              "track": {
+                "type": "string",
+                "minLength": 1
+              },
+              "db": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "track",
+              "db"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "dipGain"
+              },
+              "item": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fromSource": {
+                "type": "number",
+                "minimum": 0
+              },
+              "toSource": {
+                "type": "number",
+                "minimum": 0
+              },
+              "byDb": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "op",
+              "item",
+              "fromSource",
+              "toSource",
+              "byDb"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
                 "const": "addGainPoint"
               },
               "item": {

@@ -155,6 +155,8 @@ import Testing
         case "splitAll": return .splitAll(atSource: source)
         case "fade": return try .fade(item: item(), edge: edge, seconds: row["seconds"].number)
         case "setGain": return try .setGain(item: item(), db: db)
+        case "setTrackGain": return .setTrackGain(track: row["track"].string, db: db)
+        case "dipGain": return try .dipGain(item: item(), fromSource: row["fromSource"].number, toSource: row["toSource"].number, byDb: row["byDb"].number)
         case "addGainPoint": return try .addGainPoint(item: item(), atSource: source, db: db)
         case "moveGainPoint": return try .moveGainPoint(item: item(), from: old, toSource: source, db: db)
         case "removeGainPoint": return try .removeGainPoint(item: item(), at: old)

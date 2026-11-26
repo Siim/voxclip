@@ -32,6 +32,17 @@ def proposal_validator():
 
 
 class ProposalSchema(unittest.TestCase):
+    def test_timeline_volume_edits(self):
+        validator = proposal_validator()
+        edits = [dict(op="setTrackGain", track="music-main", db=-12),
+                 dict(op="dipGain", item="sound", fromSource=2.125, toSource=2.875, byDb=-6)]
+        envelope = dict(id="83a63352-80f7-4500-82ca-9405899b0be6", projectId="project", baseRevision="a" * 64,
+                        version=2, timelines=[dict(clipId="clip", reason="Make room for speech.", edits=edits)])
+        validator.validate(envelope)
+        for edit, field, value in ((edits[0], "item", "sound"), (edits[1], "toSource", -1), (edits[1], "byDb", "-6")):
+            timeline = dict(envelope["timelines"][0], edits=[dict(edit, **{field: value})])
+            self.assertFalse(validator.is_valid(dict(envelope, timelines=[timeline])))
+
     def test_story_series_and_legacy_envelopes(self):
         validator = proposal_validator()
         envelope = {"id": "83a63352-80f7-4500-82ca-9405899b0be6", "projectId": "project", "baseRevision": "a" * 64}

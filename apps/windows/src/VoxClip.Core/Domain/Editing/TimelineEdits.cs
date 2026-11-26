@@ -58,6 +58,10 @@ public abstract record TimelineEdit
     /// <param name="Item">Sound or music segment.</param>
     /// <param name="Db">Level in dB, relative to the track for music.</param>
     public sealed record SetGain(TimelineItemId Item, double Db) : TimelineEdit;
+    /// <summary>Set the music track's level, leaving segment offsets unchanged.</summary>
+    public sealed record SetTrackGain(string Track, double Db) : TimelineEdit;
+    /// <summary>Dip an item's envelope over a range in source seconds.</summary>
+    public sealed record DipGain(TimelineItemId Item, double FromSource, double ToSource, double ByDb) : TimelineEdit;
     /// <summary>Insert a point on the item's gain envelope.</summary>
     /// <param name="Item">Sound or music segment.</param>
     /// <param name="AtSource">Point position in source seconds.</param>
@@ -223,6 +227,15 @@ public static class TimelineEdits
                     Write(item, new Draft(item, clock) { Gain = item.Kind == "sound" ? Level(gain.Db, -30, 6) : Level(gain.Db, -40, 12) });
                     return "Change volume";
                 }
+                case TimelineEdit.SetTrackGain gain:
+                {
+                    var track = Project.Music.FirstOrDefault(track => track.Id == gain.Track && track.ClipId == clock.Scope) ?? throw new Refusal(NoItem);
+                    var db = Level(gain.Db, -40, 0);
+                    if (db != track.GainDb) StoreTrack(Materialise(track) with { GainDb = db });
+                    return "Change volume";
+                }
+                case TimelineEdit.DipGain dip:
+                    DipGain(dip.Item, dip.FromSource, dip.ToSource, dip.ByDb); return "Dip volume";
                 case TimelineEdit.AddGainPoint point:
                     GainPoint(point.Item, null, (point.AtSource, point.Db)); return "Add volume keyframe";
                 case TimelineEdit.MoveGainPoint point:
@@ -493,6 +506,30 @@ public static class TimelineEdits
                 points.Add(new(position, Level(point.Db, -60, 12)));
                 points.Sort((left, right) => left.T.CompareTo(right.T));
             }
+            Write(item, new Draft(item, clock) { Points = points });
+        }
+
+        private void DipGain(TimelineItemId id, double from, double to, double db)
+        {
+            var item = Audio(id);
+            var start = Local(Time(from), item);
+            var end = Local(Time(to), item);
+            var ramp = Math.Min(0.05, (end - start) / 3);
+            var innerStart = clock.Round(start + ramp);
+            var innerEnd = clock.Round(end - ramp);
+            if (start < 0 || end > Length(item, item.Span) || start >= innerStart || innerStart >= innerEnd || innerEnd >= end)
+                throw new Refusal("Select a longer range inside the item.");
+            var depth = Level(db, -60, 0);
+            if (depth == 0) return;
+            var original = item.Points ?? [];
+            var points = original.Where(point => point.T < start || point.T > end).ToList();
+            if (points.Count + 4 > ItemShape.MaximumGainPoints) throw new Refusal("An item can have up to 64 volume keyframes.");
+            foreach (var position in new[] { start, innerStart, innerEnd, end })
+            {
+                var envelope = MusicMix.EnvelopeDb(position, original);
+                points.Add(new(position, Level(envelope + (position == start || position == end ? 0 : depth), -60, 12)));
+            }
+            points.Sort((left, right) => left.T.CompareTo(right.T));
             Write(item, new Draft(item, clock) { Points = points });
         }
 
