@@ -27,6 +27,7 @@ internal sealed class MusicBed
     internal double BedGainDb { get; }
     /// <summary>The measured speech loudness in dBFS, or null without speech.</summary>
     internal double? SpeechDb { get; }
+    internal IReadOnlyList<double> DuckingGainsDb { get; }
     private readonly double bedGain;
 
     private MusicBed(float[] track, IReadOnlyList<MusicMix.LoopPiece> pieces, double[] ducking, ProjectMusic entry, int rate, long outputFrames,
@@ -34,6 +35,7 @@ internal sealed class MusicBed
     {
         this.track = track; this.pieces = pieces; this.ducking = ducking; this.entry = entry; this.rate = rate;
         this.segments = segments;
+        DuckingGainsDb = Array.AsReadOnly(ducking);
         OutputFrames = outputFrames; BedGainDb = bedGainDb; SpeechDb = speechDb; bedGain = Math.Pow(10, bedGainDb / 20);
     }
 

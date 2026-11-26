@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
@@ -39,7 +40,10 @@ public sealed partial class TimelineView
     private TimelineAxis itemAxis;
     private TimelineWindow? lastItemWindow;
     private double lastItemWidth;
-    private double[] duckContour = [];
+    private double[] fallbackDucking = [];
+    private Project? stagedDuckingProject;
+    private IReadOnlyList<double>? stagedDucking;
+    private ClipSpeedTiming stagedDuckingTiming = new(1);
     private ItemDrag? itemDrag;
     private Point? marquee;
     private TimelineItemId[] marqueeSelection = [];
@@ -96,7 +100,15 @@ public sealed partial class TimelineView
         itemPlan = RenderCallerInputs.PlacementPlan(model.Project, clipId);
         itemLayout = TimelineItems.Layout(model.Project, itemPlan, clipId, itemAxis);
         selectedItems.RemoveAll(id => !itemLayout.Items.Any(item => item.Id == id));
-        duckContour = DuckContour(model.Project, clipId, itemPlan);
+        fallbackDucking = DuckContour(model.Project, clipId, itemPlan);
+    }
+
+    internal void SetStagedDucking(Project? project, IReadOnlyList<double>? gains, ClipSpeedTiming timing)
+    {
+        if (gains is null || !ReferenceEquals(project, model?.Project)) { project = null; gains = null; }
+        if (ReferenceEquals(project, stagedDuckingProject) && ReferenceEquals(gains, stagedDucking)) return;
+        stagedDuckingProject = project; stagedDucking = gains; stagedDuckingTiming = timing;
+        RedrawItems();
     }
 
     private static double[] DuckContour(Project project, string? clipId, EditPlan editPlan)
@@ -235,6 +247,7 @@ public sealed partial class TimelineView
         }
         var points = new Polyline { Stroke = ink, StrokeThickness = 1.2 };
         var duck = new Polyline { Stroke = ink, Opacity = .55, StrokeDashArray = [3, 2] };
+        var staged = ReferenceEquals(stagedDuckingProject, itemProject) ? stagedDucking : null;
         var count = Math.Clamp((int)(box.Width / 4), 1, 250);
         for (var index = 0; index <= count; index++)
         {
@@ -242,11 +255,9 @@ public sealed partial class TimelineView
             var local = LocalTime(hit, x);
             var db = hit.Details.Level + hit.Details.Envelope(local);
             points.Points.Add(new(x, VolumeY(hit, db)));
-            if (hit.Item.Id.Type == TimelineItemType.Music && duckContour.Length > 0)
-            {
-                var frame = (int)((hit.Item.EditedIntervals[0].Start + local) / MusicMix.FrameSeconds);
-                duck.Points.Add(new(x, VolumeY(hit, db + duckContour[Math.Clamp(frame, 0, duckContour.Length - 1)])));
-            }
+            if (hit.Details.Track is { Ducking: true } && TimelineItemEditing.DuckingDbAt(hit.Item.EditedIntervals[0].Start + local,
+                staged, stagedDuckingTiming, fallbackDucking) is { } duckDb)
+                duck.Points.Add(new(x, VolumeY(hit, db + duckDb)));
         }
         itemDrawing.Children.Add(points); if (duck.Points.Count > 0) itemDrawing.Children.Add(duck);
         foreach (var point in hit.Details.Points ?? [])

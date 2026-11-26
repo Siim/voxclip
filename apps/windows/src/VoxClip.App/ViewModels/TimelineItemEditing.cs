@@ -1,4 +1,5 @@
 using System.Globalization;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Music;
@@ -51,6 +52,12 @@ internal static class TimelineItemEditing
     internal static bool Connected(TimelineItem item) => item.Lane is not (TimelineLane.V1 or TimelineLane.A1);
     internal static bool Editable(TimelineItem item) => !item.Hidden && item.Id.Type is not (TimelineItemType.ContextDemo or TimelineItemType.Voice);
     internal static bool Audio(TimelineItem item) => item.Kind is "sound" or "music";
+    internal static double? DuckingDbAt(double edited, IReadOnlyList<double>? staged, ClipSpeedTiming timing, IReadOnlyList<double> fallback)
+    {
+        if (staged is not null) return staged.Count == 0 ? null : 20 * Math.Log10(MusicMix.DuckFactor(staged, timing.Rendered(edited)));
+        if (fallback.Count == 0) return null;
+        return fallback[Math.Clamp((int)(edited / MusicMix.FrameSeconds), 0, fallback.Count - 1)];
+    }
     internal static bool CanSlip(TimelineItem item) => Audio(item) || item.Id.Type == TimelineItemType.Footage;
     internal static bool CanFade(TimelineItem item) => item.Id.Type is TimelineItemType.Footage or TimelineItemType.Music ||
         item.Id.Type == TimelineItemType.Effect && item.Kind is not ("bleep" or "mute" or "speedForPart" or "freeze");

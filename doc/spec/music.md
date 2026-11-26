@@ -156,11 +156,11 @@ The edited-audio path (word and speaker checks) and the video-duration probe alw
 
 A clip's speed (design.md §6.9) never speeds the bed up: it is staged for the clip's rendered length (the edited length divided by the speed) and measures the voice after the clip's volume, fades and mute, so it ducks under the voice as it plays.
 
-On Mac, a timeline-edited track uses anchored segments instead of a continuous bed. Each segment carries its own playback length, source offset, fades and dB envelope. The clip's speed changes the segment's placement, not the audio's pitch or length. Loops and overlapping segments use equal-power crossfades; an overlap hands off to the incoming segment within two seconds. The same composer supplies preview and export. A track without segments keeps the legacy whole-clip mix.
+On Mac and Windows, a timeline-edited track uses anchored segments instead of a continuous bed. Each segment carries its own playback length, source offset, fades and dB envelope. The clip's speed changes the segment's placement, not the audio's pitch or length. Loops, overlapping music segments and overlapping sound effects all use equal-power crossfades. An overlap hands off to the next item within two seconds. The same audio mix supplies preview and export. A track without segments keeps the legacy whole-clip mix.
 
 Final Cut Pro handoff keeps segmented music as connected audio asset clips with source offsets and editable volume keyframes. It does not bake in the automatic speech-driven ducking or the render's loudness normalization. The Mac export self-check compares short decoded windows with the expected mix, including music gaps and sound windows. It checks the audible mix, not isolated stems recovered from a finished MP4.
 
-On Windows the preview and exporter mix the same staged segments. Each starts at its mapped source anchor, plays its chosen song range without resampling for clip speed, and can loop with the same 1 s crossfade as the original bed. Overlapping segments hand off with an equal-power crossfade of up to 2 s. Relative gain keyframes interpolate in dB before fades and ducking; `duckDb` adjusts the ducking depth without changing attack or release. A track without segments still uses the original whole-scope bed.
+Relative gain keyframes interpolate in dB before fades and ducking; `duckDb` adjusts the ducking depth without changing attack or release.
 
 ## 5. Credits
 
@@ -198,7 +198,9 @@ Choose **Music** in the header beneath the viewer to browse or change the curren
   go through the editor's undoable replace and reload the preview.
 
 The timeline's M1 lane draws the whole-scope bed or each placed segment with its fades, volume line and ducking
-contour. The Volume slider changes the track level; each segment's line adds its own offset. The item bar's
+contour. On both platforms, the contour uses the staged preview bed's gains on the rendered clock, falling back to
+kept-word activity until a bed is staged. The Volume slider and an unsegmented bed's line change the track level;
+each segment's line adds its own offset. The item bar's
 **Dips under voice** sets the depth; 0 dB turns ducking off. When M1 is empty, it reads "Choose background music".
 The M1 header’s ♪ button opens Music.
 

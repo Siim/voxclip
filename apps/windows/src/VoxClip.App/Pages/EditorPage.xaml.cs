@@ -62,6 +62,7 @@ public sealed partial class EditorPage : Page
     private double previewDuration;
     /// <summary>The previewed clip's speed: the transport shows rendered time, positions stay edited (design §6.9).</summary>
     private Core.Domain.Clips.ClipSpeedTiming previewSpeed = new(1);
+    private Project? previewProject;
     private (double Time, bool OnEditedAxis)? previewStop;
     private double? previewStoryEnd;
     /// <summary>Play/Pause reads the playing state from before an open correction is saved (design §4.2).</summary>
@@ -206,6 +207,7 @@ public sealed partial class EditorPage : Page
                 previewSpeed = snapshot.Speed;
                 previewStage.Cleared();
                 await preview.LoadAsync(snapshot, null, ct);
+                previewProject = capturedProject;
                 loadedSnapshot = snapshot;
                 CaptionDrag.Update(snapshot.Captions, 0);
                 Timeline.SetCaptionTrack(snapshot.Captions, snapshot.Timeline, capturedProject);
@@ -322,6 +324,7 @@ public sealed partial class EditorPage : Page
         AutomationProperties.SetName(PreviewPlay, PlaybackPresentation.Name(position.IsPlaying));
         ToolTipService.SetToolTip(PreviewPlay, PlaybackPresentation.Hint(position.IsPlaying));
         Timeline.SetTransport(elapsed, total, position.IsPlaying);
+        Timeline.SetStagedDucking(previewProject, (preview as PreviewEngine)?.MusicDuckingGainsDb, previewSpeed);
         Timeline.Position(sourceTime);
         viewerHost?.SetPlayback(position.EditedTime, position.IsPlaying, timelineVisible);
         CaptionDrag.Position(position.EditedTime);
@@ -540,6 +543,7 @@ public sealed partial class EditorPage : Page
             previewDuration = snapshot.Timeline.Duration;
             RememberStoryEnd(snapshot.Timeline);
             if (clipChanged) previewStop = null;
+            previewProject = null;
             previewSpeed = snapshot.Speed;
             // A load or plan swap that works clears the stage's line; a failure while drawing it sets the line again.
             previewStage.Cleared();
@@ -554,6 +558,7 @@ public sealed partial class EditorPage : Page
                 presenter.Start(); PreviewStandIn.Visibility = Visibility.Collapsed;
             }
             else { await preview.UpdateSnapshotAsync(snapshot, lifetime.Token); presenter?.Attach(snapshot); }
+            previewProject = capturedProject;
             CaptionDrag.Update(snapshot.Captions, preview.Position.EditedTime);
             Timeline.SetCaptionTrack(snapshot.Captions, snapshot.Timeline, capturedProject);
             if (clipChanged && previewClipId is not null) await SourceTransportAsync(token => preview.SeekAsync(0, true, token));

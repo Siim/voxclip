@@ -74,6 +74,9 @@ public sealed class PreviewEngine : IPreviewEngine
     }
     /// <inheritdoc />
     public PreviewPosition Position => Volatile.Read(ref position);
+    /// <summary>The current preview's staged ducking gains on the rendered clock, or null before a bed is staged.</summary>
+    public IReadOnlyList<double>? MusicDuckingGainsDb => Volatile.Read(ref stagedMusic) is { } staged &&
+        staged.Revision == Interlocked.Read(ref musicRevision) ? staged.Bed?.DuckingGainsDb : null;
     /// <inheritdoc />
     public event EventHandler<Exception>? PlaybackFaulted;
     /// <inheritdoc />
@@ -151,6 +154,7 @@ public sealed class PreviewEngine : IPreviewEngine
             resume &= playbackFailure is null;
             var source = Position.SourceTime;
             if (!sameVoice) { StopAudio(); voiceSession?.Dispose(); voiceSession = nextSession; }
+            Interlocked.Increment(ref musicRevision);
             Interlocked.Exchange(ref this.snapshot, nextSnapshot);
             failures = NewFailures();
             swapped = true;
@@ -388,24 +392,21 @@ public sealed class PreviewEngine : IPreviewEngine
         ReportAudio(PreviewAudioStatus.Available);
     }
 
-    private readonly object musicLock = new();
-    private ComposeSnapshot? musicFor;
-    private MusicBed? musicBed;
+    private sealed record StagedMusic(long Revision, MusicBed? Bed);
+    private long musicRevision;
+    private StagedMusic? stagedMusic;
 
     /// <summary>The snapshot's music bed, staged once per snapshot (each play reads it from the playhead). A bed that cannot be
     /// staged (a missing file, a silent video) previews the voice alone; the export names the problem and stops.</summary>
-    private MusicBed? PreviewMusic(ComposeSnapshot snapshot, VoiceLabRenderSession? session, CancellationToken ct)
+    private MusicBed? PreviewMusic(ComposeSnapshot snapshot, long revision, VoiceLabRenderSession? session, CancellationToken ct)
     {
         if (snapshot.Clip?.Music is null) return null;
-        lock (musicLock)
-        {
-            if (ReferenceEquals(musicFor, snapshot)) return musicBed;
-            MusicBed? staged = null;
-            try { staged = MusicBed.Stage(snapshot, 48_000, session, ct); }
-            catch (VoxClipException) { }
-            musicFor = snapshot; musicBed = staged;
-            return staged;
-        }
+        if (Volatile.Read(ref stagedMusic) is { } cached && cached.Revision == revision) return cached.Bed;
+        MusicBed? staged = null;
+        try { staged = MusicBed.Stage(snapshot, 48_000, session, ct); }
+        catch (VoxClipException) { }
+        Volatile.Write(ref stagedMusic, new(revision, staged));
+        return staged;
     }
 
     private static IPreviewAudioOutput CreateWasapi()
@@ -423,11 +424,13 @@ public sealed class PreviewEngine : IPreviewEngine
         var localAudio = audio;
         var localSnapshot = snapshot!;
         var localSession = voiceSession;
+        var revision = Interlocked.Read(ref musicRevision);
         audioProducer = MediaThread.Run("vc-audio", () =>
         {
             try
             {
-                using var reader = RenderedAudioReader.Open(localSnapshot, 48_000, edited, localSession, token, PreviewMusic(localSnapshot, localSession, token));
+                using var reader = RenderedAudioReader.Open(localSnapshot, 48_000, edited, localSession, token,
+                    PreviewMusic(localSnapshot, revision, localSession, token));
                 var samples = new float[4096 * 2];
                 int count;
                 while ((count = reader.Read(samples, samples.Length / 2, token)) > 0)
@@ -508,12 +511,14 @@ public sealed class PreviewEngine : IPreviewEngine
 
     private void StopMedia()
     {
+        Interlocked.Increment(ref musicRevision);
         ClearPrefetch();
         playing = false;
         videoClock.Stop(); UpdatePosition(Position.EditedTime);
         try { StopAudio(); }
         finally
         {
+            Volatile.Write(ref stagedMusic, null);
             try { current?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
             finally
             {

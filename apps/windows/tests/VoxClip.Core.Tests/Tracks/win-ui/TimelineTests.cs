@@ -17,6 +17,16 @@ namespace VoxClip.Ui.Tests;
 public sealed class TimelineTests
 {
     [Fact]
+    public void MusicContourUsesTheStagedRenderedClockOrFallsBackToKeptWords()
+    {
+        double[] fallback = [-1, -2, -3];
+        double[] staged = [-12, -4, -8];
+        Assert.Equal(-8, TimelineItemEditing.DuckingDbAt(.02, staged, new(2), fallback)!.Value, 10);
+        Assert.Equal(-3d, TimelineItemEditing.DuckingDbAt(.02, null, new(2), fallback));
+        Assert.Null(TimelineItemEditing.DuckingDbAt(.02, [], new(2), fallback));
+    }
+
+    [Fact]
     public void StoryTimelineKeepsPartJumpsSeparateFromCutsOnBothAxes()
     {
         var model = ClipSemanticsTests.Story();
