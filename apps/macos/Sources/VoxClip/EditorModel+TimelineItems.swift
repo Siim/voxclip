@@ -6,6 +6,13 @@ extension EditorModel {
     var timelineSnapHint: String { timelineSnapping ? "Snapping on (N)" : "Snapping off (N)" }
     func toggleTimelineSnapping() { timelineSnapping.toggle() }
 
+    func restoreTimelineWords(_ item: TimelineItemDisplay) {
+        guard capabilities.edit, item.hasHiddenWords, let span = timelineItemSpan(item.item.id) else { return }
+        let ids = cutIDs(overlapping: span.lowerBound..<span.upperBound).filter { cutWordIDs.contains($0) }
+        guard !ids.isEmpty else { return }
+        apply(.restoreSelection(ids: ids), name: "Restore words")
+    }
+
     var itemEditPlan: EditPlan? {
         try? RenderCallerInputs.editPlan(project: project, clipID: itemEditScope)
     }

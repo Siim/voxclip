@@ -98,6 +98,9 @@ extension TimelineCanvasView {
         default: break
         }
         guard item.movable, model.capabilities.edit else { return actions }
+        if item.hasHiddenWords {
+            actions.append(action("Restore Words") { $0.model.restoreTimelineWords(item) })
+        }
         actions += [
             action("Move earlier a frame") { $0.model.nudgeTimelineItems([id], by: .frames(-1)) },
             action("Move later a frame") { $0.model.nudgeTimelineItems([id], by: .frames(1)) },

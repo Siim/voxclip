@@ -107,6 +107,12 @@ import VoxClipCore
                     if commit(.delete(items: ids)) { model.selectTimelineItems([]) }
                 }.disabled(blocked || speechSelected).help("Delete item (⌫)")
                 if let single {
+                    if single.hasHiddenWords {
+                        Button("Restore Words") {
+                            model.restoreTimelineWords(single)
+                            zoom.canvas?.renderContent(keepingZoom: true)
+                        }.disabled(!model.capabilities.edit)
+                    }
                     switch single.item.id {
                     case .effect, .motion, .footage, .music:
                         Button(single.item.lane == .music ? "Music…" : "Open Editor") { zoom.canvas?.openItem(single.item.id) }

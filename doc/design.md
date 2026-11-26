@@ -737,6 +737,7 @@ There is no time readout and no "after cuts · source" label; the viewer bar own
 - Drag the body to move; hold ⌥ at mouse-down to drag a copy. Drag either edge to trim. A resize cursor marks the edge and a live readout shows the change. On V1 drag a story part's edge to trim it by word, or drag the numbered band onto another part to reorder. Release to commit one named undo step; Esc cancels, and a drag under 3 pt does not edit.
 - Drag a selected picture item's corner dots to change its fades. Drag the B-roll ⇔ grip or ⌥⌘-drag its body to slip the recording without moving its anchor. Set Fade in, Fade out, or Recording from precisely in the item bar.
 - The yellow guide snaps to words, the playhead and item edges within 8 pt. Press N or click Snapping to toggle it; hold ⌥ or N during a drag to suspend it. Bleeps and mutes always follow whole words. Refusals appear inline; they do not change the project or its undo history.
+- An item whose words are all cut stays at the seam as a hollow marker. Select it and choose **Restore Words** to bring back its words and the item without moving its anchor.
 - Use ⌘=, ⌘−, the zoom slider, or pinch to zoom. **Fit** (⇧Z) shows the entire open clip or full take.
 
 **Accessibility.**
@@ -2814,7 +2815,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 
 ## 15. Accessibility
 
-- **Connected timeline items (Mac).** Each visible item has a VoiceOver element in its lane with kind, title, times and selection state. Increment and decrement move it by one word; the separate start and end controls trim one word at a time. Actions include frame nudges, trim to playhead, split, duplicate, delete and opening the item's editor. VoiceOver announces the result or the inline refusal.
+- **Connected timeline items (Mac).** Each visible item has a VoiceOver element in its lane with kind, title, times and selection state. Increment and decrement move it by one word; the separate start and end controls trim one word at a time. Actions include frame nudges, trim to playhead, split, duplicate, delete and opening the item's editor. Picture items with fades can lengthen or shorten them, and a hidden item can restore its cut words. VoiceOver announces the result or the inline refusal.
 
 - **Screen readers.** The transcript is text (NSTextView / RichTextBlock), so VoiceOver and Narrator read it by word, line and paragraph. Each word's accessible description adds its state: "um, cut", "pause 1.4 seconds", "pause 1.6 seconds, cut", "cadence, playing", "it isn't a clip yet, AI modified". macOS: custom rotors (`accessibilityCustomRotors`) for Cuts, Pauses, Suggested fillers, Clips and AI words, plus Proposed changes while a Rewrite proposal is open (§6.3.5), and custom actions on the focused word (Cut, Restore, Correct, Play from here). Every command posts an announcement ("Cut 3 words", "Restored all cuts, corrections kept") via `NSAccessibility.post(element:notification: .announcementRequested, …)` or UIA `RaiseNotificationEvent`.
 - **Timeline** is a slider: "Playhead, 42 seconds of 2 minutes 15 after cuts, 12 cuts" in Edited, or "Playhead, 42 seconds of 3 minutes 10 source, 12 cuts" in Source. Times are spoken whole seconds ("42 seconds", "1 minute 05", "2 minutes 15"), never `m:ss.d`. Arrow keys step by word.

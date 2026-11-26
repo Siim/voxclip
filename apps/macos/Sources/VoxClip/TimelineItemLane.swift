@@ -53,6 +53,7 @@ struct TimelineItemDisplay: Equatable {
         }
     }
     var wordLocked: Bool { item.kind == "bleep" || item.kind == "mute" }
+    var hasHiddenWords: Bool { item.hidden && item.reason == "Hidden · its words are cut" }
 
     func accessibilityLabel(selected: Bool) -> String {
         let times = ranges.first.flatMap { first in ranges.last.map { "\(timelineItemTime(first.start)) to \(timelineItemTime($0.end))" } }

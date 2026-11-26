@@ -60,9 +60,12 @@ private actor TimelineTestSettings: SettingsStore {
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close(); model.close() }
         #expect(canvas.headers.map(\.trackID) == ["CC", "T1", "B1", "FX", "V1", "A1", "S1", "M1"])
-        for (id, lane): (TimelineItemID, TimelineItemLane) in [(.effect("title"), .titles), (.footage("picture"), .pictures),
-                                                               (.motion("zoom"), .effects), (.effect("sound"), .sounds), (.music("music"), .music)] {
+        for (id, lane, label): (TimelineItemID, TimelineItemLane, String) in [
+            (.effect("title"), .titles, "Title, Faster edits"), (.footage("picture"), .pictures, "B-roll"),
+            (.motion("zoom"), .effects, "Zoom, Pan & Zoom"), (.effect("sound"), .sounds, "Bleep"), (.music("music"), .music, "Music, Night Drive")
+        ] {
             let piece = try #require(canvas.itemFragments.first { $0.display.item.id == id })
+            #expect(canvas.itemAXElements[id]?.accessibilityLabel()?.hasPrefix(label + ", ") == true)
             let body = NSPoint(x: piece.rect.midX, y: piece.rect.midY)
             #expect(canvas.item(at: body)?.display.item.lane == lane)
             #expect(canvas.item(at: body)?.edge(at: body) == nil)
@@ -200,7 +203,8 @@ private actor TimelineTestSettings: SettingsStore {
         model.selectTimelineItems([.effect("title")]); canvas.apply()
         let title = try #require(canvas.itemAXElements[.effect("title")])
         let label = try #require(title.accessibilityLabel())
-        #expect(label.hasPrefix("Title, Faster edits, ") && label.hasSuffix(", selected"))
+        #expect(label == "Title, Faster edits, 0:01.1 to 0:02.1, selected")
+        #expect(canvas.itemAXEdges[.effect("title")]?.compactMap { $0.accessibilityLabel() } == ["Title start", "Title end"])
         #expect(title.accessibilityValue() is NSNumber)
         let actions = Set(title.accessibilityCustomActions()?.map(\.name) ?? [])
         #expect(actions.isSuperset(of: ["Move later a frame", "Trim start to playhead", "Split at playhead", "Duplicate", "Delete", "Open editor"]))
@@ -209,6 +213,26 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.project.clipEffects.first?.start == 12)
         #expect(title.accessibilityPerformDecrement())
         #expect(model.project.clipEffects.first?.start == 11)
+    }
+
+    @Test func aHiddenTitleCanRestoreItsWordsFromTheTimeline() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                     start: 14, end: 15.8, text: "Faster edits", position: .top)]
+        fixture.edits.cutWordIds.append("t24")
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let element = try #require(canvas.itemAXElements[.effect("title")])
+        #expect(element.accessibilityLabel() == "Title, Faster edits, Hidden · its words are cut")
+        let restore = try #require(element.accessibilityCustomActions()?.first { $0.name == "Restore Words" }?.handler)
+        undo.beginUndoGrouping()
+        #expect(restore())
+        undo.endUndoGrouping()
+        #expect(model.cutWordIDs == ["t24"] && model.project.clipEffects == fixture.clipEffects)
+        #expect(canvas.itemFragments.first(where: { $0.display.item.id == .effect("title") })?.display.item.hidden == false)
+        #expect(undo.undoActionName == "Restore words" && model.undoSteps == 1)
     }
 
     @Test func timelineNAndTheToolbarActionToggleTheSameStateAndFitRestoresTheViewport() throws {
