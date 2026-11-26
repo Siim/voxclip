@@ -114,6 +114,28 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.keyDown(with: try timelineKey(53))
     }
 
+    @Test func aDragAcrossTheClipEdgePreviewsTheReducerRefusal() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                     start: 12, end: 15, text: "Faster edits", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.timelineSnapping = false
+        let undo = UndoManager(); model.undoManager = undo
+        let original = model.project
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let start = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let end = NSPoint(x: canvas.headerWidth + canvas.viewport.x(model.duration - 1), y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        let preview = try #require(canvas.itemOverlay.preview)
+        #expect(preview.readout == "Place it inside one part.")
+        #expect(preview.rectangles == [fragment.rect])
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.timelineItemRefusal == preview.readout && model.project == original && !undo.canUndo)
+    }
+
     @Test func voiceOverCanMoveAnItemByWordAndExposesItsActions() throws {
         var fixture = try project()
         fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]

@@ -206,7 +206,7 @@ import VoxClipCore
         let shift = snapped - base
         var source = canvas.itemSourceTime(snapped)
         let readout: String
-        var rectangles: [NSRect]
+        let command: TimelineEdit
         if let edge = transaction.edge {
             if let sourceWordEdge {
                 source = sourceWordEdge
@@ -214,27 +214,49 @@ import VoxClipCore
                       let rate = model.renderTimeline?.sampleRate, snapped > 0 {
                 source = canvas.itemSourceTime(max(0, snapped - 1 / rate)) + 1 / rate
             }
-            itemCommand = .trim(item: id, edge: edge, toSource: source)
+            command = .trim(item: id, edge: edge, toSource: source)
             let length = max(0, end - start + (edge == .start ? -shift : shift))
             readout = "\(edge == .start ? "In" : "Out") \(timelineItemDelta(shift)) · \(String(format: "%.1f s", length))"
-            rectangles = canvas.itemFragments.filter { $0.display.item.id == id }.map { piece in
-                var rect = piece.rect
-                if edge == .start, piece.hasStart {
-                    rect.origin.x = min(rect.maxX - 1, rect.minX + shift * scale)
-                    rect.size.width = max(1, piece.rect.maxX - rect.minX)
-                } else if edge == .end, piece.hasEnd { rect.size.width = max(1, rect.width + shift * scale) }
-                return rect
-            }
         } else {
             if part { source = canvas.itemSourceTime(time(point)) }
-            itemCommand = transaction.duplicate ? .duplicate(items: transaction.ids, toAnchor: source) : .move(items: transaction.ids, toAnchor: source)
+            command = transaction.duplicate ? .duplicate(items: transaction.ids, toAnchor: source) : .move(items: transaction.ids, toAnchor: source)
             let word = model.word(at: source, nearest: true).map { " · on “\(model.text($0))”" } ?? ""
             let cut = canvas.content.axis == .source && model.plan?.cutContaining(source) != nil ? " · \(TimelineItems.cutDropCopy)" : ""
             readout = timelineItemDelta(shift) + word + cut
-            rectangles = canvas.itemFragments.filter { excluded.contains($0.display.item.id) }.map { $0.rect.offsetBy(dx: shift * scale, dy: 0) }
         }
         let guide = target.map { canvas.headerWidth + canvas.viewport.x($0) }
-        canvas.itemOverlay.preview = .init(rectangles: rectangles, readout: readout, point: point, guide: guide)
+        showItemPreview(command, ids: excluded, at: point, readout: readout, guide: guide)
+    }
+
+    private func showItemPreview(_ command: TimelineEdit, ids: Set<TimelineItemID>, at point: NSPoint, readout: String, guide: Double?) {
+        guard let plan = canvas.itemPlan else { return }
+        itemCommand = command
+        let original = canvas.itemFragments.filter { ids.contains($0.display.item.id) }.map(\.rect)
+        let project = model.project
+        let scope = model.itemEditScope
+        let axis = canvas.content.axis
+        switch TimelineEdits.apply(command, project: project, plan: plan, scope: scope) {
+        case .failure(let refusal):
+            canvas.itemOverlay.preview = .init(rectangles: original, readout: refusal.copy, point: point, guide: nil)
+        case .success(let result):
+            guard result.project != project else {
+                canvas.itemOverlay.preview = .init(rectangles: original, readout: readout, point: point, guide: guide)
+                return
+            }
+            let partsChanged = result.project.edits.clips != project.edits.clips
+            let previewPlan = partsChanged ? (try? RenderCallerInputs.editPlan(project: result.project, clipID: scope)) ?? plan : plan
+            let layout = TimelineItems.layout(project: result.project, plan: previewPlan, scope: scope, axis: axis)
+            let visible: [TimelineItem]
+            if case .duplicate = command {
+                let existing = Set(canvas.content.items.map(\.item.id))
+                visible = layout.items.filter { !existing.contains($0.id) }
+            } else {
+                visible = layout.items.filter { ids.contains($0.id) }
+            }
+            let displays = visible.map { model.timelineItemDisplay($0, axis: axis, story: canvas.content.story) }
+            let rectangles = canvas.fragments(for: displays).map(\.rect)
+            canvas.itemOverlay.preview = .init(rectangles: rectangles, readout: readout, point: point, guide: guide)
+        }
     }
 
     func flagsChanged(_ flags: NSEvent.ModifierFlags) {

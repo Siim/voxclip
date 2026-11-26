@@ -205,9 +205,9 @@ extension TimelineCanvasView {
         NSRect(x: headerWidth, y: trackClip.frame.minY, width: max(0, trackClip.frame.width - headerWidth), height: trackClip.frame.height)
     }
 
-    func updateTimelineItems() {
+    func fragments(for items: [TimelineItemDisplay]) -> [TimelineItemFragment] {
         var fragments: [TimelineItemFragment] = []
-        for display in content.items {
+        for display in items {
             let item = display.item
             let lane = trackLanes[item.lane.index]
             let height = trackHeight.heights[item.lane.index]
@@ -223,6 +223,11 @@ extension TimelineCanvasView {
                                        hasStart: !item.hidden && index == 0, hasEnd: !item.hidden && index == ranges.count - 1))
             }
         }
+        return fragments
+    }
+
+    func updateTimelineItems() {
+        let fragments = fragments(for: content.items)
         itemFragments = fragments
         itemOverlay.clip = itemClip
         for lane in connectedLanes {
