@@ -86,11 +86,11 @@ public sealed partial class TimelineView
             if (TimelineItemEditing.Audio(item))
                 Exact("Volume", details.Level, "dB", editable, value => new TimelineEdit.SetGain(id, value - details.TrackGain));
             if (TimelineItemEditing.CanSlip(item))
-                Exact(id.Type == TimelineItemType.Music ? "Song from" : "Recording from", details.Offset, "s", editable,
+                Exact(item.Kind switch { "music" => "Song from", "sound" => "Sound from", _ => "Recording from" }, details.Offset, "s", editable,
                     value => new TimelineEdit.Slip(id, value - details.Offset));
             if (details.Track is { } track)
             {
-                Exact("Dips under voice", track.DuckDb ?? (track.Ducking ? MusicMix.DuckDb : 0), "dB", editable,
+                Exact("Dips under voice", track.Ducking ? track.DuckDb ?? MusicMix.DuckDb : 0, "dB", editable,
                     value => new TimelineEdit.SetDuck(track.Id, value));
                 var loopEdit = new TimelineEdit.SetLoop(id, !details.Loop);
                 var reason = editable ? new TimelineEditSession(model, model.Project.Edits.ActiveClipId).Probe([loopEdit], out _, out _) : "This item is read-only.";
@@ -104,7 +104,13 @@ public sealed partial class TimelineView
         AddCommand("Split", () => new TimelineEdit.Split(barSelection, model.SourceTime), "Split at playhead (B)");
         AddCommand("Duplicate", () => new TimelineEdit.Duplicate(barSelection), "Duplicate item (Ctrl+D)");
         if (single is not null)
-            AddCommand("Add keyframe", () => TimelineItemEditing.Audio(single) ? new TimelineEdit.AddGainPoint(single.Id, model.SourceTime, 0) : null, "Choose a sound or music item.");
+            AddCommand("Add keyframe", () =>
+            {
+                if (!TimelineItemEditing.Audio(single) || single.EditedIntervals.Count == 0 || itemPlan is not { } placement) return null;
+                var audio = TimelineItemDetails.Read(model.Project, model.Project.Edits.ActiveClipId, single);
+                var local = placement.MapTime(model.SourceTime) - single.EditedIntervals[0].Start;
+                return new TimelineEdit.AddGainPoint(single.Id, model.SourceTime, audio.Envelope(local));
+            }, "Choose a sound or music item.");
         AddCommand("Delete", () => selectedGainPoint is { } point && single is not null ? new TimelineEdit.RemoveGainPoint(single.Id, point.T) : new TimelineEdit.Delete(barSelection), "Delete item (Delete)");
         if (single is not null)
         {
