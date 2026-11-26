@@ -735,6 +735,7 @@ There is no time readout and no "after cuts · source" label; the viewer bar own
 
 - Click an item to select it; ⇧-click, ⌘-click, or drag a marquee from empty lane space to select several. Item selection replaces word selection. The inline item bar shows exact Start and Length, with Split, Duplicate, Delete and the item's editor. Double-click also opens that editor.
 - Drag the body to move; hold ⌥ at mouse-down to drag a copy. Drag either edge to trim. A resize cursor marks the edge and a live readout shows the change. On V1 drag a story part's edge to trim it by word, or drag the numbered band onto another part to reorder. Release to commit one named undo step; Esc cancels, and a drag under 3 pt does not edit.
+- Drag a selected picture item's corner dots to change its fades. Drag the B-roll ⇔ grip or ⌥⌘-drag its body to slip the recording without moving its anchor. Set Fade in, Fade out, or Recording from precisely in the item bar.
 - The yellow guide snaps to words, the playhead and item edges within 8 pt. Press N or click Snapping to toggle it; hold ⌥ or N during a drag to suspend it. Bleeps and mutes always follow whole words. Refusals appear inline; they do not change the project or its undo history.
 - Use ⌘=, ⌘−, the zoom slider, or pinch to zoom. **Fit** (⇧Z) shows the entire open clip or full take.
 

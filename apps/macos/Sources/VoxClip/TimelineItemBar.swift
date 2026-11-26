@@ -46,6 +46,19 @@ import VoxClipCore
                     }
                 }
                 if let reason = item.item.reason { Text(reason).foregroundStyle(.secondary) }
+                if let fades = item.pictureFades {
+                    TimelineExactField(label: "Fade in", value: fades.fadeIn, writable: model.capabilities.edit) { value in
+                        commit(.fade(item: item.item.id, edge: .start, seconds: value))
+                    }
+                    TimelineExactField(label: "Fade out", value: fades.fadeOut, writable: model.capabilities.edit) { value in
+                        commit(.fade(item: item.item.id, edge: .end, seconds: value))
+                    }
+                }
+                if let from = item.recordingStart {
+                    TimelineExactField(label: "Recording from", value: from, writable: model.capabilities.edit) { value in
+                        commit(.slip(item: item.item.id, bySeconds: value - from))
+                    }
+                }
                 if case .music(let id) = item.item.id, let track = model.currentMusic {
                     musicDetails(track, id: id)
                 }

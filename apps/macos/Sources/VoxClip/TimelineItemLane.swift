@@ -29,12 +29,22 @@ extension TimelineItemLane {
     }
 }
 
+struct TimelinePictureFades: Equatable {
+    let fadeIn: Double
+    let fadeOut: Double
+    let maximum: Double
+
+    subscript(edge: TimelineEdge) -> Double { edge == .start ? fadeIn : fadeOut }
+}
+
 struct TimelineItemDisplay: Equatable {
     let item: TimelineItem
     let title: String
     let kind: String
     let ranges: [TimeRange]
     let marker: Double?
+    var pictureFades: TimelinePictureFades? = nil
+    var recordingStart: Double? = nil
 
     var movable: Bool {
         switch item.id {
@@ -75,6 +85,18 @@ struct TimelineItemFragment: Equatable {
         if hasStart, grip(.start).contains(point) { return .start }
         if hasEnd, grip(.end).contains(point) { return .end }
         return nil
+    }
+
+    func fadeGrip(_ edge: TimelineEdge) -> NSRect? {
+        guard display.pictureFades != nil, rect.width >= 24, edge == .start ? hasStart : hasEnd else { return nil }
+        let inset = min(10, rect.width / 3)
+        let center = edge == .start ? rect.minX + inset : rect.maxX - inset
+        return NSRect(x: center - 4, y: rect.minY, width: 8, height: 8)
+    }
+
+    var slipGrip: NSRect? {
+        guard display.recordingStart != nil, !display.item.hidden, rect.width >= 48 else { return nil }
+        return NSRect(x: rect.maxX - 27, y: rect.midY - 7, width: 19, height: 14)
     }
 }
 
@@ -136,7 +158,8 @@ struct TimelineItemFragment: Equatable {
                 context.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - 1))
                 context.strokePath()
             }
-            if state.selected.contains(fragment.display.item.id) {
+            let selected = state.selected.contains(fragment.display.item.id)
+            if selected {
                 context.addPath(path)
                 context.setStrokeColor(DesignValues.nsColor("text.primary").cgColor)
                 context.setLineWidth(1.5)
@@ -145,14 +168,25 @@ struct TimelineItemFragment: Equatable {
                     for edge: TimelineEdge in [.start, .end] where edge == .start ? fragment.hasStart : fragment.hasEnd {
                         context.setFillColor(DesignValues.nsColor("text.primary").cgColor)
                         context.fill(fragment.grip(edge).insetBy(dx: 1, dy: 3))
+                        if let fade = fragment.fadeGrip(edge) {
+                            context.setFillColor(NSColor.white.cgColor)
+                            context.setStrokeColor(NSColor.black.cgColor)
+                            context.fillEllipse(in: fade)
+                            context.strokeEllipse(in: fade)
+                        }
                     }
                 }
             }
             guard rect.width > 20 else { continue }
             context.saveGState()
-            context.clip(to: rect.insetBy(dx: 3, dy: 0))
+            let slip = selected ? fragment.slipGrip : nil
+            let labelWidth = (slip?.minX ?? rect.maxX) - rect.minX - 3
+            context.clip(to: .init(x: rect.minX + 3, y: rect.minY, width: labelWidth, height: rect.height))
             Self.draw(fragment.display.title, font: font, color: .white, x: rect.minX + 8, baseline: rect.midY + font.xHeight / 2)
             context.restoreGState()
+            if let slip {
+                Self.draw("⇔", font: font, color: .white, x: slip.minX + 3, baseline: rect.midY + font.xHeight / 2)
+            }
         }
     }
 }
@@ -245,10 +279,15 @@ extension TimelineCanvasView {
         guard model.capabilities.edit else { return [] }
         return itemFragments.flatMap { fragment -> [NSRect] in
             guard fragment.display.movable else { return [] }
-            return [(TimelineEdge.start, fragment.hasStart), (.end, fragment.hasEnd)].compactMap { edge, exists in
+            let edges = [(TimelineEdge.start, fragment.hasStart), (.end, fragment.hasEnd)].compactMap { edge, exists -> NSRect? in
                 guard exists else { return nil }
                 let rect = fragment.grip(edge).intersection(itemClip)
                 return rect.isEmpty ? nil : rect
+            }
+            guard model.timelineItemSelection.contains(fragment.display.item.id) else { return edges }
+            return edges + [fragment.fadeGrip(.start), fragment.fadeGrip(.end), fragment.slipGrip].compactMap { grip in
+                guard let rect = grip?.intersection(itemClip), !rect.isEmpty else { return nil }
+                return rect
             }
         }
     }

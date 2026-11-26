@@ -85,13 +85,22 @@ extension EditorModel {
     func timelineItemDisplay(_ item: TimelineItem, axis: TimelineAxis, story: StoryTimelineLayout?, partRange: Range<Double>? = nil) -> TimelineItemDisplay {
         let kind: String
         let title: String?
+        var pictureFades: TimelinePictureFades?
+        var recordingStart: Double?
         switch item.id {
         case .effect(let id):
             let effect = project.clipEffects.first { $0.id == id }
             kind = Self.itemKind(item.kind)
             title = effect?.text ?? effect?.sound?.title
-        case .footage:
+            if let effect, item.lane != .sounds, effect.kind != .speedForPart, effect.kind != .freeze {
+                pictureFades = .init(fadeIn: effect.fadeInSeconds ?? 0, fadeOut: effect.fadeOutSeconds ?? 0, maximum: 5)
+            }
+        case .footage(let id):
             kind = Self.itemKind(item.kind); title = nil
+            if let footage = project.media.footage.first(where: { $0.id == id }) {
+                pictureFades = .init(fadeIn: footage.fadeInSeconds ?? 0, fadeOut: footage.fadeOutSeconds ?? 0, maximum: 2)
+                if footage.kind != .screenshot { recordingStart = footage.footage.start }
+            }
         case .motion:
             kind = "Zoom"; title = "Pan & Zoom"
         case .music:
@@ -113,7 +122,8 @@ extension EditorModel {
             ranges = item.axisIntervals
         }
         let marker = item.marker.map { axis == .source ? story?.time(forSource: $0) ?? $0 : $0 }
-        return .init(item: item, title: title ?? kind, kind: kind, ranges: ranges, marker: marker)
+        return .init(item: item, title: title ?? kind, kind: kind, ranges: ranges, marker: marker,
+                     pictureFades: pictureFades, recordingStart: recordingStart)
     }
 
     private static func itemKind(_ kind: String) -> String {

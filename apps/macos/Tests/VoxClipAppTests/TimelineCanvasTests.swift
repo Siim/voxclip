@@ -136,6 +136,61 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.timelineItemRefusal == preview.readout && model.project == original && !undo.canUndo)
     }
 
+    @Test func aTitleCornerFadesWithoutMovingTheItem() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                     start: 11, end: 13, text: "Faster edits", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        model.selectTimelineItems([.effect("title")]); canvas.apply()
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let start = NSPoint(x: fragment.rect.minX + 10, y: fragment.rect.minY + 4)
+        let end = NSPoint(x: start.x + canvas.viewport.ptPerSecond * 0.4, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(canvas.itemOverlay.preview?.readout == "Fade in 0.4 s" && !undo.canUndo)
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.project == fixture && !undo.canUndo)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        undo.endUndoGrouping()
+        #expect(model.project.clipEffects.first?.start == 11 && model.project.clipEffects.first?.fadeInSeconds == 0.4)
+        #expect(undo.undoActionName == "Fade title" && model.undoSteps == 1)
+        let actions = Set(canvas.itemAXElements[.effect("title")]?.accessibilityCustomActions()?.map(\.name) ?? [])
+        #expect(actions.isSuperset(of: ["Fade in longer", "Fade in shorter", "Fade out longer", "Fade out shorter"]))
+    }
+
+    @Test func optionCommandDragSlipsBRollWithoutMovingItsAnchor() throws {
+        var fixture = try project()
+        var recording = fixture.media.source
+        recording.contentKey = "picture-source"
+        recording.recordingHash = nil
+        fixture.media.additionalSources = [recording]
+        fixture.media.footage = [.init(id: "picture", clipID: try #require(fixture.edits.activeClipId), kind: .bRoll,
+                                       start: 11, end: 13, footage: .init(sourceKey: recording.footageKey, start: 2))]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .footage("picture") })
+        let start = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let end = NSPoint(x: start.x + canvas.viewport.ptPerSecond, y: start.y)
+        let flags: NSEvent.ModifierFlags = [.option, .command]
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas, flags: flags))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas, flags: flags))
+        #expect(canvas.itemOverlay.preview?.readout == "Slip +0:01.0 · recording 0:02.0 → 0:03.0")
+        #expect(canvas.itemOverlay.preview?.rectangles == [fragment.rect] && model.project == fixture && !undo.canUndo)
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas, flags: flags))
+        undo.endUndoGrouping()
+        #expect(model.project.media.footage.map(\.start) == [11] && model.project.media.footage.first?.footage.start == 3)
+        #expect(undo.undoActionName == "Slip B-roll" && model.undoSteps == 1)
+    }
+
     @Test func voiceOverCanMoveAnItemByWordAndExposesItsActions() throws {
         var fixture = try project()
         fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]

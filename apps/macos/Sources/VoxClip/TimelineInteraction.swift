@@ -20,12 +20,14 @@ import VoxClipCore
         case item(ItemDrag)
         case marquee(point: NSPoint, original: Set<TimelineItemID>, additive: Bool)
     }
+    private enum ItemGesture {
+        case move(duplicate: Bool), trim(TimelineEdge), fade(TimelineEdge), slip
+    }
     private struct ItemDrag {
         let fragment: TimelineItemFragment
         let point: NSPoint
-        let edge: TimelineEdge?
+        let gesture: ItemGesture
         let ids: [TimelineItemID]
-        let duplicate: Bool
         let collapseOnClick: Bool
     }
     private var drag: Drag?
@@ -69,8 +71,13 @@ import VoxClipCore
         context = current
         if let hit = canvas.item(at: point) {
             let id = hit.display.item.id
-            let additive = !event.modifierFlags.isDisjoint(with: [.shift, .command])
             let original = model.timelineItemSelection
+            let selectedHandle = original.contains(id)
+            let edge = hit.edge(at: point)
+            let fadeEdge = selectedHandle ? [TimelineEdge.start, .end].first { hit.fadeGrip($0)?.contains(point) == true } : nil
+            let slip = hit.display.recordingStart != nil && !hit.display.item.hidden && edge == nil && fadeEdge == nil &&
+                ((selectedHandle && hit.slipGrip?.contains(point) == true) || event.modifierFlags.contains([.option, .command]))
+            let additive = !slip && !event.modifierFlags.isDisjoint(with: [.shift, .command])
             var selected: Set<TimelineItemID> = additive ? original : [id]
             if additive, !selected.insert(id).inserted { selected.remove(id) }
             let preserveGroup = !additive && event.clickCount == 1 && hit.display.movable && original.contains(id)
@@ -78,11 +85,15 @@ import VoxClipCore
             model.selectTimelineItems(selected)
             if event.clickCount == 2 { canvas.openItem(id) }
             else if selected.contains(id), hit.display.movable, model.capabilities.edit {
-                let edge = hit.edge(at: point)
                 let part = hit.display.item.lane == .video
-                let ids = edge == nil && !part ? [id] + canvas.selectedItemIDs.filter { $0 != id } : [id]
-                drag = .item(.init(fragment: hit, point: point, edge: edge, ids: ids,
-                                   duplicate: edge == nil && !part && event.modifierFlags.contains(.option), collapseOnClick: preserveGroup))
+                let gesture: ItemGesture
+                if let fadeEdge { gesture = .fade(fadeEdge) }
+                else if let edge { gesture = .trim(edge) }
+                else if slip { gesture = .slip }
+                else { gesture = .move(duplicate: !part && event.modifierFlags.contains(.option)) }
+                var ids = [id]
+                if case .move = gesture, !part { ids += canvas.selectedItemIDs.filter { $0 != id } }
+                drag = .item(.init(fragment: hit, point: point, gesture: gesture, ids: ids, collapseOnClick: preserveGroup))
             }
         } else if canvas.isConnectedLane(at: point) {
             let additive = !event.modifierFlags.isDisjoint(with: [.shift, .command])
@@ -184,14 +195,29 @@ import VoxClipCore
         let id = display.item.id
         let scale = canvas.viewport.ptPerSecond
         let delta = (point.x - transaction.point.x) / scale
+        let excluded = Set(transaction.ids)
+        switch transaction.gesture {
+        case .fade(let edge):
+            guard let fades = display.pictureFades else { return }
+            let value = (fades[edge] + (edge == .start ? delta : -delta)).clamped(to: 0...fades.maximum)
+            let readout = "Fade \(edge == .start ? "in" : "out") \(String(format: "%.1f s", value))"
+            showItemPreview(.fade(item: id, edge: edge, seconds: value), ids: excluded, at: point, readout: readout, guide: nil)
+            return
+        case .slip:
+            guard let start = display.recordingStart else { return }
+            let readout = "Slip \(timelineItemDelta(delta)) · recording \(timelineItemTime(start)) → \(timelineItemTime(start + delta))"
+            showItemPreview(.slip(item: id, bySeconds: delta), ids: excluded, at: point, readout: readout, guide: nil)
+            return
+        default: break
+        }
+        let trimEdge: TimelineEdge? = if case .trim(let edge) = transaction.gesture { edge } else { nil }
         let start = display.ranges.first?.start ?? display.marker ?? fragment.range.start
         let end = display.ranges.last?.end ?? start
-        let base = transaction.edge == .end ? end : start
+        let base = trimEdge == .end ? end : start
         let raw = base + delta
         let part = display.item.lane == .video
-        let locked = display.wordLocked || (part && transaction.edge != nil)
-        let excluded = Set(transaction.ids)
-        let partEdge = part ? transaction.edge : nil
+        let locked = display.wordLocked || (part && trimEdge != nil)
+        let partEdge = part ? trimEdge : nil
         let sourceEdge = partEdge.flatMap { edge in model.timelineItemSpan(id).map { edge == .start ? $0.lowerBound : $0.upperBound } }
         let sourceWordEdge = sourceEdge.flatMap { base in
             partEdge.flatMap { edge in model.timelineWordEdge(near: base + delta, edge: edge) }
@@ -207,7 +233,7 @@ import VoxClipCore
         var source = canvas.itemSourceTime(snapped)
         let readout: String
         let command: TimelineEdit
-        if let edge = transaction.edge {
+        if let edge = trimEdge {
             if let sourceWordEdge {
                 source = sourceWordEdge
             } else if edge == .end, canvas.content.axis == .edited,
@@ -219,7 +245,11 @@ import VoxClipCore
             readout = "\(edge == .start ? "In" : "Out") \(timelineItemDelta(shift)) · \(String(format: "%.1f s", length))"
         } else {
             if part { source = canvas.itemSourceTime(time(point)) }
-            command = transaction.duplicate ? .duplicate(items: transaction.ids, toAnchor: source) : .move(items: transaction.ids, toAnchor: source)
+            if case .move(duplicate: true) = transaction.gesture {
+                command = .duplicate(items: transaction.ids, toAnchor: source)
+            } else {
+                command = .move(items: transaction.ids, toAnchor: source)
+            }
             let word = model.word(at: source, nearest: true).map { " · on “\(model.text($0))”" } ?? ""
             let cut = canvas.content.axis == .source && model.plan?.cutContaining(source) != nil ? " · \(TimelineItems.cutDropCopy)" : ""
             readout = timelineItemDelta(shift) + word + cut

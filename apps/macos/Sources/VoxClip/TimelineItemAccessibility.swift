@@ -107,6 +107,13 @@ extension TimelineCanvasView {
             action("Duplicate") { $0.model.commitTimelineItemEdit(.duplicate(items: [id], toAnchor: nil)) },
             action("Delete") { $0.model.commitTimelineItemEdit(.delete(items: [id])) }
         ]
+        if let fades = item.pictureFades {
+            for edge in [TimelineEdge.start, .end] {
+                let label = "Fade \(edge == .start ? "in" : "out")"
+                actions.append(action("\(label) longer") { $0.model.commitTimelineItemEdit(.fade(item: id, edge: edge, seconds: fades[edge] + 0.1)) })
+                actions.append(action("\(label) shorter") { $0.model.commitTimelineItemEdit(.fade(item: id, edge: edge, seconds: fades[edge] - 0.1)) })
+            }
+        }
         return actions
     }
 }
