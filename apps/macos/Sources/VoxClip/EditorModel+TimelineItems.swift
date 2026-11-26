@@ -75,6 +75,12 @@ extension EditorModel {
         return nil
     }
 
+    func timelineFieldDisabledReason(_ item: TimelineItemDisplay) -> String? {
+        guard capabilities.writable, item.movable else { return "This item is read-only." }
+        guard capabilities.edit else { return "The timeline is not ready to edit." }
+        return item.item.hidden ? item.item.reason ?? "This item is hidden." : nil
+    }
+
     func timelineWordEdge(near time: Double, edge: TimelineEdge) -> Double? {
         words.lazy.map { edge == .start ? $0.start : $0.end }.min { abs($0 - time) < abs($1 - time) }
     }

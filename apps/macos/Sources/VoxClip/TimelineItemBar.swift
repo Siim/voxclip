@@ -30,38 +30,40 @@ import VoxClipCore
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 Text(item.title).fontWeight(.semibold).lineLimit(1)
+                let disabledReason = model.timelineFieldDisabledReason(item)
                 if let span = model.timelineItemSpan(item.item.id) {
                     let start = item.ranges.first?.start ?? item.marker ?? span.lowerBound
                     let length = item.ranges.last.map { $0.end - start } ?? span.upperBound - span.lowerBound
-                    TimelineExactField(label: "Start", value: start, writable: item.movable && item.item.lane != .video && model.capabilities.edit) { time in
+                    let startReason = disabledReason ?? (item.item.lane == .video ? "Drag a story part to reorder it." : nil)
+                    TimelineExactField(label: "Start", value: start, disabledReason: startReason) { time in
                         guard let canvas = zoom.canvas else { return false }
                         return commit(.move(items: [item.item.id], toAnchor: canvas.itemSourceTime(time)))
                     }
+                    if let startReason, disabledReason == nil { Text(startReason).foregroundStyle(.secondary) }
                     if let word = model.word(at: span.lowerBound, nearest: true) {
                         Text("on “\(model.text(word))”").foregroundStyle(.secondary).lineLimit(1)
                     }
-                    TimelineExactField(label: "Length", value: length, writable: item.movable && model.capabilities.edit) { length in
+                    TimelineExactField(label: "Length", value: length, disabledReason: disabledReason) { length in
                         guard let canvas = zoom.canvas else { return false }
                         return commit(.trim(item: item.item.id, edge: .end, toSource: canvas.itemSourceTime(start + length)))
                     }
                 }
-                if let reason = item.item.reason { Text(reason).foregroundStyle(.secondary) }
-                let writable = model.capabilities.edit && !item.item.hidden
+                if let reason = disabledReason ?? item.item.reason { Text(reason).foregroundStyle(.secondary) }
                 if let fades = item.fades {
-                    TimelineExactField(label: "Fade in", value: fades.fadeIn, writable: writable) { value in
+                    TimelineExactField(label: "Fade in", value: fades.fadeIn, disabledReason: disabledReason) { value in
                         commit(.fade(item: item.item.id, edge: .start, seconds: value))
                     }
-                    TimelineExactField(label: "Fade out", value: fades.fadeOut, writable: writable) { value in
+                    TimelineExactField(label: "Fade out", value: fades.fadeOut, disabledReason: disabledReason) { value in
                         commit(.fade(item: item.item.id, edge: .end, seconds: value))
                     }
                 }
                 if let from = item.recordingStart {
-                    TimelineExactField(label: "Recording from", value: from, writable: model.capabilities.edit) { value in
+                    TimelineExactField(label: "Recording from", value: from, disabledReason: disabledReason) { value in
                         commit(.slip(item: item.item.id, bySeconds: value - from))
                     }
                 }
                 if let audio = item.audio {
-                    audioDetails(audio, item: item, writable: writable)
+                    audioDetails(audio, item: item, disabledReason: disabledReason)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
@@ -70,22 +72,23 @@ import VoxClipCore
         .scrollIndicators(.hidden)
     }
 
-    @ViewBuilder private func audioDetails(_ audio: TimelineAudioItem, item: TimelineItemDisplay, writable: Bool) -> some View {
+    @ViewBuilder private func audioDetails(_ audio: TimelineAudioItem, item: TimelineItemDisplay, disabledReason: String?) -> some View {
         let id = item.item.id
-        TimelineExactField(label: "Volume", value: audio.gainDb, writable: writable, unit: "dB") { value in
+        TimelineExactField(label: "Volume", value: audio.gainDb, disabledReason: disabledReason, unit: "dB") { value in
             commit(audio.setGain(id, db: value))
         }
-        TimelineExactField(label: audio.offsetLabel, value: audio.mediaStart, writable: writable) { value in
+        TimelineExactField(label: audio.offsetLabel, value: audio.mediaStart, disabledReason: disabledReason) { value in
             commit(.slip(item: id, bySeconds: value - audio.mediaStart))
         }
         if let track = audio.music {
-            TimelineExactField(label: "Dips under voice", value: audio.duckDb, writable: writable, unit: "dB") { value in
+            TimelineExactField(label: "Dips under voice", value: audio.duckDb, disabledReason: disabledReason, unit: "dB") { value in
                 commit(.setDuck(track: track.id, db: value))
             }
-            let reason = writable ? model.timelineEditReason(.setLoop(item: id, !audio.loop)) : item.item.reason ?? "This item is read-only."
+            let reason = disabledReason ?? model.timelineEditReason(.setLoop(item: id, !audio.loop))
             Toggle("Loop", isOn: Binding(get: { audio.loop }, set: { value in _ = commit(.setLoop(item: id, value)) }))
                 .disabled(reason != nil).help(reason ?? "Loop the song when it ends.")
-            if let reason, writable { Text(reason).foregroundStyle(.secondary) }
+                .accessibilityHint(reason ?? "Loop the song when it ends.")
+            if let reason, disabledReason == nil { Text(reason).foregroundStyle(.secondary) }
         }
     }
 
@@ -107,7 +110,7 @@ import VoxClipCore
                     .disabled(blocked || speechSelected).help("Duplicate item (⌘D)")
                 if let single {
                     let keyframe = model.timelineKeyframeAtPlayhead(single)
-                    let reason = keyframe.map { model.timelineEditReason($0) } ?? "Choose a sound or music item."
+                    let reason = model.timelineFieldDisabledReason(single) ?? (keyframe.map { model.timelineEditReason($0) } ?? "Choose a sound or music item.")
                     Button("Add keyframe") { if let keyframe { _ = commit(keyframe) } }
                         .disabled(reason != nil).help(reason ?? "Add volume keyframe at playhead (⌥K)")
                     if let reason, single.audio != nil { Text(reason).foregroundStyle(.secondary) }
@@ -149,7 +152,7 @@ import VoxClipCore
 @MainActor private struct TimelineExactField: View {
     let label: String
     let value: Double
-    let writable: Bool
+    let disabledReason: String?
     var unit = "s"
     let commit: (Double) -> Bool
     @State private var draft = ""
@@ -163,7 +166,9 @@ import VoxClipCore
             TextField(label, text: $draft)
                 .labelsHidden().monospacedDigit().frame(width: 65).controlSize(.small)
                 .accessibilityLabel("\(label) in \(unit == "dB" ? "decibels" : "seconds")")
-                .disabled(!writable)
+                .disabled(disabledReason != nil)
+                .help(disabledReason ?? "")
+                .accessibilityHint(disabledReason ?? "")
                 .focused($focused)
                 .onAppear { draft = formatted }
                 .onChange(of: value) { if !focused { draft = formatted } }
@@ -175,6 +180,7 @@ import VoxClipCore
     }
 
     private func submit() {
+        guard disabledReason == nil else { draft = formatted; return }
         guard draft != formatted else { return }
         if let value = Double(draft.replacingOccurrences(of: "−", with: "-")), value.isFinite, unit == "dB" || value >= 0 { _ = commit(value) }
         draft = formatted

@@ -35,6 +35,11 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.timelineItemRefusal == nil)
         #expect(canvas.itemOverlay.preview?.readout == "Fade in 0.8 s")
         #expect(!undo.canUndo)
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.project == fixture && !undo.canUndo && canvas.itemOverlay.preview == nil)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
         undo.beginUndoGrouping()
         canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
         undo.endUndoGrouping()
@@ -104,20 +109,24 @@ private actor TimelineTestSettings: SettingsStore {
             start = .init(x: rect.maxX - 1, y: rect.midY); end = .init(x: start.x + 4 * scale, y: start.y)
             name = "Trim music"; readout = "∞ 1 loop · 8.0 s"
         }
+        func selectDipRange(cancel: Bool = false) throws {
+            let lower = NSPoint(x: rect.minX + scale, y: rect.maxY - 1)
+            let upper = NSPoint(x: rect.minX + 3 * scale, y: lower.y)
+            canvas.mouseDown(with: try mouse(.leftMouseDown, lower, in: canvas))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, upper, in: canvas))
+            #expect(canvas.itemOverlay.preview != nil)
+            if cancel { canvas.keyDown(with: try timelineKey(53)) }
+            canvas.mouseUp(with: try mouse(.leftMouseUp, upper, in: canvas))
+            #expect(!undo.canUndo && canvas.itemOverlay.audioSelection.isEmpty == cancel)
+        }
         func begin() throws {
-            if gesture == .dip {
-                let lower = NSPoint(x: rect.minX + scale, y: rect.maxY - 1)
-                let upper = NSPoint(x: rect.minX + 3 * scale, y: lower.y)
-                canvas.mouseDown(with: try mouse(.leftMouseDown, lower, in: canvas))
-                canvas.mouseDragged(with: try mouse(.leftMouseDragged, upper, in: canvas))
-                canvas.mouseUp(with: try mouse(.leftMouseUp, upper, in: canvas))
-                #expect(!undo.canUndo && !canvas.itemOverlay.audioSelection.isEmpty)
-            }
+            if gesture == .dip { try selectDipRange() }
             canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas, flags: flags))
             canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas, flags: flags))
             #expect(canvas.itemOverlay.preview?.readout == readout)
             #expect(model.project == fixture && !undo.canUndo)
         }
+        if gesture == .dip { try selectDipRange(cancel: true) }
         try begin()
         canvas.keyDown(with: try timelineKey(53))
         canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas, flags: flags))
@@ -227,6 +236,36 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(piece.duckingY(atX: piece.audioX(at: speech - 1), contour: staged) == piece.volumeY(-20))
         let band = try #require(canvas.music.state.music.fades["tail"])
         #expect(abs(band.end - band.start - 2) < 0.001)
+    }
+
+    @Test func audioFieldsExplainUnavailableEditsAndZeroDuckingTurnsItOff() throws {
+        var fixture = try projectWithMusic()
+        fixture.music[0].segments?[0].lengthSeconds = 6
+        fixture.clipEffects = [.init(id: "hidden", clipId: fixture.edits.activeClipId, kind: .sound,
+            start: 31, end: 31.8, sound: .init(source: .bundled, id: "pop", durationSeconds: 0.8, title: "Pop", license: "cc0"))]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let id = TimelineItemID.music("music")
+        let music = try #require(canvas.content.items.first { $0.item.id == id })
+        let hidden = try #require(canvas.content.items.first { $0.item.id == .effect("hidden") })
+        #expect(model.timelineFieldDisabledReason(hidden) == "Hidden · outside this clip")
+        #expect(model.timelineFieldDisabledReason(music) == nil && music.audio?.duckDb == -12)
+        #expect(model.timelineEditReason(.setLoop(item: id, false))?.hasSuffix("Turn on Loop to extend it.") == true)
+        #expect(!undo.canUndo)
+        for (input, expected) in [(-30.0, -24.0), (0, 0)] {
+            undo.beginUndoGrouping()
+            #expect(model.commitTimelineItemEdit(.setDuck(track: "music", db: input)))
+            undo.endUndoGrouping()
+            canvas.renderContent()
+            #expect(canvas.content.items.first { $0.item.id == id }?.audio?.duckDb == expected)
+            #expect(model.currentMusic?.ducking == (expected != 0))
+        }
+        undo.undo()
+        #expect(model.currentMusic?.duckDb == -24 && model.currentMusic?.ducking == true)
+        undo.undo()
+        #expect(model.currentMusic == fixture.music.first)
     }
 
     @Test func aTitleDragWritesOneNamedUndoOnRelease() throws {

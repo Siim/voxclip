@@ -489,6 +489,31 @@ import VoxClipCore
         #expect(decoded[2 * 21_600] == 0)
     }
 
+    @Test func overlappingSoundsCrossfadeBetweenTheirOwnFades() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sound = root.appendingPathComponent("effect.caf")
+        let writer = try MusicCAFWriter(url: sound, channels: 2)
+        try writer.append([Float](repeating: 0.25, count: 48_000))
+        writer.close()
+        let reference = ClipEffect.Sound(source: .bundled, id: "pop", durationSeconds: 0.5, title: "Test", license: "cc0")
+        var first = ClipEffect(id: "first", clipId: nil, kind: .sound, start: 0.25, end: 0.75, sound: reference, gainDb: 0)
+        var second = ClipEffect(id: "second", clipId: nil, kind: .sound, start: 0.5, end: 1, sound: reference, gainDb: 0)
+        first.fadeInSeconds = 0.1
+        second.fadeOutSeconds = 0.1
+        let source = try await NativeMediaFixtures.shared.file()
+        let request = Self.request(source, effects: [first, second], soundURLs: [first.id: sound, second.id: sound])
+        let graph = try await CompositionBuilder(scratchRoot: root).build(request)
+        let decoded = try MusicBedTests.readBed(try #require(graph.effectsLease).url)
+        func sample(_ seconds: Double) -> Double { Double(decoded[2 * Int((seconds * 48_000).rounded())]) }
+        #expect(abs(sample(0.30) - 0.125) < 1e-6)
+        #expect(abs(sample(0.40) - 0.25) < 1e-6)
+        #expect(abs(sample(0.625) - 0.25 * sqrt(2)) < 1e-6)
+        #expect(abs(sample(0.80) - 0.25) < 1e-6)
+        #expect(abs(sample(0.95) - 0.125) < 1e-6)
+    }
+
     // MARK: Vision
 
     /// A 2 s 640×360 movie: a white square moving left to right over dark grey, with "INVOICE 1042" printed top right.
