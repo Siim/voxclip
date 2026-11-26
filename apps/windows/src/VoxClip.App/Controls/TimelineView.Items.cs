@@ -374,7 +374,8 @@ public sealed partial class TimelineView
         if (!drag.Moved || drag.AddPoint) { drag.Session.Cancel(); gestureReadout = null; itemGuide = null; RedrawItems(); return true; }
         if (drag.Band)
         {
-            var low = drag.Hit.Item.AxisIntervals[0].Start; var high = drag.Hit.Item.AxisIntervals[^1].End;
+            // A reordered story on Source runs its parts out of source order, so take the outer bounds.
+            var low = drag.Hit.Item.AxisIntervals.Min(interval => interval.Start); var high = drag.Hit.Item.AxisIntervals.Max(interval => interval.End);
             var (start, end) = Ordered(ItemAt(drag.Origin), ItemAt(position));
             audioBandItem = drag.Hit.Item.Id;
             audioBand = new(Math.Clamp(start, low, high), Math.Clamp(end, low, high));
@@ -384,7 +385,13 @@ public sealed partial class TimelineView
             var layout = itemLayout! with { SnapTargets = [.. itemLayout.SnapTargets, new(ScreenToItem(ToDisplay(model.SourceTime)), TimelineSnapKind.Playhead, null)] };
             var scale = track.ActualWidth / view.Duration;
             var snappingNow = snapping.IsChecked == true && !InputState.Down(VirtualKey.Menu) && !InputState.Down(VirtualKey.N);
-            var delta = drag.Hit.Item.Lane == TimelineLane.V1 ? dx / scale : ItemAt(position) - ItemAt(drag.Origin);
+            // As on the Mac, the pointer moves on the displayed clock. A move or trim maps its displaced edge back to item
+            // time, which crosses a reordered story's seams correctly on Source; slips, fades and keyframes use screen time.
+            var intervals = drag.Hit.Item.AxisIntervals;
+            var anchor = intervals.Count == 0 ? 0 : drag.Gesture == TimelineItemGesture.End ? intervals[^1].End : intervals[0].Start;
+            var delta = drag.Hit.Item.Lane != TimelineLane.V1 && intervals.Count > 0 && drag.Gesture is TimelineItemGesture.Move
+                or TimelineItemGesture.Duplicate or TimelineItemGesture.Start or TimelineItemGesture.End
+                ? ScreenToItem(ItemToScreen(anchor) + dx / scale) - anchor : dx / scale;
             var edit = TimelineItemEditing.Build(drag.Gesture, drag.Hit.Item, drag.Hit.Details, drag.Ids, layout, drag.Session.Plan,
                 ItemAxis, model.Words, delta, -dy * 46 / Math.Max(1, drag.Hit.Rect.Height - 10), ItemAt(position), 8 / scale,
                 snappingNow, drag.Point, audioBand);
@@ -500,6 +507,7 @@ public sealed partial class TimelineView
         if (!CanEditItems || model is null) return false;
         var session = new TimelineEditSession(model, model.Project.Edits.ActiveClipId);
         var committed = session.Commit([edit]);
+        if (committed && edit is TimelineEdit.RemoveGainPoint) selectedGainPoint = null;
         itemMessage = session.Reason;
         if (committed) model.Announce(model.UndoActionName ?? "Timeline changed");
         else if (itemMessage is { } refusal) model.Announce(refusal);
@@ -572,7 +580,7 @@ public sealed partial class TimelineView
             _ => null
         };
         if (edit is null) return false;
-        if (CommitItems(edit) && edit is TimelineEdit.RemoveGainPoint) { selectedGainPoint = null; RedrawItems(); }
+        if (CommitItems(edit) && edit is TimelineEdit.RemoveGainPoint) RedrawItems();
         return true;
     }
 

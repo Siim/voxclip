@@ -118,10 +118,12 @@ internal static class TimelineItemEditing
                     : Level(details.Gain + volumeDelta, item.Kind == "sound" ? -30 : -40, item.Kind == "sound" ? 6 : 12) + details.TrackGain;
                 return new([details.SetGain(id, gain)], Decibels(gain));
             case TimelineItemGesture.Keyframe when keyframe is { } point:
-                var raw = Math.Clamp(destination, start, end);
+                // A reordered story on Source can put the first part after the last: clamp to the outer bounds.
+                var (low, high) = (Math.Min(start, end), Math.Max(start, end));
+                var raw = Math.Clamp(destination, low, high);
                 var guide = snapping ? Snap(raw, false) : null;
                 var db = Level(point.Db + volumeDelta, -60, 12);
-                return new([new TimelineEdit.MoveGainPoint(id, point.T, Source(Math.Clamp(guide ?? raw, start, end)), db)],
+                return new([new TimelineEdit.MoveGainPoint(id, point.T, Source(Math.Clamp(guide ?? raw, low, high)), db)],
                     Decibels(details.Level + db), guide);
             case TimelineItemGesture.Dip when dipRange is { } range:
                 var depth = Level(volumeDelta, -60, 0);
