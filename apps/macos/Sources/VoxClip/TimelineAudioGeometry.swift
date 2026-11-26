@@ -38,7 +38,8 @@ extension EditorModel {
         var graphics = TimelineMusicGraphics(contour: contour, usesFallback: staged == nil)
         let rate = 48_000.0
         let entries = track.segments ?? [.init(id: track.id, anchorSeconds: plan.sourceTime(0), lengthSeconds: duration,
-                                                songFromSeconds: track.startOffsetSeconds, loop: true)]
+                                                songFromSeconds: track.startOffsetSeconds, loop: true,
+                                                fadeInSeconds: track.fadeInSeconds, fadeOutSeconds: track.fadeOutSeconds)]
         let placements = MusicMix.segmentPieces(entries, trackFrames: Int((track.asset.durationSeconds * rate).rounded()),
                                                 outputFrames: Int((duration * rate).rounded()), rate: rate) {
             timing.rendered(plan.mapTime($0))

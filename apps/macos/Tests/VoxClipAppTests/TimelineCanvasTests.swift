@@ -32,6 +32,7 @@ private actor TimelineTestSettings: SettingsStore {
         let end = NSPoint(x: start.x + 0.8 * canvas.viewport.ptPerSecond, y: start.y)
         canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
         canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(model.timelineItemRefusal == nil)
         #expect(canvas.itemOverlay.preview?.readout == "Fade in 0.8 s")
         #expect(!undo.canUndo)
         undo.beginUndoGrouping()
@@ -39,6 +40,193 @@ private actor TimelineTestSettings: SettingsStore {
         undo.endUndoGrouping()
         #expect(undo.undoActionName == "Fade sound" && model.undoSteps == 1)
         #expect(model.project.clipEffects.first?.fadeInSeconds == 0.8)
+    }
+
+    private enum MusicDrag: CaseIterable { case fade, volume, keyframe, dip, gripSlip, modifierSlip, loop }
+
+    private func projectWithMusic(segmented: Bool = true) throws -> Project {
+        var fixture = try project()
+        let asset = MusicAsset(file: "\(fixture.id)/music-night.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 46)
+        let segment = MusicSegment(id: "music", anchorSeconds: 11, lengthSeconds: 4, songFromSeconds: 42,
+                                   loop: true, fadeInSeconds: 0, fadeOutSeconds: 0)
+        fixture.music = [.init(id: "music", clipId: fixture.edits.activeClipId, asset: asset, source: .file, title: "Night Drive",
+                               license: .own, gainDb: -30, fadeInSeconds: 0, fadeOutSeconds: 0, startOffsetSeconds: 42,
+                               segments: segmented ? [segment] : nil)]
+        return fixture
+    }
+
+    @Test(arguments: MusicDrag.allCases) private func musicDragPreviewsCancelsAndCommitsOnce(_ gesture: MusicDrag) throws {
+        var fixture = try projectWithMusic(segmented: gesture != .volume)
+        if gesture == .keyframe { fixture.music[0].segments?[0].gainPoints = [.init(t: 1, db: 0)] }
+        let app = try app(), model = editor(app, project: fixture)
+        let shell = WorkspaceShell(app: app)
+        shell.layout.trackHeight = .large
+        let (canvas, window) = windowed(model, shell: shell)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        model.timelineSnapping = false
+        let id = TimelineItemID.music("music")
+        let item = try #require(canvas.content.items.first { $0.item.id == id })
+        canvas.selectAndRevealItem(item)
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == id })
+        let rect = fragment.rect
+        let scale = canvas.viewport.ptPerSecond
+        let line = fragment.volumeY(-30)
+        var flags: NSEvent.ModifierFlags = []
+        let start: NSPoint, end: NSPoint, name: String, readout: String
+        switch gesture {
+        case .fade:
+            let grip = try #require(fragment.fadeGrip(.start))
+            start = .init(x: grip.midX, y: grip.midY); end = .init(x: start.x + 0.8 * scale, y: start.y)
+            name = "Fade music"; readout = "Fade in 0.8 s"
+        case .volume:
+            start = .init(x: rect.midX, y: line); end = .init(x: start.x, y: line - 12.5 / fragment.dbPerPoint)
+            name = "Change volume"; readout = "−17.5 dB"
+        case .keyframe:
+            start = try #require(fragment.volumePoints.first?.center)
+            end = .init(x: start.x + 0.5 * scale, y: line - 10 / fragment.dbPerPoint)
+            name = "Move volume keyframe"; readout = "−20.0 dB"
+        case .dip:
+            start = .init(x: rect.midX, y: line); end = .init(x: start.x, y: line + 8 / fragment.dbPerPoint)
+            name = "Dip volume"
+            readout = "\(timelineItemTime(fragment.range.start + 1))–\(timelineItemTime(fragment.range.start + 3)) · −8.0 dB"
+        case .gripSlip, .modifierSlip:
+            if gesture == .gripSlip {
+                let grip = try #require(fragment.slipGrip)
+                start = .init(x: grip.midX, y: grip.midY)
+            } else {
+                flags = [.option, .command]
+                start = .init(x: rect.midX, y: rect.midY)
+            }
+            end = .init(x: start.x + 2.5 * scale, y: start.y)
+            name = "Slip music"; readout = "Slip +0:02.5 · song 0:42.0 → 0:44.5"
+        case .loop:
+            start = .init(x: rect.maxX - 1, y: rect.midY); end = .init(x: start.x + 4 * scale, y: start.y)
+            name = "Trim music"; readout = "∞ 1 loop · 8.0 s"
+        }
+        func begin() throws {
+            if gesture == .dip {
+                let lower = NSPoint(x: rect.minX + scale, y: rect.maxY - 1)
+                let upper = NSPoint(x: rect.minX + 3 * scale, y: lower.y)
+                canvas.mouseDown(with: try mouse(.leftMouseDown, lower, in: canvas))
+                canvas.mouseDragged(with: try mouse(.leftMouseDragged, upper, in: canvas))
+                canvas.mouseUp(with: try mouse(.leftMouseUp, upper, in: canvas))
+                #expect(!undo.canUndo && !canvas.itemOverlay.audioSelection.isEmpty)
+            }
+            canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas, flags: flags))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas, flags: flags))
+            #expect(canvas.itemOverlay.preview?.readout == readout)
+            #expect(model.project == fixture && !undo.canUndo)
+        }
+        try begin()
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas, flags: flags))
+        #expect(model.project == fixture && !undo.canUndo && canvas.itemOverlay.preview == nil)
+        try begin()
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas, flags: flags))
+        undo.endUndoGrouping()
+        #expect(model.timelineItemRefusal == nil)
+        #expect(undo.undoActionName == name && model.undoSteps == 1)
+        let segment = try #require(model.currentMusic?.segments?.first)
+        switch gesture {
+        case .fade: #expect(segment.fadeInSeconds == 0.8)
+        case .volume: #expect(model.currentMusic?.gainDb == -17.5 && segment.gainDb == 0)
+        case .keyframe: #expect(segment.gainPoints == [.init(t: 1.5, db: 10)])
+        case .dip: #expect(segment.gainPoints?.map(\.db) == [0, -8, -8, 0])
+        case .gripSlip, .modifierSlip: #expect(segment.songFromSeconds == 44.5 && segment.anchorSeconds == 11)
+        case .loop:
+            #expect(abs(segment.lengthSeconds - 8) < 0.001)
+            #expect(canvas.content.musicGraphics.loops["music"]?.count == 1)
+        }
+        undo.undo()
+        #expect(model.project.music == fixture.music)
+    }
+
+    @Test func optionClickAddsAKeyframeAtThePointerAndOnTheLine() throws {
+        var fixture = try projectWithMusic()
+        fixture.music[0].segments?[0].gainPoints = [.init(t: 0, db: 0), .init(t: 3, db: 9)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .music("music") })
+        let time = fragment.range.start + 2
+        let point = NSPoint(x: canvas.headerWidth + canvas.viewport.x(time), y: fragment.volumeY(-24))
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas, flags: .option))
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, point, in: canvas, flags: .option))
+        #expect(!undo.canUndo && model.project == fixture)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas, flags: .option))
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, point, in: canvas, flags: .option))
+        undo.endUndoGrouping()
+        #expect(undo.undoActionName == "Add volume keyframe")
+        #expect(model.currentMusic?.segments?.first?.gainPoints?[1] == .init(t: 2, db: 6))
+        let newFragment = try #require(canvas.itemFragments.first { $0.display.item.id == .music("music") })
+        let keyframe = try #require(newFragment.volumePoints.first { $0.gain.t == 2 })
+        #expect(hypot(keyframe.center.x - point.x, keyframe.center.y - point.y) < 0.01)
+    }
+
+    @Test func audioVoiceOverAndKeyboardUseTheSameUndoableActions() throws {
+        let model = editor(try app(), project: try projectWithMusic())
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let id = TimelineItemID.music("music")
+        model.sourceTime = 12
+        model.playhead = model.timelineTime(source: 12, on: .edited)
+        model.selectTimelineItems([id]); canvas.apply()
+        func perform(_ title: String) throws {
+            let action = try #require(canvas.itemAXElements[id]?.accessibilityCustomActions()?.first { $0.name == title }?.handler)
+            undo.beginUndoGrouping(); defer { undo.endUndoGrouping() }
+            #expect(action())
+        }
+        for edge in ["in", "out"] {
+            try perform("Fade \(edge) longer")
+            #expect(undo.undoActionName == "Fade music" && model.lastAnnouncement == "Fade \(edge) 0.1 seconds.")
+            try perform("Fade \(edge) shorter")
+            #expect(model.lastAnnouncement == "Fade \(edge) 0.0 seconds.")
+        }
+        try perform("Volume up 1 dB")
+        #expect(undo.undoActionName == "Change volume" && model.lastAnnouncement == "Volume −29.0 dB.")
+        try perform("Volume down 1 dB")
+        #expect(model.lastAnnouncement == "Volume −30.0 dB.")
+        try perform("Add volume keyframe")
+        #expect(undo.undoActionName == "Add volume keyframe")
+        #expect(model.lastAnnouncement == "Volume keyframe added at the playhead.")
+        undo.undo()
+        for (code, character, flags, undoName): (UInt16, String, NSEvent.ModifierFlags, String) in [
+            (24, "=", .control, "Change volume"), (27, "-", .control, "Change volume"), (40, "k", .option, "Add volume keyframe")
+        ] {
+            let event = try timelineKey(code, character, flags: flags)
+            undo.beginUndoGrouping()
+            #expect(canvas.interaction.keyDown(event))
+            undo.endUndoGrouping()
+            #expect(undo.undoActionName == undoName)
+        }
+    }
+
+    @Test func musicContourDrawsStagedDipsAndMarksTheCrossfade() throws {
+        var fixture = try projectWithMusic()
+        fixture.music[0].gainDb = -20
+        fixture.music[0].segments?.append(.init(id: "tail", anchorSeconds: 13, lengthSeconds: 3, songFromSeconds: 39,
+                                               loop: false, fadeInSeconds: 0, fadeOutSeconds: 0))
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let piece = try #require(canvas.itemFragments.first { $0.display.item.id == .music("music") })
+        let speech = piece.range.start + 2
+        let activity = (0..<800).map { abs((Double($0) + 0.5) * MusicMix.frameSeconds - speech) < 0.3 }
+        let contour = TimelineDuckingContour(gains: MusicMix.duckingGainsDb(activity: activity), timing: .init(speed: 1))
+        model.stagedTimelineDucking = (model.projectRevision, contour)
+        canvas.renderContent()
+        let staged = try #require(canvas.music.state.music.contour)
+        #expect(!canvas.music.state.music.usesFallback)
+        #expect(abs(piece.duckingY(atX: piece.audioX(at: speech), contour: staged) - piece.volumeY(-32)) < 0.001)
+        #expect(piece.duckingY(atX: piece.audioX(at: speech - 1), contour: staged) == piece.volumeY(-20))
+        let band = try #require(canvas.music.state.music.fades["tail"])
+        #expect(abs(band.end - band.start - 2) < 0.001)
     }
 
     @Test func aTitleDragWritesOneNamedUndoOnRelease() throws {
@@ -1602,8 +1790,8 @@ private actor TimelineTestSettings: SettingsStore {
 
     // MARK: Timeline III
 
-    private func timelineKey(_ code: UInt16, _ characters: String = "", shift: Bool = false) throws -> NSEvent {
-        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [], timestamp: 0,
+    private func timelineKey(_ code: UInt16, _ characters: String = "", shift: Bool = false, flags: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? flags.union(.shift) : flags, timestamp: 0,
                                       windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: characters,
                                       isARepeat: false, keyCode: code))
     }

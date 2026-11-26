@@ -291,6 +291,33 @@ private actor DelayedCatalog {
         #expect(fixture.fetches.ids.isEmpty && editor.currentMusic == nil)
     }
 
+    @Test func generatedSegmentsSurviveUndoAndRedoWithoutRemovingTheAsset() async throws {
+        let candidate = Self.generated(), fixture = try fixture(suggest: .init(candidates: [candidate]))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor, panel = editor.musicPanel
+        await quote(fixture)
+        panel.use(candidate, model: editor)
+        await panel.settled()
+        let original = try #require(editor.currentMusic)
+        let plan = try #require(editor.itemEditPlan)
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        undo.beginUndoGrouping()
+        let split = editor.commitTimelineItemEdit(.split(items: [.music(original.id)], atSource: plan.sourceTime(plan.duration / 2)))
+        undo.endUndoGrouping()
+        #expect(split && undo.undoActionName == "Split music")
+        let segments = try #require(editor.currentMusic?.segments)
+        #expect(segments.count == 2)
+        undo.undo()
+        #expect(editor.currentMusic == original)
+        undo.redo()
+        #expect(editor.currentMusic?.segments == segments)
+        undo.beginUndoGrouping(); panel.remove(model: editor); undo.endUndoGrouping()
+        #expect(editor.currentMusic == nil)
+        #expect(FileManager.default.fileExists(atPath: MusicRenderInput.url(for: original.asset, dataRoot: fixture.root).path))
+        undo.undo()
+        #expect(editor.currentMusic?.segments == segments)
+    }
+
     @Test func replacingAndTurningOffMusicKeepMixAndUndoInSeparateSteps() async throws {
         let fixture = try fixture(suggest: .init(candidates: [Self.library]), files: ["Current.wav"])
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }

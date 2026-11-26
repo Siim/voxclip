@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, fade, slip and adjust music and sounds directly on the timeline, with volume keyframes, range dips, loop markers and a contour showing how music dips under speech.
 - On Mac, move, trim, split, duplicate and delete items directly in the eight timeline lanes, adjust picture fades and slip B-roll, with snapping, keyboard controls and VoiceOver.
 - Claude Code, Codex and Ask Claude can trim, move and shape existing timeline items without spending; Claude does it all can shape the music it picks.
 - Windows previews and exports timeline fades, slipped sounds and music segments. B-roll plays at normal speed across cuts, and Undo restores its placement.
