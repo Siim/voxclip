@@ -188,20 +188,19 @@ public sealed class TimelineTests
     [InlineData(0, 28, 32, 20, 20)]
     [InlineData(1, 36, 44, 24, 24)]
     [InlineData(2, 52, 64, 28, 28)]
-    public void V2TracksHaveTheSpecifiedGeometry(int size, double video, double audio, double caption, double effects)
+    public void EightTracksStackInScreenOrder(int size, double video, double audio, double caption, double effects)
     {
-        var geometry = TimelineLayout.Tracks(size, true, true, true);
+        var geometry = TimelineLayout.Tracks(size, new Dictionary<TimelineLane, int> { [TimelineLane.B1] = 2 });
         Assert.Equal(video, geometry.VideoHeight); Assert.Equal(audio, geometry.AudioHeight);
         Assert.Equal(caption, geometry.CaptionHeight); Assert.Equal(effects, geometry.EffectsHeight);
-        Assert.Equal(47, geometry.VideoTop);
-        Assert.Equal(geometry.VideoTop + video + 1, geometry.AudioTop);
-        Assert.Equal(geometry.AudioTop + audio + 1, geometry.CaptionTop);
-        Assert.Equal(geometry.CaptionTop + caption + 1, geometry.EffectsTop);
-        Assert.Equal(geometry.EffectsTop + effects + 1, geometry.MusicTop);
+        Assert.Equal(47, geometry.CaptionTop);
+        Assert.Equal(2 * caption, geometry.LaneHeight(TimelineLane.B1));
+        var lanes = Enum.GetValues<TimelineLane>();
+        Assert.Equal(8, lanes.Length);
+        for (var index = 1; index < lanes.Length; index++)
+            Assert.Equal(geometry.Top(lanes[index - 1]) + geometry.LaneHeight(lanes[index - 1]) + 1, geometry.Top(lanes[index]));
         Assert.True(geometry.Height > geometry.MusicTop + geometry.MusicHeight);
-        var audioOnly = TimelineLayout.Tracks(size, false, false, false);
-        Assert.Equal(0, audioOnly.VideoHeight); Assert.Equal(47, audioOnly.AudioTop);
-        Assert.Equal(0, audioOnly.CaptionHeight); Assert.Equal(0, audioOnly.EffectsHeight);
+        Assert.Equal(44, TimelineLayout.Tracks(2).MusicHeight);
     }
 
     [Fact]

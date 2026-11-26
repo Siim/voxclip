@@ -25,6 +25,12 @@ internal sealed class MusicSection : UserControl
     private readonly TextBlock footer = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private bool syncing;
 
+    internal void FocusSearch()
+    {
+        StartBringIntoView();
+        search.Focus(FocusState.Programmatic);
+    }
+
     internal MusicSection(EditorViewModel editor, Func<nint> window)
     {
         this.editor = editor;

@@ -32,6 +32,7 @@ public sealed partial class EditorPage : Page
     private PreviewPresenter? presenter;
     private CaptionsPanel? captions;
     private Controls.RightColumn? rightContent;
+    private MusicSection? timelineMusicSection;
     private RewriteSession? rewrite;
     private ElevenLabsRegion? rewriteGenerationRegion;
     private long rewriteOpenRevision;
@@ -134,6 +135,11 @@ public sealed partial class EditorPage : Page
         Transcript.PreviewCutRequested += (_, _) => _ = RunAsync(PreviewCutAsync, "Preview");
         Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
+        Timeline.OpenMusicRequested += (_, _) =>
+        {
+            ShowCaptions();
+            timelineMusicSection?.FocusSearch();
+        };
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport();
@@ -151,7 +157,11 @@ public sealed partial class EditorPage : Page
         App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "startup", "open stage=aspect-ready");
 #endif
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
-        if (!demo) captions.AddMusic(new MusicSection(ViewModel, () => WinRT.Interop.WindowNative.GetWindowHandle(owner)));
+        if (!demo)
+        {
+            timelineMusicSection = new(ViewModel, () => WinRT.Interop.WindowNative.GetWindowHandle(owner));
+            captions.AddMusic(timelineMusicSection);
+        }
         captions.FitChanged += (_, _) => SizeStage();
         rightContent = new(captions);
         CaptionsHost.Children.Add(rightContent);
@@ -1065,8 +1075,8 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.A, VirtualKeyModifiers.Control, () => { ViewModel.Select(0); ViewModel.Select(ViewModel.Words.Count - 1, true); Transcript.SelectionMovedByKeyboard(reveal: false); });
         Add(VirtualKey.C, VirtualKeyModifiers.Control, () => ShareHelpers.Copy(ViewModel.SelectionText));
         Add(VirtualKey.H, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { ShowCuts.IsChecked = ShowCuts.IsChecked != true; DisplayChanged(this, new()); });
-        Add((VirtualKey)187, VirtualKeyModifiers.Control, () => Transcript.Zoom(1));
-        Add((VirtualKey)189, VirtualKeyModifiers.Control, () => Transcript.Zoom(-1));
+        Add((VirtualKey)187, VirtualKeyModifiers.Control, () => ZoomFocusedEditor(1));
+        Add((VirtualKey)189, VirtualKeyModifiers.Control, () => ZoomFocusedEditor(-1));
         Add(VirtualKey.Number0, VirtualKeyModifiers.Control, () => Transcript.Zoom(0, true));
         Add(VirtualKey.Left, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(-1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
         Add(VirtualKey.Right, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
@@ -1075,6 +1085,12 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.K, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ShowFindClips(null));
         Add(VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { Viewer.IsChecked = Viewer.IsChecked != true; ViewerClicked(this, new()); });
         Add(VirtualKey.F1, VirtualKeyModifiers.None, () => ShortcutsClicked(this, new()));
+    }
+    private void ZoomFocusedEditor(int direction)
+    {
+        if (InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, Timeline))
+            Timeline.ZoomItems(direction > 0 ? TimelineShortcut.ZoomIn : TimelineShortcut.ZoomOut);
+        else Transcript.Zoom(direction);
     }
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
