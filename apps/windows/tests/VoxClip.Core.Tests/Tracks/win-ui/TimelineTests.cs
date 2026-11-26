@@ -128,6 +128,7 @@ public sealed class TimelineTests
         range = TimelineLayout.Trim(range.First, range.Last, 11, model.Words.Count, false);
         Assert.Equal(before, model.Clips.Single().Clip);
         Assert.True(TimelineLayout.CommitTrim(model, id, range.First, range.Last));
+        Assert.Equal("Trim clip", model.UndoActionName);
         Assert.Equal(model.Words[11].Id, model.Clips.Single().Clip.EndWordId);
         Assert.False(TimelineLayout.CommitTrim(model, id, range.First, range.Last));
         model.Undo();

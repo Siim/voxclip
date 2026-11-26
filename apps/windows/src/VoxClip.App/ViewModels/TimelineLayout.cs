@@ -105,7 +105,13 @@ internal static class TimelineLayout
         if (model.IsReadOnly || model.Busy || first < 0 || last < first || last >= model.Words.Count) return false;
         var clip = model.Clips.FirstOrDefault(clip => clip.Id == clipId);
         if (clip is null || first == model.Index(clip.Clip.StartWordId) && last == model.Index(clip.Clip.EndWordId)) return false;
-        return model.ApplyBatch([new EditOperation.UpdateClip(clipId, first, last)]);
+        if (clip.Clip.Parts is not null) return false;
+        var id = new TimelineItemId(TimelineItemType.Clip, clipId);
+        var edits = new List<TimelineEdit>();
+        if (last > model.Index(clip.Clip.EndWordId)) edits.Add(new TimelineEdit.Trim(id, TimelineEdge.End, model.Words[last].End));
+        if (first != model.Index(clip.Clip.StartWordId)) edits.Add(new TimelineEdit.Trim(id, TimelineEdge.Start, model.Words[first].Start));
+        if (last < model.Index(clip.Clip.EndWordId)) edits.Add(new TimelineEdit.Trim(id, TimelineEdge.End, model.Words[last].End));
+        return new TimelineEditSession(model, clipId).Commit(edits);
     }
     internal static string ValueText(double time, double total, int cuts, bool edited) =>
         $"{Spoken(time)} of {Spoken(total)}{(edited ? " after cuts" : " source")}, {cuts.ToString(CultureInfo.InvariantCulture)} cuts";
