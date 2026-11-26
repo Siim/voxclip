@@ -356,7 +356,7 @@ struct MusicPanelServices: Sendable {
                     self.phase = .failed("The clip changed. The downloaded track was not added to it."); return
                 }
                 if let current = model.currentMusic {
-                    entry.gainDb = current.gainDb; entry.ducking = current.ducking
+                    entry.gainDb = current.gainDb; entry.ducking = current.ducking; entry.duckDb = current.duckDb
                     entry.fadeInSeconds = current.fadeInSeconds; entry.fadeOutSeconds = current.fadeOutSeconds
                 }
                 if let timelineShape, let shaped = try? timelineShape.placing(entry, in: model.project, clipID: clipId) { entry = shaped }

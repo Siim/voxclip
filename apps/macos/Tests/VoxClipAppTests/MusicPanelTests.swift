@@ -327,7 +327,8 @@ private actor DelayedCatalog {
         let file = try #require(panel.folderFiles.first)
         undo.beginUndoGrouping(); panel.use(file, model: editor); await panel.settled(); undo.endUndoGrouping()
         var previous = try #require(editor.currentMusic)
-        previous.gainDb = -27; previous.ducking = false; previous.fadeInSeconds = 0.25; previous.fadeOutSeconds = 2
+        previous.gainDb = -27; previous.ducking = true; previous.duckDb = -18
+        previous.fadeInSeconds = 0.25; previous.fadeOutSeconds = 2
         undo.beginUndoGrouping()
         editor.replace(try MusicProject.setting(previous, clipId: previous.clipId, in: editor.project), name: "Change mix")
         undo.endUndoGrouping()
@@ -336,6 +337,7 @@ private actor DelayedCatalog {
         undo.beginUndoGrouping(); panel.use(Self.library, model: editor); await panel.settled(); undo.endUndoGrouping()
         let picked = try #require(editor.currentMusic)
         #expect(picked.gainDb == previous.gainDb && picked.ducking == previous.ducking && picked.fadeInSeconds == previous.fadeInSeconds && picked.fadeOutSeconds == previous.fadeOutSeconds)
+        #expect(picked.duckDb == -18)
         undo.beginUndoGrouping(); panel.remove(model: editor); undo.endUndoGrouping()
         #expect(editor.currentMusic == nil)
         undo.undo(); #expect(editor.currentMusic == picked)
