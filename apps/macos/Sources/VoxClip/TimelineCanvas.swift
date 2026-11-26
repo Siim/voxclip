@@ -384,16 +384,12 @@ struct TimelineContent: Equatable {
         content.axis == .edited ? playheadEdited : content.story?.time(forSource: playheadSource) ?? playheadSource
     }
 
-    /// The viewport that fits the scope: its output on Edited; on Source the same zoom,
-    /// from a second before the clip.
+    /// The viewport that fits the scope's output on Edited and its uncut span on Source.
     private func fittedViewport(for content: TimelineContent) -> TimelineViewport {
-        if content.story != nil { return TimelineViewport.fitting(content.displayRange, width: laneWidth, axis: content.axis) }
-        if content.axis == .source, !content.showsSurroundingContext {
-            return TimelineViewport.fitting(content.displayRange, width: laneWidth, axis: .source)
-        }
-        let edited = TimelineViewport.fitting(0...max(1, model.duration), width: laneWidth, axis: .edited)
-        guard content.axis == .source else { return edited }
-        return edited.switched(to: .source, start: content.scopeSource?.lowerBound ?? 0)
+        let range: ClosedRange<Double> = if content.story != nil { content.displayRange }
+            else if content.axis == .source { content.scopeSource ?? content.displayRange }
+            else { 0...max(1, content.length) }
+        return TimelineViewport.fitting(range, width: laneWidth, axis: content.axis)
     }
 
     /// Follows the playhead: moves its layers, and pages the viewport when it leaves it.
@@ -529,8 +525,7 @@ struct TimelineContent: Equatable {
         layoutLanes()
     }
     var zoomMinimum: Double {
-        let range = content.axis == .source && !content.showsSurroundingContext ? content.displayRange : 0...max(1, model.duration)
-        return TimelineViewport.fitting(range, width: laneWidth, axis: content.axis).ptPerSecond
+        fittedViewport(for: content).ptPerSecond
     }
     var zoomMaximum: Double { max(300, zoomMinimum * 8) }
     var zoomValue: Double { log(max(zoomMinimum, viewport.ptPerSecond) / zoomMinimum) / log(zoomMaximum / zoomMinimum) }

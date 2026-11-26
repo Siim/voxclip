@@ -151,6 +151,23 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.timelineSnapHint == (previous ? "Snapping on (N)" : "Snapping off (N)"))
     }
 
+    @Test func fitShowsBothSourceClipEdgesEvenWithCutsAndContext() throws {
+        var fixture = try project()
+        fixture.edits.cutWordIds = (13...26).map { "t\($0)" }
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.showsCuts = true
+        model.showsSurroundingContext = true
+        canvas.renderContent()
+        let scope = try #require(model.scopeSourceRange)
+        canvas.zoom(by: 4)
+        canvas.keyDown(with: try timelineKey(6, "Z", shift: true))
+        #expect(canvas.viewport.axis == .source)
+        #expect(canvas.viewport.visible.contains(scope.lowerBound) && canvas.viewport.visible.contains(scope.upperBound))
+        #expect(!canvas.viewport.visible.contains(model.sourceDuration) && model.undoSteps == 0)
+    }
+
     @Test func doubleClickOpensTheExistingEffectEditor() throws {
         var fixture = try project()
         fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]
