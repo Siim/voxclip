@@ -22,6 +22,7 @@ import VoxClipCore
     }
     private enum ItemGesture {
         case move(duplicate: Bool), trim(TimelineEdge), fade(TimelineEdge), slip
+        case volume, addKeyframe, keyframe(GainPoint, time: Double), audioRange, dip(ClosedRange<Double>)
     }
     private struct ItemDrag {
         let fragment: TimelineItemFragment
@@ -36,6 +37,8 @@ import VoxClipCore
     private var pointer: NSPoint?
     private var pointerFlags: NSEvent.ModifierFlags = []
     private var context: Context?
+    private var audioSelection: (id: TimelineItemID, time: ClosedRange<Double>, context: Context)?
+    private var audioRangePreview: ClosedRange<Double>?
     private(set) var selection: ClosedRange<Double>?
     private var keyAnchor: String?
     private var keyHead: String?
@@ -49,11 +52,33 @@ import VoxClipCore
     private var current: Context { Context(axis: model.timelineAxis, scope: model.activeClip?.id, revision: model.projectRevision, showsSurroundingContext: model.showsSurroundingContext) }
     init(canvas: TimelineCanvasView) { self.canvas = canvas }
 
-    func cancel() {
+    func cancel(keepingAudioSelection: Bool = false) {
         drag = nil; context = nil; selection = nil; itemCommand = nil; pointer = nil; heldSnapKey = false
+        audioRangePreview = nil
+        if !keepingAudioSelection { audioSelection = nil }
+        updateAudioSelection()
         canvas.itemOverlay.preview = nil
     }
-    func reconcile() { if active, context != current { cancel() } }
+    func reconcile() {
+        if (active && context != current) || (audioSelection != nil && audioSelection?.context != current) { cancel() }
+    }
+
+    func updateAudioSelection() {
+        guard let audioSelection, model.timelineItemSelection.contains(audioSelection.id) else {
+            canvas.itemOverlay.audioSelection = []; return
+        }
+        canvas.itemOverlay.audioSelection = audioSelectionRects(audioSelection.time, id: audioSelection.id)
+    }
+
+    private func audioSelectionRects(_ time: ClosedRange<Double>, id: TimelineItemID) -> [NSRect] {
+        canvas.itemFragments.compactMap { fragment in
+            guard fragment.display.item.id == id else { return nil }
+            let start = max(fragment.range.start, time.lowerBound), end = min(fragment.range.end, time.upperBound)
+            guard end > start else { return nil }
+            let x = canvas.headerWidth + canvas.viewport.x(start)
+            return NSRect(x: x, y: fragment.rect.minY, width: canvas.viewport.x(end) - canvas.viewport.x(start), height: fragment.rect.height)
+        }
+    }
     func inOut(_ range: ClosedRange<Double>?) -> ClosedRange<Double>? {
         guard let range, case .trim(_, let start, _, _, let time?)? = drag else { return range }
         return start ? min(time, range.upperBound)...range.upperBound : range.lowerBound...max(time, range.lowerBound)
@@ -65,7 +90,7 @@ import VoxClipCore
 
     func mouseDown(_ event: NSEvent) {
         canvas.window?.makeFirstResponder(canvas)
-        cancel(); keyAnchor = nil; keyHead = nil
+        reconcile(); cancel(keepingAudioSelection: true); keyAnchor = nil; keyHead = nil
         let point = canvas.convert(event.locationInWindow, from: nil)
         guard point.x >= canvas.headerWidth, point.y >= 0, point.y < canvas.bounds.height - 10 else { return }
         context = current
@@ -91,12 +116,25 @@ import VoxClipCore
                 if let fadeEdge { gesture = .fade(fadeEdge) }
                 else if let edge { gesture = .trim(edge) }
                 else if slip { gesture = .slip }
+                else if hit.volumeHit(point), event.modifierFlags.contains(.option) { gesture = .addKeyframe }
+                else if let keyframe = hit.volumePoint(at: point) {
+                    gesture = .keyframe(keyframe.gain, time: time(keyframe.center))
+                }
+                else if hit.volumeHit(point), let range = audioSelection, range.id == id, range.time.contains(time(point)) {
+                    gesture = .dip(range.time)
+                }
+                else if hit.volumeHit(point) { gesture = .volume }
+                else if audioHandles, original == [id], point.y > hit.rect.midY, event.modifierFlags.isDisjoint(with: [.option, .command, .shift]) {
+                    gesture = .audioRange
+                }
                 else { gesture = .move(duplicate: !part && event.modifierFlags.contains(.option)) }
+                if case .dip = gesture {} else { audioSelection = nil }
                 var ids = [id]
                 if case .move = gesture, !part { ids += canvas.selectedItemIDs.filter { $0 != id } }
                 drag = .item(.init(fragment: hit, point: point, gesture: gesture, ids: ids, collapseOnClick: preserveGroup))
             }
         } else if canvas.isConnectedLane(at: point) {
+            audioSelection = nil
             let additive = !event.modifierFlags.isDisjoint(with: [.shift, .command])
             drag = .marquee(point: point, original: model.timelineItemSelection, additive: additive)
             if !additive { model.selectTimelineItems([]) }
@@ -169,7 +207,15 @@ import VoxClipCore
         let ended = drag
         let dragged = selection
         let command = itemCommand
-        cancel()
+        if case .item(let item)? = ended {
+            if case .audioRange = item.gesture, let range = audioRangePreview {
+                audioSelection = (item.fragment.display.item.id, range, current)
+            }
+        }
+        let keepRange: Bool
+        if case .item(let item)? = ended, case .audioRange = item.gesture { keepRange = true }
+        else { keepRange = false }
+        cancel(keepingAudioSelection: keepRange)
         if let command { model.commitTimelineItemEdit(command) }
         else if case .item(let transaction)? = ended, transaction.collapseOnClick {
             model.selectTimelineItems([transaction.fragment.display.item.id])
@@ -189,7 +235,14 @@ import VoxClipCore
 
     private func previewItem(_ transaction: ItemDrag, at point: NSPoint) {
         guard hypot(point.x - transaction.point.x, point.y - transaction.point.y) >= 3 else {
-            itemCommand = nil; canvas.itemOverlay.preview = nil; return
+            audioRangePreview = nil
+            if case .addKeyframe = transaction.gesture {
+                let fragment = transaction.fragment
+                let source = canvas.itemSourceTime(time(transaction.point))
+                let edited = canvas.itemPlan?.mapTime(source) ?? fragment.editedTime(atX: transaction.point.x)
+                itemCommand = model.timelineAddKeyframe(fragment.display, source: source, edited: edited)
+            } else { itemCommand = nil }
+            canvas.itemOverlay.preview = nil; return
         }
         let fragment = transaction.fragment
         let display = fragment.display
@@ -198,6 +251,41 @@ import VoxClipCore
         let delta = (point.x - transaction.point.x) / scale
         let excluded = Set(transaction.ids)
         switch transaction.gesture {
+        case .addKeyframe:
+            itemCommand = nil; canvas.itemOverlay.preview = nil; return
+        case .volume:
+            guard let audio = display.audio else { return }
+            let change = (transaction.point.y - point.y) * fragment.dbPerPoint
+            let db = ((2 * (audio.gainDb + change)).rounded() / 2).clamped(to: audio.gainRange)
+            showItemPreview(audio.setGain(id, db: db), ids: excluded, at: point, readout: timelineItemDecibels(db), guide: nil)
+            return
+        case .keyframe(let keyframe, let position):
+            guard let audio = display.audio, let lower = display.ranges.first?.start, let upper = display.ranges.last?.end else { return }
+            let raw = (position + delta).clamped(to: lower...upper)
+            let target = !heldSnapKey && model.timelineSnapping && !pointerFlags.contains(.option)
+                ? canvas.snapItemTime(raw, excluding: excluded, wordsOnly: false, reach: 8 / scale) : nil
+            let source = canvas.itemSourceTime((target ?? raw).clamped(to: lower...upper))
+            let change = (transaction.point.y - point.y) * fragment.dbPerPoint
+            let db = ((2 * (keyframe.db + change)).rounded() / 2).clamped(to: -60...12)
+            let command = TimelineEdit.moveGainPoint(item: id, from: keyframe.t, toSource: source, db: db)
+            showItemPreview(command, ids: excluded, at: point, readout: timelineItemDecibels(audio.gainDb + db),
+                            guide: target.map { canvas.headerWidth + canvas.viewport.x($0) })
+            return
+        case .audioRange:
+            guard let first = display.ranges.first, let last = display.ranges.last else { return }
+            let anchor = time(transaction.point).clamped(to: first.start...last.end)
+            let end = time(point).clamped(to: first.start...last.end)
+            let range = min(anchor, end)...max(anchor, end)
+            audioRangePreview = range
+            canvas.itemOverlay.preview = .init(rectangles: audioSelectionRects(range, id: id), readout: nil, point: point, guide: nil)
+            return
+        case .dip(let range):
+            let db = min(0, ((transaction.point.y - point.y) * fragment.dbPerPoint * 2).rounded() / 2)
+            let readout = "\(timelineItemTime(range.lowerBound))–\(timelineItemTime(range.upperBound)) · \(timelineItemDecibels(db))"
+            let command = TimelineEdit.dipGain(item: id, fromSource: canvas.itemSourceTime(range.lowerBound),
+                                               toSource: canvas.itemSourceTime(range.upperBound), byDb: db)
+            showItemPreview(command, ids: excluded, at: point, readout: readout, guide: nil)
+            return
         case .fade(let edge):
             guard let fades = display.fades else { return }
             let value = (fades[edge] + (edge == .start ? delta : -delta)).clamped(to: 0...fades.maximum)
@@ -291,8 +379,14 @@ import VoxClipCore
                 visible = layout.items.filter { ids.contains($0.id) }
             }
             let displays = visible.map { model.timelineItemDisplay($0, axis: axis, story: canvas.content.story, preview: result.project) }
-            let rectangles = canvas.fragments(for: displays).map(\.rect)
-            canvas.itemOverlay.preview = .init(rectangles: rectangles, readout: readout, point: point, guide: guide)
+            let fragments = canvas.fragments(for: displays)
+            let audio: [TimelineItemFragment]
+            switch command {
+            case .setGain, .setTrackGain, .moveGainPoint, .dipGain, .fade, .trim: audio = fragments.filter { $0.display.audio != nil }
+            default: audio = []
+            }
+            canvas.itemOverlay.preview = .init(rectangles: fragments.map(\.rect), readout: readout, point: point, guide: guide,
+                                               audio: audio, music: canvas.content.musicGraphics)
         }
     }
 
@@ -335,7 +429,7 @@ import VoxClipCore
     /// The SwiftUI pane's F6 stop forwards here too, retaining the same range anchor.
     func key(_ code: UInt16, shift: Bool, characters: String? = nil) -> Bool {
         if code == 53 {
-            if active {
+            if active || audioSelection != nil {
                 if case .marquee(_, let original, _)? = drag { model.selectTimelineItems(original) }
                 cancel(); canvas.renderContent(); return true
             }

@@ -55,6 +55,26 @@ extension EditorModel {
         commitTimelineItemEdit(.trim(item: id, edge: edge, toSource: timelineSourceTime(timelinePlayhead(on: timelineAxis), on: timelineAxis)))
     }
 
+    func timelineAddKeyframe(_ item: TimelineItemDisplay, source: Double, edited: Double) -> TimelineEdit? {
+        guard let audio = item.audio, let start = item.item.editedIntervals.first?.start else { return nil }
+        return .addGainPoint(item: item.item.id, atSource: source, db: MusicMix.envelopeDb(at: edited - start, points: audio.points))
+    }
+
+    func timelineKeyframeAtPlayhead(_ item: TimelineItemDisplay) -> TimelineEdit? {
+        let time = timelinePlayhead(on: timelineAxis)
+        let source = timelineSourceTime(time, on: timelineAxis)
+        let edited = timelineAxis == .edited ? time : timelinePlayhead(on: .edited)
+        return timelineAddKeyframe(item, source: source, edited: edited)
+    }
+
+    func timelineEditReason(_ command: TimelineEdit) -> String? {
+        guard capabilities.edit, let plan = itemEditPlan else { return "The timeline is not ready to edit." }
+        if case .failure(let refusal) = TimelineEdits.apply(command, project: project, plan: plan, scope: itemEditScope) {
+            return refusal.copy
+        }
+        return nil
+    }
+
     func timelineWordEdge(near time: Double, edge: TimelineEdge) -> Double? {
         words.lazy.map { edge == .start ? $0.start : $0.end }.min { abs($0 - time) < abs($1 - time) }
     }

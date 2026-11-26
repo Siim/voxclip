@@ -49,6 +49,14 @@ struct TimelineAudioItem: Equatable {
 
     var offsetLabel: String { music == nil ? "Sound from" : "Song from" }
     var duckDb: Double { music.map { $0.ducking ? $0.duckDb ?? MusicMix.duckDb : 0 } ?? 0 }
+
+    func setGain(_ id: TimelineItemID, db: Double) -> TimelineEdit {
+        if let music {
+            if music.segments == nil { return .setTrackGain(track: music.id, db: db) }
+            return .setGain(item: id, db: db - music.gainDb)
+        }
+        return .setGain(item: id, db: db)
+    }
 }
 
 struct TimelineItemDisplay: Equatable {
@@ -95,6 +103,7 @@ struct TimelineItemFragment: Equatable {
     let rect: NSRect
     let hasStart: Bool
     let hasEnd: Bool
+    var audioRange: TimeRange? = nil
 
     func grip(_ edge: TimelineEdge) -> NSRect {
         let reach = min(rect.width / 3, rect.width < 26 ? 8 : 6)
@@ -128,6 +137,7 @@ struct TimelineItemFragment: Equatable {
         var fragments: [TimelineItemFragment] = []
         var selected: Set<TimelineItemID> = []
         var hasItems = false
+        var music = TimelineMusicGraphics()
     }
 
     let kind: TimelineItemLane
@@ -194,6 +204,9 @@ struct TimelineItemFragment: Equatable {
                     }
                 }
             }
+            fragment.drawAudioFades(in: context)
+            fragment.drawVolume(in: context, clip: lane, contour: state.music.contour)
+            drawMusicMarks(fragment, in: context)
             if selected || fragment.display.audio != nil {
                 for edge: TimelineEdge in [.start, .end] {
                     if let fade = fragment.fadeGrip(edge) {
@@ -209,11 +222,34 @@ struct TimelineItemFragment: Equatable {
             let slip = selected || fragment.display.audio != nil ? fragment.slipGrip : nil
             let labelWidth = (slip?.minX ?? rect.maxX) - rect.minX - 3
             context.clip(to: .init(x: rect.minX + 3, y: rect.minY, width: labelWidth, height: rect.height))
-            Self.draw(fragment.display.title, font: font, color: .white, x: rect.minX + 8, baseline: rect.midY + font.xHeight / 2)
+            let baseline = fragment.display.audio == nil ? rect.midY + font.xHeight / 2 : rect.maxY - 3
+            Self.draw(fragment.display.title, font: font, color: .white, x: rect.minX + 8, baseline: baseline)
             context.restoreGState()
             if let slip {
                 Self.draw("⇔", font: font, color: .white, x: slip.minX + 3, baseline: slip.midY + font.xHeight / 2)
             }
+        }
+    }
+
+    private func drawMusicMarks(_ fragment: TimelineItemFragment, in context: CGContext) {
+        guard case .music(let id) = fragment.display.item.id, !fragment.display.item.hidden else { return }
+        let edited = fragment.audioRange ?? fragment.range
+        let rect = fragment.rect
+        if let fade = state.music.fades[id], fade.start < edited.end, fade.end > edited.start {
+            let left = fragment.audioX(at: fade.start), right = min(rect.maxX, fragment.audioX(at: fade.end))
+            context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor)
+            context.fill(NSRect(x: left, y: rect.minY, width: max(0, right - left), height: rect.height))
+            context.setStrokeColor(NSColor.white.withAlphaComponent(0.7).cgColor)
+            context.setLineWidth(1)
+            context.move(to: NSPoint(x: left, y: rect.minY))
+            context.addLine(to: NSPoint(x: right, y: rect.maxY))
+            context.move(to: NSPoint(x: left, y: rect.maxY))
+            context.addLine(to: NSPoint(x: right, y: rect.minY))
+            context.strokePath()
+        }
+        let font = NSFont.systemFont(ofSize: 11)
+        for time in state.music.loops[id] ?? [] where edited.start <= time && time < edited.end {
+            Self.draw("∞", font: font, color: .white, x: fragment.audioX(at: time), baseline: rect.minY + 10)
         }
     }
 }
@@ -224,19 +260,25 @@ struct TimelineItemPreview: Equatable {
     let point: NSPoint
     let guide: Double?
     var marquee = false
+    var audio: [TimelineItemFragment] = []
+    var music = TimelineMusicGraphics()
 }
 
 @MainActor final class TimelineItemOverlay: NSView {
     var preview: TimelineItemPreview? { didSet { if preview != oldValue { needsDisplay = true } } }
     var clip = NSRect.zero
+    var audioSelection: [NSRect] = [] { didSet { if audioSelection != oldValue { needsDisplay = true } } }
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let preview else { return }
+        guard preview != nil || !audioSelection.isEmpty else { return }
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSBezierPath(rect: clip).addClip()
+        NSColor.systemYellow.withAlphaComponent(0.22).setFill()
+        for rect in audioSelection { rect.fill() }
+        guard let preview else { return }
         for rect in preview.rectangles {
             let outline = NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
             let color = preview.marquee ? NSColor.systemBlue : NSColor.white
@@ -244,6 +286,14 @@ struct TimelineItemPreview: Equatable {
             outline.fill()
             color.setStroke()
             outline.stroke()
+        }
+        if let context = NSGraphicsContext.current?.cgContext {
+            for fragment in preview.audio {
+                context.setFillColor(NSColor.black.withAlphaComponent(0.6).cgColor)
+                context.fill(fragment.rect)
+                fragment.drawAudioFades(in: context)
+                fragment.drawVolume(in: context, clip: clip, contour: preview.music.contour)
+            }
         }
         if let guide = preview.guide {
             NSColor.systemYellow.setFill()
@@ -280,8 +330,15 @@ extension TimelineCanvasView {
                 let upper = headerWidth + viewport.x(range.end)
                 let rect = NSRect(x: lower, y: y, width: max(item.hidden ? 5 : 1, upper - lower - 1), height: isSpeech ? 15 : height - 4)
                 guard rect.intersects(itemClip) else { continue }
+                var edited: TimeRange?
+                if display.audio != nil, content.axis == .source, let plan = itemPlan {
+                    let first = itemSourceTime(range.start), last = itemSourceTime(range.end)
+                    let begin = plan.mapTime(first)
+                    edited = .init(start: begin, end: max(begin, plan.mapTime(last)))
+                }
                 fragments.append(.init(display: display, range: range, rect: rect,
-                                       hasStart: !item.hidden && index == 0, hasEnd: !item.hidden && index == ranges.count - 1))
+                                       hasStart: !item.hidden && index == 0, hasEnd: !item.hidden && index == ranges.count - 1,
+                                       audioRange: edited))
             }
         }
         return fragments
@@ -291,14 +348,16 @@ extension TimelineCanvasView {
         let fragments = fragments(for: content.items)
         itemFragments = fragments
         itemOverlay.clip = itemClip
+        interaction.updateAudioSelection()
         for lane in connectedLanes {
             let offset = lane.frame.minY + trackClip.frame.minY
             let local = fragments.filter { $0.display.item.lane == lane.kind }.map { fragment in
                 TimelineItemFragment(display: fragment.display, range: fragment.range, rect: fragment.rect.offsetBy(dx: 0, dy: -offset),
-                                     hasStart: fragment.hasStart, hasEnd: fragment.hasEnd)
+                                     hasStart: fragment.hasStart, hasEnd: fragment.hasEnd, audioRange: fragment.audioRange)
             }
             lane.state = .init(fragments: local, selected: model.timelineItemSelection,
-                               hasItems: content.items.contains { $0.item.lane == lane.kind })
+                               hasItems: content.items.contains { $0.item.lane == lane.kind },
+                               music: lane.kind == .music ? content.musicGraphics : .init())
         }
     }
 

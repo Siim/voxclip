@@ -11,7 +11,9 @@ public enum TimelineEdit: Sendable {
     case splitAll(atSource: Double)
     case fade(item: TimelineItemID, edge: TimelineEdge, seconds: Double)
     case setGain(item: TimelineItemID, db: Double)
+    case setTrackGain(track: String, db: Double)
     case addGainPoint(item: TimelineItemID, atSource: Double, db: Double)
+    case dipGain(item: TimelineItemID, fromSource: Double, toSource: Double, byDb: Double)
     case moveGainPoint(item: TimelineItemID, from: Double, toSource: Double, db: Double)
     case removeGainPoint(item: TimelineItemID, at: Double)
     case slip(item: TimelineItemID, bySeconds: Double)
@@ -149,9 +151,20 @@ private struct TimelineReducer {
             draft.gain = try level(db, range: item.kind == "sound" ? ClipEffect.gainRange : -40...12)
             try write(item, draft)
             return "Change volume"
+        case .setTrackGain(let track, let db):
+            guard let index = project.music.firstIndex(where: { $0.id == track && $0.clipId == clock.scope }) else { throw Self.noItem }
+            let gain = try level(db, range: ProjectMusic.gainRange)
+            if gain != project.music[index].gainDb {
+                try materialise(index)
+                project.music[index].gainDb = gain
+            }
+            return "Change volume"
         case .addGainPoint(let id, let source, let db):
             try gainPoint(id, removing: nil, adding: (source, db))
             return "Add volume keyframe"
+        case .dipGain(let id, let from, let to, let db):
+            try dipGain(id, from: from, to: to, by: db)
+            return "Dip volume"
         case .moveGainPoint(let id, let from, let source, let db):
             try gainPoint(id, removing: from, adding: (source, db))
             return "Move volume keyframe"
@@ -410,6 +423,29 @@ private struct TimelineReducer {
         }
         var draft = Draft(item, clock: clock)
         draft.points = points
+        try write(item, draft)
+    }
+
+    mutating func dipGain(_ id: TimelineItemID, from: Double, to: Double, by db: Double) throws {
+        let item = try audio(id)
+        let start = local(try time(from), for: item), end = local(try time(to), for: item)
+        let ramp = min(0.05, (end - start) / 3)
+        let innerStart = clock.round(start + ramp), innerEnd = clock.round(end - ramp)
+        guard start >= 0, end <= length(item, item.span), start < innerStart, innerStart < innerEnd, innerEnd < end else {
+            throw TimelineEditRefusal("Select a longer range inside the item.")
+        }
+        let depth = try level(db, range: -60...0)
+        guard depth < 0 else { return }
+        let original = item.points ?? []
+        var points = original.filter { $0.t < start || $0.t > end }
+        guard points.count + 4 <= ItemShape.maximumGainPoints else { throw TimelineEditRefusal("An item can have up to 64 volume keyframes.") }
+        for position in [start, innerStart, innerEnd, end] {
+            let base = MusicMix.envelopeDb(at: position, points: original)
+            let db = try level(base + (position == start || position == end ? 0 : depth), range: -60...12)
+            points.append(.init(t: position, db: db))
+        }
+        var draft = Draft(item, clock: clock)
+        draft.points = points.sorted { $0.t < $1.t }
         try write(item, draft)
     }
 

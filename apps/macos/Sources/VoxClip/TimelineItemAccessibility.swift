@@ -110,12 +110,30 @@ extension TimelineCanvasView {
             action("Duplicate") { $0.model.commitTimelineItemEdit(.duplicate(items: [id], toAnchor: nil)) },
             action("Delete") { $0.model.commitTimelineItemEdit(.delete(items: [id])) }
         ]
-        if let fades = item.fades {
+        if let fades = item.fades, !item.item.hidden {
             for edge in [TimelineEdge.start, .end] {
                 let label = "Fade \(edge == .start ? "in" : "out")"
-                actions.append(action("\(label) longer") { $0.model.commitTimelineItemEdit(.fade(item: id, edge: edge, seconds: fades[edge] + 0.1)) })
-                actions.append(action("\(label) shorter") { $0.model.commitTimelineItemEdit(.fade(item: id, edge: edge, seconds: fades[edge] - 0.1)) })
+                for (title, delta) in [("longer", 0.1), ("shorter", -0.1)] {
+                    let seconds = (fades[edge] + delta).clamped(to: 0...fades.maximum)
+                    actions.append(action("\(label) \(title)") {
+                        $0.model.commitTimelineItemEdit(.fade(item: id, edge: edge, seconds: seconds),
+                                                       announcement: "\(label) \(String(format: "%.1f seconds", seconds)).")
+                    })
+                }
             }
+        }
+        if let audio = item.audio, !item.item.hidden {
+            for (title, delta) in [("up", 1.0), ("down", -1.0)] {
+                let db = (audio.gainDb + delta).clamped(to: audio.gainRange)
+                actions.append(action("Volume \(title) 1 dB") {
+                    $0.model.commitTimelineItemEdit(audio.setGain(id, db: db), announcement: "Volume \(timelineItemDecibels(db)).")
+                })
+            }
+            actions.append(action("Add volume keyframe") { canvas in
+                if let command = canvas.model.timelineKeyframeAtPlayhead(item) {
+                    canvas.model.commitTimelineItemEdit(command, announcement: "Volume keyframe added at the playhead.")
+                }
+            })
         }
         return actions
     }

@@ -21,7 +21,7 @@ private actor TimelineTestSettings: SettingsStore {
     @Test func soundFadePreviewsAndCommitsOnce() throws {
         var fixture = try project()
         fixture.clipEffects = [.init(id: "sound", clipId: fixture.edits.activeClipId, kind: .sound,
-            start: 11, end: 13, sound: .init(source: .bundled, id: "pop", durationSeconds: 4, title: "Pop", license: "CC0"))]
+            start: 11, end: 13, sound: .init(source: .bundled, id: "pop", durationSeconds: 2, title: "Pop", license: "cc0"), gainDb: -20)]
         let model = editor(try app(), project: fixture)
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close(); model.close() }

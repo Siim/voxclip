@@ -199,18 +199,25 @@ public enum MusicMix {
             guard !pieces.isEmpty else { return nil }
             return SegmentPlacement(segment: segment, span: span, pieces: pieces)
         }.sorted { $0.span.outputStart < $1.span.outputStart }
-        for index in placements.indices.dropFirst() {
+        let spans = crossfadeSpans(placements.map(\.span), rate: rate)
+        for index in placements.indices { placements[index].span = spans[index] }
+        return placements
+    }
+
+    public static func crossfadeSpans(_ ordered: [LoopPiece], rate: Double) -> [LoopPiece] {
+        var spans = ordered
+        for index in spans.indices.dropFirst() {
             let previous = index - 1
-            let start = placements[index].span.outputStart
-            let outgoing = placements[previous].span
-            let overlap = min(outgoing.outputStart + outgoing.count - start, placements[index].span.count,
+            let start = spans[index].outputStart
+            let outgoing = spans[previous]
+            let overlap = min(outgoing.outputStart + outgoing.count - start, spans[index].count,
                               Int((2 * rate).rounded()))
             guard overlap > 0 else { continue }
-            placements[previous].span = LoopPiece(sourceStart: outgoing.sourceStart, outputStart: outgoing.outputStart,
+            spans[previous] = LoopPiece(sourceStart: outgoing.sourceStart, outputStart: outgoing.outputStart,
                 count: start + overlap - outgoing.outputStart, fadeIn: outgoing.fadeIn, fadeOut: overlap)
-            placements[index].span.fadeIn = overlap
+            spans[index].fadeIn = overlap
         }
-        return placements
+        return spans
     }
 
     /// One stretch of the source track placed in the bed. Neighbours overlap by `fadeIn`/`fadeOut` frames.

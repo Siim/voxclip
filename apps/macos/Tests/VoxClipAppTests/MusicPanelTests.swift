@@ -252,9 +252,14 @@ private actor DelayedCatalog {
         #expect(draft.captionDraft.hasSuffix("\n\nMusic: \"Quiet piano\" by Artist is licensed under CC BY 3.0."))
         panel.setGain(-25.3, model: editor)
         #expect(editor.currentMusic?.gainDb == -25.5 && MusicSection.gainLabel(-25.5) == "\u{2212}25.5 dB")
+        let canvas = TimelineCanvasView(model: editor)
+        defer { canvas.tearDown() }
+        canvas.renderContent()
+        #expect(canvas.content.items.first { $0.item.id == .music(entry.id) }?.audio?.gainDb == -25.5)
         #expect(editor.timelineMusic(on: .edited).map { $0.range.lowerBound == 0 && abs($0.range.upperBound - editor.duration) < 1e-9 } == true)
         panel.remove(model: editor)
         #expect(editor.currentMusic == nil && editor.project.music.isEmpty && editor.timelineMusic(on: .edited) == nil)
+        #expect(FileManager.default.fileExists(atPath: MusicRenderInput.url(for: entry.asset, dataRoot: fixture.root).path))
         #expect(fixture.fetches.ids == [Self.library.id])
     }
 
