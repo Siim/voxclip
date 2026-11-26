@@ -196,17 +196,22 @@ extension WorkspaceShell {
     var body: some View {
         let job = shell.panelJob(for: model)
         let showsTask = (job == .rewrite || job == .voice) && !(job == .voice && (model.hasVoiceJob || model.currentVoiceFeedback != nil))
+        // A story clip's Voice panel shows its disabled options instead of the task, unless a question is open.
+        let storyVoice: ClipRange? = job == .voice && model.voiceChange == nil ? model.storyClip(for: nil) : nil
         VStack(spacing: 0) {
             viewer
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if let task = model.panelTask, task.confirm != nil { DirectorPanel(task: task, model: model) }
-                else if job == .voice, let story = model.storyClip(for: nil), model.voiceChange == nil {
+                // One branch for the Director panel, whether a question is open or not: answering the question must not
+                // rebuild the panel, or the keyboard can't go back to where it was (DirectorTaskTests).
+                if let task = model.panelTask, task.confirm != nil || (showsTask && storyVoice == nil) {
+                    DirectorPanel(task: task, model: model)
+                }
+                else if let story = storyVoice {
                     ScrollView { StoryVoiceOptions(model: model, clip: story).padding(14) }
                         .modifier(EditorPaneFocus(model: model, pane: .panel))
                 }
-                else if let task = model.panelTask, showsTask { DirectorPanel(task: task, model: model) }
                 else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
                 else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
                 else if job == .picture {
