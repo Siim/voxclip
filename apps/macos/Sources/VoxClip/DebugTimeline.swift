@@ -12,7 +12,7 @@ import VoxClipCore
         project.edits.activeClipId = nil
         guard let words = project.transcript?.words, words.count >= 12 else { throw CocoaError(.coderInvalidValue) }
         let title = ClipEffect(id: "ui-self-test-title", clipId: nil, kind: .title,
-                               start: words[2].start, end: words[9].end, text: "Timeline title")
+                               start: words[2].start, end: words[9].end, text: "Timeline title", position: .top)
         project.clipEffects = [title]
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
         let canvas = TimelineCanvasView(model: model)

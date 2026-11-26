@@ -22,7 +22,7 @@ private actor TimelineTestSettings: SettingsStore {
         let app = try app()
         var fixture = try project()
         fixture.clipEffects = [ClipEffect(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
-                                          start: 12, end: 13, text: "Faster edits")]
+                                          start: 12, end: 13, text: "Faster edits", position: .top)]
         let model = editor(app, project: fixture)
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close(); model.close() }
@@ -39,6 +39,7 @@ private actor TimelineTestSettings: SettingsStore {
         undo.beginUndoGrouping()
         canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
         undo.endUndoGrouping()
+        #expect(model.timelineItemRefusal == nil)
         #expect(undo.undoActionName == "Move title" && model.undoSteps == 1)
         #expect(model.project.clipEffects.first?.start == 13)
         undo.undo()
@@ -48,7 +49,7 @@ private actor TimelineTestSettings: SettingsStore {
     @Test func itemHitRegionsAndMarqueeFollowTheLanes() throws {
         var fixture = try project()
         let clip = try #require(fixture.edits.activeClipId)
-        fixture.clipEffects = [ClipEffect(id: "title", clipId: clip, kind: .title, start: 12, end: 13, text: "Faster edits"),
+        fixture.clipEffects = [ClipEffect(id: "title", clipId: clip, kind: .title, start: 12, end: 13, text: "Faster edits", position: .top),
                                ClipEffect(id: "sound", clipId: clip, kind: .bleep, start: 16, end: 16.8, wordIds: ["t16"])]
         fixture.media.footage = [.init(id: "picture", clipID: clip, kind: .bRoll, start: 12, end: 13,
                                        footage: .init(sourceKey: "picture-source", start: 0))]
@@ -81,7 +82,7 @@ private actor TimelineTestSettings: SettingsStore {
 
     @Test func itemDragThresholdEscapeAndWordGuideLeaveUndoUntouched() throws {
         var fixture = try project()
-        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits")]
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]
         let model = editor(try app(), project: fixture)
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close(); model.close() }
@@ -115,7 +116,7 @@ private actor TimelineTestSettings: SettingsStore {
 
     @Test func voiceOverCanMoveAnItemByWordAndExposesItsActions() throws {
         var fixture = try project()
-        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits")]
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]
         let model = editor(try app(), project: fixture)
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close(); model.close() }
@@ -127,6 +128,7 @@ private actor TimelineTestSettings: SettingsStore {
         let actions = Set(title.accessibilityCustomActions()?.map(\.name) ?? [])
         #expect(actions.isSuperset(of: ["Move later a frame", "Trim start to playhead", "Split at playhead", "Duplicate", "Delete", "Open editor"]))
         #expect(title.accessibilityPerformIncrement())
+        #expect(model.timelineItemRefusal == nil)
         #expect(model.project.clipEffects.first?.start == 12)
         #expect(title.accessibilityPerformDecrement())
         #expect(model.project.clipEffects.first?.start == 11)
@@ -151,7 +153,7 @@ private actor TimelineTestSettings: SettingsStore {
 
     @Test func doubleClickOpensTheExistingEffectEditor() throws {
         var fixture = try project()
-        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits")]
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]
         let model = editor(try app(), project: fixture)
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close(); model.close() }
@@ -1203,9 +1205,9 @@ private actor TimelineTestSettings: SettingsStore {
         let canvas = TimelineCanvasView(model: model, shell: shell)
         defer { canvas.tearDown() }
         let steps = model.undoSteps
-        #expect(TrackHeight.small.heights == [28, 32, 20, 20, 20, 20])
-        #expect(TrackHeight.medium.heights == [36, 44, 24, 24, 24, 24])
-        #expect(TrackHeight.large.heights == [52, 64, 28, 28, 28, 28])
+        #expect(TrackHeight.small.heights == [20, 20, 20, 20, 28, 32, 20, 20])
+        #expect(TrackHeight.medium.heights == [24, 24, 24, 24, 36, 44, 24, 24])
+        #expect(TrackHeight.large.heights == [28, 28, 28, 28, 52, 64, 40, 40])
         for height in TrackHeight.allCases {
             shell.layout.trackHeight = height
             canvas.layoutSubtreeIfNeeded(); canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()

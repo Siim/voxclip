@@ -35,7 +35,10 @@ import VoxClipCore
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.window"))
-        .modifier(EditorPaneFocus(model: model, pane: .timeline))
+        .modifier(EditorPaneFocus(model: model, pane: .timeline, focusNative: {
+            guard !exportsSelected, let canvas = zoom.canvas, let window = canvas.window else { return false }
+            return window.makeFirstResponder(canvas)
+        }))
         .onKeyPress(keys: [.leftArrow, .rightArrow, .home, .end], phases: .down) { press in
             guard !exportsSelected else { return .ignored }
             let code: UInt16 = switch press.key {

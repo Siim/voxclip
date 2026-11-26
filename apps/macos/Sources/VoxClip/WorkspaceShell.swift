@@ -45,16 +45,12 @@ enum SidebarItem: Hashable {
     }
     static let explorerRange = Double(VCTokens.sizeSidebarMin)...Double(VCTokens.sizeSidebarMax)
     static let rightRange = Double(VCTokens.sizeRightColumnMin)...Double(VCTokens.sizeRightColumnMax)
-    /// notes.md §6: the bottom panel defaults to 242, so V1, A1, CC, FX and M1 all show at track height M, when the window
-    /// has room for it beside a 16:9 viewer and the panel's minimum body; else to 216 (the five-track default before M1).
     static let timelineDefault = 346.0
     static let timelineCompactDefault = 300.0
     static let timelineRange = Double(ShellMetrics.timelineMinimum)...640.0
     /// impl-plan §3.5: the panel starts at its default or 40% of the work area's height, whichever is less.
     static let timelineShare = 0.4
-    /// The timeline's starting height in a work area `workHeight` tall beside a right column `rightWidth` wide: 242 when
-    /// the title row, a 16:9 viewer, the panel header and `PanelHost.bodyMinimum` still fit above it, else what is left
-    /// down to 216, and never more than 40% of the work area.
+    /// Fits the eight-lane timeline beside a 16:9 viewer when possible, capped at 40% of the work area.
     @MainActor static func defaultTimelineHeight(workHeight: Double, rightWidth: Double) -> Double {
         let reserve = Double(ShellMetrics.titleRow) + Double(ViewerSection.boxHeight(forWidth: CGFloat(rightWidth)))
             + Double(PanelHost.headerHeight) + Double(PanelHost.bodyMinimum)
