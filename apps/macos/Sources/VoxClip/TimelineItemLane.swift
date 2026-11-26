@@ -29,12 +29,26 @@ extension TimelineItemLane {
     }
 }
 
-struct TimelinePictureFades: Equatable {
+struct TimelineItemFades: Equatable {
     let fadeIn: Double
     let fadeOut: Double
     let maximum: Double
 
     subscript(edge: TimelineEdge) -> Double { edge == .start ? fadeIn : fadeOut }
+}
+
+struct TimelineAudioItem: Equatable {
+    let gainDb: Double
+    let gainRange: ClosedRange<Double>
+    let points: [GainPoint]
+    let length: Double
+    let mediaStart: Double
+    let mediaDuration: Double
+    var music: ProjectMusic? = nil
+    var loop = false
+
+    var offsetLabel: String { music == nil ? "Sound from" : "Song from" }
+    var duckDb: Double { music.map { $0.ducking ? $0.duckDb ?? MusicMix.duckDb : 0 } ?? 0 }
 }
 
 struct TimelineItemDisplay: Equatable {
@@ -43,8 +57,11 @@ struct TimelineItemDisplay: Equatable {
     let kind: String
     let ranges: [TimeRange]
     let marker: Double?
-    var pictureFades: TimelinePictureFades? = nil
+    var fades: TimelineItemFades? = nil
     var recordingStart: Double? = nil
+    var audio: TimelineAudioItem? = nil
+
+    var mediaStart: Double? { audio?.mediaStart ?? recordingStart }
 
     var movable: Bool {
         switch item.id {
@@ -68,6 +85,9 @@ func timelineItemTime(_ seconds: Double) -> String {
 }
 
 func timelineItemDelta(_ seconds: Double) -> String { (seconds < 0 ? "−" : "+") + timelineItemTime(seconds) }
+func timelineItemDecibels(_ value: Double) -> String {
+    (value < 0 ? "−" : "") + String(format: "%.1f dB", abs(value))
+}
 
 struct TimelineItemFragment: Equatable {
     let display: TimelineItemDisplay
@@ -89,14 +109,16 @@ struct TimelineItemFragment: Equatable {
     }
 
     func fadeGrip(_ edge: TimelineEdge) -> NSRect? {
-        guard display.pictureFades != nil, rect.width >= 24, edge == .start ? hasStart : hasEnd else { return nil }
-        let inset = min(10, rect.width / 3)
+        guard let fades = display.fades, rect.width >= 24, edge == .start ? hasStart : hasEnd else { return nil }
+        let fade = display.audio.map { CGFloat(fades[edge] / $0.length) * rect.width } ?? 0
+        let inset = max(10, min(rect.width / 2, fade))
         let center = edge == .start ? rect.minX + inset : rect.maxX - inset
         return NSRect(x: center - 4, y: rect.minY, width: 8, height: 8)
     }
 
     var slipGrip: NSRect? {
-        guard display.recordingStart != nil, !display.item.hidden, rect.width >= 48 else { return nil }
+        guard display.mediaStart != nil, !display.item.hidden, rect.width >= 48 else { return nil }
+        if display.audio != nil { return NSRect(x: rect.maxX - 31, y: rect.minY + 1, width: 18, height: 12) }
         return NSRect(x: rect.maxX - 27, y: rect.midY - 7, width: 19, height: 14)
     }
 }
@@ -169,24 +191,28 @@ struct TimelineItemFragment: Equatable {
                     for edge: TimelineEdge in [.start, .end] where edge == .start ? fragment.hasStart : fragment.hasEnd {
                         context.setFillColor(DesignValues.nsColor("text.primary").cgColor)
                         context.fill(fragment.grip(edge).insetBy(dx: 1, dy: 3))
-                        if let fade = fragment.fadeGrip(edge) {
-                            context.setFillColor(NSColor.white.cgColor)
-                            context.setStrokeColor(NSColor.black.cgColor)
-                            context.fillEllipse(in: fade)
-                            context.strokeEllipse(in: fade)
-                        }
+                    }
+                }
+            }
+            if selected || fragment.display.audio != nil {
+                for edge: TimelineEdge in [.start, .end] {
+                    if let fade = fragment.fadeGrip(edge) {
+                        context.setFillColor(NSColor.white.cgColor)
+                        context.setStrokeColor(NSColor.black.cgColor)
+                        context.fillEllipse(in: fade)
+                        context.strokeEllipse(in: fade)
                     }
                 }
             }
             guard rect.width > 20 else { continue }
             context.saveGState()
-            let slip = selected ? fragment.slipGrip : nil
+            let slip = selected || fragment.display.audio != nil ? fragment.slipGrip : nil
             let labelWidth = (slip?.minX ?? rect.maxX) - rect.minX - 3
             context.clip(to: .init(x: rect.minX + 3, y: rect.minY, width: labelWidth, height: rect.height))
             Self.draw(fragment.display.title, font: font, color: .white, x: rect.minX + 8, baseline: rect.midY + font.xHeight / 2)
             context.restoreGState()
             if let slip {
-                Self.draw("⇔", font: font, color: .white, x: slip.minX + 3, baseline: rect.midY + font.xHeight / 2)
+                Self.draw("⇔", font: font, color: .white, x: slip.minX + 3, baseline: slip.midY + font.xHeight / 2)
             }
         }
     }

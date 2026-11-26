@@ -18,6 +18,29 @@ private actor TimelineTestSettings: SettingsStore {
 /// waveform. No window is shown; each test has its own data folder.
 @Suite("v2 timeline", .serialized, .offlineFixtures)
 @MainActor struct TimelineCanvasTests {
+    @Test func soundFadePreviewsAndCommitsOnce() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "sound", clipId: fixture.edits.activeClipId, kind: .sound,
+            start: 11, end: 13, sound: .init(source: .bundled, id: "pop", durationSeconds: 4, title: "Pop", license: "CC0"))]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("sound") })
+        let grip = try #require(fragment.fadeGrip(.start))
+        let start = NSPoint(x: grip.midX, y: grip.midY)
+        let end = NSPoint(x: start.x + 0.8 * canvas.viewport.ptPerSecond, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(canvas.itemOverlay.preview?.readout == "Fade in 0.8 s")
+        #expect(!undo.canUndo)
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        undo.endUndoGrouping()
+        #expect(undo.undoActionName == "Fade sound" && model.undoSteps == 1)
+        #expect(model.project.clipEffects.first?.fadeInSeconds == 0.8)
+    }
+
     @Test func aTitleDragWritesOneNamedUndoOnRelease() throws {
         let app = try app()
         var fixture = try project()

@@ -89,29 +89,48 @@ extension EditorModel {
         }
     }
 
-    func timelineItemDisplay(_ item: TimelineItem, axis: TimelineAxis, story: StoryTimelineLayout?, partRange: Range<Double>? = nil) -> TimelineItemDisplay {
+    func timelineItemDisplay(_ item: TimelineItem, axis: TimelineAxis, story: StoryTimelineLayout?, partRange: Range<Double>? = nil,
+                             preview: Project? = nil) -> TimelineItemDisplay {
+        let project = preview ?? self.project
         let kind: String
         let title: String?
-        var pictureFades: TimelinePictureFades?
+        var fades: TimelineItemFades?
         var recordingStart: Double?
+        var audio: TimelineAudioItem?
         switch item.id {
         case .effect(let id):
             let effect = project.clipEffects.first { $0.id == id }
             kind = Self.itemKind(item.kind)
             title = effect?.text ?? effect?.sound?.title
-            if let effect, item.lane != .sounds, effect.kind != .speedForPart, effect.kind != .freeze {
-                pictureFades = .init(fadeIn: effect.fadeInSeconds ?? 0, fadeOut: effect.fadeOutSeconds ?? 0, maximum: 5)
+            if let effect, (item.lane != .sounds || effect.kind == .sound), effect.kind != .speedForPart, effect.kind != .freeze {
+                fades = .init(fadeIn: effect.fadeInSeconds ?? 0, fadeOut: effect.fadeOutSeconds ?? 0, maximum: 5)
+            }
+            if let effect, let sound = effect.sound, effect.kind == .sound {
+                audio = .init(gainDb: effect.gainDb ?? 0, gainRange: ClipEffect.gainRange, points: effect.gainPoints ?? [],
+                              length: effect.end - effect.start, mediaStart: effect.mediaOffsetSeconds ?? 0, mediaDuration: sound.durationSeconds)
             }
         case .footage(let id):
             kind = Self.itemKind(item.kind); title = nil
             if let footage = project.media.footage.first(where: { $0.id == id }) {
-                pictureFades = .init(fadeIn: footage.fadeInSeconds ?? 0, fadeOut: footage.fadeOutSeconds ?? 0, maximum: 2)
+                fades = .init(fadeIn: footage.fadeInSeconds ?? 0, fadeOut: footage.fadeOutSeconds ?? 0, maximum: 2)
                 if footage.kind != .screenshot { recordingStart = footage.footage.start }
             }
         case .motion:
             kind = "Zoom"; title = "Pan & Zoom"
-        case .music:
-            kind = "Music"; title = project.music.first { $0.clipId == itemEditScope }?.title
+        case .music(let id):
+            kind = "Music"
+            let track = project.music.first { $0.clipId == itemEditScope }
+            title = track?.title
+            if let track {
+                let segment = track.segments?.first { $0.id == id }
+                fades = .init(fadeIn: segment?.fadeInSeconds ?? track.fadeInSeconds,
+                              fadeOut: segment?.fadeOutSeconds ?? track.fadeOutSeconds, maximum: 10)
+                let length = segment?.lengthSeconds ?? item.editedIntervals.reduce(0) { $0 + $1.end - $1.start }
+                audio = .init(gainDb: track.gainDb + (segment?.gainDb ?? 0),
+                              gainRange: segment == nil ? ProjectMusic.gainRange : (track.gainDb - 40)...(track.gainDb + 12),
+                              points: segment?.gainPoints ?? [], length: length, mediaStart: segment?.songFromSeconds ?? track.startOffsetSeconds,
+                              mediaDuration: track.asset.durationSeconds, music: track, loop: segment?.loop ?? true)
+            }
         case .part(let id):
             kind = "Part"
             title = activeClip?.parts?.firstIndex { $0.id == id }.map { "Part \($0 + 1)" }
@@ -130,7 +149,7 @@ extension EditorModel {
         }
         let marker = item.marker.map { axis == .source ? story?.time(forSource: $0) ?? $0 : $0 }
         return .init(item: item, title: title ?? kind, kind: kind, ranges: ranges, marker: marker,
-                     pictureFades: pictureFades, recordingStart: recordingStart)
+                     fades: fades, recordingStart: recordingStart, audio: audio)
     }
 
     private static func itemKind(_ kind: String) -> String {

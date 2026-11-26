@@ -46,7 +46,7 @@ import VoxClipCore
                     }
                 }
                 if let reason = item.item.reason { Text(reason).foregroundStyle(.secondary) }
-                if let fades = item.pictureFades {
+                if let fades = item.fades {
                     TimelineExactField(label: "Fade in", value: fades.fadeIn, writable: model.capabilities.edit) { value in
                         commit(.fade(item: item.item.id, edge: .start, seconds: value))
                     }

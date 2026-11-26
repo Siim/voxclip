@@ -74,9 +74,10 @@ import VoxClipCore
             let original = model.timelineItemSelection
             let selectedHandle = original.contains(id)
             let edge = hit.edge(at: point)
-            let fadeEdge = selectedHandle ? [TimelineEdge.start, .end].first { hit.fadeGrip($0)?.contains(point) == true } : nil
-            let slip = hit.display.recordingStart != nil && !hit.display.item.hidden && edge == nil && fadeEdge == nil &&
-                ((selectedHandle && hit.slipGrip?.contains(point) == true) || event.modifierFlags.contains([.option, .command]))
+            let audioHandles = hit.display.audio != nil
+            let fadeEdge = selectedHandle || audioHandles ? [TimelineEdge.start, .end].first { hit.fadeGrip($0)?.contains(point) == true } : nil
+            let slip = hit.display.mediaStart != nil && !hit.display.item.hidden && edge == nil && fadeEdge == nil &&
+                (((selectedHandle || audioHandles) && hit.slipGrip?.contains(point) == true) || event.modifierFlags.contains([.option, .command]))
             let additive = !slip && !event.modifierFlags.isDisjoint(with: [.shift, .command])
             var selected: Set<TimelineItemID> = additive ? original : [id]
             if additive, !selected.insert(id).inserted { selected.remove(id) }
@@ -198,14 +199,15 @@ import VoxClipCore
         let excluded = Set(transaction.ids)
         switch transaction.gesture {
         case .fade(let edge):
-            guard let fades = display.pictureFades else { return }
+            guard let fades = display.fades else { return }
             let value = (fades[edge] + (edge == .start ? delta : -delta)).clamped(to: 0...fades.maximum)
             let readout = "Fade \(edge == .start ? "in" : "out") \(String(format: "%.1f s", value))"
             showItemPreview(.fade(item: id, edge: edge, seconds: value), ids: excluded, at: point, readout: readout, guide: nil)
             return
         case .slip:
-            guard let start = display.recordingStart else { return }
-            let readout = "Slip \(timelineItemDelta(delta)) · recording \(timelineItemTime(start)) → \(timelineItemTime(start + delta))"
+            guard let start = display.mediaStart else { return }
+            let media = display.audio.map { $0.music == nil ? "sound" : "song" } ?? "recording"
+            let readout = "Slip \(timelineItemDelta(delta)) · \(media) \(timelineItemTime(start)) → \(timelineItemTime(start + delta))"
             showItemPreview(.slip(item: id, bySeconds: delta), ids: excluded, at: point, readout: readout, guide: nil)
             return
         default: break
@@ -241,8 +243,13 @@ import VoxClipCore
                 source = canvas.itemSourceTime(max(0, snapped - 1 / rate)) + 1 / rate
             }
             command = .trim(item: id, edge: edge, toSource: source)
-            let length = max(0, end - start + (edge == .start ? -shift : shift))
-            readout = "\(edge == .start ? "In" : "Out") \(timelineItemDelta(shift)) · \(String(format: "%.1f s", length))"
+            let length = max(0, (display.audio?.length ?? (end - start)) + (edge == .start ? -shift : shift))
+            if edge == .end, let audio = display.audio, audio.loop, length > audio.mediaDuration - audio.mediaStart {
+                let loops = Int(ceil((length - (audio.mediaDuration - audio.mediaStart)) / audio.mediaDuration))
+                readout = "∞ \(loops) \(loops == 1 ? "loop" : "loops") · \(String(format: "%.1f s", length))"
+            } else {
+                readout = "\(edge == .start ? "In" : "Out") \(timelineItemDelta(shift)) · \(String(format: "%.1f s", length))"
+            }
         } else {
             if part { source = canvas.itemSourceTime(time(point)) }
             if case .move(duplicate: true) = transaction.gesture {
@@ -283,7 +290,7 @@ import VoxClipCore
             } else {
                 visible = layout.items.filter { ids.contains($0.id) }
             }
-            let displays = visible.map { model.timelineItemDisplay($0, axis: axis, story: canvas.content.story) }
+            let displays = visible.map { model.timelineItemDisplay($0, axis: axis, story: canvas.content.story, preview: result.project) }
             let rectangles = canvas.fragments(for: displays).map(\.rect)
             canvas.itemOverlay.preview = .init(rectangles: rectangles, readout: readout, point: point, guide: guide)
         }
