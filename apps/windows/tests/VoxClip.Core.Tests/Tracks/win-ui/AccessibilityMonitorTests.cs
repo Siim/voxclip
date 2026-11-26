@@ -1,11 +1,37 @@
 #if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Shared;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
 
 public sealed class AccessibilityMonitorTests
 {
+    [Fact]
+    public void TimelineNarratorNamesItemAndUsesWordOrdinalsAtBothEdges()
+    {
+        TimedWord[] words = [Word(0, "the"), Word(1, "next"), Word(2, "word")];
+        var item = new TimelineItem(new(TimelineItemType.Effect, "title"), "title", TimelineLane.T1, 0, null, .5,
+            [new(.5, 1.4)], [new(.5, 1.4)], false, null, [], null);
+        Assert.Equal("Title, The trick, 0:00.5 to 0:01.4, selected", TimelineItemEditing.Label(item, new("The trick"), .5, 1.4, true));
+        Assert.Equal(1, TimelineItemEditing.WordStepValue(words, .5, TimelineEdge.Start));
+        Assert.Equal(2, TimelineItemEditing.WordStepValue(words, 1.4, TimelineEdge.End));
+        Assert.Equal("Split: B. Duplicate: Ctrl+D. Delete: Delete. Trim to playhead: Ctrl+Shift+[ or ].", TimelineItemEditing.Help);
+        static TimedWord Word(int index, string text) => new($"word-{index}", text, WordKind.Word, index * .5, index * .5 + .4, null, null, null, null, TimingSource.Native);
+    }
+
+    [Fact]
+    public void TimelineItemsAndEdgesExposeNativeSelectionAndRangePatterns()
+    {
+        var app = Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!, "apps/windows/src/VoxClip.App/Controls");
+        Assert.Contains("RangePeer(owner), ISelectionItemProvider", File.ReadAllText(Path.Combine(app, "TimelineItemControl.cs")));
+        Assert.Contains("IRangeValueProvider", File.ReadAllText(Path.Combine(app, "TimelineRangeControl.cs")));
+        var bar = File.ReadAllText(Path.Combine(app, "TimelineView.ItemBar.cs"));
+        Assert.Contains("(start, TimelineEdge.Start), (end, TimelineEdge.End)", bar);
+        Assert.Contains("TimelineItemEditing.Help", bar);
+        Assert.Contains("new(0, Math.Max(0, model.Words.Count - 1), index, 1", bar);
+    }
     [Fact]
     public void WindowNotificationsDispatchAndDisposeWithoutStaticSubscriptions()
     {

@@ -16,7 +16,17 @@ namespace VoxClip.App.Controls;
 
 public sealed partial class TimelineView
 {
-    private readonly StackPanel itemBar = new() { Spacing = 3, Padding = new(8, 3, 8, 2), Visibility = Visibility.Collapsed };
+    private sealed class ItemBarPanel : StackPanel
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() => new ItemBarPeer(this);
+
+        private sealed class ItemBarPeer(ItemBarPanel owner) : FrameworkElementAutomationPeer(owner)
+        {
+            protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Group;
+        }
+    }
+
+    private readonly ItemBarPanel itemBar = new() { Spacing = 3, Padding = new(8, 3, 8, 2), Visibility = Visibility.Collapsed };
     private readonly StackPanel itemFields = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
     private readonly StackPanel itemActions = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     private readonly TextBlock itemReason = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };

@@ -126,7 +126,7 @@ public sealed partial class TimelineView : UserControl
     private TimelineWaveform? envelope;
     private CancellationTokenSource? waveformRequest;
     private CancellationTokenSource? filmstripRequest;
-    private Project? trimSnapshot;
+    private TimelineEditSession? trimSession;
     private IReadOnlyList<TimelineCaptions.Page> captionPages = [];
     private IReadOnlyList<TimelineCue> captionCues = [];
     private Project? captionSnapshot;
@@ -346,7 +346,7 @@ public sealed partial class TimelineView : UserControl
             if (fraction >= 1) { animation.Stop(); Draw(); }
         };
         Loaded += (_, _) => { if (!disposed) { Ui.EffectsChanged -= EffectsChanged; Ui.EffectsChanged += EffectsChanged; Draw(); } };
-        Unloaded += (_, _) => { animation.Stop(); CancelTrim(); EndTimelineCapture(); ClearFilmstrip(); Ui.EffectsChanged -= EffectsChanged; };
+        Unloaded += (_, _) => { animation.Stop(); CancelTrim(); EndTimelineCapture(); ResetItemAudio(); ClearFilmstrip(); Ui.EffectsChanged -= EffectsChanged; };
         ApplyBrushes();
     }
 
@@ -459,7 +459,7 @@ public sealed partial class TimelineView : UserControl
     public void Detach()
     {
         if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; }
-        disposed = true; CancelTrim(); EndTimelineCapture(); itemPeers.Children.Clear(); ClearFilmstrip(); waveformRequest?.Cancel();
+        disposed = true; CancelTrim(); EndTimelineCapture(); ResetItemAudio(); itemPeers.Children.Clear(); itemNodes.Clear(); ClearFilmstrip(); waveformRequest?.Cancel();
         model = null; plan = null; envelope = null; captionPages = []; captionCues = []; captionSnapshot = null; storyRendering = null; story = null;
         scene.Tiles.Clear(); geometryCache.Clear(); attachedSource = null;
         animation.Stop(); Ui.EffectsChanged -= EffectsChanged;
@@ -612,6 +612,7 @@ public sealed partial class TimelineView : UserControl
     private void ScrubMoved(object sender, PointerRoutedEventArgs args)
     {
         if (ItemMoved(args)) return;
+        UpdateItemHover(args.GetCurrentPoint(track).Position);
         if (ranging && model is not null) { model.SetAskClaudeTimeRange(Ordered(rangeAnchor, PointerTime(args))); return; }
         if (scrubbing) Scrub(args);
         if (model is null || model.Words.Count == 0) return;
@@ -668,31 +669,50 @@ public sealed partial class TimelineView : UserControl
             if (model?.State?.ActiveClipId is not { } id || model.IsStoryClip || model.IsReadOnly || model.Busy || renderingBlocked || !args.GetCurrentPoint(handle).Properties.IsLeftButtonPressed) return;
             var clip = model.Clips.First(clip => clip.Id == id);
             trimId = id; trimFirst = model.Index(clip.Clip.StartWordId); trimLast = model.Index(clip.Clip.EndWordId);
-            trimSnapshot = model.Project; trimming = true; trimStart = start; animation.Stop();
+            trimSession = new(model, id); trimming = true; trimStart = start; animation.Stop();
             trimOriginX = args.GetCurrentPoint(track).Position.X; trimMoved = false;
             handle.Focus(FocusState.Pointer); handle.CapturePointer(args.Pointer); args.Handled = true;
         };
         handle.PointerMoved += (_, args) =>
         {
-            if (!trimming || trimStart != start || model is null || !ReferenceEquals(trimSnapshot, model.Project)) return;
-            var position = args.GetCurrentPoint(track).Position.X;
-            trimMoved = Math.Abs(position - trimOriginX) >= 3;
-            UpdateViewport(trimMoved ? position : trimOriginX); args.Handled = true;
+            if (!trimming || trimStart != start || trimSession?.IsCurrent != true) return;
+            PreviewClipTrim(args.GetCurrentPoint(track).Position); args.Handled = true;
         };
         handle.PointerReleased += (_, args) =>
         {
             if (!trimming || trimStart != start) return;
-            if (model is null || !ReferenceEquals(trimSnapshot, model.Project)) { CancelTrim(); Draw(); return; }
-            var position = args.GetCurrentPoint(track).Position.X;
-            trimMoved = Math.Abs(position - trimOriginX) >= 3;
-            if (trimMoved) UpdateViewport(position);
-            var id = trimId; var first = trimFirst; var last = trimLast;
+            if (model is null || trimSession?.IsCurrent != true) { CancelTrim(); Draw(); return; }
+            PreviewClipTrim(args.GetCurrentPoint(track).Position);
+            var session = trimSession;
+            trimSession = null;
             CancelTrim();
-            if (trimMoved && id is not null) TimelineLayout.CommitTrim(model, id, first, last);
+            if (trimMoved && session.Commit()) model.Announce(model.UndoActionName ?? "Trim clip");
+            itemMessage = session.Reason;
             Draw(); args.Handled = true;
         };
         handle.PointerCanceled += (_, _) => { CancelTrim(); Draw(); };
         handle.PointerCaptureLost += (_, _) => { if (trimming) { CancelTrim(); Draw(); } };
+    }
+    private void PreviewClipTrim(Point point)
+    {
+        if (model is null || trimId is null || trimSession is null) return;
+        trimMoved = Math.Abs(point.X - trimOriginX) >= 3;
+        var edge = trimStart ? TimelineEdge.Start : TimelineEdge.End;
+        var original = trimStart ? viewport.First : viewport.Last;
+        if (trimMoved) UpdateViewport(point.X);
+        else { trimFirst = viewport.First; trimLast = viewport.Last; UpdateViewport(); }
+        var final = trimStart ? trimFirst : trimLast;
+        if (!trimMoved || original == final || original < 0 || final < 0)
+        {
+            trimSession.Cancel(); gestureReadout = null; itemFeedbackOrigin = null; DrawItemFeedback(track.ActualWidth); return;
+        }
+        double Time(int index) => trimStart ? model.Words[index].Start : model.Words[index].End;
+        trimSession.Preview([new TimelineEdit.Trim(new(TimelineItemType.Clip, trimId), edge, Time(final))]);
+        if (trimSession.Reason is not null) { trimFirst = viewport.First; trimLast = viewport.Last; UpdateViewport(); }
+        var length = model.Words[trimLast].End - model.Words[trimFirst].Start;
+        gestureReadout = trimSession.Reason ?? $"{(trimStart ? "In" : "Out")} {TimelineItemEditing.Delta(Time(final) - Time(original))} · {TimelineItemEditing.Seconds(length)}";
+        itemFeedbackOrigin = point;
+        DrawItemFeedback(track.ActualWidth);
     }
     private TimelineRange ReadTrim(bool start)
     {
@@ -708,7 +728,8 @@ public sealed partial class TimelineView : UserControl
     }
     private void CancelTrim()
     {
-        trimming = false; trimSnapshot = null; trimId = null;
+        if (trimming) { gestureReadout = null; itemFeedbackOrigin = null; }
+        trimming = false; trimSession?.Cancel(); trimSession = null; trimId = null;
         startHandle.ReleasePointerCaptures(); endHandle.ReleasePointerCaptures();
     }
 
@@ -717,6 +738,7 @@ public sealed partial class TimelineView : UserControl
         var width = track.ActualWidth;
         if (model is null || width <= 0 || plan is null) return;
         RefreshItemProjection();
+        RefreshItemAudio();
         metrics = TimelineLayout.Tracks(heightPicker.SelectedIndex, itemLayout?.RowCounts);
         RefreshItemBar();
         track.Height = canvas.Height = handles.Height = metrics.Height;

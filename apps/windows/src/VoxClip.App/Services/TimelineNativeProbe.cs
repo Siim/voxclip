@@ -1,5 +1,6 @@
 #if DEBUG
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -9,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using VoxClip.App.Controls;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.App.Services;
@@ -92,7 +94,10 @@ internal static class TimelineNativeProbe
         });
         var longTimeline = new TimelineView { Width = 700, HorizontalAlignment = HorizontalAlignment.Left };
         Phase("long timeline");
-        longModel.Select(3000); longModel.Select(3050, true); longModel.MakeClip();
+        longModel.Select(3000); longModel.Select(3050, true); var longClip = longModel.MakeClip();
+        const string titleId = "timeline-native-title";
+        var title = JsonSerializer.SerializeToElement(new { id = titleId, clipId = longClip, kind = "title", start = 1201.6, end = 1204.0, text = "Timeline test title", position = "top" });
+        Require(longModel.ReplaceProject(ClipEffects.Adding([title], longModel.Project), "Place title"), "native timeline fixture did not place a title");
         host.Children.Add(longTimeline); longTimeline.Attach(longModel); host.UpdateLayout();
         try
         {
@@ -106,6 +111,8 @@ internal static class TimelineNativeProbe
                 Require(version == longTimeline.DebugBuildVersion && nodes.SequenceEqual(longTimeline.DebugDrawingNodes), "9,000-word zoom/drag update recreated elements");
             }
             checks.Add("9,000-word native timeline: <=256 custom elements with/without RMS and stable zoom/drag identities");
+            longTimeline.DebugMoveViewport(new(1198, 1223));
+            host.UpdateLayout();
             longTimeline.DebugCreateRangePeers();
             if (Environment.GetEnvironmentVariable("VOXCLIP_TIMELINE_LISTENER_PROBE") == "1")
             {

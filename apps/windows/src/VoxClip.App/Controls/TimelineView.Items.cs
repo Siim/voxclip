@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
@@ -18,7 +19,7 @@ public sealed partial class TimelineView
 {
     private sealed record ItemHit(TimelineItem Item, TimelineItemDetails Details, TimeRange Range, Rect Rect, double Left, double Right);
     private sealed record ItemDrag(TimelineEditSession Session, ItemHit Hit, TimelineItemGesture Gesture, Point Origin,
-        TimelineItemId[] Ids, GainPoint? Point, bool AddPoint, bool Band)
+        TimelineItemId[] Ids, GainPoint? Point, bool AddPoint, bool Band, TimeRange? PreviousBand, TimelineItemId? PreviousBandItem)
     {
         internal bool Moved { get; set; }
     }
@@ -30,6 +31,8 @@ public sealed partial class TimelineView
     private readonly List<ItemHit> itemHits = [];
     private readonly Dictionary<TimelineItemId, ItemNodes> itemNodes = [];
     private readonly List<TimelineItemId> selectedItems = [];
+    private TimelineItemId? hoveredItem;
+    private readonly InputSystemCursor resizeCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeWestEast);
     private TimelineItemLayout? itemLayout;
     private EditPlan? itemPlan;
     private Project? itemProject;
@@ -40,6 +43,7 @@ public sealed partial class TimelineView
     private ItemDrag? itemDrag;
     private Point? marquee;
     private TimelineItemId[] marqueeSelection = [];
+    private TimelineItemId[] previousMarqueeSelection = [];
     private TimeRange? audioBand;
     private TimelineItemId? audioBandItem;
     private GainPoint? selectedGainPoint;
@@ -65,6 +69,7 @@ public sealed partial class TimelineView
         track.Children.Add(itemFeedback);
         AutomationProperties.SetLiveSetting(itemFeedback, AutomationLiveSetting.Polite);
         InitializeItemBar(layout);
+        slider.PointerExited += (_, _) => UpdateItemHover(null);
         KeyDown += (_, args) =>
         {
             if (args.Handled || InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)) || model?.CorrectionWordId is not null) return;
@@ -116,8 +121,9 @@ public sealed partial class TimelineView
         var displayed = new HashSet<TimelineItemId>();
         var preview = itemDrag is { Session.IsCurrent: true } drag && !ReferenceEquals(drag.Session.PreviewProject, drag.Session.Baseline)
             ? drag.Session.PreviewProject : null;
-        var layout = preview is null ? itemLayout : TimelineItems.Layout(preview, itemPlan, preview.Edits.ActiveClipId, ItemAxis);
         var changed = preview is not null && itemDrag!.Hit.Item.Lane == TimelineLane.V1;
+        var layout = preview is null ? itemLayout : TimelineItems.Layout(preview,
+            changed ? RenderCallerInputs.PlacementPlan(preview, preview.Edits.ActiveClipId) : itemPlan, preview.Edits.ActiveClipId, ItemAxis);
         foreach (var lane in Enum.GetValues<TimelineLane>())
         {
             if (lane != TimelineLane.M1) Paint(itemDrawing, Brush("VcTimelineTrackBrush"), 0, metrics.Top(lane) + metrics.LaneHeight(lane), width, 1, 1);
@@ -190,7 +196,7 @@ public sealed partial class TimelineView
         if (!TimelineItemEditing.Editable(item)) return;
         var audio = TimelineItemEditing.Audio(item);
         if (audio) DrawItemAudio(hit);
-        if (!selected && itemDrag?.Hit.Item.Id != item.Id) return;
+        if (!selected && itemDrag?.Hit.Item.Id != item.Id && hoveredItem != item.Id) return;
         if (TimelineItemEditing.CanFade(item))
         {
             DrawFade(hit, true, stroke); DrawFade(hit, false, stroke);
@@ -220,6 +226,7 @@ public sealed partial class TimelineView
     {
         var box = hit.Rect;
         var ink = Brush("VcTimelineCueTextBrush");
+        DrawItemWaveform(hit, ink);
         if (audioBandItem == hit.Item.Id && audioBand is { } band)
         {
             var lower = Math.Max(box.Left, ItemX(band.Start, lastItemWidth));
@@ -271,6 +278,17 @@ public sealed partial class TimelineView
     }
 
     private ItemHit? HitItem(Point point) => itemHits.LastOrDefault(hit => hit.Rect.Contains(point));
+    private void UpdateItemHover(Point? point)
+    {
+        if (itemDrag is not null || marquee is not null || scrubbing || trimming) return;
+        var hit = point is { } position ? HitItem(position) : null;
+        var resize = hit is not null && point is { } pointer && TimelineItemEditing.Editable(hit.Item) &&
+            (Math.Abs(hit.Left - pointer.X) <= 6 || Math.Abs(hit.Right - pointer.X) <= 6);
+        ProtectedCursor = resize ? resizeCursor : null;
+        if (hoveredItem == hit?.Item.Id) return;
+        hoveredItem = hit?.Item.Id;
+        RedrawItems();
+    }
 
     private bool ItemPressed(Point point, PointerRoutedEventArgs args)
     {
@@ -281,7 +299,8 @@ public sealed partial class TimelineView
             if (point.Y < metrics.Top(TimelineLane.T1) || point.Y >= metrics.Top(TimelineLane.M1) + metrics.MusicHeight ||
                 point.Y >= metrics.VideoTop && point.Y < metrics.Top(TimelineLane.S1) ||
                 ctrl && shift && point.Y >= metrics.EffectsTop && point.Y < metrics.EffectsTop + metrics.EffectsHeight) return false;
-            marqueeSelection = ctrl || shift ? selectedItems.ToArray() : [];
+            previousMarqueeSelection = selectedItems.ToArray();
+            marqueeSelection = ctrl || shift ? previousMarqueeSelection : [];
             if (!ctrl && !shift) ClearItemSelection();
             marquee = point;
         }
@@ -300,12 +319,11 @@ public sealed partial class TimelineView
             var band = false;
             var add = false;
             var local = point.Y - hit.Rect.Top;
-            var fadeReach = 3 + lastItemWidth / view.Duration;
-            var leadingFade = Math.Min(fadeReach, 3 + hit.Details.FadeIn * lastItemWidth / view.Duration);
-            var trailingFade = Math.Min(fadeReach, 3 + hit.Details.FadeOut * lastItemWidth / view.Duration);
+            var leadingFade = Math.Clamp(hit.Left + 3 + hit.Details.FadeIn * lastItemWidth / view.Duration, hit.Rect.Left + 3, Math.Max(hit.Rect.Left + 3, hit.Rect.Right - 3));
+            var trailingFade = Math.Clamp(hit.Right - 3 - hit.Details.FadeOut * lastItemWidth / view.Duration, hit.Rect.Left + 3, Math.Max(hit.Rect.Left + 3, hit.Rect.Right - 3));
             if (slipCombo) gesture = TimelineItemGesture.Slip;
-            else if (TimelineItemEditing.CanFade(hit.Item) && hit.Rect.Width >= 12 && local <= 7 && Math.Abs(point.X - hit.Left - leadingFade) <= 5) gesture = TimelineItemGesture.FadeIn;
-            else if (TimelineItemEditing.CanFade(hit.Item) && hit.Rect.Width >= 12 && local <= 7 && Math.Abs(point.X - hit.Right + trailingFade) <= 5) gesture = TimelineItemGesture.FadeOut;
+            else if (TimelineItemEditing.CanFade(hit.Item) && hit.Rect.Width >= 12 && local <= 7 && Math.Abs(point.X - leadingFade) <= 5) gesture = TimelineItemGesture.FadeIn;
+            else if (TimelineItemEditing.CanFade(hit.Item) && hit.Rect.Width >= 12 && local <= 7 && Math.Abs(point.X - trailingFade) <= 5) gesture = TimelineItemGesture.FadeOut;
             else if (key is not null && !alt) { gesture = TimelineItemGesture.Keyframe; selectedGainPoint = key; }
             else if (Math.Abs(point.X - hit.Left) <= Math.Min(6, hit.Rect.Width / 3) && hit.Range.Start == hit.Item.AxisIntervals.FirstOrDefault().Start) gesture = TimelineItemGesture.Start;
             else if (Math.Abs(point.X - hit.Right) <= Math.Min(6, hit.Rect.Width / 3) && hit.Range.End == hit.Item.AxisIntervals.LastOrDefault().End) gesture = TimelineItemGesture.End;
@@ -320,7 +338,7 @@ public sealed partial class TimelineView
             else if (selected && audio && local > hit.Rect.Height / 2) band = true;
             var ids = gesture is TimelineItemGesture.Move or TimelineItemGesture.Duplicate ? new[] { hit.Item.Id }.Concat(selectedItems.Where(id => id != hit.Item.Id)).ToArray() : [hit.Item.Id];
             if (CanEditItems && TimelineItemEditing.Editable(hit.Item))
-                itemDrag = new(new(model, model.Project.Edits.ActiveClipId), hit, gesture, point, ids, key, add, band);
+                itemDrag = new(new(model, model.Project.Edits.ActiveClipId), hit, gesture, point, ids, key, add, band, audioBand, audioBandItem);
         }
         animation.Stop(); slider.Focus(FocusState.Pointer); slider.CapturePointer(args.Pointer); args.Handled = true;
         return true;
@@ -355,7 +373,7 @@ public sealed partial class TimelineView
             var layout = itemLayout! with { SnapTargets = [.. itemLayout.SnapTargets, new(ScreenToItem(ToDisplay(model.SourceTime)), TimelineSnapKind.Playhead, null)] };
             var scale = track.ActualWidth / view.Duration;
             var snappingNow = snapping.IsChecked == true && !InputState.Down(VirtualKey.Menu) && !InputState.Down(VirtualKey.N);
-            var delta = ItemAt(position) - ItemAt(drag.Origin);
+            var delta = drag.Hit.Item.Lane == TimelineLane.V1 ? dx / scale : ItemAt(position) - ItemAt(drag.Origin);
             var edit = TimelineItemEditing.Build(drag.Gesture, drag.Hit.Item, drag.Hit.Details, drag.Ids, layout, drag.Session.Plan,
                 ItemAxis, model.Words, delta, -dy * 46 / Math.Max(1, drag.Hit.Rect.Height - 10), ItemAt(position), 8 / scale,
                 snappingNow, drag.Point, audioBand);
@@ -372,6 +390,10 @@ public sealed partial class TimelineView
         if (itemDrag is { } drag)
         {
             ItemMoved(args);
+            if (itemDrag != drag)
+            {
+                slider.ReleasePointerCapture(args.Pointer); args.Handled = true; return true;
+            }
             itemDrag = null;
             var at = ItemAt(args.GetCurrentPoint(track).Position);
             if (drag.AddPoint && !drag.Moved && drag.Hit.Item.AxisIntervals.Count > 0)
@@ -394,15 +416,20 @@ public sealed partial class TimelineView
                 }
                 else itemMessage = drag.Session.Reason;
             }
+            else if (!drag.Moved && drag.Point is null) SelectItem(drag.Hit.Item.Id, true, false);
         }
         else if (marquee is null) return false;
+        marquee = null;
         EndTimelineCapture(); slider.ReleasePointerCapture(args.Pointer); Draw(); args.Handled = true; return true;
     }
 
     private void EndTimelineCapture()
     {
         var active = itemDrag is not null || marquee is not null || gestureReadout is not null;
+        if (marquee is not null) SetItemSelection(previousMarqueeSelection);
+        if (itemDrag is { Band: true } band) { audioBand = band.PreviousBand; audioBandItem = band.PreviousBandItem; }
         itemDrag?.Session.Cancel(); itemDrag = null; marquee = null; marqueeSelection = [];
+        previousMarqueeSelection = [];
         scrubbing = selecting = ranging = false; gestureReadout = null; itemGuide = null; itemFeedbackOrigin = null;
         if (active) RedrawItems();
     }
@@ -416,8 +443,8 @@ public sealed partial class TimelineView
         itemOverlay.Children.Clear();
         if (itemGuide is { } guide) Paint(itemOverlay, new SolidColorBrush(Microsoft.UI.Colors.Gold), ItemX(guide, width),
             TimelineLayout.OverviewHeight, 1.5, metrics.Height - TimelineLayout.OverviewHeight - 10, 1);
-        itemFeedback.Text = gestureReadout ?? "";
-        itemFeedback.Visibility = gestureReadout is null ? Visibility.Collapsed : Visibility.Visible;
+        itemFeedback.Text = itemFeedbackOrigin is null ? gestureReadout ?? (selectedItems.Count == 0 ? itemMessage : null) ?? "" : "";
+        itemFeedback.Visibility = itemFeedback.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         itemFeedback.Foreground = Brush("VcTextPrimaryBrush");
         itemFeedback.HorizontalAlignment = HorizontalAlignment.Left; itemFeedback.VerticalAlignment = VerticalAlignment.Top;
         if (itemFeedbackOrigin is { } point && gestureReadout is { } readout)
@@ -450,7 +477,11 @@ public sealed partial class TimelineView
     {
         if (item.Id.Type == TimelineItemType.Music) OpenMusicRequested?.Invoke(this, EventArgs.Empty);
         else if (item.Id.Type == TimelineItemType.Effect) model?.AdjustAskClaudeFromTimeline(item.Id.Value);
-        else if (item.Id.Type == TimelineItemType.Motion) SelectItem(item.Id, true, false);
+        else if (item.Id.Type == TimelineItemType.Motion)
+        {
+            SelectItem(item.Id, true, false);
+            itemFields.Children.OfType<TextBox>().FirstOrDefault()?.Focus(FocusState.Programmatic);
+        }
     }
 
     private bool CommitItems(TimelineEdit edit)
@@ -471,10 +502,8 @@ public sealed partial class TimelineView
         switch (shortcut)
         {
             case TimelineShortcut.Escape:
-                if (itemDrag is { Band: true }) { audioBand = null; audioBandItem = null; }
                 if (itemDrag is not null || marquee is not null || trimming || scrubbing || overviewDragging || ranging)
                 {
-                    if (marquee is not null) SetItemSelection(marqueeSelection);
                     if (scrubbing) RestoreScrub();
                     if (ranging) model.SetAskClaudeTimeRange(priorAskRange);
                     if (overviewDragging) { overviewDragging = false; view = overviewOrigin; overview.ReleasePointerCaptures(); scrollRange.ReleasePointerCaptures(); VisibleRangeChanged?.Invoke(this, VisibleRange); }
@@ -534,7 +563,11 @@ public sealed partial class TimelineView
 
     internal void ZoomItems(TimelineShortcut shortcut)
     {
-        if (shortcut == TimelineShortcut.Fit) { ChangeWindow(new(0, AxisDuration)); return; }
+        if (shortcut == TimelineShortcut.Fit)
+        {
+            ChangeWindow(story is null && ClipBounds() is { } bounds ? new(ToDisplay(bounds.Start), ToDisplay(bounds.End)) : new(0, AxisDuration));
+            return;
+        }
         var anchor = Math.Clamp(view.X(ToDisplay(model?.SourceTime ?? 0), 1), 0, 1);
         ChangeWindow(TimelineLayout.Zoom(view, AxisDuration, shortcut == TimelineShortcut.ZoomIn ? 1.5 : 1 / 1.5, anchor));
     }

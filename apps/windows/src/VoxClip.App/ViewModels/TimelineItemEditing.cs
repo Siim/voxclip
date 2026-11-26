@@ -60,8 +60,8 @@ internal static class TimelineItemEditing
     internal static bool Editable(TimelineItem item) => !item.Hidden && item.Id.Type is not (TimelineItemType.ContextDemo or TimelineItemType.Voice);
     internal static bool Audio(TimelineItem item) => item.Kind is "sound" or "music";
     internal static bool CanSlip(TimelineItem item) => Audio(item) || item.Id.Type == TimelineItemType.Footage;
-    internal static bool CanFade(TimelineItem item) => item.Id.Type == TimelineItemType.Footage || Audio(item) ||
-        item.Kind is "title" or "lowerThird" or "sticker" or "illustration" or "motionTemplate";
+    internal static bool CanFade(TimelineItem item) => item.Id.Type is TimelineItemType.Footage or TimelineItemType.Music ||
+        item.Id.Type == TimelineItemType.Effect && item.Kind is not ("bleep" or "mute" or "speedForPart" or "freeze");
     internal static string Seconds(double value) => value.ToString("0.0", CultureInfo.InvariantCulture) + " s";
     internal static string Clock(double value)
     {
@@ -73,8 +73,18 @@ internal static class TimelineItemEditing
     internal static double Length(TimelineItem item) => item.EditedIntervals.Count == 0 ? 0 : item.EditedIntervals[^1].End - item.EditedIntervals[0].Start;
     internal static string Word(IReadOnlyList<TimedWord> words, double source) => words.Count == 0 ? "" :
         "on “" + words[TimelineLayout.WordAt(words, source)].Text.Trim() + "”";
-    internal static int WordStepValue(IReadOnlyList<TimedWord> words, double source, TimelineEdge? edge) => edge == TimelineEdge.End
-        ? Enumerable.Range(0, words.Count).MinBy(index => Math.Abs(words[index].End - source)) : TimelineLayout.WordAt(words, source);
+    internal static int WordStepValue(IReadOnlyList<TimedWord> words, double source, TimelineEdge? edge)
+    {
+        if (words.Count == 0) return 0;
+        double Boundary(int index) => edge == TimelineEdge.End ? words[index].End : words[index].Start;
+        var low = 0; var high = words.Count - 1;
+        while (low < high)
+        {
+            var middle = low + (high - low) / 2;
+            if (Boundary(middle) < source) low = middle + 1; else high = middle;
+        }
+        return low > 0 && Math.Abs(Boundary(low - 1) - source) <= Math.Abs(Boundary(low) - source) ? low - 1 : low;
+    }
     internal static string Label(TimelineItem item, TimelineItemDetails details, double start, double end, bool selected) =>
         $"{Name(item.Kind)}{(details.Title == Name(item.Kind) ? "" : ", " + details.Title)}, {Clock(start)} to {Clock(end)}" + (selected ? ", selected" : "");
 
@@ -140,7 +150,15 @@ internal static class TimelineItemEditing
         var source = Source(speech && !trimming ? destination : snap ?? target);
         if (trimming)
         {
-            if (!leading && axis == TimelineAxis.Edited && (snap ?? target) > 0)
+            if (speech && words.Count > 0)
+            {
+                var sample = 1 / plan.SampleRate;
+                var boundary = leading ? item.SourceAnchor : axis == TimelineAxis.Source ? end : Source(Math.Max(0, end - sample)) + sample;
+                var wordIndex = WordStepValue(words, boundary + delta, leading ? TimelineEdge.Start : TimelineEdge.End);
+                source = leading ? words[wordIndex].Start : words[wordIndex].End;
+                shift = source - boundary; snap = origin + shift;
+            }
+            else if (!leading && axis == TimelineAxis.Edited && (snap ?? target) > 0)
                 source = Source((snap ?? target) - 1 / plan.SampleRate) + 1 / plan.SampleRate;
             var nextLength = Math.Max(0, length + (leading ? -shift : shift));
             var readout = $"{(leading ? "In" : "Out")} {Delta(shift)} · {Seconds(nextLength)}";

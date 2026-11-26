@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, move, trim, split and shape timeline items in eight lanes, with music and sound fades, volume keyframes, snapping, named Undo and Narrator controls.
 - On Mac, move, trim, split, duplicate and delete items directly in the eight timeline lanes, adjust picture fades and slip B-roll, with snapping, keyboard controls and VoiceOver.
 - Claude Code, Codex and Ask Claude can trim, move and shape existing timeline items without spending; Claude does it all can shape the music it picks.
 - Windows previews and exports timeline fades, slipped sounds and music segments. B-roll plays at normal speed across cuts, and Undo restores its placement.

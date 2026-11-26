@@ -226,6 +226,23 @@ try{
  if(-not (IsSelected $clip) -or -not $afterChoose.StartsWith('Clip 1, ')){throw "Choosing the clip row did not select it and keep focus: $afterChoose"}
  Dump $w 'clip-scope';Capture $w 'clip-scope'
  $result.clipRowScope=$true
+ $timelineItems=[System.Windows.Automation.AutomationElement]::FromHandle($w).FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+ $clipItem=$timelineItems | Where-Object { $_.Current.AutomationId -match '^Timeline\.Item\.Clip\.' -and $_.Current.ClassName -eq 'VoxClipTimelineItem' -and -not $_.Current.IsOffscreen } | Select-Object -First 1
+ if(-not $clipItem){throw 'The visible scoped clip has no timeline item peer'}
+ $itemPattern=$clipItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+ $itemPattern.Select(); if(-not $itemPattern.Current.IsSelected){throw 'Narrator selection did not select the clip item'}
+ [void](FindId $w 'Timeline.ItemBar')
+ $edgeEvidence=foreach($edge in @('Start','End')){
+  $target=FindId $w ($clipItem.Current.AutomationId+'.'+$edge)
+  $range=$target.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
+  if($target.Current.ControlType -ne [System.Windows.Automation.ControlType]::Slider -or $range.Current.SmallChange -ne 1 -or $target.Current.HelpText -notlike '*Trim to playhead*'){throw "Missing word-step $edge peer or key help"}
+  @{name=$target.Current.Name;value=$range.Current.Value;help=$target.Current.HelpText}
+ }
+ $clipItem.SetFocus();[R1Native]::Key(0x1B);Start-Sleep -Milliseconds 200
+ if($itemPattern.Current.IsSelected){throw 'Escape did not deselect the focused timeline clip'}
+ @{item=$clipItem.Current.Name;help=$clipItem.Current.HelpText;edges=@($edgeEvidence);narrator='not observed'} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $shots 'timeline-items.json')
+ $result.timelineItems=$true
+ $clip.SetFocus()
  # Editor shortcuts act from the pane (design 11.1). Ctrl+E on the chosen clip row opens Export with only that clip. A demo
  # project has no video, so there Ctrl+E is refused: no dialog opens and the Export button carries the reason.
  [R1Native]::Chord(0x11,0x45);Start-Sleep -Milliseconds 800
