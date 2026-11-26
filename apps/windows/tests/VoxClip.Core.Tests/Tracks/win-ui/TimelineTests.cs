@@ -173,6 +173,7 @@ public sealed class TimelineTests
         var early = Build(.5); session.Preview(early.Edits, early.Undo);
         var final = Build(1);
         Assert.Null(final.Refusal);
+        if (gesture == TimelineItemGesture.Slip) Assert.Equal("Slip +0:00.1 · sound 0:00.1 → 0:00.3", final.Readout);
         Assert.True(session.Preview(final.Edits, final.Undo), session.Reason);
         Assert.Same(session.Baseline, model.Project);
         Assert.False(model.CanUndo);

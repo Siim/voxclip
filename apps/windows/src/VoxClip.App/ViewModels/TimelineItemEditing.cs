@@ -111,7 +111,7 @@ internal static class TimelineItemEditing
                 return new([new TimelineEdit.Fade(id, fadeIn ? TimelineEdge.Start : TimelineEdge.End, seconds)],
                     $"Fade {(fadeIn ? "in" : "out")} {Seconds(seconds)}");
             case TimelineItemGesture.Slip:
-                var media = item.Kind == "music" ? "song" : "recording";
+                var media = item.Kind switch { "music" => "song", "sound" => "sound", _ => "recording" };
                 return new([new TimelineEdit.Slip(id, delta)], $"Slip {Delta(delta)} · {media} {Clock(details.Offset)} → {Clock(details.Offset + delta)}");
             case TimelineItemGesture.Volume:
                 var gain = Level(details.Gain + volumeDelta, item.Kind == "sound" ? -30 : -40, item.Kind == "sound" ? 6 : 12);
