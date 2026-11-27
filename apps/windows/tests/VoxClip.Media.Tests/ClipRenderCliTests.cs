@@ -109,6 +109,42 @@ public sealed class ClipRenderCliTests
     }
 
     [Fact]
+    public async Task CompanionExportOnlyNeedsThePrimaryWhenItIsKept()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        File.Delete(story.Primary.Path);
+        string[] options = ["--open", story.Path, "--export", Path.Combine(directory.Path, "out.mp4"), "--style", "off"];
+
+        var companion = await CliOperations.PrepareExportAsync(CliApplication.Parse([.. options, "--range", "27:28"]), ct, null);
+        Assert.NotEmpty(companion.Snapshot.SpanSources);
+        Assert.All(companion.Snapshot.SpanSources, source => Assert.Equal("0010", source.Label));
+
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => CliOperations.PrepareExportAsync(
+            CliApplication.Parse([.. options, "--clip", "clip-recordings"]), ct, null));
+        Assert.Equal(VoxClipErrorCode.MediaMissing, error.Code);
+    }
+
+    [Fact]
+    public async Task WordRangeUsesTheProjectClockButCannotCrossRecordings()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        string[] options = ["--open", story.Path, "--export", Path.Combine(directory.Path, "out.mp4"), "--style", "off", "--range"];
+        Task<(Project?, MediaInfo)> Open(string _, CancellationToken __) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary));
+
+        var companion = await CliOperations.PrepareExportAsync(CliApplication.Parse([.. options, "27:28"]), ct, Open);
+        Assert.NotEmpty(companion.Snapshot.SpanSources);
+        Assert.All(companion.Snapshot.SpanSources, source => Assert.Equal("0010", source.Label));
+
+        var error = await Assert.ThrowsAsync<CliUsageException>(() => CliOperations.PrepareExportAsync(
+            CliApplication.Parse([.. options, "26:27"]), ct, Open));
+        Assert.Equal("A word range must come from one recording.", error.Message);
+    }
+
+    [Fact]
     public async Task StoryPreparedByTheCliSeeksPreviewInEachRecordingsLocalTime()
     {
         var ct = TestContext.Current.CancellationToken;
