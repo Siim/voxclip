@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -22,6 +23,15 @@ public sealed class TakeMatchFixtureTests
         var shared = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR") ??
             throw new InvalidOperationException("VOXCLIP_SHARED_DIR required");
         using var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(shared, "fixtures", "recordings", "take-match-cases.json")));
+        var constants = JsonSerializer.SerializeToNode(new
+        {
+            TakeMatch.MinimumSimilarity, TakeMatch.MinimumWordRatio, TakeMatch.MaximumWordRatio,
+            SentencePauseSeconds = ClipText.LinePauseSeconds, MaxSentenceWords = ClipText.MaxLineWords,
+            ClipText.SentencePunctuation, ClipText.ClosingPunctuation, TakeMatch.ClauseBreaks,
+            TakeMatch.MaxRestartWords, TakeMatch.RestartMajority, TakeMatch.FalseStartSeconds,
+            TakeMatch.RestartRunSeconds, TakeMatch.MinRestartRunWords, TakeMatch.IsolatedTailGapWords, TakeMatch.RestartPhrases,
+        }, JsonOptions);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture.RootElement.GetProperty("constants").GetRawText()), constants));
         var cases = fixture.RootElement.GetProperty("cases");
         Assert.True(cases.GetArrayLength() > 0);
         foreach (var vector in cases.EnumerateArray())
