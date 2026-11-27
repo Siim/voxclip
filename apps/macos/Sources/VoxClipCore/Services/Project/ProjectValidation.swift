@@ -27,12 +27,15 @@ enum ProjectValidation {
 
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
-        let wireVersion = try map(raw)["schemaVersion"]
-        let isV7 = wireVersion == .number(7)
-        let isV6 = isV7 || wireVersion == .number(6)
+        let fields = try map(raw)
+        let wireVersion = fields["schemaVersion"]
+        let isV8 = wireVersion == .number(8)
+        let hasSpokenSources = wireVersion == .number(7) || (isV8 && (try? map(fields["media"])["spokenSources"]) != nil)
+        let isV6 = isV8 || hasSpokenSources || wireVersion == .number(6)
         let isV5 = isV6 || wireVersion == .number(5)
         let isV4 = isV5 || wireVersion == .number(4)
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), at: "/")
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab" + (isV8 ? " agentThread" : ""), optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), at: "/")
+        if isV8 { try AgentThreadWire.validate(root["agentThread"]) }
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone", at: "clipStyle")
             for (_, pick) in try map(style["captionPicks"]) {
@@ -44,7 +47,7 @@ enum ProjectValidation {
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform", at: "savedBy")
-        let media = try object(root["media"], required: isV7 ? "source spokenSources" : "source", optional: isV4 ? "additionalSources footage" : "", at: "media")
+        let media = try object(root["media"], required: hasSpokenSources ? "source spokenSources" : "source", optional: isV4 ? "additionalSources footage" : "", at: "media")
         let additional = try media["additionalSources"].map { try array($0, at: "media/additionalSources") } ?? []
         try require(media["additionalSources"] == nil || !additional.isEmpty, "Empty companion source list")
         var sourceKeys = Set<String>()
@@ -77,7 +80,7 @@ enum ProjectValidation {
             }
         }
         if root["transcript"] != .null { try transcriptWire(root["transcript"], at: "transcript") }
-        if isV7 {
+        if hasSpokenSources {
             let spokenPath = "media/spokenSources"
             let spoken = try array(media["spokenSources"], at: spokenPath)
             guard (1...5).contains(spoken.count) else { try fail("expected one to five companion spoken recordings", at: spokenPath) }
@@ -104,7 +107,7 @@ enum ProjectValidation {
             if let parts = fields["parts"] {
                 for (partIndex, part) in try array(parts, at: "\(path)/parts").enumerated() {
                     let partPath = "\(path)/parts/\(partIndex)"
-                    let fields = try object(part, required: "id startWordId endWordId", optional: isV7 ? "reframe takeReason" : "reframe", at: partPath)
+                    let fields = try object(part, required: "id startWordId endWordId", optional: hasSpokenSources ? "reframe takeReason" : "reframe", at: partPath)
                     if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY", at: "\(partPath)/reframe") }
                     if let reason = fields["takeReason"] {
                         guard let value = reason.aiString else { try fail("expected a string", at: "\(partPath)/takeReason") }

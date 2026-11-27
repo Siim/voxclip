@@ -1,0 +1,54 @@
+[
+  {
+    "name": "field edits and explicit null",
+    "after": {"edits": {"activeClipId": null, "corrections": {"w20": "address"}, "cutWordIds": ["w9", "w10"]}},
+    "patch": [
+      {"path": "/edits/activeClipId", "before": "clip-2f1c", "after": null},
+      {"path": "/edits/corrections/w20", "before": "asukoht", "after": "address"},
+      {"path": "/edits/cutWordIds", "before": ["w9"], "after": ["w9", "w10"]}
+    ]
+  },
+  {
+    "name": "missing map key is not null",
+    "after": {"edits": {"corrections": {"w21": "corrected"}}},
+    "patch": [{"path": "/edits/corrections/w21", "before": null, "after": "corrected", "beforeMissing": true}]
+  },
+  {
+    "name": "the same clip moves without replacing its neighbours",
+    "after": {"edits": {"clips": [
+      {"id": "clip-9a0b", "startWordId": "w18", "endWordId": "w26", "title": "Iga sõna asukoht", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": false},
+      {"id": "clip-2f1c", "startWordId": "w10", "endWordId": "w17", "title": "Faster edits", "origin": "ai", "aiResultId": "air-7d3e", "aiClipIndex": 0, "selected": true}
+    ]}},
+    "patch": [
+      {"path": "/edits/clips[id=clip-2f1c]/title", "before": "Miks sõnade kaupa on kiirem", "after": "Faster edits"},
+      {"path": "/edits/clips/@order", "before": ["clip-2f1c", "clip-9a0b"], "after": ["clip-9a0b", "clip-2f1c"]}
+    ]
+  },
+  {
+    "name": "insert a clip by id with its original position",
+    "after": {"edits": {"clips": [
+      {"id": "clip-2f1c", "startWordId": "w10", "endWordId": "w17", "title": "Miks sõnade kaupa on kiirem", "origin": "ai", "aiResultId": "air-7d3e", "aiClipIndex": 0, "selected": true},
+      {"id": "new-clip", "startWordId": "w1", "endWordId": "w5", "title": "New clip", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": false},
+      {"id": "clip-9a0b", "startWordId": "w18", "endWordId": "w26", "title": "Iga sõna asukoht", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": false}
+    ]}},
+    "patch": [{"path": "/edits/clips[id=new-clip]", "before": null, "beforeMissing": true, "afterIndex": 1, "previousId": "clip-2f1c", "nextId": "clip-9a0b",
+      "after": {"id": "new-clip", "startWordId": "w1", "endWordId": "w5", "title": "New clip", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": false}}]
+  },
+  {
+    "name": "nested story part addressed independently",
+    "before": {"edits": {"activeClipId": "story", "clips": [
+      {"id": "story", "kind": "story", "startWordId": "w1", "endWordId": "w17", "title": "Story", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": true,
+       "parts": [{"id": "opening", "startWordId": "w1", "endWordId": "w5"}, {"id": "payoff", "startWordId": "w10", "endWordId": "w17"}]}
+    ]}},
+    "after": {"edits": {"clips": [
+      {"id": "story", "kind": "story", "startWordId": "w1", "endWordId": "w17", "title": "Story", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": true,
+       "parts": [{"id": "opening", "startWordId": "w1", "endWordId": "w4"}, {"id": "payoff", "startWordId": "w10", "endWordId": "w17"}]}
+    ]}},
+    "patch": [{"path": "/edits/clips[id=story]/parts[id=opening]/endWordId", "before": "w5", "after": "w4"}]
+  },
+  {
+    "name": "a paid Voice Lab asset catalog and writer metadata are not changes",
+    "after": {"modifiedAt": "2026-11-27T17:00:00Z", "voiceLab": {"speakingRateSamples": {}}},
+    "patch": []
+  }
+]

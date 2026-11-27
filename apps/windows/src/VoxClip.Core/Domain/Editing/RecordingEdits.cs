@@ -228,7 +228,8 @@ public static partial class RecordingEdits
         var editsAfterRemoval = remaining.Length == 0 ? edits with { Clips = edits.Clips.Select(clip => clip.Parts is not { } parts ? clip :
             clip with { Parts = parts.Select(part => part with { TakeReason = null }).ToArray() }).ToArray() } : edits;
         return project with { Media = project.Media with { SpokenSources = remaining.Length == 0 ? null : remaining },
-            SchemaVersion = remaining.Length == 0 ? TimelineEditFields.Version : project.SchemaVersion, Edits = editsAfterRemoval, Extensions = extensions };
+            SchemaVersion = remaining.Length == 0 && project.AgentThread is null ? TimelineEditFields.Version : project.SchemaVersion,
+            Edits = editsAfterRemoval, Extensions = extensions };
     }
 
     private static int HighestPrefix(Project project)

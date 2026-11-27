@@ -74,6 +74,8 @@ public enum ProjectJSON {
             }
         }
         try ProjectClock.validate(project)
+        try ProjectValidation.require((project.schemaVersion == ProjectMigrations.agentThreadVersion) == (project.agentThread != nil), "Agent threads require project version 8")
+        if let thread = project.agentThread { try AgentThreadWire.validate(thread) }
         try VoiceLabProject.validate(project)
         try ContextDemoProject.validate(project)
         try MusicProject.validate(project)

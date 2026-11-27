@@ -112,7 +112,7 @@ public struct ProjectClock: Sendable, Equatable {
 
     static func validate(_ project: Project) throws {
         let sources = project.media.spokenSources
-        try ProjectValidation.require((project.schemaVersion == ProjectMigrations.currentVersion) == (sources != nil), "Spoken recordings require project version 7")
+        try ProjectValidation.require(sources == nil ? project.schemaVersion != ProjectMigrations.spokenSourcesVersion : project.schemaVersion >= ProjectMigrations.spokenSourcesVersion, "Spoken recordings require project version 7 or later")
         guard let sources else { return }
         try ProjectValidation.require((1...5).contains(sources.count) && project.transcript != nil, "Spoken recordings need a primary transcript and one to five companions")
         let media = project.media

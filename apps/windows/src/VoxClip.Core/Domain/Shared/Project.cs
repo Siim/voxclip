@@ -13,6 +13,9 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
     DateTimeOffset ModifiedAt, SavedBy SavedBy, ProjectMedia Media, TranscriptModel? Transcript,
     ProjectEdits Edits, ProjectCaptions Captions, ProjectExport Export, ProjectShare Share, ProjectAi Ai, VoiceLabPlaceholder VoiceLab)
 {
+    /// <summary>Optional persistent agent thread; only written in schema v8.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AgentThread? AgentThread { get; init; }
     /// <summary>Optional project title, absent rather than null; project schema.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Title { get; init; }

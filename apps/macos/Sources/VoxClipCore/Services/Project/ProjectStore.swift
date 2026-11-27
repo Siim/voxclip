@@ -29,7 +29,7 @@ public actor JSONProjectStore: ProjectStore {
             let (project, warnings) = try Self.decodeReportingWarnings(data)
             loadWarnings = warnings
             for warning in warnings { await logger.write(LogEntry(level: .warn, category: "import", message: warning)) }
-            return (project, warnings)
+            return (AgentTurns.recoveringAfterRelaunch(project), warnings)
         } catch let error as VoxClipError { throw error }
         catch let error as VoiceLabProjectError { throw error }
         catch { throw VoxClipError.projectUnreadable("/: the project file could not be opened") }

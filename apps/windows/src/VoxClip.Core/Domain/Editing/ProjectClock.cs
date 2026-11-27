@@ -117,7 +117,8 @@ public sealed class ProjectClock
     internal static void Validate(Project project)
     {
         var sources = project.Media.SpokenSources;
-        Require((project.SchemaVersion == ProjectSerialization.CurrentVersion) == (sources is not null), "Spoken recordings require project version 7.");
+        Require(sources is null ? project.SchemaVersion != ProjectSerialization.SpokenSourcesVersion :
+            project.SchemaVersion >= ProjectSerialization.SpokenSourcesVersion, "Spoken recordings require project version 7 or later.");
         if (sources is null) return;
         Require(sources.Count is >= 1 and <= 5 && project.Transcript is not null, "Spoken recordings need a primary transcript and one to five companions.");
         var media = project.Media;

@@ -7,7 +7,9 @@ namespace VoxClip.Core.Domain.Shared;
 /// <summary>Versioned project encoding boundary; architecture §3 and editing §10. Store implementation adds reference cleanup and atomic I/O.</summary>
 public static class ProjectSerialization
 {
-    internal const int CurrentVersion = 7;
+    internal const int SpokenSourcesVersion = 7;
+    internal const int AgentThreadVersion = 8;
+    internal const int CurrentVersion = AgentThreadVersion;
     /// <summary>Read a project with source-generated metadata; unknown keys are refused except inside extensions and merge patches.</summary>
     public static Project Deserialize(string json) => Deserialize(json, CurrentVersion);
 
@@ -98,10 +100,13 @@ public static class ProjectSerialization
         return json;
     }
 
-    internal static Project ForWriting(Project project) =>
-        project.Media.SpokenSources is not null && project.SchemaVersion is >= 1 and < CurrentVersion
-            ? (project.SchemaVersion < 4 ? ContextDemoProject.UpgradeToV4(project) : project) with { SchemaVersion = CurrentVersion }
+    internal static Project ForWriting(Project project)
+    {
+        var featureVersion = project.AgentThread is not null ? AgentThreadVersion : project.Media.SpokenSources is not null ? SpokenSourcesVersion : 1;
+        return project.SchemaVersion >= 1 && project.SchemaVersion < featureVersion
+            ? (project.SchemaVersion < 4 ? ContextDemoProject.UpgradeToV4(project) : project) with { SchemaVersion = featureVersion }
             : StoryClips.ForWriting(TimelineEditFields.Promoting(project));
+    }
 
     /// <summary>Validate supported format, voice policy, context/motion invariants and immutable word timings.</summary>
     public static void Validate(Project project)
@@ -122,6 +127,9 @@ public static class ProjectSerialization
             }
         }
         ProjectClock.Validate(project);
+        if ((project.SchemaVersion == AgentThreadVersion) != (project.AgentThread is not null))
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Agent threads require project version 8.");
+        if (project.AgentThread is { } thread) AgentThreadWire.Validate(thread);
         VoiceLabProject.Validate(project);
         ContextDemoProject.Validate(project);
         VoxClip.Core.Domain.Music.MusicProject.Validate(project);

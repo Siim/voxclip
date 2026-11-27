@@ -1001,6 +1001,7 @@ public struct Project: Codable, Sendable, Equatable {
     /// Captions shown in another language over runs of words (Ask Claude's translate); schema v4 only, omitted when
     /// empty (ai.md §18.2).
     public var captionTranslations: [CaptionTranslation]
+    public var agentThread: AgentThread?
 
     /// Creates an explicit value without I/O or generated identifiers.
     public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil, contextDemo: ContextDemoDocument? = nil, motionCues: [MotionCue] = [], music: [ProjectMusic] = [], clipEffects: [ClipEffect] = [], clipControls: [ProjectClipControls] = [], captionTranslations: [CaptionTranslation] = []) {
@@ -1053,6 +1054,7 @@ public struct Project: Codable, Sendable, Equatable {
         case clipEffects
         case clipControls
         case captionTranslations
+        case agentThread
     }
 
     public init(from decoder: any Decoder) throws {
@@ -1080,6 +1082,7 @@ public struct Project: Codable, Sendable, Equatable {
         self.clipEffects = try values.decodeIfPresent([ClipEffect].self, forKey: .clipEffects) ?? []
         self.clipControls = try values.decodeIfPresent([ProjectClipControls].self, forKey: .clipControls) ?? []
         self.captionTranslations = try values.decodeIfPresent([CaptionTranslation].self, forKey: .captionTranslations) ?? []
+        self.agentThread = try values.decodeIfPresent(AgentThread.self, forKey: .agentThread)
         guard schemaVersion >= 4 || (!values.contains(.contextDemo) && !values.contains(.motionCues)) else {
             throw ContextDemoError.unsupportedVersion
         }
@@ -1124,6 +1127,7 @@ public struct Project: Codable, Sendable, Equatable {
         if !self.clipEffects.isEmpty { try values.encode(self.clipEffects, forKey: .clipEffects) }
         if !self.clipControls.isEmpty { try values.encode(self.clipControls, forKey: .clipControls) }
         if !self.captionTranslations.isEmpty { try values.encode(self.captionTranslations, forKey: .captionTranslations) }
+        try values.encodeIfPresent(self.agentThread, forKey: .agentThread)
     }
 
 }

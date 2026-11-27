@@ -17,6 +17,69 @@ private actor SettingsDebounceClock {
 }
 
 @Suite(.offlineFixtures) struct EditingPersistence {
+    @Test func agentThreadPromotesOnlyOnUse() throws {
+        let original = try ContextDemoProject.upgradeToV4(project())
+        let legacy = try ProjectJSON.encode(original)
+        #expect(try ProjectJSON.encode(ProjectJSON.decode(legacy)) == legacy)
+        var document = try #require(JSONSerialization.jsonObject(with: legacy) as? [String: Any])
+        document["schemaVersion"] = 8
+        document["agentThread"] = ["id": "th-test", "mode": "propose", "turns": []]
+        let data = try JSONSerialization.data(withJSONObject: document)
+        let roundTrip = try ProjectJSON.encode(ProjectJSON.decode(data))
+        #expect(try ProjectJSON.encode(ProjectJSON.decode(roundTrip)) == roundTrip)
+        #expect(throws: VoxClipError.projectTooNew) {
+            try ProjectMigrations.checkVersion(ProjectJSON.decoder().decode(JSONValue.self, from: data), maximumSupportedVersion: 7)
+        }
+        var spoken = try ProjectJSON.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
+        let v7 = try ProjectJSON.encode(spoken)
+        #expect(try ProjectJSON.decode(v7).schemaVersion == 7)
+        #expect(try ProjectJSON.encode(ProjectJSON.decode(v7)) == v7)
+        spoken.agentThread = AgentThread(id: "th-companions")
+        let v8 = try ProjectJSON.decode(ProjectJSON.encode(spoken))
+        #expect(v8.schemaVersion == 8)
+        #expect(v8.media.spokenSources == spoken.media.spokenSources)
+    }
+
+    @Test func projectOpenStopsRunningTurnsWithoutReplayingPendingEdits() async throws {
+        let fixture = try FixtureLoader.data("fixtures/agent-chat/pending-turn.voxclip")
+        var project = try ProjectJSON.decode(fixture)
+        var running = try #require(project.agentThread?.turns.first)
+        running.id = "t2"
+        running.state = .running
+        running.changes = []
+        project.agentThread?.turns.append(running)
+        let encoded = try ProjectJSON.encode(project)
+        #expect(try ProjectJSON.encode(ProjectJSON.decode(encoded)) == encoded)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("agent-thread-\(UUID().uuidString).voxclip")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try encoded.write(to: url)
+        let loaded = try await JSONProjectStore().load(from: url)
+        #expect(loaded.agentThread?.turns.map(\.state) == [.pending, .stopped])
+        #expect(loaded.agentThread?.turns[0].changes[0].state == .applied)
+        #expect(loaded.captions == project.captions)
+    }
+
+    @Test func strictAgentWireRejectsUnknownKeysAndVersionMismatch() throws {
+        let fixture = try FixtureLoader.data("fixtures/agent-chat/pending-turn.voxclip")
+        let original = try #require(JSONSerialization.jsonObject(with: fixture) as? [String: Any])
+        var invalid = original
+        invalid["schemaVersion"] = 6
+        #expect(throws: VoxClipError.self) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: invalid)) }
+        invalid = original
+        invalid["agentThread"] = NSNull()
+        #expect(throws: VoxClipError.self) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: invalid)) }
+        var thread = try #require(original["agentThread"] as? [String: Any])
+        var turns = try #require(thread["turns"] as? [[String: Any]])
+        var changes = try #require(turns[0]["changes"] as? [[String: Any]])
+        var patches = try #require(changes[0]["patch"] as? [[String: Any]])
+        patches[0]["unknown"] = true
+        changes[0]["patch"] = patches
+        turns[0]["changes"] = changes
+        thread["turns"] = turns
+        invalid["agentThread"] = thread
+        #expect(throws: VoxClipError.self) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: invalid)) }
+    }
+
     @Test func spokenSourcesRequireV7AndV6ReaderRefusesThem() throws {
         let original = try ContextDemoProject.upgradeToV4(project())
         var document = try #require(JSONSerialization.jsonObject(with: ProjectJSON.encode(original)) as? [String: Any])
@@ -189,7 +252,7 @@ private actor SettingsDebounceClock {
             else { #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data) } }
         }
         var changed = root; changed["unexpected"] = .bool(true); try rejected(changed)
-        changed = root; changed["schemaVersion"] = .number(8); try rejected(changed, error: .projectTooNew)
+        changed = root; changed["schemaVersion"] = .number(Double(ProjectMigrations.currentVersion + 1)); try rejected(changed, error: .projectTooNew)
         changed = root; changed["schemaVersion"] = .number(0); try rejected(changed)
         changed = root; changed["format"] = .string("another"); try rejected(changed)
         changed = root; changed["id"] = .string("not-uuid"); try rejected(changed)
