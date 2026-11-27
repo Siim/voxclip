@@ -5,7 +5,9 @@ using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Media.Pipeline;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -28,6 +30,38 @@ public sealed class ClipSemanticsTests
     internal static EditorViewModel Story() => new(Fixture("story-project.voxclip", "story-clips"));
     internal static EditorViewModel RecordingStory() => new(Fixture("two-recordings.voxclip", "recordings"));
     internal static EditorViewModel RecordingReference() => new(Fixture("reference-recordings.voxclip", "recordings"));
+
+    [Fact]
+    public async Task TurnOffLevelMatchUpdatesTheSharedRenderInputAndUndoRestoresIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-level-match-");
+        try
+        {
+            var fixture = await RecordingStoryFixture.CreateAsync(directory.FullName, ct);
+            var spoken = Assert.Single(fixture.Project.Media.SpokenSources!);
+            var model = new EditorViewModel(fixture.Project with
+            {
+                Media = fixture.Project.Media with { SpokenSources = [spoken with { GainDb = -3.2 }] },
+            });
+            async Task<double> CompanionGain()
+            {
+                var snapshot = new ComposeSnapshot(fixture.Primary, TimelineLayout.Plan(model), null, new(new(320, 180), 30, 500_000));
+                var bound = await RecordingRendering.BindAsync(model.Project, snapshot, new ProjectStore(), fixture.Path, ct);
+                return Assert.Single(bound.SpanSources.Where(source => source.ContentKey == spoken.SourceKey).Select(source => source.GainDb).Distinct());
+            }
+
+            Assert.Equal(-3.2, await CompanionGain());
+            Assert.True(model.StopMatchingRecordingLevel(spoken.SourceKey));
+            Assert.Equal("Don't match level", model.UndoActionName);
+            Assert.Equal(0, Assert.Single(model.Project.Media.SpokenSources!).GainDb);
+            Assert.Equal(0, await CompanionGain());
+            Assert.False(model.StopMatchingRecordingLevel(spoken.SourceKey));
+            model.Undo();
+            Assert.Equal(-3.2, await CompanionGain());
+        }
+        finally { directory.Delete(recursive: true); }
+    }
 
     [Theory]
     [InlineData(true)]

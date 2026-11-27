@@ -113,14 +113,23 @@ public sealed partial class EditorPage
             {
                 var menu = new MenuFlyout();
                 var start = new MenuFlyoutItem { Text = $"Start a New Clip from {region.Label}" };
+                var unmatch = new MenuFlyoutItem { Text = "Don't match level" };
                 menu.Opening += (_, _) =>
                 {
                     var reason = ViewModel.StartFromDisabledReason(region.Key);
                     start.IsEnabled = reason is null;
                     AutomationProperties.SetHelpText(start, reason ?? "");
+                    var levelReason = ViewModel.StopMatchingRecordingLevelReason(region.Key);
+                    unmatch.IsEnabled = levelReason is null;
+                    AutomationProperties.SetHelpText(unmatch, levelReason ?? "");
                 };
                 start.Click += (_, _) => StartFromRecording(region.Key);
                 menu.Items.Add(start);
+                if (region.Prefix.Length > 0)
+                {
+                    unmatch.Click += (_, _) => ViewModel.StopMatchingRecordingLevel(region.Key);
+                    menu.Items.Add(unmatch);
+                }
                 button.ContextFlyout = menu;
             }
             chips.Children.Add(button);

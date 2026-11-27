@@ -376,6 +376,13 @@ public sealed partial class EditorViewModel
 
     internal bool RemoveRecording(string key) => !IsReadOnly && !isLeaving && !Busy && ApplyRecordingEdit(new RecordingEdit.RemoveSpokenSource(key));
 
+    internal string? StopMatchingRecordingLevelReason(string key) => IsReadOnly || isLeaving ? "This project is read-only." :
+        Busy ? "Finish the current job first." :
+        RecordingRegions.Any(region => region.Key == key && region.GainDb != 0) ? null : "This recording is already at its original level.";
+
+    internal bool StopMatchingRecordingLevel(string key) => StopMatchingRecordingLevelReason(key) is null &&
+        ReplaceProject(WithRecordingGain(project, key, 0), "Don't match level");
+
     private static Project WithRecordingGain(Project snapshot, string key, double gain) => snapshot with
     {
         Media = snapshot.Media with { SpokenSources = snapshot.Media.SpokenSources?.Select(source =>
