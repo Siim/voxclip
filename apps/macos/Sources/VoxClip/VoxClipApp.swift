@@ -305,6 +305,17 @@ import VoxClipCore
     #if DEBUG
     var settingsWindowForTests: NSWindow? { settingsWindow }
     #endif
+    private func recordingLineForMenu() -> (EditorModel, RecordingClipLine)? {
+        guard let editor = keyEditor, let responder = NSApp.keyWindow?.firstResponder else { return nil }
+        if let transcript = responder as? TranscriptNSTextView, let line = transcript.recordingLineAtCaret {
+            return (editor, line)
+        }
+        if TimelineItemShortcut.focusedCanvas(responder) != nil,
+           let word = editor.words.first(where: { $0.start <= editor.sourceTime && editor.sourceTime <= $0.end }),
+           let line = editor.recordingLineWithVersions(at: word.id) { return (editor, line) }
+        return nil
+    }
+
     @objc private func performEditorCommand(_ item: NSMenuItem) {
         if let shortcut = TimelineItemShortcut(menuTag: item.tag) {
             TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder)?.interaction.handleItemShortcut(shortcut)
@@ -312,6 +323,9 @@ import VoxClipCore
         }
         let shell = model.shell
         switch item.tag {
+        case 97:
+            if let (editor, line) = recordingLineForMenu() { editor.showRecordingLineVersions(line) }
+            return
         case 90...96:
             if validateMenuItem(item) { keyEditor?.chooseRecordingShortcut(item.tag - 90) }
             return
@@ -471,6 +485,7 @@ import VoxClipCore
                 item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
             }
             switch item.tag {
+            case 97: return recordingLineForMenu() != nil
             case 90...96: return keyEditor.map { $0.hasSeveralRecordings && item.tag - 90 <= $0.recordingRegions.count } ?? false
             case 13: return mainWindowIsKey
             case 14: return mainWindowIsKey && model.shell.document != nil
@@ -691,6 +706,7 @@ import VoxClipCore
         command(playback, "Back 3 Seconds", 46, "j", [])
         command(playback, "Forward 3 Seconds", 47)
         let clip = menu("Clip")
+        command(clip, "Show Other Versions of This Line", 97, "y", [.command, .option])
         command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Make It Postable", 62)

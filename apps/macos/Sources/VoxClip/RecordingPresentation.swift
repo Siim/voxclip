@@ -78,6 +78,7 @@ extension EditorModel {
     }
 
     func chooseRecordingTranscript(_ choice: RecordingTranscriptChoice, scrollTo wordID: String? = nil, announceChange: Bool = true) {
+        if choice != .playOrder { recordingOpenLineID = nil }
         recordingTranscriptChoice = choice
         outlineScrollWordID = wordID
         scopeScrollRevision += 1

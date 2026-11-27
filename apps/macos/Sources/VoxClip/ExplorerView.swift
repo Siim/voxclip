@@ -190,7 +190,10 @@ import VoxClipCore
                             RecordingPartVersions(editor: editor, part: part).selectionDisabled()
                         }
                     }
-                    if editor.activeClip != nil { StoryOutlineAdd(editor: editor).selectionDisabled() }
+                    if editor.activeClip != nil {
+                        if editor.hasSeveralRecordings { OtherRecordingLines(editor: editor).selectionDisabled() }
+                        StoryOutlineAdd(editor: editor).selectionDisabled()
+                    }
                     else {
                         if editor.hasSeveralRecordings { RecordingStartOutline(editor: editor).selectionDisabled() }
                         AddRecordingMenu(editor: editor).selectionDisabled()

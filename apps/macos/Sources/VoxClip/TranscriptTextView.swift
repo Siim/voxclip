@@ -123,6 +123,7 @@ import VoxClipCore
             var scope: ClosedRange<Int>?, openEnds: [String], cutWords: Set<String>, cutPauses: Set<String>
             var proposal: TranscriptProposalDisplay?
             var recordingScope: RecordingTranscriptChoice?
+            var recordingOpenLineID: String?
             /// The focused change's Rewrite thread and the room it needs under its paragraph.
             var thread: EditorModel.RewriteThreadSlot?
             @MainActor init(model: EditorModel) {
@@ -132,6 +133,7 @@ import VoxClipCore
                 cutWords = model.cutWordIDs; cutPauses = model.cutPauseIDs
                 proposal = model.proposalDisplay
                 recordingScope = model.hasSeveralRecordings ? model.transcriptRecordingScope : nil
+                recordingOpenLineID = model.recordingOpenLineID
                 thread = model.rewriteThreadSlot(proposal)
             }
         }
@@ -1289,6 +1291,12 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         }
         if event.keyCode == 53, model?.rewrite != nil { model?.closeRewrite(); return }
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
+        if let id = model.recordingOpenLineID, let key = RecordingVersionKey(code: event.keyCode, modifiers: event.modifierFlags),
+           let line = model.recordingClipLines.first(where: { $0.id == id }), model.transcriptRecordingScope == .playOrder {
+            if !event.isARepeat || key == .up || key == .down { model.handleRecordingVersionKey(key, for: line) }
+            if key == .close { focusRecordingLine(line) }
+            return
+        }
         if model.partPickRecording != nil, event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty {
             if event.keyCode == 53 { model.partPickKey = nil; return }
             if event.keyCode == 36 || event.keyCode == 76 { if !event.isARepeat { model.addSelectionAsStoryPart() }; return }
@@ -1337,6 +1345,17 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
             let key = event.charactersIgnoringModifiers ?? ""
             if [" ", "j", "k", "l", "p", "c", "i", "o", "[", "]", "\r", "\u{1b}"].contains(key.lowercased()) { model.transport(key, shift: shift) } else { super.keyDown(with: event) }
         }
+    }
+
+    var recordingLineAtCaret: RecordingClipLine? {
+        let offset = selectedRange().location
+        let word = map.span(at: offset) ?? (offset > 0 ? map.span(at: offset - 1) : nil)
+        return model?.recordingLineWithVersions(at: word?.id ?? model?.selectedIDs.first)
+    }
+
+    func focusRecordingLine(_ line: RecordingClipLine) {
+        window?.makeFirstResponder(self)
+        if let span = map.span(id: line.start) { setSelectedRange(NSRange(location: span.range.location, length: 0)) }
     }
     override func mouseDown(with event: NSEvent) {
         finishCorrection()

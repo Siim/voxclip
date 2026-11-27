@@ -80,6 +80,17 @@ extension MenuShortcutTests {
             let matching = items.filter { Shortcut($0.keyEquivalent, $0.keyEquivalentModifierMask) == shortcut }
             #expect(matching.map(\.title) == [number == 0 ? "All Recordings" : "Recording \(number)"])
         }
+        let line = items.filter { Shortcut($0.keyEquivalent, $0.keyEquivalentModifierMask) == Shortcut("y", [.option, .command]) }
+        #expect(line.map(\.title) == ["Show Other Versions of This Line"])
+        #expect(line.first?.menu?.title == "Clip")
+    }
+
+    @Test func recordingFoldKeysAreUnmodified() {
+        let keys: [(UInt16, RecordingVersionKey)] = [(126, .up), (125, .down), (49, .play), (36, .use), (76, .use), (53, .close)]
+        for (code, action) in keys {
+            #expect(RecordingVersionKey(code: code, modifiers: []) == action)
+            #expect(RecordingVersionKey(code: code, modifiers: [.command]) == nil)
+        }
     }
 
     /// VX moved Export into the right panel's job: File › Export… keeps ⌘E, alone, and calls the panel's entry

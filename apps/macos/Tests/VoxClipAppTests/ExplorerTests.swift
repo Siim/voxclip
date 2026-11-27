@@ -7,6 +7,57 @@ import Testing
 
 @Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
+    @Test func recordingShortcutsMakeTheFivePartReferenceClipAndUndoExactly() async throws {
+        let (_, editor) = try await open(projectID: UUID().uuidString.lowercased())
+        defer { editor.close() }
+        let url = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: url))
+        project.id = editor.project.id
+        project.edits.clips = []
+        project.edits.activeClipId = nil
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); editor.replace(project, name: "Set up recordings"); undo.endUndoGrouping()
+        undo.removeAllActions()
+
+        func checkEdit(_ name: String, action: () -> Void) throws {
+            let before = try ProjectJSON.encode(editor.project), steps = editor.undoSteps
+            undo.beginUndoGrouping(); action(); undo.endUndoGrouping()
+            let after = try ProjectJSON.encode(editor.project)
+            #expect(after != before)
+            #expect(undo.undoActionName == name && editor.undoSteps == steps + 1)
+            undo.undo(); #expect(try ProjectJSON.encode(editor.project) == before)
+            undo.redo(); #expect(try ProjectJSON.encode(editor.project) == after)
+        }
+
+        let primary = try #require(editor.recordingRegions.first)
+        let alternate = try #require(editor.recordingRegions.dropFirst().first)
+        try checkEdit("Start from recording") { editor.startFromRecording(primary) }
+        #expect(editor.transcriptRecordingScope == .playOrder)
+        let restart = try #require(editor.recordingOmittedLines.first)
+        #expect(restart.id == "w14")
+        try checkEdit("Add part") { editor.putBackRecordingLine(restart) }
+        #expect(editor.activeClip?.playParts.count == 1 && editor.recordingOmittedLines.isEmpty)
+        undo.undo()
+
+        let opening = try #require(editor.recordingLineWithVersions(at: "w1"))
+        editor.showRecordingLineVersions(opening)
+        #expect(editor.recordingOpenLineID == opening.id)
+        let beforeAudition = try ProjectJSON.encode(editor.project)
+        editor.playRecordingLineVersion(opening, key: alternate.key)
+        #expect(try ProjectJSON.encode(editor.project) == beforeAudition)
+        try checkEdit("Use version") { editor.useRecordingLineVersion(opening, key: alternate.key) }
+        editor.otherRecordingLinesExpanded = true
+        let solo = try #require(editor.otherRecordingLines.first { $0.startWordId == "r2.w18" })
+        #expect(editor.recordingPlacement(solo) == "w23")
+        let beforeInsertAudition = try ProjectJSON.encode(editor.project)
+        editor.playRecordingLineThere(solo)
+        #expect(try ProjectJSON.encode(editor.project) == beforeInsertAudition)
+        try checkEdit("Add part") { editor.insertRecordingLine(solo) }
+        #expect(editor.activeClip?.playParts.map { [$0.startWordId, $0.endWordId] } == [
+            ["r2.w1", "r2.w11"], ["w8", "w13"], ["w18", "w23"], ["r2.w18", "r2.w21"], ["w24", "w27"]
+        ])
+    }
+
     @Test func recordingPartsFollowPlayOrderAndUndoExactly() async throws {
         let (shell, editor) = try await open(projectID: UUID().uuidString.lowercased())
         defer { editor.close() }
