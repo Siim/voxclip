@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
@@ -32,6 +33,29 @@ public sealed class HarnessChatToolsTests
         }
         await Assert.ThrowsAsync<HarnessException>(() => HarnessTools.Call(HarnessTool.Offer,
             JsonElement.Parse("""{"kind":"generateMusic","target":"clip-2f1c","approved":true}"""), project, FixtureLoader.SharedRoot, ct: ct));
+    }
+
+    [Fact]
+    public async Task LiveProposalReturnsRevisionAndLabelAndLinkDoesNotEdit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fixture = FixtureLoader.ReadJson("fixtures/agent-chat/tool-cases.json");
+        var vector = fixture.RootElement;
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText(vector.GetProperty("project").GetString()!));
+        var timeline = vector.GetProperty("savedCalls").GetProperty("propose_timeline");
+        var revision = vector.GetProperty("revision");
+        var labelled = JsonObject.Create(timeline)!;
+        labelled["label"] = revision.GetProperty("label").GetString();
+        var input = new JsonObject { ["timelines"] = new JsonArray(labelled), ["revises"] = revision.GetProperty("revises").GetString() };
+        var proposal = await HarnessTools.Call(HarnessTool.ProposeTimeline, JsonElement.Parse(input.ToJsonString()), project, FixtureLoader.SharedRoot, ct: ct);
+        var fields = Wire(proposal);
+        Assert.Equal(revision.GetProperty("revises").GetString(), fields.GetProperty("revises").GetString());
+        Assert.Equal(revision.GetProperty("label").GetString(), Assert.Single(fields.GetProperty("labels").EnumerateArray()).GetString());
+        Assert.True(JsonElement.DeepEquals(timeline, Assert.Single(fields.GetProperty("proposal").GetProperty("timelines").EnumerateArray())));
+        var point = vector.GetProperty("pointTo");
+        var link = await HarnessTools.Call(HarnessTool.PointTo, point.GetProperty("arguments"), project, FixtureLoader.SharedRoot, ct: ct);
+        Assert.Equal(point.GetProperty("label").GetString(), Wire(link).GetProperty("label").GetString());
+        Assert.Null(link.Proposal);
     }
 
     [Fact]
