@@ -713,6 +713,11 @@ public sealed class ClipAutopilotTests
             Assert.Equal(vector[prefix + "Reasons"]!.AsArray().Select(reason => reason?.GetValue<string>()), parts.Select(part => part.TakeReason));
         }
         Assert.Equal(plan.Parts, loaded.CanonicalProposal().Parts!);
+        var operations = ClipAutopilotMapping.Operations(loaded, "best-versions", project, ClipAutopilotFonts.Load(Root));
+        var (kept, _) = ClipAutopilotMapping.Apply(operations.Where(item => item.Decision == ClipAutopilotDecision.Clip).ToArray(), project);
+        var clip = Assert.Single(kept.Edits.Clips);
+        Assert.Equal(loaded.Parts.Select(part => part.TakeReason), clip.PlayParts.Select(part => part.TakeReason));
+        Assert.Equal(loaded.Parts.Select(part => (part.StartWord, part.EndWord)), clip.PlayPartIndices(transcript.Words)!.Select(part => (part.Start, part.End)));
         Assert.Equal(2, stub.Requests.Count);
         Assert.Contains("Recording take-3:", stub.Requests[0].CachedBlock, StringComparison.Ordinal);
         Assert.Contains("<takes>", stub.Requests[0].CachedBlock, StringComparison.Ordinal);
