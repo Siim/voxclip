@@ -92,7 +92,7 @@ public sealed partial class EditorPage
         TightenCommand.IsEnabled = ShellEditable && (ViewModel.Summary.CanCutFillers || ViewModel.Summary.CanTighten);
         MakeClipCommand.IsEnabled = ShellEditable && ViewModel.HasSelection;
         AskButton.IsEnabled = ShellJobAvailable(ShellJob.Rewrite);
-        AutomationProperties.SetHelpText(AskButton, ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : "");
+        AutomationProperties.SetHelpText(AskButton, ViewModel.RecordingVoiceReason() ?? (ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : ""));
         HookCommand.IsEnabled = ShellJobAvailable(ShellJob.Hook);
         UpdateMakeItCommand();
         UpdateToneButton();
@@ -114,7 +114,7 @@ public sealed partial class EditorPage
 
     private bool ShellJobAvailable(ShellJob job)
     {
-        if (job == ShellJob.Rewrite && ViewModel.IsStoryClip) return false;
+        if (job == ShellJob.Rewrite && (ViewModel.IsStoryClip || ViewModel.RecordingVoiceReason() is not null)) return false;
         if (!ShellReady || ViewModel.Busy) return false;
         if (job == ShellJob.Export && ViewModel.ExportBlocked(demo, MediaPath is null || media is null, ViewModel.State?.ActiveClipId) is not null) return false;
         if (job != ShellJob.Export && !ShellEditable) return false;

@@ -107,6 +107,8 @@
                     <InfoBar.ActionButton><HyperlinkButton x:Name="LocateMedia" Content="Locate…" Click="LocateClicked" Visibility="Collapsed"/></InfoBar.ActionButton>
                 </InfoBar>
                 <StackPanel Grid.Row="1">
+                    <StackPanel x:Name="SelectorBar" Spacing="4" Margin="12,4" AllowDrop="True"
+                        DragOver="RecordingDragOver" Drop="RecordingDrop" AutomationProperties.Name="Transcript recordings"/>
                     <StackPanel x:Name="FindBar" Orientation="Horizontal" Spacing="{StaticResource VcSpacingRowGap}" Margin="24,8,24,0" Visibility="Collapsed">
                         <TextBox x:Name="SearchText" Header="Find words" Width="160" TextChanged="SearchChanged"/>
                         <Button x:Name="CutMatches" Content="Cut all matches" VerticalAlignment="Bottom" Click="CutMatchesClicked"/>
