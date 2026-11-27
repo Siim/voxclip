@@ -82,18 +82,22 @@ public sealed partial class SharedFixtureTests
                 }
                 return;
             case "finalize-clips":
-                var words = WordsFrom(input["words"]!);
+                var clock = input["project"] is { } path ? ProjectClock.Build(ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/recordings/" + path.GetValue<string>()))) : null;
+                var words = clock?.Words ?? WordsFrom(input["words"]!);
                 var preset = Enum.Parse<ClipPreset>(Text(input, "preset"), true);
-                var candidates = input["candidates"]!.AsArray().Select(candidate => new RawClip(Text(candidate!, "title"), Text(candidate!, "reason"), Number(candidate!["score"]!),
+                var numbered = ClipText.Lines(ClipText.Entries(words, new Dictionary<string, string>()));
+                var candidates = input["reply"] is JsonObject reply ? ClipFinder.ReadCandidates(reply, numbered) : input["candidates"]!.AsArray().Select(candidate => new RawClip(Text(candidate!, "title"), Text(candidate!, "reason"), Number(candidate!["score"]!),
                     candidate["start_word"] is { } start ? Number(start) : -1, candidate["end_word"] is { } end ? Number(end) : -1,
                     candidate["parts"]?.AsArray().Select(part => new RawClipPart(Number(part!["start_word"]!), Number(part["end_word"]!))).ToArray(), candidate["not_in_take"]?.GetValue<string>())).ToArray();
-                var lines = input["lines"] is { } supplied ? supplied.AsArray().Select(line => ReadLine(line!).Line).ToArray() : ClipText.Lines(ClipText.Entries(words, new Dictionary<string, string>())).Select(line => line.Line).ToArray();
-                var result = ClipValidation.FinalizeClips(new(candidates, words, prompts.Rules(preset), lines, Strings(input["cutWordIds"]), Integer(input, "windowCount", 1), input["snap"]?.GetValue<bool>() ?? false));
+                var lines = input["lines"] is { } supplied ? supplied.AsArray().Select(line => ReadLine(line!).Line).ToArray() : numbered.Select(line => line.Line).ToArray();
+                var result = ClipValidation.FinalizeClips(new(candidates, words, prompts.Rules(preset), lines, Strings(input["cutWordIds"]), Integer(input, "windowCount", 1), input["snap"]?.GetValue<bool>() ?? false,
+                    Recordings: clock is null ? null : RecordingProposalContext.Create(clock)));
                 actual = Array(result.Clips.Select(clip =>
                 {
                     var value = new JsonObject { ["title"] = clip.Title, ["reason"] = clip.Reason, ["score"] = clip.Score, ["startWord"] = clip.Start, ["endWord"] = clip.End };
                     if (clip.Parts is { } parts) value["parts"] = Array(parts.Select(part => new JsonArray(part.Start, part.End)));
                     if (clip.NotInTake is { } missing) value["notInTake"] = missing;
+                    if (clip.TakeReasons is { } reasons) value["takeReasons"] = new JsonArray(reasons.Select(reason => (JsonNode?)JsonValue.Create(reason)).ToArray());
                     return value;
                 }));
                 break;
@@ -136,6 +140,22 @@ public sealed partial class SharedFixtureTests
                 actual = new JsonObject { ["proposals"] = Array(verified.Proposals.Select(proposal => (JsonNode)new JsonObject { ["lineLabel"] = proposal.LineLabel, ["kind"] = proposal.Kind, ["cutWordIds"] = Array(proposal.CutWordIds.Select(value => (JsonNode)JsonValue.Create(value)!)), ["preselected"] = proposal.Preselected })), ["rejectedCount"] = verified.RejectedCount, ["rejected"] = Array(verified.Rejected.Select(rejection => (JsonNode)new JsonObject { ["editIndex"] = rejection.EditIndex, ["reason"] = rejection.Reason })) };
                 break;
             case "render-request": await RenderCase(file, input, expected!); return;
+            case "recording-request":
+                var recordingClock = ProjectClock.Build(ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/recordings/" + Text(input, "project"))));
+                var recordingContext = RecordingProposalContext.Create(recordingClock);
+                Assert.NotNull(recordingContext);
+                var recordingWords = recordingClock.Words;
+                var recordingCorrections = new Dictionary<string, string>();
+                var recordingLines = ClipText.Lines(ClipText.Entries(recordingWords, recordingCorrections));
+                var request = prompts.Request(new(recordingWords, recordingCorrections, new HashSet<string>(), ClipPreset.BestTakes, null, "en", ConnectorId.ClaudeCode, "test", Recordings: recordingContext),
+                    recordingLines, prompts.Instruction(ClipPreset.BestTakes, "", recordingWords[^1].End), 1, 1);
+                foreach (var snippet in expected!["contains"]!.AsArray()) Assert.Contains(snippet!.GetValue<string>(), request.CachedBlock, StringComparison.Ordinal);
+                Assert.EndsWith(Text(expected, "instruction"), request.Instruction, StringComparison.Ordinal);
+                Assert.EndsWith(Text(expected, "system"), request.System, StringComparison.Ordinal);
+                var partSchema = request.Schema["properties"]!["clips"]!["items"]!["properties"]!["parts"]!;
+                EqualJson(expected["reasonSchema"], partSchema["items"]!["properties"]!["take_reason"]);
+                EqualJson(expected["maxParts"], partSchema["maxItems"]);
+                return;
             case "voice-rewrite-request": await VoiceRewriteRequestCase(input, expected!); return;
             case "patch-rewrite-request": await PatchRewriteRequestCase(input, expected!); return;
             case "connector-request": await ConnectorCase(ReadRequest(input["request"]!), Text(input, "connector"), input["options"]!.AsObject(), expected!); return;
