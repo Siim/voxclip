@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- The CLI can export and check a clip from another recording even if the unused original is missing.
 - CLI exports on Mac and Windows protect every spoken recording in a project, even those outside the selected clip.
 - On Windows, seek and preview cuts across recordings, recover left-out lines in order, and turn off automatic recording level matching.
 - On Mac, make one clip from the best lines across card recordings, or combine them in a project without AI; the Outline’s ✦ chip runs Best versions.

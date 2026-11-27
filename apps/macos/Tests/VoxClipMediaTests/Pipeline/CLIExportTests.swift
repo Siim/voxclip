@@ -376,13 +376,18 @@ extension HeavyMediaTests {
     project.media.source.absolutePath = directory.appendingPathComponent("missing.mp4").path
     project.edits.clips.append(.init(id: "companion-only", startWordId: "r2.w1", endWordId: "r2.w2"))
     let input = directory.appendingPathComponent("story.voxclip")
+    let output = directory.appendingPathComponent("companion.mp4")
     try await JSONProjectStore().save(project, to: input)
-    let options = ["export", "--open", input.path, "--style", "off", "--format", "fcpxml", "--export",
-                   directory.appendingPathComponent("story.fcpxml").path, "--json", "--clip"]
-    let companion = try runCLI(options + ["companion-only"], directory: directory)
-    #expect(companion.status == 0)
-    let mixed = try runCLI(options + ["story"], directory: directory)
-    #expect(mixed.status != 0)
+    let options = ["--style", "off", "--aspect", "source", "--loudness", "off", "--json", "--clip"]
+    let companion = try runCLI(["export", "--open", input.path, "--export", output.path] + options + ["companion-only"],
+                               directory: directory)
+    try #require(companion.status == 0)
+    let check = ["check", output.path, "--project", input.path] + options
+    let checked = try runCLI(check + ["companion-only"], directory: directory)
+    #expect(checked.status == 0 || checked.status == 8)
+    #expect(try checked.json["check"] != nil)
+    let mixed = try runCLI(check + ["story"], directory: directory)
+    #expect(mixed.status == 3)
 }
 
 @Test func cliWordRangeUsesTheProjectClock() async throws {

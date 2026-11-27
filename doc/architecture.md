@@ -518,7 +518,7 @@ The same mapping drives preview and export picture reads. A recording uses its o
 
 The timeline filmstrip and poster candidates translate project time to each verified recording’s local time before opening its cache. The waveform joins the per-file envelopes on the project clock and leaves the guard gaps silent. Frame analysis uses local readers and returns observations on the project clock.
 
-The export check reports recording seams at rendered times (`at`, `from`, `to`). The words check includes cuts between recordings. Picture-source findings go in `sync`; speech-level findings go in `loudness`, including when social normalization is off.
+The export check reports recording seams at rendered times (`at`, `from`, `to`). On both platforms, CLI JSON puts them in `check.sync.items` as items with `kind: "recordingSeam"` and a `recordingSeam` object. The words check includes cuts between recordings. Picture-source findings go in `sync`; speech-level findings go in `loudness`, including when social normalization is off.
 
 The picture check samples at 0.2 s after the switch (or inside the new recording if it ends sooner), then compares 16×16 luma against candidate frames with the same layout. Audio is measured over expected speech for up to two seconds on each side; a change of more than 3 LU warns. If connected picture hides the recording or there is too little speech to meter, that measurement is unavailable.
 
@@ -676,6 +676,8 @@ the aspect used for export (including `4:5`), or omit the flag to read it from t
 | `voxclip-cli --version` / `voxclip-cli version [--json]` | Read the linked plist/assembly version (`unknown` when absent); print the version alone, `VoxClip <version> (<platform>-<arch>)`, or a JSON envelope with `result` and `version` |
 
 ### 9.3 Output and exit codes
+
+In a project with spoken recordings, export and check can use the saved primary metadata when that file is unavailable. They still require every recording used by the selected edit. `--range` indexes words on the joined project clock, but both ends must be in the same recording.
 
 Before preparing an export, the CLI checks the editing summary in the active clip or word-range scope. An empty output plan or `canExport == false` fails with `everythingCut` and exit 5, and no destination or sidecar is changed. An unknown clip or a word range outside the transcript is a bad argument (`usageError`, exit 2), and so is `--audio-out` for a source with no audio track ("This video has no audio track, so --audio-out has nothing to write.") and `--srt` when the effective caption style is `off` ("Captions are off, so --srt has nothing to write. Choose a caption style with --style."). SRT cues come from caption pages, and with captions off there are none. These argument checks run as soon as the source is probed, before transcription and before the `everythingCut` check, so the same flags give the same exit code on both platforms. They also cover an unknown `--clip` for a media-file input, which never has clips.
 
