@@ -218,17 +218,6 @@ public sealed partial class MainWindow
                     }
                     host.Children.Add(fold);
                 }
-                foreach (var omitted in model.OmittedRecordingLines)
-                {
-                    var words = string.Join(" ", model.Words.Skip(model.Index(omitted.Take.StartWordId))
-                        .Take(model.Index(omitted.Take.EndWordId) - model.Index(omitted.Take.StartWordId) + 1).Select(model.DisplayText));
-                    var reason = model.RecordingUnavailable(omitted.Take.Key);
-                    host.Children.Add(Ui.Text($"{omitted.Label} · {words}", "HelperText"));
-                    var putBack = Ui.Button("Put Back", () => model.PutBackRecordingLine(omitted));
-                    putBack.IsEnabled = reason is null && model.CanEditParts;
-                    host.Children.Add(putBack);
-                    if (reason is not null) host.Children.Add(Ui.Text(reason, "HelperText"));
-                }
                 var recordings = model.RecordingRegions.Skip(1).Select(region => (region.Key, region.Label, Region: (VoxClip.Core.Domain.Editing.ProjectClock.Region?)region))
                     .Concat(model.RecordingCompanions.Select(source => (source.ContentKey, VoxClip.Core.Domain.Editing.ProjectClock.Label(source), Region: (VoxClip.Core.Domain.Editing.ProjectClock.Region?)null)));
                 foreach (var (key, label, region) in recordings)
@@ -273,6 +262,13 @@ public sealed partial class MainWindow
             }
             page.AddRecordingControl(host);
         });
+    }
+
+    private void PutBackRecordingLineClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { DataContext: SidebarRow row } || editor?.ViewModel is not { } model) return;
+        if (model.OmittedRecordingLines.FirstOrDefault(line => model.Index(line.Take.StartWordId) == row.WordIndex) is { } omitted)
+            model.PutBackRecordingLine(omitted);
     }
 
     private void SingleRecordingActionsLoaded(object sender, RoutedEventArgs args)

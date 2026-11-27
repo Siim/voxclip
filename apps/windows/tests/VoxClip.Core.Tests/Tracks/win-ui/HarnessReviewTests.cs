@@ -29,10 +29,11 @@ public sealed class HarnessReviewTests
         using var review = new ReviewProject(ProjectSerialization.Serialize(project));
         review.Stage(vector.GetProperty("timeline").GetRawText());
         var pending = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
-        Assert.Null(review.Editor.KeepHarnessTimeline(pending, review.Path, FixtureLoader.SharedRoot, 0, out var assets, out var rewrites, transcript));
+        Assert.Null(review.Editor.KeepHarnessTimeline(pending, review.Path, FixtureLoader.SharedRoot, 0, out var assets, out var rewrites, transcript, -3.2));
         Assert.Empty(assets);
         Assert.Empty(rewrites);
-        Assert.Single(review.Editor.Project.Media.SpokenSources!);
+        Assert.Equal(-3.2, Assert.Single(review.Editor.Project.Media.SpokenSources!).GainDb);
+        Assert.Equal(-3.2, review.Editor.RecordingRegions[1].GainDb);
         Assert.Equal(new[] { "w1", "r2.w1" }, Assert.Single(review.Editor.Project.Edits.Clips).PlayParts.Select(part => part.StartWordId));
         Assert.Null(review.Editor.ReadHarnessProposal(review.Path));
         review.Editor.Undo();

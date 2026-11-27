@@ -77,10 +77,12 @@ public sealed partial class EditorViewModel
         => KeepHarnessTimeline(proposal, projectPath, sharedRoot, 0, out assets, out _);
 
     internal HarnessMusicAction? KeepHarnessTimeline(HarnessProposal proposal, string projectPath, string sharedRoot, int index,
-        out IReadOnlyList<ClipAutopilotAction.Asset> assets, out IReadOnlyList<ClipAutopilotOperation> rewrites, Transcript? recordingTranscript = null)
+        out IReadOnlyList<ClipAutopilotAction.Asset> assets, out IReadOnlyList<ClipAutopilotOperation> rewrites,
+        Transcript? recordingTranscript = null, double? recordingGainDb = null)
     {
         if (HarnessKeepBlocked is { } blocked) throw new HarnessException(blocked);
         var (next, _, pending) = proposal.Review(project, sharedRoot, index, recordingTranscript);
+        if (recordingGainDb is { } gain && proposal.RecordingKeyAt(index) is { } key) next = WithRecordingGain(next, key, gain);
         HarnessInbox.Resolve(proposal, proposal.Remaining(index, next), projectPath);
         if (!ReferenceEquals(next, project)) ReplaceProject(next, "Keep timeline proposal");
         assets = pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Asset>().ToArray();

@@ -5,7 +5,9 @@ using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Media.Pipeline;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -30,6 +32,64 @@ public sealed class ClipSemanticsTests
     internal static EditorViewModel RecordingReference() => new(Fixture("reference-recordings.voxclip", "recordings"));
 
     [Fact]
+    public async Task TurnOffLevelMatchUpdatesTheSharedRenderInputAndUndoRestoresIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-level-match-");
+        try
+        {
+            var fixture = await RecordingStoryFixture.CreateAsync(directory.FullName, ct);
+            var spoken = Assert.Single(fixture.Project.Media.SpokenSources!);
+            var model = new EditorViewModel(fixture.Project with
+            {
+                Media = fixture.Project.Media with { SpokenSources = [spoken with { GainDb = -3.2 }] },
+            });
+            async Task<double> CompanionGain()
+            {
+                var snapshot = new ComposeSnapshot(fixture.Primary, TimelineLayout.Plan(model), null, new(new(320, 180), 30, 500_000));
+                var bound = await RecordingRendering.BindAsync(model.Project, snapshot, new ProjectStore(), fixture.Path, ct);
+                return Assert.Single(bound.SpanSources.Where(source => source.ContentKey == spoken.SourceKey).Select(source => source.GainDb).Distinct());
+            }
+
+            Assert.Equal(-3.2, await CompanionGain());
+            Assert.True(model.StopMatchingRecordingLevel(spoken.SourceKey));
+            Assert.Equal("Don't match level", model.UndoActionName);
+            Assert.Equal(0, Assert.Single(model.Project.Media.SpokenSources!).GainDb);
+            Assert.Equal(0, await CompanionGain());
+            Assert.False(model.StopMatchingRecordingLevel(spoken.SourceKey));
+            model.Undo();
+            Assert.Equal(-3.2, await CompanionGain());
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LevelMatchingDoesNotCommitAfterCancellationOrAProjectEdit(bool cancel)
+    {
+        var project = RecordingReference().Project;
+        var spoken = Assert.Single(project.Media.SpokenSources!);
+        var source = project.Media.AdditionalSources!.Single(reference => reference.ContentKey == spoken.SourceKey);
+        var model = new EditorViewModel(project with { Media = project.Media with { SpokenSources = null } });
+        using var job = new CancellationTokenSource();
+        var measured = new TaskCompletionSource<RecordingEdit.AddSpokenSource>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var adding = model.AddSpokenRecordingAsync(source, spoken.Transcript, (_, _, token) =>
+        {
+            Assert.Equal(job.Token, token);
+            return measured.Task;
+        }, job.Token);
+        if (cancel) job.Cancel();
+        else model.Apply(new EditOperation.SetWordCuts(["w1"], true));
+        var before = model.Project;
+        measured.SetResult(new(source.ContentKey, spoken.Transcript, GainDb: -3));
+        if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => adding);
+        else Assert.False(await adding);
+        Assert.Same(before, model.Project);
+        Assert.Null(model.Project.Media.SpokenSources);
+    }
+
+    [Fact]
     public void StartFromAndPutBackUseSeparateUndoSteps()
     {
         var model = RecordingReference();
@@ -48,6 +108,39 @@ public sealed class ClipSemanticsTests
         Assert.Equal(starter, model.ActiveClip);
         model.Undo();
         Assert.Equal(original, model.ActiveClip);
+    }
+
+    [Fact]
+    public void PutBackRestoresConsecutiveLeadingRestartsInRecordingOrder()
+    {
+        var project = RecordingReference().Project;
+        var transcript = project.Transcript!;
+        var template = transcript.Words[0];
+        string[] text = ["One", "more", "time.", "Let", "me", "start", "again.", "We", "can", "ship", "it."];
+        var words = text.Select((word, index) => template with
+        {
+            Id = $"lead{index}", Text = word, Start = index * .2, End = index * .2 + .15, RawStart = null, RawEnd = null,
+        }).ToArray();
+        var model = new EditorViewModel(project with { Transcript = transcript with { Words = words } });
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        Assert.Equal("lead7", Assert.Single(model.ClipParts).Part.StartWordId);
+        var original = model.Project;
+        Assert.Equal(["lead0", "lead3"], model.OmittedRecordingLines.Select(line => line.Take.StartWordId));
+        var shell = new ShellViewModel();
+        shell.Update(model, showingHome: false, [], null);
+        Assert.Equal([SidebarKind.OmittedRecordingLine, SidebarKind.OmittedRecordingLine, SidebarKind.Outline],
+            shell.Rows.Where(row => row.Kind is SidebarKind.OmittedRecordingLine or SidebarKind.Outline).Take(3).Select(row => row.Kind));
+        Assert.True(model.PutBackRecordingLine(model.OmittedRecordingLines[0]));
+        Assert.Equal(["lead0", "lead7"], model.ClipParts.Select(part => part.Part.StartWordId));
+        var firstRestored = model.Project;
+        Assert.True(model.PutBackRecordingLine(Assert.Single(model.OmittedRecordingLines)));
+        Assert.Equal(("lead0", "lead10"), (Assert.Single(model.ClipParts).Part.StartWordId, model.ClipParts[0].Part.EndWordId));
+        Assert.Empty(model.OmittedRecordingLines);
+        Assert.Equal("Add part", model.UndoActionName);
+        model.Undo();
+        Assert.Equal(ProjectSerialization.Serialize(firstRestored), ProjectSerialization.Serialize(model.Project with { ModifiedAt = firstRestored.ModifiedAt }));
+        model.Undo();
+        Assert.Equal(ProjectSerialization.Serialize(original), ProjectSerialization.Serialize(model.Project with { ModifiedAt = original.ModifiedAt }));
     }
 
     [Fact]
