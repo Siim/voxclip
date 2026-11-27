@@ -63,6 +63,8 @@ public sealed partial class EditorViewModel
     internal bool OpenRecordingVersions(RecordingClipLine line)
     {
         if (ActiveClip is not { } clip || line.Alternatives.FirstOrDefault() is not { } alternative) return false;
+        if (TranscriptRecordingView.Kind != RecordingViewKind.PlayOrder &&
+            !ChooseRecordingView(new(RecordingViewKind.PlayOrder), announce: false, clearSelection: false)) return false;
         openRecordingVersions = (project, clip.Id);
         OpenRecordingLineId = line.Id;
         SelectedRecordingVersionKey = alternative.Key;
@@ -88,7 +90,7 @@ public sealed partial class EditorViewModel
 
     internal RecordingClipLine? RecordingVersionTarget(bool fromTimeline)
     {
-        if (TranscriptRecordingView.Kind != RecordingViewKind.PlayOrder) return null;
+        if (!fromTimeline && TranscriptRecordingView.Kind != RecordingViewKind.PlayOrder) return null;
         if (!fromTimeline && HasSelection) return RecordingLineAt(SelectionCaret);
         return RecordingClipLines.FirstOrDefault(line => line.Alternatives.Count > 0 &&
             Words[Index(line.FirstId)].Start <= SourceTime && SourceTime <= Words[Index(line.LastId)].End);

@@ -24,7 +24,12 @@ public sealed class KeyboardSelectionTests
         Assert.False(ShortcutPolicy.OpensRecordingVersions("Y", true, true, false, true, false));
         Assert.False(ShortcutPolicy.OpensRecordingVersions("Y", true, true, false, false, true));
         Assert.Equal(opening.Id, model.RecordingVersionTarget(fromTimeline: false)?.Id);
+        model.FollowRecording(model.Index(later.FirstId));
+        Assert.Equal(RecordingViewKind.Recording, model.TranscriptRecordingView.Kind);
         Assert.Equal(later.Id, model.RecordingVersionTarget(fromTimeline: true)?.Id);
+        Assert.True(model.OpenRecordingVersions(model.RecordingVersionTarget(fromTimeline: true)!));
+        Assert.Equal(RecordingViewKind.PlayOrder, model.TranscriptRecordingView.Kind);
+        Assert.Equal(later.Id, model.OpenRecordingLine?.Id);
     }
 
     [Fact]
