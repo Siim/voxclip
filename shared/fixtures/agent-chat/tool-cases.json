@@ -1,0 +1,22 @@
+{
+  "project": "fixtures/projects/clip-from-long-take.voxclip",
+  "savedCalls": {
+    "read_transcript": {"offset": 9, "limit": 3},
+    "read_clips": {},
+    "read_takes": {},
+    "read_decisions": {"clipId": "clip-2f1c"},
+    "propose_timeline": {
+      "clipId": "clip-2f1c",
+      "reason": "Show the scene.",
+      "title": "The main point",
+      "generateMusic": "A restrained piano bed",
+      "effects": [{"kind": "illustration", "startWord": 9, "endWord": 9, "text": "Pencil sketch of a desk", "reason": "Show the scene."}]
+    }
+  },
+  "offers": [
+    {"arguments": {"kind": "generateMusic", "target": "clip-2f1c", "brief": "A restrained piano bed"}, "quote": "$0.02"},
+    {"arguments": {"kind": "illustration", "target": "clip-2f1c", "brief": "Pencil sketch of a desk"}, "quote": "$0.003"}
+  ],
+  "revision": {"revises": "t1", "label": "Name the main point"},
+  "pointTo": {"arguments": {"panel": "music", "target": "clip-2f1c"}, "label": "Open Music"}
+}

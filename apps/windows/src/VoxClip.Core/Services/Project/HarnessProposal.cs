@@ -27,7 +27,7 @@ public sealed class HarnessTimelineEditException(string message) : HarnessExcept
 public sealed class HarnessTimeline
 {
     private static readonly string[] LegacyKeys = ["clipId", "reason", "cuts", "captionStyle", "title", "musicTrackId", "generateMusic", "effects"];
-    private static readonly string[] Keys = [.. LegacyKeys, "newClip", "parts", "pauseCuts", "corrections", "font", "case",
+    internal static readonly IReadOnlyList<string> Keys = [.. LegacyKeys, "newClip", "parts", "pauseCuts", "corrections", "font", "case",
         "wordsPerCaption", "look", "speed", "hook", "postText", "coverTitle", "music", "rewrites", "edits"];
 
     private HarnessTimeline(JsonElement wire, ClipProposal proposal) { Wire = wire.Clone(); Proposal = proposal; }
@@ -386,8 +386,17 @@ public sealed class HarnessProposal
     /// <summary>Look up an estimate for the candidate clip without contacting a provider.</summary>
     public string? EstimatedMusicPrice(Domain.Shared.Project candidate, string sharedRoot, int index = 0)
     {
-        if (timelines[index].GenerateMusic is null || EditingEngine.FromProject(candidate) is not { } state) return null;
-        var clipId = ClipIdAt(index);
+        if (timelines[index].GenerateMusic is null) return null;
+        return MusicPrice(candidate, sharedRoot, ClipIdAt(index));
+    }
+
+    internal static string? MusicPrice(Domain.Shared.Project candidate, string sharedRoot, string clipId) =>
+        RenderedSeconds(candidate, clipId) is { } seconds
+            ? MusicPricing.Label(MusicPricing.Estimate(MusicPricing.LengthSeconds(seconds), VoiceLabPrices.Load(sharedRoot))) : null;
+
+    internal static double? RenderedSeconds(Domain.Shared.Project candidate, string clipId)
+    {
+        if (EditingEngine.FromProject(candidate) is not { } state) return null;
         var source = candidate.Media.Source;
         state = state with { ActiveClipId = clipId };
         var rate = source.Audio?.SampleRate ?? 48_000;
@@ -397,7 +406,7 @@ public sealed class HarnessProposal
         if (candidate.SchemaVersion >= 3 && VoiceLabOutputPlanner.Build(candidate, VoiceLabOutputScope.Clip(clipId)) is
             { RequiresSyntheticRendering: true } reviewed) rendered = new RenderTimeline.VoiceLab(reviewed);
         var timing = ClipSpeedTiming.ForEffects(speed, rendered.MapTime, ClipEffects.Rendered(candidate, clipId));
-        return MusicPricing.Label(MusicPricing.Estimate(MusicPricing.LengthSeconds(timing.Rendered(rendered.Duration)), VoiceLabPrices.Load(sharedRoot)));
+        return timing.Rendered(rendered.Duration);
     }
 
     private static string Revision(Domain.Shared.Project snapshot, IReadOnlyList<HarnessTimeline> timelines, int version)

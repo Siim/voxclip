@@ -49,7 +49,7 @@ internal static class HarnessCommands
                 {
                     var request = await arguments!(result, ct).ConfigureAwait(false);
                     var reply = await scope.CallAsync(selected, request, ct).ConfigureAwait(false);
-                    await WriteAsync(reply.CliOutput, ct).ConfigureAwait(false);
+                    await WriteAsync(reply.Frames is null ? reply.Fields : new { frames = reply.Frames }, ct).ConfigureAwait(false);
                 }
                 else await new HarnessSession(scope, SharedResources.ResolveRoot()).RunAsync(ct).ConfigureAwait(false);
                 return 0;

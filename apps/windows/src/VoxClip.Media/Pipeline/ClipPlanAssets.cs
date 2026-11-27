@@ -11,20 +11,6 @@ using VoxClip.Core.Services.Music;
 
 namespace VoxClip.Media.Pipeline;
 
-/// <summary>The shared, fixed-shape illustration quote.</summary>
-public sealed record ClipIllustrationQuote(Uri Endpoint, int Size, decimal UsdPerImage)
-{
-    /// <summary>Load the quote shipped with both apps.</summary>
-    public static ClipIllustrationQuote Load(string sharedRoot)
-    {
-        var quote = JsonSerializer.Deserialize<ClipIllustrationQuote>(File.ReadAllBytes(Path.Combine(sharedRoot, "data", "clip-illustration.json")),
-            new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        if (quote is not { Size: 768, UsdPerImage: > 0 and <= 0.01m } || quote.Endpoint?.AbsoluteUri != "https://fal.run/fal-ai/flux/schnell")
-            throw new InvalidDataException("Illustration pricing isn't available.");
-        return quote;
-    }
-}
-
 /// <summary>Materializes checked plan asset requests into the owning project's local asset folders.</summary>
 public sealed class ClipPlanAssets(IMusicHttp http)
 {

@@ -133,6 +133,18 @@ Text must be a single nonempty line with no leading or trailing whitespace. The 
 - Keeping the timeline doesn't send anything. If it includes music generation, open the proposed clip and use **Get price** if needed. The separate **Generate music · $…** button sends the brief to Eleven Music. The estimate returned to the agent isn't approval. Voice consent stays in the app's existing flows and can't be requested or recorded through these tools.
 - There's one pending proposal per saved project. New sidecars use the version 2 `timelines` array; VoxClip still reads version 1 sidecars with a single `timeline`. Finish reviewing the series before staging another. If the app says the project changed, dismiss the old proposal, save, and have the agent read the current project again. If an externally edited proposal can't be read, remove only the neighboring `Talk.voxclip.proposal.json` file; leave `Talk.voxclip` in place.
 
+## In-app tool surface
+
+Both hosts dispatch through Core's `HarnessTools`. The live host supplies the open project snapshot; the CLI still reads one saved file and is the only host that stages a `.voxclip.proposal.json` sidecar. The CLI's tool list and timeline schema do not change.
+
+- In live `propose_timeline` calls, `label` names the changes on each timeline and `revises` names a pending turn. For a series, put `revises` next to `timelines` and each `label` on its own timeline. Core returns the revision id and aligned labels for the live host; it does not replace the turn itself. The CLI refuses `revises` with “Revising is only for the in-app chat.”
+- `check` takes a clip id and optional targets and forwards them to the host's timeline checker. These are plan checks, not the exported-file check. Timeline check rules are implemented separately in T7.
+- `find_music` takes a mood and length in seconds. It searches only the free Openverse library and the host-approved Music folder. Track ids can be used as `music.trackId`; the live host supplies the existing free audio importer, which receives only tracks returned by that session's search. The reply contains no file paths or download URLs.
+- `offer` returns an id and a local quote only. No provider, approval, or spend API is available to the tool. Music and illustration use the same quote as a timeline proposal; the live host supplies the applicable Make it postable cap.
+- `point_to` returns a panel link and optionally a target; it doesn't open anything itself.
+
+The [live tool input schemas](../shared/schemas/agent-tools.schema.json) are generated with `python3 tools/schemas/generate_agent_tools_schema.py`. None of the four live-only tools is exposed over stdio.
+
 ## Run the offline contract replay
 
 On macOS, install the `jsonschema` Python dependency, then run `python3 tools/schemas/test_harness_contract.py`. It uses the Mac CLI build above and denies network access to every CLI subprocess. To replay only the `edits` timeline, append `HarnessContract.test_edits_use_timeline_decisions_without_spending`. To test the Windows CLI built with .NET on macOS, run:

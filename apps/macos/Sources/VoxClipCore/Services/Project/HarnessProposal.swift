@@ -305,13 +305,20 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
 
     public func estimatedMusicPrice(in project: Project, shared: SharedResources, at index: Int = 0) throws -> String? {
         guard timelines[index].generateMusic != nil, project.transcript != nil else { return nil }
-        let clipID = try clipID(at: index)
+        return try Self.musicPrice(in: project, shared: shared, clipID: clipID(at: index))
+    }
+
+    static func musicPrice(in project: Project, shared: SharedResources, clipID: String) throws -> String? {
+        let seconds = MusicPricing.lengthSeconds(forClip: try renderedSeconds(in: project, clipID: clipID))
+        let price = try MusicPricing.estimate(seconds: seconds, catalog: VoiceLabPriceCatalog.load(shared: shared))
+        return MusicPricing.label(price)
+    }
+
+    static func renderedSeconds(in project: Project, clipID: String) throws -> Double {
         let edit = try RenderCallerInputs.timeline(project: project, clipID: clipID)
         let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
         let timing = ClipSpeedTiming(speed: speed, timeline: edit, effects: ClipEffects.rendered(in: project, clipID: clipID))
-        let seconds = MusicPricing.lengthSeconds(forClip: timing.rendered(edit.duration))
-        let price = try MusicPricing.estimate(seconds: seconds, catalog: VoiceLabPriceCatalog.load(shared: shared))
-        return MusicPricing.label(price)
+        return timing.rendered(edit.duration)
     }
 
     private static func revision(of project: Project, timelines: [HarnessTimeline], version: Int) throws -> String {

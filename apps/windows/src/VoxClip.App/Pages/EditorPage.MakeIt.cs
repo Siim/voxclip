@@ -5,6 +5,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;

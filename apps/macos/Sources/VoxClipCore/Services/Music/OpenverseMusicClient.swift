@@ -1,6 +1,5 @@
 import Foundation
 import Synchronization
-import VoxClipCore
 
 /// The one network seam the music sources use; tests pass hand-written fixture replies, never a live call.
 public protocol MusicHTTP: Sendable {

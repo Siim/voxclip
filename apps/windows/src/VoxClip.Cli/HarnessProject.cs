@@ -1,33 +1,15 @@
 using System.Runtime.InteropServices;
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using VoxClip.Core.Domain.Autopilot;
-using VoxClip.Core.Domain.Clips;
-using VoxClip.Core.Domain.Editing;
-using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
-using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
-using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Media.Frames;
-using VoxClip.Media.Pipeline;
 
 namespace VoxClip.Cli;
 
-internal enum HarnessTool { ReadTranscript, ReadClips, ReadTakes, ReadDecisions, ReadFrames, ProposeTimeline }
-
-internal sealed record HarnessFrame(double Requested, double Actual, string Jpeg);
-
-internal sealed record HarnessResult(object Fields, IReadOnlyList<HarnessFrame>? Frames = null)
-{
-    internal object CliOutput => Frames is null ? Fields : new { frames = Frames };
-}
-
 internal sealed class HarnessProject
 {
-    private static readonly JsonElement Empty = JsonSerializer.SerializeToElement(new { });
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
     private readonly string path;
     private readonly string id;
@@ -42,88 +24,13 @@ internal sealed class HarnessProject
 
     internal async Task<HarnessResult> CallAsync(HarnessTool tool, JsonElement arguments, CancellationToken ct)
     {
-        if (arguments.ValueKind == JsonValueKind.Undefined) arguments = Empty;
         var project = await ReadAsync(path, ct).ConfigureAwait(false);
         if (project.Id != id) throw new HarnessException("The selected project changed. Restart the connection.");
-        switch (tool)
-        {
-            case HarnessTool.ReadTranscript:
-                HarnessTimeline.RequireObject(arguments, ["offset", "limit", "recordingKey"]);
-                if (arguments.TryGetProperty("recordingKey", out var requested))
-                {
-                    var key = requested.ValueKind == JsonValueKind.String ? requested.GetString()! :
-                        throw new HarnessException("Choose a recording key from read_clips.");
-                    var source = HarnessRecording.Source(key, project);
-                    var transcript = HarnessRecording.CachedTranscript(key, DataLocations.Resolve().Cache) ?? throw HarnessRecording.Refusal(source);
-                    project = HarnessRecording.Add(key, transcript, project);
-                }
-                return Transcript(project, Integer(arguments, "offset", 0, 0, long.MaxValue), (int)Integer(arguments, "limit", 200, 1, 500));
-            case HarnessTool.ReadClips:
-                HarnessTimeline.RequireObject(arguments, []);
-                return Clips(project);
-            case HarnessTool.ReadTakes:
-                HarnessTimeline.RequireObject(arguments, []);
-                var clock = ProjectClock.Build(project);
-                var matches = TakeMatch.Build(clock);
-                return new(new { matches.Beats, matches.Solo, recordings = Recordings(project, clock) });
-            case HarnessTool.ReadDecisions:
-                HarnessTimeline.RequireObject(arguments, ["clipId"]);
-                return Decisions(project, arguments.TryGetProperty("clipId", out var clip) && clip.ValueKind == JsonValueKind.String ? clip.GetString() : null);
-            case HarnessTool.ReadFrames:
-                HarnessTimeline.RequireObject(arguments, ["times"]);
-                return await FramesAsync(project, arguments, ct).ConfigureAwait(false);
-            case HarnessTool.ProposeTimeline:
-                var timelines = HarnessTimeline.ReadSeries(arguments).Select(timeline =>
-                    timeline.RecordingKey is { } key && HarnessRecording.CachedTranscript(key, DataLocations.Resolve().Cache) is { } cached
-                        ? timeline.PinRecordingTranscript(cached) : timeline).ToArray();
-                var shared = SharedResources.ResolveRoot();
-                var proposal = new HarnessProposal(timelines, project);
-                var pricedActions = new List<object>();
-                var freeActions = new List<object>();
-                var refusals = new List<object>();
-                const string approval = "In VoxClip only; the app confirms the price for the open clip.";
-                for (var index = 0; index < timelines.Length; index++)
-                {
-                    (Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending) review;
-                    var key = timelines[index].RecordingKey;
-                    var transcript = key is null ? null : HarnessRecording.CachedTranscript(key, DataLocations.Resolve().Cache);
-                    try { review = proposal.Review(project, shared, index, transcript, preview: true); }
-                    catch (HarnessTimelineEditException refusal)
-                    {
-                        refusals.Add(new { timelineIndex = index, reason = refusal.Message });
-                        continue;
-                    }
-                    if (key is not null) freeActions.Add(new { kind = "useRecording", key, timelineIndex = index });
-                    foreach (var operation in review.Pending.OrderBy(operation => operation.Decision == ClipAutopilotDecision.Music ? 0 : 1))
-                    {
-                        switch (operation.Action)
-                        {
-                            case ClipAutopilotAction.Music music:
-                                pricedActions.Add(new { kind = "generateMusic", prompt = music.Cue.Picked.Prompt,
-                                    price = proposal.EstimatedMusicPrice(review.Project, shared, index), approval, timelineIndex = index });
-                                break;
-                            case ClipAutopilotAction.Asset { Kind: "illustration" } asset:
-                                var quote = ClipIllustrationQuote.Load(shared).UsdPerImage.ToString(CultureInfo.InvariantCulture);
-                                pricedActions.Add(new { kind = "generateIllustration", prompt = asset.Text, price = "$" + quote, approval, timelineIndex = index });
-                                break;
-                            case ClipAutopilotAction.Asset asset:
-                                freeActions.Add(new { kind = "findSound", query = asset.Text, timelineIndex = index });
-                                break;
-                            case ClipAutopilotAction.Rewrite rewrite:
-                                var estimate = VoiceLabPricing.Estimate(VoiceLabPricedOperation.ElevenLabsTextToSpeech, "eleven_multilingual_v2",
-                                    VoiceLabTextLength.Length(rewrite.Text), 1, null, VoiceLabPrices.Load(shared));
-                                pricedActions.Add(new { kind = "rewrite", text = rewrite.Text,
-                                    price = estimate.Usd is { } usd ? VoiceLabCostPresentation.Format(usd) : null, approval, timelineIndex = index });
-                                break;
-                        }
-                    }
-                }
-                var wire = proposal.ToJson();
-                await StageAsync(wire, ct).ConfigureAwait(false);
-                return refusals.Count == 0 ? new(new { proposal = wire, pricedActions, freeActions }) :
-                    new(new { proposal = wire, pricedActions, freeActions, refusals });
-            default: throw new ArgumentOutOfRangeException(nameof(tool));
-        }
+        if (tool == HarnessTool.ProposeTimeline && arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("revises", out _))
+            throw new HarnessException("Revising is only for the in-app chat.");
+        var result = await HarnessTools.Call(tool, arguments, project, null, path, decodeFrames: HarnessFrameDecoder.Decode, chat: false, ct: ct).ConfigureAwait(false);
+        if (result.Proposal is { } proposal) await StageAsync(proposal, ct).ConfigureAwait(false);
+        return result;
     }
 
     private static async Task<Project> ReadAsync(string path, CancellationToken ct)
@@ -133,131 +40,6 @@ internal sealed class HarnessProject
             (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.Device)) != 0)
             throw new HarnessException("Choose a saved .voxclip project file.");
         return ProjectSerialization.Deserialize(await File.ReadAllTextAsync(path, new UTF8Encoding(false, true), ct).ConfigureAwait(false));
-    }
-
-    private static HarnessResult Transcript(Project project, long offset, int limit)
-    {
-        var clock = ProjectClock.Build(project);
-        var words = clock.Words;
-        var first = (int)Math.Min(offset, words.Count);
-        var count = Math.Min(limit, words.Count - first);
-        var cut = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
-        var page = Enumerable.Range(first, count).Select(index =>
-        {
-            var word = words[index];
-            var region = clock.RegionOf(word.Id);
-            return new { index, word.Id, word.Kind, word.Start, word.End, recording = region?.Label, recordingKey = region?.Key,
-                text = project.Edits.Corrections.GetValueOrDefault(word.Id, word.Text), cut = cut.Contains(word.Id) };
-        }).ToArray();
-        return new(new { words = page, total = words.Count, nextOffset = first + count < words.Count ? (int?)(first + count) : null,
-            language = clock.Transcript?.Language, recordings = Recordings(project, clock) });
-    }
-
-    private static HarnessResult Clips(Project project)
-    {
-        var clock = ProjectClock.Build(project);
-        var indices = clock.Words.Select((word, index) => (word.Id, index))
-            .ToDictionary(item => item.Id, item => (int?)item.index, StringComparer.Ordinal);
-        var clips = project.Edits.Clips.Select(clip => new
-        {
-            clip.Id, clip.Title, clip.Selected, startWord = indices.GetValueOrDefault(clip.StartWordId), endWord = indices.GetValueOrDefault(clip.EndWordId),
-            kind = clip.Kind == StoryClipKind.Showreel ? "showreel" : clip.Parts is null ? "stretch" : "story",
-            parts = clip.PlayParts.Where(part => indices.ContainsKey(part.StartWordId) && indices.ContainsKey(part.EndWordId))
-                .Select(part =>
-                {
-                    var region = clock.RegionOf(part.StartWordId);
-                    return new { startWord = indices[part.StartWordId], endWord = indices[part.EndWordId],
-                        recording = region?.Label, recordingKey = region?.Key };
-                }),
-            sourceSpan = ClipControlsProject.SourceSpan(clip.Id, project) is { } span ? new TimeRange(span.Start, span.End) : (TimeRange?)null
-        }).ToArray();
-        var footageSources = (project.Media.AdditionalSources ?? []).Where(source => source.Video is not null).Select(source => new
-        {
-            sourceKey = source.FootageKey, duration = source.DurationSeconds, name = Path.GetFileName(source.AbsolutePath)
-        });
-        return new(new { projectId = project.Id, clips, footageSources, recordings = Recordings(project, clock) });
-    }
-
-    private sealed record Recording(string Key, string Label, double DurationSeconds, int? FirstWord, int? LastWord, bool Transcribed, double GainDb);
-
-    private static IReadOnlyList<Recording> Recordings(Project project, ProjectClock clock)
-    {
-        var sources = project.Media.AdditionalSources ?? [];
-        var spoken = project.Media.SpokenSources ?? [];
-        var next = 0;
-        var recordings = clock.Regions.Select(region =>
-        {
-            var primary = region.Prefix.Length == 0;
-            var duration = primary ? project.Media.Source.DurationSeconds : sources.First(source => source.ContentKey == region.Key).DurationSeconds;
-            var count = primary ? project.Transcript?.Words.Count : spoken.First(source => source.SourceKey == region.Key).Transcript.Words.Count;
-            var first = next;
-            next += count ?? 0;
-            return new Recording(region.Key, region.Label, duration, next > first ? first : null, next > first ? next - 1 : null, count is not null, region.GainDb);
-        }).ToList();
-        var keys = clock.Regions.Select(region => region.Key).ToHashSet(StringComparer.Ordinal);
-        recordings.AddRange(sources.Where(source => !keys.Contains(source.ContentKey)).Select(source =>
-            new Recording(source.ContentKey, ProjectClock.Label(source), source.DurationSeconds, null, null, false, 0)));
-        return recordings;
-    }
-
-    private static HarnessResult Decisions(Project project, string? clipId)
-    {
-        var clip = project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId)
-            ?? throw new HarnessException("Choose a clip id from read_clips.");
-        var result = project.Ai.Results.FirstOrDefault(item => item.Id == clip.AiResultId);
-        var found = result is not null && clip.AiClipIndex is >= 0 and var index && index < result.Clips.Count ? result.Clips[index] : null;
-        return new(new
-        {
-            clipId, clip.Title, findReason = found?.Reason, openingLeadInSeconds = clip.LeadInSeconds, timeline = TimelineDecisions.Read(project, clipId),
-            controls = ClipControlsProject.Controls(clipId, project), captionStyle = project.CaptionsFor(clipId).StyleId,
-            musicTracks = project.Music.Select(item => new { item.Id, item.Title, item.ClipId }).ToArray(),
-            effects = project.ClipEffects.Select(ClipEffect.Parse).Where(effect => effect.ClipId == clipId).Select(effect => new
-            {
-                effect.Id, effect.Kind, effect.Start, effect.End, effect.Text, effect.Rect
-            }).ToArray(),
-            zooms = project.MotionCues.Where(cue => cue.ClipID == clipId).ToArray()
-        });
-    }
-
-    private async Task<HarnessResult> FramesAsync(Project project, JsonElement arguments, CancellationToken ct)
-    {
-        var source = project.Media.Source;
-        if (!arguments.TryGetProperty("times", out var requested) || requested.ValueKind != JsonValueKind.Array ||
-            requested.GetArrayLength() is < 1 or > 4 || requested.EnumerateArray().Any(time => time.ValueKind != JsonValueKind.Number ||
-                !(time.GetDouble() >= 0 && time.GetDouble() < source.DurationSeconds)))
-            throw new HarnessException("Give one to four source times inside the video.");
-        var mediaPath = await ResolveSourceAsync(source, ct).ConfigureAwait(false);
-        using var reader = FfmpegFrameDecoder.OpenLocalQuickTime(mediaPath, 480, ct);
-        var frames = requested.EnumerateArray().Select(item =>
-        {
-            var time = item.GetDouble();
-            var frame = reader.Read(time, ct);
-            return new HarnessFrame(time, frame.Time, Convert.ToBase64String(FrameJpeg.Encode(frame.Pixels, 480, 72)));
-        }).ToArray();
-        return new(new { frames = frames.Select(frame => new { frame.Requested, frame.Actual }).ToArray() }, frames);
-    }
-
-    private async Task<string> ResolveSourceAsync(MediaReference source, CancellationToken ct)
-    {
-        var candidates = new List<string> { source.AbsolutePath };
-        if (source.RelativePath is { Length: > 0 } relative && !Path.IsPathRooted(relative) && !relative.Contains(':') && !relative.Contains('\\'))
-            candidates.Add(Path.Join(Path.GetDirectoryName(path), relative));
-        var store = new ProjectStore();
-        foreach (var candidate in candidates)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (!Path.IsPathFullyQualified(candidate) || source.SizeBytes <= 0 ||
-                Path.GetExtension(candidate).ToLowerInvariant() is not (".mp4" or ".mov" or ".m4v")) continue;
-            try
-            {
-                var full = HarnessInbox.CanonicalLocalPath(candidate, allowLinks: false);
-                var info = new FileInfo(full);
-                if (info.Exists && info.Length == source.SizeBytes &&
-                    await store.ComputeContentKeyAsync(full, null, ct).ConfigureAwait(false) == source.ContentKey) return full;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or HarnessException) { }
-        }
-        throw new HarnessException("The project's source video is missing. Relink it in VoxClip.");
     }
 
     private async Task StageAsync(JsonObject proposal, CancellationToken ct)
@@ -286,16 +68,4 @@ internal sealed class HarnessProject
 
     [DllImport("libc", EntryPoint = "link")]
     private static extern int Link([MarshalAs(UnmanagedType.LPUTF8Str)] string source, [MarshalAs(UnmanagedType.LPUTF8Str)] string destination);
-
-    private static long Integer(JsonElement arguments, string name, long fallback, long minimum, long maximum)
-    {
-        if (!arguments.TryGetProperty(name, out var field)) return fallback;
-        if (field.ValueKind == JsonValueKind.Number)
-        {
-            if (field.TryGetInt64(out var exact) && exact >= minimum && exact <= maximum) return exact;
-            var number = field.GetDouble();
-            if (double.IsInteger(number) && number >= minimum && number < 9223372036854775808d && number <= maximum) return (long)number;
-        }
-        throw new HarnessException("The page offset or size is out of range.");
-    }
 }

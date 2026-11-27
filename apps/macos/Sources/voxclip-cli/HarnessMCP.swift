@@ -2,23 +2,8 @@ import ArgumentParser
 import Foundation
 import VoxClipCore
 
-enum HarnessTool: String, CaseIterable {
-    case readTranscript = "read_transcript"
-    case readClips = "read_clips"
-    case readTakes = "read_takes"
-    case readDecisions = "read_decisions"
-    case readFrames = "read_frames"
-    case proposeTimeline = "propose_timeline"
-
-    var keys: Set<String> {
-        switch self {
-        case .readTranscript: ["offset", "limit", "recordingKey"]
-        case .readClips, .readTakes: []
-        case .readDecisions: ["clipId"]
-        case .readFrames: ["times"]
-        case .proposeTimeline: HarnessTimeline.keys.union(["timelines"])
-        }
-    }
+extension HarnessTool {
+    static let cliTools: [Self] = [.readTranscript, .readClips, .readTakes, .readDecisions, .readFrames, .proposeTimeline]
 
     func definition(shared: SharedResources) throws -> JSONValue {
         let description: String
@@ -76,6 +61,7 @@ enum HarnessTool: String, CaseIterable {
             let batch = object(["timelines": series], required: ["timelines"])
             properties["timelines"] = series
             schema = .object(["type": .string("object"), "properties": .object(properties), "oneOf": .array([.object(single), batch])])
+        default: throw HarnessError.invalid("Unknown tool or invalid call.")
         }
         return .object(["name": .string(rawValue), "description": .string(description), "inputSchema": schema,
                         "annotations": .object(["readOnlyHint": .bool(self != .proposeTimeline), "destructiveHint": .bool(false),
@@ -90,7 +76,7 @@ struct HarnessMCP: AsyncParsableCommand {
     func run() async throws {
         let project = try HarnessProject(path: scope.project)
         let shared = try SharedResources.locate()
-        var server = HarnessSession(project: project, tools: try HarnessTool.allCases.map { try $0.definition(shared: shared) })
+        var server = HarnessSession(project: project, tools: try HarnessTool.cliTools.map { try $0.definition(shared: shared) })
         let input = FileHandle.standardInput
         var line = Data()
         var discard = false
@@ -167,7 +153,7 @@ private struct HarnessSession {
             guard fields.isEmpty else { return Self.error(id, code: -32602, "There is no tools cursor.") }
             return Self.reply(id, ["tools": .array(tools)])
         case "tools/call":
-            guard Set(fields.keys).isSubset(of: ["name", "arguments", "_meta"]), case .string(let name) = fields["name"], let tool = HarnessTool(rawValue: name) else {
+            guard Set(fields.keys).isSubset(of: ["name", "arguments", "_meta"]), case .string(let name) = fields["name"], let tool = HarnessTool(rawValue: name), HarnessTool.cliTools.contains(tool) else {
                 return Self.error(id, code: -32602, "Unknown tool or invalid call.")
             }
             do {

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- The in-app agent toolset can find free music, quote paid steps without buying them, and link to the relevant editing panel; the saved-project CLI is unchanged.
 - On Mac, make one clip from the best lines across card recordings, or combine them in a project without AI; the Outline’s ✦ chip runs Best versions.
 - On Windows, start a clip from one recording, audition and swap individual line versions, and insert lines only another recording says.
 - Claude Code and Codex can read recordings and matched takes and propose a story across recordings, without sending media or spending money.
