@@ -62,14 +62,14 @@ enum MediaSupport {
 
 extension OutputSpec {
     package static func resolved(source: MediaProbeResult, aspect: AspectRatio = .source,
-                         quality: ExportQuality = .standard, fps: Double? = nil) throws -> OutputSpec {
+                         quality: ExportQuality = .standard, fps: Double? = nil, controls: ProjectClipControls? = nil) throws -> OutputSpec {
         guard let sourceSize = source.orientedSize, sourceSize.width > 0, sourceSize.height > 0 else {
             throw VoxClipError.decodeFailed("No video track")
         }
-        let size = try OutputSizing.outputSize(source: sourceSize, aspect: aspect)
+        let size = try OutputSizing.outputSize(source: sourceSize, aspect: aspect, controls: controls)
         let nominal = fps ?? source.video?.frameRate ?? 30
         let rate = try OutputSizing.outputFrameRate(nominal: nominal)
         return OutputSpec(size: size, fps: rate,
-                          videoBitrate: OutputSizing.videoBitrate(size: size, aspect: aspect, quality: quality, fps: rate), quality: quality)
+                          videoBitrate: OutputSizing.videoBitrate(size: size, aspect: aspect, quality: quality, fps: rate, controls: controls), quality: quality)
     }
 }

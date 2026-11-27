@@ -16,16 +16,12 @@ public static class ProjectSerialization
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Expected a project object.");
-            if (document.RootElement.TryGetProperty("schemaVersion", out var version))
-            {
-                if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var number))
-                    throw new JsonException("Invalid project schema version.");
-                if (number > maximumSupportedVersion || number > CurrentVersion)
-                    throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-                if (number >= 3) ValidateV3EnumWire(document.RootElement);
-            }
-            VoxClip.Core.Services.Project.ProjectValidation.Validate(json, normalizeWordText: true);
+            if (maximumSupportedVersion < CurrentVersion && document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number &&
+                version.TryGetInt32(out var number) && number > maximumSupportedVersion)
+                throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
+            VoxClip.Core.Services.Project.ProjectValidation.Validate(document.RootElement, normalizeWordText: true);
+            if (document.RootElement.GetProperty("schemaVersion").GetInt32() >= 3) ValidateV3EnumWire(document.RootElement);
             var project = JsonSerializer.Deserialize(json, ProjectJsonContext.Default.Project) ?? throw new JsonException("Missing project.");
             project = project with {
                 Transcript = project.Transcript is { } transcript ? Normalize(transcript) : null,
@@ -38,13 +34,9 @@ public static class ProjectSerialization
             Validate(project);
             return project;
         }
-        catch (JsonException exception)
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
         {
-            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "This project file can't be read.", exception);
-        }
-        catch (KeyNotFoundException exception)
-        {
-            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "This project file can't be read.", exception);
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "/: invalid project document", exception);
         }
     }
     private static Transcript.Transcript Normalize(Transcript.Transcript transcript) => transcript with

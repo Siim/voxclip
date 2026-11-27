@@ -1,10 +1,10 @@
 {
  "format": "voxclip-social-loudness-cases/2",
- "description": "Social loudness (ADR-R47, amended 2026-11-08): BS.1770-4 integrated loudness with EBU R128 gating and the Annex 2 true peak of stereo Float32 signals, and the plan: -14 LUFS, the gain within -20...+12 dB and lowered until the true-peak limiter would reduce at most 9 dB, 0 dB and no limiting when the loudness is undefined. gainedLufs and gainedTruePeakDbtp are after the plan's gain alone, before the limiter and the landing correction (social-limiter-cases.json). Floats rounded to 6 decimals; replays compare within 1e-6.",
+ "description": "Social loudness (ADR-R47, amended 2026-11-08): BS.1770-4 integrated loudness with EBU R128 gating and the Annex 2 true peak of stereo Float32 signals, and the plan: -14 LUFS, the gain within -20...+20 dB and lowered until the true-peak limiter would reduce at most 9 dB, 0 dB and no limiting when the loudness is undefined. gainedLufs and gainedTruePeakDbtp are after the plan's gain alone, before the limiter and the landing correction (social-limiter-cases.json). Floats rounded to 6 decimals; replays compare within 1e-6.",
  "constants": {
   "targetLufs": -14.0,
   "ceilingDbtp": -1.0,
-  "maximumBoostDb": 12.0,
+  "maximumBoostDb": 20.0,
   "maximumCutDb": -20.0,
   "maximumReductionDb": 9.0,
   "absoluteGateLufs": -70.0,
@@ -47,10 +47,10 @@
   {
    "id": "rule-boost-limit",
    "kind": "rule",
-   "measuredLufs": -30.0,
-   "truePeakDbtp": -20.0,
+   "measuredLufs": -38.0,
+   "truePeakDbtp": -30.0,
    "expected": {
-    "gainDb": 12.0,
+    "gainDb": 20.0,
     "limit": "gainLimit",
     "capped": false,
     "limiting": false,
@@ -60,10 +60,10 @@
   {
    "id": "rule-boost-limit-edge",
    "kind": "rule",
-   "measuredLufs": -26.0,
-   "truePeakDbtp": -13.0,
+   "measuredLufs": -34.0,
+   "truePeakDbtp": -21.0,
    "expected": {
-    "gainDb": 12.0,
+    "gainDb": 20.0,
     "limit": "none",
     "capped": false,
     "limiting": false,
@@ -126,9 +126,9 @@
    "id": "rule-limited-at-boost-limit",
    "kind": "rule",
    "measuredLufs": -40.0,
-   "truePeakDbtp": -5.0,
+   "truePeakDbtp": -13.0,
    "expected": {
-    "gainDb": 12.0,
+    "gainDb": 20.0,
     "limit": "gainLimit",
     "capped": false,
     "limiting": true,
@@ -1035,13 +1035,13 @@
    "expected": {
     "measuredLufs": -37.082347,
     "truePeakDbtp": -27.689268,
-    "gainDb": 12.0,
+    "gainDb": 20.0,
     "limit": "gainLimit",
     "capped": false,
     "limiting": false,
     "limiterMaxReductionDb": 0.0,
-    "gainedLufs": -25.082347,
-    "gainedTruePeakDbtp": -15.689268
+    "gainedLufs": -17.082347,
+    "gainedTruePeakDbtp": -7.689268
    }
   },
   {

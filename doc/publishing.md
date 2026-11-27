@@ -324,7 +324,7 @@ After a VoxConvo publish the clip is already on VoxConvo's S3, so vox-api pushes
 Feeds normalise near −14 LUFS, and the agents' posted clips were about −16 LUFS, while a VoxClip talking-head export measured −20.7 LUFS (doc/agent-clipping-benchmark.md). Every export on both platforms, from the app and from the CLI, now lands at **social loudness**:
 
 - **−14 LUFS integrated** (ITU-R BS.1770-4 with EBU R128 gating) and a **true peak at or below −1.0 dBTP** (BS.1770-4 Annex 2) on the PCM the encoder receives.
-- **One gain and a transparent true-peak limiter.** The gain is −14 minus the measured loudness, kept within −20…+12 dB. After it, a lookahead limiter holds plosives and clicks at −1 dBTP (§6.1); nothing under the ceiling is compressed and there is no makeup gain. If the limiter would have to reduce more than 9 dB anywhere, the gain is lowered until it reduces exactly 9 and the clip lands quieter than −14 (`capped: true`). A silent clip gets 0 dB and no limiting.
+- **One gain and a transparent true-peak limiter.** The gain is −14 minus the measured loudness, kept within −20…+20 dB. After it, a lookahead limiter holds plosives and clicks at −1 dBTP (§6.1); nothing under the ceiling is compressed and there is no makeup gain. If the limiter would have to reduce more than 9 dB anywhere, the gain is lowered until it reduces exactly 9 and the clip lands quieter than −14 (`capped: true`). A silent clip gets 0 dB and no limiting.
 - **Landing on target:** limiting removes a little energy, so offline pre-passes (gain and limiter simulated, no encode) measure what is left and correct the gain: once, or, when the limiter took more than 0.5 LU, once more by a secant step. An uncapped clip lands within 0.5 LU of −14.
 - **It measures what is exported:** the mix after Voice Lab, the clip's speed, volume, fades and mute, the music bed, effects and bleeps. The gain and limiter apply to the exported audio only. The SRT is unchanged; the CLI's `--audio-out` WAV runs through the same gain and limiter.
 - **Off switch:** the CLI's `--loudness off` writes the mix as composed. There is no app control. Preview plays the mix as composed, so an export can sound louder than its preview.
@@ -344,7 +344,7 @@ Both platforms implement this definition (`SocialLimiter`, Mac and Windows Core)
 
 The largest E equals the largest R, which is TP + G − C: the 9 dB cap is G ≤ C + 9 − TP. A frame is **limited** when E(m) > 0.
 
-**The plan** (`SocialLoudness.decide`, `landing`): G₀ = clamp(−14 − L, −20, +12), lowered to C + 9 − TP when above it (`reductionCap`). When the limiter runs and G₀ was not limited or capped: simulate G₀ → L₀; G₁ = G₀ + (−14 − L₀), bounded by +12 and the cap. If |−14 − L₀| ≤ 0.5 LU, export at G₁; otherwise simulate G₁ → L₁ and export at G₂ = G₁ + (−14 − L₁) · (G₁ − G₀)/(L₁ − L₀) (a plain step when the slope is under 0.05), bounded the same way.
+**The plan** (`SocialLoudness.decide`, `landing`): G₀ = clamp(−14 − L, −20, +20), lowered to C + 9 − TP when above it (`reductionCap`). When the limiter runs and G₀ was not limited or capped: simulate G₀ → L₀; G₁ = G₀ + (−14 − L₀), bounded by +20 and the cap. If |−14 − L₀| ≤ 0.5 LU, export at G₁; otherwise simulate G₁ → L₁ and export at G₂ = G₁ + (−14 − L₁) · (G₁ − G₀)/(L₁ − L₀) (a plain step when the slope is under 0.05), bounded the same way.
 
 ### 6.2 Cost
 

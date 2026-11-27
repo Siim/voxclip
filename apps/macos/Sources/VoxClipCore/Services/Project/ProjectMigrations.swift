@@ -13,14 +13,16 @@ enum ProjectMigrations {
     }
 
     static func checkVersion(_ value: JSONValue, maximumSupportedVersion: Int = currentVersion) throws {
-        guard case .object(let object) = value, object["format"] == .string("voxclip-project"),
-              case .number(let version) = object["schemaVersion"], version.isFinite, version.rounded(.towardZero) == version else {
-            throw VoxClipError.projectUnreadable("Invalid project version")
+        guard case .object(let object) = value else { try ProjectValidation.fail("expected object") }
+        for key in ["format", "schemaVersion"] where object[key] == nil { try ProjectValidation.fail("missing required field", at: key) }
+        guard object["format"] == .string("voxclip-project") else { try ProjectValidation.fail("invalid value", at: "format") }
+        guard case .number(let version) = object["schemaVersion"], version.isFinite, version.rounded(.towardZero) == version else {
+            try ProjectValidation.fail("expected an integer", at: "schemaVersion")
         }
         if version > Double(maximumSupportedVersion) { throw VoxClipError.projectTooNew }
         switch version {
         case 1, 2, 3, 4, 5, 6, 7: return
-        default: throw VoxClipError.projectUnreadable("No migration exists before schema version 1")
+        default: try ProjectValidation.fail("no migration exists before schema version 1", at: "schemaVersion")
         }
     }
 }

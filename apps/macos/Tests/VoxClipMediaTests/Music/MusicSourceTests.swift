@@ -72,6 +72,19 @@ enum OpenverseFixture {
 }
 
 struct OpenverseMusicClientTests {
+    @Test func soundSearchKeepsShortUncategorizedFreesoundResults() async throws {
+        let body = try FixtureLoader.data("fixtures/music/openverse-whoosh.json")
+        let http = StubMusicHTTP([.init(status: 200, body: body)])
+        let results = try await OpenverseMusicClient(http: http).searchPage("whoosh", sound: true).candidates
+        #expect(results.map(\.id) == ["openverse-f1dc6045-7965-41de-87f8-4731d2583fd2",
+                                      "openverse-f340c2c6-4b41-4acd-a593-b5bbdb2c2b8b", "openverse-limit"])
+        #expect(results.map(\.durationSeconds) == [0.49, 10.5, 30])
+        let request = try #require(http.sent.first?.url)
+        let query = try #require(URLComponents(url: request, resolvingAgainstBaseURL: false)?.queryItems)
+        #expect(query == [URLQueryItem(name: "q", value: "whoosh"), URLQueryItem(name: "license", value: "cc0,by,pdm"),
+                          URLQueryItem(name: "page_size", value: "20")])
+    }
+
     @Test func searchSendsOnlyTheFreeLicensesForMusic() throws {
         let components = try #require(URLComponents(url: OpenverseMusicClient.searchURL(query: "calm piano"), resolvingAgainstBaseURL: false))
         #expect(components.scheme == "https" && components.host == "api.openverse.org" && components.path == "/v1/audio/")

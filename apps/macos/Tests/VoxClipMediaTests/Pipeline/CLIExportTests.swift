@@ -258,6 +258,43 @@ func musicFlagsRejectInvalidCombinationsBeforeOpeningInput(flags: [String], mess
     #expect(try (result.json["error"] as? [String: Any])?["message"] as? String == message)
 }
 
+@Test(arguments: [
+    ("story", "edits/clips/0: story clip needs schemaVersion 5"),
+    ("assets", "voiceLab/assets: missing required field"),
+    ("cleanAudio", "voiceLab/cleanAudio: missing required field"),
+    ("voices", "voiceLab/voices: missing required field"),
+    ("videoAssets", "voiceLab/videoAssets: missing required field"),
+    ("aspect", "export/aspect: invalid value"),
+])
+func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let data = try FixtureLoader.data("fixtures/story-clips/story-project.voxclip")
+    var project = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    project["title"] = "project-private-content-marker"
+    if defect == "story" { project["schemaVersion"] = 4 }
+    else if defect == "aspect" {
+        var settings = try #require(project["export"] as? [String: Any])
+        settings["aspect"] = "project-private-content-marker"
+        project["export"] = settings
+    } else {
+        var voiceLab = try #require(project["voiceLab"] as? [String: Any])
+        voiceLab.removeValue(forKey: defect)
+        project["voiceLab"] = voiceLab
+    }
+    let input = directory.appendingPathComponent("invalid.voxclip")
+    try JSONSerialization.data(withJSONObject: project).write(to: input)
+    let arguments = ["plan", "--open", input.path]
+    let human = try runCLI(arguments, directory: directory)
+    #expect(human.status == 3)
+    #expect(human.stderr.contains(problem) && !human.stderr.contains("project-private-content-marker"))
+    let machine = try runCLI(arguments + ["--json"], directory: directory)
+    #expect(machine.status == 3)
+    let error = try #require(try machine.json["error"] as? [String: String])
+    #expect(error["code"] == "projectUnreadable")
+    #expect(error["message"]?.contains(problem) == true && error["message"]?.contains("project-private-content-marker") == false)
+}
+
 private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdits = ProjectEdits()) async throws -> Project {
     let probe = try await AVMediaProbe().probe(source)
     let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
@@ -269,6 +306,30 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test(.timeLimit(.minutes(2)), arguments: [false, true]) func cliExportsFourFiveAndChecksIt(_ explicit: Bool) async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+    let source = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/fillers-chirp.mp4")
+    var project = try await cliProject(source: source, transcript: fixture.transcript, edits: fixture.edits)
+    let clip = try #require(project.edits.clips.first)
+    project.export.aspect = .landscape
+    project.clipControls = [.init(clipId: clip.id, shape: explicit ? .portrait : .portraitFourFive)]
+    let input = directory.appendingPathComponent("frame.voxclip")
+    let output = directory.appendingPathComponent("frame.mp4")
+    try await JSONProjectStore().save(project, to: input)
+    let invocation = try runCLI(["export", "--open", input.path, "--clip", clip.id, "--export", output.path,
+        "--style", "off", "--loudness", "off", "--json", "--quiet"] + (explicit ? ["--aspect", "4:5"] : []), directory: directory)
+    try #require(invocation.status == 0, "CLI exit \(invocation.status): \(invocation.stderr)")
+    #expect(try invocation.json["aspect"] as? String == "4:5")
+    let video = try await AVMediaProbe().probe(output).video
+    #expect(video?.width == 1080 && video?.height == 1350)
+    let checked = try runCLI(["check", "--project", input.path, "--clip", clip.id, output.path,
+        "--aspect", "4:5", "--style", "off", "--loudness", "off", "--json"], directory: directory)
+    #expect([0, 8].contains(checked.status))
+    #expect(try checked.json["ok"] as? Bool == true)
+}
+
 @Test(.timeLimit(.minutes(1))) func cliExportsStoryClipCaptionsInPartOrder() async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

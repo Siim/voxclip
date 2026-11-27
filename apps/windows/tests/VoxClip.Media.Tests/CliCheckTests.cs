@@ -134,7 +134,7 @@ public sealed class CliCheckTests : IDisposable
         var unknown = await RunAsync(["check", "--project", project, "--clip", "9", export, "--aspect", "9:16", "--json"], Open(media));
         Assert.Equal(2, unknown.Exit);
         Assert.Equal("usageError", JsonNode.Parse(unknown.Output)!["error"]!["code"]!.GetValue<string>());
-        var missing = await RunAsync(["check", "--project", project, "--clip", "1", Path.Combine(directory, "missing.mp4"), "--json"], Open(media));
+        var missing = await RunAsync(["check", "--project", project, "--clip", "1", Path.Combine(directory, "missing.mp4"), "--aspect", "4:5", "--json"], Open(media));
         Assert.Equal(3, missing.Exit);
         Assert.Equal("mediaMissing", JsonNode.Parse(missing.Output)!["error"]!["code"]!.GetValue<string>());
         Assert.Equal(3, (await RunAsync(["check", "--project", Path.Combine(directory, "missing.voxclip"), "--clip", "1", export, "--json"])).Exit);
@@ -153,7 +153,7 @@ public sealed class CliCheckTests : IDisposable
         Assert.Equal("9:16", CliCheck.Aspect(new(1080, 1920)));
         Assert.Equal("16:9", CliCheck.Aspect(new(1920, 1080)));
         Assert.Equal("1:1", CliCheck.Aspect(new(1080, 1080)));
-        Assert.Equal("source", CliCheck.Aspect(new(1080, 1350)));
+        Assert.Equal("4:5", CliCheck.Aspect(new(1080, 1350)));
         Assert.Equal("source", CliCheck.Aspect(new(0, 0)));
     }
 

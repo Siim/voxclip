@@ -72,3 +72,10 @@ Both platforms, one definition (`SocialLoudness`, `SocialLimiter` in Mac and Win
 - **The ceiling is the PCM's.** AAC rings a few hundredths of a dB past it on a limited transient (−0.97 dBTP decoded in the test; FFmpeg's 4× reading −0.9 on the benchmark). The tests allow the decoded peak 0.1 dB over −1 dBTP. Holding the decoded file at −1.0 would need encoder headroom (a lower PCM ceiling), which this amendment does not take.
 - Reductions of 7–8 dB on the benchmark's loudest plosives sit near the 9 dB cap; a listening pass on the posted clips is the check that they stay transparent.
 
+## Amended 2026-11-27: more gain for quiet recordings
+
+A DJI Mic recording measured −30.2 LUFS and exported at −18.3 LUFS with the old +12 dB boost limit. Raise the
+maximum boost to +20 dB, including the landing corrections. Keep the −20 dB floor, −1 dBTP limiter and 9 dB
+reduction cap unchanged. The shared `talk-quiet-minus30` vector replays speech-like bursts with plosives on both
+platforms: −30.00 LUFS in, +16.69 dB gain, −14.00 LUFS out, −1.00 dBTP, and 7.80 dB maximum reduction.
+

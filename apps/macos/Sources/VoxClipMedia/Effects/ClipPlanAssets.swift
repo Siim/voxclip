@@ -32,7 +32,7 @@ public struct ClipPlanAssets: Sendable {
         let results = try await openverse.searchPage(request.text, sound: true).candidates
         guard let candidate = results.first(where: {
             guard let duration = $0.durationSeconds else { return false }
-            return duration <= length + offset && duration - offset >= 0.05
+            return duration <= min(length + offset, ClipEffect.maximumSoundSeconds) && duration - offset >= 0.05
         }) else { return nil }
         let ext = candidate.fileExtension
         let bytes = try await openverse.download(candidate)

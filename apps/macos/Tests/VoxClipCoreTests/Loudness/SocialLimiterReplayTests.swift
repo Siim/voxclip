@@ -92,8 +92,8 @@ struct SocialLimiterReplayTests {
         let document = try Self.document()
         #expect(Set(document.keys) == ["format", "description", "constants", "caseCount", "counts", "cases"])
         #expect(document["format"]?.aiString == "voxclip-social-limiter-cases/1")
-        #expect(document["caseCount"]?.aiInt == 7 && document["cases"]?.aiArray.count == 7)
-        #expect(document["counts"]?[ai: "export"].aiInt == 6 && document["counts"]?[ai: "envelope"].aiInt == 1)
+        #expect(document["caseCount"]?.aiInt == 8 && document["cases"]?.aiArray.count == 8)
+        #expect(document["counts"]?[ai: "export"].aiInt == 7 && document["counts"]?[ai: "envelope"].aiInt == 1)
         let constants = try #require(document["constants"]?.aiObject)
         let expected: [String: Double] = [
             "targetLufs": SocialLoudness.targetLufs, "ceilingDbtp": SocialLoudness.ceilingDbtp,
@@ -111,7 +111,7 @@ struct SocialLimiterReplayTests {
     @Test("Export cases: the plan, the simulated pre-passes that land it, the output and its samples")
     func exports() throws {
         let cases = try Self.cases("export")
-        #expect(cases.count == 6)
+        #expect(cases.count == 7)
         for item in cases {
             let id = item[ai: "id"].aiString ?? ""
             let samples = SocialLoudnessReplayTests.interleaved(item)
@@ -140,6 +140,11 @@ struct SocialLimiterReplayTests {
             if let peak = run.report.truePeakDbtp { #expect(peak <= SocialLoudness.ceilingDbtp + 1e-6, "\(id) ceiling \(peak)") }
             if run.decision.limit == .none, let output = run.report.outputLufs {
                 #expect(abs(output - SocialLoudness.targetLufs) <= 0.5, "\(id) lands \(output)")
+            }
+            if id == "talk-quiet-minus30" {
+                #expect(abs((run.report.measuredLufs ?? .infinity) + 30) <= 0.1)
+                #expect(abs((run.report.outputLufs ?? .infinity) + 14) <= 0.1)
+                #expect((0...9).contains(run.report.limiterMaxReductionDb) && !run.report.capped)
             }
             Self.checkProbes(item, input: samples, output: run.output, gainDb: run.decision.gainDb)
         }

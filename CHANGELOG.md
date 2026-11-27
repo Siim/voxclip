@@ -5,6 +5,10 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Mac and Windows project files can store spoken companions and story parts from different recordings, plan the parts in play order with a new caption page at each recording seam, and keep paid voice work safe when a version changes.
+- When a project can’t load, the CLI reports the invalid field path and reason in text and JSON on Mac and Windows.
+- Social loudness can boost quiet recordings by up to 20 dB on Mac and Windows, with the same peak protection.
+- The CLI exports clips in their saved frame and accepts `--aspect 4:5` for export and check on Mac and Windows.
+- Free sound-effect searches on Mac and Windows now find short Freesound clips, with licence and credit checks intact.
 - On Windows, overlapping sounds crossfade, timeline volume and range dips match the Mac, and the music lane shows the ducking heard in preview.
 - On Windows, move, trim, split and shape timeline items in eight lanes, with music and sound fades, volume keyframes, snapping, named Undo and Narrator controls.
 - On Mac, fade, slip and adjust music and sounds directly on the timeline, with volume keyframes, range dips, loop markers and a contour showing how music dips under speech.
