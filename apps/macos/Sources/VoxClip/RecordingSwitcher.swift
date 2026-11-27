@@ -60,7 +60,7 @@ struct RecordingFeedback: Equatable {
                     HStack(spacing: 5) {
                         Text("\(ProjectClock.label(source)) · Not transcribed")
                         Button("Transcribe on this Mac") {
-                            editor.addRecording(at: editor.recordingURL(source), companion: source)
+                            editor.addRecording(at: editor.recordingURL(source), companion: source, onThisMac: true)
                         }
                         .disabled(editor.addRecordingReason != nil)
                     }

@@ -650,7 +650,8 @@ private struct TimelineReducer {
             clip.startWordId = id
         } else { clip.endWordId = id }
         try checkSpeech(clip); try replaceSpeech(clip)
-        return clip.parts == nil ? "Trim clip" : "Trim part \(index + 1)"
+        if clip.parts == nil { return "Trim clip" }
+        return project.media.spokenSources?.isEmpty == false ? "Trim part" : "Trim part \(index + 1)"
     }
 
     mutating func movePart(_ id: String, to source: Double) throws -> String {

@@ -537,6 +537,8 @@ On Mac, spoken recordings have a dot and a short name, with their duration and *
 
 **Add a part from 0010** opens an inline strip: “Select words in 0010 to add them to Clip 1 · after part 2”, **Add as Part 3**, and **Done**. Return adds; Esc leaves the strip. The strip stays after adding. The selection bar offers **Add to Clip 1 as Part** alongside **Make Clip** outside pick mode. When the selection crosses a recording boundary: “A part comes from one recording. Select words in 0010 only.” Adding announces “Part 3 added from 0010, after part 2”; moving announces “Part 3 moved to 4 of 5”.
 
+Show **Not transcribed** with **Transcribe on this Mac**, or the priced cloud action **Transcribe with ElevenLabs · ≈ $0.09** (using the actual estimate). While working, say “Transcribing on this Mac · 42%” with the actual progress and **Cancel**. If a recording is level-matched, show “−1.8 dB to match 0007” using the actual gain and recording name.
+
 ### 4.1 Rendering
 
 - **Flowing prose, not chips.** A new paragraph starts after a sentence end followed by a pause of ≥ 1.5 s, or at a speaker change when diarization exists.

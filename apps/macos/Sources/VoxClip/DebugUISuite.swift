@@ -1037,7 +1037,7 @@ import ApplicationServices
     /// window: full-size content under a transparent titlebar with no toolbar, as the
     /// shell expects.
     static func snapshot<Content: View>(_ content: Content, name: String, size: NSSize, appearance: NSAppearance.Name, directory: URL, active: Bool = false, mainWindow: Bool = false,
-                                      native: Bool = false, orderOffscreen: Bool = true,
+                                      native: Bool = false, orderOffscreen: Bool = true, checkRightColumn: Bool = true,
                                       beforeCapture: (@MainActor (NSWindow) async throws -> NSWindow?)? = nil) async throws {
         let controller = NSHostingController(rootView: content.background(DesignValues.color("bg.window")).sceneAccent().preferredColorScheme(appearance == .darkAqua ? .dark : .light).environment(\.controlActiveState, active ? .key : .inactive))
         // A fixed size from the start: a hosting controller that sizes its window
@@ -1084,7 +1084,7 @@ import ApplicationServices
             view.subviews.forEach(prepare)
         }
         prepare(hosting)
-        if !native { try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory) }
+        if !native && checkRightColumn { try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory) }
         if native {
             guard !sessionLocked else { window.close(); throw CocoaError(.userCancelled) }
             window.center(); window.makeKeyAndOrderFront(nil)

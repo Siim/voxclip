@@ -72,6 +72,10 @@ extension InlineTranscription {
             try validate(request)
             let transcript = result.transcript
             request.confirmedTranscript = transcript
+            let cache = model.app.locations.cache
+            let key = request.project.media.source.contentKey
+            await Task.detached(priority: .utility) { RecordingTranscriptCache.write(transcript, key: key, cache: cache) }.value
+            try validate(request)
             let foundOnDraft = draftFind != nil && draftFind == model.findTask
             model.replaceTranscript(transcript, preserveFind: foundOnDraft)
             // A video of the owner teaches their voice's guard, on this Mac and free (ADR-R41).

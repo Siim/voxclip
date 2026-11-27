@@ -155,7 +155,7 @@ import VoxClipCore
                 let label = ProjectClock.label(source)
                 Button("Add a part from \(label)") {}.disabled(true)
                 Text("\(label) isn't transcribed yet.").font(.system(size: 11)).foregroundStyle(.secondary)
-                Button("Transcribe on this Mac") { editor.addRecording(at: editor.recordingURL(source), companion: source) }
+                Button("Transcribe on this Mac") { editor.addRecording(at: editor.recordingURL(source), companion: source, onThisMac: true) }
                     .disabled(editor.addRecordingReason != nil)
             }
             AddRecordingMenu(editor: editor)

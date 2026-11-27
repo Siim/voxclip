@@ -953,6 +953,7 @@ struct EditorRenderSnapshot {
     }
     func editState() -> EditState? {
         let project = project
+        if hasSeveralRecordings { return try? EditState(project: project) }
         guard let transcript = project.transcript else { return nil }
         let edits = project.edits
         return EditState(transcript: transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips, activeClipId: edits.activeClipId)
@@ -1053,7 +1054,9 @@ struct EditorRenderSnapshot {
                 }
                 planningSegments = segments
                 let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
-                if let clip = activeClip, clip.parts != nil {
+                if state.projectClock != nil {
+                    plan = try EditPlan.build(transcript: state.transcript, editState: state, activeClip: activeClip, duration: sourceDuration, sampleRate: rate)
+                } else if let clip = activeClip, clip.parts != nil {
                     plan = try buildStoryPlan(state, clip: clip, duration: sourceDuration, sampleRate: rate)
                 } else {
                     plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)

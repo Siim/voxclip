@@ -23,6 +23,29 @@ import VoxClipMedia
     }
 }
 
+enum RecordingTranscriptCache {
+    private static func entry(_ key: String, in cache: URL) -> URL? {
+        guard key.utf8.count == 64, key.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return nil }
+        return cache.appendingPathComponent(key).appendingPathComponent("transcripts/confirmed-v1.json")
+    }
+
+    static func read(_ key: String, cache: URL, recent: [URL]) -> Transcript? {
+        if let file = entry(key, in: cache), let data = try? Data(contentsOf: file),
+           let transcript = try? JSONDecoder().decode(Transcript.self, from: data) { return transcript }
+        return recent.lazy.compactMap { file -> Transcript? in
+            guard let data = try? Data(contentsOf: file), let project = try? JSONProjectStore.decode(data) else { return nil }
+            if project.media.source.contentKey == key { return project.transcript }
+            return project.media.spokenSources?.first { $0.sourceKey == key }?.transcript
+        }.first
+    }
+
+    static func write(_ transcript: Transcript, key: String, cache: URL) {
+        guard let file = entry(key, in: cache), let data = try? JSONEncoder().encode(transcript) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
 extension EditorModel {
     var recordingCompanions: [MediaReference] {
         let active = Set(recordingRegions.map(\.key))
@@ -78,7 +101,7 @@ extension EditorModel {
         addRecording(at: url)
     }
 
-    func addRecording(at url: URL, companion: MediaReference? = nil) {
+    func addRecording(at url: URL, companion: MediaReference? = nil, onThisMac: Bool = false) {
         guard addRecordingReason == nil, url.isFileURL else { return }
         recordingImportError = nil
         recordingImportTask = Task { [weak self] in
@@ -106,6 +129,12 @@ extension EditorModel {
                 source.durationSeconds = probe.durationSeconds
                 source.video = probe.video
                 source.audio = probe.audio
+                let key = source.contentKey, cache = app.locations.cache, recent = app.recent
+                let cached = await Task.detached(priority: .utility) {
+                    RecordingTranscriptCache.read(key, cache: cache, recent: recent)
+                }.value
+                try Task.checkCancellation()
+                if let cached, commitRecording(source, transcript: cached) { return }
                 var scratch = imported.project
                 scratch.media.source = source
                 imported.replaceProject(scratch)
@@ -114,10 +143,10 @@ extension EditorModel {
                 let pending = PendingSpokenRecording(reference: source, transcriptionEditor: transcribing)
                 transcribing.recordingTranscriptRecipient = { [weak self, weak pending] transcript in
                     guard let self, let pending, pendingRecording === pending else { return }
-                    finishRecordingImport(pending, transcript: transcript)
+                    _ = commitRecording(pending.reference, transcript: transcript)
                 }
                 pendingRecording = pending
-                await pending.transcriber.open(automatic: true)
+                await pending.transcriber.open(automatic: true, onThisMac: onThisMac)
                 pending.transcriber.remember = false
             } catch is CancellationError {} catch {
                 recordingImportError = await app.safeError(error, context: .importMedia)
@@ -125,8 +154,8 @@ extension EditorModel {
         }
     }
 
-    func finishRecordingImport(_ pending: PendingSpokenRecording, transcript: Transcript) {
-        let source = pending.reference
+    private func commitRecording(_ source: MediaReference, transcript: Transcript) -> Bool {
+        let label = ProjectClock.label(source)
         var base = project
         if let existing = base.media.additionalSources.firstIndex(where: { $0.contentKey == source.contentKey }) {
             base.media.additionalSources[existing] = source
@@ -134,11 +163,14 @@ extension EditorModel {
             base.media.additionalSources.append(source)
         }
         if applyRecordingEdit(.addSpokenSource(key: source.contentKey, label: nil, transcript: transcript, gainDb: nil),
-                              preparing: base, message: "Added recording \(pending.label)") {
+                              preparing: base, message: "Added recording \(label)") {
             pendingRecording = nil
+            recordingImportError = nil
             chooseRecordingTranscript(.recording(source.contentKey), announceChange: false)
+            return true
         } else {
             recordingImportError = storyPartError
+            return false
         }
     }
 

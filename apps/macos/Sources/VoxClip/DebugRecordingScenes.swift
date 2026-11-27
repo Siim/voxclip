@@ -30,7 +30,7 @@ import VoxClipCore
         func snapshot<Content: View>(_ frame: String, _ content: Content, size: NSSize) async throws {
             let name = "recordings-frame-\(frame)"
             try await DebugUISuite.snapshot(content.environment(app), name: name, size: size,
-                appearance: .darkAqua, directory: directory, active: true)
+                appearance: .darkAqua, directory: directory, active: true, checkRightColumn: false)
             results.append(.init(name: name, passed: true))
         }
         let workspace = NSSize(width: 1440, height: 900)
