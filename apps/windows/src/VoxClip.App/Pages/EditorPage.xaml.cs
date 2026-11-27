@@ -135,7 +135,11 @@ public sealed partial class EditorPage : Page
         Transcript.MakeClipRequested += (_, _) => MakeClipAndReveal();
         Transcript.PlayRequested += (_, _) => _ = RunAsync(PlayFromHereAsync, "Preview");
         Transcript.PreviewCutRequested += (_, _) => _ = RunAsync(PreviewCutAsync, "Preview");
-        Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
+        Timeline.SeekRequested += (_, time) =>
+        {
+            RevealRecordingAt(time);
+            _ = RunAsync(() => SeekSourceAsync(time), "Preview");
+        };
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
         Timeline.OpenMusicRequested += (_, _) =>
         {
@@ -149,7 +153,10 @@ public sealed partial class EditorPage : Page
             if (args.PropertyName == nameof(EditorViewModel.Project) && waveformMedia is not null && waveformMedia != ViewModel.Project.Media)
                 RequestWaveform();
             if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanFindClips)) UpdateFindClips();
+            if (args.PropertyName is nameof(EditorViewModel.TranscriptRecordingView) or nameof(EditorViewModel.Busy)) RefreshSelectorBar();
         };
+        ViewModel.IsRecordingMissing = source => !File.Exists(RecordingPath(source));
+        RefreshSelectorBar();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
         Bindings.Update();
@@ -400,6 +407,7 @@ public sealed partial class EditorPage : Page
     /// <summary>Make clip needs words selected (design §6.2).</summary>
     private void SelectionChanged(object? sender, EventArgs args)
     {
+        RefreshRecordingSelection();
         MakeClipCommand.IsEnabled = ViewModel.HasSelection && !ViewModel.IsReadOnly && !ViewModel.Busy && !ViewModel.IsLeaving;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
         UpdateRewriteCommand();
@@ -448,6 +456,7 @@ public sealed partial class EditorPage : Page
     private void ModelChanged(object? sender, EventArgs args)
     {
         if (!ready || disposed) return;
+        RefreshSelectorBar();
         UpdateExport();
         SizeStage();
         UpdateAiTag();
@@ -1111,6 +1120,12 @@ public sealed partial class EditorPage : Page
         Add((VirtualKey)187, VirtualKeyModifiers.Control, () => ZoomFocusedEditor(1));
         Add((VirtualKey)189, VirtualKeyModifiers.Control, () => ZoomFocusedEditor(-1));
         Add(VirtualKey.Number0, VirtualKeyModifiers.Control, () => Transcript.Zoom(0, true));
+        for (var number = 0; number <= 6; number++)
+        {
+            var recording = number;
+            Add((VirtualKey)((int)VirtualKey.Number0 + number), VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu,
+                () => { if (ViewModel.ChooseRecordingShortcut(recording)) RevealRecordingStart(); });
+        }
         Add(VirtualKey.Left, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(-1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
         Add(VirtualKey.Right, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
         Add(VirtualKey.Home, VirtualKeyModifiers.Control, () => { ViewModel.Select(0); Transcript.SelectionMovedByKeyboard(); });
@@ -1128,6 +1143,11 @@ public sealed partial class EditorPage : Page
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (!ready || args.Handled || args.Key == VirtualKey.F6) return;
+        if (ViewModel.PartPickRecording is not null && !InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)))
+        {
+            if (args.Key == VirtualKey.Escape && !CaptionDrag.IsDragging && ViewModel.FinishPartPick()) { args.Handled = true; return; }
+            if (args.Key == VirtualKey.Enter && ViewModel.AddSelectionAsPart()) { args.Handled = true; return; }
+        }
         if (args.Key == VirtualKey.Escape && CaptionDrag.IsDragging) { CaptionDrag.Cancel(); args.Handled = true; return; }
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         var editorFocus = InputState.DescendsFrom(focused as DependencyObject, Transcript) || InputState.DescendsFrom(focused as DependencyObject, PreviewPane) || InputState.DescendsFrom(focused as DependencyObject, Timeline);

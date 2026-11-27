@@ -100,7 +100,7 @@ public sealed partial class TranscriptView
         var gutter = (Grid)grid.Children[0];
         Canvas.SetZIndex(gutter, 1);
         var timecode = (TextBlock)gutter.Children[0];
-        timecode.Text = FormatTakeTime(model.Words[item.StartIndex].Start) + (item.Speaker is null ? "" : "\n" + item.Speaker);
+        timecode.Text = item.Timecode + (item.Speaker is null ? "" : "\n" + item.Speaker);
         timecode.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
         timecode.Foreground = Brush("VcGutterTextBrush");
         var glyphs = (Canvas)gutter.Children[1];
@@ -125,6 +125,12 @@ public sealed partial class TranscriptView
         if (ReferenceEquals(inlineEditor, editor)) CloseInlineEditor(false);
         ClearEditorHost(editor);
         rich.Blocks.Clear();
+        if (item.RecordingHeading is { } heading)
+        {
+            var section = new Paragraph { Margin = new(0, 0, 0, 6) };
+            section.Inlines.Add(new Run { Text = heading, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            rich.Blocks.Add(section);
+        }
         var paragraph = new Paragraph();
         var runs = new List<WordRun>();
         var pauses = new List<PauseRun>();
