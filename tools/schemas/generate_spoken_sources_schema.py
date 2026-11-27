@@ -33,13 +33,20 @@ def main():
         'type': 'array', 'minItems': 1, 'maxItems': 5, 'uniqueItems': True, 'items': {'$ref': '#/$defs/spokenSource'},
         'description': 'In clock order. Companion membership, guard gaps and distinct prefixes are checked by Core.',
     }
+    legacy_parts = {'items': {'not': {'required': ['takeReason']}}}
     rule = {
         'if': {'properties': {'schemaVersion': {'const': 7}}},
         'then': {'properties': {'media': {'required': ['additionalSources', 'spokenSources']},
                                 'transcript': {'$ref': '#/$defs/transcript'}}},
-        'else': {'properties': {'media': {'not': {'required': ['spokenSources']}}}},
+        'else': {'properties': {'media': {'not': {'required': ['spokenSources']}}, 'edits': {'properties': {
+            'clips': {'items': {'properties': {'parts': legacy_parts}}},
+        }}}},
     }
-    if rule not in schema['allOf']:
+    for index, existing in enumerate(schema['allOf']):
+        if existing.get('if') == rule['if']:
+            schema['allOf'][index] = rule
+            break
+    else:
         schema['allOf'].append(rule)
     PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
 

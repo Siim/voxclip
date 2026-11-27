@@ -138,8 +138,8 @@ internal static class ProjectValidation
                 Require(clip.TryGetProperty("parts", out _) && kind.ValueKind == JsonValueKind.String && kind.GetString() is "story" or "showreel");
             if (clip.TryGetProperty("parts", out var parts)) Array(parts, part =>
             {
-                Object(part, "id startWordId endWordId", "reframe takeReason");
-                if (part.TryGetProperty("takeReason", out var reason)) Text(reason, 0, 200);
+                Object(part, "id startWordId endWordId", supportsSpokenSources ? "reframe takeReason" : "reframe");
+                if (part.TryGetProperty("takeReason", out var reason)) Text(reason, 0, StoryClips.MaxTakeReasonScalars);
                 if (part.TryGetProperty("reframe", out var reframe))
                 {
                     Object(reframe, "mode zoom centerX centerY");

@@ -31,7 +31,7 @@ def main():
     defs['clipWordRange'] = {'type': 'object', 'additionalProperties': False, 'required': list(words), 'properties': words}
     defs['clipPart'] = {'type': 'object', 'additionalProperties': False, 'required': ['id', *words], 'properties': {
         'id': {'$ref': '#/$defs/id'}, **words, 'reframe': {'$ref': '#/$defs/clipControls/properties/reframe'},
-        'takeReason': {'type': 'string', 'maxLength': 200},
+        'takeReason': {'type': 'string', 'maxLength': 160},
     }}
     clip = defs['clipRange']
     clip['description'] = 'A clip in the range layer. For a story the inclusive outer word range is the source hull of its parts.'

@@ -90,9 +90,12 @@ enum ProjectValidation {
             }
             if let parts = fields["parts"] {
                 for part in try array(parts) {
-                    let fields = try object(part, required: "id startWordId endWordId", optional: "reframe takeReason")
+                    let fields = try object(part, required: "id startWordId endWordId", optional: isV7 ? "reframe takeReason" : "reframe")
                     if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY") }
-                    if let reason = fields["takeReason"] { try require(reason.aiString != nil, "Invalid version reason") }
+                    if let reason = fields["takeReason"] {
+                        guard let value = reason.aiString else { try fail("Invalid version reason") }
+                        try text(value, max: StoryClips.maxTakeReasonScalars)
+                    }
                 }
             }
             // An opening lead-in (ADR-R48) is schema v4 only: 0 < s ≤ 0.6.

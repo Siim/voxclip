@@ -29,6 +29,20 @@ import Testing
         }
     }
 
+    @Test func takeReasonUsesTheV7WireAndItsOwnLengthLimit() throws {
+        let (_, original) = try load()
+        var project = original
+        let reason = String(repeating: "🟣", count: 160)
+        project.edits.clips[0].parts?[0].takeReason = reason
+        #expect(try ProjectJSON.decode(ProjectJSON.encode(project)).edits.clips[0].playParts[0].takeReason == reason)
+        project.edits.clips[0].parts?[0].takeReason = reason + "🟣"
+        #expect(throws: (any Error).self) { try ProjectJSON.encode(project) }
+        var legacy = try ProjectJSON.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+        legacy.schemaVersion = 6
+        legacy.edits.clips[0].parts?[0].takeReason = "A clearer opening"
+        #expect(throws: (any Error).self) { try ProjectJSON.encode(legacy) }
+    }
+
     @Test func resolvesClockEdgesAndResamplesCompanionWords() throws {
         let (cases, project) = try load()
         let clock = ProjectClock.build(project)
@@ -107,13 +121,19 @@ import Testing
         let row = cases["removal"]
         let source = try #require(original.media.spokenSources?.first)
         var project = original
-        project.edits = ProjectEdits()
+        var clip = try #require(original.edits.clips.first)
+        clip.endWordId = "w2"
+        clip.parts = [ClipPart(id: "first", startWordId: "w1", endWordId: "w1", takeReason: "A clearer opening"),
+                      ClipPart(id: "second", startWordId: "w2", endWordId: "w2")]
+        project.edits = ProjectEdits(clips: [clip], activeClipId: clip.id)
         let removedKey = row["removedKey"].string
         let removed = try RecordingEdits.apply(.removeSpokenSource(key: removedKey), project: project).get()
         #expect(removed.undoName == "Remove recording")
         #expect(removed.project.media.additionalSources == project.media.additionalSources)
         let restored = try JSONProjectStore.decode(JSONProjectStore.encode(removed.project))
         #expect(restored.schemaVersion == 6 && restored.media.spokenSources == nil)
+        #expect(restored.edits.clips[0].playParts.map(\.id) == clip.playParts.map(\.id))
+        #expect(restored.edits.clips[0].playParts[0].takeReason == nil)
         let next = try RecordingEdits.apply(.addSpokenSource(key: row["nextKey"].string, transcript: source.transcript), project: restored).get()
         #expect(next.undoName == "Add recording")
         #expect(next.project.media.spokenSources?.first?.wordIdPrefix == row["survivingPrefix"].string)

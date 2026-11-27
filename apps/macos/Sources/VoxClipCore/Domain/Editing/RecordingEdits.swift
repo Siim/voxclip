@@ -125,7 +125,17 @@ public enum RecordingEdits {
         result.extensions = extensions
         sources.remove(at: index)
         result.media.spokenSources = sources.isEmpty ? nil : sources
-        if sources.isEmpty { result.schemaVersion = TimelineEditFields.version }
+        if sources.isEmpty {
+            result.schemaVersion = TimelineEditFields.version
+            for index in result.edits.clips.indices {
+                guard let parts = result.edits.clips[index].parts else { continue }
+                result.edits.clips[index].parts = parts.map { part in
+                    var retained = part
+                    retained.takeReason = nil
+                    return retained
+                }
+            }
+        }
         return result
     }
 

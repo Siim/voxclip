@@ -36,6 +36,24 @@ public sealed class RecordingClockFixtures
     }
 
     [Fact]
+    public void TakeReasonUsesTheV7WireAndItsOwnLengthLimit()
+    {
+        var (_, original) = Load();
+        var document = JsonNode.Parse(ProjectSerialization.Serialize(original))!;
+        var part = document["edits"]!["clips"]![0]!["parts"]![0]!;
+        var reason = string.Concat(Enumerable.Repeat("🟣", 160));
+        part["takeReason"] = reason;
+        var project = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.Equal(reason, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project)).Edits.Clips[0].PlayParts[0].TakeReason);
+        part["takeReason"] = reason + "🟣";
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        var legacy = JsonNode.Parse(FixtureLoader.ReadText("fixtures/story-clips/story-project.voxclip"))!;
+        legacy["schemaVersion"] = 6;
+        legacy["edits"]!["clips"]![0]!["parts"]![0]!["takeReason"] = "A clearer opening";
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(legacy.ToJsonString()));
+    }
+
+    [Fact]
     public void ResolvesClockEdgesAndResamplesCompanionWords()
     {
         var (cases, project) = Load();
@@ -120,7 +138,9 @@ public sealed class RecordingClockFixtures
         var (cases, original) = Load();
         var row = cases["removal"]!;
         var transcript = Assert.Single(original.Media.SpokenSources!).Transcript;
-        var project = original with { Edits = original.Edits with { Clips = [], ActiveClipId = null, Corrections = new Dictionary<string, string>(), CutWordIds = [], CutPauseIds = [] } };
+        var clip = original.Edits.Clips[0] with { EndWordId = "w2", Parts = [
+            new ClipPart("first", "w1", "w1", TakeReason: "A clearer opening"), new ClipPart("second", "w2", "w2")] };
+        var project = original with { Edits = original.Edits with { Clips = [clip], Corrections = new Dictionary<string, string>(), CutWordIds = [], CutPauseIds = [] } };
         var removedKey = row["removedKey"]!.GetValue<string>();
         var nextKey = row["nextKey"]!.GetValue<string>();
         var removed = Assert.IsType<RecordingEditResult.Applied>(RecordingEdits.Apply(new RecordingEdit.RemoveSpokenSource(removedKey), project));
@@ -129,6 +149,8 @@ public sealed class RecordingClockFixtures
         var restored = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(removed.Project));
         Assert.Equal(6, restored.SchemaVersion);
         Assert.Null(restored.Media.SpokenSources);
+        Assert.Equal(clip.PlayParts.Select(part => part.Id), restored.Edits.Clips[0].PlayParts.Select(part => part.Id));
+        Assert.Null(restored.Edits.Clips[0].PlayParts[0].TakeReason);
         var next = Assert.IsType<RecordingEditResult.Applied>(RecordingEdits.Apply(new RecordingEdit.AddSpokenSource(nextKey, transcript), restored));
         Assert.Equal("Add recording", next.UndoName);
         Assert.Equal(row["survivingPrefix"]!.GetValue<string>(), Assert.Single(next.Project.Media.SpokenSources!).WordIdPrefix);

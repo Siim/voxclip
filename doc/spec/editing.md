@@ -160,9 +160,9 @@ Preview and `voxclip-cli export --clip` on both platforms use the same part orde
 
 Schema v5 carries story clips and their AI suggestion metadata (`parts` as word ranges, and `notInTake` of at most 200 characters). Without a story clip, writers keep the legacy suggestion fields and do not write v5. Removing the last story clip returns the document to v4. Legacy documents do not upgrade merely by loading and saving.
 
-With [spoken recordings](../adr/R54-spoken-recordings-on-one-project-clock.md), each part (or an ordinary clip) must use words from one recording. A story's hull can span several recordings; it is still not a playback range. Part IDs and framing stay with their slot when **Use version** replaces its words, and an optional `takeReason` (up to 200 characters) records why a version was chosen. A part edit that would stop paid voice work selects and announces a copy, for example **Clip 1 copy**, without altering the original.
+With [spoken recordings](../adr/R54-spoken-recordings-on-one-project-clock.md), each part (or an ordinary clip) must use words from one recording. A story's hull can span several recordings; it is still not a playback range. Part IDs and framing stay with their slot when **Use version** replaces its words, and an optional `takeReason` (up to 160 characters, v7 only) records why a version was chosen. A part edit that would stop paid voice work selects and announces a copy, for example **Clip 1 copy**, without altering the original.
 
-Add, move, remove and trim a part are named Undo steps. Adding inserts after the requested part, or appends; moving with no preceding part places it first. **Add recording** promotes a known companion. **Remove recording** refuses while a part, cut, correction, suggestion or anchored item still uses the region. It leaves the companion and its file alone.
+Add, move, remove and trim a part are named Undo steps. Adding inserts after the requested part, or appends; moving with no preceding part places it first. **Add recording** promotes a known companion. **Remove recording** refuses while a part, cut, correction, suggestion or anchored item still uses the region. It leaves the companion and its file alone. Removing the last spoken companion returns the project to v6 and clears comparison reasons, not parts.
 
 ### 2.6 EditSegment (planner input)
 

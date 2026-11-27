@@ -561,6 +561,25 @@
                 "spokenSources"
               ]
             }
+          },
+          "edits": {
+            "properties": {
+              "clips": {
+                "items": {
+                  "properties": {
+                    "parts": {
+                      "items": {
+                        "not": {
+                          "required": [
+                            "takeReason"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -5144,7 +5163,7 @@
         },
         "takeReason": {
           "type": "string",
-          "maxLength": 200
+          "maxLength": 160
         }
       }
     },
