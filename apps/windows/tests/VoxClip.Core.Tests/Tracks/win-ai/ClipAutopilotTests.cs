@@ -725,6 +725,42 @@ public sealed class ClipAutopilotTests
     }
 
     [Fact]
+    public void OneRecordingKeepsVersion12RequestBytes()
+    {
+        var temporary = Directory.CreateTempSubdirectory("voxclip-autopilot-v12-");
+        try
+        {
+            foreach (var directory in new[] { "prompts", "caption-styles", "fonts" })
+                foreach (var source in Directory.EnumerateFiles(Path.Combine(Root, directory), "*.json", SearchOption.AllDirectories))
+                {
+                    var destination = Path.Combine(temporary.FullName, Path.GetRelativePath(Root, source));
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(source, destination);
+                }
+            var path = Path.Combine(temporary.FullName, ClipAutopilotPrompt.Path);
+            var version12 = string.Join('\n', File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').Where(line =>
+                !line.StartsWith("    \"takes\":", StringComparison.Ordinal) && !line.StartsWith("  \"takeReason\":", StringComparison.Ordinal)))
+                .Replace("\"promptVersion\": 13", "\"promptVersion\": 12", StringComparison.Ordinal);
+            File.WriteAllText(path, version12);
+            Assert.Equal("100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672", ClipAutopilotPrompt.Load(temporary.FullName).Sha256);
+            var catalog = AiTestSupport.Catalog();
+            var old = new ClipAutopilotService(new LlmRunner(new MemoryKeys(null), catalog, new Redactor()), catalog, temporary.FullName);
+            var current = Service();
+            var vector = Fixture("plan-parts-cases.json")["withRecordings"]!;
+            var project = ProjectSerialization.Deserialize(vector["project"]!.ToJsonString());
+            var transcript = Assert.IsType<Transcript>(project.Transcript);
+            ClipAutopilotMode[] modes = [new ClipAutopilotMode.Series(null), new ClipAutopilotMode.Clip(new(0, transcript.Words.Count - 1))];
+            foreach (var mode in modes)
+            {
+                var input = new ClipAutopilotRequest(transcript, project.Edits, mode);
+                Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(old.Request(input, ConnectorId.ClaudeCode)),
+                    JsonSerializer.SerializeToUtf8Bytes(current.Request(input, ConnectorId.ClaudeCode)));
+            }
+        }
+        finally { temporary.Delete(recursive: true); }
+    }
+
+    [Fact]
     public async Task ServiceFailsOnlyWhenTheReplyIsNeverJson()
     {
         var error = await Assert.ThrowsAsync<LlmException>(() => Service().PlanAsync(new(Transcript(), Edits(), new ClipAutopilotMode.Clip(new(0, 29))), Stub("no", "still no"), "fixture",

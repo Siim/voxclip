@@ -249,7 +249,7 @@ private func aiSharedGoldenVector(_ vector: AIGoldenVector) async throws {
         let window = try #require(builder.windows(words: words, preset: preset, contextTokens: 32_000, recordings: recordings).first)
         let request = builder.request(words: words, window: window, preset: preset, timeout: .seconds(120), recordings: recordings)
         let parts = request.schema[ai: "properties"][ai: "clips"][ai: "items"][ai: "properties"][ai: "parts"]
-        for snippet in expected[ai: "contains"].aiArray.compactMap(\.aiString) { #expect(request.cachedBlock.contains(snippet), "Missing \(snippet)") }
+        for snippet in expected[ai: "contains"].aiArray.compactMap(\.aiString) { #expect(request.cachedBlock?.contains(snippet) == true, "Missing \(snippet)") }
         #expect(request.instruction.hasSuffix(expected[ai: "instruction"].aiString ?? ""))
         #expect(request.system.hasSuffix(expected[ai: "system"].aiString ?? ""))
         #expect(parts[ai: "items"][ai: "properties"][ai: "take_reason"] == expected[ai: "reasonSchema"])

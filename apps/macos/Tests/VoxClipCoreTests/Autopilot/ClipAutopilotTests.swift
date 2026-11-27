@@ -76,7 +76,7 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothStagesInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 12)
+        #expect(prompt.promptVersion == 13)
         for system in [prompt.system, prompt.momentsSystem] {
             #expect(!system.contains("{") && !system.contains("}"))
             #expect(system.contains("Length: 20 to 45 seconds after cuts. Up to 60 s only when the idea cannot land in less"))
@@ -321,7 +321,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 12 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 13 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })
@@ -342,6 +342,81 @@ import Testing
         #expect(result.series.moments.map(\.startWord) == [0])
         #expect(result.series.plans.map(\.startWord) == [0])
         #expect(await stub.requests.map(\.schemaName) == ["clip_autopilot_moments", "clip_autopilot_plan"])
+    }
+
+    @Test func seriesCarriesValidatedTakeReasonsAcrossRecordings() async throws {
+        let vector = try Self.recordingsVector()
+        let input = try Self.recordingsInput(vector)
+        var planReply = try #require(try Self.sendable(try Self.reply("valid-clip")).aiObject)
+        planReply["parts"] = vector[ai: "planReply"][ai: "parts"]
+        let stub = AutopilotStub(replies: [try vector[ai: "momentsReply"].aiCompact(),
+                                           try JSONValue.object(planReply).aiCompact()])
+        let service = ClipAutopilotService(runner: try Self.runner(), shared: try Self.shared())
+        let result = try await service.plan(input, connector: stub, model: "fixture")
+        let moment = try #require(result.series.moments.first)
+        let plan = try #require(result.series.plans.first)
+        let loaded = try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(plan))
+        for (parts, prefix) in [(moment.parts, "moment"), (loaded.parts, "plan")] {
+            #expect(parts.map { [$0.startWord, $0.endWord] } == vector[ai: prefix + "Parts"].aiArray.map { $0.aiArray.compactMap(\.aiInt) })
+            #expect(parts.map(\.takeReason) == vector[ai: prefix + "Reasons"].aiArray.map(\.aiString))
+        }
+        #expect(loaded.canonicalProposal().parts == plan.parts)
+        let requests = await stub.requests
+        #expect(requests.count == 2)
+        let momentsRequest = try #require(requests.first)
+        let block = try #require(momentsRequest.cachedBlock)
+        #expect(block.contains("Recording take-3:"))
+        #expect(block.contains("<takes>") && block.contains("Solo:"))
+        #expect(momentsRequest.system.contains("Use one take of each beat"))
+        #expect(momentsRequest.schema[ai: "properties"][ai: "clips"][ai: "items"][ai: "properties"][ai: "parts"][ai: "items"][ai: "properties"][ai: "takeReason"][ai: "maxLength"].aiInt == 160)
+        #expect(requests.last?.cachedBlock?.contains("<takes>") == false)
+        let prompt = try ClipAutopilotPrompt(shared: Self.shared())
+        var context = ClipAutopilotContext(words: input.transcript.words, scope: 0...(input.transcript.words.count - 1),
+            styleIDs: [prompt.defaults.styleID], fonts: try ClipAutopilotFonts.load(shared: Self.shared()), prompt: prompt)
+        context.recordings = input.recordings
+        #expect(ClipAutopilotValidator.moments(vector[ai: "crossRecordingReply"], context: context).moments.isEmpty)
+    }
+
+    static func recordingsVector() throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/autopilot/plan-parts-cases.json"))[ai: "withRecordings"]
+    }
+
+    static func recordingsInput(_ vector: JSONValue) throws -> ClipAutopilotRequest {
+        let project = try ProjectJSON.decode(vector[ai: "project"].aiEncoded())
+        let clock = ProjectClock.build(project)
+        var input = ClipAutopilotRequest(transcript: try #require(clock.transcript), edits: project.edits, mode: .series(nil))
+        input.recordings = try #require(RecordingProposalContext(clock: clock))
+        return input
+    }
+
+    @Test func oneRecordingKeepsVersion12RequestBytes() async throws {
+        let shared = try Self.shared()
+        let files = FileManager.default
+        let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try files.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? files.removeItem(at: root) }
+        for directory in ["prompts", "caption-styles", "fonts", "catalog"] {
+            try files.copyItem(at: shared.root.appendingPathComponent(directory), to: root.appendingPathComponent(directory))
+        }
+        let url = root.appendingPathComponent(ClipAutopilotPrompt.path)
+        let current = try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "\r\n", with: "\n")
+        let version12 = current.components(separatedBy: "\n").filter { line in
+            !line.hasPrefix("    \"takes\":") && !line.hasPrefix("  \"takeReason\":")
+        }.joined(separator: "\n").replacingOccurrences(of: "\"promptVersion\": 13", with: "\"promptVersion\": 12")
+        try version12.write(to: url, atomically: true, encoding: .utf8)
+        let legacy = SharedResources(root: root)
+        #expect(try ClipAutopilotPrompt(shared: legacy).sha256 == "100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672")
+        let old = ClipAutopilotService(runner: try Self.runner(), shared: legacy)
+        let new = ClipAutopilotService(runner: try Self.runner(), shared: shared)
+        let project = try ProjectJSON.decode(Self.recordingsVector()[ai: "project"].aiEncoded())
+        let transcript = try #require(project.transcript)
+        for mode in [ClipAutopilotRequest.Mode.series(nil), .clip(0...(transcript.words.count - 1))] {
+            let input = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: mode)
+            let before = try await old.request(input, connector: .claudeCode)
+            let after = try await new.request(input, connector: .claudeCode)
+            #expect(before == after)
+            #expect(try before.schema.aiEncoded() == after.schema.aiEncoded())
+        }
     }
 
     @Test func serviceFailsOnlyWhenTheReplyIsNeverJSON() async throws {

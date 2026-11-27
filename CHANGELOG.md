@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Best versions and the autopilot planner can pick one take per beat across recordings; Mac proposal cards show why each part was chosen.
 - On Windows, preview and export story clips from several recordings, with matched speech levels and a check for the picture and voice at each recording change.
 - On Mac, preview and export story clips from multiple recordings with matched speech levels, separate Final Cut Pro assets, and an export check that flags the wrong picture or a level jump.
 - Mac and Windows can build a clip from one recording, swap just one line or put a skipped line back, while keeping paid voice work safe.

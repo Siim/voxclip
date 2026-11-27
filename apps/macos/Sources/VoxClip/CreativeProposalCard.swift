@@ -4,11 +4,14 @@ import VoxClipCore
 struct ProposalStripPart: Equatable {
     let start: Double
     let duration: Double
+    let recording: String?
+    let takeReason: String?
 
-    static func from(_ parts: [ClipProposal.Part], words: [TimedWord]) -> [Self] {
+    static func from(_ parts: [ClipProposal.Part], words: [TimedWord], clock: ProjectClock? = nil) -> [Self] {
         parts.compactMap { part in
             guard let first = words[safe: part.startWord], let last = words[safe: part.endWord] else { return nil }
-            return Self(start: first.start, duration: max(0, last.end - first.start))
+            return Self(start: first.start, duration: max(0, last.end - first.start),
+                        recording: part.takeReason == nil ? nil : clock?.region(of: first.id)?.label, takeReason: part.takeReason)
         }
     }
 }
@@ -30,6 +33,13 @@ struct ProposalPartsStrip: View {
             .frame(height: 20)
             .accessibilityLabel("Parts in play order: " + parts.map { durationLabel($0.start) }.joined(separator: ", "))
             .columnLayoutEvidence("proposal.parts")
+            ForEach(parts.indices, id: \.self) { index in
+                if let reason = parts[index].takeReason {
+                    let label = ["Part \(index + 1)", parts[index].recording, reason].compactMap { $0 }.joined(separator: " · ")
+                    Text(label).font(VCType.small.font()).foregroundStyle(.secondary)
+                        .lineLimit(1).help(label).accessibilityLabel(label)
+                }
+            }
         }
     }
 
