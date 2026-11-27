@@ -9,10 +9,17 @@ public abstract record RecordingEditResult
 {
     private RecordingEditResult() { }
     /// <summary>The new snapshot, named Undo step, and any announcement for the editor.</summary>
-    public sealed record Applied(Project Project, string UndoName, string? Announcement = null, RecordingEditDetails? Details = null) : RecordingEditResult;
+    public sealed record Applied(Project Project, string UndoName, string? Announcement = null, RecordingEditDetails? Details = null) : RecordingEditResult
+    {
+        /// <summary>The single snapshot step, absent for a no-op.</summary>
+        public RecordingEditStep? UndoStep { get; init; }
+    }
     /// <summary>Why the command left the snapshot unchanged.</summary>
     public sealed record Refused(string Message) : RecordingEditResult;
 }
+
+/// <summary>Exact project snapshots for one recording edit's Undo and Redo.</summary>
+public sealed record RecordingEditStep(string Name, Project Before, Project After);
 
 /// <summary>The clip, resulting parts, and skipped lines for recording shortcut feedback.</summary>
 public sealed record RecordingEditDetails(string ClipId, IReadOnlyList<string> MadePartIds, IReadOnlyList<TakeMatch.Take> LeftOut)
@@ -34,6 +41,13 @@ public static partial class RecordingEdits
 
     /// <summary>Apply one undoable edit without touching source files or paid assets.</summary>
     public static RecordingEditResult Apply(RecordingEdit edit, Project project)
+    {
+        var result = Reduce(edit, project);
+        return result is RecordingEditResult.Applied applied && applied.Project != project
+            ? applied with { UndoStep = new(applied.UndoName, project, applied.Project) } : result;
+    }
+
+    private static RecordingEditResult Reduce(RecordingEdit edit, Project project)
     {
         try
         {

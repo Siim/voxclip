@@ -28,11 +28,15 @@ def main():
     left_out = [after(notes_b['endWordId']), before(tracker_b['startWordId'])]
     companion_ids = [companion['wordIdPrefix'] + word['id'] for word in companion['transcript']['words']]
     middle_a = companion_ids[companion_ids.index(opening_a['endWordId']) + 1:companion_ids.index(punchline_a['startWordId'])]
+    opening_tail = companion['transcript']['words'][companion_ids.index(opening_a['endWordId'])]
+    clause_break = opening_tail['text'].rstrip('.') + ','
+    run_on = dict(afterWordId=opening_tail['id'], clauseBreak=clause_break,
+                  tail=[['new-tail-1', 'and', 1.22, 1.26], ['new-tail-2', 'grew.', 1.27, 1.32]])
     write('command-cases.json', dict(
         schema='voxclip-recording-commands/1', project=plan['project'], recordingA=recording_a, recordingB=recording_b,
         started=started, swapped=[span(opening_a), span(notes_b), started[-1]], leftOut=left_out,
         putBack=[[started[0][0], started[-1][1]]], placement=tracker_b['endWordId'],
-        middle=[[primary[0]['id'], left_out[1]], [middle_a[0], middle_a[-1]], span(ending_b)],
+        middle=[[primary[0]['id'], left_out[1]], [middle_a[0], middle_a[-1]], span(ending_b)], runOn=run_on,
         final=dict(ranges=[span(part) for part in plan['clip']['parts']], parts=plan['parts'],
                    kept=plan['kept'], outputSamples=plan['outputSamples'], partSeams=plan['partSeams'],
                    recordingSeams=plan['recordingSeams'])))

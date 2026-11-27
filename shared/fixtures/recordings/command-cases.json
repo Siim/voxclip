@@ -52,6 +52,24 @@
       "w27"
     ]
   ],
+  "runOn": {
+    "afterWordId": "w11",
+    "clauseBreak": "tracking,",
+    "tail": [
+      [
+        "new-tail-1",
+        "and",
+        1.22,
+        1.26
+      ],
+      [
+        "new-tail-2",
+        "grew.",
+        1.27,
+        1.32
+      ]
+    ]
+  },
   "final": {
     "ranges": [
       [
