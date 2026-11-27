@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import Observation
 import VoxClipCore
@@ -7,6 +8,7 @@ import VoxClipMedia
 @MainActor @Observable final class CardImport {
     @MainActor @Observable final class Recording: Identifiable {
         let file: FolderRecording
+        let recordedAt: Date
         nonisolated var id: String { file.id }
         var status = "Next"
         var detail = "Waiting to copy"
@@ -14,7 +16,10 @@ import VoxClipMedia
         var url: URL?
         var localMedia: URL?
         var model: EditorModel?
-        init(_ file: FolderRecording) { self.file = file }
+        init(_ file: FolderRecording) {
+            self.file = file
+            recordedAt = (try? file.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+        }
     }
 
     struct Retake: Identifiable {
@@ -35,8 +40,12 @@ import VoxClipMedia
     }
 
     enum Stage: Equatable { case offer, copying, finding, ranking, making, done }
+    enum Mode: Equatable { case batch, copyOnly, bestVersions, combinedProject }
     let rankingConfirmation = ConnectorConfirmation()
     private(set) var stage = Stage.offer
+    private(set) var mode = Mode.batch
+    private(set) var combinedURL: URL?
+    private(set) var combinedEditor: EditorModel?
     private(set) var folder: URL?
     private(set) var files: [FolderRecording] = []
     private(set) var rows: [Recording] = []
@@ -46,6 +55,12 @@ import VoxClipMedia
     private(set) var transcribed = 0
     private(set) var retakes: [Retake] = []
     var merged: Int { retakes.count }
+    var retakeHint: String? {
+        let ids = Set(retakes.flatMap { [$0.kept.recording.id, $0.other.recording.id] })
+        let labels = rows.filter { ids.contains($0.id) }.compactMap { $0.model?.project.media.source }.map(ProjectClock.label)
+        guard let last = labels.last, labels.count >= 2 else { return nil }
+        return labels.dropLast().joined(separator: ", ") + " and \(last) look like takes of the same idea."
+    }
     private(set) var scanRunning = false
     private(set) var exporting = false
     private(set) var notice: String?
@@ -74,7 +89,8 @@ import VoxClipMedia
     }
 
     func owns(_ url: URL) -> Bool {
-        (running || exporting) && rows.contains { $0.url?.standardizedFileURL == url.standardizedFileURL }
+        (running || exporting) && (combinedURL?.standardizedFileURL == url.standardizedFileURL ||
+            rows.contains { $0.url?.standardizedFileURL == url.standardizedFileURL })
     }
 
     nonisolated static var movies: URL {
@@ -101,6 +117,7 @@ import VoxClipMedia
         guard !running, !exporting else { return }
         scan?.cancel()
         mountedSelection = mounted; folder = url; files = []; chosen = []; stage = .offer; notice = nil; exports = nil; importName = nil
+        combinedURL = nil; combinedEditor = nil
         picking = false; scanRunning = true
         let library = self.library
         let worker = Task.detached(priority: .utility) { try await RecordingFolder.scan(url, library: library) }
@@ -132,20 +149,58 @@ import VoxClipMedia
     }
 
     func start(_ app: AppModel, copyOnly: Bool = false) {
-        guard stage == .offer, !running, !exporting, blocked(app, copyOnly: copyOnly) == nil else { return }
+        start(app, mode: copyOnly ? .copyOnly : .batch)
+    }
+
+    func combinedBlock(_ app: AppModel, findClip: Bool, count: Int? = nil) -> String? {
+        if count == nil, let reason = blocked(app, copyOnly: true) { return reason }
+        let count = count ?? selected.count
+        if count == 1 { return "Select two or more recordings to make one clip from them." }
+        if count > 6 { return "Select up to six recordings to make one project from them." }
+        if let reason = count == 0 ? blocked(app, copyOnly: true) : nil { return reason }
+        if findClip, provider(app) == nil { return "Choose an AI connector in Settings › AI." }
+        return nil
+    }
+
+    var savedCount: Int { savedRecordings.count }
+
+    func makeOneFromSavedRecordings(_ app: AppModel) {
+        guard stage == .done, !running, !exporting, combinedURL == nil,
+              combinedBlock(app, findClip: true, count: savedCount) == nil, let provider = provider(app),
+              let destination = savedRecordings.first?.url?.deletingLastPathComponent() else { return }
+        let route = CardPlanConnector.Route(app: app, provider: provider)
+        notice = nil; stage = .making
+        task = Task { [weak self] in
+            guard let self else { return }
+            defer { stage = .done; task = nil }
+            await makeCombined(in: destination, app: app, provider: provider, route: route)
+        }
+    }
+
+    func start(_ app: AppModel, mode: Mode) {
+        let combined = mode == .bestVersions || mode == .combinedProject
+        guard stage == .offer, !running, !exporting,
+              blocked(app, copyOnly: mode != .batch) == nil,
+              !combined || combinedBlock(app, findClip: mode == .bestVersions) == nil else { return }
+        self.mode = mode
         importName = destinationName
         let destination = library.appendingPathComponent(destinationName, isDirectory: true)
-        let provider = copyOnly ? nil : provider(app)
+        let provider = mode == .batch || mode == .bestVersions ? provider(app) : nil
         let route = provider.map { CardPlanConnector.Route(app: app, provider: $0) }
         rows = selected.map(Recording.init)
+        combinedURL = nil; combinedEditor = nil
         moments = []; retakes = []; copied = 0; transcribed = 0; notice = nil; stage = .copying
         let started = Date()
         elapsed = nil
-        budget = copyOnly ? nil : MakeItBudget(cap: Decimal(app.settings.clipsAutopilot.capUSD), fixed: true)
+        budget = provider.map { _ in MakeItBudget(cap: Decimal(app.settings.clipsAutopilot.capUSD), fixed: true) }
         task = Task { [weak self] in
             guard let self else { return }
             defer { elapsed = Date().timeIntervalSince(started); stage = .done; task = nil }
-            await copyAndFind(to: destination, app: app, provider: provider, route: route)
+            await copyAndFind(to: destination, app: app, provider: mode == .batch ? provider : nil, route: mode == .batch ? route : nil)
+            if combined, !Task.isCancelled {
+                await makeCombined(in: destination, app: app, provider: provider, route: route)
+                return
+            }
             guard let provider, let route, !Task.isCancelled else { return }
             stage = .ranking
             let found = moments
@@ -208,12 +263,12 @@ import VoxClipMedia
                 document.editorModel = model
                 _ = try await model.resolveMediaIdentity()
                 recording.model = model
-                if route != nil { (index.isMultiple(of: 2) ? first : second).yield(recording) }
+                if mode != .copyOnly { (index.isMultiple(of: 2) ? first : second).yield(recording) }
             } catch is CancellationError { break }
             catch { recording.status = "Couldn't copy"; recording.detail = "Check the recording and free space, then try again." }
         }
         first.finish(); second.finish()
-        if route != nil { stage = .finding }
+        if mode != .copyOnly { stage = .finding }
         _ = await (firstLane, secondLane)
         let sources = rows.compactMap { $0.model?.project.media.source }
         for recording in rows {
@@ -235,12 +290,17 @@ import VoxClipMedia
     private func find(_ recording: Recording, app: AppModel) async {
         guard !Task.isCancelled, let model = recording.model else { return }
         recording.status = "Transcribing"; recording.detail = "Transcribing on this Mac"
-        guard await model.transcription.startLocalForRecordingFolder() else {
+        if let cached = RecordingTranscriptCache.read(model.project.media.source.contentKey, cache: app.locations.cache, recent: []) {
+            var project = model.project
+            project.transcript = cached
+            model.replace(project, name: "Transcribe recording")
+        } else if await model.transcription.startLocalForRecordingFolder() {
+            await model.workTask?.value
+        } else {
             recording.status = "Not transcribed"
             recording.detail = "Open this project to install or choose a local speech model."
             return
         }
-        await model.workTask?.value
         guard !Task.isCancelled, model.transcribed else {
             recording.status = "Not transcribed"; recording.detail = model.transcription.error ?? "The recording is saved."
             return
@@ -276,6 +336,170 @@ import VoxClipMedia
         guard let url = recording.url, let project = recording.model?.project else { return }
         do { try await JSONProjectStore().save(project, to: url); recording.saveFailed = false }
         catch { recording.saveFailed = true }
+    }
+
+    private var savedRecordings: [Recording] {
+        rows.filter { $0.url != nil && $0.model != nil && !$0.saveFailed }.sorted {
+            ($0.recordedAt, $0.file.url.path) < ($1.recordedAt, $1.file.url.path)
+        }
+    }
+
+    private func combinedTitle(_ recordings: [Recording], date: Date) -> String {
+        let labels = recordings.compactMap { $0.model?.project.media.source }.map(ProjectClock.label)
+        return labels.joined(separator: " + ") + " · " + date.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "en_GB")))
+    }
+
+    private func combinedProject(_ project: Project, from recordings: [Recording], primary: Project) throws -> Project {
+        let others = recordings.compactMap { $0.model?.project }.filter { $0.media.source.contentKey != primary.media.source.contentKey }
+        var combined = project
+        combined.media = ProjectMedia(source: primary.media.source, additionalSources: others.map(\.media.source))
+        combined.transcript = primary.transcript
+        if primary.transcript != nil {
+            for other in others {
+                guard let transcript = other.transcript else { continue }
+                combined = try RecordingEdits.apply(.addSpokenSource(key: other.media.source.contentKey, transcript: transcript), project: combined).get().project
+            }
+        }
+        return combined
+    }
+
+    private func makeCombined(in destination: URL, app: AppModel, provider: ProviderChoice?, route: CardPlanConnector.Route?) async {
+        let recordings = savedRecordings
+        guard recordings.count >= 2,
+              let first = recordings.compactMap({ $0.model?.project }).first(where: { $0.transcript != nil }) ?? recordings.first?.model?.project else {
+            notice = "At least two recordings need to be saved to make one project."
+            return
+        }
+        do {
+            let date = Date()
+            let title = combinedTitle(recordings, date: date)
+            let seed = Project(schemaVersion: 4, id: UUID().uuidString.lowercased(), title: title, createdAt: date, modifiedAt: date,
+                               savedBy: first.savedBy, media: first.media, captions: first.captions, export: first.export)
+            let project = try combinedProject(seed, from: recordings, primary: first)
+            var url = destination.appendingPathComponent(title).appendingPathExtension("voxclip")
+            var suffix = 2
+            while FileManager.default.fileExists(atPath: url.path) {
+                url = destination.appendingPathComponent("\(title) \(suffix)").appendingPathExtension("voxclip")
+                suffix += 1
+            }
+            try await JSONProjectStore().save(project, to: url)
+            combinedURL = url
+            app.noteRecent(url)
+            let editor = try await openCombined(project, at: url, app: app)
+            combinedEditor = editor
+            guard recordings.count == rows.count, editor.recordingRegions.count == recordings.count else {
+                notice = "The project is saved. Copy or transcribe the remaining recordings before comparing versions."
+                return
+            }
+            guard let provider, let route, !Task.isCancelled else { return }
+            let frames = await combinedFrames(recordings)
+            guard !Task.isCancelled else { return }
+            editor.cardPlanConnector = CardPlanConnector(app: app, provider: provider, route: route, confirmation: editor.sendConfirmation,
+                                                        frames: frames, verb: "Make one clip")
+            stage = .making
+            editor.findClips(preset: .bestTakes, instruction: "One clip from the best take of each line.")
+            await editor.findTask?.value
+            if let clip = editor.suggestedClips.first {
+                let final = try rebasedProposal(editor.project, clip: clip, recordings: recordings)
+                if final != editor.project {
+                    try await JSONProjectStore().save(final, to: url)
+                    if !Task.isCancelled { combinedEditor = try await openCombined(final, at: url, app: app) }
+                    else { editor.document.replaceProject(final); editor.refresh() }
+                }
+            } else if !Task.isCancelled { notice = editor.clipError ?? "The project is saved without a clip." }
+        } catch is CancellationError {} catch {
+            if !Task.isCancelled { notice = "Couldn't finish the combined project. Saved recordings and finished work are kept." }
+        }
+    }
+
+    private func openCombined(_ project: Project, at url: URL, app: AppModel) async throws -> EditorModel {
+        let document = VoxClipDocument(project: project)
+        document.fileURL = url
+        let editor = EditorModel(document: document, app: app)
+        editor.onCardProjectChange = { [weak self] project in
+            do { try JSONProjectStore.encode(project).write(to: url, options: .atomic) }
+            catch { self?.notice = "Couldn't save the combined project." }
+        }
+        document.editorModel = editor
+        _ = try await editor.resolveMediaIdentity()
+        return editor
+    }
+
+    private func rebasedProposal(_ project: Project, clip: ClipRange, recordings: [Recording]) throws -> Project {
+        let old = ProjectClock.build(project)
+        let byWord = Dictionary(uniqueKeysWithValues: old.words.enumerated().map { ($0.element.id, $0.offset) })
+        let matches = TakeMatch.build(clock: old)
+        var votes: [String: Int] = [:]
+        for part in clip.playParts {
+            guard let key = old.region(of: part.startWordId)?.key,
+                  let first = byWord[part.startWordId], let last = byWord[part.endWordId] else { continue }
+            let beats = matches.beats.filter { beat in
+                beat.takes.contains { take in
+                    guard take.key == key, let start = byWord[take.startWordId], let end = byWord[take.endWordId] else { return false }
+                    return start <= last && first <= end
+                }
+            }.count
+            votes[key, default: 0] += max(1, beats)
+        }
+        let chosen = recordings.filter { recording in
+            recording.model.map { votes[$0.project.media.source.contentKey] != nil } ?? false
+        }
+        guard let primary = chosen.compactMap({ $0.model?.project }).max(by: {
+            votes[$0.media.source.contentKey, default: 0] < votes[$1.media.source.contentKey, default: 0]
+        }) else { return project }
+        var result = project
+        result.title = combinedTitle(chosen, date: project.createdAt)
+        guard primary.media.source.contentKey != project.media.source.contentKey else { return result }
+        let edits = result.edits, ai = result.ai
+        result.edits = ProjectEdits(); result.ai = ProjectAI()
+        result = try combinedProject(result, from: recordings, primary: primary)
+        let clock = ProjectClock.build(result)
+        let prefixes = Dictionary(uniqueKeysWithValues: clock.regions.map { ($0.key, $0.prefix) })
+        let indices = Dictionary(uniqueKeysWithValues: clock.words.enumerated().map { ($0.element.id, $0.offset) })
+        func remap(_ id: String) -> String {
+            guard let region = old.region(of: id), let prefix = prefixes[region.key] else { return id }
+            return prefix + id.dropFirst(region.prefix.count)
+        }
+        func bounds(_ parts: [ClipWordRange]) -> (String, String) {
+            let first = parts.map(\.startWordId).min { indices[$0, default: 0] < indices[$1, default: 0] } ?? ""
+            let last = parts.map(\.endWordId).max { indices[$0, default: 0] < indices[$1, default: 0] } ?? ""
+            return (first, last)
+        }
+        result.edits = edits
+        for index in result.edits.clips.indices {
+            var range = result.edits.clips[index]
+            range.parts = range.parts?.map { ClipPart(id: $0.id, startWordId: remap($0.startWordId), endWordId: remap($0.endWordId), takeReason: $0.takeReason) }
+            (range.startWordId, range.endWordId) = bounds(range.playParts.map {
+                ClipWordRange(startWordId: range.parts == nil ? remap($0.startWordId) : $0.startWordId,
+                              endWordId: range.parts == nil ? remap($0.endWordId) : $0.endWordId)
+            })
+            result.edits.clips[index] = range
+        }
+        result.ai = ai
+        for index in result.ai.results.indices {
+            result.ai.results[index].clips = result.ai.results[index].clips.map { clip in
+                var adjusted = clip
+                adjusted.parts = clip.parts?.map { ClipWordRange(startWordId: remap($0.startWordId), endWordId: remap($0.endWordId), takeReason: $0.takeReason) }
+                (adjusted.startWordId, adjusted.endWordId) = adjusted.parts.map(bounds) ?? (remap(clip.startWordId), remap(clip.endWordId))
+                return adjusted
+            }
+        }
+        return result
+    }
+
+    private func combinedFrames(_ recordings: [Recording]) async -> [LLMImage] {
+        var frames: [LLMImage] = []
+        for recording in recordings {
+            guard !Task.isCancelled, let url = recording.localMedia, let source = recording.model?.project.media.source else { continue }
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 256, height: 256)
+            let time = CMTime(seconds: source.durationSeconds / 3, preferredTimescale: 600)
+            guard let frame = try? await generator.image(at: time).image,
+                  let data = NSBitmapImageRep(cgImage: frame).representation(using: .jpeg, properties: [.compressionFactor: 0.7]) else { continue }
+            frames.append(LLMImage(label: "Recording \(ProjectClock.label(source))", mediaType: "image/jpeg", data: data, width: frame.width, height: frame.height))
+        }
+        return frames
     }
 
     private func rank(_ found: [Moment], app: AppModel, provider: ProviderChoice, route: CardPlanConnector.Route) async -> [Moment] {
@@ -329,6 +553,9 @@ import VoxClipMedia
 
     func stop() {
         task?.cancel()
+        rankingConfirmation.cancel()
+        combinedEditor?.sendConfirmation.cancel()
+        combinedEditor?.findTask?.cancel()
         for row in rows {
             row.model?.workTask?.cancel()
             row.model?.findTask?.cancel()
@@ -387,9 +614,12 @@ struct CardPlanConnector: LLMConnector {
     let route: Route
     let confirmation: ConnectorConfirmation
     private let connector: any LLMConnector
+    private let frames: [LLMImage]
+    private let verb: String
 
-    @MainActor init(app: AppModel, provider: ProviderChoice, route: Route, confirmation: ConnectorConfirmation) {
+    @MainActor init(app: AppModel, provider: ProviderChoice, route: Route, confirmation: ConnectorConfirmation, frames: [LLMImage] = [], verb: String = "Make clips") {
         self.app = app; self.provider = provider; self.route = route; self.confirmation = confirmation
+        self.frames = frames; self.verb = verb
         self.connector = app.connector(provider.id)
     }
 
@@ -401,6 +631,8 @@ struct CardPlanConnector: LLMConnector {
     func supportsImages() async -> Bool { await connector.supportsImages() }
 
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
+        var request = request
+        if !frames.isEmpty, await connector.supportsImages() { request.images += frames }
         guard try await approved() else { throw CancellationError() }
         try Task.checkCancellation()
         return try await connector.send(request, model: model)
@@ -409,6 +641,6 @@ struct CardPlanConnector: LLMConnector {
     @MainActor private func approved() async throws -> Bool {
         guard isCurrent else { return false }
         return try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
-            confirmation: confirmation, verb: "Make clips", isCurrent: { isCurrent })
+            confirmation: confirmation, verb: verb, isCurrent: { isCurrent })
     }
 }

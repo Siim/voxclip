@@ -44,6 +44,9 @@ import VoxClipMedia
             }
             if card.running {
                 ConnectorConfirmationView(confirmation: card.rankingConfirmation, compact: false)
+                if let editor = card.combinedEditor {
+                    ConnectorConfirmationView(confirmation: editor.sendConfirmation, compact: false)
+                }
                 ForEach(card.rows) { recording in
                     if let editor = recording.model {
                         ConnectorConfirmationView(confirmation: editor.sendConfirmation, compact: false)
@@ -54,6 +57,11 @@ import VoxClipMedia
         }
         .accessibilityIdentifier("voxclip.home.cardImport")
         .onDisappear { takePlayer?.pause() }
+        .onChange(of: card.stage) { _, stage in
+            if stage == .done, card.mode == .combinedProject, let url = card.combinedURL {
+                Task { await shell.openProject(at: url) }
+            }
+        }
     }
 
     private var offer: some View {
@@ -78,6 +86,15 @@ import VoxClipMedia
             }
             if card.picking {
                 ForEach(card.newFiles) { file in selection(file) }
+                Button("✦ Make one clip from these \(card.selected.count) · up to $\(cap)") { card.start(shell.app, mode: .bestVersions) }
+                    .buttonStyle(.bordered).disabled(card.combinedBlock(shell.app, findClip: true) != nil)
+                if let reason = card.combinedBlock(shell.app, findClip: true) { small(reason) }
+                if let provider = card.provider(shell.app) {
+                    small("\(provider.label) receives the transcripts of the \(card.selected.count) recordings, their names and selected still frames, to pick the best version of each line. Metered AI sends ask first.")
+                } else {
+                    Button("Make one project from these") { card.start(shell.app, mode: .combinedProject) }
+                        .disabled(card.combinedBlock(shell.app, findClip: false) != nil)
+                }
                 Button("Copy selected without making clips") { card.start(shell.app, copyOnly: true) }
                     .disabled(card.blocked(shell.app, copyOnly: true) != nil)
             }
@@ -111,8 +128,10 @@ import VoxClipMedia
                 heading("\(card.destinationName) · \(card.rows.count) recordings")
                 step("Copied to this Mac", value: "\(card.copied) of \(card.rows.count)", complete: card.stage != .copying, active: card.stage == .copying)
                 step("Transcribing on this Mac, two at a time", value: "\(card.transcribed) of \(card.rows.count)", complete: card.stage == .ranking, active: card.rows.contains { $0.status == "Transcribing" })
-                step(card.stage == .ranking ? "Ranking moments and merging retakes" : "Finding moments", value: "\(card.moments.count) so far", complete: false, active: card.stage == .ranking || card.rows.contains { $0.status == "Finding" })
-                step("Making the best ones postable", value: "", complete: false, active: false)
+                if card.mode == .batch {
+                    step(card.stage == .ranking ? "Ranking moments and merging retakes" : "Finding moments", value: "\(card.moments.count) so far", complete: false, active: card.stage == .ranking || card.rows.contains { $0.status == "Finding" })
+                    step("Making the best ones postable", value: "", complete: false, active: false)
+                }
                 let completed: Double = Double(card.copied + card.transcribed)
                 let total: Double = Double(max(1, card.rows.count * 2))
                 ProgressView(value: completed, total: total)
@@ -137,14 +156,18 @@ import VoxClipMedia
     private var results: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             if card.stage == .done { finished.padding(12) }
-            else {
+            else if card.combinedURL != nil || card.mode == .bestVersions {
+                heading("Picking the best versions…").padding(12)
+            } else {
                 HStack {
                     heading("Best across the card · \(card.moments.count) moments")
                     Spacer()
                     small("\(min(12, card.moments.filter { $0.score >= 7 }.count)) worth posting")
                 }.padding(12)
             }
+            if let hint = card.retakeHint { small(hint).padding(.horizontal, 12) }
             if !card.retakes.isEmpty { retakeReview.padding(.horizontal, 12).padding(.bottom, 8) }
+            if let url = card.combinedURL, !card.running { combinedResult(url).padding(12) }
             ForEach(Array(card.moments.enumerated()), id: \.element.id) { index, moment in momentRow(moment, index: index + 1) }
             if card.moments.isEmpty || card.rows.contains(where: { $0.status != "Found" && $0.status != "Copied" }) {
                 ForEach(card.rows) { row in recordingRow(row) }
@@ -156,12 +179,17 @@ import VoxClipMedia
 
     private var finished: some View {
         VStack(alignment: .leading, spacing: 6) {
-            heading(card.budget == nil ? "\(card.copied) recordings copied" : "\(card.ready.count) clips ready from \(card.name)")
-            if let budget = card.budget {
+            heading(card.mode == .batch ? "\(card.ready.count) clips ready from \(card.name)" : "\(card.copied) recordings copied")
+            if card.mode == .batch, let budget = card.budget {
                 small("From \(card.copied) recordings in \(durationLabel(card.elapsed ?? 0)) · \(card.spent) of $\(budget.cap) · \(card.merged) retakes merged")
             } else { small("Each recording is saved as a project.") }
-            if card.budget != nil {
+            if card.mode == .batch {
                 HStack(spacing: 8) {
+                    if card.retakeHint != nil, card.combinedURL == nil {
+                        Button("✦ Make one clip from these \(card.savedCount) · up to $\(card.budget?.cap ?? 0)") {
+                            card.makeOneFromSavedRecordings(shell.app)
+                        }.buttonStyle(.borderedProminent).disabled(card.exporting || card.combinedBlock(shell.app, findClip: true, count: card.savedCount) != nil)
+                    }
                     Button("Export All · 9:16") { card.export(.portrait) }.buttonStyle(.borderedProminent).disabled(card.ready.isEmpty || card.exporting)
                     Button("Also 16:9") { card.export(.landscape) }.buttonStyle(.bordered).disabled(card.ready.isEmpty || card.exporting)
                     Button("Show in Finder") { if let url = card.exports { NSWorkspace.shared.open(url) } }.buttonStyle(.borderless).disabled(card.exports == nil)
@@ -174,8 +202,31 @@ import VoxClipMedia
         .padding(12).background(DesignValues.color("bg.surface"), in: .rect(cornerRadius: 8))
     }
 
+    @ViewBuilder private func combinedResult(_ url: URL) -> some View {
+        if let editor = card.combinedEditor, let clip = editor.suggestedClips.first, let details = editor.suggestedCardDetails(clip) {
+            CreativeProposalCard(data: CreativeProposalData(source: details.badge, title: clip.title ?? "Best versions", summary: details.summary,
+                                                            parts: details.parts, groups: [], chips: [], cost: nil, note: details.reason)) {
+                HStack {
+                    Button("Keep") { editor.keep(clip.id) }.buttonStyle(.borderedProminent)
+                    Button("Undo") { editor.dismiss(clip.id) }
+                    Button("Change…") {
+                        Task { if await shell.openProject(at: url) { shell.choose(.clip(clip.id), byClick: false) } }
+                    }
+                }.buttonStyle(.bordered)
+            }
+        } else {
+            Button("Open combined project") { Task { await shell.openProject(at: url) } }
+                .buttonStyle(.borderedProminent)
+        }
+    }
+
     private var retakeReview: some View {
         DisclosureGroup("\(card.merged) \(card.merged == 1 ? "retake merged" : "retakes merged")") {
+            if !card.running, card.combinedURL == nil {
+                Button("Or make one clip from the best parts of each take") { card.makeOneFromSavedRecordings(shell.app) }
+                    .disabled(card.exporting || card.combinedBlock(shell.app, findClip: true, count: card.savedCount) != nil)
+                if let reason = card.combinedBlock(shell.app, findClip: true, count: card.savedCount) { small(reason) }
+            }
             ForEach(card.retakes) { pair in
                 VStack(alignment: .leading, spacing: 4) {
                     small("Kept “\(pair.kept.clip.title ?? "Untitled clip")” from \(pair.kept.recording.file.url.lastPathComponent). The other take is still in its project.")

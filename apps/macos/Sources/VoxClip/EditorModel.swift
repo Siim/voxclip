@@ -1968,6 +1968,8 @@ extension EditorModel {
         let selectedSignature = rewriteConnectorSignature
         let selectedPreset = requestedPreset ?? preset
         let instructions = requestedInstruction ?? instruction
+        let comparisonClock = selectedPreset == .bestTakes ? recordingClock : nil
+        let comparison = comparisonClock.flatMap(RecordingProposalContext.init(clock:))
         lastFindRequest = (selectedPreset, instructions)
         let snapshot = project
         do {
@@ -2013,7 +2015,7 @@ extension EditorModel {
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
                     guard let preset = presets.first(where: { $0.id == selectedPreset }) else { throw ClipFinderGateError.needInstructions(message: "Choose a clip preset.") }
-                    var result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                    var result = try await finder.find(ClipFinderRequest(transcript: comparisonClock?.transcript ?? transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions, recordings: comparison), connector: connector, model: selectedModel)
                     if let draft {
                         claudeMode.clock?.end(.find)
                         await draft.work.value
@@ -2032,17 +2034,19 @@ extension EditorModel {
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
                     let publishable = draft?.request.confirmedTranscript ?? transcript
-                    guard !Task.isCancelled, project.transcript == publishable else { return }
+                    guard !Task.isCancelled, project.transcript == publishable,
+                          comparisonClock == nil || recordingClock == comparisonClock else { return }
                     outcome = .finished
                     guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
                     var next = project
                     next.ai.results.append(result)
                     let ranges = result.clips.enumerated().map { position, clip in
                         let parts = clip.parts?.enumerated().map { index, part in
-                            ClipPart(id: "part-\(index + 1)", startWordId: part.startWordId, endWordId: part.endWordId)
+                            ClipPart(id: "part-\(index + 1)", startWordId: part.startWordId, endWordId: part.endWordId, takeReason: part.takeReason)
                         }
                         return ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId,
-                                         title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position, parts: parts)
+                                         title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position, parts: parts,
+                                         kind: selectedPreset == .bestTakes && (parts?.count ?? 0) > 1 ? .story : nil)
                     }
                     // One undo step: the result arrives as suggestions, not kept clips.
                     guard capabilities.edit, let state = editState() else { return }
