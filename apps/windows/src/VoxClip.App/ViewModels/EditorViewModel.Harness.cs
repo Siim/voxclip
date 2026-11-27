@@ -21,7 +21,7 @@ public sealed partial class EditorViewModel
         : IsLeaving || Busy || undoGroup is { OwnsEdits: true } || Music.Phase is MusicPanelPhase.Searching or MusicPanelPhase.Using
             ? "Finish the current action before keeping this timeline." : null;
 
-    internal HarnessReviewDetails DescribeHarnessProposal(HarnessProposal proposal, string? sharedRoot, int index = 0)
+    internal HarnessReviewDetails DescribeHarnessProposal(HarnessProposal proposal, string? sharedRoot, int index = 0, string? cache = null)
     {
         var timeline = proposal.TimelineAt(index);
         var intent = proposal.Timelines[index];
@@ -52,7 +52,7 @@ public sealed partial class EditorViewModel
         {
             try
             {
-                var transcript = recordingKey is null ? null : HarnessRecording.CachedTranscript(recordingKey, App.Services.Data.Cache);
+                var transcript = recordingKey is null || cache is null ? null : HarnessRecording.CachedTranscript(recordingKey, cache);
                 var review = proposal.Review(project, sharedRoot, index, transcript, preview: true);
                 estimate = proposal.EstimatedMusicPrice(review.Project, sharedRoot, index);
                 foreach (var operation in review.Operations.Where(operation =>
@@ -89,26 +89,25 @@ public sealed partial class EditorViewModel
             ? new(music.Cue.ClipId, next.Media.Source.ContentKey, music.Cue.Picked.Prompt, music.Cue.Picked.TimelineShape) : null;
     }
 
-    internal async Task<Transcript?> PrepareHarnessRecordingAsync(HarnessProposal proposal, string projectPath, int index, CancellationToken ct)
+    /// <summary>The transcript a kept harness recording needs: cached, or transcribed on this PC by <paramref name="transcribe"/>,
+    /// which the page supplies because media and transcription services live in the app.</summary>
+    internal async Task<Transcript?> PrepareHarnessRecordingAsync(HarnessProposal proposal, int index, string cache,
+        Func<MediaReference, TranscriptionPlan, CancellationToken, Task<Transcript>> transcribe, CancellationToken ct)
     {
         if (proposal.RecordingKeyAt(index) is not { } key) return null;
         var snapshot = project;
         proposal.ValidateRevision(snapshot);
         var source = HarnessRecording.Source(key, snapshot);
-        if (HarnessRecording.CachedTranscript(key, App.Services.Data.Cache) is { } cached) return cached;
+        if (HarnessRecording.CachedTranscript(key, cache) is { } cached) return cached;
         if (proposal.HasPinnedRecordingTranscriptAt(index))
             throw new HarnessException("The recording transcript changed. Ask for a new timeline proposal.");
         var local = HarnessRecording.LocalTranscription(snapshot);
         if (local is not { Engine: { Id: TranscriptEngine.Whispercpp, ModelId: { } model } }) throw HarnessRecording.Refusal(source);
-        var path = await App.Services.Projects.ResolveMediaAsync(source, projectPath, ct) ?? throw HarnessRecording.Refusal(source);
-        var media = await App.Services.Probe.ProbeAsync(path, ct);
-        var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, key, null, ct);
         LanguageChoice language = local.Language is { } code ? new LanguageChoice.Forced(code) : new LanguageChoice.Auto();
-        var plan = new TranscriptionPlan(TranscriptEngine.Whispercpp, model, language, new());
-        var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, key), audio.Envelope, null, ct);
+        var transcript = await transcribe(source, new TranscriptionPlan(TranscriptEngine.Whispercpp, model, language, new()), ct);
         ct.ThrowIfCancellationRequested();
         if (!ReferenceEquals(project, snapshot)) throw new HarnessException("The project changed. Ask for a new timeline proposal.");
-        HarnessRecording.CacheTranscript(key, App.Services.Data.Cache, transcript);
+        HarnessRecording.CacheTranscript(key, cache, transcript);
         return transcript;
     }
 

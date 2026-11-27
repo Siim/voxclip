@@ -82,7 +82,7 @@ public sealed partial class EditorPage
                 fillingHarnessTimelines = false;
                 HarnessChanges.IsExpanded = false;
             }
-            harnessDetails = pending is null ? null : ViewModel.DescribeHarnessProposal(pending, App.Services.SharedRoot, harnessTimelineIndex);
+            harnessDetails = pending is null ? null : ViewModel.DescribeHarnessProposal(pending, App.Services.SharedRoot, harnessTimelineIndex, App.Services.Data.Cache);
             ShowHarnessDetails();
         }
         if (harnessReadIssue != issue)
@@ -130,7 +130,7 @@ public sealed partial class EditorPage
     {
         if (fillingHarnessTimelines || harnessPending is not { } pending || HarnessTimelinePicker.SelectedIndex < 0) return;
         harnessTimelineIndex = HarnessTimelinePicker.SelectedIndex;
-        harnessDetails = ViewModel.DescribeHarnessProposal(pending, App.Services.SharedRoot, harnessTimelineIndex);
+        harnessDetails = ViewModel.DescribeHarnessProposal(pending, App.Services.SharedRoot, harnessTimelineIndex, App.Services.Data.Cache);
         ShowHarnessDetails();
         UpdateHarnessButtons();
     }
@@ -139,6 +139,16 @@ public sealed partial class EditorPage
 
     private async void HarnessKeepClicked(object sender, RoutedEventArgs args) => await ReviewHarnessAsync(keep: true);
     private async void HarnessUndoClicked(object sender, RoutedEventArgs args) => await ReviewHarnessAsync(keep: false);
+
+    private static async Task<Core.Domain.Transcript.Transcript> TranscribeHarnessRecordingAsync(MediaReference source, string projectPath,
+        Core.Domain.Transcript.TranscriptionPlan plan,
+        CancellationToken ct)
+    {
+        var path = await App.Services.Projects.ResolveMediaAsync(source, projectPath, ct) ?? throw HarnessRecording.Refusal(source);
+        var media = await App.Services.Probe.ProbeAsync(path, ct);
+        var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, ct);
+        return await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, source.ContentKey), audio.Envelope, null, ct);
+    }
 
     private async Task ReviewHarnessAsync(bool keep)
     {
@@ -153,7 +163,8 @@ public sealed partial class EditorPage
                 if (HarnessBlock is not null || App.Services.SharedRoot is not { } root) return;
                 keepingHarnessRecording = pending.RecordingKeyAt(index) is not null;
                 if (keepingHarnessRecording) UpdateHarnessButtons();
-                var transcript = await ViewModel.PrepareHarnessRecordingAsync(pending, path, index, lifetime.Token);
+                var transcript = await ViewModel.PrepareHarnessRecordingAsync(pending, index, App.Services.Data.Cache,
+                    (source, plan, ct) => TranscribeHarnessRecordingAsync(source, path, plan, ct), lifetime.Token);
                 if (disposed || !IsHarnessPath(path)) return;
                 harnessMusic = ViewModel.KeepHarnessTimeline(pending, path, root, index, out var assets, out var rewrites, transcript);
                 harnessAssets.AddRange(assets);
