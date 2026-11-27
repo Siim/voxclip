@@ -32,7 +32,7 @@ public actor JSONProjectStore: ProjectStore {
             return (project, warnings)
         } catch let error as VoxClipError { throw error }
         catch let error as VoiceLabProjectError { throw error }
-        catch { throw VoxClipError.projectUnreadable("Invalid project document") }
+        catch { throw VoxClipError.projectUnreadable("/: the project file could not be opened") }
     }
 
     public func save(_ project: Project, to url: URL) async throws {
@@ -67,7 +67,7 @@ public actor JSONProjectStore: ProjectStore {
             return (cleaned.project, cleaned.warnings)
         } catch let error as VoxClipError { throw error }
         catch let error as VoiceLabProjectError { throw error }
-        catch { throw VoxClipError.projectUnreadable("Invalid project document") }
+        catch { throw VoxClipError.projectUnreadable("/: invalid project document") }
     }
 
     public static func encode(_ project: Project) throws -> Data {

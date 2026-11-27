@@ -12,6 +12,44 @@ namespace VoxClip.Media.Tests;
 [Collection("CLI console")]
 public sealed class CliTests
 {
+    [Theory]
+    [InlineData("story", "edits/clips/0: story clip needs schemaVersion 5")]
+    [InlineData("assets", "voiceLab/assets: missing required field")]
+    [InlineData("cleanAudio", "voiceLab/cleanAudio: missing required field")]
+    [InlineData("voices", "voiceLab/voices: missing required field")]
+    [InlineData("videoAssets", "voiceLab/videoAssets: missing required field")]
+    [InlineData("aspect", "export/aspect: invalid value")]
+    public async Task ProjectFailuresNameTheFieldAndReasonWithoutItsValue(string defect, string problem)
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-project-error-").FullName;
+        var oldOutput = Console.Out; var oldErrors = Console.Error;
+        using var output = new StringWriter(); using var errors = new StringWriter();
+        const string privateContent = "project-private-content-marker";
+        try
+        {
+            var project = JsonNode.Parse(FixtureLoader.ReadText("fixtures/story-clips/story-project.voxclip"))!.AsObject();
+            project["title"] = privateContent;
+            if (defect == "story") project["schemaVersion"] = 4;
+            else if (defect == "aspect") project["export"]!["aspect"] = privateContent;
+            else project["voiceLab"]!.AsObject().Remove(defect);
+            var input = Path.Combine(directory, "invalid.voxclip");
+            File.WriteAllText(input, project.ToJsonString());
+            Console.SetOut(output); Console.SetError(errors);
+            var ct = TestContext.Current.CancellationToken;
+            Assert.Equal(3, await AcceptedCli.RunAsync(["plan", "--open", input], ct));
+            Assert.Contains(problem, errors.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(privateContent, errors.ToString() + output.ToString(), StringComparison.Ordinal);
+            output.GetStringBuilder().Clear(); errors.GetStringBuilder().Clear();
+            Assert.Equal(3, await AcceptedCli.RunAsync(["plan", "--open", input, "--json"], ct));
+            using var json = JsonDocument.Parse(output.ToString());
+            var error = json.RootElement.GetProperty("error");
+            Assert.Equal("projectUnreadable", error.GetProperty("code").GetString());
+            Assert.Contains(problem, error.GetProperty("message").GetString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(privateContent, errors.ToString() + output.ToString(), StringComparison.Ordinal);
+        }
+        finally { Console.SetOut(oldOutput); Console.SetError(oldErrors); Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public void VersionUsesSharedRuntimeDisplayFallback() => Assert.Equal(AppVersion.Current, CliApplication.Version);
 

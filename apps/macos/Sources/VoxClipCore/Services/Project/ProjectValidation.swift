@@ -1,18 +1,22 @@
 import Foundation
 
 enum ProjectValidation {
-    static func fail(_ reason: String) throws -> Never { throw VoxClipError.projectUnreadable(reason) }
+    static func fail(_ reason: String, at path: String = "/") throws -> Never { throw VoxClipError.projectUnreadable("\(path): \(reason)") }
 
-    static func object(_ value: JSONValue?, required: String, optional: String = "") throws -> [String: JSONValue] {
-        guard case .object(let object) = value else { try fail("Expected object") }
-        let requiredKeys = Set(required.split(separator: " ").map(String.init))
-        let allowed = requiredKeys.union(optional.split(separator: " ").map(String.init))
-        guard requiredKeys.isSubset(of: Set(object.keys)), Set(object.keys).isSubset(of: allowed) else { try fail("Unknown or missing project field") }
+    static func object(_ value: JSONValue?, required: String, optional: String = "", at path: String? = nil) throws -> [String: JSONValue] {
+        guard case .object(let object) = value else { try fail("expected object", at: path ?? "/") }
+        let requiredKeys = required.split(separator: " ").map(String.init)
+        for key in requiredKeys where object[key] == nil {
+            let location = path.map { $0 == "/" ? key : "\($0)/\(key)" } ?? "/"
+            try fail(path == nil ? "missing required field \(key)" : "missing required field", at: location)
+        }
+        let allowed = Set(requiredKeys).union(optional.split(separator: " ").map(String.init))
+        guard Set(object.keys).isSubset(of: allowed) else { try fail("unknown field", at: path ?? "/") }
         return object
     }
 
-    static func array(_ value: JSONValue?) throws -> [JSONValue] {
-        guard case .array(let array) = value else { try fail("Expected array") }
+    static func array(_ value: JSONValue?, at path: String = "/") throws -> [JSONValue] {
+        guard case .array(let array) = value else { try fail("expected array", at: path) }
         return array
     }
 
@@ -27,9 +31,9 @@ enum ProjectValidation {
         let isV6 = wireVersion == .number(6)
         let isV5 = isV6 || wireVersion == .number(5)
         let isV4 = isV5 || wireVersion == .number(4)
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""))
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), at: "/")
         if let clipStyle = root["clipStyle"] {
-            let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone")
+            let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone", at: "clipStyle")
             for (_, pick) in try map(style["captionPicks"]) {
                 // Optional: the clip's caption overrides and "by": "user" for the creator's own choice (design.md §6.6).
                 let fields = try object(pick, required: "styleId reason", optional: "overrides by")
@@ -38,19 +42,20 @@ enum ProjectValidation {
             }
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
-        _ = try object(root["savedBy"], required: "app version platform")
-        let media = try object(root["media"], required: "source", optional: isV4 ? "additionalSources footage" : "")
-        let additional = try media["additionalSources"].map { try array($0) } ?? []
+        _ = try object(root["savedBy"], required: "app version platform", at: "savedBy")
+        let media = try object(root["media"], required: "source", optional: isV4 ? "additionalSources footage" : "", at: "media")
+        let additional = try media["additionalSources"].map { try array($0, at: "media/additionalSources") } ?? []
         try require(media["additionalSources"] == nil || !additional.isEmpty, "Empty companion source list")
         var sourceKeys = Set<String>()
-        for raw in [media["source"] ?? .null] + additional {
-            let source = try object(raw, required: "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", optional: isV4 ? "recordingHash" : "")
+        for (index, raw) in ([media["source"] ?? .null] + additional).enumerated() {
+            let path = index == 0 ? "media/source" : "media/additionalSources/\(index - 1)"
+            let source = try object(raw, required: "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", optional: isV4 ? "recordingHash" : "", at: path)
             if let hash = source["recordingHash"] { try require(hash.aiString.map { matches($0, hashPattern) } == true, "Invalid recording hash") }
             if let key = (source["recordingHash"] ?? source["contentKey"])?.aiString {
                 try require(sourceKeys.insert(key).inserted, "Duplicate source recording")
             }
-            if source["video"] != .null { _ = try object(source["video"], required: "width height frameRate rotationDegrees") }
-            if source["audio"] != .null { _ = try object(source["audio"], required: "sampleRate channels") }
+            if source["video"] != .null { _ = try object(source["video"], required: "width height frameRate rotationDegrees", at: "\(path)/video") }
+            if source["audio"] != .null { _ = try object(source["audio"], required: "sampleRate channels", at: "\(path)/audio") }
         }
         if let footage = media["footage"] {
             let entries = try array(footage)
@@ -64,39 +69,47 @@ enum ProjectValidation {
             }
         }
         if root["transcript"] != .null {
-            let transcript = try object(root["transcript"], required: "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt")
-            _ = try object(transcript["engine"], required: "id modelId modelSha256 engineVersion locale")
-            for word in try array(transcript["words"]) { _ = try object(word, required: "id text kind start end rawStart rawEnd conf speaker timing") }
+            let transcript = try object(root["transcript"], required: "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt", at: "transcript")
+            _ = try object(transcript["engine"], required: "id modelId modelSha256 engineVersion locale", at: "transcript/engine")
+            for (index, word) in try array(transcript["words"], at: "transcript/words").enumerated() {
+                _ = try object(word, required: "id text kind start end rawStart rawEnd conf speaker timing", at: "transcript/words/\(index)")
+            }
         }
-        let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId")
-        for clip in try array(edits["clips"]) {
-            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds" + (isV5 ? " parts kind" : ""))
+        let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", at: "edits")
+        for (index, clip) in try array(edits["clips"], at: "edits/clips").enumerated() {
+            let path = "edits/clips/\(index)"
+            if !isV5, case .object(let fields) = clip, fields["parts"] != nil || fields["kind"] != nil {
+                try fail("story clip needs schemaVersion 5", at: path)
+            }
+            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds" + (isV5 ? " parts kind" : ""), at: path)
             if let kind = fields["kind"] {
-                try require(fields["parts"] != nil && (kind == .string("story") || kind == .string("showreel")), "Invalid clip kind")
+                guard fields["parts"] != nil && (kind == .string("story") || kind == .string("showreel")) else { try fail("invalid clip kind", at: "\(path)/kind") }
             }
             if let parts = fields["parts"] {
-                for part in try array(parts) {
-                    let fields = try object(part, required: "id startWordId endWordId", optional: "reframe")
-                    if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY") }
+                for (partIndex, part) in try array(parts, at: "\(path)/parts").enumerated() {
+                    let partPath = "\(path)/parts/\(partIndex)"
+                    let fields = try object(part, required: "id startWordId endWordId", optional: "reframe", at: partPath)
+                    if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY", at: "\(partPath)/reframe") }
                 }
             }
             // An opening lead-in (ADR-R48) is schema v4 only: 0 < s ≤ 0.6.
             if let lead = fields["leadInSeconds"] {
                 guard isV4, case .number(let seconds) = lead, seconds.isFinite, seconds > 0, seconds <= FrameSampling.openingSpan + 1e-9 else {
-                    try fail("Invalid clip lead-in")
+                    try fail("invalid clip lead-in", at: "\(path)/leadInSeconds")
                 }
             }
         }
-        let captions = try object(root["captions"], required: "styleId overrides position positionByAspect")
+        let captions = try object(root["captions"], required: "styleId overrides position positionByAspect", at: "captions")
         _ = try map(captions["overrides"])
         if captions["position"] != .null { _ = try object(captions["position"], required: "x y") }
         for (aspect, position) in try map(captions["positionByAspect"]) {
             guard ["16:9", "9:16", "1:1"].contains(aspect) else { try fail("Invalid caption aspect") }
             _ = try object(position, required: "x y")
         }
-        _ = try object(root["export"], required: "aspect quality srt folder")
-        _ = try object(root["share"], required: "captions")
-        let ai = try object(root["ai"], required: "results")
+        let export = try object(root["export"], required: "aspect quality srt folder", at: "export")
+        guard export["aspect"]?.aiString.flatMap(AspectRatio.init(rawValue:)) != nil else { try fail("invalid value", at: "export/aspect") }
+        _ = try object(root["share"], required: "captions", at: "share")
+        let ai = try object(root["ai"], required: "results", at: "ai")
         for rawResult in try array(ai["results"]) {
             let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips")
             for clip in try array(result["clips"]) {
@@ -109,7 +122,7 @@ enum ProjectValidation {
         }
         let version = isV4 ? 4 : root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
         let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments",
-                               optional: version >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples")
+                               optional: version >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples", at: "voiceLab")
         if let rates = voice["speakingRateSamples"] {
             for samples in try map(rates).values {
                 for sample in try array(samples) { _ = try object(sample, required: "id ratio") }
@@ -124,11 +137,11 @@ enum ProjectValidation {
         }
         if version == 1 { try require(try array(voice["segments"]).isEmpty, "Version 1 Voice Lab must be empty") }
         if version >= 2 {
-            for asset in try array(voice["assets"]) {
-                _ = try object(asset, required: "id kind file sha256 durationSeconds sampleRate createdAt")
+            for (index, asset) in try array(voice["assets"], at: "voiceLab/assets").enumerated() {
+                _ = try object(asset, required: "id kind file sha256 durationSeconds sampleRate createdAt", at: "voiceLab/assets/\(index)")
             }
-            for segment in try array(voice["segments"]) {
-                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version >= 3 ? " scope" : ""), optional: version >= 3 ? "groupId" : "")
+            for (index, segment) in try array(voice["segments"], at: "voiceLab/segments").enumerated() {
+                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version >= 3 ? " scope" : ""), optional: version >= 3 ? "groupId" : "", at: "voiceLab/segments/\(index)")
                 _ = try object(item["replace"], required: "start end firstWordId lastWordId")
                 _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb", optional: "tiltDbPerOctave")
                 if item["text"] != .null {
@@ -152,10 +165,14 @@ enum ProjectValidation {
             }
         }
         if version >= 3 {
-            let clean = try object(voice["cleanAudio"], required: "mode assetId mix")
+            let clean = try object(voice["cleanAudio"], required: "mode assetId mix", at: "voiceLab/cleanAudio")
             try require(clean["mode"] == .string("off") || clean["mode"] == .string("on"), "Invalid clean-audio mode")
-            for value in try array(voice["voices"]) { _ = try object(value, required: "id provider voiceId consentRecordId displayName status") }
-            for value in try array(voice["videoAssets"]) { _ = try object(value, required: "id file sha256 durationSeconds frameRate width height") }
+            for (index, value) in try array(voice["voices"], at: "voiceLab/voices").enumerated() {
+                _ = try object(value, required: "id provider voiceId consentRecordId displayName status", at: "voiceLab/voices/\(index)")
+            }
+            for (index, value) in try array(voice["videoAssets"], at: "voiceLab/videoAssets").enumerated() {
+                _ = try object(value, required: "id file sha256 durationSeconds frameRate width height", at: "voiceLab/videoAssets/\(index)")
+            }
         }
         if let extensions = root["extensions"] { _ = try map(extensions) }
         if let demo = root["contextDemo"] {
