@@ -1163,6 +1163,7 @@ member VoxClip.App.Controls.TimelineView :: field private previousMarqueeSelecti
 member VoxClip.App.Controls.TimelineView :: field private priorAskRange
 member VoxClip.App.Controls.TimelineView :: field private rangeAnchor
 member VoxClip.App.Controls.TimelineView :: field private ranging
+member VoxClip.App.Controls.TimelineView :: field private recordingMedia
 member VoxClip.App.Controls.TimelineView :: field private rendered
 member VoxClip.App.Controls.TimelineView :: field private renderingBlocked
 member VoxClip.App.Controls.TimelineView :: field private resizeCursor
@@ -1238,6 +1239,7 @@ member VoxClip.App.Controls.TimelineView :: field private viewportTransform
 member VoxClip.App.Controls.TimelineView :: field private waveformRequest
 member VoxClip.App.Controls.TimelineView :: field private waveformUnavailable
 member VoxClip.App.Controls.TimelineView :: field private zoom
+member VoxClip.App.Controls.TimelineView :: method internal SetRecordingMedia(System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Core.Domain.Shared.MediaReference>)
 member VoxClip.App.Controls.TimelineView :: method internal SetStagedDucking(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Core.Domain.Clips.ClipSpeedTiming)
 member VoxClip.App.Controls.TimelineView :: method internal SetTransport(string,string,bool)
 member VoxClip.App.Controls.TimelineView :: method internal SetWaveform(System.Collections.Generic.IReadOnlyList`1<float>)
@@ -2108,6 +2110,7 @@ member VoxClip.App.Pages.EditorPage :: field private transportCoordinator
 member VoxClip.App.Pages.EditorPage :: field private viewerForced
 member VoxClip.App.Pages.EditorPage :: field private viewerHost
 member VoxClip.App.Pages.EditorPage :: field private viewerSqueezed
+member VoxClip.App.Pages.EditorPage :: field private waveformMedia
 member VoxClip.App.Pages.EditorPage :: field private waveformRequest
 member VoxClip.App.Pages.EditorPage :: method internal AnnounceNotice()
 member VoxClip.App.Pages.EditorPage :: method internal AskClaudeCost(string)
@@ -2201,7 +2204,7 @@ member VoxClip.App.Pages.EditorPage :: method private IntegratedJobAvailable(Vox
 member VoxClip.App.Pages.EditorPage :: method private IntegratedStatus()
 member VoxClip.App.Pages.EditorPage :: method private IsHarnessPath(string)
 member VoxClip.App.Pages.EditorPage :: method private LedgerChanged(object,System.EventArgs)
-member VoxClip.App.Pages.EditorPage :: method private LoadWaveformAsync(VoxClip.Core.Domain.Shared.MediaInfo,string,System.Threading.CancellationTokenSource,System.Threading.Tasks.Task)
+member VoxClip.App.Pages.EditorPage :: method private LoadWaveformAsync(VoxClip.Core.Domain.Shared.MediaInfo,VoxClip.Core.Domain.Shared.Project,System.Threading.CancellationTokenSource,System.Threading.Tasks.Task)
 member VoxClip.App.Pages.EditorPage :: method private LocateClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private MakeClipAndReveal()
 member VoxClip.App.Pages.EditorPage :: method private MakeClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -2797,6 +2800,7 @@ member VoxClip.App.Services.Thumbnails :: field internal TimelineWidth
 member VoxClip.App.Services.Thumbnails :: field private decodes
 member VoxClip.App.Services.Thumbnails :: field public CoverHeight
 member VoxClip.App.Services.Thumbnails :: field public CoverWidth
+member VoxClip.App.Services.Thumbnails :: method internal GetProjectAsync(VoxClip.Core.Domain.Shared.Project,string,System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Core.Domain.Shared.MediaReference>,System.Threading.CancellationToken)
 member VoxClip.App.Services.Thumbnails :: method internal GetTimelineAsync(string,string,double,int,System.Threading.CancellationToken)
 member VoxClip.App.Services.Thumbnails :: method internal TimelinePathFor(string,double,int)
 member VoxClip.App.Services.Thumbnails :: method private CacheMiss(System.Exception)
