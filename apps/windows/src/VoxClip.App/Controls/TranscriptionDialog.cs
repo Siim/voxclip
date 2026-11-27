@@ -52,6 +52,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
     private CancellationTokenSource? downloading;
     private readonly string? projectPath;
     private bool running;
+    internal bool IsTranscribingRecording => recording is not null && running && transcribing is not null;
     private bool preparing;
     private readonly MediaReference? recording;
     private readonly Func<Transcript, Task>? receiveRecording;

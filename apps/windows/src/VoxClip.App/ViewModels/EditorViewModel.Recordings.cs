@@ -179,7 +179,10 @@ public sealed partial class EditorViewModel
         selectedPartId = select ?? previous;
         if (!ReplaceProject(applied.Project, applied.UndoName)) { selectedPartId = previous; return false; }
         if (edit is RecordingEdit.SwapTake or RecordingEdit.UseLineVersion && applied.Announcement is not null && ActiveClip is { } copy)
-            Announce($"Made {copy.Title ?? ActiveClipLabel} to keep the lip sync");
+        {
+            Notice = $"Made {copy.Title ?? ActiveClipLabel} to keep the lip sync";
+            Announce(Notice);
+        }
         else if (feedback is not null) Announce(feedback(applied));
         else if ((applied.Announcement ?? announcement) is { } message) Announce(message);
         return true;

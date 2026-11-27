@@ -15,6 +15,7 @@ public sealed partial class TranscriptView
     internal Action<RecordingAudition>? RecordingAuditionRequested { get; set; }
     internal Action? StopRecordingAuditionRequested { get; set; }
     internal Action<string>? LocateRecordingRequested { get; set; }
+    internal Func<string?>? TranscribingRecordingLabel { get; set; }
     private Button? recordingFoldClose;
     private Button? recordingReturnMarker;
     private string? recordingReturnLine;
@@ -86,6 +87,7 @@ public sealed partial class TranscriptView
             var inClip = take.Key == line.Take.Key;
             var span = line.Span(take.Key);
             var reason = current.RecordingLineDisabledReason(line, take.Key);
+            var editReason = !inClip && !current.CanEditParts ? "Editing isn't available right now." : null;
             var copy = reason is null && !inClip ? current.RecordingLineCopyReason(line, take.Key) : null;
             var row = Ui.Stack(3);
             var time = RecordingShortcutRow.Time(current, take.StartWordId, take.EndWordId, region);
@@ -111,15 +113,17 @@ public sealed partial class TranscriptView
                 if (current.RecordingLineAudition(line, take.Key) is { } audition) RecordingAuditionRequested?.Invoke(audition);
             }, reason));
             if (!inClip) row.Children.Add(RecordingShortcutRow.Action(copy is null ? "Use This Version" : "Use in a Copy", () => UseRecordingVersion(line, take.Key),
-                reason ?? (current.CanEditParts ? null : "Editing isn't available right now.")));
+                reason ?? editReason));
             if (copy is not null) row.Children.Add(Ui.Text(copy, "HelperText"));
-            if (reason is not null) row.Children.Add(Ui.Text(reason, "HelperText"));
+            if ((reason ?? editReason) is { } disabled) row.Children.Add(Ui.Text(disabled, "HelperText"));
             if (current.RecordingUnavailable(take.Key) is not null)
                 row.Children.Add(Ui.Button("Locate…", () => LocateRecordingRequested?.Invoke(take.Key)));
             var border = new Border { Child = row, Padding = new(6), CornerRadius = new(4) };
             rows.Add(take.Key, border);
             host.Children.Add(border);
         }
+        if (TranscribingRecordingLabel?.Invoke() is { } pending)
+            host.Children.Add(Ui.Text($"{pending}'s version of this line shows when transcribing finishes.", "HelperText"));
         PaintSelection();
         host.PreviewKeyDown += (_, args) =>
         {

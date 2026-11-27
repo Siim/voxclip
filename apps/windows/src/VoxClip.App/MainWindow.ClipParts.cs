@@ -174,11 +174,20 @@ public sealed partial class MainWindow
                 foreach (var source in model.RecordingCompanions)
                 {
                     var label = VoxClip.Core.Domain.Editing.ProjectClock.Label(source);
-                    host.Children.Add(new Button { Content = $"Start from {label}", IsEnabled = false });
-                    host.Children.Add(Ui.Text(model.RecordingUnavailable(source.ContentKey) ?? "", "HelperText"));
-                    if (model.RecordingUnavailable(source.ContentKey)?.EndsWith("Locate it to use its words.", StringComparison.Ordinal) == true)
+                    if (label == page.TranscribingRecordingLabel) continue;
+                    var reason = model.RecordingUnavailable(source.ContentKey) ?? $"{label} isn't transcribed yet.";
+                    host.Children.Add(RecordingShortcutRow.Action($"Start from {label}", () => { }, reason));
+                    host.Children.Add(Ui.Text(reason, "HelperText"));
+                    if (reason.EndsWith("Locate it to use its words.", StringComparison.Ordinal))
                         host.Children.Add(Ui.Button("Locate…", () => page.LocateRecording(source.ContentKey)));
                     else host.Children.Add(Ui.Button("Transcribe on this PC", () => page.TranscribeCompanion(source)));
+                }
+                if (page.TranscribingRecordingLabel is { } pending)
+                {
+                    var reason = $"Start from {pending} needs its words. It's ready when transcribing finishes.";
+                    host.Children.Add(RecordingShortcutRow.Action($"Start from {pending}", () => { }, reason));
+                    host.Children.Add(Ui.Text(reason, "HelperText"));
+                    host.Children.Add(Ui.Button("Cancel", page.CancelRecordingTranscription));
                 }
                 var bestReason = page.FindClips.BestVersionsDisabledReason;
                 var best = new Button { Content = $"✦ Make one clip from the best parts of these {model.RecordingRegions.Count} recordings", IsEnabled = bestReason is null };
@@ -195,8 +204,8 @@ public sealed partial class MainWindow
                     var lines = Ui.Stack(6);
                     var fold = new Expander { Header = $"Only in other recordings · {runs.Count}", Content = lines,
                         IsExpanded = model.OtherRecordingLinesExpanded, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-                    fold.Expanding += (_, _) => model.SetOtherRecordingLinesExpanded(true);
-                    fold.Collapsed += (_, _) => model.SetOtherRecordingLinesExpanded(false);
+                    fold.Expanding += (_, _) => page.SetOtherRecordingLinesExpanded(true);
+                    fold.Collapsed += (_, _) => page.SetOtherRecordingLinesExpanded(false);
                     foreach (var run in runs.Take(20)) lines.Children.Add(RecordingShortcutRow.Solo(model, run, false, page.PlayRecordingAudition, page.LocateRecording));
                     if (runs.Count > 20)
                     {

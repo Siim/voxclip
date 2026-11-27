@@ -105,6 +105,7 @@ public sealed partial class EditorPage : Page
         ViewModel = new(project);
         preview = new PreviewEngine();
 #endif
+        ViewModel.SetOtherRecordingLinesExpanded(!demo && App.Services.Get(OtherRecordingLinesSetting, false));
         ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
         // Eviction never strips or removes the entry of a project open in any window, and opening it marks it used.
         if (!demo) { cacheLease = new(App.Services.Cache); cacheLease.Hold(project.Media.Source.ContentKey); }
@@ -131,6 +132,7 @@ public sealed partial class EditorPage : Page
         Transcript.RecordingAuditionRequested = PlayRecordingAudition;
         Transcript.StopRecordingAuditionRequested = StopRecordingAudition;
         Transcript.LocateRecordingRequested = LocateRecording;
+        Transcript.TranscribingRecordingLabel = () => TranscribingRecordingLabel;
         Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
         Timeline.Attach(ViewModel);
         CaptionDrag.Attach(ViewModel);

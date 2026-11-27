@@ -27,6 +27,20 @@ public sealed partial class EditorPage
     private string? recordingProgress;
     private TextBlock? recordingProgressText;
 
+    internal string? TranscribingRecordingLabel => pendingRecording is { } pending && recordingTranscription?.IsTranscribingRecording == true
+        ? ProjectClock.Label(pending) : null;
+
+    internal void CancelRecordingTranscription() => recordingTranscription?.RequestClose();
+
+    private string OtherRecordingLinesSetting => $"ui.outline.otherRecordings.{ViewModel.Project.Id}";
+
+    internal void SetOtherRecordingLinesExpanded(bool expanded)
+    {
+        if (ViewModel.OtherRecordingLinesExpanded == expanded) return;
+        ViewModel.SetOtherRecordingLinesExpanded(expanded);
+        if (!demo) _ = RunAsync(() => App.Services.SetAsync(OtherRecordingLinesSetting, expanded), "Save Outline preference");
+    }
+
     private string? RecordingImportReason => readingRecording || pendingRecording is not null
         ? "Finish or cancel the recording you're adding first." : ViewModel.AddRecordingReason;
 
