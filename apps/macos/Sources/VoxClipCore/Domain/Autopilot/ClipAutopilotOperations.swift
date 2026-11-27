@@ -90,7 +90,7 @@ public enum ClipAutopilotMapping {
                                    fonts: [ClipAutopilotPlan.Font: String], stickers: Set<String>,
                                    plan: ClipAutopilotPlan?) throws -> [ClipAutopilotOperation] {
         let prepared: EditState?
-        if plan != nil { prepared = try EditState(project: project) }
+        if plan != nil || project.media.spokenSources?.isEmpty == false { prepared = try EditState(project: project) }
         else { prepared = try project.transcript.map { try EditState(transcript: $0, edits: project.edits) } }
         guard let state = prepared else { throw VoiceLabError.invalidInput }
         let words = state.transcript.words

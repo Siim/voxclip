@@ -161,6 +161,22 @@ public static class ShortcutPolicy
         ["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+R", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"];
     internal static IReadOnlyList<string> RecordingGestures { get; } = Enumerable.Range(0, 7).Select(number => $"Ctrl+Alt+Number{number}").ToArray();
 
+    internal const string RecordingVersionsGesture = "Ctrl+Shift+Y";
+
+    internal static bool OpensRecordingVersions(string key, bool control, bool shift, bool alt, bool textFocus, bool correctionOpen) =>
+        Gesture(key, control, shift, alt) == RecordingVersionsGesture && EditorMayHandle(textFocus, correctionOpen, control, alt, true);
+
+    internal static RecordingVersionKey? RecordingFoldKey(string key, bool textFocus, bool correctionOpen, bool modifier) =>
+        !EditorMayHandle(textFocus, correctionOpen, false, modifier, true) ? null : key switch
+        {
+            "Up" => RecordingVersionKey.Up,
+            "Down" => RecordingVersionKey.Down,
+            "Space" => RecordingVersionKey.Play,
+            "Enter" => RecordingVersionKey.Use,
+            "Escape" => RecordingVersionKey.Close,
+            _ => null,
+        };
+
     /// <summary>"Ctrl+Shift+K" for K with Control and Shift.</summary>
     public static string Gesture(string key, bool control, bool shift, bool alt = false) => (control ? "Ctrl+" : "") + (alt ? "Alt+" : "") + (shift ? "Shift+" : "") + key;
 

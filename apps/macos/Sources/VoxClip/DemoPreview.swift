@@ -1,7 +1,7 @@
-#if DEBUG
 import SwiftUI
 import VoxClipCore
 
+#if DEBUG
 enum DemoEditing {
     static func loadFixture(_ url: URL) throws -> Project {
         let root = try SharedResources.locate().root.appendingPathComponent("fixtures/projects").resolvingSymlinksInPath().standardizedFileURL
@@ -10,7 +10,9 @@ enum DemoEditing {
         return try JSONProjectStore.decode(Data(contentsOf: path))
     }
 }
+#endif
 
+/// A preview clock with no player. Demos use it, and so does the scratch editor that only transcribes a recording added to a project.
 @MainActor final class DemoPreviewEngine: PreviewEngine {
     let events: AsyncStream<PreviewEvent>
     private let continuation: AsyncStream<PreviewEvent>.Continuation
@@ -39,4 +41,3 @@ enum DemoEditing {
     func pause() { timer?.cancel(); timer = nil; isPlaying = false; continuation.yield(.playing(false)) }
     func close() { pause(); continuation.finish() }
 }
-#endif

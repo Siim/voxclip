@@ -400,6 +400,28 @@
             "additionalProperties": false,
             "properties": {
               "op": {
+                "const": "useRecording"
+              },
+              "key": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "transcriptRevision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "readOnly": true
+              }
+            },
+            "required": [
+              "op",
+              "key"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op": {
                 "const": "trim"
               },
               "item": {
@@ -978,7 +1000,16 @@
             ]
           }
         ]
-      }
+      },
+      "contains": {
+        "properties": {
+          "op": {
+            "const": "useRecording"
+          }
+        }
+      },
+      "minContains": 0,
+      "maxContains": 1
     },
     "musicTrackId": {
       "type": "string",
@@ -1150,13 +1181,22 @@
     {
       "if": {
         "required": [
+          "newClip",
           "edits"
         ]
       },
       "then": {
-        "required": [
-          "clipId"
-        ]
+        "properties": {
+          "edits": {
+            "items": {
+              "properties": {
+                "op": {
+                  "const": "useRecording"
+                }
+              }
+            }
+          }
+        }
       }
     },
     {

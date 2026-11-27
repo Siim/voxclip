@@ -1,0 +1,16 @@
+{
+  "project": "two-recordings.voxclip",
+  "timeline": {
+    "newClip": {"kind": "story", "title": "Opening and payoff"},
+    "reason": "Open with the first recording and close with the payoff from the second.",
+    "edits": [{"op": "useRecording", "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}],
+    "parts": [{"startWord": 0, "endWord": 1}, {"startWord": 2, "endWord": 3}]
+  },
+  "expected": {
+    "operationIds": ["clip"],
+    "partIds": ["proposal-part-1", "proposal-part-2"],
+    "startWordIds": ["w1", "r2.w1"],
+    "endWordIds": ["w2", "r2.w2"],
+    "cloudRefusal": "Transcribe 0010 in VoxClip first."
+  }
+}

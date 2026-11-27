@@ -4,6 +4,46 @@ import Testing
 
 @Suite("Project harness proposals", .offlineFixtures)
 struct HarnessProposalTests {
+    @Test func aLocalCompanionAndStoryMapToTheSharedOperations() throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        struct Vector: Decodable {
+            struct Expected: Decodable {
+                let operationIds: [String], partIds: [String], startWordIds: [String], endWordIds: [String]
+                let cloudRefusal: String
+            }
+            let project: String, timeline: HarnessTimeline, expected: Expected
+        }
+        let vector = try JSONDecoder().decode(Vector.self, from: FixtureLoader.data("fixtures/recordings/harness-cases.json"))
+        var original = try JSONProjectStore.decode(FixtureLoader.data("fixtures/recordings/\(vector.project)"))
+        var transcript = try #require(original.media.spokenSources?.first?.transcript)
+        original.media.spokenSources = nil
+        original.schemaVersion = 6
+        original.edits.clips = []; original.edits.activeClipId = nil
+        let cloud = try HarnessProposal(timeline: vector.timeline, project: original)
+        do {
+            _ = try cloud.review(original, shared: shared, recordingTranscript: transcript)
+            Issue.record("A cloud-only project accepted useRecording.")
+        } catch { #expect(error.localizedDescription == vector.expected.cloudRefusal) }
+
+        original.transcript?.engine.id = .whispercpp
+        transcript.engine.id = .whispercpp
+        let proposal = try HarnessProposal(timeline: vector.timeline.pinningRecordingTranscript(transcript), project: original)
+        let result = try proposal.review(original, shared: shared, recordingTranscript: transcript)
+        let clip = try #require(result.project.edits.clips.first)
+        #expect(result.operations.map(\.id) == vector.expected.operationIds)
+        #expect(clip.playParts.map(\.id) == vector.expected.partIds)
+        #expect(clip.playParts.map(\.startWordId) == vector.expected.startWordIds)
+        #expect(clip.playParts.map(\.endWordId) == vector.expected.endWordIds)
+        #expect(result.project.media.spokenSources?.first?.transcript == transcript)
+        #expect(result.pending.isEmpty)
+        #expect(original.media.spokenSources == nil && original.edits.clips.isEmpty)
+        transcript.language = "et"
+        do {
+            _ = try proposal.review(original, shared: shared, recordingTranscript: transcript)
+            Issue.record("Keep accepted a different recording transcript.")
+        } catch { #expect(error.localizedDescription == "The recording transcript changed. Ask for a new timeline proposal.") }
+    }
+
     @Test func timelineEditsApplyInOrderOrRefuseTheWholeProposal() throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))

@@ -144,6 +144,13 @@ public sealed partial class TranscriptView
             model.HasSelection ? model.SelectionStart : -1, model.HasSelection ? model.SelectionEnd : -1, parts);
         var actionsAfter = pieces.LastOrDefault(piece => piece.Change?.Ordinal == focusedChange);
         var partLabels = new HashSet<int>();
+        var recordingView = model.TranscriptRecordingView;
+        var recordingLines = recordingView.Kind == RecordingViewKind.PlayOrder ? model.RecordingClipLines
+            .Where(line => line.Alternatives.Count > 0).ToDictionary(line => model.Index(line.FirstId)) : null;
+        var openLine = model.OpenRecordingLine;
+        var openAfter = openLine is null ? -1 : model.Index(openLine.LastId);
+        var soloLines = recordingView is { Kind: RecordingViewKind.Recording, Key: not null } ? model.OtherRecordingLines
+            .Where(run => run.Key == recordingView.Key).ToDictionary(run => model.Index(run.StartWordId)) : null;
         foreach (var piece in pieces)
         {
             if (piece.Part > 0 && parts is not null && parts[piece.Part - 1].First >= item.StartIndex && partLabels.Add(piece.Part))
@@ -185,7 +192,24 @@ public sealed partial class TranscriptView
                     if (pausesByIndex.TryGetValue(piece.Last, out var pause)) pauses.Add(new(pause, run, run));
                 }
             }
+            if (piece.Kind == TranscriptPieceKind.Source)
+            {
+                if (recordingLines?.GetValueOrDefault(piece.First) is { } line) AddRecordingLineMarker(paragraph, line);
+                if (soloLines?.GetValueOrDefault(piece.First) is { } solo)
+                {
+                    paragraph.Inlines.Add(new LineBreak());
+                    paragraph.Inlines.Add(new InlineUIContainer { Child = RecordingShortcutRow.Solo(model, solo, true,
+                        audition => RecordingAuditionRequested?.Invoke(audition), key => LocateRecordingRequested?.Invoke(key)) });
+                    paragraph.Inlines.Add(new LineBreak());
+                }
+            }
             paragraph.Inlines.Add(inline);
+            if (piece.Kind == TranscriptPieceKind.Source && openLine is not null && piece.First <= openAfter && piece.Last >= openAfter)
+            {
+                paragraph.Inlines.Add(new LineBreak());
+                paragraph.Inlines.Add(new InlineUIContainer { Child = RecordingVersionFold(openLine, rich.ActualWidth) });
+                paragraph.Inlines.Add(new LineBreak());
+            }
             if (piece.Kind == TranscriptPieceKind.Fold) paragraph.Inlines.Add(new Run { Text = "\u200b" });
             displays.Add(new(inline, piece));
             if (ReferenceEquals(piece, actionsAfter) && piece.Change is { } focused)

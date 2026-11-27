@@ -52,6 +52,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
     private CancellationTokenSource? downloading;
     private readonly string? projectPath;
     private bool running;
+    internal bool IsTranscribingRecording => recording is not null && running && transcribing is not null;
     private bool preparing;
     private readonly MediaReference? recording;
     private readonly Func<Transcript, Task>? receiveRecording;
@@ -527,6 +528,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 if (cloud && approvedPrice is { } paid)
                     TranscriptionSpendState.Shared.Completed(jobId, approvedDay, paid, transcript.FromCache);
                 RequireCurrent();
+                HarnessRecording.CacheTranscript(source.ContentKey, App.Services.Data.Cache, transcript);
                 await ReceiveAsync(transcript);
                 if (!closed) Hide();
             }

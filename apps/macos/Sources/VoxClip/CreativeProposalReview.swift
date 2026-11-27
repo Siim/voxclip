@@ -5,8 +5,10 @@ import VoxClipCore
     func harnessCreativeData(_ timeline: HarnessTimeline, clip: ClipRange?, result: Project?,
                              operations: [ClipAutopilotOperation], estimate: String?) -> CreativeProposalData {
         let declared = timeline.proposal.target.new?.kind
-        let resolved = clip?.playPartIndices(in: words)?.map { ClipProposal.Part(startWord: $0.lowerBound, endWord: $0.upperBound) }
-        let parts = ProposalStripPart.from(resolved ?? timeline.proposal.parts ?? [], words: words)
+        let clock = result.map(ProjectClock.build) ?? recordingClock
+        let proposalWords = clock?.words ?? words
+        let resolved = clip?.playPartIndices(in: proposalWords)?.map { ClipProposal.Part(startWord: $0.lowerBound, endWord: $0.upperBound) }
+        let parts = ProposalStripPart.from(resolved ?? timeline.proposal.parts ?? [], words: proposalWords, clock: clock)
         let kind: ClipProposal.NewClip.Kind = declared ?? (parts.count < 2 ? .stretch : clip?.kind == .showreel ? .showreel : .story)
         let title = clip?.title ?? timeline.proposal.title ?? timeline.proposal.target.new?.title ?? scopeName(timeline.clipId)
         let cuts = operations.filter { $0.decision == .cut || $0.decision == .pauseCut }.count
@@ -16,6 +18,9 @@ import VoxClipCore
         var metadata = [durationLabel(seconds), "\(parts.count) \(parts.count == 1 ? "part" : "parts")", "\(cuts) \(cuts == 1 ? "cut" : "cuts")", scope]
         if timeline.timelineEditCount > 0 {
             metadata.append("\(timeline.timelineEditCount) timeline \(timeline.timelineEditCount == 1 ? "edit" : "edits")")
+        }
+        if let key = timeline.recordingKey, let source = project.media.additionalSources.first(where: { $0.contentKey == key }) {
+            metadata.append("add recording \(ProjectClock.label(source)) with local transcription")
         }
         let chips = creativeChips(operations, musicEstimate: estimate)
         return CreativeProposalData(source: "\(kind.cardLabel()) · proposed in your terminal", title: title,

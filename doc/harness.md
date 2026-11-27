@@ -36,8 +36,9 @@ The executable finds `shared/` in its checkout or app bundle. If you relocate it
 
 | MCP tool | Matching CLI | What it does |
 |---|---|---|
-| `read_transcript` | `transcript --project Talk.voxclip --offset 0 --limit 200` | Returns transcript items with their zero-based indices, corrected words, cut flags and source seconds. Follow `nextOffset` until it's null. |
-| `read_clips` | `clips --project Talk.voxclip` | Lists clips with ids, kinds, parts in play order and source spans, plus `footageSources` keys for companion recordings. |
+| `read_transcript` | `transcript --project Talk.voxclip --offset 0 --limit 200` | Returns transcript items with their zero-based project indices, corrected words, cut flags, recording labels and project-clock seconds. Follow `nextOffset` until it's null. |
+| `read_clips` | `clips --project Talk.voxclip` | Lists clips with ids, kinds, parts in play order and their recordings, plus `footageSources` keys for companion footage. |
+| `read_takes` | `takes --project Talk.voxclip` | Returns shared beats, alternate takes, aligned spans, delivery flags and solo runs. Its word and beat ids are the ones VoxClip uses. |
 | `read_decisions` | `decisions --project Talk.voxclip --clip CLIP_ID` | Reads the clip's saved choices: Find Clips reason where available, opening lead-in, framing and cover controls, captions, effects, zooms and saved music ids. |
 | `read_frames` | `frames --project Talk.voxclip --time 2.1 --time 3` | Returns one to four unedited source thumbnails from a local MP4, M4V or MOV. CLI output includes JPEGs as base64. Relink missing media in VoxClip. |
 | `propose_timeline` | `propose-timeline --project Talk.voxclip < timeline.json` | Stages one to six timelines for new or existing clips. It writes no project edits and returns separate estimates for requested paid actions. |
@@ -74,6 +75,24 @@ To make a new clip, use `newClip` instead of `clipId`. For example, this story p
 Use inclusive transcript indices from the current project. List nonoverlapping parts in play order: one for a `stretch`, two to twelve for a `story` or `showreel`. `read_clips` returns `kind` and `parts` in that order. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and use the complete [clip-plan entry schema](../shared/schemas/clip-plan-effect.schema.json), including `bRoll`, `screenshot`, `videoStack`, `illustration`, `soundEffect`, `colourLook` and `speedForPart`. Footage uses a `sourceKey` from `read_clips`, with a source start in seconds.
 
 Timeline fields mirror the [shared clip proposal vocabulary](../shared/schemas/clip-proposal.schema.json), including caption font, case and word count, pause cuts, corrections, hook, speed, cover title and post text. `music: {"trackId":"…"}` reuses a saved track; `music: {"brief":"…"}` proposes generating a track. The legacy `musicTrackId` and `generateMusic` fields still work. The tool returns `pricedActions` and `freeActions` with zero-based `timelineIndex` values. A `rewrite` quote is a local list-price estimate for one voice take, not the final price. Rewrites, illustrations and generated music require approval in VoxClip; **Find sound · free** needs its own click. No tool sends an asset request.
+
+### Make a story from two recordings
+
+`read_transcript`, `read_clips` and `read_takes` list `recordings` with each recording's key, label, duration in seconds, inclusive `firstWord` and `lastWord`, `transcribed` status and `gainDb`. Words and clip parts carry the `recording` label and `recordingKey`. Join the word ids in `read_takes` to the indices in `read_transcript`. Each part must stay inside one recording, but consecutive parts can come from different recordings and play in either order.
+
+For example, if the payoff from recording 0010 is at indices 42–51 and the setup from 0007 is at 9–18:
+
+```json
+{
+  "newClip": {"kind": "story", "title": "The reporting tool"},
+  "reason": "Lead with the payoff from 0010, then explain it with 0007.",
+  "parts": [{"startWord": 42, "endWord": 51}, {"startWord": 9, "endWord": 18}]
+}
+```
+
+A recording marked `transcribed: false` has no project indices yet. For a companion with a cached local transcript, call `read_transcript` with its `recordingKey` (CLI: `--recording-key KEY`) to preview the indices it will have if added. Include `"edits": [{"op": "useRecording", "key": "COMPANION_CONTENT_KEY"}]` in the proposal to add it before applying the parts. Use the recording's actual `key`, not its label or footage key. Only one recording can be added per timeline.
+
+If there is no cached transcript, propose `useRecording` on an existing clip without using the new words yet. **Keep** transcribes using the project's local engine, then adds the recording and applies the other changes as one Undo step. Save and read the updated transcript before proposing parts from the new words. The agent never starts transcription or sends media. If the project only has a cloud engine, VoxClip refuses the operation: “Transcribe 0010 in VoxClip first.”
 
 ### Edit existing timeline items
 

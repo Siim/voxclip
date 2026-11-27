@@ -23,29 +23,6 @@ import VoxClipMedia
     }
 }
 
-enum RecordingTranscriptCache {
-    private static func entry(_ key: String, in cache: URL) -> URL? {
-        guard key.utf8.count == 64, key.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return nil }
-        return cache.appendingPathComponent(key).appendingPathComponent("transcripts/confirmed-v1.json")
-    }
-
-    static func read(_ key: String, cache: URL, recent: [URL]) -> Transcript? {
-        if let file = entry(key, in: cache), let data = try? Data(contentsOf: file),
-           let transcript = try? JSONDecoder().decode(Transcript.self, from: data) { return transcript }
-        return recent.lazy.compactMap { file -> Transcript? in
-            guard let data = try? Data(contentsOf: file), let project = try? JSONProjectStore.decode(data) else { return nil }
-            if project.media.source.contentKey == key { return project.transcript }
-            return project.media.spokenSources?.first { $0.sourceKey == key }?.transcript
-        }.first
-    }
-
-    static func write(_ transcript: Transcript, key: String, cache: URL) {
-        guard let file = entry(key, in: cache), let data = try? JSONEncoder().encode(transcript) else { return }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: file, options: .atomic)
-    }
-}
-
 extension EditorModel {
     var recordingCompanions: [MediaReference] {
         let active = Set(recordingRegions.map(\.key))

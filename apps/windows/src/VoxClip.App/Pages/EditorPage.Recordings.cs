@@ -27,6 +27,20 @@ public sealed partial class EditorPage
     private string? recordingProgress;
     private TextBlock? recordingProgressText;
 
+    internal string? TranscribingRecordingLabel => pendingRecording is { } pending && recordingTranscription?.IsTranscribingRecording == true
+        ? ProjectClock.Label(pending) : null;
+
+    internal void CancelRecordingTranscription() => recordingTranscription?.RequestClose();
+
+    private string OtherRecordingLinesSetting => $"ui.outline.otherRecordings.{ViewModel.Project.Id}";
+
+    internal void SetOtherRecordingLinesExpanded(bool expanded)
+    {
+        if (ViewModel.OtherRecordingLinesExpanded == expanded) return;
+        ViewModel.SetOtherRecordingLinesExpanded(expanded);
+        if (!demo) _ = RunAsync(() => App.Services.SetAsync(OtherRecordingLinesSetting, expanded), "Save Outline preference");
+    }
+
     private string? RecordingImportReason => readingRecording || pendingRecording is not null
         ? "Finish or cancel the recording you're adding first." : ViewModel.AddRecordingReason;
 
@@ -40,7 +54,7 @@ public sealed partial class EditorPage
         recordingProgressText = null;
         SelectorBar.Children.Add(scroll);
         var scope = ViewModel.TranscriptRecordingView;
-        if (ViewModel.StoryRecordingRegions.Count > 1)
+        if (ViewModel.HasSeveralRecordings && ViewModel.ActiveClip is not null)
             Chip(new(RecordingViewKind.PlayOrder), $"{ViewModel.ActiveClipLabel} · play order");
         if (ViewModel.HasSeveralRecordings || pendingRecording is not null)
         {
@@ -95,8 +109,27 @@ public sealed partial class EditorPage
             var button = new ToggleButton { Content = region is null ? title : RecordingStyle.Label(SelectorBar, region, title), IsChecked = scope == choice };
             AutomationProperties.SetName(button, accessible ?? title);
             button.Click += (_, _) => { if (ViewModel.ChooseRecordingView(choice)) RevealRecordingStart(); };
+            if (region is not null)
+            {
+                var menu = new MenuFlyout();
+                var start = new MenuFlyoutItem { Text = $"Start a New Clip from {region.Label}" };
+                menu.Opening += (_, _) =>
+                {
+                    var reason = ViewModel.StartFromDisabledReason(region.Key);
+                    start.IsEnabled = reason is null;
+                    AutomationProperties.SetHelpText(start, reason ?? "");
+                };
+                start.Click += (_, _) => StartFromRecording(region.Key);
+                menu.Items.Add(start);
+                button.ContextFlyout = menu;
+            }
             chips.Children.Add(button);
         }
+    }
+
+    internal void StartFromRecording(string key)
+    {
+        if (ViewModel.StartFromRecording(key)) RevealRecordingStart();
     }
 
     private void RefreshRecordingSelection()
