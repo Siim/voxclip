@@ -10,6 +10,7 @@ no existing replay's keys or counts change. Deterministic; run from anywhere.
 """
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -84,6 +85,57 @@ def generated(prompt):
         'cases': cases}
 
 
+def recording_parts_vector():
+    project = json.loads((FIXTURES.parent / 'recordings/reference-recordings.voxclip').read_text())
+    project['title'] = 'Synthetic lighthouse takes'
+    media = project['media']
+    primary, companion = media['source'], media['additionalSources'][0]
+    spoken = media['spokenSources'][0]
+    media['additionalSources'].append(deepcopy(companion))
+    media['spokenSources'].append(deepcopy(spoken))
+    opening = 'The lighthouse keeps ships away from the rocks.'
+    turning_point = 'We replaced the old lamp during the winter storms.'
+    punchline = 'The smallest bulb saved the largest ship that night.'
+    takes = [[opening, turning_point], [opening, turning_point, punchline], [opening, turning_point]]
+    spans, offset, cursor = [], 0, 0
+    for index, sentences in enumerate(takes):
+        source = ([primary] + media['additionalSources'])[index]
+        transcript = ([project['transcript']] + [item['transcript'] for item in media['spokenSources']])[index]
+        label = f'take-{index + 1}'
+        key = str(index + 1) * 64
+        source.update(contentKey=key, absolutePath=f'/synthetic/{label}.mov', relativePath=f'{label}.mov')
+        if index:
+            media['spokenSources'][index - 1].update(sourceKey=key, wordIdPrefix=f'r{index + 1}.', offsetSeconds=offset, label=label)
+        words, ranges = [], []
+        template = transcript['words'][0]
+        for sentence in sentences:
+            start = cursor
+            for text in sentence.split():
+                begin, end = len(words) / 2, (len(words) + 1) / 2
+                words.append(dict(template, id=f'w{len(words)}', text=text, start=begin, end=end, rawStart=begin, rawEnd=end))
+                cursor += 1
+            ranges.append([start, cursor - 1])
+        source['durationSeconds'] = transcript['durationSeconds'] = len(words) / 2
+        transcript['words'] = words
+        offset += (len(words) + 1) // 2 + 1
+        spans.append(ranges)
+
+    def part(span, reason=None):
+        return dict(startWord=span[0], endWord=span[1], **({'takeReason': reason} if reason else {}))
+
+    alternate, unique = spans[1][0], spans[1][2]
+    story = [alternate, spans[0][1], unique]
+    reasons = ['“The lighthouse”', None, 'Only take with “the largest ship”']
+    moment = dict(kind='story', title='The lighthouse', idea='A small bulb saves a ship.', not_in_take='',
+                  captionStyle='karaoke', captionReason='', score=8, verdict='post', scoreReason='',
+                  parts=[part(alternate, reasons[0]), part(spans[0][0]), part(spans[0][1], '“A whale knocked it over”'), part(unique, reasons[2])])
+    tightened = [[alternate[0] + 1, alternate[1]], story[1], unique]
+    return dict(project=project, momentsReply={'clips': [moment]}, momentParts=story, momentReasons=reasons,
+                crossRecordingReply={'clips': [{**moment, 'parts': [part([spans[0][0][0], alternate[1]])]}]},
+                planReply={'parts': [part(span) for span in tightened]}, planParts=tightened,
+                planReasons=[None, None, reasons[2]])
+
+
 def parts_vectors():
     def ranges(parts):
         return [{'startWord': start, 'endWord': end} for start, end in parts]
@@ -102,6 +154,7 @@ def parts_vectors():
         'transcript': {'words': [{'id': f'w{index}', 'text': f'beat{index}', 'start': index / 2, 'end': (index + 1) / 2}
                                  for index in range(60)]},
         'scope': [0, 59], 'footageSources': {'companion': 12}, 'musicTrackId': 'saved-bed',
+        'withRecordings': recording_parts_vector(),
         'moments': [
             {'reply': {'clips': [{'kind': 'story', 'parts': ranges(story), 'not_in_take': 'The slogan was not spoken.'},
                                 {'kind': 'stretch', 'parts': ranges([[8, 23]])},

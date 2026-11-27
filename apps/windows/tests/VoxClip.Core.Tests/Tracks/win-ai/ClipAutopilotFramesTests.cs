@@ -38,7 +38,7 @@ public sealed class ClipAutopilotFramesTests
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
         var fixture = Frames();
-        Assert.Equal(12, prompt.PromptVersion);
+        Assert.Equal(13, prompt.PromptVersion);
         Assert.Equal("voxclip-autopilot-frames/1", fixture["schema"]!.GetValue<string>());
         Assert.Equal(prompt.Sha256, fixture["sources"]!["shared/prompts/clip-autopilot.json"]!.GetValue<string>());
         Assert.Contains("frames.blur", prompt.System, StringComparison.Ordinal);
