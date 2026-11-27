@@ -256,6 +256,7 @@ public enum RecordingEdit: Sendable {
     case removePart(clipId: String, partId: String)
     case trimPart(clipId: String, partId: String, startWordId: String, endWordId: String)
     case swapTake(clipId: String, partId: String, startWordId: String, endWordId: String, takeReason: String? = nil)
+    case startFromRecording(key: String)
 }
 
 /// Explicit segment identity; editing §2.6. Never infer it from IDs.

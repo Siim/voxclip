@@ -6,18 +6,40 @@ public struct RecordingEditRefusal: Error, Equatable, Sendable, LocalizedError {
     public init(_ message: String) { self.message = message }
 }
 
+public struct RecordingEditOutcome: Sendable {
+    public let project: Project
+    public let undoName: String
+    public let announcement: String?
+    public let details: RecordingEditDetails?
+
+    init(_ project: Project, _ undoName: String, _ announcement: String? = nil, details: RecordingEditDetails? = nil) {
+        self.project = project
+        self.undoName = undoName
+        self.announcement = announcement
+        self.details = details
+    }
+}
+
+public struct RecordingEditDetails: Sendable {
+    public let clipId: String
+    public let madePartIds: [String]
+    public let leftOut: [TakeMatch.Take]
+}
+
 public enum RecordingEdits {
     private static let prefixHighWater = "com.voxclip.spoken-prefix-high-water"
     private static let copyOrigins = "com.voxclip.recording-copy-origins"
 
     public static func apply(_ edit: RecordingEdit, project: Project)
-        -> Result<(project: Project, undoName: String, announcement: String?), RecordingEditRefusal> {
+        -> Result<RecordingEditOutcome, RecordingEditRefusal> {
         do {
             switch edit {
             case let .addSpokenSource(key, label, transcript, gain):
-                return .success((try adding(key, label: label, transcript: transcript, gain: gain, project: project), "Add recording", nil))
+                return .success(.init(try adding(key, label: label, transcript: transcript, gain: gain, project: project), "Add recording"))
             case let .removeSpokenSource(key):
-                return .success((try removing(key, project: project), "Remove recording", nil))
+                return .success(.init(try removing(key, project: project), "Remove recording"))
+            case let .startFromRecording(key):
+                return .success(try start(key, project: project))
             case let .addPart(clipId, part, after):
                 return try changeParts(clipId, project: project, name: "Add part") { parts, _ in
                     let end = parts.count
@@ -60,6 +82,50 @@ public enum RecordingEdits {
         } catch {
             return .failure(.init("This edit would make the recording or part invalid."))
         }
+    }
+
+    private static func start(_ key: String, project: Project) throws -> RecordingEditOutcome {
+        guard let state = try EditState(project: project), state.clips.count < 64 else {
+            throw RecordingEditRefusal("Choose a spoken recording with words and room for another clip.")
+        }
+        let clock = state.projectClock ?? ProjectClock.build(project)
+        let takes = TakeMatch.build(clock: clock).beats.flatMap(\.takes).filter { $0.key == key }
+        let leftOut = takes.filter { $0.flags.contains("restart") || $0.flags.contains("falseStart") }
+        let omitted = Set(leftOut.map(\.startWordId))
+        let id = freshID("recording-clip", reserved: Set(state.clips.map(\.id)))
+        var parts: [ClipPart] = []
+        var separated = true
+        for take in takes {
+            if omitted.contains(take.startWordId) { separated = true; continue }
+            if separated {
+                let partId = parts.isEmpty ? id : "part-\(parts.count + 1)"
+                parts.append(ClipPart(id: partId, startWordId: take.startWordId, endWordId: take.endWordId))
+            } else {
+                parts[parts.count - 1].endWordId = take.endWordId
+            }
+            separated = false
+        }
+        guard let first = parts.first, let last = parts.last,
+              let ranges = StoryClips.indices(parts.map { ($0.startWordId, $0.endWordId) }, words: clock.words) else {
+            throw RecordingEditRefusal("Choose a spoken recording with a line to keep.")
+        }
+        let title = EditingAlgorithms.clipTitle(ranges.lazy.flatMap { $0 }.map { state.textOf(clock.words[$0]) })
+        let clip = ClipRange(id: id, startWordId: first.startWordId, endWordId: last.endWordId, title: title,
+                             parts: parts.count > 1 ? parts : nil, kind: parts.count > 1 ? .story : nil)
+        let added = try reduceEditingState(state, command: .addClip(clip), aiResults: project.ai.results, project: project)
+        guard added.clips.count > state.clips.count else { throw RecordingEditRefusal("This recording has too many separate parts.") }
+        let selected = try reduceEditingState(added, command: .setActiveClip(clipId: id))
+        var result = project
+        result.edits = selected.projectEdits
+        return .init(try ProjectMigrations.forWriting(result), "Start from recording",
+                     details: .init(clipId: id, madePartIds: parts.map(\.id), leftOut: leftOut))
+    }
+
+    private static func freshID(_ base: String, reserved: Set<String>) -> String {
+        if !reserved.contains(base) { return base }
+        var number = 2
+        while reserved.contains("\(base)-\(number)") { number += 1 }
+        return "\(base)-\(number)"
     }
 
     private static func adding(_ key: String, label: String?, transcript: Transcript, gain: Double?, project: Project) throws -> Project {
@@ -147,14 +213,14 @@ public enum RecordingEdits {
 
     private static func changeParts(_ id: String, project: Project, name: String,
                                     change: (inout [ClipPart], ProjectClock) throws -> Void)
-        throws -> Result<(project: Project, undoName: String, announcement: String?), RecordingEditRefusal> {
+        throws -> Result<RecordingEditOutcome, RecordingEditRefusal> {
         guard let state = try EditState(project: project), let clip = state.clips.first(where: { $0.id == id }) else {
             throw RecordingEditRefusal("Choose a clip first.")
         }
         let clock = state.projectClock ?? ProjectClock.build(project)
         var parts = clip.playParts
         try change(&parts, clock)
-        guard parts != clip.playParts else { return .success((project, name, nil)) }
+        guard parts != clip.playParts else { return .success(.init(project, name)) }
         guard parts.allSatisfy({ clock.containsRange(startWordId: $0.startWordId, endWordId: $0.endWordId) }) else {
             throw RecordingEditRefusal("A part comes from one recording.")
         }
@@ -168,7 +234,7 @@ public enum RecordingEdits {
             recordCopy(copy.id, of: id, in: &result)
             announcement = "Made \(copy.title ?? "a copy") to keep the paid voice work."
         }
-        return .success((try ProjectMigrations.forWriting(result), name, announcement))
+        return .success(.init(try ProjectMigrations.forWriting(result), name, announcement))
     }
 
     private static func partIndex(_ id: String, in parts: [ClipPart]) throws -> Int {

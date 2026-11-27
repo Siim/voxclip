@@ -76,6 +76,22 @@ public enum TakeMatch {
         phrase.split(separator: " ").map { String($0) }
     }
 
+    public static func build(clock: ProjectClock) -> Result {
+        guard clock.regions.count > 1 else { return build([(clock.regions[0].key, clock.words)]) }
+        let byRegion = Dictionary(grouping: clock.words) { clock.region(of: $0.id)?.key }
+        return build(clock.regions.map { region in
+            let words = (byRegion[region.key] ?? []).map { word in
+                guard region.offsetSamples != 0 else { return word }
+                let rate = Double(clock.sampleRate)
+                var local = word
+                local.start = (EditingPrimitives.jsRound(word.start * rate) - Double(region.offsetSamples)) / rate
+                local.end = (EditingPrimitives.jsRound(word.end * rate) - Double(region.offsetSamples)) / rate
+                return local
+            }
+            return (region.key, words)
+        })
+    }
+
     public static func build(_ recordings: [(key: String, words: [TimedWord])]) -> Result {
         var sentences: [Sentence] = []
         var ranges: [Range<Int>] = []
