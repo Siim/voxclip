@@ -119,7 +119,7 @@ internal static class TimelineItemEditing
                 return new([details.SetGain(id, gain)], Decibels(gain));
             case TimelineItemGesture.Keyframe when keyframe is { } point:
                 // A reordered story on Source can put the first part after the last: clamp to the outer bounds.
-                var (low, high) = (Math.Min(start, end), Math.Max(start, end));
+                var (low, high) = (item.AxisIntervals.Min(interval => interval.Start), item.AxisIntervals.Max(interval => interval.End));
                 var raw = Math.Clamp(destination, low, high);
                 var guide = snapping ? Snap(raw, false) : null;
                 var db = Level(point.Db + volumeDelta, -60, 12);
