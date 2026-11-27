@@ -1,13 +1,18 @@
 import Foundation
 
 public enum HarnessRecording {
+    package static func localTranscription(in project: Project) -> Transcript? {
+        if let primary = project.transcript, primary.engine.id != .elevenlabs { return primary }
+        return project.media.spokenSources?.first { $0.transcript.engine.id != .elevenlabs }?.transcript
+    }
+
     public static func source(_ key: String, in project: Project) throws -> MediaReference {
         guard let source = project.media.additionalSources.first(where: { $0.contentKey == key }),
               source.video != nil, source.audio != nil, key != project.media.source.contentKey,
               project.media.spokenSources?.contains(where: { $0.sourceKey == key }) != true else {
             throw HarnessError.invalid("Choose a companion that isn't already a spoken recording.")
         }
-        guard let engine = project.transcript?.engine.id, engine != .elevenlabs else { throw refusal(source) }
+        guard project.transcript != nil, localTranscription(in: project) != nil else { throw refusal(source) }
         guard (project.media.spokenSources?.count ?? 0) < 5 else {
             throw HarnessError.invalid("A project can have up to six spoken recordings.")
         }

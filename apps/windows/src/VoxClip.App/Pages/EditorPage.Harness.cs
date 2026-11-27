@@ -151,7 +151,7 @@ public sealed partial class EditorPage
             if (keep)
             {
                 if (HarnessBlock is not null || App.Services.SharedRoot is not { } root) return;
-                keepingHarnessRecording = pending.Timelines[index].RecordingKey is not null;
+                keepingHarnessRecording = pending.RecordingKeyAt(index) is not null;
                 if (keepingHarnessRecording) UpdateHarnessButtons();
                 var transcript = await ViewModel.PrepareHarnessRecordingAsync(pending, path, index, lifetime.Token);
                 if (disposed || !IsHarnessPath(path)) return;

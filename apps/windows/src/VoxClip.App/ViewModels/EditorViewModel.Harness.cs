@@ -28,7 +28,7 @@ public sealed partial class EditorViewModel
         var clipId = proposal.ClipIdAt(index);
         var clipTitle = intent.Target.New?.Title ?? project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId)?.Title ?? "Clip";
         var changes = new List<string>();
-        var recordingKey = proposal.Timelines[index].RecordingKey;
+        var recordingKey = proposal.RecordingKeyAt(index);
         if (recordingKey is not null && project.Media.AdditionalSources?.FirstOrDefault(source => source.ContentKey == recordingKey) is { } recording)
             changes.Add($"Add recording {Core.Domain.Editing.ProjectClock.Label(recording)} with local transcription");
         if (intent.Parts is { } parts) changes.Add("Parts: " + string.Join(" → ", parts.Select(part => $"{part.StartWord}–{part.EndWord}")));
@@ -91,20 +91,20 @@ public sealed partial class EditorViewModel
 
     internal async Task<Transcript?> PrepareHarnessRecordingAsync(HarnessProposal proposal, string projectPath, int index, CancellationToken ct)
     {
-        if (proposal.Timelines[index].RecordingKey is not { } key) return null;
+        if (proposal.RecordingKeyAt(index) is not { } key) return null;
         var snapshot = project;
         proposal.ValidateRevision(snapshot);
         var source = HarnessRecording.Source(key, snapshot);
         if (HarnessRecording.CachedTranscript(key, App.Services.Data.Cache) is { } cached) return cached;
-        if (proposal.Timelines[index].HasPinnedRecordingTranscript)
+        if (proposal.HasPinnedRecordingTranscriptAt(index))
             throw new HarnessException("The recording transcript changed. Ask for a new timeline proposal.");
-        var engine = snapshot.Transcript!.Engine;
-        if (engine.ModelId is null) throw HarnessRecording.Refusal(source);
+        var local = HarnessRecording.LocalTranscription(snapshot);
+        if (local is not { Engine: { Id: TranscriptEngine.Whispercpp, ModelId: { } model } }) throw HarnessRecording.Refusal(source);
         var path = await App.Services.Projects.ResolveMediaAsync(source, projectPath, ct) ?? throw HarnessRecording.Refusal(source);
         var media = await App.Services.Probe.ProbeAsync(path, ct);
         var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, key, null, ct);
-        LanguageChoice language = snapshot.Transcript.Language is { } code ? new LanguageChoice.Forced(code) : new LanguageChoice.Auto();
-        var plan = new TranscriptionPlan(TranscriptEngine.Whispercpp, engine.ModelId, language, new());
+        LanguageChoice language = local.Language is { } code ? new LanguageChoice.Forced(code) : new LanguageChoice.Auto();
+        var plan = new TranscriptionPlan(TranscriptEngine.Whispercpp, model, language, new());
         var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, key), audio.Envelope, null, ct);
         ct.ThrowIfCancellationRequested();
         if (!ReferenceEquals(project, snapshot)) throw new HarnessException("The project changed. Ask for a new timeline proposal.");

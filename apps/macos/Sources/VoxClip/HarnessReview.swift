@@ -27,17 +27,17 @@ extension EditorModel {
         if proposal.timelines[index].recordingRevision != nil {
             throw HarnessError.invalid("The recording transcript changed. Ask for a new timeline proposal.")
         }
-        guard let primary = snapshot.transcript, let shared = app.shared else { throw HarnessRecording.refusal(source) }
+        guard let local = HarnessRecording.localTranscription(in: snapshot), let shared = app.shared else { throw HarnessRecording.refusal(source) }
         let locations = app.locations
         let catalog = BundledModelCatalog(shared: shared)
         let worker: any Transcriber
-        switch primary.engine.id {
+        switch local.engine.id {
         case .whispercpp: worker = WhisperCppTranscriber(catalog: catalog, locations: locations)
         case .appleSpeech: worker = AppleSpeechTranscriber(locations: locations)
         case .elevenlabs: throw HarnessRecording.refusal(source)
         }
-        let language = (primary.engine.locale ?? primary.language).map(LanguageChoice.forced) ?? .auto
-        let plan = TranscriptionPlan(engine: primary.engine.id, model: primary.engine.modelId, language: language)
+        let language = (local.engine.locale ?? local.language).map(LanguageChoice.forced) ?? .auto
+        let plan = TranscriptionPlan(engine: local.engine.id, model: local.engine.modelId, language: language)
         guard await worker.readiness(for: plan) == .ready else { throw HarnessRecording.refusal(source) }
         let media = recordingURL(source)
         let mediaKey = try await Task.detached(priority: .utility) { try JSONProjectStore.contentKey(for: media) }.value

@@ -38,8 +38,6 @@ public sealed class HarnessTimeline
     /// <summary>The companion this timeline adds before applying its other edits.</summary>
     public string? RecordingKey { get; private init; }
     internal string? RecordingRevision { get; private init; }
-    /// <summary>Whether the proposed indices were validated against a particular cached transcript.</summary>
-    public bool HasPinnedRecordingTranscript => RecordingRevision is not null;
     internal bool UsesFootage => Proposal.Effects?.Any(effect => effect.Kind is "bRoll" or "screenshot" or "videoStack") == true;
 
     /// <summary>The optional music brief, for estimating only.</summary>
@@ -272,6 +270,12 @@ public sealed class HarnessProposal
 
     /// <summary>The original wire intent for a timeline's review.</summary>
     public JsonElement TimelineAt(int index) => timelines[index].Wire;
+
+    /// <summary>The companion the timeline adds, if any.</summary>
+    public string? RecordingKeyAt(int index) => timelines[index].RecordingKey;
+
+    /// <summary>Whether the proposed indices were validated against a particular cached transcript.</summary>
+    public bool HasPinnedRecordingTranscriptAt(int index) => timelines[index].RecordingRevision is not null;
 
     internal static HarnessProposal Read(JsonElement wire)
     {

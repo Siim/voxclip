@@ -10,6 +10,11 @@ public static class HarnessRecording
 {
     internal static bool ValidKey(string key) => key.Length == 64 && key.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
+    /// <summary>Find a transcript in this project that was made with a local engine.</summary>
+    public static Transcript? LocalTranscription(Domain.Shared.Project project) =>
+        project.Transcript is { Engine.Id: not TranscriptEngine.Elevenlabs } primary ? primary :
+            project.Media.SpokenSources?.FirstOrDefault(source => source.Transcript.Engine.Id != TranscriptEngine.Elevenlabs)?.Transcript;
+
     /// <summary>Resolve only a companion already recorded in this project's media list.</summary>
     public static MediaReference Source(string key, Domain.Shared.Project project)
     {
@@ -17,7 +22,7 @@ public static class HarnessRecording
         if (source is not { Video: not null, Audio: not null } || key == project.Media.Source.ContentKey ||
             project.Media.SpokenSources?.Any(spoken => spoken.SourceKey == key) == true)
             throw new HarnessException("Choose a companion that isn't already a spoken recording.");
-        if (project.Transcript?.Engine.Id != TranscriptEngine.Whispercpp) throw Refusal(source);
+        if (project.Transcript is null || LocalTranscription(project) is null) throw Refusal(source);
         if (project.Media.SpokenSources?.Count >= 5) throw new HarnessException("A project can have up to six spoken recordings.");
         return source;
     }
@@ -29,7 +34,7 @@ public static class HarnessRecording
     public static Domain.Shared.Project Add(string key, Transcript transcript, Domain.Shared.Project project)
     {
         var source = Source(key, project);
-        if (transcript.Engine.Id != TranscriptEngine.Whispercpp) throw Refusal(source);
+        if (transcript.Engine.Id == TranscriptEngine.Elevenlabs) throw Refusal(source);
         return RecordingEdits.Apply(new RecordingEdit.AddSpokenSource(key, transcript), project) switch
         {
             RecordingEditResult.Applied applied => applied.Project,
@@ -45,7 +50,7 @@ public static class HarnessRecording
         try
         {
             var transcript = JsonSerializer.Deserialize(File.ReadAllText(CacheFile(key, cache)), ProjectJsonContext.Default.Transcript);
-            return transcript?.Engine.Id == TranscriptEngine.Whispercpp ? transcript : null;
+            return transcript is { Engine.Id: not TranscriptEngine.Elevenlabs } ? transcript : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
