@@ -138,13 +138,13 @@ import VoxClipCore
             let additive = !event.modifierFlags.isDisjoint(with: [.shift, .command])
             drag = .marquee(point: point, original: model.timelineItemSelection, additive: additive)
             if !additive { model.selectTimelineItems([]) }
-        } else if point.y < TimelineMetrics.overview.maxY {
+        } else if point.y < canvas.overview.frame.maxY {
             drag = .overview
             seekOverview(point)
-        } else if point.y < TimelineMetrics.ruler.maxY, let target = trimTarget(point) {
+        } else if point.y < canvas.rulerRow.maxY, let target = trimTarget(point) {
             model.selectTimelineItems([])
             drag = .trim(clip: target.0, start: target.1, point: point, index: nil, time: nil)
-        } else if event.clickCount == 2, point.y >= TimelineMetrics.ruler.maxY {
+        } else if event.clickCount == 2, point.y >= canvas.rulerRow.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
         } else {
             model.selectTimelineItems([])
@@ -360,6 +360,11 @@ import VoxClipCore
         let project = model.project
         let scope = model.itemEditScope
         let axis = canvas.content.axis
+        if axis == .source, canvas.content.recordingGaps.contains(where: { $0.contains(time(point)) }) {
+            itemCommand = nil
+            canvas.itemOverlay.preview = .init(rectangles: original, readout: "Lands between recordings · move it onto a recording's words.", point: point, guide: nil)
+            return
+        }
         switch TimelineEdits.apply(command, project: project, plan: plan, scope: scope) {
         case .failure(let refusal):
             canvas.itemOverlay.preview = .init(rectangles: original, readout: refusal.copy, point: point, guide: nil)

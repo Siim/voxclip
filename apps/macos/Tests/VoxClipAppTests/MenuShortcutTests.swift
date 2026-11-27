@@ -73,6 +73,15 @@ extension MenuShortcutTests {
         }
     }
 
+    @Test func recordingShortcutsUseOptionCommandWithoutOverridingTabs() {
+        let items = menuItems()
+        for number in 0...6 {
+            let shortcut = Shortcut(String(number), [.option, .command])
+            let matching = items.filter { Shortcut($0.keyEquivalent, $0.keyEquivalentModifierMask) == shortcut }
+            #expect(matching.map(\.title) == [number == 0 ? "All Recordings" : "Recording \(number)"])
+        }
+    }
+
     /// VX moved Export into the right panel's job: File › Export… keeps ⌘E, alone, and calls the panel's entry
     /// (`exportProject`, then `presentExport`); Clip › Export Clip… is tag 45 alone, the Explorer row's entry.
     @Test func fileExportKeepsCommandEAndClipExportItsTag() {

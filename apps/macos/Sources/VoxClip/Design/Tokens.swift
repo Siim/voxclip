@@ -5,6 +5,42 @@ import SwiftUI
 import VoxClipCore
 
 extension Color {
+    static let vcRecording1 = Color(nsColor: NSColor(name: NSColor.Name("vcRecording1")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 63.0 / 255, green: 193.0 / 255, blue: 201.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 22.0 / 255, green: 132.0 / 255, blue: 140.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcRecording2 = Color(nsColor: NSColor(name: NSColor.Name("vcRecording2")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 242.0 / 255, green: 165.0 / 255, blue: 65.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 168.0 / 255, green: 96.0 / 255, blue: 8.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcRecording3 = Color(nsColor: NSColor(name: NSColor.Name("vcRecording3")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 166.0 / 255, green: 140.0 / 255, blue: 255.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 115.0 / 255, green: 83.0 / 255, blue: 194.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcRecording4 = Color(nsColor: NSColor(name: NSColor.Name("vcRecording4")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 236.0 / 255, green: 137.0 / 255, blue: 164.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 182.0 / 255, green: 78.0 / 255, blue: 112.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcRecording5 = Color(nsColor: NSColor(name: NSColor.Name("vcRecording5")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 181.0 / 255, green: 206.0 / 255, blue: 114.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 100.0 / 255, green: 125.0 / 255, blue: 33.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcRecording6 = Color(nsColor: NSColor(name: NSColor.Name("vcRecording6")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 121.0 / 255, green: 189.0 / 255, blue: 245.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 47.0 / 255, green: 119.0 / 255, blue: 174.0 / 255, alpha: 255.0 / 255)
+    })
+
     static let vcBgWindow = Color(nsColor: NSColor(name: NSColor.Name("vcBgWindow")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 23.0 / 255, green: 24.0 / 255, blue: 26.0 / 255, alpha: 255.0 / 255)

@@ -26,8 +26,10 @@ struct ExplorerOutlineEntry: Identifiable, Equatable {
     let pendingHunk: Bool
     let aiVoice: Bool
     var partID: String? = nil
+    var recording: ProjectClock.Region? = nil
+    var alternateRecordingShade = false
     var accessibilityLabel: String {
-        (partID == nil ? "" : "Part \(id + 1), ") + "\(time), \(title)" + (pendingHunk ? ", pending change" : "") + (aiVoice ? ", AI voice" : "")
+        (partID == nil ? "" : "Part \(id + 1), ") + (recording.map { "recording \($0.label), " } ?? "") + "\(time), \(title)" + (pendingHunk ? ", pending change" : "") + (aiVoice ? ", AI voice" : "")
     }
 }
 
@@ -40,18 +42,27 @@ extension WorkspaceShell {
         let words = editor.words
         let scope = editor.scopeBounds.map { $0.lowerBound..<($0.upperBound + 1) } ?? 0..<words.count
         let grid = editor.sourceGrid
-        func entry(_ index: Int, _ range: Range<Int>, partID: String? = nil) -> ExplorerOutlineEntry {
+        func entry(_ index: Int, _ range: Range<Int>, partID: String? = nil, recording: ProjectClock.Region? = nil, alternate: Bool = false) -> ExplorerOutlineEntry {
             let start = words[range.lowerBound].start, end = words[range.upperBound - 1].end
-            let time = partID == nil ? TranscriptGutter.timecode(start) : "\(storyTakeTime(start))–\(storyTakeTime(end))"
+            let offset = recording.map { Double($0.offsetSamples) / Double(editor.recordingClock?.sampleRate ?? 48_000) } ?? 0
+            let time = partID == nil ? TranscriptGutter.timecode(start) : "\(storyTakeTime(start - offset))–\(storyTakeTime(end - offset))"
             return ExplorerOutlineEntry(id: index, words: range, time: time,
                 title: words[range.prefix(6)].map { editor.text($0) }.joined(separator: " "),
                 pendingHunk: outlineHasPendingHunk?(range) ?? false,
                 aiVoice: editor.project.voiceLab.segments.contains { $0.enabled && grid.overlaps(start, end, start: $0.replace.start, end: $0.replace.end) },
-                partID: partID)
+                partID: partID, recording: recording, alternateRecordingShade: alternate)
         }
         if let clip = editor.activeClip, clip.parts != nil, let ranges = clip.playPartIndices(in: words) {
+            let showRecordings = editor.storyRecordingRegions.count > 1
+            var previous: ProjectClock.Region?
+            var alternate = false
             return zip(clip.playParts, ranges).enumerated().map { position, item in
-                entry(position, item.1.lowerBound..<(item.1.upperBound + 1), partID: item.0.id)
+                let region = editor.hasSeveralRecordings ? editor.recordingClock?.region(of: item.0.startWordId) : nil
+                alternate = region != nil && previous == region && !alternate
+                previous = region
+                var result = entry(position, item.1.lowerBound..<(item.1.upperBound + 1), partID: item.0.id, recording: region, alternate: alternate)
+                if !showRecordings { result.recording = nil }
+                return result
             }
         }
         return TranscriptParagraphs.split(words: words).enumerated().compactMap { index, range in
@@ -62,6 +73,10 @@ extension WorkspaceShell {
     func scrollToOutline(_ index: Int) {
         guard let editor, let entry = outlineEntries.first(where: { $0.id == index }) else { return }
         if let partID = entry.partID { editor.selectedStoryPartID = partID }
+        if let region = entry.recording {
+            editor.chooseRecordingTranscript(.recording(region.key), scrollTo: editor.words[entry.words.lowerBound].id)
+            return
+        }
         editor.outlineScrollWordID = editor.words[entry.words.lowerBound].id
         editor.scopeScrollRevision += 1
     }

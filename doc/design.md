@@ -363,6 +363,10 @@ How it is built:
 
 ### 3.4 Sidebar rows
 
+For a Mac story clip with parts from several recordings, the Outline reads **Clip 1 · 5 parts · from 0007 and 0010**. A part carries a numbered band, a recording dot and label, its first words, and the time inside its recording. Neighbours from the same recording alternate shades. A story from one recording keeps its existing part colours. Part edits use **Add part**, **Move part**, **Remove part**, and **Trim part** as the undo names.
+
+**Add a recording** lists companions as “0010 · in this project as B-roll”, followed by **Choose a file…**. The picker is a free-standing system panel. Dropping a video onto the switcher is equivalent. Transcription is inline, reuses the cache when available, and never switches from local to cloud. Undo **Add recording** keeps the source file and its cached words. A blocked **Remove recording 0010** reads “Clip 1 uses 2 parts from 0010. Remove those parts first.” A missing source reads “0010 is missing. Locate it to use its words.” and offers **Locate…**. A recording without words reads “0006 isn't transcribed yet.” and offers **Transcribe on this Mac** when the local engine is selected.
+
 **Story clips (Mac).** The Clips list shows `6 parts` (the actual count) for a story, or `reel` for a showreel, followed by the edited length after cuts. The Outline replaces its paragraph list with parts in play order: drag grip, numbered colour badge, first words, monospaced `m:ss–m:ss` take range and ×. Its header reads `Clip 2 · 6 parts`. A single stretch keeps the paragraph Outline.
 
 **macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline, Suggested, Voices and Exports. Voices is hidden entirely when Voice Lab is off, in every build. Each disclosure has an uppercase 11 pt semibold heading and a spoken name such as "Clips, 2 items". The take heading is the project title with no visible count; VoiceOver reads "{title}, 1 item". Clips and Suggested show counts, while Outline shows the open tab’s `scopeName` as trailing context when it fits. Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested`, `.voices`, `.exports` and `.recent`; this never edits the project. Starting Find Clips or Hook, or focusing a suggestion, expands Suggested. Moving selection to a hidden clip row expands its owning Clips or Suggested section. Home shows Home and Recent.
@@ -528,6 +532,12 @@ The sidebar collapses last, because it holds the clips. While the viewer is coll
 ---
 
 ## 4. The transcript editor (primary surface)
+
+On Mac, spoken recordings have a dot and a short name, with their duration and **Transcribed** status in the switcher. **All** shows the recordings in clock order. A multi-recording clip opens in **Clip 1 · play order** with a numbered recording heading per part. **Show surrounding context** works within each part's recording. Choosing a recording does not edit the project. Selecting an Outline part or seeking to another recording on the timeline chooses that recording. VoiceOver announces “Showing recording 0010, 2 of 3”.
+
+**Add a part from 0010** opens an inline strip: “Select words in 0010 to add them to Clip 1 · after part 2”, **Add as Part 3**, and **Done**. Return adds; Esc leaves the strip. The strip stays after adding. The selection bar offers **Add to Clip 1 as Part** alongside **Make Clip** outside pick mode. When the selection crosses a recording boundary: “A part comes from one recording. Select words in 0010 only.” Adding announces “Part 3 added from 0010, after part 2”; moving announces “Part 3 moved to 4 of 5”.
+
+Show **Not transcribed** with **Transcribe on this Mac**, or the priced cloud action **Transcribe with ElevenLabs · ≈ $0.09** (using the actual estimate). While working, say “Transcribing on this Mac · 42%” with the actual progress and **Cancel**. If a recording is level-matched, show “−1.8 dB to match 0007” using the actual gain and recording name.
 
 ### 4.1 Rendering
 
@@ -706,6 +716,8 @@ On Mac, a single editable source word shows **Edit word** first, then **✦ Rewr
 ### 5.2 Timeline strip (72)
 
 **Story clips (Mac).** A numbered transcript band marks each part in its Outline colour. On the edited timeline, a part seam is a 3 pt white line with ↶ (back) or ↷ (ahead) and the take time it jumps to, such as `↶ 8:04`; cuts within parts remain 1 pt lines. The overview shows each coloured part at its original position in the take. **Show cuts** puts the parts side by side in play order on their own take ranges, with cuts open inside each part. Captions, effects and a single continuous music bed follow the edit. For a cross-seam effect, say “Place it inside one part.” For a cross-seam translation, say “Translate inside one part.”
+
+**Several recordings (Mac).** V1 and A1 use the recording colours. Label V1 at the part start, “0010 · 0:04”. At a 3 pt cross-recording seam say “→ 0007 0:21”; a same-recording seam keeps its jump arrow and local time, or “↷ 0:29 · restart out” if a restart was left out. A1 shows a level-match badge such as “−1.8 dB”. The overview adds one row per recording, with locally positioned, coloured and numbered parts. Source keeps the recordings on the joined clock, with a hatched “Between recordings” region. Reject drops there with “Lands between recordings · move it onto a recording's words.” Titles and other connected items follow their words; music stays continuous.
 
 Layout, left to right:
 
@@ -1109,6 +1121,10 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
 **Claude's pick.** While the clip style's captions are Auto (§6.6), a line under the style row reads "✦ Claude picked {style} · {reason}" for the active clip, 12 `text.secondary` with the name in 600, wrapping. When clips have no pick yet, a borderless "✦ Pick styles for {n} clips" button follows. It sends through the inline connector confirmation (§6.3), with the verb "Pick styles", and never opens a sheet. While it runs, the line reads "Picking caption styles…" with Cancel. A failure shows as an inline notice in the same place. Choosing a tile in the gallery fixes the clip style's captions to that style, so the line and the button disappear.
 
 ### 6.2 Clips (sidebar)
+
+The Outline's inline **Other versions** of a part are versions of the words from another recording, not paid Voice Lab Takes or Rewrite change versions. A version shows its recording, local time, changed words underlined, and delivery signals. **Play in Place** auditions the candidate across the neighbouring joins. **Use This Version** keeps the part's slot and is one **Use version** undo step. If it would stop paid lip sync, the action reads **Use in a Copy**: “Part 2 is lip-synced at 0:18–0:23. Using another version makes a copy, ‘Clip 1 copy’, and keeps the paid lip sync in Clip 1.” The copy is selected and announced: “Made Clip 1 copy to keep the lip sync”.
+
+**Rewrite as ▾**, **Revoice Whole Clip**, and **Lip Sync** don't run on a clip or selection using a companion recording. Show “Voice changes work on 0007's words for now. Open 0010 on its own to change its voice.” and **Open 0010**.
 
 **Editing parts (Mac).** Select a part and press I or O to set its edge at the selected word. Drag the grip (an accent line shows the destination), press ⌥⌘↑/↓, or choose **Move Up** / **Move Down**. Remove a part with ×, ⌫ or **Remove Part**. The row menu also has **Play Part 2** (the actual number), **Show in Take**, and **Make Clip of This Part**. **Add Selection as Part** appends the selected words. With no usable selection, say “Select words outside the clip's parts to add them.” A last part cannot be removed: “A clip needs one part. Remove Clip instead.” The undo names are “Move part”, “Remove part”, “Add part” and “Trim part”. Announce the result, for example “Part 2 moved to 3 of 6”.
 
@@ -2573,6 +2589,8 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 **Mac timeline EXPORTS (V11b).** The bottom panel has TIMELINE and EXPORTS tabs. EXPORTS reuses the Explorer's `ExportsListModel`, 40 pt two-line rows, metadata and actions (Show in Finder, Open, Export again, Retry). Empty copy: “No exports yet. Export a clip or the full edit to see it here.” Selecting EXPORTS hides the timeline transport; Hide Timeline still works. It adds no sheet.
 
 ### 11.2 Map
+
+On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6** choose recordings in clock order. These keys are separate from **⌘1** and **⌘2**, which switch to Home and Full Take.
 
 | Action | macOS | Windows | Notes |
 |---|---|---|---|

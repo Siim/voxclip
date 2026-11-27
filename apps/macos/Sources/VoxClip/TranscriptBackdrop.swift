@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import VoxClipCore
 
 /// The transcript gutter (notes.md §5), 80 pt left of the text, in points from its left edge:
 /// the clip range bar at 8, paragraph timecodes right-aligned at 42, one glyph per line in the
@@ -130,6 +131,8 @@ enum TranscriptGutter {
         var barBottom: CGFloat?
         var suggested: Bool
         var partIndex: Int? = nil
+        var recording: ProjectClock.Region? = nil
+        var alternateRecordingShade = false
     }
     static let margin: CGFloat = 64
     private(set) var bands: [Band] = []
@@ -164,7 +167,8 @@ enum TranscriptGutter {
     }
 
     private func draw(_ band: Band, in context: CGContext) {
-        let color = band.partIndex.map { StoryClipPresentation.nsColor($0) }
+        let color = band.recording.map { RecordingPresentation.nsColor($0, alternate: band.alternateRecordingShade) }
+            ?? band.partIndex.map { StoryClipPresentation.nsColor($0) }
         context.setFillColor((color?.withAlphaComponent(0.11) ?? DesignValues.nsColor("editor.band")).cgColor)
         context.fill(CGRect(x: 0, y: band.top - frame.minY, width: bounds.width, height: band.bottom - band.top))
         let lower = max(0, (band.barTop ?? frame.minY) - frame.minY), upper = min(bounds.height, (band.barBottom ?? frame.maxY) - frame.minY)
