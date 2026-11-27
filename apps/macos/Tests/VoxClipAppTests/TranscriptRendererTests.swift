@@ -36,6 +36,72 @@ import Testing
         #expect(allFirst.range.location < allSecond.range.location)
     }
 
+    @Test func recordingControlsAppearBesideTheirWords() throws {
+        let fixture = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        project.edits.clips = []
+        project.edits.activeClipId = nil
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true),
+                                app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
+        defer { model.close() }
+        try modelStartFromPrimary(model)
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let matches = try #require(model.recordingTakeMatches)
+
+        func controls() throws -> [(RecordingInlineControl, NSRange)] {
+            let storage = try #require(text.textStorage)
+            var result: [(RecordingInlineControl, NSRange)] = []
+            storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+                if let attachment = value as? RecordingInlineAttachment { result.append((attachment.control, range)) }
+            }
+            return result
+        }
+
+        let markers = try controls().compactMap { control, range -> (RecordingClipLine, NSRange)? in
+            guard case .marker(let line) = control else { return nil }
+            return (line, range)
+        }
+        try #require(!markers.isEmpty)
+        for (line, range) in markers {
+            let beat = try #require(matches.beats.first { $0.id == line.id })
+            let alternatives = Set(beat.spans.filter { $0.fromKey == line.take.key }.map(\.toKey))
+            #expect(Set(line.alternatives.map(\.key)) == alternatives)
+            let word = try #require(text.map.span(id: line.start))
+            #expect(NSMaxRange(range) <= word.range.location)
+        }
+        let opening = try #require(markers.first?.0)
+        model.showRecordingLineVersions(opening)
+        render(model, renderer)
+        let inClip = try controls()
+        let versions = try #require(inClip.first { if case .versions = $0.0 { true } else { false } })
+        let openingEnd = try #require(text.map.span(id: opening.end))
+        let following = try #require(text.map.span(id: "w8"))
+        #expect(NSMaxRange(openingEnd.range) <= versions.1.location && NSMaxRange(versions.1) <= following.range.location)
+        let omitted = try #require(inClip.first { if case .omitted = $0.0 { true } else { false } })
+        let beforeRestart = try #require(text.map.span(id: "w13"))
+        let afterRestart = try #require(text.map.span(id: "w18"))
+        #expect(text.map.span(id: "w14") == nil)
+        #expect(NSMaxRange(beforeRestart.range) <= omitted.1.location && NSMaxRange(omitted.1) <= afterRestart.range.location)
+
+        let alternate = try #require(model.recordingRegions.last)
+        model.chooseRecordingTranscript(.recording(alternate.key), announceChange: false)
+        render(model, renderer)
+        let solo = try #require(try controls().first { item in
+            if case .solo(let run) = item.0 { return run.startWordId == "r2.w18" }
+            return false
+        })
+        let punchline = try #require(text.map.span(id: "r2.w18"))
+        let previous = try #require(text.map.span(id: "r2.w17"))
+        #expect(NSMaxRange(previous.range) <= solo.1.location && NSMaxRange(solo.1) <= punchline.range.location)
+    }
+
+    private func modelStartFromPrimary(_ model: EditorModel) throws {
+        let primary = try #require(model.recordingRegions.first)
+        model.startFromRecording(primary)
+        try #require(model.transcriptRecordingScope == .playOrder)
+    }
+
     /// `paragraphs` turns of ten words by six speakers in turn, r0–r59 by default, each its own
     /// paragraph. Every fifth word is cut, r23 and r41 are fillers, a 1.2 s pause follows r14,
     /// and a clip spans the fifth paragraph, as an AI suggestion not yet kept with `suggested`.
