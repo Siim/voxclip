@@ -993,6 +993,7 @@ public sealed partial class EditorPage : Page
     private async Task TogglePlaybackAsync()
     {
         previewStop = null;
+        if (auditioningRecording) { await StopRecordingAuditionAsync(); return; }
         var pause = await playback.PausesAsync(ViewModel, () => preview?.Position.IsPlaying == true);
         await SourceTransportAsync(async token =>
         {
@@ -1096,13 +1097,16 @@ public sealed partial class EditorPage : Page
         void Add(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
         {
             var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers, ScopeOwner = EditorRoot };
+            var gesture = ShortcutPolicy.Gesture(key.ToString(), modifiers.HasFlag(VirtualKeyModifiers.Control),
+                modifiers.HasFlag(VirtualKeyModifiers.Shift), modifiers.HasFlag(VirtualKeyModifiers.Menu));
             accelerator.Invoked += (_, args) =>
             {
-                if (!ShortcutPolicy.EditorMayHandle(InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), Transcript.CorrectionOpen, InputState.Down(VirtualKey.Control), InputState.Down(VirtualKey.Menu), true)) return;
+                var unboundAlt = InputState.Down(VirtualKey.Menu) && !ShortcutPolicy.RecordingGestures.Contains(gesture);
+                if (!ShortcutPolicy.EditorMayHandle(InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), Transcript.CorrectionOpen, InputState.Down(VirtualKey.Control), unboundAlt, true)) return;
                 action(); args.Handled = true;
             };
             EditorRoot.KeyboardAccelerators.Add(accelerator);
-            shortcuts[ShortcutPolicy.Gesture(key.ToString(), modifiers.HasFlag(VirtualKeyModifiers.Control), modifiers.HasFlag(VirtualKeyModifiers.Shift))] = action;
+            shortcuts[gesture] = action;
         }
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);

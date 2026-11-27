@@ -118,7 +118,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(RegionKeyDown), true);
         // The editor's accelerators are scoped to its page, so the ones design §11.1 keeps working from the sidebar pane are
         // window accelerators that hand the key to the attached editor; [ and ] act on the Full take, clip and suggestion rows.
-        foreach (var gesture in ShortcutPolicy.PaneGestures) Root.KeyboardAccelerators.Add(PaneAccelerator(gesture));
+        foreach (var gesture in ShortcutPolicy.PaneGestures.Concat(ShortcutPolicy.RecordingGestures)) Root.KeyboardAccelerators.Add(PaneAccelerator(gesture));
         Nav.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(PaneRowKeyDown), false);
         takeRefresh = DispatcherQueue.CreateTimer();
         takeRefresh.IsRepeating = false;
@@ -205,7 +205,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var accelerator = new KeyboardAccelerator
         {
             Key = Enum.Parse<VirtualKey>(parts[^1]),
-            Modifiers = (parts.Contains("Ctrl") ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None) | (parts.Contains("Shift") ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None)
+            Modifiers = (parts.Contains("Ctrl") ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None) | (parts.Contains("Shift") ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None) |
+                (parts.Contains("Alt") ? VirtualKeyModifiers.Menu : VirtualKeyModifiers.None)
         };
         accelerator.Invoked += (_, args) =>
         {
