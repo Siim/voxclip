@@ -300,6 +300,8 @@ public sealed partial class EditorViewModel : ObservableObject
         if (isLeaving || state is null || state.ActiveClipId == clipId || clipId is not null && !state.Clips.Any(clip => clip.Id == clipId)) return false;
         CaptionDrag.Cancel();
         selectedPartId = null;
+        recordingView = null;
+        partPickKey = null;
         state = state with { ActiveClipId = clipId };
         project = project with { Edits = project.Edits with { ActiveClipId = clipId } };
         IsScopeChange = true;
@@ -858,21 +860,12 @@ public sealed partial class EditorViewModel : ObservableObject
     private void Refresh()
     {
         RefreshClipParts();
-        Paragraphs.Clear();
+        RefreshTranscriptParagraphs();
         Clips.Clear();
         if (state is not null)
         {
             try { Summary = summarize(state); }
             catch (VoxClipException exception) { Notice = UiError.Message(exception, "Editing"); Summary = new(0, state.CutWordIds.Count, state.Pauses.Count, state.CutPauseIds.Count, false, false, false, true); }
-            var start = 0;
-            foreach (var range in TranscriptParagraphs.Split(Words))
-            {
-                var end = range.End.Value;
-                // Keep the existing presentation rule: a hidden next word cannot start a row.
-                if (end < Words.Count && !PresentedWord(end).Visible) continue;
-                Paragraphs.Add(new(start, end - start, Timecode(Words[start].Start), Words[start].Speaker));
-                start = end;
-            }
             var source = project.Media.Source;
             var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
             double EditedLength(EditState scoped) => EditingEngine.BuildPlan(scoped, source.DurationSeconds, sampleRate).Duration;
@@ -906,7 +899,7 @@ public sealed partial class EditorViewModel : ObservableObject
     }
 }
 
-public sealed record TranscriptParagraph(int StartIndex, int Count, string Timecode, string? Speaker);
+public sealed record TranscriptParagraph(int StartIndex, int Count, string Timecode, string? Speaker, string? RecordingHeading = null);
 
 /// <summary>What the export ledger knows about a clip; the ledger arrives with the export dialog's redesign (round 2).</summary>
 public enum ClipExportState { None, Exported, ChangedSinceExport, Exporting, Failed }
