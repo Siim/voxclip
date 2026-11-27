@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Mac and Windows can compare transcript lines across recordings and identify alternate versions, restarts and lines unique to one take.
 - When a project can’t load, the CLI reports the invalid field path and reason in text and JSON on Mac and Windows.
 - Social loudness can boost quiet recordings by up to 20 dB on Mac and Windows, with the same peak protection.
 - The CLI exports clips in their saved frame and accepts `--aspect 4:5` for export and check on Mac and Windows.

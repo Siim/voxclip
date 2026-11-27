@@ -24,12 +24,14 @@ internal static class ClipText
     internal static string Time(double seconds) => Math.Floor((seconds == 0 ? 0 : seconds) / 60).ToString(CultureInfo.InvariantCulture) + ":" +
         Math.Floor(seconds == 0 ? 0 : seconds % 60).ToString("00", CultureInfo.InvariantCulture);
 
-    internal static bool EndsLine(string text, double gap, int wordCount)
+    internal static bool EndsLine(string text, double gap, int wordCount) =>
+        gap >= LinePauseSeconds || wordCount >= MaxLineWords || EndsWithPunctuation(text, SentencePunctuation);
+
+    internal static bool EndsWithPunctuation(string text, string punctuation)
     {
-        if (gap >= LinePauseSeconds || wordCount >= MaxLineWords) return true;
         var index = text.Length - 1;
         while (index >= 0 && ClosingPunctuation.Contains(text[index])) index--;
-        return index >= 0 && SentencePunctuation.Contains(text[index]);
+        return index >= 0 && punctuation.Contains(text[index]);
     }
 
     internal static IReadOnlyList<ClipWord> Entries(IReadOnlyList<TimedWord> words, IReadOnlyDictionary<string, string> corrections, int maxWordTextLength = 100) =>

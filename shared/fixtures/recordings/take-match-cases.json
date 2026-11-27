@@ -1,0 +1,5216 @@
+{
+  "constants": {
+    "minimumSimilarity": 0.6,
+    "minimumWordRatio": 0.5,
+    "maximumWordRatio": 2,
+    "sentencePauseSeconds": 1.2,
+    "maxSentenceWords": 41,
+    "sentencePunctuation": ".!?。！？",
+    "closingPunctuation": "\"'”’)",
+    "clauseBreaks": ",，、-–—.。",
+    "maxRestartWords": 8,
+    "restartMajority": 0.5,
+    "falseStartSeconds": 10,
+    "restartRunSeconds": 3,
+    "minRestartRunWords": 2,
+    "isolatedTailGapWords": 2,
+    "restartPhrases": {
+      "en": [
+        "sorry where was i",
+        "let me start again",
+        "one more time"
+      ],
+      "et": [
+        "vabandust kus ma olin",
+        "alustan uuesti",
+        "üks kord veel"
+      ],
+      "de": [
+        "sorry wo war ich",
+        "ich fange noch mal an",
+        "noch einmal"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "three-retakes-one-rewording-one-punchline",
+      "recordings": [
+        {
+          "key": "0007",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "We",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "built",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "this",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "for",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "creators.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "It",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "saves",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "hours",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "every",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:10",
+              "text": "week.",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:11",
+              "text": "Now",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:12",
+              "text": "ship",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:13",
+              "text": "the",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:14",
+              "text": "next",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:15",
+              "text": "version.",
+              "kind": "word",
+              "start": 7.0,
+              "end": 7.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "0006",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "We",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "built",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "this",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "for",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "creators.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "It",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w7",
+              "text": "saves",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w8",
+              "text": "hours",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w9",
+              "text": "each",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w10",
+              "text": "week.",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w11",
+              "text": "Now",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w12",
+              "text": "ship",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w13",
+              "text": "the",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w14",
+              "text": "next",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w15",
+              "text": "version.",
+              "kind": "word",
+              "start": 7.0,
+              "end": 7.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "0010",
+          "words": [
+            {
+              "id": "r3.w1",
+              "text": "We",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w2",
+              "text": "built",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w3",
+              "text": "this",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w4",
+              "text": "for",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w5",
+              "text": "creators.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w6",
+              "text": "It",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w7",
+              "text": "saves",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w8",
+              "text": "hours",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w9",
+              "text": "every",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w10",
+              "text": "week.",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w11",
+              "text": "It's",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w12",
+              "text": "a",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w13",
+              "text": "reporting",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w14",
+              "text": "tool.",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w15",
+              "text": "Now",
+              "kind": "word",
+              "start": 7.0,
+              "end": 7.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w16",
+              "text": "ship",
+              "kind": "word",
+              "start": 7.5,
+              "end": 8.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w17",
+              "text": "the",
+              "kind": "word",
+              "start": 8.0,
+              "end": 8.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w18",
+              "text": "next",
+              "kind": "word",
+              "start": 8.5,
+              "end": 9.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w19",
+              "text": "version.",
+              "kind": "word",
+              "start": 9.0,
+              "end": 9.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "0007",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "0006",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "0010",
+                "startWordId": "r3.w1",
+                "endWordId": "r3.w5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "0007",
+                "toKey": "0006",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0007",
+                "toKey": "0010",
+                "startWordId": "r3.w1",
+                "endWordId": "r3.w5",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0006",
+                "toKey": "0007",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0006",
+                "toKey": "0010",
+                "startWordId": "r3.w1",
+                "endWordId": "r3.w5",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0010",
+                "toKey": "0007",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0010",
+                "toKey": "0006",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "changedWordIds": []
+              }
+            ]
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "0007",
+                "startWordId": "s:6",
+                "endWordId": "s:10",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              },
+              {
+                "key": "0006",
+                "startWordId": "r2.w6",
+                "endWordId": "r2.w10",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              },
+              {
+                "key": "0010",
+                "startWordId": "r3.w6",
+                "endWordId": "r3.w10",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "0007",
+                "toKey": "0006",
+                "startWordId": "r2.w6",
+                "endWordId": "r2.w10",
+                "changedWordIds": [
+                  "r2.w9"
+                ]
+              },
+              {
+                "fromKey": "0007",
+                "toKey": "0010",
+                "startWordId": "r3.w6",
+                "endWordId": "r3.w10",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0006",
+                "toKey": "0007",
+                "startWordId": "s:6",
+                "endWordId": "s:10",
+                "changedWordIds": [
+                  "s:9"
+                ]
+              },
+              {
+                "fromKey": "0006",
+                "toKey": "0010",
+                "startWordId": "r3.w6",
+                "endWordId": "r3.w10",
+                "changedWordIds": [
+                  "r3.w9"
+                ]
+              },
+              {
+                "fromKey": "0010",
+                "toKey": "0007",
+                "startWordId": "s:6",
+                "endWordId": "s:10",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0010",
+                "toKey": "0006",
+                "startWordId": "r2.w6",
+                "endWordId": "r2.w10",
+                "changedWordIds": [
+                  "r2.w9"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "0010",
+                "startWordId": "r3.w11",
+                "endWordId": "r3.w14",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat4",
+            "takes": [
+              {
+                "key": "0007",
+                "startWordId": "s:11",
+                "endWordId": "s:15",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "0006",
+                "startWordId": "r2.w11",
+                "endWordId": "r2.w15",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "0010",
+                "startWordId": "r3.w15",
+                "endWordId": "r3.w19",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "0007",
+                "toKey": "0006",
+                "startWordId": "r2.w11",
+                "endWordId": "r2.w15",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0007",
+                "toKey": "0010",
+                "startWordId": "r3.w15",
+                "endWordId": "r3.w19",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0006",
+                "toKey": "0007",
+                "startWordId": "s:11",
+                "endWordId": "s:15",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0006",
+                "toKey": "0010",
+                "startWordId": "r3.w15",
+                "endWordId": "r3.w19",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0010",
+                "toKey": "0007",
+                "startWordId": "s:11",
+                "endWordId": "s:15",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "0010",
+                "toKey": "0006",
+                "startWordId": "r2.w11",
+                "endWordId": "r2.w15",
+                "changedWordIds": []
+              }
+            ]
+          }
+        ],
+        "solo": [
+          {
+            "key": "0010",
+            "startWordId": "r3.w11",
+            "endWordId": "r3.w14",
+            "sentenceCount": 1,
+            "afterBeatId": "beat2",
+            "beforeBeatId": "beat4"
+          }
+        ]
+      }
+    },
+    {
+      "id": "filler-heavy-and-delivery",
+      "recordings": [
+        {
+          "key": "primary",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "We",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "can",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "ship",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "today.",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "alternate",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "Um,",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": 0.5,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "we",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "uh",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "can",
+              "kind": "word",
+              "start": 2.25,
+              "end": 2.75,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "[knock]",
+              "kind": "event",
+              "start": 2.75,
+              "end": 3.25,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "[speech]",
+              "kind": "unlabeledSpeech",
+              "start": 3.25,
+              "end": 3.75,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w7",
+              "text": "erm",
+              "kind": "word",
+              "start": 3.75,
+              "end": 4.25,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w8",
+              "text": "ship",
+              "kind": "word",
+              "start": 4.25,
+              "end": 4.75,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w9",
+              "text": "today.",
+              "kind": "word",
+              "start": 4.75,
+              "end": 5.25,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": 1,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "primary",
+                "startWordId": "s:1",
+                "endWordId": "s:4",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "alternate",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w9",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 4,
+                  "longestPause": 0.75,
+                  "restarts": 0,
+                  "wordsPerMinute": 80.0,
+                  "cutOff": true,
+                  "meanConfidence": 0.75
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "primary",
+                "toKey": "alternate",
+                "startWordId": "r2.w2",
+                "endWordId": "r2.w9",
+                "changedWordIds": [
+                  "r2.w3",
+                  "r2.w5",
+                  "r2.w6",
+                  "r2.w7"
+                ]
+              },
+              {
+                "fromKey": "alternate",
+                "toKey": "primary",
+                "startWordId": "s:1",
+                "endWordId": "s:4",
+                "changedWordIds": []
+              }
+            ]
+          }
+        ],
+        "solo": []
+      }
+    },
+    {
+      "id": "restart-flags-and-delivery-restart",
+      "recordings": [
+        {
+          "key": "take",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "We",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "we",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "we",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "can",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "finish",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "today.",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "Sorry,",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "where",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "was",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:10",
+              "text": "I…",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:11",
+              "text": "so,",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:12",
+              "text": "so.",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:13",
+              "text": "Um,",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:14",
+              "text": "uh,",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:15",
+              "text": "well",
+              "kind": "word",
+              "start": 7.0,
+              "end": 7.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:16",
+              "text": "well.",
+              "kind": "word",
+              "start": 7.5,
+              "end": 8.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:17",
+              "text": "Vabandust,",
+              "kind": "word",
+              "start": 8.0,
+              "end": 8.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:18",
+              "text": "kus",
+              "kind": "word",
+              "start": 8.5,
+              "end": 9.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:19",
+              "text": "ma",
+              "kind": "word",
+              "start": 9.0,
+              "end": 9.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:20",
+              "text": "olin?",
+              "kind": "word",
+              "start": 9.5,
+              "end": 10.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:21",
+              "text": "Ich",
+              "kind": "word",
+              "start": 10.0,
+              "end": 10.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:22",
+              "text": "fange",
+              "kind": "word",
+              "start": 10.5,
+              "end": 11.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:23",
+              "text": "noch",
+              "kind": "word",
+              "start": 11.0,
+              "end": 11.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:24",
+              "text": "mal",
+              "kind": "word",
+              "start": 11.5,
+              "end": 12.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:25",
+              "text": "an.",
+              "kind": "word",
+              "start": 12.0,
+              "end": 12.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:26",
+              "text": "Done",
+              "kind": "word",
+              "start": 12.5,
+              "end": 13.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:27",
+              "text": "for",
+              "kind": "word",
+              "start": 13.0,
+              "end": 13.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:28",
+              "text": "today.",
+              "kind": "word",
+              "start": 13.5,
+              "end": 14.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:1",
+                "endWordId": "s:6",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 1,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:7",
+                "endWordId": "s:12",
+                "flags": [
+                  "restart"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 1,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:13",
+                "endWordId": "s:16",
+                "flags": [
+                  "restart"
+                ],
+                "signals": {
+                  "fillers": 2,
+                  "longestPause": 0,
+                  "restarts": 1,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat4",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:17",
+                "endWordId": "s:20",
+                "flags": [
+                  "restart"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat5",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:21",
+                "endWordId": "s:25",
+                "flags": [
+                  "restart"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat6",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:26",
+                "endWordId": "s:28",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "take",
+            "startWordId": "s:1",
+            "endWordId": "s:6",
+            "sentenceCount": 1
+          },
+          {
+            "key": "take",
+            "startWordId": "s:26",
+            "endWordId": "s:28",
+            "sentenceCount": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "false-start-at-ten-seconds-but-not-after",
+      "recordings": [
+        {
+          "key": "take",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "The",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "next",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "step.",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "The",
+              "kind": "word",
+              "start": 11.5,
+              "end": 12.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "next",
+              "kind": "word",
+              "start": 12.0,
+              "end": 12.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "step",
+              "kind": "word",
+              "start": 12.5,
+              "end": 13.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "is",
+              "kind": "word",
+              "start": 13.0,
+              "end": 13.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "quiet.",
+              "kind": "word",
+              "start": 13.5,
+              "end": 14.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "We",
+              "kind": "word",
+              "start": 14.0,
+              "end": 14.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:10",
+              "text": "should",
+              "kind": "word",
+              "start": 14.5,
+              "end": 15.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:11",
+              "text": "stop.",
+              "kind": "word",
+              "start": 15.0,
+              "end": 15.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:12",
+              "text": "We",
+              "kind": "word",
+              "start": 25.75,
+              "end": 26.25,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:13",
+              "text": "should",
+              "kind": "word",
+              "start": 26.25,
+              "end": 26.75,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:14",
+              "text": "stop",
+              "kind": "word",
+              "start": 26.75,
+              "end": 27.25,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:15",
+              "text": "soon.",
+              "kind": "word",
+              "start": 27.25,
+              "end": 27.75,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:1",
+                "endWordId": "s:3",
+                "flags": [
+                  "falseStart",
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:4",
+                "endWordId": "s:8",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:9",
+                "endWordId": "s:11",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat4",
+            "takes": [
+              {
+                "key": "take",
+                "startWordId": "s:12",
+                "endWordId": "s:15",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "take",
+            "startWordId": "s:4",
+            "endWordId": "s:15",
+            "sentenceCount": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "run-on-opening",
+      "recordings": [
+        {
+          "key": "0007",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "So",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "I",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "started",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "Superscribe",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "as,",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "uh,",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "a",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "dictation",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "tool,",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:10",
+              "text": "kind",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:11",
+              "text": "of",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:12",
+              "text": "for",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:13",
+              "text": "time.",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "0010",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "I",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "started",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "Superscribe",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "as",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "a",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "dictation",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w7",
+              "text": "tool",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w8",
+              "text": "that",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w9",
+              "text": "supports",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w10",
+              "text": "time",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w11",
+              "text": "tracking,",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w12",
+              "text": "and",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w13",
+              "text": "then,",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w14",
+              "text": "um,",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w15",
+              "text": "it",
+              "kind": "word",
+              "start": 7.0,
+              "end": 7.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w16",
+              "text": "grew.",
+              "kind": "word",
+              "start": 7.5,
+              "end": 8.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "0007",
+                "startWordId": "s:1",
+                "endWordId": "s:13",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 1,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "0010",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w16",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 1,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "0007",
+                "toKey": "0010",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w11",
+                "changedWordIds": [
+                  "r2.w8",
+                  "r2.w9",
+                  "r2.w10",
+                  "r2.w11"
+                ]
+              },
+              {
+                "fromKey": "0010",
+                "toKey": "0007",
+                "startWordId": "s:1",
+                "endWordId": "s:13",
+                "changedWordIds": [
+                  "s:1",
+                  "s:6",
+                  "s:10",
+                  "s:11",
+                  "s:12",
+                  "s:13"
+                ]
+              }
+            ]
+          }
+        ],
+        "solo": []
+      }
+    },
+    {
+      "id": "solo-runs-before-between-and-after",
+      "recordings": [
+        {
+          "key": "base",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "Keep",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "the",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "first",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "anchor.",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "Close",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "with",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "our",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "final",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "point.",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "pickup",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "A",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "quiet",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "prelude.",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "Keep",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "the",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "first",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w7",
+              "text": "anchor.",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w8",
+              "text": "An",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w9",
+              "text": "extra",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w10",
+              "text": "idea.",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w11",
+              "text": "A",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w12",
+              "text": "useful",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w13",
+              "text": "example.",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w14",
+              "text": "Close",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w15",
+              "text": "with",
+              "kind": "word",
+              "start": 7.0,
+              "end": 7.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w16",
+              "text": "our",
+              "kind": "word",
+              "start": 7.5,
+              "end": 8.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w17",
+              "text": "final",
+              "kind": "word",
+              "start": 8.0,
+              "end": 8.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w18",
+              "text": "point.",
+              "kind": "word",
+              "start": 8.5,
+              "end": 9.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w19",
+              "text": "The",
+              "kind": "word",
+              "start": 9.0,
+              "end": 9.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w20",
+              "text": "coda.",
+              "kind": "word",
+              "start": 9.5,
+              "end": 10.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "pickup",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w3",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:4",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "pickup",
+                "startWordId": "r2.w4",
+                "endWordId": "r2.w7",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "base",
+                "toKey": "pickup",
+                "startWordId": "r2.w4",
+                "endWordId": "r2.w7",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "pickup",
+                "toKey": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:4",
+                "changedWordIds": []
+              }
+            ]
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "pickup",
+                "startWordId": "r2.w8",
+                "endWordId": "r2.w10",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat4",
+            "takes": [
+              {
+                "key": "pickup",
+                "startWordId": "r2.w11",
+                "endWordId": "r2.w13",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat5",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:5",
+                "endWordId": "s:9",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "pickup",
+                "startWordId": "r2.w14",
+                "endWordId": "r2.w18",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "base",
+                "toKey": "pickup",
+                "startWordId": "r2.w14",
+                "endWordId": "r2.w18",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "pickup",
+                "toKey": "base",
+                "startWordId": "s:5",
+                "endWordId": "s:9",
+                "changedWordIds": []
+              }
+            ]
+          },
+          {
+            "id": "beat6",
+            "takes": [
+              {
+                "key": "pickup",
+                "startWordId": "r2.w19",
+                "endWordId": "r2.w20",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "pickup",
+            "startWordId": "r2.w1",
+            "endWordId": "r2.w3",
+            "sentenceCount": 1,
+            "beforeBeatId": "beat2"
+          },
+          {
+            "key": "pickup",
+            "startWordId": "r2.w8",
+            "endWordId": "r2.w13",
+            "sentenceCount": 2,
+            "afterBeatId": "beat2",
+            "beforeBeatId": "beat5"
+          },
+          {
+            "key": "pickup",
+            "startWordId": "r2.w19",
+            "endWordId": "r2.w20",
+            "sentenceCount": 1,
+            "afterBeatId": "beat5"
+          }
+        ]
+      }
+    },
+    {
+      "id": "different-scripts",
+      "recordings": [
+        {
+          "key": "garden",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "Tomatoes",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "grow",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "in",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "warm",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "soil.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "Water",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "them",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "before",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "sunrise.",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "budget",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "Savings",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "rose",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "by",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "nine",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "percent.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "Bonuses",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w7",
+              "text": "should",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w8",
+              "text": "track",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w9",
+              "text": "revenue.",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "garden",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "garden",
+                "startWordId": "s:6",
+                "endWordId": "s:9",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "budget",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat4",
+            "takes": [
+              {
+                "key": "budget",
+                "startWordId": "r2.w6",
+                "endWordId": "r2.w9",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "garden",
+            "startWordId": "s:1",
+            "endWordId": "s:9",
+            "sentenceCount": 2
+          },
+          {
+            "key": "budget",
+            "startWordId": "r2.w1",
+            "endWordId": "r2.w9",
+            "sentenceCount": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "greedy-monotonic-order",
+      "recordings": [
+        {
+          "key": "base",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "Apples",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "taste",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "sweet.",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "Lemons",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "taste",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "sour.",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "reversed",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "Lemons",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "taste",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "sour.",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "Apples",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "taste",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "sweet.",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "reversed",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w3",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:3",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "reversed",
+                "startWordId": "r2.w4",
+                "endWordId": "r2.w6",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "base",
+                "toKey": "reversed",
+                "startWordId": "r2.w4",
+                "endWordId": "r2.w6",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "reversed",
+                "toKey": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:3",
+                "changedWordIds": []
+              }
+            ]
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:4",
+                "endWordId": "s:6",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "base",
+            "startWordId": "s:4",
+            "endWordId": "s:6",
+            "sentenceCount": 1,
+            "afterBeatId": "beat2"
+          },
+          {
+            "key": "reversed",
+            "startWordId": "r2.w1",
+            "endWordId": "r2.w3",
+            "sentenceCount": 1,
+            "beforeBeatId": "beat2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "similarity-and-word-ratio-boundaries",
+      "recordings": [
+        {
+          "key": "base",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "Red",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "green",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "blue",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "orange",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "yellow.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "Peach",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "pear.",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "Berries",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "ripen.",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "alternate",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "Red",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "green",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "blue",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "amber",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "purple.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "Peach",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w7",
+              "text": "pear",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w8",
+              "text": "are",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w9",
+              "text": "sweet.",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w10",
+              "text": "Berries",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w11",
+              "text": "ripen",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w12",
+              "text": "slowly",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w13",
+              "text": "every",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w14",
+              "text": "summer.",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "alternate",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "base",
+                "toKey": "alternate",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "changedWordIds": [
+                  "r2.w4",
+                  "r2.w5"
+                ]
+              },
+              {
+                "fromKey": "alternate",
+                "toKey": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "changedWordIds": [
+                  "s:4",
+                  "s:5"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:6",
+                "endWordId": "s:7",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              },
+              {
+                "key": "alternate",
+                "startWordId": "r2.w6",
+                "endWordId": "r2.w9",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "base",
+                "toKey": "alternate",
+                "startWordId": "r2.w6",
+                "endWordId": "r2.w9",
+                "changedWordIds": [
+                  "r2.w8",
+                  "r2.w9"
+                ]
+              },
+              {
+                "fromKey": "alternate",
+                "toKey": "base",
+                "startWordId": "s:6",
+                "endWordId": "s:7",
+                "changedWordIds": []
+              }
+            ]
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:8",
+                "endWordId": "s:9",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat4",
+            "takes": [
+              {
+                "key": "alternate",
+                "startWordId": "r2.w10",
+                "endWordId": "r2.w14",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "base",
+            "startWordId": "s:8",
+            "endWordId": "s:9",
+            "sentenceCount": 1,
+            "afterBeatId": "beat2"
+          },
+          {
+            "key": "alternate",
+            "startWordId": "r2.w10",
+            "endWordId": "r2.w14",
+            "sentenceCount": 1,
+            "afterBeatId": "beat2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "clause-prefix-and-suffix",
+      "recordings": [
+        {
+          "key": "base",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "Keep",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "the",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "exact",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "wording",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "today.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "alternate",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "Listen—",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "keep",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "the",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "exact",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "wording",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w6",
+              "text": "today,",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w7",
+              "text": "then",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w8",
+              "text": "leave.",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "alternate",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w8",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "base",
+                "toKey": "alternate",
+                "startWordId": "r2.w2",
+                "endWordId": "r2.w6",
+                "changedWordIds": []
+              },
+              {
+                "fromKey": "alternate",
+                "toKey": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "changedWordIds": []
+              }
+            ]
+          }
+        ],
+        "solo": []
+      }
+    },
+    {
+      "id": "transitive-similarity-does-not-make-a-version",
+      "recordings": [
+        {
+          "key": "base",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "Red",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "green",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "blue",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "orange",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "yellow.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "middle",
+          "words": [
+            {
+              "id": "r2.w1",
+              "text": "Red",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w2",
+              "text": "green",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w3",
+              "text": "blue",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w4",
+              "text": "silver",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r2.w5",
+              "text": "gold.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "last",
+          "words": [
+            {
+              "id": "r3.w1",
+              "text": "Blue",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w2",
+              "text": "silver",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w3",
+              "text": "gold",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w4",
+              "text": "black",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "r3.w5",
+              "text": "white.",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              },
+              {
+                "key": "middle",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": [
+              {
+                "fromKey": "base",
+                "toKey": "middle",
+                "startWordId": "r2.w1",
+                "endWordId": "r2.w5",
+                "changedWordIds": [
+                  "r2.w4",
+                  "r2.w5"
+                ]
+              },
+              {
+                "fromKey": "middle",
+                "toKey": "base",
+                "startWordId": "s:1",
+                "endWordId": "s:5",
+                "changedWordIds": [
+                  "s:4",
+                  "s:5"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "last",
+                "startWordId": "r3.w1",
+                "endWordId": "r3.w5",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "last",
+            "startWordId": "r3.w1",
+            "endWordId": "r3.w5",
+            "sentenceCount": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "sentence-line-breaks",
+      "recordings": [
+        {
+          "key": "only",
+          "words": [
+            {
+              "id": "s:1",
+              "text": "word1",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:2",
+              "text": "word2",
+              "kind": "word",
+              "start": 0.5,
+              "end": 1.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:3",
+              "text": "word3",
+              "kind": "word",
+              "start": 1.0,
+              "end": 1.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:4",
+              "text": "word4",
+              "kind": "word",
+              "start": 1.5,
+              "end": 2.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:5",
+              "text": "word5",
+              "kind": "word",
+              "start": 2.0,
+              "end": 2.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:6",
+              "text": "word6",
+              "kind": "word",
+              "start": 2.5,
+              "end": 3.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:7",
+              "text": "word7",
+              "kind": "word",
+              "start": 3.0,
+              "end": 3.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:8",
+              "text": "word8",
+              "kind": "word",
+              "start": 3.5,
+              "end": 4.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:9",
+              "text": "word9",
+              "kind": "word",
+              "start": 4.0,
+              "end": 4.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:10",
+              "text": "word10",
+              "kind": "word",
+              "start": 4.5,
+              "end": 5.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:11",
+              "text": "word11",
+              "kind": "word",
+              "start": 5.0,
+              "end": 5.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:12",
+              "text": "word12",
+              "kind": "word",
+              "start": 5.5,
+              "end": 6.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:13",
+              "text": "word13",
+              "kind": "word",
+              "start": 6.0,
+              "end": 6.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:14",
+              "text": "word14",
+              "kind": "word",
+              "start": 6.5,
+              "end": 7.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:15",
+              "text": "word15",
+              "kind": "word",
+              "start": 7.0,
+              "end": 7.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:16",
+              "text": "word16",
+              "kind": "word",
+              "start": 7.5,
+              "end": 8.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:17",
+              "text": "word17",
+              "kind": "word",
+              "start": 8.0,
+              "end": 8.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:18",
+              "text": "word18",
+              "kind": "word",
+              "start": 8.5,
+              "end": 9.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:19",
+              "text": "word19",
+              "kind": "word",
+              "start": 9.0,
+              "end": 9.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:20",
+              "text": "word20",
+              "kind": "word",
+              "start": 9.5,
+              "end": 10.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:21",
+              "text": "word21",
+              "kind": "word",
+              "start": 10.0,
+              "end": 10.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:22",
+              "text": "word22",
+              "kind": "word",
+              "start": 10.5,
+              "end": 11.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:23",
+              "text": "word23",
+              "kind": "word",
+              "start": 11.0,
+              "end": 11.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:24",
+              "text": "word24",
+              "kind": "word",
+              "start": 11.5,
+              "end": 12.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:25",
+              "text": "word25",
+              "kind": "word",
+              "start": 12.0,
+              "end": 12.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:26",
+              "text": "word26",
+              "kind": "word",
+              "start": 12.5,
+              "end": 13.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:27",
+              "text": "word27",
+              "kind": "word",
+              "start": 13.0,
+              "end": 13.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:28",
+              "text": "word28",
+              "kind": "word",
+              "start": 13.5,
+              "end": 14.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:29",
+              "text": "word29",
+              "kind": "word",
+              "start": 14.0,
+              "end": 14.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:30",
+              "text": "word30",
+              "kind": "word",
+              "start": 14.5,
+              "end": 15.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:31",
+              "text": "word31",
+              "kind": "word",
+              "start": 15.0,
+              "end": 15.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:32",
+              "text": "word32",
+              "kind": "word",
+              "start": 15.5,
+              "end": 16.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:33",
+              "text": "word33",
+              "kind": "word",
+              "start": 16.0,
+              "end": 16.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:34",
+              "text": "word34",
+              "kind": "word",
+              "start": 16.5,
+              "end": 17.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:35",
+              "text": "word35",
+              "kind": "word",
+              "start": 17.0,
+              "end": 17.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:36",
+              "text": "word36",
+              "kind": "word",
+              "start": 17.5,
+              "end": 18.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:37",
+              "text": "word37",
+              "kind": "word",
+              "start": 18.0,
+              "end": 18.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:38",
+              "text": "word38",
+              "kind": "word",
+              "start": 18.5,
+              "end": 19.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:39",
+              "text": "word39",
+              "kind": "word",
+              "start": 19.0,
+              "end": 19.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:40",
+              "text": "word40",
+              "kind": "word",
+              "start": 19.5,
+              "end": 20.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:41",
+              "text": "word41",
+              "kind": "word",
+              "start": 20.0,
+              "end": 20.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:42",
+              "text": "Fresh",
+              "kind": "word",
+              "start": 20.5,
+              "end": 21.0,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:43",
+              "text": "words",
+              "kind": "word",
+              "start": 21.0,
+              "end": 21.5,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:44",
+              "text": "Next",
+              "kind": "word",
+              "start": 22.75,
+              "end": 23.25,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:45",
+              "text": "line!”",
+              "kind": "word",
+              "start": 23.25,
+              "end": 23.75,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "s:46",
+              "text": "End",
+              "kind": "word",
+              "start": 23.75,
+              "end": 24.25,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ]
+        },
+        {
+          "key": "empty",
+          "words": []
+        }
+      ],
+      "expected": {
+        "beats": [
+          {
+            "id": "beat1",
+            "takes": [
+              {
+                "key": "only",
+                "startWordId": "s:1",
+                "endWordId": "s:41",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat2",
+            "takes": [
+              {
+                "key": "only",
+                "startWordId": "s:42",
+                "endWordId": "s:43",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat3",
+            "takes": [
+              {
+                "key": "only",
+                "startWordId": "s:44",
+                "endWordId": "s:45",
+                "flags": [],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": false
+                }
+              }
+            ],
+            "spans": []
+          },
+          {
+            "id": "beat4",
+            "takes": [
+              {
+                "key": "only",
+                "startWordId": "s:46",
+                "endWordId": "s:46",
+                "flags": [
+                  "cutOff"
+                ],
+                "signals": {
+                  "fillers": 0,
+                  "longestPause": 0,
+                  "restarts": 0,
+                  "wordsPerMinute": 120.0,
+                  "cutOff": true
+                }
+              }
+            ],
+            "spans": []
+          }
+        ],
+        "solo": [
+          {
+            "key": "only",
+            "startWordId": "s:1",
+            "endWordId": "s:46",
+            "sentenceCount": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "no-recordings",
+      "recordings": [],
+      "expected": {
+        "beats": [],
+        "solo": []
+      }
+    }
+  ]
+}

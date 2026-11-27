@@ -22,6 +22,7 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 10. Project file semantics
 11. Conformance
 12. Deferred and out of scope
+13. Take matching across recordings
 
 ---
 
@@ -990,3 +991,40 @@ Timeline vectors pin legacy and synthetic render pieces, zero-length filtering, 
 - **Recording (M2).** Live pause chips use 1.0 s on raw times. After recording, the import pipeline runs on the recorded file.
 - **Voice Lab (M3).** Version 2 stores reversible source-preserving replacements; version 3 adds explicit render recipes and request-bound Core preparation (Voice Lab §10.5). Core plans `source`/`synth` output pieces without changing the subtractive plan or source word times. Actual Media composition, insertion mapping, lip-sync rendering and disclosure outputs remain later work.
 - **Caption gap filling and paging** are owned by the captions spec, which consumes `captionCopy`.
+
+## 13. Take matching across recordings
+
+`TakeMatch` takes an ordered list of `(key, words)` pairs. The first recording is primary. Word lists are in their recording's transcript order and use local timings. Recording keys and word IDs are opaque; a word range always belongs to its named recording. This is a pure comparison: it calls no service, changes no transcript and ranks no take.
+
+### 13.1 Sentences and beats
+
+- Use the clip transcript line breaks: `.!?。！？` at the end of an item (ignoring trailing `"'”’)`), at least **1.2 s** before the next item, **41 items**, or the end of the list.
+- For comparison, use §4.7 normalization after NFC, and omit events, unlabeled speech, §4.11 fillers and empty normalized tokens. Keep the original item positions for word IDs.
+- Two nonempty token lists match when their length ratio is in **0.5…2**, inclusive, and the longest common subsequence (LCS) covers at least **0.6** of the shorter list. Visit recording pairs in input order. For each sentence of the earlier recording, take the first eligible sentence at or after the pair's cursor; a match advances the cursor past that sentence. A beat may have only one take per recording, and all its pairs must match. Do not group takes if that would reverse any recording's order.
+- Every sentence appears once, including unmatched sentences as solo beats. Preserve the primary's order and place intervening beats before their next matched neighbour, or after their preceding neighbour when there is no next one. Break otherwise unconstrained ordering by input recording order, then sentence order. Number the resulting beats `beat1`, `beat2`, …; within a beat, takes are in recording order.
+
+### 13.2 Aligned spans
+
+Each ordered pair of takes in a beat has a span into the destination take. Trace the same LCS used for matching; when advancing either side would preserve the same LCS length, advance the destination. Start at the beginning of the destination take, or immediately after the last clause break before its first aligned word. End with the first clause break at or after the last aligned word, or at the end of the take if there is none. Clause breaks are `,，、-–—.。` at the end of an item, ignoring the same closing punctuation as for lines.
+
+`changedWordIds` lists unaligned items inside that inclusive range, in destination order. An isolated final match still anchors the span but is marked as changed when it ends one take's lexical tokens and the other take continues in the same clause, with at least **2** unaligned lexical tokens on both sides between it and the previous match. Thus “kind of for time” versus “that supports time tracking,” keeps the new clause through “tracking,” and underlines all four replacement words, without pulling in the following clause.
+
+### 13.3 Flags, solo runs and delivery signals
+
+- `restart`: a sentence with **1–8** speech items (words and unlabeled speech) where fillers plus repeated normalized lexical words beyond their first occurrence make up **more than half**, or which contains a listed phrase as contiguous lexical tokens. Check all phrase lists because the input contains no language metadata.
+- `falseStart`: at least one lexical token, followed within **10 s** (end to start) by a sentence in the same recording whose first *N* lexical tokens cover at least **0.6** of the first sentence by LCS, where *N* is the first sentence's lexical token count.
+- `cutOff`: the take contains the first or last item in its recording. Without media duration, this is an edge signal, not proof that audio was cut. Emit flags in the order above.
+
+Restart phrases (shown normalized):
+
+| Language | Phrases |
+|---|---|
+| English | `sorry where was i`; `let me start again`; `one more time` |
+| Estonian | `vabandust kus ma olin`; `alustan uuesti`; `üks kord veel` |
+| German | `sorry wo war ich`; `ich fange noch mal an`; `noch einmal` |
+
+Return solo runs in recording and transcript order. A run contains consecutive unmatched sentences without `restart` or `falseStart`; either flag breaks the run. Its `afterBeatId` and `beforeBeatId`, when present, name the nearest multi-take beats in that same recording on either side. `cutOff` by itself does not exclude a run.
+
+For every take, report the §4.11 filler count (including unlabeled speech), longest nonnegative gap in seconds between speech items, and restart count. Count one restart for each run of **2 or more** equal consecutive lexical tokens where each adjacent pair spans at most **3 s** from the first token's start to the second's end. Words per minute counts transcribed word items, including verbal fillers, over the take's full span (zero for a zero-duration take). Mean ASR confidence averages only known confidences of transcribed word items and is absent if none are known. Report the same `cutOff` boolean as in the flags.
+
+Both Cores replay `shared/fixtures/recordings/take-match-cases.json`. Regenerate it with `python3 tools/fixtures/recordings/generate_takes.py`.
