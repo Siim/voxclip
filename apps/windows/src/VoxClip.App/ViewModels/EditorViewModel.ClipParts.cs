@@ -3,10 +3,11 @@ using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
-internal sealed record ClipPartRow(ClipPart Part, int Number, int First, int Last, string Excerpt, double Start, double End)
+internal sealed record ClipPartRow(ClipPart Part, int Number, int First, int Last, string Excerpt, double Start, double End,
+    ProjectClock.Region? Recording = null, double RecordingOffset = 0)
 {
     internal string Id => Part.Id;
-    internal string TakeTime => $"{EditorViewModel.Duration(Start)}–{EditorViewModel.Duration(End)}";
+    internal string TakeTime => $"{EditorViewModel.Duration(Start - RecordingOffset)}–{EditorViewModel.Duration(End - RecordingOffset)}";
 }
 
 internal sealed record StoryVoiceActions(string RewriteReason, string LipSyncReason, string MakeSelected, string MakeAll,
@@ -24,9 +25,21 @@ public sealed partial class EditorViewModel
     internal const string LastPartReason = "A clip needs one part. Remove Clip instead.";
     internal const string StoryRewriteReason = "Voice changes work on one part at a time. Make a clip of the part first.";
     internal bool CanAddPart => CanEditParts && ClipParts.Count < 12 && HasSelection &&
+        PartSelectionReason is null &&
         ClipParts.All(part => SelectionEnd < part.First || SelectionStart > part.Last) &&
         Words.Skip(SelectionStart).Take(SelectionEnd - SelectionStart + 1).Any(word => state?.CutWordIds.Contains(word.Id) != true);
-    internal string AddPartHelp => ClipParts.Count == 12 ? "A clip can have up to 12 parts." : CanAddPart ? "" : AddPartReason;
+    internal string AddPartHelp => ClipParts.Count == 12 ? "A clip can have up to 12 parts." : PartSelectionReason ?? (CanAddPart ? "" : AddPartReason);
+    private string? PartSelectionReason
+    {
+        get
+        {
+            if (!HasSeveralRecordings || !HasSelection || RecordingOf(SelectionStart) is not { } first) return null;
+            var expected = PartPickRecording ?? first;
+            if (first != expected || RecordingOf(SelectionEnd) != expected)
+                return $"A part comes from one recording. Select words in {expected.Label} only.";
+            return RecordingUnavailable(expected.Key);
+        }
+    }
     internal bool CanRemovePart => CanEditParts && ClipParts.Count > 1;
     internal string? RemovePartHelp => ClipParts.Count == 1 ? LastPartReason : null;
 
@@ -57,16 +70,19 @@ public sealed partial class EditorViewModel
         {
             var first = Index(part.StartWordId);
             var last = Index(part.EndWordId);
+            var recording = RecordingOf(first);
             return first < 0 || last < first ? null : new ClipPartRow(part, index + 1, first, last,
-                string.Join(" ", Words.Skip(first).Take(Math.Min(8, last - first + 1)).Select(DisplayText)), Words[first].Start, Words[last].End);
+                string.Join(" ", Words.Skip(first).Take(Math.Min(8, last - first + 1)).Select(DisplayText)), Words[first].Start, Words[last].End,
+                recording, recording is null ? 0 : (double)recording.OffsetSamples / RecordingClock!.SampleRate);
         }).OfType<ClipPartRow>().ToArray() ?? [];
-        selectedPartId = SelectedPart?.Id;
+        if (ClipParts.All(part => part.Id != selectedPartId)) selectedPartId = null;
     }
 
     internal bool SelectPart(string id)
     {
         if (ClipParts.FirstOrDefault(part => part.Id == id) is not { } selected) return false;
         selectedPartId = id;
+        FollowRecording(selected.First);
         Select(selected.First);
         return true;
     }
@@ -75,10 +91,9 @@ public sealed partial class EditorViewModel
     {
         if (!CanEditParts || ClipParts.FirstOrDefault(part => part.Id == id) is not { } moving ||
             destination < 0 || destination >= ClipParts.Count || destination == moving.Number - 1) return false;
-        var parts = ClipParts.Select(part => part.Part).ToList();
-        parts.RemoveAt(moving.Number - 1);
-        parts.Insert(destination, moving.Part);
-        return ChangeParts(parts, id, "Move part", $"Part {moving.Number} moved to {destination + 1} of {parts.Count}");
+        var remaining = ClipParts.Where(part => part.Id != id).ToArray();
+        return ApplyRecordingEdit(new RecordingEdit.MovePart(ActiveClip!.Id, id, destination == 0 ? null : remaining[destination - 1].Id),
+            id, $"Part {moving.Number} moved to {destination + 1} of {ClipParts.Count}");
     }
 
     internal int? PartDropIndex(string movingId, string targetId, bool after)
@@ -93,8 +108,17 @@ public sealed partial class EditorViewModel
     internal bool AddSelectionAsPart()
     {
         if (!CanAddPart) return false;
-        var part = new ClipPart($"part-{Guid.NewGuid():N}", Words[SelectionStart].Id, Words[SelectionEnd].Id);
-        return ChangeParts([.. ClipParts.Select(row => row.Part), part], part.Id, "Add part", $"Added part {ClipParts.Count + 1}");
+        return AddRecordingPart(SelectionStart, SelectionEnd);
+    }
+
+    private bool AddRecordingPart(int first, int last)
+    {
+        var part = new ClipPart($"part-{Guid.NewGuid():N}", Words[first].Id, Words[last].Id);
+        var anchor = PartInsertionAnchor;
+        var announcement = HasSeveralRecordings && RecordingOf(first) is { } recording
+            ? $"Part {RecordingPartNumber} added from {recording.Label}" + (anchor is null ? "" : $", after part {anchor.Number}")
+            : $"Added part {ClipParts.Count + 1}";
+        return ApplyRecordingEdit(new RecordingEdit.AddPart(ActiveClip!.Id, part, anchor?.Id), part.Id, announcement);
     }
 
     internal bool RemovePart(string id)
@@ -102,7 +126,7 @@ public sealed partial class EditorViewModel
         if (!CanRemovePart || ClipParts.FirstOrDefault(part => part.Id == id) is not { } removed) return false;
         var parts = ClipParts.Where(part => part.Id != id).Select(part => part.Part).ToArray();
         var select = SelectedPart?.Id == id ? parts[Math.Min(removed.Number - 1, parts.Length - 1)].Id : SelectedPart?.Id;
-        return ChangeParts(parts, select, "Remove part", $"Removed part {removed.Number}");
+        return ApplyRecordingEdit(new RecordingEdit.RemovePart(ActiveClip!.Id, id), select, $"Removed part {removed.Number}");
     }
 
     private bool TrimPart(ClipPartRow part, bool start, int target)
@@ -111,23 +135,8 @@ public sealed partial class EditorViewModel
         var first = start ? target : part.First;
         var last = start ? part.Last : target;
         if (first > last || ClipParts.Any(other => other.Id != part.Id && first <= other.Last && other.First <= last)) return false;
-        var trimmed = part.Part with { StartWordId = Words[first].Id, EndWordId = Words[last].Id };
-        return ChangeParts(ClipParts.Select(row => row.Id == part.Id ? trimmed : row.Part).ToArray(), part.Id,
-            "Trim part", $"Trimmed part {part.Number}");
-    }
-
-    private bool ChangeParts(IReadOnlyList<ClipPart> parts, string? select, string action, string announcement)
-    {
-        if (ActiveClip is not { } clip) return false;
-        var previous = selectedPartId;
-        selectedPartId = select;
-        if (!ApplyBatch([new EditOperation.SetClipParts(clip.Id, parts)], action))
-        {
-            selectedPartId = previous;
-            return false;
-        }
-        Announce(ActiveClip?.Id == clip.Id ? announcement : $"{announcement}. Made a copy to keep the paid voice edits.");
-        return true;
+        return ApplyRecordingEdit(new RecordingEdit.TrimPart(ActiveClip!.Id, part.Id, Words[first].Id, Words[last].Id),
+            part.Id, $"Trimmed part {part.Number}");
     }
 
     internal bool MakeClipsOfParts(string? partId = null)
