@@ -449,12 +449,13 @@ member VoxClip.App.Controls.FindClipsJob :: method internal Close()
 member VoxClip.App.Controls.FindClipsJob :: method internal Dismiss()
 member VoxClip.App.Controls.FindClipsJob :: method internal FindIfFreeAsync()
 member VoxClip.App.Controls.FindClipsJob :: method internal RetryAsync()
-member VoxClip.App.Controls.FindClipsJob :: method internal ShowAsync(Microsoft.UI.Xaml.FrameworkElement,bool)
+member VoxClip.App.Controls.FindClipsJob :: method internal ShowAsync(Microsoft.UI.Xaml.FrameworkElement,bool,bool)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_Announcement(System.EventHandler`1<string>)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_CalloutShown(System.EventHandler`1<Microsoft.UI.Xaml.FrameworkElement>)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_Changed(System.EventHandler)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_Found(System.EventHandler`1<string>)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_Started(System.EventHandler`1<System.Threading.Tasks.Task>)
+member VoxClip.App.Controls.FindClipsJob :: method internal get_BestVersionsDisabledReason()
 member VoxClip.App.Controls.FindClipsJob :: method internal get_Callout()
 member VoxClip.App.Controls.FindClipsJob :: method internal get_FailureKind()
 member VoxClip.App.Controls.FindClipsJob :: method internal get_FailureText()
@@ -702,6 +703,9 @@ member VoxClip.App.Controls.PreviewPane :: method internal .ctor()
 member VoxClip.App.Controls.PreviewPane :: method internal Attach(Microsoft.UI.Xaml.FrameworkElement,Microsoft.UI.Xaml.FrameworkElement)
 member VoxClip.App.Controls.PreviewPane :: method internal SetPlayback(double,bool,bool)
 member VoxClip.App.Controls.PreviewPane :: method private UpdateTransport()
+member VoxClip.App.Controls.RecordingShortcutRow :: method internal Action(string,System.Action,string)
+member VoxClip.App.Controls.RecordingShortcutRow :: method internal Solo(VoxClip.App.ViewModels.EditorViewModel,VoxClip.Core.Domain.Editing.TakeMatch+SoloRun,bool,System.Action`1<VoxClip.App.ViewModels.RecordingAudition>,System.Action`1<string>)
+member VoxClip.App.Controls.RecordingShortcutRow :: method internal Time(VoxClip.App.ViewModels.EditorViewModel,string,string,VoxClip.Core.Domain.Editing.ProjectClock+Region)
 member VoxClip.App.Controls.RecordingStyle :: method internal Brush(Microsoft.UI.Xaml.FrameworkElement,VoxClip.Core.Domain.Editing.ProjectClock+Region,bool)
 member VoxClip.App.Controls.RecordingStyle :: method internal Label(Microsoft.UI.Xaml.FrameworkElement,VoxClip.Core.Domain.Editing.ProjectClock+Region,string)
 member VoxClip.App.Controls.RewriteDiffLine :: field private overlay
@@ -1520,6 +1524,9 @@ member VoxClip.App.Controls.TranscriptView :: field private proposalProject
 member VoxClip.App.Controls.TranscriptView :: field private proposalSession
 member VoxClip.App.Controls.TranscriptView :: field private proposalStates
 member VoxClip.App.Controls.TranscriptView :: field private realized
+member VoxClip.App.Controls.TranscriptView :: field private recordingFoldClose
+member VoxClip.App.Controls.TranscriptView :: field private recordingReturnLine
+member VoxClip.App.Controls.TranscriptView :: field private recordingReturnMarker
 member VoxClip.App.Controls.TranscriptView :: field private repeater
 member VoxClip.App.Controls.TranscriptView :: field private scroll
 member VoxClip.App.Controls.TranscriptView :: field private selectionFlyout
@@ -1533,10 +1540,12 @@ member VoxClip.App.Controls.TranscriptView :: method internal AttachProposal(Vox
 member VoxClip.App.Controls.TranscriptView :: method internal FocusChange(int,bool,bool)
 member VoxClip.App.Controls.TranscriptView :: method internal HideSelectionFlyout()
 member VoxClip.App.Controls.TranscriptView :: method internal OpenThread(int,bool)
+member VoxClip.App.Controls.TranscriptView :: method internal OtherRecordingVersionsAvailable(bool)
 member VoxClip.App.Controls.TranscriptView :: method internal RequestRewrite()
 member VoxClip.App.Controls.TranscriptView :: method internal RevealWord(int)
 member VoxClip.App.Controls.TranscriptView :: method internal SelectionMovedByKeyboard(bool)
 member VoxClip.App.Controls.TranscriptView :: method internal SetProposal(VoxClip.App.ViewModels.RewriteReview,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Nullable`1<int>,System.Collections.Generic.IReadOnlyDictionary`2<int,VoxClip.App.ViewModels.TranscriptChangeState>)
+member VoxClip.App.Controls.TranscriptView :: method internal ShowOtherRecordingVersions(bool)
 member VoxClip.App.Controls.TranscriptView :: method internal add_ChangeFocused(System.Action`1<int>)
 member VoxClip.App.Controls.TranscriptView :: method internal get_CanRewrite()
 member VoxClip.App.Controls.TranscriptView :: method internal get_DefaultFontSize()
@@ -1547,10 +1556,19 @@ member VoxClip.App.Controls.TranscriptView :: method internal get_FrameProbeReal
 member VoxClip.App.Controls.TranscriptView :: method internal get_FrameProbeScrollHost()
 member VoxClip.App.Controls.TranscriptView :: method internal get_InsertionAfterIndex()
 member VoxClip.App.Controls.TranscriptView :: method internal get_KeepChangeRequested()
+member VoxClip.App.Controls.TranscriptView :: method internal get_LocateRecordingRequested()
+member VoxClip.App.Controls.TranscriptView :: method internal get_RecordingAuditionRequested()
+member VoxClip.App.Controls.TranscriptView :: method internal get_StopRecordingAuditionRequested()
+member VoxClip.App.Controls.TranscriptView :: method internal get_TranscribingRecordingLabel()
 member VoxClip.App.Controls.TranscriptView :: method internal remove_ChangeFocused(System.Action`1<int>)
 member VoxClip.App.Controls.TranscriptView :: method internal set_ExcludeChangeRequested(System.Action`1<int>)
 member VoxClip.App.Controls.TranscriptView :: method internal set_FrameProbePrepared(System.Action`1<double>)
 member VoxClip.App.Controls.TranscriptView :: method internal set_KeepChangeRequested(System.Action`1<int>)
+member VoxClip.App.Controls.TranscriptView :: method internal set_LocateRecordingRequested(System.Action`1<string>)
+member VoxClip.App.Controls.TranscriptView :: method internal set_RecordingAuditionRequested(System.Action`1<VoxClip.App.ViewModels.RecordingAudition>)
+member VoxClip.App.Controls.TranscriptView :: method internal set_StopRecordingAuditionRequested(System.Action)
+member VoxClip.App.Controls.TranscriptView :: method internal set_TranscribingRecordingLabel(System.Func`1<string>)
+member VoxClip.App.Controls.TranscriptView :: method private AddRecordingLineMarker(Microsoft.UI.Xaml.Documents.Paragraph,VoxClip.App.ViewModels.RecordingClipLine)
 member VoxClip.App.Controls.TranscriptView :: method private Announce(object,string)
 member VoxClip.App.Controls.TranscriptView :: method private BeginWordCorrection()
 member VoxClip.App.Controls.TranscriptView :: method private Brush(string)
@@ -1559,6 +1577,7 @@ member VoxClip.App.Controls.TranscriptView :: method private ChangeActions(VoxCl
 member VoxClip.App.Controls.TranscriptView :: method private ClearEditorHost(Microsoft.UI.Xaml.Controls.StackPanel)
 member VoxClip.App.Controls.TranscriptView :: method private ClipExtent()
 member VoxClip.App.Controls.TranscriptView :: method private CloseInlineEditor(bool)
+member VoxClip.App.Controls.TranscriptView :: method private CloseRecordingVersions()
 member VoxClip.App.Controls.TranscriptView :: method private CorrectionChanged(object,System.EventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private DetachProposal()
 member VoxClip.App.Controls.TranscriptView :: method private DoubleTappedWord(object,Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs)
@@ -1584,6 +1603,7 @@ member VoxClip.App.Controls.TranscriptView :: method private Pressed(object,Micr
 member VoxClip.App.Controls.TranscriptView :: method private ProposalChanged(object,System.EventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private RebuildRealized()
 member VoxClip.App.Controls.TranscriptView :: method private RebuildThemeVisuals()
+member VoxClip.App.Controls.TranscriptView :: method private RecordingVersionFold(VoxClip.App.ViewModels.RecordingClipLine,double)
 member VoxClip.App.Controls.TranscriptView :: method private RefreshOverview()
 member VoxClip.App.Controls.TranscriptView :: method private RefreshParagraph(VoxClip.App.Controls.TranscriptView+ParagraphVisual)
 member VoxClip.App.Controls.TranscriptView :: method private Released(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
@@ -1592,8 +1612,10 @@ member VoxClip.App.Controls.TranscriptView :: method private SelectionChanged(ob
 member VoxClip.App.Controls.TranscriptView :: method private SelectionKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private SetForeground(Microsoft.UI.Xaml.Documents.Run,string)
 member VoxClip.App.Controls.TranscriptView :: method private ShowInlineEditor(VoxClip.App.Controls.TranscriptView+ParagraphVisual,string)
+member VoxClip.App.Controls.TranscriptView :: method private ShowRecordingVersions(VoxClip.App.ViewModels.RecordingClipLine)
 member VoxClip.App.Controls.TranscriptView :: method private ShowSelectionFlyout(bool)
 member VoxClip.App.Controls.TranscriptView :: method private SwitchThreadVersion(int)
+member VoxClip.App.Controls.TranscriptView :: method private UseRecordingVersion(VoxClip.App.ViewModels.RecordingClipLine,string)
 member VoxClip.App.Controls.TranscriptView :: method private WordContextRequested(object,Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private get_CanEditTranscript()
 member VoxClip.App.Controls.TranscriptView :: method protected OnCreateAutomationPeer()
@@ -1783,6 +1805,7 @@ member VoxClip.App.Controls.TranscriptionDialog :: field private stopped
 member VoxClip.App.Controls.TranscriptionDialog :: field private transcribing
 member VoxClip.App.Controls.TranscriptionDialog :: field private workers
 member VoxClip.App.Controls.TranscriptionDialog :: method internal .ctor(VoxClip.App.MainWindow,VoxClip.App.ViewModels.EditorViewModel,VoxClip.Core.Domain.Shared.MediaReference,bool,System.Func`2<VoxClip.Core.Domain.Transcript.Transcript,System.Threading.Tasks.Task>,System.Action`1<string>)
+member VoxClip.App.Controls.TranscriptionDialog :: method internal get_IsTranscribingRecording()
 member VoxClip.App.Controls.TranscriptionDialog :: method private CheckLocalRuntime()
 member VoxClip.App.Controls.TranscriptionDialog :: method private ClearRoute()
 member VoxClip.App.Controls.TranscriptionDialog :: method private DetachedConsentNotice()
@@ -2151,6 +2174,7 @@ member VoxClip.App.Pages.EditorPage :: field private waveformRequest
 member VoxClip.App.Pages.EditorPage :: method internal AddRecordingControl(Microsoft.UI.Xaml.Controls.Panel)
 member VoxClip.App.Pages.EditorPage :: method internal AnnounceNotice()
 member VoxClip.App.Pages.EditorPage :: method internal AskClaudeCost(string)
+member VoxClip.App.Pages.EditorPage :: method internal CancelRecordingTranscription()
 member VoxClip.App.Pages.EditorPage :: method internal CloseAsync()
 member VoxClip.App.Pages.EditorPage :: method internal ExportClipAsync(string)
 member VoxClip.App.Pages.EditorPage :: method internal FocusRegions()
@@ -2164,6 +2188,7 @@ member VoxClip.App.Pages.EditorPage :: method internal MakeTopPostable()
 member VoxClip.App.Pages.EditorPage :: method internal OpenAsync(VoxClip.App.MainWindow,VoxClip.Core.Domain.Shared.Project,string,bool,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method internal OpenWholeTakeVoice(bool)
 member VoxClip.App.Pages.EditorPage :: method internal PausePlayback()
+member VoxClip.App.Pages.EditorPage :: method internal PlayRecordingAudition(VoxClip.App.ViewModels.RecordingAudition)
 member VoxClip.App.Pages.EditorPage :: method internal PlayRecordingVersion(string,VoxClip.App.ViewModels.RecordingVersion)
 member VoxClip.App.Pages.EditorPage :: method internal PlayStoryPart(string)
 member VoxClip.App.Pages.EditorPage :: method internal PromptTranscriptionAsync()
@@ -2172,9 +2197,11 @@ member VoxClip.App.Pages.EditorPage :: method internal RetryExportAsync(string)
 member VoxClip.App.Pages.EditorPage :: method internal RevealOutline(int)
 member VoxClip.App.Pages.EditorPage :: method internal RevealRecordingStart()
 member VoxClip.App.Pages.EditorPage :: method internal SelectScope(string,bool)
+member VoxClip.App.Pages.EditorPage :: method internal SetOtherRecordingLinesExpanded(bool)
 member VoxClip.App.Pages.EditorPage :: method internal ShellCommands()
 member VoxClip.App.Pages.EditorPage :: method internal ShowCaptions()
 member VoxClip.App.Pages.EditorPage :: method internal ShowFindClips(Microsoft.UI.Xaml.FrameworkElement)
+member VoxClip.App.Pages.EditorPage :: method internal StartFromRecording(string)
 member VoxClip.App.Pages.EditorPage :: method internal StartRecordingImport(string,VoxClip.Core.Domain.Shared.MediaReference,bool)
 member VoxClip.App.Pages.EditorPage :: method internal ToggleShellCuts()
 member VoxClip.App.Pages.EditorPage :: method internal ToggleShellTimeline()
@@ -2188,6 +2215,7 @@ member VoxClip.App.Pages.EditorPage :: method internal get_LeaveHeldByPaidWork()
 member VoxClip.App.Pages.EditorPage :: method internal get_MediaPath()
 member VoxClip.App.Pages.EditorPage :: method internal get_ShellStatus()
 member VoxClip.App.Pages.EditorPage :: method internal get_Tabs()
+member VoxClip.App.Pages.EditorPage :: method internal get_TranscribingRecordingLabel()
 member VoxClip.App.Pages.EditorPage :: method private .cctor()
 member VoxClip.App.Pages.EditorPage :: method private ApplyHarnessAssetAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,System.Nullable`1<System.Decimal>)
 member VoxClip.App.Pages.EditorPage :: method private ApproveAskClaudeSendAsync(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,int,System.Threading.CancellationToken)
@@ -2348,6 +2376,7 @@ member VoxClip.App.Pages.EditorPage :: method private SplitterDragged(object,Mic
 member VoxClip.App.Pages.EditorPage :: method private SplitterKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private SplitterKeyUp(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private StartHarnessReview()
+member VoxClip.App.Pages.EditorPage :: method private StopRecordingAudition()
 member VoxClip.App.Pages.EditorPage :: method private StopRecordingAuditionAsync()
 member VoxClip.App.Pages.EditorPage :: method private StoredRightWidth()
 member VoxClip.App.Pages.EditorPage :: method private TightenClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -2376,9 +2405,11 @@ member VoxClip.App.Pages.EditorPage :: method private WorkflowStatusChanged(obje
 member VoxClip.App.Pages.EditorPage :: method private ZoomFocusedEditor(int)
 member VoxClip.App.Pages.EditorPage :: method private get_CurrentHarnessQuote()
 member VoxClip.App.Pages.EditorPage :: method private get_HarnessBlock()
+member VoxClip.App.Pages.EditorPage :: method private get_OtherRecordingLinesSetting()
 member VoxClip.App.Pages.EditorPage :: method private get_RecordingImportReason()
 member VoxClip.App.Pages.EditorPage :: method private get_ShellEditable()
 member VoxClip.App.Pages.EditorPage :: method private get_ShellReady()
+member VoxClip.App.Pages.EditorPage :: method private get_TimelineHasFocus()
 member VoxClip.App.Pages.EditorPage :: method private set_FindClips(VoxClip.App.Controls.FindClipsJob)
 member VoxClip.App.Pages.EditorPage :: method private set_MediaPath(string)
 member VoxClip.App.Pages.EditorPage :: method private set_ViewModel(VoxClip.App.ViewModels.EditorViewModel)
@@ -3977,6 +4008,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private SelectionChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private Transcribed
 member VoxClip.App.ViewModels.EditorViewModel :: field private applyingVoiceLab
 member VoxClip.App.ViewModels.EditorViewModel :: field private busy
+member VoxClip.App.ViewModels.EditorViewModel :: field private cachedRecordingLines
 member VoxClip.App.ViewModels.EditorViewModel :: field private clipStyleReopened
 member VoxClip.App.ViewModels.EditorViewModel :: field private exportActivity
 member VoxClip.App.ViewModels.EditorViewModel :: field private exportRecords
@@ -3989,6 +4021,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private matchedRecordingC
 member VoxClip.App.ViewModels.EditorViewModel :: field private music
 member VoxClip.App.ViewModels.EditorViewModel :: field private notice
 member VoxClip.App.ViewModels.EditorViewModel :: field private now
+member VoxClip.App.ViewModels.EditorViewModel :: field private openRecordingVersions
 member VoxClip.App.ViewModels.EditorViewModel :: field private partPickKey
 member VoxClip.App.ViewModels.EditorViewModel :: field private project
 member VoxClip.App.ViewModels.EditorViewModel :: field private recordingMatches
@@ -4026,6 +4059,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginUndoGroup(
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ChooseRecordingShortcut(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ChooseRecordingView(VoxClip.App.ViewModels.RecordingView,bool,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearSelection()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal CloseRecordingVersions()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal CompleteCaptionDrag(VoxClip.Core.Domain.Shared.CaptionPosition)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ContainsAiSpeech(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal DescribeHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,int,string)
@@ -4034,6 +4068,8 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal EndUndoGroup()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ExportStatus(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal FinishPartPick()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal FollowRecording(int)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal HandleRecordingVersionKey(VoxClip.App.ViewModels.RecordingVersionKey,System.Action`1<VoxClip.App.ViewModels.RecordingAudition>,System.Action)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal InsertRecordingLine(VoxClip.Core.Domain.Editing.TakeMatch+SoloRun,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessTimeline(VoxClip.Core.Services.Project.HarnessProposal,string,string,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation>&,VoxClip.Core.Domain.Transcript.Transcript)
@@ -4046,6 +4082,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal MarkSaved(VoxCl
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionAnchor(VoxClip.Core.Domain.Shared.CaptionPosition)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionPosition(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MovePart(string,int)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal OpenRecordingVersions(VoxClip.App.ViewModels.RecordingClipLine)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PartDropIndex(string,string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PickPartFrom(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PrepareHarnessRecordingAsync(VoxClip.Core.Services.Project.HarnessProposal,int,string,System.Func`4<VoxClip.Core.Domain.Shared.MediaReference,VoxClip.Core.Domain.Transcript.TranscriptionPlan,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Transcript.Transcript>>,System.Threading.CancellationToken)
@@ -4053,17 +4090,30 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal PresentedWord(i
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PreviewCutRange()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ProjectWithLocalOperations(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ProposalRecordingReasons(VoxClip.Core.Domain.Editing.ClipRange)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal PutBackRecordingLine(VoxClip.App.ViewModels.OmittedRecordingLine)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ReadHarnessProposal(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingGapReason(double)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingLineAt(int)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingLineAudition(VoxClip.App.ViewModels.RecordingClipLine,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingLineCopyReason(VoxClip.App.ViewModels.RecordingClipLine,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingLineDisabledReason(VoxClip.App.ViewModels.RecordingClipLine,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingOf(int)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingOmission(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TakeMatch+Take>)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingPlacement(VoxClip.Core.Domain.Editing.TakeMatch+SoloRun)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingPlacementQuote(VoxClip.Core.Domain.Editing.TakeMatch+SoloRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingReference(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingSections()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingSoloAudition(VoxClip.Core.Domain.Editing.TakeMatch+SoloRun)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingSoloDisabledReason(VoxClip.Core.Domain.Editing.TakeMatch+SoloRun,bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingTakes(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingTime(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingUnavailable(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVersionCopyReason(VoxClip.App.ViewModels.ClipPartRow,VoxClip.App.ViewModels.RecordingVersion)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVersionDisabledReason(string,VoxClip.App.ViewModels.RecordingVersion)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVersionPreview(string,VoxClip.App.ViewModels.RecordingVersion)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVersionTarget(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVersions(VoxClip.App.ViewModels.ClipPartRow)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVersionsName(VoxClip.App.ViewModels.RecordingClipLine)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVoiceReason(string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RecordingVoiceRegion(string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RemovePart(string)
@@ -4076,13 +4126,19 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal RewriteCaretCha
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SavableCorrection(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ScopedProject(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SelectPart(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal SelectRecordingVersion(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExportActivity(VoxClip.Core.Domain.Shared.ExportTarget,VoxClip.App.ViewModels.ClipExportState,System.Nullable`1<double>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExportRecords(System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.ExportRecord>)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal SetOtherRecordingLinesExpanded(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetVoiceLabLabelPosition(VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal SharedRecordingLines(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal StartFromDisabledReason(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal StartFromRecording(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal StoryVoice(string,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal StoryVoicePrice(string,System.Nullable`1<System.Decimal>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal TakeBackMakeIt(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ToggleRecordingContext()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal UseRecordingLineVersion(VoxClip.App.ViewModels.RecordingClipLine,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal UseRecordingVersion(string,VoxClip.App.ViewModels.RecordingVersion)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal UseWholeRecordingAsPart(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal VoiceLabAssetReferences(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Shared.Project>)
@@ -4103,8 +4159,14 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal get_IsRecording
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_IsScopeChange()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_IsStoryClip()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_LlmRuns()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_OmittedRecordingLines()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_OpenRecordingLine()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_OpenRecordingLineId()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_OtherRecordingLines()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_OtherRecordingLinesExpanded()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_PartPickPrompt()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_PartPickRecording()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RecordingClipLines()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RecordingClock()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RecordingCompanions()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RecordingPartNumber()
@@ -4113,6 +4175,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RecordingRe
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RemovePartHelp()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RewriteSelectionRevision()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_SelectedPart()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_SelectedRecordingVersionKey()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_ShowsRecordingContext()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_StoryRecordingHeading()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_StoryRecordingRegions()
@@ -4127,7 +4190,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private Announce(bool,Sy
 member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyBatch(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.EditOperation>,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyPlanAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItServices)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyPlannedAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.Core.Domain.Autopilot.WordSpan,VoxClip.App.ViewModels.MakeItServices,VoxClip.Core.Domain.Autopilot.ClaudeModeClock,int)
-member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyRecordingEdit(VoxClip.Core.Domain.Editing.RecordingEdit,string,string,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyRecordingEdit(VoxClip.Core.Domain.Editing.RecordingEdit,string,string,VoxClip.Core.Domain.Shared.Project,System.Func`2<VoxClip.Core.Domain.Editing.RecordingEditResult+Applied,string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyVoiceLabCore(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRateSample>>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private AskClaudeEffectEntry(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private AskClaudeNotify()
@@ -4151,6 +4214,8 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private FinishClaudeMode
 member VoxClip.App.ViewModels.EditorViewModel :: method private Followed(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation)
 member VoxClip.App.ViewModels.EditorViewModel :: method private IndexOfSpeechStart(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method private InitializeState()
+member VoxClip.App.ViewModels.EditorViewModel :: method private IsLeftOut(VoxClip.Core.Domain.Editing.TakeMatch+Take)
+member VoxClip.App.ViewModels.EditorViewModel :: method private IsRestart(VoxClip.Core.Domain.Editing.TakeMatch+Take)
 member VoxClip.App.ViewModels.EditorViewModel :: method private LanguageName(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItAssetAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,VoxClip.App.ViewModels.PlanAssetServices,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItChoosePicture(string,VoxClip.App.ViewModels.MakeItRow,VoxClip.App.ViewModels.MakeItRun)
@@ -4183,7 +4248,10 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private PushHistory(stri
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordCaptionLook(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordClipStyle(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingCopyReason(VoxClip.App.ViewModels.ClipPartRow,VoxClip.Core.Domain.Editing.RecordingEdit)
+member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingLineEdit(VoxClip.App.ViewModels.RecordingClipLine,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingMatches()
+member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingSoloEdit(VoxClip.Core.Domain.Editing.TakeMatch+SoloRun,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Refresh()
 member VoxClip.App.ViewModels.EditorViewModel :: method private RefreshClipParts()
 member VoxClip.App.ViewModels.EditorViewModel :: method private RefreshExportRows()
@@ -4215,9 +4283,12 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private set_FullTakeDura
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_IsReadOnly(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_IsRelinking(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_IsScopeChange(bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method private set_OpenRecordingLineId(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private set_OtherRecordingLinesExpanded(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_RewriteEnd(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_RewriteSelectionRevision(long)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_RewriteStart(int)
+member VoxClip.App.ViewModels.EditorViewModel :: method private set_SelectedRecordingVersionKey(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_ShowsRecordingContext(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_Summary(VoxClip.Core.Domain.Editing.EditSummary)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_SummaryLine(string)
@@ -5638,6 +5709,23 @@ member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Duration(S
 member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Fetch(System.Func`3<VoxClip.Core.Domain.Music.MusicCandidate,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<byte[]>>)
 member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Folder(System.Func`1<string>)
 member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Suggest(System.Func`4<VoxClip.Core.Domain.Music.MusicBrief,double,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Music.MusicSuggestionResult>>)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method private .ctor(VoxClip.App.ViewModels.OmittedRecordingLine)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public .ctor(VoxClip.Core.Domain.Editing.TakeMatch+Take,string,string)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public Deconstruct(VoxClip.Core.Domain.Editing.TakeMatch+Take&,string&,string&)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public Equals(VoxClip.App.ViewModels.OmittedRecordingLine)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public Equals(object)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public GetHashCode()
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public ToString()
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public get_AfterWordId()
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public get_Label()
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public get_Take()
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public op_Equality(VoxClip.App.ViewModels.OmittedRecordingLine,VoxClip.App.ViewModels.OmittedRecordingLine)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public op_Inequality(VoxClip.App.ViewModels.OmittedRecordingLine,VoxClip.App.ViewModels.OmittedRecordingLine)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public set_AfterWordId(string)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public set_Label(string)
+member VoxClip.App.ViewModels.OmittedRecordingLine :: method public set_Take(VoxClip.Core.Domain.Editing.TakeMatch+Take)
 member VoxClip.App.ViewModels.OpenProjectCacheLease :: field private lease
 member VoxClip.App.ViewModels.OpenProjectCacheLease :: field private sync
 member VoxClip.App.ViewModels.OpenProjectCacheLease :: field private touches
@@ -5842,6 +5930,49 @@ member VoxClip.App.ViewModels.RecorderMicrophone :: method public DisposeAsync()
 member VoxClip.App.ViewModels.RecorderMicrophone :: method public Snapshot()
 member VoxClip.App.ViewModels.RecorderMicrophone :: method public StartAsync(int,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.RecorderMicrophone :: method public Stop()
+member VoxClip.App.ViewModels.RecordingAudition :: method private .ctor(VoxClip.App.ViewModels.RecordingAudition)
+member VoxClip.App.ViewModels.RecordingAudition :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RecordingAudition :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RecordingAudition :: method public .ctor(VoxClip.Core.Domain.Shared.Project,string,string)
+member VoxClip.App.ViewModels.RecordingAudition :: method public Deconstruct(VoxClip.Core.Domain.Shared.Project&,string&,string&)
+member VoxClip.App.ViewModels.RecordingAudition :: method public Equals(VoxClip.App.ViewModels.RecordingAudition)
+member VoxClip.App.ViewModels.RecordingAudition :: method public Equals(object)
+member VoxClip.App.ViewModels.RecordingAudition :: method public GetHashCode()
+member VoxClip.App.ViewModels.RecordingAudition :: method public ToString()
+member VoxClip.App.ViewModels.RecordingAudition :: method public get_FirstId()
+member VoxClip.App.ViewModels.RecordingAudition :: method public get_LastId()
+member VoxClip.App.ViewModels.RecordingAudition :: method public get_Project()
+member VoxClip.App.ViewModels.RecordingAudition :: method public op_Equality(VoxClip.App.ViewModels.RecordingAudition,VoxClip.App.ViewModels.RecordingAudition)
+member VoxClip.App.ViewModels.RecordingAudition :: method public op_Inequality(VoxClip.App.ViewModels.RecordingAudition,VoxClip.App.ViewModels.RecordingAudition)
+member VoxClip.App.ViewModels.RecordingAudition :: method public set_FirstId(string)
+member VoxClip.App.ViewModels.RecordingAudition :: method public set_LastId(string)
+member VoxClip.App.ViewModels.RecordingAudition :: method public set_Project(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.RecordingClipLine :: method internal Span(string)
+member VoxClip.App.ViewModels.RecordingClipLine :: method internal get_Alternatives()
+member VoxClip.App.ViewModels.RecordingClipLine :: method internal get_Id()
+member VoxClip.App.ViewModels.RecordingClipLine :: method private .ctor(VoxClip.App.ViewModels.RecordingClipLine)
+member VoxClip.App.ViewModels.RecordingClipLine :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RecordingClipLine :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public .ctor(VoxClip.Core.Domain.Editing.TakeMatch+Beat,int,VoxClip.App.ViewModels.ClipPartRow,VoxClip.Core.Domain.Editing.TakeMatch+Take,string,string)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public Deconstruct(VoxClip.Core.Domain.Editing.TakeMatch+Beat&,int&,VoxClip.App.ViewModels.ClipPartRow&,VoxClip.Core.Domain.Editing.TakeMatch+Take&,string&,string&)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public Equals(VoxClip.App.ViewModels.RecordingClipLine)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public Equals(object)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public GetHashCode()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public ToString()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public get_Beat()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public get_FirstId()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public get_LastId()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public get_Number()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public get_Part()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public get_Take()
+member VoxClip.App.ViewModels.RecordingClipLine :: method public op_Equality(VoxClip.App.ViewModels.RecordingClipLine,VoxClip.App.ViewModels.RecordingClipLine)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public op_Inequality(VoxClip.App.ViewModels.RecordingClipLine,VoxClip.App.ViewModels.RecordingClipLine)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public set_Beat(VoxClip.Core.Domain.Editing.TakeMatch+Beat)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public set_FirstId(string)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public set_LastId(string)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public set_Number(int)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public set_Part(VoxClip.App.ViewModels.ClipPartRow)
+member VoxClip.App.ViewModels.RecordingClipLine :: method public set_Take(VoxClip.Core.Domain.Editing.TakeMatch+Take)
 member VoxClip.App.ViewModels.RecordingOverviewRow :: method private .ctor(VoxClip.App.ViewModels.RecordingOverviewRow)
 member VoxClip.App.ViewModels.RecordingOverviewRow :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RecordingOverviewRow :: method private get_EqualityContract()
@@ -5905,6 +6036,12 @@ member VoxClip.App.ViewModels.RecordingVersion :: method public set_LastId(strin
 member VoxClip.App.ViewModels.RecordingVersion :: method public set_Pause(double)
 member VoxClip.App.ViewModels.RecordingVersion :: method public set_Recording(VoxClip.Core.Domain.Editing.ProjectClock+Region)
 member VoxClip.App.ViewModels.RecordingVersion :: method public set_Start(double)
+member VoxClip.App.ViewModels.RecordingVersionKey :: field public Close
+member VoxClip.App.ViewModels.RecordingVersionKey :: field public Down
+member VoxClip.App.ViewModels.RecordingVersionKey :: field public Play
+member VoxClip.App.ViewModels.RecordingVersionKey :: field public Up
+member VoxClip.App.ViewModels.RecordingVersionKey :: field public Use
+member VoxClip.App.ViewModels.RecordingVersionKey :: field public value__
 member VoxClip.App.ViewModels.RecordingView :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RecordingView :: method public .ctor(VoxClip.App.ViewModels.RecordingViewKind,string)
 member VoxClip.App.ViewModels.RecordingView :: method public Deconstruct(VoxClip.App.ViewModels.RecordingViewKind&,string&)
@@ -7778,6 +7915,9 @@ member VoxClip.App.ViewModels.ShellViewModel :: method public set_ClipMedia(Syst
 member VoxClip.App.ViewModels.ShellViewModel :: method public set_Finding(string)
 member VoxClip.App.ViewModels.ShellViewModel :: method public set_NoneFound(string)
 member VoxClip.App.ViewModels.ShellViewModel :: method public set_TakeMedia(VoxClip.App.ViewModels.MediaTile)
+member VoxClip.App.ViewModels.ShortcutPolicy :: field internal RecordingVersionsGesture
+member VoxClip.App.ViewModels.ShortcutPolicy :: method internal OpensRecordingVersions(string,bool,bool,bool,bool,bool)
+member VoxClip.App.ViewModels.ShortcutPolicy :: method internal RecordingFoldKey(string,bool,bool,bool)
 member VoxClip.App.ViewModels.ShortcutPolicy :: method internal get_RecordingGestures()
 member VoxClip.App.ViewModels.ShortcutPolicy :: method private .cctor()
 member VoxClip.App.ViewModels.ShortcutPolicy :: method public EditorMayHandle(bool,bool,bool,bool,bool)
@@ -9672,6 +9812,7 @@ type VoxClip.App.Controls.MediaThumbnail
 type VoxClip.App.Controls.MusicSection
 type VoxClip.App.Controls.OnboardingDialog
 type VoxClip.App.Controls.PreviewPane
+type VoxClip.App.Controls.RecordingShortcutRow
 type VoxClip.App.Controls.RecordingStyle
 type VoxClip.App.Controls.RewriteDiffLine
 type VoxClip.App.Controls.RewritePanel
@@ -9897,6 +10038,7 @@ type VoxClip.App.ViewModels.MediaTile
 type VoxClip.App.ViewModels.MusicPanelModel
 type VoxClip.App.ViewModels.MusicPanelPhase
 type VoxClip.App.ViewModels.MusicPanelServices
+type VoxClip.App.ViewModels.OmittedRecordingLine
 type VoxClip.App.ViewModels.OpenProjectCacheLease
 type VoxClip.App.ViewModels.PendingProjectSave
 type VoxClip.App.ViewModels.PhraseMicrophoneAccess
@@ -9918,9 +10060,12 @@ type VoxClip.App.ViewModels.RateCalibrations
 type VoxClip.App.ViewModels.RecentProject
 type VoxClip.App.ViewModels.RecentSort
 type VoxClip.App.ViewModels.RecorderMicrophone
+type VoxClip.App.ViewModels.RecordingAudition
+type VoxClip.App.ViewModels.RecordingClipLine
 type VoxClip.App.ViewModels.RecordingOverviewRow
 type VoxClip.App.ViewModels.RecordingSection
 type VoxClip.App.ViewModels.RecordingVersion
+type VoxClip.App.ViewModels.RecordingVersionKey
 type VoxClip.App.ViewModels.RecordingView
 type VoxClip.App.ViewModels.RecordingViewKind
 type VoxClip.App.ViewModels.RewriteAcceptance

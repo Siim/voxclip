@@ -23,7 +23,7 @@ internal sealed class FindClipsJob
     private long presentationRevision;
     private readonly TextBlock connector = Ui.Text("");
     private readonly HyperlinkButton change = new() { Content = "Change…", Padding = new(6, 0, 6, 0), Height = 32 };
-    private readonly ComboBox preset = Ui.Choice("Preset", ["Best moments", "Hooks", "One per topic", "Quotes", "Custom"]);
+    private readonly ComboBox preset = Ui.Choice("Preset", ["Best moments", "Hooks", "One per topic", "Quotes", "Custom", "Best versions"]);
     private readonly TextBox instructions = new() { Header = "Anything specific? (optional)", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock footnote = Ui.Text("", "HelperText");
     private readonly TextBlock problem = Ui.Text("", "HelperText");
@@ -82,11 +82,21 @@ internal sealed class FindClipsJob
     internal event EventHandler<FrameworkElement?>? CalloutShown;
 
     /// <summary>Mount the inline job requested by <paramref name="target"/>. Missing connectors use the existing sidebar callout.</summary>
-    internal async Task ShowAsync(FrameworkElement target, bool hooks = false)
+    internal string? BestVersionsDisabledReason => App.Services.Get("llm.connector", "").Length == 0
+        ? $"Choose an AI connector in Settings › {SettingsSections.ProvidersAndKeys}. Start from a recording works without one."
+        : !model.HasSeveralRecordings ? "Add another recording of the same idea to compare versions."
+        : !model.CanFindClips || starting || Running is not null ? "Wait for the current work to finish." : null;
+
+    internal async Task ShowAsync(FrameworkElement target, bool hooks = false, bool bestVersions = false)
     {
         if (Running is not null || model.Busy || model.IsLeaving || !model.HasTranscript) return;
         anchor = target;
-        if (hooks) preset.SelectedIndex = 1;
+        if (bestVersions)
+        {
+            if (BestVersionsDisabledReason is not null) return;
+            preset.SelectedIndex = (int)ClipPreset.BestTakes;
+        }
+        else if (hooks) preset.SelectedIndex = (int)ClipPreset.Hooks;
         host?.RequestClose();
         host?.ReleaseBody();
         var presentation = ++presentationRevision;
@@ -107,6 +117,12 @@ internal sealed class FindClipsJob
             ? $"Sends transcript text with word numbers to {server.Authority}. No audio or video."
             : chosen.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
         problem.Visibility = Visibility.Collapsed;
+        if (bestVersions)
+        {
+            connector.Text = chosen.ShortName;
+            await FindAsync();
+            return;
+        }
         instructions.Focus(FocusState.Programmatic);
         try
         {
@@ -193,6 +209,11 @@ internal sealed class FindClipsJob
 
     private async Task FindAsync()
     {
+        if (preset.SelectedIndex == (int)ClipPreset.BestTakes && !model.HasSeveralRecordings)
+        {
+            Problem("Add another recording of the same idea to compare versions.");
+            return;
+        }
         if (preset.SelectedIndex == 4 && string.IsNullOrWhiteSpace(instructions.Text))
         {
             Problem("Describe the clips you want.");
@@ -280,7 +301,8 @@ internal sealed class FindClipsJob
         try
         {
             var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, selectedPreset,
-                instruction, state.Transcript.Language, chosen.Id, chosenModel);
+                instruction, state.Transcript.Language, chosen.Id, chosenModel,
+                Recordings: selectedPreset == ClipPreset.BestTakes && state.ProjectClock is { } clock ? RecordingProposalContext.Create(clock) : null);
             var result = await ConnectorPreflight.FindAsync(App.Services.ClipFinder, request, authorize, search.Token);
             if (!Current()) return;
             if (result is null)

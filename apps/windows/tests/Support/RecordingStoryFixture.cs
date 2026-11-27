@@ -6,6 +6,8 @@ namespace VoxClip.Tests.Support;
 
 internal static class RecordingStoryFixture
 {
+    internal static string MediaPath(string recording) => Path.Combine(FixtureLoader.SharedRoot, "fixtures", "media", $"recording-{recording}.mp4");
+
     internal static async Task<(Project Project, string Path, MediaInfo Primary)> CreateAsync(string directory, CancellationToken ct)
     {
         var vectors = JsonNode.Parse(FixtureLoader.ReadText("fixtures/recordings/plan-cases.json"))!;
@@ -19,8 +21,8 @@ internal static class RecordingStoryFixture
         var store = new ProjectStore();
         var original = project.Media.Source;
         var companions = project.Media.AdditionalSources!.ToArray();
-        var primary = await CopyAsync(original, "A", "DJI_0007.MP4", new(320, 180, 30, 0), 48_000);
-        var second = await CopyAsync(companions[0], "B", "DJI_0010.MP4", new(240, 320, 30, 0), 44_100);
+        var primary = await CopyAsync(original, "0007", new(320, 180, 30, 0), 48_000);
+        var second = await CopyAsync(companions[0], "0010", new(144, 256, 30, 90), 44_100);
         var spoken = project.Media.SpokenSources!.Select(source => source.SourceKey == companions[0].ContentKey ? source with { SourceKey = second.ContentKey } : source).ToArray();
         companions[0] = second;
         project = project with
@@ -33,11 +35,11 @@ internal static class RecordingStoryFixture
         return (project, path, new(primary.AbsolutePath, primary.DurationSeconds, primary.Video, primary.Audio,
             new(320, 180), "h264", "aac", false, 0, 1, 0));
 
-        async Task<MediaReference> CopyAsync(MediaReference reference, string recording, string name, VideoTrackInfo video, int rate)
+        async Task<MediaReference> CopyAsync(MediaReference reference, string recording, VideoTrackInfo video, int rate)
         {
-            var input = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "media", $"t4-recording-{recording}.mp4");
+            var name = $"DJI_{recording}.MP4";
             var output = Path.Combine(directory, name);
-            File.Copy(input, output, overwrite: true);
+            File.Copy(MediaPath(recording), output, overwrite: true);
             return reference with { AbsolutePath = output, RelativePath = name, SizeBytes = new FileInfo(output).Length,
                 ContentKey = await store.ComputeContentKeyAsync(output, null, ct), Video = video, Audio = new(rate, 1) };
         }

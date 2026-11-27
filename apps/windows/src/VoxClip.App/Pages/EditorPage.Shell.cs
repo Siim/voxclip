@@ -210,6 +210,8 @@ public sealed partial class EditorPage
                 "Find clips first, and finish the current task first."),
             Command("job.hook", "Find hooks", "", () => ShellJobAvailable(ShellJob.Hook), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Hook), "Hook"), "Transcribe the video and finish the current task first."),
             Command("job.find", "Find clips…", "Ctrl+Shift+K", () => ShellJobAvailable(ShellJob.FindClips), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.FindClips), "Find clips"), "Transcribe the video and finish the current task first."),
+            Command("recording.versions", "Show Other Versions of This Line", ShortcutPolicy.RecordingVersionsGesture,
+                () => Transcript.OtherRecordingVersionsAvailable(TimelineHasFocus), () => Transcript.ShowOtherRecordingVersions(TimelineHasFocus), "Choose a line with other versions in the clip."),
             Command("job.export", ViewModel.State?.ActiveClipId is null ? "Export video…" : "Export clip…", "Ctrl+E", () => ShellJobAvailable(ShellJob.Export), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Export), "Export"), ViewModel.ExportBlocked(demo, MediaPath is null || media is null, ViewModel.State?.ActiveClipId)),
             Command("view.cuts", ShowCuts.IsChecked == true ? "Hide cuts" : "Show cuts", "Ctrl+Alt+C", () => ViewModel.HasTranscript, ToggleShellCuts),
             Command("view.timeline", timelineVisible ? "Hide timeline" : "Show timeline", "Ctrl+J", () => true, ToggleShellTimeline),

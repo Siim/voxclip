@@ -10,6 +10,22 @@ namespace VoxClip.Ui.Tests;
 public sealed class AccessibilityMonitorTests
 {
     [Fact]
+    public void NarratorHearsTheVersionCountAndTheResultsOfLineEdits()
+    {
+        var model = ClipSemanticsTests.RecordingReference();
+        var announcements = new List<string>();
+        model.Announcement += (_, message) => announcements.Add(message);
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        var opening = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        Assert.True(model.OpenRecordingVersions(opening));
+        Assert.True(model.UseRecordingLineVersion(opening, Assert.Single(opening.Alternatives).Key));
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        Assert.True(model.InsertRecordingLine(solo));
+        Assert.Equal(["Clip 1 made from 0007, 2 parts, 1 restart left out", "Line 1, 1 other version, in 0010",
+            "Line 1 now uses 0010's version · part 1 split", "Part 4 added from 0010, after “…my personal time tracker”"], announcements);
+    }
+
+    [Fact]
     public void NarratorHearsTheRecordingOnSwitchAndOutlineSelection()
     {
         var model = ClipSemanticsTests.RecordingStory();

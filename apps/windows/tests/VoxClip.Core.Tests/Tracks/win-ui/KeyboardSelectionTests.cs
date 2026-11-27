@@ -8,6 +8,63 @@ namespace VoxClip.Ui.Tests;
 /// words: So, um, (cut) today, we, ship (corrected to "shipped"), uh, (cut) the, clipper., Thanks.</summary>
 public sealed class KeyboardSelectionTests
 {
+    [Fact]
+    public void ControlShiftYUsesTheCaretOrTheTimelinePlayheadWithoutStealingTextKeys()
+    {
+        var model = ClipSemanticsTests.RecordingReference();
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        var opening = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        var later = model.RecordingClipLines.First(line => line.Id != opening.Id && line.Alternatives.Count > 0);
+        model.Select(model.Index(opening.FirstId));
+        model.SourceTime = model.Words[model.Index(later.FirstId)].Start;
+        Assert.Equal("Ctrl+Shift+Y", ShortcutPolicy.RecordingVersionsGesture);
+        Assert.True(ShortcutPolicy.OpensRecordingVersions("Y", true, true, false, false, false));
+        Assert.False(ShortcutPolicy.OpensRecordingVersions("Y", true, false, false, false, false));
+        Assert.False(ShortcutPolicy.OpensRecordingVersions("Y", true, true, true, false, false));
+        Assert.False(ShortcutPolicy.OpensRecordingVersions("Y", true, true, false, true, false));
+        Assert.False(ShortcutPolicy.OpensRecordingVersions("Y", true, true, false, false, true));
+        Assert.Equal(opening.Id, model.RecordingVersionTarget(fromTimeline: false)?.Id);
+        Assert.Equal(later.Id, model.RecordingVersionTarget(fromTimeline: true)?.Id);
+    }
+
+    [Fact]
+    public void RecordingFoldKeysChooseAuditionCloseAndUseOnlyOutsideTextFields()
+    {
+        var model = ClipSemanticsTests.RecordingReference();
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        var line = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        var alternate = Assert.Single(line.Alternatives);
+        model.Select(model.Index("w23"));
+        Assert.True(model.OpenRecordingVersions(line));
+        var project = model.Project;
+        RecordingAudition? audition = null;
+        var stopped = false;
+        void Press(string key)
+        {
+            Assert.Null(ShortcutPolicy.RecordingFoldKey(key, true, false, false));
+            Assert.Null(ShortcutPolicy.RecordingFoldKey(key, false, true, false));
+            Assert.Null(ShortcutPolicy.RecordingFoldKey(key, false, false, true));
+            var command = Assert.IsType<RecordingVersionKey>(ShortcutPolicy.RecordingFoldKey(key, false, false, false));
+            Assert.True(model.HandleRecordingVersionKey(command, value => audition = value, () => stopped = true));
+        }
+
+        Press("Up");
+        Assert.Equal(line.Take.Key, model.SelectedRecordingVersionKey);
+        Press("Down");
+        Assert.Equal(alternate.Key, model.SelectedRecordingVersionKey);
+        Press("Space");
+        Assert.Equal(line.Span(alternate.Key)?.StartWordId, audition?.FirstId);
+        Assert.Same(project, model.Project);
+        Press("Escape");
+        Assert.True(stopped);
+        Assert.Null(model.OpenRecordingLine);
+        Assert.Equal(model.Index(line.FirstId), model.SelectionCaret);
+        Assert.True(model.OpenRecordingVersions(line));
+        Press("Enter");
+        Assert.Equal("Use version", model.UndoActionName);
+        Assert.Null(model.OpenRecordingLine);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

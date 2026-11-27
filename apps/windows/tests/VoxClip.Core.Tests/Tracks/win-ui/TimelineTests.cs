@@ -17,6 +17,29 @@ namespace VoxClip.Ui.Tests;
 public sealed class TimelineTests
 {
     [Fact]
+    public void RecordingLineEditsUpdateTimelineSeamsAndUndoRestoresThem()
+    {
+        var model = ClipSemanticsTests.RecordingReference();
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        var opening = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        string[] Seams() => new TimelineStory(model, TimelineLayout.Plan(model)).Seams(true).Select(seam => seam.Label).ToArray();
+
+        var initial = Seams();
+        Assert.True(model.UseRecordingLineVersion(opening, Assert.Single(opening.Alternatives).Key));
+        Assert.Equal("Use version", model.UndoActionName);
+        var afterSwap = Seams();
+        Assert.Single(afterSwap, label => label.StartsWith("→ 0007"));
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        Assert.True(model.InsertRecordingLine(solo));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Single(Seams(), label => label.StartsWith("→ 0010"));
+        model.Undo();
+        Assert.Equal(afterSwap, Seams());
+        model.Undo();
+        Assert.Equal(initial, Seams());
+    }
+
+    [Fact]
     public void RecordingSeamsAndOverviewUseLocalClockAndFollowUndoablePartEdits()
     {
         var model = ClipSemanticsTests.RecordingOpening();
