@@ -55,7 +55,7 @@ internal static class StoryClips
         foreach (var clip in project.Edits.Clips)
         {
             Require(Valid(clip, words), "Invalid story clip parts or source hull.");
-            Require(project.SchemaVersion == ProjectSerialization.CurrentVersion || clip.PlayParts.All(part => part.TakeReason is null),
+            Require(project.Media.SpokenSources is not null || clip.PlayParts.All(part => part.TakeReason is null),
                 "Version reasons require project version 7.");
             if (clock.Regions.Count > 1)
                 Require(clip.PlayParts.All(part => clock.ContainsRange(part.StartWordId, part.EndWordId)), "A part comes from one recording.");

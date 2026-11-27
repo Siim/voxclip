@@ -287,6 +287,8 @@ Project schema v5 adds story clips. A writer uses v5 only while the project cont
 
 The v6 timeline uses the pure Core `TimelineEdits` reducer for both placement previews and commits, and `TimelineItems.layout` / `Layout` for lane geometry and snap targets. See [direct timeline editing](spec/timeline-editing.md) for clocks, anchoring, and the shared replay vectors.
 
+V7 stores spoken companions on the project clock. V8 stores a project's agent thread and per-change checkpoints, and is written only when a thread exists. See [agent turns](spec/editing.md#14-agent-turns).
+
 The normative project format is defined by `doc/spec/editing.md` section 10 and `shared/schemas/project.schema.json`. The architecture relies on these properties:
 
 - **One portable JSON file**, extension `.voxclip`, UTF-8, no BOM, identical schema on both platforms, `"format": "voxclip-project"` plus an integer `schemaVersion`. Autosaved (debounced about 1 s) with atomic writes. macOS UTType `com.voxconvo.voxclip.project` conforming to `public.json`; Windows associates `.voxclip` with `VoxClip.exe` in the Velopack install hook (current user only).

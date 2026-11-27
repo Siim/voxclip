@@ -401,6 +401,35 @@ attribute VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKind :: field public 
 attribute VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKind :: field public WebPage @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("webPage")
 attribute VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKind @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKindConverter")
 attribute VoxClip.Core.Domain.ContextDemo.MotionCue :: property ClipID @ System.Text.Json.Serialization.JsonPropertyNameAttribute("clipID")
+attribute VoxClip.Core.Domain.Editing.AgentChangeState @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentChangeState]")
+attribute VoxClip.Core.Domain.Editing.AgentContext :: property ClipId @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentContext :: property EndWordId @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentContext :: property Line @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentContext :: property Panel @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentContext :: property Part @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentContext :: property SourceKey @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentContext :: property StartWordId @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentContextKind @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentContextKind]")
+attribute VoxClip.Core.Domain.Editing.AgentEvent :: property Patch @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentEventKind @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentEventKind]")
+attribute VoxClip.Core.Domain.Editing.AgentJsonStringContext @ System.Text.Json.Serialization.JsonSerializableAttribute("System.String, System.Runtime")
+attribute VoxClip.Core.Domain.Editing.AgentMode @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentMode]")
+attribute VoxClip.Core.Domain.Editing.AgentOffer :: property AssetId @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentOffer :: property QuoteUSD @ System.Text.Json.Serialization.JsonPropertyNameAttribute("quoteUSD")
+attribute VoxClip.Core.Domain.Editing.AgentOfferKind @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentOfferKind]")
+attribute VoxClip.Core.Domain.Editing.AgentOfferState @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentOfferState]")
+attribute VoxClip.Core.Domain.Editing.AgentPatch :: property AfterIndex @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentPatch :: property AfterMissing @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentPatch :: property BeforeIndex @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentPatch :: property BeforeMissing @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentPatch :: property NextId @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentPatch :: property PreviousId @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentTurn :: property Check @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentTurn :: property IsPending @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Editing.AgentTurn :: property RevisionOf @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentTurn :: property WasKept @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.AgentTurnKind @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentTurnKind]")
+attribute VoxClip.Core.Domain.Editing.AgentTurnState @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Editing.AgentEnumConverter`1[VoxClip.Core.Domain.Editing.AgentTurnState]")
 attribute VoxClip.Core.Domain.Editing.CaptionWord :: property StartsPart @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipOrigin :: field public Ai @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("ai")
 attribute VoxClip.Core.Domain.Editing.ClipOrigin :: field public Manual @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("manual")
@@ -456,6 +485,7 @@ attribute VoxClip.Core.Domain.Shared.ExportQuality @ System.Text.Json.Serializat
 attribute VoxClip.Core.Domain.Shared.FrameRate @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Shared.FrameRateJsonConverter")
 attribute VoxClip.Core.Domain.Shared.MediaReference :: property FootageKey @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.MediaReference :: property RecordingHash @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Shared.Project :: property AgentThread @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property CaptionTranslations @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipControls @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipEffects @ System.Text.Json.Serialization.JsonIgnoreAttribute()
@@ -486,6 +516,7 @@ attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Seria
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Clips.ClipCandidate[]")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Clips.RawClip[]")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Clips.TranscriptLine[]")
+attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Editing.AgentThread")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Editing.EditPlan")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Shared.ExportPreset")
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Shared.Project")
@@ -756,6 +787,7 @@ literal "/audio"
 literal "/cancel"
 literal "/candidates"
 literal "/chunks"
+literal "/clipControls"
 literal "/clips"
 literal "/cost"
 literal "/edgeGain"
@@ -5843,6 +5875,473 @@ member VoxClip.Core.Domain.ContextDemo.MotionKeyframe :: method public set_Ancho
 member VoxClip.Core.Domain.ContextDemo.MotionKeyframe :: method public set_AnchorY(double)
 member VoxClip.Core.Domain.ContextDemo.MotionKeyframe :: method public set_Progress(double)
 member VoxClip.Core.Domain.ContextDemo.MotionKeyframe :: method public set_Scale(double)
+member VoxClip.Core.Domain.Editing.AgentChange :: method private .ctor(VoxClip.Core.Domain.Editing.AgentChange)
+member VoxClip.Core.Domain.Editing.AgentChange :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentChange :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public .ctor(string,string,string,VoxClip.Core.Domain.Editing.AgentChangeState,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public Deconstruct(string&,string&,string&,VoxClip.Core.Domain.Editing.AgentChangeState&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>&)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public Equals(VoxClip.Core.Domain.Editing.AgentChange)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public get_Id()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public get_Label()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public get_Patch()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public get_State()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public get_UndoName()
+member VoxClip.Core.Domain.Editing.AgentChange :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentChange,VoxClip.Core.Domain.Editing.AgentChange)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentChange,VoxClip.Core.Domain.Editing.AgentChange)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public set_Label(string)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public set_Patch(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public set_State(VoxClip.Core.Domain.Editing.AgentChangeState)
+member VoxClip.Core.Domain.Editing.AgentChange :: method public set_UndoName(string)
+member VoxClip.Core.Domain.Editing.AgentChangeState :: field public Applied
+member VoxClip.Core.Domain.Editing.AgentChangeState :: field public Undone
+member VoxClip.Core.Domain.Editing.AgentChangeState :: field public value__
+member VoxClip.Core.Domain.Editing.AgentCheck :: method private .ctor(VoxClip.Core.Domain.Editing.AgentCheck)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public .ctor(bool,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public Deconstruct(bool&,System.Collections.Generic.IReadOnlyList`1<string>&)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public Equals(VoxClip.Core.Domain.Editing.AgentCheck)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public get_Lines()
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public get_Ok()
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentCheck,VoxClip.Core.Domain.Editing.AgentCheck)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentCheck,VoxClip.Core.Domain.Editing.AgentCheck)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public set_Lines(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Editing.AgentCheck :: method public set_Ok(bool)
+member VoxClip.Core.Domain.Editing.AgentContext :: method private .ctor(VoxClip.Core.Domain.Editing.AgentContext)
+member VoxClip.Core.Domain.Editing.AgentContext :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentContext :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public .ctor(VoxClip.Core.Domain.Editing.AgentContextKind,string,System.Nullable`1<int>,string,string,string,System.Nullable`1<int>,string)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public Deconstruct(VoxClip.Core.Domain.Editing.AgentContextKind&,string&,System.Nullable`1<int>&,string&,string&,string&,System.Nullable`1<int>&,string&)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public Equals(VoxClip.Core.Domain.Editing.AgentContext)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_ClipId()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_EndWordId()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_Kind()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_Line()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_Panel()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_Part()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_SourceKey()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public get_StartWordId()
+member VoxClip.Core.Domain.Editing.AgentContext :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentContext,VoxClip.Core.Domain.Editing.AgentContext)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentContext,VoxClip.Core.Domain.Editing.AgentContext)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_EndWordId(string)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_Kind(VoxClip.Core.Domain.Editing.AgentContextKind)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_Line(System.Nullable`1<int>)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_Panel(string)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_Part(System.Nullable`1<int>)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_SourceKey(string)
+member VoxClip.Core.Domain.Editing.AgentContext :: method public set_StartWordId(string)
+member VoxClip.Core.Domain.Editing.AgentContextKind :: field public Clip
+member VoxClip.Core.Domain.Editing.AgentContextKind :: field public Line
+member VoxClip.Core.Domain.Editing.AgentContextKind :: field public Panel
+member VoxClip.Core.Domain.Editing.AgentContextKind :: field public Part
+member VoxClip.Core.Domain.Editing.AgentContextKind :: field public Recording
+member VoxClip.Core.Domain.Editing.AgentContextKind :: field public Words
+member VoxClip.Core.Domain.Editing.AgentContextKind :: field public value__
+member VoxClip.Core.Domain.Editing.AgentEnumConverter`1 :: field private Names
+member VoxClip.Core.Domain.Editing.AgentEnumConverter`1 :: method private .cctor()
+member VoxClip.Core.Domain.Editing.AgentEnumConverter`1 :: method public .ctor()
+member VoxClip.Core.Domain.Editing.AgentEnumConverter`1 :: method public Read(System.Text.Json.Utf8JsonReader&,System.Type,System.Text.Json.JsonSerializerOptions)
+member VoxClip.Core.Domain.Editing.AgentEnumConverter`1 :: method public Write(System.Text.Json.Utf8JsonWriter,!0,System.Text.Json.JsonSerializerOptions)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method private .ctor(VoxClip.Core.Domain.Editing.AgentEvent)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public .ctor(VoxClip.Core.Domain.Editing.AgentEventKind,string,string,System.DateTimeOffset,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public Deconstruct(VoxClip.Core.Domain.Editing.AgentEventKind&,string&,string&,System.DateTimeOffset&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>&)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public Equals(VoxClip.Core.Domain.Editing.AgentEvent)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public get_At()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public get_Kind()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public get_Patch()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public get_Target()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public get_UndoName()
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentEvent,VoxClip.Core.Domain.Editing.AgentEvent)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentEvent,VoxClip.Core.Domain.Editing.AgentEvent)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public set_At(System.DateTimeOffset)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public set_Kind(VoxClip.Core.Domain.Editing.AgentEventKind)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public set_Patch(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public set_Target(string)
+member VoxClip.Core.Domain.Editing.AgentEvent :: method public set_UndoName(string)
+member VoxClip.Core.Domain.Editing.AgentEventKind :: field public Bought
+member VoxClip.Core.Domain.Editing.AgentEventKind :: field public Hand
+member VoxClip.Core.Domain.Editing.AgentEventKind :: field public Keep
+member VoxClip.Core.Domain.Editing.AgentEventKind :: field public Redo
+member VoxClip.Core.Domain.Editing.AgentEventKind :: field public Undo
+member VoxClip.Core.Domain.Editing.AgentEventKind :: field public value__
+member VoxClip.Core.Domain.Editing.AgentJsonStringContext :: field private InstanceMemberBindingFlags
+member VoxClip.Core.Domain.Editing.AgentMode :: field public AskFirst
+member VoxClip.Core.Domain.Editing.AgentMode :: field public Claude
+member VoxClip.Core.Domain.Editing.AgentMode :: field public Propose
+member VoxClip.Core.Domain.Editing.AgentMode :: field public value__
+member VoxClip.Core.Domain.Editing.AgentOffer :: method private .ctor(VoxClip.Core.Domain.Editing.AgentOffer)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public .ctor(string,VoxClip.Core.Domain.Editing.AgentOfferKind,string,string,VoxClip.Core.Domain.Editing.AgentOfferState,string)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public Deconstruct(string&,VoxClip.Core.Domain.Editing.AgentOfferKind&,string&,string&,VoxClip.Core.Domain.Editing.AgentOfferState&,string&)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public Equals(VoxClip.Core.Domain.Editing.AgentOffer)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public get_AssetId()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public get_Id()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public get_Kind()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public get_Label()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public get_QuoteUSD()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public get_State()
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentOffer,VoxClip.Core.Domain.Editing.AgentOffer)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentOffer,VoxClip.Core.Domain.Editing.AgentOffer)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public set_AssetId(string)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public set_Kind(VoxClip.Core.Domain.Editing.AgentOfferKind)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public set_Label(string)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public set_QuoteUSD(string)
+member VoxClip.Core.Domain.Editing.AgentOffer :: method public set_State(VoxClip.Core.Domain.Editing.AgentOfferState)
+member VoxClip.Core.Domain.Editing.AgentOfferKind :: field public GenerateMusic
+member VoxClip.Core.Domain.Editing.AgentOfferKind :: field public Illustration
+member VoxClip.Core.Domain.Editing.AgentOfferKind :: field public LipSync
+member VoxClip.Core.Domain.Editing.AgentOfferKind :: field public MakeItPostable
+member VoxClip.Core.Domain.Editing.AgentOfferKind :: field public Revoice
+member VoxClip.Core.Domain.Editing.AgentOfferKind :: field public value__
+member VoxClip.Core.Domain.Editing.AgentOfferState :: field public Bought
+member VoxClip.Core.Domain.Editing.AgentOfferState :: field public Declined
+member VoxClip.Core.Domain.Editing.AgentOfferState :: field public Failed
+member VoxClip.Core.Domain.Editing.AgentOfferState :: field public Offered
+member VoxClip.Core.Domain.Editing.AgentOfferState :: field public value__
+member VoxClip.Core.Domain.Editing.AgentPatch :: method private .ctor(VoxClip.Core.Domain.Editing.AgentPatch)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public .ctor(string,System.Text.Json.JsonElement,System.Text.Json.JsonElement,System.Nullable`1<bool>,System.Nullable`1<bool>,System.Nullable`1<int>,System.Nullable`1<int>,string,string)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public Deconstruct(string&,System.Text.Json.JsonElement&,System.Text.Json.JsonElement&,System.Nullable`1<bool>&,System.Nullable`1<bool>&,System.Nullable`1<int>&,System.Nullable`1<int>&,string&,string&)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public Equals(VoxClip.Core.Domain.Editing.AgentPatch)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_After()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_AfterIndex()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_AfterMissing()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_Before()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_BeforeIndex()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_BeforeMissing()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_NextId()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_Path()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public get_PreviousId()
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentPatch,VoxClip.Core.Domain.Editing.AgentPatch)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentPatch,VoxClip.Core.Domain.Editing.AgentPatch)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_After(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_AfterIndex(System.Nullable`1<int>)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_AfterMissing(System.Nullable`1<bool>)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_Before(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_BeforeIndex(System.Nullable`1<int>)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_BeforeMissing(System.Nullable`1<bool>)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_NextId(string)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_Path(string)
+member VoxClip.Core.Domain.Editing.AgentPatch :: method public set_PreviousId(string)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: field internal OptionalCollections
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: field internal Roots
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: field internal VoiceUses
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: field private Null
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: field private Order
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method internal Apply(VoxClip.Core.Domain.Editing.AgentPatch,System.Text.Json.Nodes.JsonObject,bool,bool)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method internal Diff(System.Text.Json.Nodes.JsonNode,bool,System.Text.Json.Nodes.JsonNode,bool,string,System.Collections.Generic.List`1<VoxClip.Core.Domain.Editing.AgentPatch>)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method internal Escape(string)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method internal IsValid(VoxClip.Core.Domain.Editing.AgentPatch)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method internal Overlaps(VoxClip.Core.Domain.Editing.AgentPatch,VoxClip.Core.Domain.Editing.AgentPatch)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private .cctor()
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private Element(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private Id(System.Text.Json.JsonElement,string)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private Id(System.Text.Json.Nodes.JsonNode,string)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private Identities(System.Text.Json.Nodes.JsonArray,string)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private IdentityKey(System.ReadOnlySpan`1<VoxClip.Core.Domain.Editing.AgentPatchPath+Token>)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private Names(System.Collections.Generic.IEnumerable`1<string>)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private Tokens(string)
+member VoxClip.Core.Domain.Editing.AgentPatchPath :: method private Unescape(string)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public .ctor(string,bool)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public Deconstruct(string&,bool&)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public Equals(VoxClip.Core.Domain.Editing.AgentPatchPath+Token)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public get_Member()
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public get_Name()
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentPatchPath+Token,VoxClip.Core.Domain.Editing.AgentPatchPath+Token)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentPatchPath+Token,VoxClip.Core.Domain.Editing.AgentPatchPath+Token)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public set_Member(bool)
+member VoxClip.Core.Domain.Editing.AgentPatchPath+Token :: method public set_Name(string)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method private .ctor(VoxClip.Core.Domain.Editing.AgentRequest)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public .ctor(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentContext>)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public Deconstruct(string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentContext>&)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public Equals(VoxClip.Core.Domain.Editing.AgentRequest)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public get_Context()
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public get_Text()
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentRequest,VoxClip.Core.Domain.Editing.AgentRequest)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentRequest,VoxClip.Core.Domain.Editing.AgentRequest)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public set_Context(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentContext>)
+member VoxClip.Core.Domain.Editing.AgentRequest :: method public set_Text(string)
+member VoxClip.Core.Domain.Editing.AgentStep :: method private .ctor(VoxClip.Core.Domain.Editing.AgentStep)
+member VoxClip.Core.Domain.Editing.AgentStep :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentStep :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentStep :: method public .ctor(string,bool,string,int)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public Deconstruct(string&,bool&,string&,int&)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public Equals(VoxClip.Core.Domain.Editing.AgentStep)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentStep :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentStep :: method public get_Digest()
+member VoxClip.Core.Domain.Editing.AgentStep :: method public get_Ms()
+member VoxClip.Core.Domain.Editing.AgentStep :: method public get_Ok()
+member VoxClip.Core.Domain.Editing.AgentStep :: method public get_Tool()
+member VoxClip.Core.Domain.Editing.AgentStep :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentStep,VoxClip.Core.Domain.Editing.AgentStep)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentStep,VoxClip.Core.Domain.Editing.AgentStep)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public set_Digest(string)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public set_Ms(int)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public set_Ok(bool)
+member VoxClip.Core.Domain.Editing.AgentStep :: method public set_Tool(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions :: method private AvailableChips(VoxClip.Core.Domain.Editing.AgentSuggestions+State)
+member VoxClip.Core.Domain.Editing.AgentSuggestions :: method private BestFlow(VoxClip.Core.Domain.Editing.TakeMatch+Result,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ProjectClock+Region>)
+member VoxClip.Core.Domain.Editing.AgentSuggestions :: method private ClipDuration(string,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.AgentSuggestions :: method private HasOverlap(VoxClip.Core.Domain.Editing.TakeMatch+Result,string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions :: method private MakeChip(string,string,string,string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions :: method private Normalized(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions :: method public Chips(VoxClip.Core.Domain.Editing.AgentSuggestions+State)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method private .ctor(VoxClip.Core.Domain.Editing.AgentSuggestions+Chip)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public .ctor(string,string,string,bool,string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public Deconstruct(string&,string&,string&,bool&,string&)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public Equals(VoxClip.Core.Domain.Editing.AgentSuggestions+Chip)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public get_Enabled()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public get_Id()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public get_Label()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public get_Prompt()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public get_Reason()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentSuggestions+Chip,VoxClip.Core.Domain.Editing.AgentSuggestions+Chip)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentSuggestions+Chip,VoxClip.Core.Domain.Editing.AgentSuggestions+Chip)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public set_Enabled(bool)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public set_Label(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public set_Prompt(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Chip :: method public set_Reason(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method private .ctor(VoxClip.Core.Domain.Editing.AgentSuggestions+State)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public .ctor(VoxClip.Core.Domain.Shared.Project,int,string,VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription,bool,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public Deconstruct(VoxClip.Core.Domain.Shared.Project&,int&,string&,VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription&,bool&,System.Collections.Generic.IReadOnlyList`1<string>&)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public Equals(VoxClip.Core.Domain.Editing.AgentSuggestions+State)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public get_ComposerReason()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public get_ExportedSinceLastChange()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public get_LengthSeconds()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public get_Next()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public get_Platform()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public get_Project()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public get_Transcribing()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentSuggestions+State,VoxClip.Core.Domain.Editing.AgentSuggestions+State)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentSuggestions+State,VoxClip.Core.Domain.Editing.AgentSuggestions+State)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public set_ExportedSinceLastChange(bool)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public set_LengthSeconds(int)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public set_Next(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public set_Platform(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public set_Project(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+State :: method public set_Transcribing(VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method private .ctor(VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public .ctor(string,int)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public Deconstruct(string&,int&)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public Equals(VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public get_Label()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public get_Percent()
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription,VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription,VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public set_Label(string)
+member VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription :: method public set_Percent(int)
+member VoxClip.Core.Domain.Editing.AgentThread :: method private .ctor(VoxClip.Core.Domain.Editing.AgentThread)
+member VoxClip.Core.Domain.Editing.AgentThread :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentThread :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentThread :: method public .ctor(string,VoxClip.Core.Domain.Editing.AgentMode,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentTurn>)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public Deconstruct(string&,VoxClip.Core.Domain.Editing.AgentMode&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentTurn>&)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public Equals(VoxClip.Core.Domain.Editing.AgentThread)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentThread :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentThread :: method public get_Id()
+member VoxClip.Core.Domain.Editing.AgentThread :: method public get_Mode()
+member VoxClip.Core.Domain.Editing.AgentThread :: method public get_Turns()
+member VoxClip.Core.Domain.Editing.AgentThread :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentThread,VoxClip.Core.Domain.Editing.AgentThread)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentThread,VoxClip.Core.Domain.Editing.AgentThread)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public set_Mode(VoxClip.Core.Domain.Editing.AgentMode)
+member VoxClip.Core.Domain.Editing.AgentThread :: method public set_Turns(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentTurn>)
+member VoxClip.Core.Domain.Editing.AgentThreadWire :: field internal MaxBytes
+member VoxClip.Core.Domain.Editing.AgentThreadWire :: field internal MaxKeptCheckpoints
+member VoxClip.Core.Domain.Editing.AgentThreadWire :: field internal MaxTurns
+member VoxClip.Core.Domain.Editing.AgentThreadWire :: field private Compact
+member VoxClip.Core.Domain.Editing.AgentThreadWire :: method internal Size(VoxClip.Core.Domain.Editing.AgentThread)
+member VoxClip.Core.Domain.Editing.AgentThreadWire :: method internal Validate(VoxClip.Core.Domain.Editing.AgentThread)
+member VoxClip.Core.Domain.Editing.AgentThreadWire :: method private .cctor()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method private .ctor(VoxClip.Core.Domain.Editing.AgentTurn)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public .ctor(string,VoxClip.Core.Domain.Editing.AgentTurnKind,System.DateTimeOffset,VoxClip.Core.Domain.Editing.AgentRequest,string,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentStep>,VoxClip.Core.Domain.Editing.AgentTurnState,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentChange>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentOffer>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentEvent>,string,VoxClip.Core.Domain.Editing.AgentCheck,System.Nullable`1<bool>)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public Deconstruct(string&,VoxClip.Core.Domain.Editing.AgentTurnKind&,System.DateTimeOffset&,VoxClip.Core.Domain.Editing.AgentRequest&,string&,string&,string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentStep>&,VoxClip.Core.Domain.Editing.AgentTurnState&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentChange>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentOffer>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentEvent>&,string&,VoxClip.Core.Domain.Editing.AgentCheck&,System.Nullable`1<bool>&)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public Equals(VoxClip.Core.Domain.Editing.AgentTurn)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Changes()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Check()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Connector()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_CreatedAt()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Events()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Id()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_IsPending()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Kind()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Model()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Offers()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Request()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_RevisionOf()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_State()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Steps()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_Summary()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public get_WasKept()
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentTurn,VoxClip.Core.Domain.Editing.AgentTurn)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentTurn,VoxClip.Core.Domain.Editing.AgentTurn)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Changes(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentChange>)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Check(VoxClip.Core.Domain.Editing.AgentCheck)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Connector(string)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_CreatedAt(System.DateTimeOffset)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Events(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentEvent>)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Id(string)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Kind(VoxClip.Core.Domain.Editing.AgentTurnKind)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Model(string)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Offers(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentOffer>)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Request(VoxClip.Core.Domain.Editing.AgentRequest)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_RevisionOf(string)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_State(VoxClip.Core.Domain.Editing.AgentTurnState)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Steps(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentStep>)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_Summary(string)
+member VoxClip.Core.Domain.Editing.AgentTurn :: method public set_WasKept(System.Nullable`1<bool>)
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public ConfirmationRequired
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public Conflict
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public InvalidPatch
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public NotPending
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public StalePlan
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public ThreadFull
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public Unavailable
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public UnknownChange
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public UnknownTurn
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public WrongProject
+member VoxClip.Core.Domain.Editing.AgentTurnError :: field public value__
+member VoxClip.Core.Domain.Editing.AgentTurnException :: method public .ctor(VoxClip.Core.Domain.Editing.AgentTurnError,string)
+member VoxClip.Core.Domain.Editing.AgentTurnException :: method public get_Error()
+member VoxClip.Core.Domain.Editing.AgentTurnKind :: field public Agent
+member VoxClip.Core.Domain.Editing.AgentTurnKind :: field public Outside
+member VoxClip.Core.Domain.Editing.AgentTurnKind :: field public Run
+member VoxClip.Core.Domain.Editing.AgentTurnKind :: field public value__
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public Failed
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public Kept
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public Partial
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public Pending
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public Running
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public Stopped
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public Undone
+member VoxClip.Core.Domain.Editing.AgentTurnState :: field public value__
+member VoxClip.Core.Domain.Editing.AgentTurns :: field public PrunedReason
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private Diff(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private Document(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private Finish(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.AgentThread)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private Index(VoxClip.Core.Domain.Editing.AgentThread,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private MarkKept(VoxClip.Core.Domain.Editing.AgentTurn)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private PrepareUndo(VoxClip.Core.Domain.Shared.Project,string,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private ProjectFrom(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private Prune(VoxClip.Core.Domain.Editing.AgentTurn)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private RefreshState(VoxClip.Core.Domain.Editing.AgentTurn)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method private Thread(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public Change(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project,string,string,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public Keep(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public KeepAll(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public LogHandEdit(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project,string,string,System.DateTimeOffset)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public PlanUndo(VoxClip.Core.Domain.Shared.Project,string,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public Record(VoxClip.Core.Domain.Editing.AgentTurn,VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public RecoveringAfterRelaunch(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public Redo(VoxClip.Core.Domain.Shared.Project,string,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public Revise(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project,string,string,string,string,string)
+member VoxClip.Core.Domain.Editing.AgentTurns :: method public Undo(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan,bool)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method private .ctor(VoxClip.Core.Domain.Editing.AgentTurns+Dependency)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public .ctor(string,string,string,string)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public Deconstruct(string&,string&,string&,string&)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public Equals(VoxClip.Core.Domain.Editing.AgentTurns+Dependency)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public get_ChangeId()
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public get_Target()
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public get_TurnId()
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public get_UndoName()
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentTurns+Dependency,VoxClip.Core.Domain.Editing.AgentTurns+Dependency)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentTurns+Dependency,VoxClip.Core.Domain.Editing.AgentTurns+Dependency)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public set_ChangeId(string)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public set_Target(string)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public set_TurnId(string)
+member VoxClip.Core.Domain.Editing.AgentTurns+Dependency :: method public set_UndoName(string)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method private .ctor(VoxClip.Core.Domain.Editing.AgentTurns+UndoAction)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public .ctor(int,int,bool,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>,VoxClip.Core.Domain.Editing.AgentTurns+Dependency)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public Deconstruct(int&,int&,bool&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>&,VoxClip.Core.Domain.Editing.AgentTurns+Dependency&)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public Equals(VoxClip.Core.Domain.Editing.AgentTurns+UndoAction)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public ToString()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public get_Change()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public get_Dependency()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public get_Index()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public get_Patch()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public get_Turn()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public op_Equality(VoxClip.Core.Domain.Editing.AgentTurns+UndoAction,VoxClip.Core.Domain.Editing.AgentTurns+UndoAction)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public op_Inequality(VoxClip.Core.Domain.Editing.AgentTurns+UndoAction,VoxClip.Core.Domain.Editing.AgentTurns+UndoAction)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public set_Change(bool)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public set_Dependency(VoxClip.Core.Domain.Editing.AgentTurns+Dependency)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public set_Index(int)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public set_Patch(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoAction :: method public set_Turn(int)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method internal .ctor(string,string,VoxClip.Core.Domain.Editing.AgentTurns+Dependency[],string[],string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.AgentPatch>)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method internal Matches(VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan)
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method internal get_Checkpoint()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method internal get_ProjectId()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method public get_ChangeId()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method public get_ConflictingPaths()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method public get_Dependants()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method public get_RequiresConfirmation()
+member VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan :: method public get_TurnId()
 member VoxClip.Core.Domain.Editing.AudioEnvelopeBuilder :: field private buffered
 member VoxClip.Core.Domain.Editing.AudioEnvelopeBuilder :: field private channels
 member VoxClip.Core.Domain.Editing.AudioEnvelopeBuilder :: field private frameSize
@@ -10768,6 +11267,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public Equals(VoxClip.Core.D
 member VoxClip.Core.Domain.Shared.Project :: method public Equals(object)
 member VoxClip.Core.Domain.Shared.Project :: method public GetHashCode()
 member VoxClip.Core.Domain.Shared.Project :: method public ToString()
+member VoxClip.Core.Domain.Shared.Project :: method public get_AgentThread()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Ai()
 member VoxClip.Core.Domain.Shared.Project :: method public get_CaptionTranslations()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Captions()
@@ -10798,6 +11298,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public get_Transcript()
 member VoxClip.Core.Domain.Shared.Project :: method public get_VoiceLab()
 member VoxClip.Core.Domain.Shared.Project :: method public op_Equality(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Shared.Project :: method public op_Inequality(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Shared.Project :: method public set_AgentThread(VoxClip.Core.Domain.Editing.AgentThread)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Ai(VoxClip.Core.Domain.Shared.ProjectAi)
 member VoxClip.Core.Domain.Shared.Project :: method public set_CaptionTranslations(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionTranslation>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Captions(VoxClip.Core.Domain.Shared.ProjectCaptions)
@@ -10952,7 +11453,9 @@ member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_AdditionalSo
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_Footage(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.ProjectFootage>)
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_Source(VoxClip.Core.Domain.Shared.MediaReference)
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_SpokenSources(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.SpokenSource>)
+member VoxClip.Core.Domain.Shared.ProjectSerialization :: field internal AgentThreadVersion
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: field internal CurrentVersion
+member VoxClip.Core.Domain.Shared.ProjectSerialization :: field internal SpokenSourcesVersion
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method internal Deserialize(string,int)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method internal ForWriting(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method private Normalize(VoxClip.Core.Domain.Transcript.Transcript)
@@ -21539,6 +22042,39 @@ type VoxClip.Core.Domain.ContextDemo.MotionCropTransform
 type VoxClip.Core.Domain.ContextDemo.MotionCue
 type VoxClip.Core.Domain.ContextDemo.MotionCueRendering
 type VoxClip.Core.Domain.ContextDemo.MotionKeyframe
+type VoxClip.Core.Domain.Editing.AgentChange
+type VoxClip.Core.Domain.Editing.AgentChangeState
+type VoxClip.Core.Domain.Editing.AgentCheck
+type VoxClip.Core.Domain.Editing.AgentContext
+type VoxClip.Core.Domain.Editing.AgentContextKind
+type VoxClip.Core.Domain.Editing.AgentEnumConverter`1
+type VoxClip.Core.Domain.Editing.AgentEvent
+type VoxClip.Core.Domain.Editing.AgentEventKind
+type VoxClip.Core.Domain.Editing.AgentJsonStringContext
+type VoxClip.Core.Domain.Editing.AgentMode
+type VoxClip.Core.Domain.Editing.AgentOffer
+type VoxClip.Core.Domain.Editing.AgentOfferKind
+type VoxClip.Core.Domain.Editing.AgentOfferState
+type VoxClip.Core.Domain.Editing.AgentPatch
+type VoxClip.Core.Domain.Editing.AgentPatchPath
+type VoxClip.Core.Domain.Editing.AgentPatchPath+Token
+type VoxClip.Core.Domain.Editing.AgentRequest
+type VoxClip.Core.Domain.Editing.AgentStep
+type VoxClip.Core.Domain.Editing.AgentSuggestions
+type VoxClip.Core.Domain.Editing.AgentSuggestions+Chip
+type VoxClip.Core.Domain.Editing.AgentSuggestions+State
+type VoxClip.Core.Domain.Editing.AgentSuggestions+Transcription
+type VoxClip.Core.Domain.Editing.AgentThread
+type VoxClip.Core.Domain.Editing.AgentThreadWire
+type VoxClip.Core.Domain.Editing.AgentTurn
+type VoxClip.Core.Domain.Editing.AgentTurnError
+type VoxClip.Core.Domain.Editing.AgentTurnException
+type VoxClip.Core.Domain.Editing.AgentTurnKind
+type VoxClip.Core.Domain.Editing.AgentTurnState
+type VoxClip.Core.Domain.Editing.AgentTurns
+type VoxClip.Core.Domain.Editing.AgentTurns+Dependency
+type VoxClip.Core.Domain.Editing.AgentTurns+UndoAction
+type VoxClip.Core.Domain.Editing.AgentTurns+UndoPlan
 type VoxClip.Core.Domain.Editing.AudioEnvelopeBuilder
 type VoxClip.Core.Domain.Editing.CaptionWord
 type VoxClip.Core.Domain.Editing.ClipOrigin

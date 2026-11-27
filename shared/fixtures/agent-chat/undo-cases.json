@@ -1,0 +1,60 @@
+[
+  {
+    "name": "disjoint later turn stays applied",
+    "turns": [
+      {"id": "t1", "changes": [{"id": "captions", "set": {"captions": {"styleId": "off"}}}]},
+      {"id": "t2", "changes": [{"id": "cuts", "set": {"edits": {"cutWordIds": ["w9", "w10"]}}}]}
+    ],
+    "turnId": "t1", "dependants": [], "states": ["undone", "pending"],
+    "expected": {"edits": {"cutWordIds": ["w9", "w10"]}}
+  },
+  {
+    "name": "overlap cascades while different changes of a later turn stay applied",
+    "turns": [
+      {"id": "t1", "changes": [{"id": "captions", "set": {"captions": {"styleId": "off"}}}]},
+      {"id": "t2", "changes": [
+        {"id": "restyle", "set": {"captions": {"styleId": "vox-bold"}}},
+        {"id": "cuts", "set": {"edits": {"cutWordIds": ["w9", "w10"]}}}
+      ]},
+      {"id": "t3", "changes": [{"id": "restyle-again", "set": {"captions": {"styleId": "vox-highlight"}}}]}
+    ],
+    "turnId": "t1", "dependants": ["restyle", "restyle-again"], "states": ["undone", "partial", "undone"],
+    "expected": {"edits": {"cutWordIds": ["w9", "w10"]}}
+  },
+  {
+    "name": "single change undo and redo leave the other row applied",
+    "turns": [{"id": "t1", "changes": [
+      {"id": "captions", "set": {"captions": {"styleId": "off"}}},
+      {"id": "cuts", "set": {"edits": {"cutWordIds": ["w9", "w10"]}}}
+    ]}],
+    "turnId": "t1", "changeId": "captions", "redo": true, "dependants": [], "states": ["partial"],
+    "expected": {"edits": {"cutWordIds": ["w9", "w10"]}}
+  },
+  {
+    "name": "Undo Both rolls back only the logged hand path",
+    "turns": [{"id": "t1", "changes": [{"id": "captions", "set": {"captions": {"styleId": "off"}}}],
+      "hand": {"set": {"captions": {"styleId": "vox-bold"}, "edits": {"cutWordIds": ["w9", "w10"]}}, "target": "caption style"}}],
+    "turnId": "t1", "changeId": "captions", "dependants": ["caption style"], "states": ["undone"],
+    "expected": {"edits": {"cutWordIds": ["w9", "w10"]}}
+  },
+  {
+    "name": "an unlogged changed after-value requires explicit confirmation",
+    "turns": [{"id": "t1", "changes": [{"id": "captions", "set": {"captions": {"styleId": "off"}}}]}],
+    "unlogged": {"captions": {"styleId": "vox-bold"}},
+    "turnId": "t1", "changeId": "captions", "dependants": [], "conflicts": ["/captions/styleId"], "states": ["undone"],
+    "expected": {}
+  },
+  {
+    "name": "removing a clip overlaps a later edit to the clip by id",
+    "turns": [
+      {"id": "t1", "changes": [{"id": "rename", "set": {"edits": {"clips": [
+        {"id": "clip-2f1c", "startWordId": "w10", "endWordId": "w17", "title": "Faster edits", "origin": "ai", "aiResultId": "air-7d3e", "aiClipIndex": 0, "selected": true},
+        {"id": "clip-9a0b", "startWordId": "w18", "endWordId": "w26", "title": "Iga sõna asukoht", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": false}
+      ]}}}]},
+      {"id": "t2", "changes": [{"id": "remove", "set": {"edits": {"activeClipId": null, "clips": [
+        {"id": "clip-9a0b", "startWordId": "w18", "endWordId": "w26", "title": "Iga sõna asukoht", "origin": "manual", "aiResultId": null, "aiClipIndex": null, "selected": false}
+      ]}}}]}
+    ],
+    "turnId": "t1", "dependants": ["remove"], "states": ["undone", "undone"], "expected": {}
+  }
+]

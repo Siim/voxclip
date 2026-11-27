@@ -11,6 +11,7 @@ namespace VoxClip.Core.Domain.Shared;
     UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow, RespectRequiredConstructorParameters = true, RespectNullableAnnotations = true,
     Converters = new[] { typeof(UtcTimestampConverter) })]
 [JsonSerializable(typeof(Project))]
+[JsonSerializable(typeof(AgentThread))]
 [JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(TimedWord))]
 [JsonSerializable(typeof(CaptionStyle))]

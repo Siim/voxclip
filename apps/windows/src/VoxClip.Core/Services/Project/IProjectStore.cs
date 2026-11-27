@@ -67,7 +67,7 @@ public sealed class ProjectStore : IProjectStore
         try
         {
             var json = await AtomicFile.ReadAllTextAsync(path, new UTF8Encoding(false, true), ct).ConfigureAwait(false);
-            var project = ProjectSerialization.Deserialize(json);
+            var project = AgentTurns.RecoveringAfterRelaunch(ProjectSerialization.Deserialize(json));
             var warnings = new List<string>();
             project = EditingProject.Clean(project, warnings);
             var resolved = await ResolveMediaAsync(project.Media.Source, path, ct).ConfigureAwait(false);

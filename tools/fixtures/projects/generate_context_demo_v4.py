@@ -60,7 +60,7 @@ def generated():
         ("unknown-motion", "/motionCues/0/unexpected"),
         ("unknown-keyframe", "/motionCues/0/keyframes/0/unexpected")]:
         reject(identity, path, True)
-    reject("future-project", "/schemaVersion", 8)
+    reject("future-project", "/schemaVersion", 999)
     invalid[-1]["tooNew"] = True
     reject("future-demo", "/contextDemo/version", 2)
     invalid.append({"id": "v4-requires-v3-voice-policy", "schemaValid": False,

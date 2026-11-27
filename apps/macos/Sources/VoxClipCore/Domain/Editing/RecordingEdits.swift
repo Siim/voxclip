@@ -250,7 +250,7 @@ public enum RecordingEdits {
         sources.remove(at: index)
         result.media.spokenSources = sources.isEmpty ? nil : sources
         if sources.isEmpty {
-            result.schemaVersion = TimelineEditFields.version
+            if result.agentThread == nil { result.schemaVersion = TimelineEditFields.version }
             for index in result.edits.clips.indices {
                 guard let parts = result.edits.clips[index].parts else { continue }
                 result.edits.clips[index].parts = parts.map { part in

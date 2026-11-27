@@ -1,0 +1,32 @@
+{
+  "format": "voxclip-project",
+  "schemaVersion": 8,
+  "id": "b26a915e-d840-48db-8ef0-1e64897f911e",
+  "createdAt": "2026-11-27T13:00:00Z",
+  "modifiedAt": "2026-11-27T14:12:03Z",
+  "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+  "media": {
+    "source": {
+      "absolutePath": "/synthetic/take.mov", "relativePath": "take.mov", "sizeBytes": 1024, "durationSeconds": 5,
+      "contentKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0}, "audio": null
+    }
+  },
+  "transcript": null,
+  "edits": {"pauseThresholdSeconds": 0.8, "pauseKeepSeconds": 0.05, "cutWordIds": [], "cutPauseIds": [], "corrections": {}, "clips": [], "activeClipId": null},
+  "captions": {"styleId": "vox-bold", "overrides": {}, "position": null, "positionByAspect": {}},
+  "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+  "share": {"captions": {}},
+  "ai": {"results": []},
+  "voiceLab": {"segments": [], "assets": [], "cleanAudio": {"mode": "off", "assetId": null, "mix": null}, "voices": [], "videoAssets": []},
+  "agentThread": {
+    "id": "th-example", "mode": "propose", "turns": [
+      {"id": "t1", "kind": "agent", "createdAt": "2026-11-27T14:12:03Z",
+       "request": {"text": "Try bold captions", "context": []}, "connector": "claude-code", "model": "default",
+       "summary": "Switched captions to Vox Bold.", "steps": [{"tool": "propose_timeline", "ok": true, "digest": "Changed caption style", "ms": 120}],
+       "state": "pending", "changes": [{"id": "captions", "label": "Captions · Vox Bold", "undoName": "Change caption style", "state": "applied",
+       "patch": [{"path": "/captions/styleId", "before": "vox-highlight", "after": "vox-bold"}]}],
+       "offers": [], "check": {"ok": true, "lines": ["Caption style is installed"]}, "events": []}
+    ]
+  }
+}
