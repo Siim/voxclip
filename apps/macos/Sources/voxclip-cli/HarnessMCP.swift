@@ -5,6 +5,7 @@ import VoxClipCore
 enum HarnessTool: String, CaseIterable {
     case readTranscript = "read_transcript"
     case readClips = "read_clips"
+    case readTakes = "read_takes"
     case readDecisions = "read_decisions"
     case readFrames = "read_frames"
     case proposeTimeline = "propose_timeline"
@@ -12,7 +13,7 @@ enum HarnessTool: String, CaseIterable {
     var keys: Set<String> {
         switch self {
         case .readTranscript: ["offset", "limit"]
-        case .readClips: []
+        case .readClips, .readTakes: []
         case .readDecisions: ["clipId"]
         case .readFrames: ["times"]
         case .proposeTimeline: HarnessTimeline.keys.union(["timelines"])
@@ -28,11 +29,14 @@ enum HarnessTool: String, CaseIterable {
         }
         switch self {
         case .readTranscript:
-            description = "Read a page of the project's transcript, including corrected text, source times and zero-based item indices."
+            description = "Read corrected transcript words with recording labels, project-clock times and zero-based item indices."
             schema = object(["offset": .object(["type": .string("integer"), "minimum": .number(0)]),
                              "limit": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(500)])])
         case .readClips:
-            description = "List clips with kind, ordered parts, inclusive transcript indices and source spans."
+            description = "List clips with kind, ordered parts, recordings, inclusive transcript indices and source spans."
+            schema = object([:])
+        case .readTakes:
+            description = "Read matched beats, aligned spans, delivery signals and solo runs across spoken recordings."
             schema = object([:])
         case .readDecisions:
             description = "Read the clip's saved title context, framing, cover, captions, effects and music choices."

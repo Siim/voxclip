@@ -109,9 +109,11 @@ class HarnessContract(unittest.TestCase):
             self.call("propose_timeline", **dict(self.timeline, title="Don't overwrite the first proposal")),
         )
         tools = {tool["name"]: tool for tool in listing["tools"]}
-        self.assertEqual(set(tools), {"read_transcript", "read_clips", "read_decisions", "read_frames", "propose_timeline"})
+        self.assertEqual(set(tools), {"read_transcript", "read_clips", "read_takes", "read_decisions", "read_frames", "propose_timeline"})
         jsonschema.validate(self.timeline, tools["propose_timeline"]["inputSchema"])
         self.assertEqual(transcript["structuredContent"]["words"][1]["index"], 1)
+        self.assertEqual(transcript["structuredContent"]["words"][1]["recordingKey"],
+                         clips["structuredContent"]["recordings"][0]["key"])
         self.assertTrue(clips["structuredContent"]["clips"])
         self.assertEqual(decisions["structuredContent"]["clipId"], "clip-2f1c")
         for command, options, expected in [

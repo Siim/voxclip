@@ -10,7 +10,7 @@ internal static class HarnessCommands
 {
     internal static JsonSerializerOptions JsonOptions => JsonSerializerOptions.Web;
 
-    internal static bool IsHarness(string command) => command is "mcp" or "transcript" or "clips" or "decisions" or "frames" or "propose-timeline";
+    internal static bool IsHarness(string command) => command is "mcp" or "transcript" or "clips" or "takes" or "decisions" or "frames" or "propose-timeline";
 
     internal static void Register(Command root)
     {
@@ -24,6 +24,7 @@ internal static class HarnessCommands
         Add("transcript", "Read a page of a project's timed transcript as JSON.", HarnessTool.ReadTranscript,
             (result, _) => Arguments(new { offset = result.GetValue(offset), limit = result.GetValue(limit) }), offset, limit);
         Add("clips", "List a project's clips as JSON.", HarnessTool.ReadClips, (_, _) => Arguments(new { }));
+        Add("takes", "Read matched takes across recordings as JSON.", HarnessTool.ReadTakes, (_, _) => Arguments(new { }));
         Add("decisions", "Read a clip's saved decisions as JSON.", HarnessTool.ReadDecisions,
             (result, _) => Arguments(new { clipId = result.GetValue(clip) }), clip);
         Add("frames", "Read local JPEG thumbnails at source times as JSON.", HarnessTool.ReadFrames,
@@ -80,6 +81,7 @@ internal sealed class HarnessSession(HarnessProject project, string sharedRoot)
     private static readonly Dictionary<string, HarnessTool> Tools = new(StringComparer.Ordinal)
     {
         ["read_transcript"] = HarnessTool.ReadTranscript, ["read_clips"] = HarnessTool.ReadClips,
+        ["read_takes"] = HarnessTool.ReadTakes,
         ["read_decisions"] = HarnessTool.ReadDecisions, ["read_frames"] = HarnessTool.ReadFrames,
         ["propose_timeline"] = HarnessTool.ProposeTimeline
     };
@@ -177,9 +179,10 @@ internal sealed class HarnessSession(HarnessProject project, string sharedRoot)
     {
         var (description, schema) = tool switch
         {
-            HarnessTool.ReadTranscript => ("Read a page of the project's transcript, including corrected text, source times and zero-based item indices.",
+            HarnessTool.ReadTranscript => ("Read corrected transcript words with recording labels, project-clock times and zero-based item indices.",
                 ObjectSchema(new { offset = new { type = "integer", minimum = 0 }, limit = new { type = "integer", minimum = 1, maximum = 500 } })),
-            HarnessTool.ReadClips => ("List clips with their kind, ordered parts, inclusive transcript indices and source spans.", ObjectSchema(new { })),
+            HarnessTool.ReadClips => ("List clips with kind, ordered parts, recordings, inclusive transcript indices and source spans.", ObjectSchema(new { })),
+            HarnessTool.ReadTakes => ("Read matched beats, aligned spans, delivery signals and solo runs across spoken recordings.", ObjectSchema(new { })),
             HarnessTool.ReadDecisions => ("Read the clip's saved title context, framing, cover, captions, effects and music choices.",
                 ObjectSchema(new { clipId = new { type = "string" } }, "clipId")),
             HarnessTool.ReadFrames => ("Decode one to four unedited JPEG thumbnails from the project's local video at source seconds.",

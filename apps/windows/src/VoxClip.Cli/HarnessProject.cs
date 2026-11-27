@@ -16,7 +16,7 @@ using VoxClip.Media.Pipeline;
 
 namespace VoxClip.Cli;
 
-internal enum HarnessTool { ReadTranscript, ReadClips, ReadDecisions, ReadFrames, ProposeTimeline }
+internal enum HarnessTool { ReadTranscript, ReadClips, ReadTakes, ReadDecisions, ReadFrames, ProposeTimeline }
 
 internal sealed record HarnessFrame(double Requested, double Actual, string Jpeg);
 
@@ -53,6 +53,11 @@ internal sealed class HarnessProject
             case HarnessTool.ReadClips:
                 HarnessTimeline.RequireObject(arguments, []);
                 return Clips(project);
+            case HarnessTool.ReadTakes:
+                HarnessTimeline.RequireObject(arguments, []);
+                var clock = ProjectClock.Build(project);
+                var matches = TakeMatch.Build(clock);
+                return new(new { matches.Beats, matches.Solo, recordings = Recordings(project, clock) });
             case HarnessTool.ReadDecisions:
                 HarnessTimeline.RequireObject(arguments, ["clipId"]);
                 return Decisions(project, arguments.TryGetProperty("clipId", out var clip) && clip.ValueKind == JsonValueKind.String ? clip.GetString() : null);
@@ -119,35 +124,67 @@ internal sealed class HarnessProject
 
     private static HarnessResult Transcript(Project project, long offset, int limit)
     {
-        var words = project.Transcript?.Words ?? [];
+        var clock = ProjectClock.Build(project);
+        var words = clock.Words;
         var first = (int)Math.Min(offset, words.Count);
         var count = Math.Min(limit, words.Count - first);
         var cut = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
-        var page = Enumerable.Range(first, count).Select(index => new
+        var page = Enumerable.Range(first, count).Select(index =>
         {
-            index, words[index].Id, words[index].Kind, words[index].Start, words[index].End,
-            text = project.Edits.Corrections.GetValueOrDefault(words[index].Id, words[index].Text), cut = cut.Contains(words[index].Id)
+            var word = words[index];
+            var region = clock.RegionOf(word.Id);
+            return new { index, word.Id, word.Kind, word.Start, word.End, recording = region?.Label, recordingKey = region?.Key,
+                text = project.Edits.Corrections.GetValueOrDefault(word.Id, word.Text), cut = cut.Contains(word.Id) };
         }).ToArray();
-        return new(new { words = page, total = words.Count, nextOffset = first + count < words.Count ? (int?)(first + count) : null, language = project.Transcript?.Language });
+        return new(new { words = page, total = words.Count, nextOffset = first + count < words.Count ? (int?)(first + count) : null,
+            language = clock.Transcript?.Language, recordings = Recordings(project, clock) });
     }
 
     private static HarnessResult Clips(Project project)
     {
-        var indices = (project.Transcript?.Words ?? []).Select((word, index) => (word.Id, index))
+        var clock = ProjectClock.Build(project);
+        var indices = clock.Words.Select((word, index) => (word.Id, index))
             .ToDictionary(item => item.Id, item => (int?)item.index, StringComparer.Ordinal);
         var clips = project.Edits.Clips.Select(clip => new
         {
             clip.Id, clip.Title, clip.Selected, startWord = indices.GetValueOrDefault(clip.StartWordId), endWord = indices.GetValueOrDefault(clip.EndWordId),
             kind = clip.Kind == StoryClipKind.Showreel ? "showreel" : clip.Parts is null ? "stretch" : "story",
             parts = clip.PlayParts.Where(part => indices.ContainsKey(part.StartWordId) && indices.ContainsKey(part.EndWordId))
-                .Select(part => new { startWord = indices[part.StartWordId], endWord = indices[part.EndWordId] }),
+                .Select(part =>
+                {
+                    var region = clock.RegionOf(part.StartWordId);
+                    return new { startWord = indices[part.StartWordId], endWord = indices[part.EndWordId],
+                        recording = region?.Label, recordingKey = region?.Key };
+                }),
             sourceSpan = ClipControlsProject.SourceSpan(clip.Id, project) is { } span ? new TimeRange(span.Start, span.End) : (TimeRange?)null
         }).ToArray();
         var footageSources = (project.Media.AdditionalSources ?? []).Where(source => source.Video is not null).Select(source => new
         {
             sourceKey = source.FootageKey, duration = source.DurationSeconds, name = Path.GetFileName(source.AbsolutePath)
         });
-        return new(new { projectId = project.Id, clips, footageSources });
+        return new(new { projectId = project.Id, clips, footageSources, recordings = Recordings(project, clock) });
+    }
+
+    private sealed record Recording(string Key, string Label, double DurationSeconds, int? FirstWord, int? LastWord, bool Transcribed, double GainDb);
+
+    private static IReadOnlyList<Recording> Recordings(Project project, ProjectClock clock)
+    {
+        var sources = project.Media.AdditionalSources ?? [];
+        var spoken = project.Media.SpokenSources ?? [];
+        var next = 0;
+        var recordings = clock.Regions.Select(region =>
+        {
+            var primary = region.Prefix.Length == 0;
+            var duration = primary ? project.Media.Source.DurationSeconds : sources.First(source => source.ContentKey == region.Key).DurationSeconds;
+            var count = primary ? project.Transcript?.Words.Count : spoken.First(source => source.SourceKey == region.Key).Transcript.Words.Count;
+            var first = next;
+            next += count ?? 0;
+            return new Recording(region.Key, region.Label, duration, next > first ? first : null, next > first ? next - 1 : null, count is not null, region.GainDb);
+        }).ToList();
+        var keys = clock.Regions.Select(region => region.Key).ToHashSet(StringComparer.Ordinal);
+        recordings.AddRange(sources.Where(source => !keys.Contains(source.ContentKey)).Select(source =>
+            new Recording(source.ContentKey, ProjectClock.Label(source), source.DurationSeconds, null, null, false, 0)));
+        return recordings;
     }
 
     private static HarnessResult Decisions(Project project, string? clipId)
