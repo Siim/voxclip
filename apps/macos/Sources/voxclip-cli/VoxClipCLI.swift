@@ -93,7 +93,7 @@ final class CLIInterruptTiming: Sendable {
         discussion: "Primary export: voxclip-cli --open <project-or-media> --export <out.mp4> [options]. Choose a bed with --music or --music-file. Use 'voxclip-cli export --help' for export options.",
         version: AppVersion.current,
         subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, Autopilot.self, Check.self, AnalyzeFrames.self, LLMTest.self, Encoders.self, Version.self,
-                      HarnessMCP.self, HarnessTranscript.self, HarnessClips.self, HarnessDecisions.self, HarnessFrames.self, HarnessPropose.self] + speakerDiagnostics,
+                      HarnessMCP.self, HarnessTranscript.self, HarnessClips.self, HarnessTakes.self, HarnessDecisions.self, HarnessFrames.self, HarnessPropose.self] + speakerDiagnostics,
         defaultSubcommand: Export.self
     )
 }
