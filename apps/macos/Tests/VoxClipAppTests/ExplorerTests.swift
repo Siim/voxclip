@@ -211,13 +211,20 @@ import Testing
     @Test func addingCachedRecordingNeedsOneUndoAndNeverStartsTranscription() async throws {
         let root = try SharedResources.locate().root
         let primary = root.appendingPathComponent("fixtures/media/recording-0007.mp4")
-        let (_, editor) = try await open(projectID: UUID().uuidString.lowercased(), primaryURL: primary)
-        defer { editor.close() }
         let movie = root.appendingPathComponent("fixtures/media/recording-0010.mp4")
         let key = try JSONProjectStore.contentKey(for: movie)
-        let fixture = root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")
-        let project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        let fixture = root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
         let transcript = try #require(project.media.spokenSources?.first?.transcript)
+        project.media.source.absolutePath = primary.path
+        project.media.source.contentKey = try JSONProjectStore.contentKey(for: primary)
+        let resources = try primary.resourceValues(forKeys: [.fileSizeKey])
+        project.media.source.sizeBytes = Int64(try #require(resources.fileSize))
+        project.schemaVersion = 6
+        project.media.spokenSources = nil
+        project.media.additionalSources = []
+        let (_, editor) = try await open(projectID: UUID().uuidString.lowercased(), project: project)
+        defer { editor.close() }
         RecordingTranscriptCache.write(transcript, key: key, cache: editor.app.locations.cache)
         let undo = try #require(editor.undoManager)
         let before = try ProjectJSON.encode(editor.project)
@@ -241,14 +248,18 @@ import Testing
         undo.undo(); #expect(try ProjectJSON.encode(editor.project) == after)
     }
 
-    private func open(demo: Bool = true, story: Bool = false, projectID: String? = nil, primaryURL: URL? = nil) async throws -> (WorkspaceShell, EditorModel) {
+    private func open(demo: Bool = true, story: Bool = false, projectID: String? = nil, project initialProject: Project? = nil) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
-        let shared = try SharedResources.locate()
-        let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
-        var project = try story ? DebugCreativeProposals.suggestedStory(from: base) : DebugExplorer.fiveQuestions(from: base)
+        var project: Project
+        if let initialProject {
+            project = initialProject
+        } else {
+            let shared = try SharedResources.locate()
+            let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+            project = try story ? DebugCreativeProposals.suggestedStory(from: base) : DebugExplorer.fiveQuestions(from: base)
+        }
         if let projectID { project.id = projectID }
-        if let primaryURL { project.media.source.absolutePath = primaryURL.path }
         await shell.attachForTesting(VoxClipDocument(project: project, demo: demo), selection: .fullTake)
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
