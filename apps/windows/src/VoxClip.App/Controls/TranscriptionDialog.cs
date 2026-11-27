@@ -14,6 +14,7 @@ using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
 using System.ComponentModel;
+using RecordingTranscriptCache = VoxClip.App.Services.RecordingTranscriptCache;
 
 namespace VoxClip.App.Controls;
 
