@@ -17,12 +17,15 @@ internal static class HarnessCommands
         var project = new Option<string>("--project") { Required = true, Description = "Path to one saved .voxclip project." };
         var offset = new Option<long>("--offset") { Description = "Zero-based transcript index." };
         var limit = new Option<int>("--limit") { Description = "Items per page, 1–500 (default 200).", DefaultValueFactory = _ => 200 };
+        var recording = new Option<string?>("--recording-key") { Description = "Preview a cached local companion transcript." };
         var clip = new Option<string>("--clip") { Required = true, Description = "Clip id from clips." };
         var times = new Option<string[]>("--time") { Required = true, Description = "Source seconds. Repeat up to four times." };
 
         Add("mcp", "Serve local tools over stdio for one saved .voxclip project.", null, null);
         Add("transcript", "Read a page of a project's timed transcript as JSON.", HarnessTool.ReadTranscript,
-            (result, _) => Arguments(new { offset = result.GetValue(offset), limit = result.GetValue(limit) }), offset, limit);
+            (result, _) => result.GetValue(recording) is { } key
+                ? Arguments(new { offset = result.GetValue(offset), limit = result.GetValue(limit), recordingKey = key })
+                : Arguments(new { offset = result.GetValue(offset), limit = result.GetValue(limit) }), offset, limit, recording);
         Add("clips", "List a project's clips as JSON.", HarnessTool.ReadClips, (_, _) => Arguments(new { }));
         Add("takes", "Read matched takes across recordings as JSON.", HarnessTool.ReadTakes, (_, _) => Arguments(new { }));
         Add("decisions", "Read a clip's saved decisions as JSON.", HarnessTool.ReadDecisions,
@@ -180,7 +183,8 @@ internal sealed class HarnessSession(HarnessProject project, string sharedRoot)
         var (description, schema) = tool switch
         {
             HarnessTool.ReadTranscript => ("Read corrected transcript words with recording labels, project-clock times and zero-based item indices.",
-                ObjectSchema(new { offset = new { type = "integer", minimum = 0 }, limit = new { type = "integer", minimum = 1, maximum = 500 } })),
+                ObjectSchema(new { offset = new { type = "integer", minimum = 0 }, limit = new { type = "integer", minimum = 1, maximum = 500 },
+                    recordingKey = new { type = "string", description = "Preview indices for a companion with a cached local transcript before proposing useRecording." } })),
             HarnessTool.ReadClips => ("List clips with kind, ordered parts, recordings, inclusive transcript indices and source spans.", ObjectSchema(new { })),
             HarnessTool.ReadTakes => ("Read matched beats, aligned spans, delivery signals and solo runs across spoken recordings.", ObjectSchema(new { })),
             HarnessTool.ReadDecisions => ("Read the clip's saved title context, framing, cover, captions, effects and music choices.",

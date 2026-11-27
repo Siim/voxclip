@@ -12,7 +12,7 @@ enum HarnessTool: String, CaseIterable {
 
     var keys: Set<String> {
         switch self {
-        case .readTranscript: ["offset", "limit"]
+        case .readTranscript: ["offset", "limit", "recordingKey"]
         case .readClips, .readTakes: []
         case .readDecisions: ["clipId"]
         case .readFrames: ["times"]
@@ -31,7 +31,8 @@ enum HarnessTool: String, CaseIterable {
         case .readTranscript:
             description = "Read corrected transcript words with recording labels, project-clock times and zero-based item indices."
             schema = object(["offset": .object(["type": .string("integer"), "minimum": .number(0)]),
-                             "limit": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(500)])])
+                             "limit": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(500)]),
+                             "recordingKey": .object(["type": .string("string"), "description": .string("Preview indices for a companion with a cached local transcript before proposing useRecording.")])])
         case .readClips:
             description = "List clips with kind, ordered parts, recordings, inclusive transcript indices and source spans."
             schema = object([:])

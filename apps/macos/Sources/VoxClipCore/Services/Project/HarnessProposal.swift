@@ -15,7 +15,8 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
     private let wire: JSONValue
     public let proposal: ClipProposal
     let edits: [TimelineEditRequest]
-    public var timelineEditCount: Int { edits.count }
+    public let recordingKey: String?
+    public var timelineEditCount: Int { edits.count + (recordingKey == nil ? 0 : 1) }
     public var clipId: String { proposal.target.clipId ?? "" }
     public var reason: String { proposal.reason }
     public var cuts: [ClipAutopilotPlan.Cut]? { proposal.cuts }
@@ -44,7 +45,19 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
         let clip = fields.removeValue(forKey: "clipId")
         let new = fields.removeValue(forKey: "newClip")
         guard (clip == nil) != (new == nil), (fields.keys.count > 1) else { throw invalid }
-        let edits = try fields.removeValue(forKey: "edits").map(TimelineEditRequest.read) ?? []
+        var recordingKey: String?
+        var edits: [TimelineEditRequest] = []
+        if let value = fields.removeValue(forKey: "edits") {
+            guard case .array(let items) = value, (1...30).contains(items.count) else { throw invalid }
+            let other = try items.filter { item in
+                guard case .object(let object) = item, object["op"] == .string("useRecording") else { return true }
+                let entry = try requireObject(item, keys: ["op", "key"])
+                guard recordingKey == nil, case .string(let key) = entry["key"], RecordingTranscriptCache.validKey(key) else { throw invalid }
+                recordingKey = key
+                return false
+            }
+            if !other.isEmpty { edits = try TimelineEditRequest.read(.array(other)) }
+        }
         guard new == nil || edits.isEmpty else { throw invalid }
         if let clip {
             guard case .string(let id) = clip, !id.isEmpty else { throw invalid }
@@ -101,11 +114,11 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
               proposal.target.new.map({ entry in
                   line(entry.title, max: 120) && (entry.kind == .stretch ? proposal.parts?.count == 1 : (proposal.parts?.count ?? 0) >= 2)
               }) != false else { throw invalid }
-        return .init(wire: value, proposal: proposal, edits: edits)
+        return .init(wire: value, proposal: proposal, edits: edits, recordingKey: recordingKey)
     }
 
-    private init(wire: JSONValue, proposal: ClipProposal, edits: [TimelineEditRequest]) {
-        self.wire = wire; self.proposal = proposal; self.edits = edits
+    private init(wire: JSONValue, proposal: ClipProposal, edits: [TimelineEditRequest], recordingKey: String?) {
+        self.wire = wire; self.proposal = proposal; self.edits = edits; self.recordingKey = recordingKey
     }
 
     public init(from decoder: any Decoder) throws { self = try Self.read(JSONValue(from: decoder)) }
@@ -218,9 +231,20 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
         return (review.project, review.pending.compactMap { if case .asset(let asset) = $0.action { asset } else { nil } })
     }
 
-    public func review(_ project: Project, shared: SharedResources, at index: Int = 0) throws
+    public func review(_ project: Project, shared: SharedResources, at index: Int = 0, recordingTranscript: Transcript? = nil,
+                       preview: Bool = false) throws
         -> (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation]) {
         try validateRevision(of: project)
+        guard let key = timelines[index].recordingKey else { return try mapping(project, shared: shared, at: index) }
+        if let recordingTranscript {
+            let candidate = try HarnessRecording.add(key, transcript: recordingTranscript, to: project)
+            return try mapping(candidate, shared: shared, at: index)
+        }
+        let source = try HarnessRecording.source(key, in: project)
+        guard preview else { throw HarnessRecording.refusal(source) }
+        if timelines[index].proposal.parts?.contains(where: { $0.endWord >= ProjectClock.build(project).words.count }) == true {
+            throw HarnessRecording.refusal(source)
+        }
         return try mapping(project, shared: shared, at: index)
     }
 
@@ -279,6 +303,7 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
             let footage: [ClipFootage]?
             let postText: [String: String]?
             let voiceLab: ProjectVoiceLab?
+            let spokenSources: [SpokenSource]?
         }
         var edits = project.edits
         edits.activeClipId = nil
@@ -289,7 +314,8 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
                            captions: project.captions, clipStyle: project.clipStyle, controls: project.clipControls,
                            motion: project.motionCues, effects: project.clipEffects, reuseMusic: version == 2 || timelines.contains { $0.musicTrackId != nil } ? project.music : nil,
                            footageSources: usesFootage ? project.media.additionalSources : nil, footage: usesFootage ? project.media.footage : nil,
-                           postText: version == 2 ? project.share.captions : nil, voiceLab: version == 2 ? project.voiceLab : nil)
+                           postText: version == 2 ? project.share.captions : nil, voiceLab: version == 2 ? project.voiceLab : nil,
+                           spokenSources: project.media.spokenSources?.isEmpty == false ? project.media.spokenSources : nil)
         return SourceContentKey.sha256(try ProjectJSON.encoder().encode(input))
     }
 }

@@ -1,19 +1,52 @@
 import SwiftUI
 import VoxClipCore
+import VoxClipMedia
 
 extension EditorModel {
     @discardableResult func keepHarnessProposal(_ proposal: HarnessProposal, at url: URL, timeline index: Int = 0) throws -> [ClipPlanAsset] {
         try keepHarnessTimeline(proposal, at: url, index: index).compactMap { if case .asset(let asset) = $0.action { asset } else { nil } }
     }
 
-    func keepHarnessTimeline(_ proposal: HarnessProposal, at url: URL, index: Int) throws -> [ClipAutopilotOperation] {
+    func keepHarnessTimeline(_ proposal: HarnessProposal, at url: URL, index: Int,
+                             recordingTranscript: Transcript? = nil) throws -> [ClipAutopilotOperation] {
         guard document.fileURL == url, !document.demo, capabilities.edit, !capabilities.aiBusy, !musicPanel.isBusy, let shared = app.shared else {
             throw HarnessError.invalid("Finish the current edit and try again. Your project is unchanged.")
         }
-        let result = try proposal.review(project, shared: shared, at: index)
+        let result = try proposal.review(project, shared: shared, at: index, recordingTranscript: recordingTranscript)
         try HarnessInbox.resolve(proposal, remaining: proposal.remaining(after: index, project: result.project), for: url)
         if result.project != project { replace(result.project, name: "Keep timeline proposal") }
         return result.pending
+    }
+
+    func prepareHarnessRecording(_ proposal: HarnessProposal, at index: Int) async throws -> Transcript? {
+        try proposal.validateRevision(of: project)
+        guard let key = proposal.timelines[index].recordingKey else { return nil }
+        let snapshot = project
+        let source = try HarnessRecording.source(key, in: snapshot)
+        if let cached = HarnessRecording.cachedTranscript(key, cache: app.locations.cache) { return cached }
+        guard let primary = snapshot.transcript, let shared = app.shared else { throw HarnessRecording.refusal(source) }
+        let locations = app.locations
+        let catalog = BundledModelCatalog(shared: shared)
+        let worker: any Transcriber
+        switch primary.engine.id {
+        case .whispercpp: worker = WhisperCppTranscriber(catalog: catalog, locations: locations)
+        case .appleSpeech: worker = AppleSpeechTranscriber(locations: locations)
+        case .elevenlabs: throw HarnessRecording.refusal(source)
+        }
+        let language = (primary.engine.locale ?? primary.language).map(LanguageChoice.forced) ?? .auto
+        let plan = TranscriptionPlan(engine: primary.engine.id, model: primary.engine.modelId, language: language)
+        guard await worker.readiness(for: plan) == .ready else { throw HarnessRecording.refusal(source) }
+        let media = recordingURL(source)
+        let mediaKey = try await Task.detached(priority: .utility) { try JSONProjectStore.contentKey(for: media) }.value
+        guard mediaKey == key else { throw HarnessRecording.refusal(source) }
+        let extracted = try await CacheStore(locations: locations).extractAudio(sourceURL: media, contentKey: key,
+            durationSeconds: source.durationSeconds, using: AVAudioExtractor()) { _ in }
+        let transcript = try await TranscriptionService(locations: locations, catalog: catalog).transcribe(
+            .init(plan: plan, audio: extracted.audio, contentKey: key), using: worker, envelope: extracted.envelope)
+        try Task.checkCancellation()
+        try proposal.validateRevision(of: project)
+        RecordingTranscriptCache.write(transcript, key: key, cache: locations.cache)
+        return transcript
     }
 }
 
@@ -35,6 +68,7 @@ extension EditorModel {
     @State private var assetProject: Project?
     @State private var workingAsset: String?
     @State private var illustrationKeyAvailable: Bool?
+    @State private var keepingRecording = false
 
     private struct PaidMusic {
         let clipId: String
@@ -90,12 +124,13 @@ extension EditorModel {
     private func review(_ proposal: HarnessProposal, at index: Int) -> some View {
         let timeline = proposal.timelines[index]
         let detail = reviews[index]
-        let blocked = issue ?? detail?.issue ?? unavailable
+        let blocked = keepingRecording ? "Transcribing on this Mac." : issue ?? detail?.issue ?? unavailable
         let clip = (try? proposal.clipID(at: index)).flatMap { id in detail?.result?.edits.clips.first { $0.id == id } }
         let data = model.harnessCreativeData(timeline, clip: clip, result: detail?.result, operations: detail?.operations ?? [], estimate: detail?.estimate)
         return VStack(alignment: .leading, spacing: 6) {
             Text("Timeline proposal").font(.headline)
-            HarnessCreativeProposal(data: data, blocked: blocked, keep: { keep(proposal, at: index) }, undo: { dismiss(proposal, at: index) })
+            HarnessCreativeProposal(data: data, blocked: blocked, keep: { Task { await keep(proposal, at: index) } },
+                                    undo: { if !keepingRecording { dismiss(proposal, at: index) } })
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -240,7 +275,8 @@ extension EditorModel {
                 try next.validateRevision(of: model.project)
                 for index in next.timelines.indices {
                     do {
-                        let candidate = try next.review(model.project, shared: shared, at: index)
+                        let cached = next.timelines[index].recordingKey.flatMap { HarnessRecording.cachedTranscript($0, cache: model.app.locations.cache) }
+                        let candidate = try next.review(model.project, shared: shared, at: index, recordingTranscript: cached, preview: true)
                         let estimate = try? next.estimatedMusicPrice(in: candidate.project, shared: shared, at: index)
                         reviews[index] = Review(operations: candidate.operations, result: candidate.project, estimate: estimate, issue: nil)
                     } catch {
@@ -255,11 +291,14 @@ extension EditorModel {
         }
     }
 
-    private func keep(_ proposal: HarnessProposal, at index: Int) {
-        guard let url = document.fileURL, url == checkedURL, unavailable == nil else { return }
+    private func keep(_ proposal: HarnessProposal, at index: Int) async {
+        guard let url = document.fileURL, url == checkedURL, unavailable == nil, !keepingRecording else { return }
+        keepingRecording = proposal.timelines[index].recordingKey != nil
+        defer { keepingRecording = false }
         do {
             let clipID = try proposal.clipID(at: index)
-            let operations = try model.keepHarnessTimeline(proposal, at: url, index: index)
+            let transcript = try await model.prepareHarnessRecording(proposal, at: index)
+            let operations = try model.keepHarnessTimeline(proposal, at: url, index: index, recordingTranscript: transcript)
             assets = operations.compactMap { if case .asset(let asset) = $0.action { asset } else { nil } }
             rewrites = operations.filter { $0.decision == .rewrite }
             rewriteClipID = clipID

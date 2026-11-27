@@ -16,6 +16,7 @@ public sealed partial class EditorPage
     private DispatcherQueueTimer? harnessTimer;
     private bool readingHarness;
     private int harnessActionVersion;
+    private bool keepingHarnessRecording;
     private HarnessProposal? harnessPending;
     private HarnessReviewDetails? harnessDetails;
     private bool fillingHarnessTimelines;
@@ -109,14 +110,15 @@ public sealed partial class EditorPage
             : "Keeping the timeline doesn't generate music.";
     }
 
-    private string? HarnessBlock => harnessDetails?.Blocked ?? ViewModel.HarnessKeepBlocked ??
+    private string? HarnessBlock => keepingHarnessRecording ? "Transcribing on this PC." : harnessDetails?.Blocked ?? ViewModel.HarnessKeepBlocked ??
         (harnessMusic is not null || harnessAssets.Count > 0 || harnessRewrites.Count > 0 ? "Finish or dismiss the previous asset actions first." : null);
 
     private void UpdateHarnessButtons()
     {
         var blocked = HarnessBlock;
         HarnessKeep.IsEnabled = blocked is null;
-        HarnessUndo.IsEnabled = !ViewModel.IsLeaving;
+        HarnessUndo.IsEnabled = !ViewModel.IsLeaving && !keepingHarnessRecording;
+        HarnessTimelinePicker.IsEnabled = !keepingHarnessRecording;
         HarnessKeepReason.Text = blocked ?? "";
         HarnessKeepReason.Visibility = blocked is null ? Visibility.Collapsed : Visibility.Visible;
         ShowHarnessMusic();
@@ -135,23 +137,28 @@ public sealed partial class EditorPage
 
     private bool IsHarnessPath(string path) => string.Equals(owner.ProjectPath, path, StringComparison.OrdinalIgnoreCase);
 
-    private void HarnessKeepClicked(object sender, RoutedEventArgs args) => ReviewHarness(keep: true);
-    private void HarnessUndoClicked(object sender, RoutedEventArgs args) => ReviewHarness(keep: false);
+    private async void HarnessKeepClicked(object sender, RoutedEventArgs args) => await ReviewHarnessAsync(keep: true);
+    private async void HarnessUndoClicked(object sender, RoutedEventArgs args) => await ReviewHarnessAsync(keep: false);
 
-    private void ReviewHarness(bool keep)
+    private async Task ReviewHarnessAsync(bool keep)
     {
-        if (disposed || harnessPending is not { } pending || harnessPath is not { } path) return;
+        if (disposed || keepingHarnessRecording || harnessPending is not { } pending || harnessPath is not { } path) return;
         ++harnessActionVersion;
+        var index = harnessTimelineIndex;
         try
         {
             if (!IsHarnessPath(path)) throw new HarnessException("The pending timeline changed. Review it again.");
             if (keep)
             {
                 if (HarnessBlock is not null || App.Services.SharedRoot is not { } root) return;
-                harnessMusic = ViewModel.KeepHarnessTimeline(pending, path, root, harnessTimelineIndex, out var assets, out var rewrites);
+                keepingHarnessRecording = pending.Timelines[index].RecordingKey is not null;
+                if (keepingHarnessRecording) UpdateHarnessButtons();
+                var transcript = await ViewModel.PrepareHarnessRecordingAsync(pending, path, index, lifetime.Token);
+                if (disposed || !IsHarnessPath(path)) return;
+                harnessMusic = ViewModel.KeepHarnessTimeline(pending, path, root, index, out var assets, out var rewrites, transcript);
                 harnessAssets.AddRange(assets);
                 harnessRewrites.AddRange(rewrites);
-                harnessRewriteClipId = pending.ClipIdAt(harnessTimelineIndex);
+                harnessRewriteClipId = pending.ClipIdAt(index);
                 harnessAssetProject = ViewModel.Project;
                 harnessIllustrationReady = null;
                 if (harnessAssets.Any(asset => asset.Kind == "illustration")) _ = CheckHarnessIllustrationKeyAsync();
@@ -163,9 +170,11 @@ public sealed partial class EditorPage
             ShowHarnessDetails();
             UpdateHarnessButtons();
         }
+        catch (OperationCanceledException) { }
         catch (HarnessException exception) { Ui.Show(HarnessNotice, exception.Message, InfoBarSeverity.Warning); }
         catch (Exception exception) when (HarnessFileError(exception))
         { Ui.Show(HarnessNotice, "VoxClip couldn't finish this review. Your project is unchanged.", InfoBarSeverity.Warning); }
+        finally { keepingHarnessRecording = false; if (!disposed) UpdateHarnessButtons(); }
         _ = RefreshHarnessAsync();
     }
 

@@ -2,6 +2,7 @@ using System.Text.Json;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.ViewModels;
@@ -27,6 +28,9 @@ public sealed partial class EditorViewModel
         var clipId = proposal.ClipIdAt(index);
         var clipTitle = intent.Target.New?.Title ?? project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId)?.Title ?? "Clip";
         var changes = new List<string>();
+        var recordingKey = proposal.Timelines[index].RecordingKey;
+        if (recordingKey is not null && project.Media.AdditionalSources?.FirstOrDefault(source => source.ContentKey == recordingKey) is { } recording)
+            changes.Add($"Add recording {Core.Domain.Editing.ProjectClock.Label(recording)} with local transcription");
         if (intent.Parts is { } parts) changes.Add("Parts: " + string.Join(" → ", parts.Select(part => $"{part.StartWord}–{part.EndWord}")));
         if (timeline.TryGetProperty("title", out var title)) changes.Add($"Title: {title.GetString()}");
         if (timeline.TryGetProperty("captionStyle", out var caption)) changes.Add($"Captions: {caption.GetString()}");
@@ -48,7 +52,8 @@ public sealed partial class EditorViewModel
         {
             try
             {
-                var review = proposal.Review(project, sharedRoot, index);
+                var transcript = recordingKey is null ? null : HarnessRecording.CachedTranscript(recordingKey, App.Services.Data.Cache);
+                var review = proposal.Review(project, sharedRoot, index, transcript, preview: true);
                 estimate = proposal.EstimatedMusicPrice(review.Project, sharedRoot, index);
                 foreach (var operation in review.Operations.Where(operation =>
                     operation.Decision is not (ClipAutopilotDecision.Clip or ClipAutopilotDecision.Title or ClipAutopilotDecision.Cut or
@@ -72,16 +77,37 @@ public sealed partial class EditorViewModel
         => KeepHarnessTimeline(proposal, projectPath, sharedRoot, 0, out assets, out _);
 
     internal HarnessMusicAction? KeepHarnessTimeline(HarnessProposal proposal, string projectPath, string sharedRoot, int index,
-        out IReadOnlyList<ClipAutopilotAction.Asset> assets, out IReadOnlyList<ClipAutopilotOperation> rewrites)
+        out IReadOnlyList<ClipAutopilotAction.Asset> assets, out IReadOnlyList<ClipAutopilotOperation> rewrites, Transcript? recordingTranscript = null)
     {
         if (HarnessKeepBlocked is { } blocked) throw new HarnessException(blocked);
-        var (next, _, pending) = proposal.Review(project, sharedRoot, index);
+        var (next, _, pending) = proposal.Review(project, sharedRoot, index, recordingTranscript);
         HarnessInbox.Resolve(proposal, proposal.Remaining(index, next), projectPath);
         if (!ReferenceEquals(next, project)) ReplaceProject(next, "Keep timeline proposal");
         assets = pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Asset>().ToArray();
         rewrites = pending.Where(operation => operation.Action is ClipAutopilotAction.Rewrite).ToArray();
         return pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Music>().FirstOrDefault() is { } music
             ? new(music.Cue.ClipId, next.Media.Source.ContentKey, music.Cue.Picked.Prompt, music.Cue.Picked.TimelineShape) : null;
+    }
+
+    internal async Task<Transcript?> PrepareHarnessRecordingAsync(HarnessProposal proposal, string projectPath, int index, CancellationToken ct)
+    {
+        if (proposal.Timelines[index].RecordingKey is not { } key) return null;
+        var snapshot = project;
+        var source = HarnessRecording.Source(key, snapshot);
+        if (HarnessRecording.CachedTranscript(key, App.Services.Data.Cache) is { } cached) return cached;
+        var engine = snapshot.Transcript!.Engine;
+        if (engine.ModelId is null) throw HarnessRecording.Refusal(source);
+        var path = await App.Services.Projects.ResolveMediaAsync(source, projectPath, ct) ?? throw HarnessRecording.Refusal(source);
+        if (await App.Services.Projects.ComputeContentKeyAsync(path, null, ct) != key) throw HarnessRecording.Refusal(source);
+        var media = await App.Services.Probe.ProbeAsync(path, ct);
+        var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, key, null, ct);
+        LanguageChoice language = snapshot.Transcript.Language is { } code ? new LanguageChoice.Forced(code) : new LanguageChoice.Auto();
+        var plan = new TranscriptionPlan(TranscriptEngine.Whispercpp, engine.ModelId, language, new());
+        var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, key), audio.Envelope, null, ct);
+        ct.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(project, snapshot)) throw new HarnessException("The project changed. Ask for a new timeline proposal.");
+        HarnessRecording.CacheTranscript(key, App.Services.Data.Cache, transcript);
+        return transcript;
     }
 
     internal async Task<bool> ApplyHarnessAssetAsync(ClipAutopilotAction.Asset asset, Project snapshot, decimal? price, CancellationToken ct)

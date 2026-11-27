@@ -30,6 +30,13 @@ struct HarnessProject {
         guard project.id == id else { throw HarnessError.invalid("The selected project changed. Restart the connection.") }
         switch tool {
         case .readTranscript:
+            var project = project
+            if let requested = fields["recordingKey"] {
+                guard case .string(let key) = requested else { throw HarnessError.invalid("Choose a recording key from read_clips.") }
+                let source = try HarnessRecording.source(key, in: project)
+                guard let transcript = HarnessRecording.cachedTranscript(key, cache: DataLocations().cache) else { throw HarnessRecording.refusal(source) }
+                project = try HarnessRecording.add(key, transcript: transcript, to: project)
+            }
             let clock = ProjectClock.build(project)
             let words = clock.words
             let offset = try Self.integer(fields["offset"], default: 0, range: 0...Int.max)
@@ -109,14 +116,19 @@ struct HarnessProject {
             var refusals: [JSONValue] = []
             for index in timelines.indices {
                 let review: (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation])
-                do { review = try proposal.review(project, shared: shared, at: index) }
+                let recording = timelines[index].recordingKey
+                let transcript = recording.flatMap { HarnessRecording.cachedTranscript($0, cache: DataLocations().cache) }
+                do { review = try proposal.review(project, shared: shared, at: index, recordingTranscript: transcript, preview: true) }
                 catch let refusal as TimelineEditRefusal {
                     refusals.append(.object(["timelineIndex": .number(Double(index)), "reason": .string(refusal.copy)]))
                     continue
                 }
-                guard review.project != project || !review.pending.isEmpty else { throw HarnessError.invalid("The timeline doesn't change the project.") }
+                guard recording != nil || review.project != project || !review.pending.isEmpty else {
+                    throw HarnessError.invalid("The timeline doesn't change the project.")
+                }
                 let approval: JSONValue = .string("In VoxClip only; the app confirms the price for the open clip.")
                 let position: JSONValue = .number(Double(index))
+                if let recording { free.append(.object(["kind": .string("useRecording"), "key": .string(recording), "timelineIndex": position])) }
                 let music = review.pending.filter { $0.decision == .music }
                 for operation in music + review.pending.filter({ $0.decision != .music }) {
                     switch operation.action {
@@ -251,8 +263,11 @@ struct HarnessTranscript: AsyncParsableCommand {
     @OptionGroup var scope: HarnessProjectOptions
     @Option var offset = 0
     @Option var limit = 200
+    @Option var recordingKey: String?
     func run() async throws {
-        try await HarnessProject(path: scope.project).call(.readTranscript, arguments: .object(["offset": .number(Double(offset)), "limit": .number(Double(limit))])).writeCLI()
+        var fields: [String: JSONValue] = ["offset": .number(Double(offset)), "limit": .number(Double(limit))]
+        fields["recordingKey"] = recordingKey.map(JSONValue.string)
+        try await HarnessProject(path: scope.project).call(.readTranscript, arguments: .object(fields)).writeCLI()
     }
 }
 

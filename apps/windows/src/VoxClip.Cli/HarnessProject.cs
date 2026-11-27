@@ -48,7 +48,15 @@ internal sealed class HarnessProject
         switch (tool)
         {
             case HarnessTool.ReadTranscript:
-                HarnessTimeline.RequireObject(arguments, ["offset", "limit"]);
+                HarnessTimeline.RequireObject(arguments, ["offset", "limit", "recordingKey"]);
+                if (arguments.TryGetProperty("recordingKey", out var requested))
+                {
+                    var key = requested.ValueKind == JsonValueKind.String ? requested.GetString()! :
+                        throw new HarnessException("Choose a recording key from read_clips.");
+                    var source = HarnessRecording.Source(key, project);
+                    var transcript = HarnessRecording.CachedTranscript(key, DataLocations.Resolve().Cache) ?? throw HarnessRecording.Refusal(source);
+                    project = HarnessRecording.Add(key, transcript, project);
+                }
                 return Transcript(project, Integer(arguments, "offset", 0, 0, long.MaxValue), (int)Integer(arguments, "limit", 200, 1, 500));
             case HarnessTool.ReadClips:
                 HarnessTimeline.RequireObject(arguments, []);
@@ -75,12 +83,15 @@ internal sealed class HarnessProject
                 for (var index = 0; index < timelines.Count; index++)
                 {
                     (Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending) review;
-                    try { review = proposal.Review(project, shared, index); }
+                    var key = timelines[index].RecordingKey;
+                    var transcript = key is null ? null : HarnessRecording.CachedTranscript(key, DataLocations.Resolve().Cache);
+                    try { review = proposal.Review(project, shared, index, transcript, preview: true); }
                     catch (HarnessTimelineEditException refusal)
                     {
                         refusals.Add(new { timelineIndex = index, reason = refusal.Message });
                         continue;
                     }
+                    if (key is not null) freeActions.Add(new { kind = "useRecording", key, timelineIndex = index });
                     foreach (var operation in review.Pending.OrderBy(operation => operation.Decision == ClipAutopilotDecision.Music ? 0 : 1))
                     {
                         switch (operation.Action)

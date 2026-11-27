@@ -10,6 +10,7 @@ using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Services.VoiceLab;
 
@@ -34,6 +35,8 @@ public sealed class HarnessTimeline
     internal JsonElement Wire { get; }
     internal ClipProposal Proposal { get; }
     internal IReadOnlyList<TimelineEditRequest> Edits { get; private init; } = [];
+    /// <summary>The companion this timeline adds before applying its other edits.</summary>
+    public string? RecordingKey { get; private init; }
     internal bool UsesFootage => Proposal.Effects?.Any(effect => effect.Kind is "bRoll" or "screenshot" or "videoStack") == true;
 
     /// <summary>The optional music brief, for estimating only.</summary>
@@ -63,8 +66,22 @@ public sealed class HarnessTimeline
             create = new(kind, Text(newClip, "title", 120) ?? throw InvalidTimeline());
         }
         if ((clipId is null) == (create is null) || wire.EnumerateObject().Count() < 3) throw InvalidTimeline();
-        var edits = wire.TryGetProperty("edits", out _) ? Items(wire, "edits", TimelineEditRequest.Maximum).Select(item => new TimelineEditRequest(item)).ToArray() : [];
-        if (create is not null && edits.Length != 0) throw InvalidTimeline();
+        var edits = new List<TimelineEditRequest>();
+        string? recordingKey = null;
+        if (wire.TryGetProperty("edits", out _))
+        {
+            foreach (var item in Items(wire, "edits", TimelineEditRequest.Maximum))
+            {
+                if (item.ValueKind == JsonValueKind.Object && Text(item, "op") == "useRecording")
+                {
+                    RequireObject(item, ["op", "key"]);
+                    if (recordingKey is not null || Text(item, "key") is not { } key || !HarnessRecording.ValidKey(key)) throw InvalidTimeline();
+                    recordingKey = key;
+                }
+                else edits.Add(new TimelineEditRequest(item));
+            }
+        }
+        if (create is not null && edits.Count != 0) throw InvalidTimeline();
         var parts = ReadItems(wire, "parts", 12, ["startWord", "endWord"], part => new ClipProposal.Part(Anchor(part, "startWord"), Anchor(part, "endWord")));
         if (create is not null && (create.Kind == "stretch" ? parts?.Count != 1 : (parts?.Count ?? 0) < 2)) throw InvalidTimeline();
         var track = Text(wire, "musicTrackId");
@@ -127,7 +144,7 @@ public sealed class HarnessTimeline
             Rewrites = ReadItems(wire, "rewrites", 12, ["startWord", "endWord", "text", "reason"], entry => new ClipAutopilotPlan.Rewrite(Anchor(entry, "startWord"),
                 Anchor(entry, "endWord"), Text(entry, "text", 2000) ?? throw InvalidTimeline(), Reason(entry))),
             Effects = wire.TryGetProperty("effects", out _) ? Items(wire, "effects", ClipPlanEffect.MaximumEntries).Select(ReadEffect).ToArray() : null,
-        }) { Edits = edits };
+        }) { Edits = edits, RecordingKey = recordingKey };
     }
 
     private static IReadOnlyList<T>? ReadItems<T>(JsonElement wire, string key, int maximum, string[] keys, Func<JsonElement, T> read) =>
@@ -289,10 +306,23 @@ public sealed class HarnessProposal
 
     /// <summary>Validate the revision and map a single timeline through the shared operation apply path.</summary>
     public (Domain.Shared.Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending)
-        Review(Domain.Shared.Project snapshot, string sharedRoot, int index = 0)
+        Review(Domain.Shared.Project snapshot, string sharedRoot, int index = 0, Transcript? recordingTranscript = null, bool preview = false)
     {
         if (snapshot.Id != ProjectId || BaseRevision != Revision(snapshot, timelines, version))
             throw new HarnessException("The project changed. Ask for a new timeline proposal.");
+        var original = snapshot;
+        var awaitingRecording = false;
+        if (timelines[index].RecordingKey is { } key)
+        {
+            var source = HarnessRecording.Source(key, snapshot);
+            if (recordingTranscript is not null) snapshot = HarnessRecording.Add(key, recordingTranscript, snapshot);
+            else
+            {
+                if (!preview || timelines[index].Proposal.Parts?.Any(part => part.EndWord >= ProjectClock.Build(snapshot).Words.Count) == true)
+                    throw HarnessRecording.Refusal(source);
+                awaitingRecording = true;
+            }
+        }
         var proposal = timelines[index].Proposal;
         var clipId = ClipIdAt(index);
         if (proposal.CaptionStyle is { } style && style != "off" && CaptionStyleLibrary.Load(sharedRoot).Find(style) is null)
@@ -313,8 +343,8 @@ public sealed class HarnessProposal
         _ = ProjectSerialization.Serialize(candidate);
         if (BaseRevision == Revision(candidate, timelines, version))
         {
-            if (result.Pending.Count == 0) throw new HarnessException("The timeline doesn't change the project.");
-            return (snapshot, operations, result.Pending);
+            if (result.Pending.Count == 0 && !awaitingRecording) throw new HarnessException("The timeline doesn't change the project.");
+            return (original, operations, result.Pending);
         }
         return (candidate, operations, result.Pending);
     }
@@ -363,6 +393,7 @@ public sealed class HarnessProposal
             inputs["postText"] = stored["share"]?["captions"]?.DeepClone();
             inputs["voiceLab"] = Take("voiceLab");
         }
+        if (snapshot.Media.SpokenSources?.Count > 0) inputs["spokenSources"] = stored["media"]?["spokenSources"]?.DeepClone();
         using var bytes = new MemoryStream();
         using (var writer = new Utf8JsonWriter(bytes)) WriteCanonical(inputs, writer);
         return Convert.ToHexStringLower(SHA256.HashData(bytes.GetBuffer().AsSpan(0, (int)bytes.Length)));
