@@ -163,6 +163,9 @@ public static class ShortcutPolicy
 
     internal const string RecordingVersionsGesture = "Ctrl+Shift+Y";
 
+    internal static bool OpensRecordingVersions(string key, bool control, bool shift, bool alt, bool textFocus, bool correctionOpen) =>
+        Gesture(key, control, shift, alt) == RecordingVersionsGesture && EditorMayHandle(textFocus, correctionOpen, control, alt, true);
+
     internal static RecordingVersionKey? RecordingFoldKey(string key, bool textFocus, bool correctionOpen, bool modifier) =>
         !EditorMayHandle(textFocus, correctionOpen, false, modifier, true) ? null : key switch
         {

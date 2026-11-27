@@ -19,23 +19,20 @@ public sealed partial class TranscriptView
     private Button? recordingReturnMarker;
     private string? recordingReturnLine;
 
-    private RecordingClipLine? OtherRecordingVersionLine => model is not { } current || current.TranscriptRecordingView.Kind != RecordingViewKind.PlayOrder
-        ? null : current.HasSelection ? current.RecordingLineAt(current.SelectionCaret) : current.RecordingClipLines.FirstOrDefault(candidate =>
-            candidate.Alternatives.Count > 0 && current.Words[current.Index(candidate.FirstId)].Start <= current.SourceTime &&
-            current.SourceTime <= current.Words[current.Index(candidate.LastId)].End);
+    internal bool OtherRecordingVersionsAvailable(bool fromTimeline) => model?.RecordingVersionTarget(fromTimeline) is not null;
 
-    internal bool OtherRecordingVersionsAvailable => OtherRecordingVersionLine is not null;
-
-    internal bool ShowOtherRecordingVersions()
+    internal bool ShowOtherRecordingVersions(bool fromTimeline)
     {
         if (model is null || CorrectionOpen || InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot))) return false;
-        return OtherRecordingVersionLine is { } line && ShowRecordingVersions(line);
+        return model.RecordingVersionTarget(fromTimeline) is { } line && ShowRecordingVersions(line);
     }
 
     private bool ShowRecordingVersions(RecordingClipLine line)
     {
         if (model is null || !model.OpenRecordingVersions(line)) return false;
         recordingReturnLine = line.Id;
+        recordingReturnMarker = null;
+        recordingFoldClose = null;
         RebuildRealized();
         RevealWord(model.Index(line.LastId));
         DispatcherQueue.TryEnqueue(() => recordingFoldClose?.Focus(FocusState.Programmatic));
@@ -44,8 +41,7 @@ public sealed partial class TranscriptView
 
     private void CloseRecordingVersions()
     {
-        model?.CloseRecordingVersions();
-        StopRecordingAuditionRequested?.Invoke();
+        model?.HandleRecordingVersionKey(RecordingVersionKey.Close, _ => { }, () => StopRecordingAuditionRequested?.Invoke());
         RebuildRealized();
         if (recordingReturnMarker?.Focus(FocusState.Programmatic) != true) Focus(FocusState.Programmatic);
     }

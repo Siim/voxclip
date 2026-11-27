@@ -86,6 +86,14 @@ public sealed partial class EditorViewModel
     internal RecordingClipLine? RecordingLineAt(int word) => TranscriptRecordingView.Kind == RecordingViewKind.PlayOrder
         ? RecordingClipLines.FirstOrDefault(line => line.Alternatives.Count > 0 && Index(line.FirstId) <= word && word <= Index(line.LastId)) : null;
 
+    internal RecordingClipLine? RecordingVersionTarget(bool fromTimeline)
+    {
+        if (TranscriptRecordingView.Kind != RecordingViewKind.PlayOrder) return null;
+        if (!fromTimeline && HasSelection) return RecordingLineAt(SelectionCaret);
+        return RecordingClipLines.FirstOrDefault(line => line.Alternatives.Count > 0 &&
+            Words[Index(line.FirstId)].Start <= SourceTime && SourceTime <= Words[Index(line.LastId)].End);
+    }
+
     internal bool HandleRecordingVersionKey(RecordingVersionKey key, Action<RecordingAudition> play, Action stop)
     {
         if (OpenRecordingLine is not { } line) return false;
@@ -99,7 +107,11 @@ public sealed partial class EditorViewModel
                 if (RecordingLineAudition(line, takes[index].Key) is { } audition) play(audition);
                 break;
             case RecordingVersionKey.Use: UseRecordingLineVersion(line, takes[index].Key); break;
-            case RecordingVersionKey.Close: CloseRecordingVersions(); stop(); break;
+            case RecordingVersionKey.Close:
+                CloseRecordingVersions();
+                stop();
+                if (RecordingLineAt(SelectionCaret)?.Id != line.Id) Select(Index(line.FirstId));
+                break;
         }
         return true;
     }
