@@ -403,7 +403,8 @@
             "additionalProperties": false,
             "properties": {
               "op": {"const": "useRecording"},
-              "key": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+              "key": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "transcriptRevision": {"type": "string", "pattern": "^[a-f0-9]{64}$", "readOnly": true}
             },
             "required": ["op", "key"]
           },

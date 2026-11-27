@@ -73,14 +73,16 @@ internal sealed class HarnessProject
                 HarnessTimeline.RequireObject(arguments, ["times"]);
                 return await FramesAsync(project, arguments, ct).ConfigureAwait(false);
             case HarnessTool.ProposeTimeline:
-                var timelines = HarnessTimeline.ReadSeries(arguments);
+                var timelines = HarnessTimeline.ReadSeries(arguments).Select(timeline =>
+                    timeline.RecordingKey is { } key && HarnessRecording.CachedTranscript(key, DataLocations.Resolve().Cache) is { } cached
+                        ? timeline.PinRecordingTranscript(cached) : timeline).ToArray();
                 var shared = SharedResources.ResolveRoot();
                 var proposal = new HarnessProposal(timelines, project);
                 var pricedActions = new List<object>();
                 var freeActions = new List<object>();
                 var refusals = new List<object>();
                 const string approval = "In VoxClip only; the app confirms the price for the open clip.";
-                for (var index = 0; index < timelines.Count; index++)
+                for (var index = 0; index < timelines.Length; index++)
                 {
                     (Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending) review;
                     var key = timelines[index].RecordingKey;

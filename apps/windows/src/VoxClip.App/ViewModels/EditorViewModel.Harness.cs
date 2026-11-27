@@ -93,12 +93,14 @@ public sealed partial class EditorViewModel
     {
         if (proposal.Timelines[index].RecordingKey is not { } key) return null;
         var snapshot = project;
+        proposal.ValidateRevision(snapshot);
         var source = HarnessRecording.Source(key, snapshot);
         if (HarnessRecording.CachedTranscript(key, App.Services.Data.Cache) is { } cached) return cached;
+        if (proposal.Timelines[index].HasPinnedRecordingTranscript)
+            throw new HarnessException("The recording transcript changed. Ask for a new timeline proposal.");
         var engine = snapshot.Transcript!.Engine;
         if (engine.ModelId is null) throw HarnessRecording.Refusal(source);
         var path = await App.Services.Projects.ResolveMediaAsync(source, projectPath, ct) ?? throw HarnessRecording.Refusal(source);
-        if (await App.Services.Projects.ComputeContentKeyAsync(path, null, ct) != key) throw HarnessRecording.Refusal(source);
         var media = await App.Services.Probe.ProbeAsync(path, ct);
         var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, key, null, ct);
         LanguageChoice language = snapshot.Transcript.Language is { } code ? new LanguageChoice.Forced(code) : new LanguageChoice.Auto();

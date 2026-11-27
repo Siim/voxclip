@@ -108,7 +108,11 @@ struct HarnessProject {
             let times = requested.compactMap { if case .number(let time) = $0 { return time }; return nil }
             return try await frames(times, project: project)
         case .proposeTimeline:
-            let timelines = try HarnessTimeline.readSeries(arguments)
+            let timelines = try HarnessTimeline.readSeries(arguments).map { timeline in
+                guard let key = timeline.recordingKey,
+                      let transcript = HarnessRecording.cachedTranscript(key, cache: DataLocations().cache) else { return timeline }
+                return try timeline.pinningRecordingTranscript(transcript)
+            }
             let shared = try SharedResources.locate()
             let proposal = try HarnessProposal(timelines: timelines, project: project)
             var actions: [JSONValue] = []

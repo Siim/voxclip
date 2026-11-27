@@ -24,6 +24,9 @@ extension EditorModel {
         let snapshot = project
         let source = try HarnessRecording.source(key, in: snapshot)
         if let cached = HarnessRecording.cachedTranscript(key, cache: app.locations.cache) { return cached }
+        if proposal.timelines[index].recordingRevision != nil {
+            throw HarnessError.invalid("The recording transcript changed. Ask for a new timeline proposal.")
+        }
         guard let primary = snapshot.transcript, let shared = app.shared else { throw HarnessRecording.refusal(source) }
         let locations = app.locations
         let catalog = BundledModelCatalog(shared: shared)

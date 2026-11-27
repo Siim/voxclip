@@ -37,6 +37,9 @@ public sealed class HarnessTimeline
     internal IReadOnlyList<TimelineEditRequest> Edits { get; private init; } = [];
     /// <summary>The companion this timeline adds before applying its other edits.</summary>
     public string? RecordingKey { get; private init; }
+    internal string? RecordingRevision { get; private init; }
+    /// <summary>Whether the proposed indices were validated against a particular cached transcript.</summary>
+    public bool HasPinnedRecordingTranscript => RecordingRevision is not null;
     internal bool UsesFootage => Proposal.Effects?.Any(effect => effect.Kind is "bRoll" or "screenshot" or "videoStack") == true;
 
     /// <summary>The optional music brief, for estimating only.</summary>
@@ -68,14 +71,18 @@ public sealed class HarnessTimeline
         if ((clipId is null) == (create is null) || wire.EnumerateObject().Count() < 3) throw InvalidTimeline();
         var edits = new List<TimelineEditRequest>();
         string? recordingKey = null;
+        string? recordingRevision = null;
         if (wire.TryGetProperty("edits", out _))
         {
             foreach (var item in Items(wire, "edits", TimelineEditRequest.Maximum))
             {
                 if (item.ValueKind == JsonValueKind.Object && Text(item, "op") == "useRecording")
                 {
-                    RequireObject(item, ["op", "key"]);
+                    RequireObject(item, ["op", "key", "transcriptRevision"]);
                     if (recordingKey is not null || Text(item, "key") is not { } key || !HarnessRecording.ValidKey(key)) throw InvalidTimeline();
+                    recordingRevision = Text(item, "transcriptRevision");
+                    if (item.TryGetProperty("transcriptRevision", out _) && (recordingRevision is null || !HarnessRecording.ValidKey(recordingRevision)))
+                        throw InvalidTimeline();
                     recordingKey = key;
                 }
                 else edits.Add(new TimelineEditRequest(item));
@@ -144,8 +151,22 @@ public sealed class HarnessTimeline
             Rewrites = ReadItems(wire, "rewrites", 12, ["startWord", "endWord", "text", "reason"], entry => new ClipAutopilotPlan.Rewrite(Anchor(entry, "startWord"),
                 Anchor(entry, "endWord"), Text(entry, "text", 2000) ?? throw InvalidTimeline(), Reason(entry))),
             Effects = wire.TryGetProperty("effects", out _) ? Items(wire, "effects", ClipPlanEffect.MaximumEntries).Select(ReadEffect).ToArray() : null,
-        }) { Edits = edits, RecordingKey = recordingKey };
+        }) { Edits = edits, RecordingKey = recordingKey, RecordingRevision = recordingRevision };
     }
+
+    /// <summary>Pin the recording words reviewed during staging.</summary>
+    public HarnessTimeline PinRecordingTranscript(Transcript transcript)
+    {
+        if (RecordingKey is null || RecordingRevision is not null) return this;
+        var timeline = JsonNode.Parse(Wire.GetRawText())!.AsObject();
+        var operation = timeline["edits"]!.AsArray().Single(item => item?["op"]?.GetValue<string>() == "useRecording")!;
+        operation["transcriptRevision"] = TranscriptRevision(transcript);
+        using var pinned = JsonDocument.Parse(timeline.ToJsonString());
+        return Read(pinned.RootElement);
+    }
+
+    internal static string TranscriptRevision(Transcript transcript) =>
+        Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(transcript, ProjectJsonContext.Default.Transcript)));
 
     private static IReadOnlyList<T>? ReadItems<T>(JsonElement wire, string key, int maximum, string[] keys, Func<JsonElement, T> read) =>
         wire.TryGetProperty(key, out _) ? Items(wire, key, maximum).Select(item => { RequireObject(item, keys); return read(item); }).ToArray() : null;
@@ -304,17 +325,26 @@ public sealed class HarnessProposal
         return (result.Project, result.Pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Asset>().ToArray());
     }
 
+    /// <summary>Refuse proposals pinned to a different project revision.</summary>
+    public void ValidateRevision(Domain.Shared.Project snapshot)
+    {
+        if (snapshot.Id != ProjectId || BaseRevision != Revision(snapshot, timelines, version))
+            throw new HarnessException("The project changed. Ask for a new timeline proposal.");
+    }
+
     /// <summary>Validate the revision and map a single timeline through the shared operation apply path.</summary>
     public (Domain.Shared.Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending)
         Review(Domain.Shared.Project snapshot, string sharedRoot, int index = 0, Transcript? recordingTranscript = null, bool preview = false)
     {
-        if (snapshot.Id != ProjectId || BaseRevision != Revision(snapshot, timelines, version))
-            throw new HarnessException("The project changed. Ask for a new timeline proposal.");
+        ValidateRevision(snapshot);
         var original = snapshot;
         var awaitingRecording = false;
         if (timelines[index].RecordingKey is { } key)
         {
             var source = HarnessRecording.Source(key, snapshot);
+            if (timelines[index].RecordingRevision is { } expected &&
+                (recordingTranscript is null || HarnessTimeline.TranscriptRevision(recordingTranscript) != expected))
+                throw new HarnessException("The recording transcript changed. Ask for a new timeline proposal.");
             if (recordingTranscript is not null) snapshot = HarnessRecording.Add(key, recordingTranscript, snapshot);
             else
             {

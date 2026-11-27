@@ -16,6 +16,7 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
     public let proposal: ClipProposal
     let edits: [TimelineEditRequest]
     public let recordingKey: String?
+    package let recordingRevision: String?
     public var timelineEditCount: Int { edits.count + (recordingKey == nil ? 0 : 1) }
     public var clipId: String { proposal.target.clipId ?? "" }
     public var reason: String { proposal.reason }
@@ -46,13 +47,18 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
         let new = fields.removeValue(forKey: "newClip")
         guard (clip == nil) != (new == nil), (fields.keys.count > 1) else { throw invalid }
         var recordingKey: String?
+        var recordingRevision: String?
         var edits: [TimelineEditRequest] = []
         if let value = fields.removeValue(forKey: "edits") {
             guard case .array(let items) = value, (1...30).contains(items.count) else { throw invalid }
             let other = try items.filter { item in
                 guard case .object(let object) = item, object["op"] == .string("useRecording") else { return true }
-                let entry = try requireObject(item, keys: ["op", "key"])
+                let entry = try requireObject(item, keys: ["op", "key", "transcriptRevision"])
                 guard recordingKey == nil, case .string(let key) = entry["key"], RecordingTranscriptCache.validKey(key) else { throw invalid }
+                if let value = entry["transcriptRevision"] {
+                    guard case .string(let digest) = value, RecordingTranscriptCache.validKey(digest) else { throw invalid }
+                    recordingRevision = digest
+                }
                 recordingKey = key
                 return false
             }
@@ -114,11 +120,27 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
               proposal.target.new.map({ entry in
                   line(entry.title, max: 120) && (entry.kind == .stretch ? proposal.parts?.count == 1 : (proposal.parts?.count ?? 0) >= 2)
               }) != false else { throw invalid }
-        return .init(wire: value, proposal: proposal, edits: edits, recordingKey: recordingKey)
+        return .init(wire: value, proposal: proposal, edits: edits, recordingKey: recordingKey, recordingRevision: recordingRevision)
     }
 
-    private init(wire: JSONValue, proposal: ClipProposal, edits: [TimelineEditRequest], recordingKey: String?) {
-        self.wire = wire; self.proposal = proposal; self.edits = edits; self.recordingKey = recordingKey
+    private init(wire: JSONValue, proposal: ClipProposal, edits: [TimelineEditRequest], recordingKey: String?, recordingRevision: String?) {
+        self.wire = wire; self.proposal = proposal; self.edits = edits; self.recordingKey = recordingKey; self.recordingRevision = recordingRevision
+    }
+
+    package func pinningRecordingTranscript(_ transcript: Transcript) throws -> Self {
+        guard recordingKey != nil, recordingRevision == nil, case .object(var fields) = wire,
+              case .array(let items) = fields["edits"] else { return self }
+        let digest = try Self.transcriptRevision(transcript)
+        fields["edits"] = .array(items.map { item in
+            guard case .object(var operation) = item, operation["op"] == .string("useRecording") else { return item }
+            operation["transcriptRevision"] = .string(digest)
+            return .object(operation)
+        })
+        return try Self.read(.object(fields))
+    }
+
+    static func transcriptRevision(_ transcript: Transcript) throws -> String {
+        SourceContentKey.sha256(try ProjectJSON.encoder().encode(transcript))
     }
 
     public init(from decoder: any Decoder) throws { self = try Self.read(JSONValue(from: decoder)) }
@@ -236,11 +258,15 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
         -> (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation]) {
         try validateRevision(of: project)
         guard let key = timelines[index].recordingKey else { return try mapping(project, shared: shared, at: index) }
+        let source = try HarnessRecording.source(key, in: project)
+        if let expected = timelines[index].recordingRevision,
+           try recordingTranscript.map(HarnessTimeline.transcriptRevision) != expected {
+            throw HarnessError.invalid("The recording transcript changed. Ask for a new timeline proposal.")
+        }
         if let recordingTranscript {
             let candidate = try HarnessRecording.add(key, transcript: recordingTranscript, to: project)
             return try mapping(candidate, shared: shared, at: index)
         }
-        let source = try HarnessRecording.source(key, in: project)
         guard preview else { throw HarnessRecording.refusal(source) }
         if timelines[index].proposal.parts?.contains(where: { $0.endWord >= ProjectClock.build(project).words.count }) == true {
             throw HarnessRecording.refusal(source)
