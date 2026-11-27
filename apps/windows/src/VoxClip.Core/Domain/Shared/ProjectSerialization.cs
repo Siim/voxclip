@@ -34,7 +34,13 @@ public static class ProjectSerialization
             Validate(project);
             return project;
         }
-        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (JsonException exception)
+        {
+            var path = VoxClip.Core.Services.Project.ProjectValidation.FieldPath(exception.Path);
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, path.Length == 0
+                ? "/: invalid project document" : $"{path}: invalid value");
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException)
         {
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "/: invalid project document", exception);
         }

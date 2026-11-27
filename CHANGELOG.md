@@ -18,6 +18,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Mac and Windows can compare transcript lines across recordings and identify alternate versions, restarts and lines unique to one take.
 - Mac and Windows project files can store spoken companions and story parts from different recordings, plan the parts in play order with a new caption page at each recording seam, and keep paid voice work safe when a version changes.
 - When a project can’t load, the CLI reports the invalid field path and reason in text and JSON on Mac and Windows.
+- When a project can’t load, the CLI reports the invalid field path and reason in text and JSON on Mac and Windows, including nested fields and invalid settings values.
 - Social loudness can boost quiet recordings by up to 20 dB on Mac and Windows, with the same peak protection.
 - The CLI exports clips in their saved frame and accepts `--aspect 4:5` for export and check on Mac and Windows.
 - Free sound-effect searches on Mac and Windows now find short Freesound clips, with licence and credit checks intact.

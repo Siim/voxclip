@@ -368,12 +368,15 @@ public sealed class VoiceLabUpgradeTests
         Assert.Equal(VoxClipErrorCode.ProjectUnreadable,
             (await Assert.ThrowsAsync<VoxClipException>(() => store.LoadAsync(path, TestContext.Current.CancellationToken))).Code);
         // The store's raw validator and the serializer each require every single key.
-        foreach (var partial in keys.Select(key => WithRecipeVideos(project, video => video.Remove(key))).Prepend(older))
+        foreach (var key in keys)
         {
+            var partial = WithRecipeVideos(project, video => video.Remove(key));
             var json = partial.ToJsonString();
             Assert.False(JsonNode.DeepEquals(project, partial));
-            Assert.Throws<JsonException>(() => ProjectValidation.Validate(json));
-            Assert.Equal(VoxClipErrorCode.ProjectUnreadable, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(json)).Code);
+            var error = Assert.Throws<VoxClipException>(() => ProjectValidation.Validate(json));
+            Assert.Equal(VoxClipErrorCode.ProjectUnreadable, error.Code);
+            Assert.Equal($"voiceLab/segments/0/candidates/0/recipe/video/{key}: missing required field", error.Message);
+            Assert.Equal(error.Message, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(json)).Message);
         }
     }
 
