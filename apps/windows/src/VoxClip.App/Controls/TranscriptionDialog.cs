@@ -528,7 +528,6 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 if (cloud && approvedPrice is { } paid)
                     TranscriptionSpendState.Shared.Completed(jobId, approvedDay, paid, transcript.FromCache);
                 RequireCurrent();
-                HarnessRecording.CacheTranscript(source.ContentKey, App.Services.Data.Cache, transcript);
                 await ReceiveAsync(transcript);
                 if (!closed) Hide();
             }

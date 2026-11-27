@@ -369,6 +369,37 @@ extension HeavyMediaTests {
     #expect(FileManager.default.fileExists(atPath: output.path))
 }
 
+@Test func cliCanExportWithoutTheUnusedPrimary() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var project = try await Self.recordingStoryProject()
+    project.media.source.absolutePath = directory.appendingPathComponent("missing.mp4").path
+    project.edits.clips.append(.init(id: "companion-only", startWordId: "r2.w1", endWordId: "r2.w2"))
+    let input = directory.appendingPathComponent("story.voxclip")
+    try await JSONProjectStore().save(project, to: input)
+    let options = ["export", "--open", input.path, "--style", "off", "--format", "fcpxml", "--export",
+                   directory.appendingPathComponent("story.fcpxml").path, "--json", "--clip"]
+    let companion = try runCLI(options + ["companion-only"], directory: directory)
+    #expect(companion.status == 0)
+    let mixed = try runCLI(options + ["story"], directory: directory)
+    #expect(mixed.status != 0)
+}
+
+@Test func cliWordRangeUsesTheProjectClock() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let project = try await Self.recordingStoryProject()
+    let input = directory.appendingPathComponent("story.voxclip")
+    try await JSONProjectStore().save(project, to: input)
+    let options = ["export", "--open", input.path, "--style", "off", "--format", "fcpxml", "--export",
+                   directory.appendingPathComponent("story.fcpxml").path, "--json", "--range"]
+    let companion = try runCLI(options + ["3:4"], directory: directory)
+    #expect(companion.status == 0)
+    let mixed = try runCLI(options + ["2:3"], directory: directory)
+    #expect(mixed.status == 2)
+    #expect((try mixed.json["error"] as? [String: Any])?["message"] as? String == "A word range must come from one recording.")
+}
+
 static func recordingStoryProject() async throws -> Project {
     let media = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media")
     let primary = media.appendingPathComponent("recording-0007.mp4")

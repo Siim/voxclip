@@ -40,7 +40,7 @@ The executable finds `shared/` in its checkout or app bundle. If you relocate it
 | `read_clips` | `clips --project Talk.voxclip` | Lists clips with ids, kinds, parts in play order and their recordings, plus `footageSources` keys for companion footage. |
 | `read_takes` | `takes --project Talk.voxclip` | Returns shared beats, alternate takes, aligned spans, delivery flags and solo runs. Its word and beat ids are the ones VoxClip uses. |
 | `read_decisions` | `decisions --project Talk.voxclip --clip CLIP_ID` | Reads the clip's saved choices: Find Clips reason where available, opening lead-in, framing and cover controls, captions, effects, zooms and saved music ids. |
-| `read_frames` | `frames --project Talk.voxclip --time 2.1 --time 3` | Returns one to four unedited source thumbnails from a local MP4, M4V or MOV. CLI output includes JPEGs as base64. Relink missing media in VoxClip. |
+| `read_frames` | `frames --project Talk.voxclip --time 2.1 --time 3` | Returns one to four unedited source thumbnails from verified local MP4, M4V or MOV recordings. Request and result times use the same project clock as `read_transcript`; gaps between recordings are rejected. CLI output includes JPEGs as base64. Relink missing media in VoxClip. |
 | `propose_timeline` | `propose-timeline --project Talk.voxclip < timeline.json` | Stages one to six timelines for new or existing clips. It writes no project edits and returns separate estimates for requested paid actions. |
 
 You might ask: “Read the clips and the transcript. For the clip about editing faster, propose a punch-in on the strongest sentence and a short on-screen title. Don't generate anything.”

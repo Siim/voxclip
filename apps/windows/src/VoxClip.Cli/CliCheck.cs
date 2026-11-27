@@ -95,8 +95,6 @@ internal static class CliCheck
             encoded.Remove("check");
             fields[ExportCheck.Name(result.Check)] = encoded;
         }
-        if (outcome.Report.RecordingSeams.Count > 0)
-            fields["recordingSeams"] = new JsonArray(outcome.Report.RecordingSeams.Select(seam => (JsonNode)seam.ToJson()).ToArray());
         return fields;
     }
 

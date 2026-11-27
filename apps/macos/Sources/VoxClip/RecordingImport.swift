@@ -108,7 +108,7 @@ extension EditorModel {
                 source.audio = probe.audio
                 let key = source.contentKey, cache = app.locations.cache, recent = app.recent
                 let cached = await Task.detached(priority: .utility) {
-                    RecordingTranscriptCache.read(key, cache: cache, recent: recent)
+                    RecordingTranscriptCache.read(key, cache: cache, recent: recent, localOnly: false)
                 }.value
                 try Task.checkCancellation()
                 if let cached, commitRecording(source, transcript: cached) { return }

@@ -101,11 +101,11 @@ struct HarnessProject {
                                        "text": effect.text.map(JSONValue.string) ?? .null, "rect": try Self.json(effect.rect)])
                           }), "zooms": try Self.json(project.motionCues.filter { $0.clipID == clipId })])
         case .readFrames:
-            guard case .array(let requested) = fields["times"], (1...4).contains(requested.count),
-                  requested.allSatisfy({ if case .number(let time) = $0 { return time >= 0 && time < project.media.source.durationSeconds }; return false }) else {
-                throw HarnessError.invalid("Give one to four source times inside the video.")
+            guard case .array(let requested) = fields["times"], (1...4).contains(requested.count) else {
+                throw HarnessError.invalid("Give one to four project times inside a recording.")
             }
             let times = requested.compactMap { if case .number(let time) = $0 { return time }; return nil }
+            guard times.count == requested.count else { throw HarnessError.invalid("Give one to four project times inside a recording.") }
             return try await frames(times, project: project)
         case .proposeTimeline:
             let timelines = try HarnessTimeline.readSeries(arguments).map { timeline in
@@ -191,8 +191,7 @@ struct HarnessProject {
         })
     }
 
-    private func frames(_ times: [Double], project: Project) async throws -> HarnessResult {
-        let media = project.media.source
+    private func frameSource(_ media: MediaReference) throws -> URL {
         var candidates = [URL(fileURLWithPath: media.absolutePath)]
         if let relative = media.relativePath { candidates.append(url.deletingLastPathComponent().appendingPathComponent(relative).standardizedFileURL) }
         guard let source = candidates.first(where: { candidate in
@@ -203,22 +202,42 @@ struct HarnessProject {
         }) else {
             throw HarnessError.invalid("The project's source video is missing. Relink it in VoxClip.")
         }
-        let asset = AVURLAsset(url: source, options: [AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue])
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 480, height: 480)
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
+        return source
+    }
+
+    private func frames(_ times: [Double], project: Project) async throws -> HarnessResult {
+        let clock = ProjectClock.build(project)
+        let rate = Double(clock.sampleRate)
+        let targets = try times.map { time in
+            guard let region = clock.regions.first(where: { Double($0.offsetSamples) / rate <= time && time < Double($0.endSample) / rate }) else {
+                throw HarnessError.invalid("Give one to four project times inside a recording.")
+            }
+            return (time: time, region: region, offset: Double(region.offsetSamples) / rate)
+        }
+        var generators: [String: AVAssetImageGenerator] = [:]
         var images: [HarnessResult.Frame] = []
-        for time in times {
-            let frame = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 60_000))
+        for (time, region, offset) in targets {
+            let generator: AVAssetImageGenerator
+            if let existing = generators[region.key] { generator = existing }
+            else {
+                let media = region.prefix.isEmpty ? project.media.source : project.media.additionalSources.first { $0.contentKey == region.key }
+                guard let media else { throw HarnessError.invalid("The project's source video is missing. Relink it in VoxClip.") }
+                let asset = AVURLAsset(url: try frameSource(media), options: [AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue])
+                generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 480, height: 480)
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
+                generators[region.key] = generator
+            }
+            let frame = try await generator.image(at: CMTime(seconds: time - offset, preferredTimescale: 60_000))
             let bytes = NSMutableData()
             guard let jpeg = CGImageDestinationCreateWithData(bytes, UTType.jpeg.identifier as CFString, 1, nil) else {
                 throw HarnessError.invalid("Can't encode a preview frame.")
             }
             CGImageDestinationAddImage(jpeg, frame.image, [kCGImageDestinationLossyCompressionQuality: 0.72] as CFDictionary)
             guard CGImageDestinationFinalize(jpeg) else { throw HarnessError.invalid("Can't encode a preview frame.") }
-            images.append(.init(requested: time, actual: frame.actualTime.seconds, jpeg: bytes.base64EncodedString()))
+            images.append(.init(requested: time, actual: offset + frame.actualTime.seconds, jpeg: bytes.base64EncodedString()))
         }
         return .init(["frames": try Self.json(images.map { ["requested": $0.requested, "actual": $0.actual] })], images: images)
     }
@@ -301,7 +320,7 @@ struct HarnessDecisions: AsyncParsableCommand {
 }
 
 struct HarnessFrames: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "frames", abstract: "Read local JPEG thumbnails at source times as JSON.")
+    static let configuration = CommandConfiguration(commandName: "frames", abstract: "Read local JPEG thumbnails at project times as JSON.")
     @OptionGroup var scope: HarnessProjectOptions
     @Option(name: .customLong("time"), help: "Source seconds. Repeat up to four times.") var times: [Double]
     func run() async throws {

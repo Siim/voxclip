@@ -80,8 +80,10 @@ public sealed class ClipRenderCliTests
         Assert.True(checkCode is 0 or 8, checkedJson);
         using var checkedReport = JsonDocument.Parse(checkedJson);
         var report = checkedReport.RootElement.GetProperty("check");
-        Assert.Equal(["0007", "0010", "0007"], report.GetProperty("recordingSeams").EnumerateArray().Select(seam => seam.GetProperty("to").GetString()));
-        Assert.DoesNotContain(report.GetProperty("sync").GetProperty("items").EnumerateArray(), item => item.GetProperty("kind").GetString() == "pictureSource");
+        var sync = report.GetProperty("sync").GetProperty("items");
+        Assert.Equal(["0007", "0010", "0007"], sync.EnumerateArray().Where(item => item.GetProperty("kind").GetString() == "recordingSeam")
+            .Select(item => item.GetProperty("recordingSeam").GetProperty("to").GetString()));
+        Assert.DoesNotContain(sync.EnumerateArray(), item => item.GetProperty("kind").GetString() == "pictureSource");
     }
 
     private static async Task<(int Code, string Json)> RecordingCliAsync(string[] args, CancellationToken ct,

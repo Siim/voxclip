@@ -45,6 +45,9 @@ public sealed record ClipRange(string Id, string StartWordId, string EndWordId, 
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ClipPart>? Parts = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] StoryClipKind? Kind = null)
 {
+    /// <summary>Exact bounds displaced by a line version change, kept for switching back.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<ClipWordRange>? DisplacedVersions { get; init; }
+
     /// <summary>Ordered playback ranges; synthesizes one part for an ordinary clip.</summary>
     [JsonIgnore] public IReadOnlyList<ClipPart> PlayParts => Parts is { Count: > 0 } ? Parts : [new(Id, StartWordId, EndWordId)];
 

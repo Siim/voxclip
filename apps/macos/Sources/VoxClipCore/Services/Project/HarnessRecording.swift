@@ -29,9 +29,8 @@ public enum HarnessRecording {
         return try RecordingEdits.apply(.addSpokenSource(key: key, transcript: transcript), project: project).get().project
     }
 
-    package static func cachedTranscript(_ key: String, cache: URL) -> Transcript? {
-        guard let transcript = RecordingTranscriptCache.read(key, cache: cache), transcript.engine.id != .elevenlabs else { return nil }
-        return transcript
+    package static func cachedTranscript(_ key: String, cache: URL, recent: [URL] = []) -> Transcript? {
+        RecordingTranscriptCache.read(key, cache: cache, recent: recent, localOnly: true)
     }
 }
 
@@ -40,25 +39,37 @@ package enum RecordingTranscriptCache {
         key.utf8.count == 64 && key.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
 
-    private static func entry(_ key: String, in cache: URL) -> URL? {
+    private static func directory(_ key: String, in cache: URL) -> URL? {
         guard validKey(key) else { return nil }
-        return cache.appendingPathComponent(key).appendingPathComponent("transcripts/confirmed-v1.json")
+        return cache.appendingPathComponent(key).appendingPathComponent("transcripts", isDirectory: true)
     }
 
-    package static func read(_ key: String, cache: URL, recent: [URL] = []) -> Transcript? {
-        if let file = entry(key, in: cache), let data = try? Data(contentsOf: file),
-           let transcript = (try? JSONDecoder().decode(Transcript.self, from: data)) ??
-                (try? ProjectJSON.decoder().decode(Transcript.self, from: data)) { return transcript }
+    package static func read(_ key: String, cache: URL, recent: [URL] = [], localOnly: Bool = false) -> Transcript? {
+        guard let directory = directory(key, in: cache) else { return nil }
+        func readEntry(_ name: String) -> Transcript? {
+            guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
+                  let transcript = (try? ProjectJSON.decoder().decode(Transcript.self, from: data)) ??
+                    (try? JSONDecoder().decode(Transcript.self, from: data)),
+                  (try? ProjectValidation.validateTranscript(transcript, normalizeWordText: true)) != nil else { return nil }
+            return transcript
+        }
+        if let local = readEntry("confirmed-local-v1.json"), local.engine.id != .elevenlabs { return local }
+        let legacy = readEntry("confirmed-v1.json")
+        if let legacy, legacy.engine.id != .elevenlabs { return legacy }
+        if !localOnly, let cloud = readEntry("confirmed-cloud-v1.json") ?? legacy { return cloud }
         return recent.lazy.compactMap { file -> Transcript? in
             guard let data = try? Data(contentsOf: file), let project = try? JSONProjectStore.decode(data) else { return nil }
-            if project.media.source.contentKey == key { return project.transcript }
-            return project.media.spokenSources?.first { $0.sourceKey == key }?.transcript
+            let transcript = project.media.source.contentKey == key ? project.transcript :
+                project.media.spokenSources?.first { $0.sourceKey == key }?.transcript
+            guard let transcript, !localOnly || transcript.engine.id != .elevenlabs else { return nil }
+            return transcript
         }.first
     }
 
     package static func write(_ transcript: Transcript, key: String, cache: URL) {
-        guard let file = entry(key, in: cache), let data = try? JSONEncoder().encode(transcript) else { return }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: file, options: .atomic)
+        guard let directory = directory(key, in: cache), let data = try? ProjectJSON.encoder().encode(transcript) else { return }
+        let name = transcript.engine.id == .elevenlabs ? "confirmed-cloud-v1.json" : "confirmed-local-v1.json"
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? data.write(to: directory.appendingPathComponent(name), options: .atomic)
     }
 }

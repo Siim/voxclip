@@ -15,9 +15,18 @@ extension RecordingEdits {
         guard let span = beat.spans.first(where: { $0.fromKey == line.key && $0.toKey == key }) else {
             throw RecordingEditRefusal("Choose a version from another recording.")
         }
+        let take = beat.takes.first { $0.key == key }
+        let target = take.flatMap { change.range($0.startWordId, $0.endWordId) }
+        let savedIndex = change.displacedVersions.lastIndex { saved in
+            guard let target, let bounds = change.range(saved.startWordId, saved.endWordId) else { return false }
+            return target.contains(bounds.lowerBound) && target.contains(bounds.upperBound)
+        }
+        let saved = savedIndex.map { change.displacedVersions.remove(at: $0) }
+        change.displacedVersions.append(.init(startWordId: change.clock.words[line.range.lowerBound].id,
+                                              endWordId: change.clock.words[line.range.upperBound].id))
         var replacement = change.parts[line.partIndex]
-        replacement.startWordId = span.startWordId
-        replacement.endWordId = span.endWordId
+        replacement.startWordId = saved?.startWordId ?? span.startWordId
+        replacement.endWordId = saved?.endWordId ?? span.endWordId
         replacement.takeReason = nil
         change.replace(line.partIndex, start: line.range.lowerBound, end: line.range.upperBound + 1, with: replacement, keepLeadingId: true)
         return try finishShortcut(change, project: project, name: "Use version")
@@ -78,7 +87,11 @@ extension RecordingEdits {
             applied = try changeParts(change.clip.id, project: project, name: name) { parts, _ in parts = change.parts }.get()
         }
         let clipId = applied.project.edits.clips.count > project.edits.clips.count ? applied.project.edits.clips.last!.id : change.clip.id
-        return .init(applied.project, name, applied.announcement,
+        var result = applied.project
+        if let index = result.edits.clips.firstIndex(where: { $0.id == clipId }) {
+            result.edits.clips[index].displacedVersions = change.displacedVersions.isEmpty ? nil : change.displacedVersions
+        }
+        return .init(result, name, applied.announcement,
                      details: .init(clipId: clipId, madePartIds: change.made, leftOut: [], splitPartId: change.split, joins: change.joins))
     }
 }
@@ -88,6 +101,7 @@ private struct ShortcutParts {
     let clock: ProjectClock
     let positions: [String: Int]
     var parts: [ClipPart]
+    var displacedVersions: [ClipWordRange]
     var touched: Set<String> = []
     var made: [String] = []
     var joins: [RecordingPartJoin] = []
@@ -99,12 +113,13 @@ private struct ShortcutParts {
         self.clock = clock
         self.positions = Dictionary(clock.words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         self.parts = clip.playParts
+        self.displacedVersions = clip.displacedVersions ?? []
         self.reserved = Set(clip.playParts.map(\.id))
     }
 
     func range(_ part: ClipPart) -> ClosedRange<Int>? { range(part.startWordId, part.endWordId) }
 
-    private func range(_ start: String, _ end: String) -> ClosedRange<Int>? {
+    func range(_ start: String, _ end: String) -> ClosedRange<Int>? {
         guard let first = positions[start], let last = positions[end], first <= last else { return nil }
         return first...last
     }

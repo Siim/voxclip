@@ -30,7 +30,7 @@ internal static class HarnessCommands
         Add("takes", "Read matched takes across recordings as JSON.", HarnessTool.ReadTakes, (_, _) => Arguments(new { }));
         Add("decisions", "Read a clip's saved decisions as JSON.", HarnessTool.ReadDecisions,
             (result, _) => Arguments(new { clipId = result.GetValue(clip) }), clip);
-        Add("frames", "Read local JPEG thumbnails at source times as JSON.", HarnessTool.ReadFrames,
+        Add("frames", "Read local JPEG thumbnails at project times as JSON.", HarnessTool.ReadFrames,
             (result, _) => Arguments(new { times = result.GetValue(times)!.Select(SourceTime).ToArray() }), times);
         Add("propose-timeline", "Read a JSON timeline on stdin and stage it for review in VoxClip.", HarnessTool.ProposeTimeline,
             (_, ct) => ReadTimelineAsync(ct));
@@ -58,7 +58,7 @@ internal static class HarnessCommands
 
         static Task<JsonElement> Arguments(object arguments) => Task.FromResult(JsonSerializer.SerializeToElement(arguments, JsonOptions));
         static double SourceTime(string text) => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var time) && double.IsFinite(time)
-            ? time : throw new HarnessException("Give one to four source times inside the video.");
+            ? time : throw new HarnessException("Give one to four project times inside a recording.");
     }
 
     internal static async Task WriteAsync(object message, CancellationToken ct)

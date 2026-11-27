@@ -23,7 +23,13 @@ extension EditorModel {
         guard let key = proposal.timelines[index].recordingKey else { return nil }
         let snapshot = project
         let source = try HarnessRecording.source(key, in: snapshot)
-        if let cached = HarnessRecording.cachedTranscript(key, cache: app.locations.cache) { return cached }
+        let cache = app.locations.cache, recent = app.recent
+        let cached = await Task.detached(priority: .utility) {
+            HarnessRecording.cachedTranscript(key, cache: cache, recent: recent)
+        }.value
+        try Task.checkCancellation()
+        try proposal.validateRevision(of: project)
+        if let cached { return cached }
         if proposal.timelines[index].recordingRevision != nil {
             throw HarnessError.invalid("The recording transcript changed. Ask for a new timeline proposal.")
         }
@@ -278,7 +284,9 @@ extension EditorModel {
                 try next.validateRevision(of: model.project)
                 for index in next.timelines.indices {
                     do {
-                        let cached = next.timelines[index].recordingKey.flatMap { HarnessRecording.cachedTranscript($0, cache: model.app.locations.cache) }
+                        let cached = next.timelines[index].recordingKey.flatMap {
+                            HarnessRecording.cachedTranscript($0, cache: model.app.locations.cache, recent: model.app.recent)
+                        }
                         let candidate = try next.review(model.project, shared: shared, at: index, recordingTranscript: cached, preview: true)
                         let estimate = try? next.estimatedMusicPrice(in: candidate.project, shared: shared, at: index)
                         reviews[index] = Review(operations: candidate.operations, result: candidate.project, estimate: estimate, issue: nil)

@@ -225,8 +225,15 @@ public static partial class RecordingEdits
             [PrefixHighWater] = JsonSerializer.SerializeToElement(HighestPrefix(project), ProjectJsonContext.Default.Int32),
         };
         var remaining = sources.Where(source => source.SourceKey != key).ToArray();
-        var editsAfterRemoval = remaining.Length == 0 ? edits with { Clips = edits.Clips.Select(clip => clip.Parts is not { } parts ? clip :
-            clip with { Parts = parts.Select(part => part with { TakeReason = null }).ToArray() }).ToArray() } : edits;
+        var editsAfterRemoval = edits with { Clips = edits.Clips.Select(clip =>
+        {
+            var retained = clip.DisplacedVersions?.Where(saved => !Uses(saved.StartWordId, saved.EndWordId)).ToArray();
+            return clip with
+            {
+                DisplacedVersions = remaining.Length > 0 && retained is { Length: > 0 } ? retained : null,
+                Parts = remaining.Length == 0 ? clip.Parts?.Select(part => part with { TakeReason = null }).ToArray() : clip.Parts,
+            };
+        }).ToArray() };
         return project with { Media = project.Media with { SpokenSources = remaining.Length == 0 ? null : remaining },
             SchemaVersion = remaining.Length == 0 ? TimelineEditFields.Version : project.SchemaVersion, Edits = editsAfterRemoval, Extensions = extensions };
     }

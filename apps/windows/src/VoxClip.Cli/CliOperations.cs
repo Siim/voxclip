@@ -349,9 +349,13 @@ internal static class CliOperations
         if (range is not null)
         {
             var bounds = ParseRange(range, state.Transcript.Words.Count);
+            var start = state.Transcript.Words[bounds.Start].Id;
+            var end = state.Transcript.Words[bounds.End].Id;
+            if (state.ProjectClock?.ContainsRange(start, end) == false)
+                throw new CliUsageException("A word range must come from one recording.");
             var id = "cli-range";
             for (var suffix = 2; state.Clips.Any(item => item.Id == id); suffix++) id = "cli-range-" + suffix.ToString(CultureInfo.InvariantCulture);
-            var selected = new ClipRange(id, state.Transcript.Words[bounds.Start].Id, state.Transcript.Words[bounds.End].Id, null, ClipOrigin.Manual, null, null, true);
+            var selected = new ClipRange(id, start, end, null, ClipOrigin.Manual, null, null, true);
             state = reduce(state, new EditOperation.AddClip(selected));
             state = reduce(state, new EditOperation.SetActiveClip(selected.Id));
         }
