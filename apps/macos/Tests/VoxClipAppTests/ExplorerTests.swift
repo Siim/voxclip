@@ -7,6 +7,17 @@ import Testing
 
 @Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
+    @Test func bestRecordingShortcutStartsBestVersions() async throws {
+        let (_, editor) = try await openRecordingReference()
+        defer { editor.close() }
+        #expect(editor.app.set("llm.connector", .string("codex")))
+        editor.app.connectorConsentOverride = { _, _, _ in false }
+        editor.app.connectorOverride = { _ in ConsentFixtureConnector(id: .codex, readiness: .cliMissing) }
+        editor.requestBestRecordingVersions()
+        #expect(editor.lastFindRequest?.preset == .bestTakes)
+        await editor.findTask?.value
+    }
+
     @Test func recordingShortcutsMakeTheFivePartReferenceClipAndUndoExactly() async throws {
         let (shell, editor) = try await openRecordingReference()
         defer { editor.close() }

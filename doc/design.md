@@ -1142,6 +1142,10 @@ The Outline's inline **Other versions** of a part are versions of the words from
 
 **Rewrite as ▾**, **Revoice Whole Clip**, and **Lip Sync** don't run on a clip or selection using a companion recording. Show “Voice changes work on 0007's words for now. Open 0010 on its own to change its voice.” and **Open 0010**.
 
+**Recording shortcuts (Windows).** In an empty Outline, **Start from 0007** makes a clip from that recording, leaving out flagged restarts and false starts. **Put Back** restores a skipped line in one **Add part** undo step. **Best versions** compares recordings when an AI connector is available. In the clip transcript, **⇄ 2** opens other versions of that line; **Ctrl+Shift+Y** uses the transcript caret or the timeline playhead. In the fold, ↑/↓ choose a version, Space plays it in place, Enter uses the aligned words, and Esc closes the fold and returns the caret to the line. These keys don't act in text fields. **Use This Version** is one **Use version** undo step; **Use in a Copy** keeps paid lip sync in the original.
+
+**Only in other recordings** lists unused unique lines in clip order, below the parts. The fold starts closed and remembers its state per project. **Play There** auditions a line across the joins and **Insert There** puts it after the matching line in the clip. When the matching line isn't in the clip, leave **Insert There** visible but disabled and explain why next to **Insert at End**. Both insertions undo as **Add part**. Narrator reads recording names and version counts, and announces line swaps and insertions.
+
 **Editing parts (Mac).** Select a part and press I or O to set its edge at the selected word. Drag the grip (an accent line shows the destination), press ⌥⌘↑/↓, or choose **Move Up** / **Move Down**. Remove a part with ×, ⌫ or **Remove Part**. The row menu also has **Play Part 2** (the actual number), **Show in Take**, and **Make Clip of This Part**. **Add Selection as Part** appends the selected words. With no usable selection, say “Select words outside the clip's parts to add them.” A last part cannot be removed: “A clip needs one part. Remove Clip instead.” The undo names are “Move part”, “Remove part”, “Add part” and “Trim part”. Announce the result, for example “Part 2 moved to 3 of 6”.
 
 **Voice on story clips.** **Rewrite as ▾** and **Only the changed phrases** remain visible, disabled: “Voice changes work on one part at a time. Make a clip of the part first.” **The whole clip in your voice, lip-synced** and **Revoice Whole Clip** remain visible with their price, disabled: “Lip sync can't run across the 5 seams of a story clip yet. Make a clip of the part first.” Use the actual seam count. Under the action: “Not available on a story clip yet. Phrases you already revoiced still play in their parts.” **Make Clip of Part 2** and **Make Clips of All 6 Parts** (actual part number and count) are free, inline actions that make ordinary clips with the same words and cuts. A part edit that would lose paid work makes a story copy and announces it. For a boundary inside a paid lip-sync window, say “Part 3 cuts through a lip-synced stretch. Include all of 2:40–2:57 or none of it.”
@@ -2479,6 +2483,10 @@ Opening a video makes it playable at once. On Mac v2, Transcribe is part of the 
 
 The primary reads **✦ Make clips from {n} new · up to ${cap}**. The offer reads “{connector} receives your transcript, recording names and selected still frames. Metered AI sends ask first. Voice and lip sync stay within the ${cap} card cap.” With no connector, keep the primary disabled and show **Choose an AI connector in Settings › AI.** Under **Pick recordings**, **Copy selected without making clips** needs no connector. First-use consent and metered requests are inline during import. The cap comes from the Clips spend-cap setting and stays fixed for the card. See [the footage spec](spec/footage.md).
 
+Under **Pick recordings**, show **✦ Make one clip from these {n} · up to ${cap}**. Its offer reads “{connector} receives the transcripts of the {n} recordings, their names and selected still frames, to pick the best version of each line. Metered AI sends ask first.” With one recording, disable it and say “Select two or more recordings to make one clip from them.” With no connector, say “Choose an AI connector in Settings › AI.” and offer **Make one project from these** for free.
+
+When ranking finds retakes, name the recordings that look like versions of the same idea and make the one-clip action the primary. The **retakes merged** fold also offers **Or make one clip from the best parts of each take**. The combined project is saved before any AI send. Show the **Best versions** story proposal with **Keep**, **Undo**, and **Change…**. The free project opens without a clip. In the Outline, the **✦** chip starts **Best versions** directly.
+
 ---
 
 ## 8. Export and share
@@ -2612,7 +2620,6 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 
 | Action | macOS | Windows | Notes |
 |---|---|---|---|
-| Show Other Versions of This Line | ⌥⌘Y | Ctrl+Shift+Y | Clip menu; Windows shortcut reserved for parity |
 | Play / pause | Space | Space | |
 | Play from caret | ⇧Space | Shift+Space | |
 | Preview this cut | P | P | From 2.0 s before to 2.0 s after the selection, cuts applied |
@@ -2635,6 +2642,7 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 | Restore selection | ⇧⌫ | Shift+Backspace | |
 | Correct word | Return, C, or double-click | Enter, C, or double-click | Esc cancels; Tab saves and moves on |
 | Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) | One step per command |
+| Show Other Versions of This Line | ⌥⌘Y | Ctrl+Shift+Y | Clip menu; transcript caret or timeline playhead; not in text fields |
 | Select all / copy text | ⌘A / ⌘C | Ctrl+A / Ctrl+C | Copy takes the selection's transcript text |
 | Cut fillers | ⌥⌘U | Ctrl+Shift+U | |
 | Tighten pauses | ⌥⌘P | Ctrl+Shift+P | |

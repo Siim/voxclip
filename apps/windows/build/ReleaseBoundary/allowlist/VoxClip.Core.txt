@@ -19596,18 +19596,31 @@ member VoxClip.Core.Services.Project.HarnessProposal :: method public ClipIdAt(i
 member VoxClip.Core.Services.Project.HarnessProposal :: method public Discarding(int)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public EstimatedMusicPrice(VoxClip.Core.Domain.Shared.Project,string,int)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public Evaluate(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public HasPinnedRecordingTranscriptAt(int)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public Matches(VoxClip.Core.Services.Project.HarnessProposal)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public RecordingKeyAt(int)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public Remaining(int,VoxClip.Core.Domain.Shared.Project)
-member VoxClip.Core.Services.Project.HarnessProposal :: method public Review(VoxClip.Core.Domain.Shared.Project,string,int)
+member VoxClip.Core.Services.Project.HarnessProposal :: method public Review(VoxClip.Core.Domain.Shared.Project,string,int,VoxClip.Core.Domain.Transcript.Transcript,bool)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public TimelineAt(int)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public ToJson()
+member VoxClip.Core.Services.Project.HarnessProposal :: method public ValidateRevision(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Services.Project.HarnessProposal :: method public get_Timeline()
 member VoxClip.Core.Services.Project.HarnessProposal :: method public get_Timelines()
+member VoxClip.Core.Services.Project.HarnessRecording :: method internal ValidKey(string)
+member VoxClip.Core.Services.Project.HarnessRecording :: method private CacheFile(string,string)
+member VoxClip.Core.Services.Project.HarnessRecording :: method public Add(string,VoxClip.Core.Domain.Transcript.Transcript,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Services.Project.HarnessRecording :: method public CacheTranscript(string,string,VoxClip.Core.Domain.Transcript.Transcript)
+member VoxClip.Core.Services.Project.HarnessRecording :: method public CachedTranscript(string,string)
+member VoxClip.Core.Services.Project.HarnessRecording :: method public LocalTranscription(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Services.Project.HarnessRecording :: method public Refusal(VoxClip.Core.Domain.Shared.MediaReference)
+member VoxClip.Core.Services.Project.HarnessRecording :: method public Source(string,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Services.Project.HarnessTimeline :: field private Keys
 member VoxClip.Core.Services.Project.HarnessTimeline :: field private LegacyKeys
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal Read(System.Text.Json.JsonElement,bool)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal TranscriptRevision(VoxClip.Core.Domain.Transcript.Transcript)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Edits()
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Proposal()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_RecordingRevision()
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_UsesFootage()
 member VoxClip.Core.Services.Project.HarnessTimeline :: method internal get_Wire()
 member VoxClip.Core.Services.Project.HarnessTimeline :: method private .cctor()
@@ -19622,10 +19635,14 @@ member VoxClip.Core.Services.Project.HarnessTimeline :: method private ReadItems
 member VoxClip.Core.Services.Project.HarnessTimeline :: method private Reason(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method private Text(System.Text.Json.JsonElement,string,System.Nullable`1<int>)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method private set_Edits(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEditRequest>)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private set_RecordingKey(string)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method private set_RecordingRevision(string)
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public PinRecordingTranscript(VoxClip.Core.Domain.Transcript.Transcript)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public Read(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public ReadSeries(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public RequireObject(System.Text.Json.JsonElement,System.Collections.Generic.IReadOnlyCollection`1<string>)
 member VoxClip.Core.Services.Project.HarnessTimeline :: method public get_GenerateMusic()
+member VoxClip.Core.Services.Project.HarnessTimeline :: method public get_RecordingKey()
 member VoxClip.Core.Services.Project.HarnessTimelineEditException :: method public .ctor(string)
 member VoxClip.Core.Services.Project.IProjectStore :: method public ComputeContentKeyAsync(string,System.IProgress`1<double>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.IProjectStore :: method public LoadAsync(string,System.Threading.CancellationToken)
@@ -22284,6 +22301,7 @@ type VoxClip.Core.Services.Project.DataLocations
 type VoxClip.Core.Services.Project.HarnessException
 type VoxClip.Core.Services.Project.HarnessInbox
 type VoxClip.Core.Services.Project.HarnessProposal
+type VoxClip.Core.Services.Project.HarnessRecording
 type VoxClip.Core.Services.Project.HarnessTimeline
 type VoxClip.Core.Services.Project.HarnessTimelineEditException
 type VoxClip.Core.Services.Project.IProjectStore

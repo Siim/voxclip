@@ -7,6 +7,41 @@ public sealed partial class EditorPage
 {
     private bool auditioningRecording;
 
+    internal void PlayRecordingAudition(ViewModels.RecordingAudition audition) => _ = RunAsync(async () =>
+    {
+        if (!ShellEditable || EditingEngine.FromProject(audition.Project) is not { } state) return;
+        var original = ViewModel.Project;
+        var first = ViewModel.Index(audition.FirstId);
+        var last = ViewModel.Index(audition.LastId);
+        if (first < 0 || last < first) return;
+        var sourceStart = ViewModel.Words[first].Start;
+        var sourceEnd = ViewModel.Words[last].End;
+        await playback.EndCorrectionAsync(ViewModel);
+        var snapshot = await SnapshotAsync(lifetime.Token, state, audition.Project);
+        await previewChanges.WaitAsync(lifetime.Token);
+        try
+        {
+            await SourceTransportAsync(async token =>
+            {
+                if (preview is null || !ReferenceEquals(original, ViewModel.Project)) return;
+                var pieces = new TimelinePieces(snapshot.Timeline).Pieces
+                    .Where(piece => piece.Source.Start < sourceEnd && piece.Source.End > sourceStart).ToArray();
+                if (pieces.Length == 0) return;
+                var start = pieces[0].Edited.Start + Math.Max(0, sourceStart - pieces[0].Source.Start);
+                var end = pieces[^1].Edited.End - Math.Max(0, pieces[^1].Source.End - sourceEnd);
+                auditioningRecording = true;
+                await preview.UpdateSnapshotAsync(snapshot, token);
+                presenter?.Attach(snapshot);
+                await preview.SeekAsync(Math.Max(0, start - 1), true, token);
+                previewStop = (Math.Min(snapshot.Timeline.Duration, end + 1), true);
+                await preview.PlayAsync(token);
+            });
+        }
+        finally { previewChanges.Release(); }
+    }, "Preview");
+
+    private void StopRecordingAudition() => _ = RunAsync(StopRecordingAuditionAsync, "Preview");
+
     internal void PlayRecordingVersion(string id, ViewModels.RecordingVersion version) => _ = RunAsync(async () =>
     {
         if (!ShellEditable || ViewModel.ClipParts.FirstOrDefault(part => part.Id == id) is not { } part ||
@@ -42,6 +77,7 @@ public sealed partial class EditorPage
     {
         if (!auditioningRecording) return;
         auditioningRecording = false;
+        previewStop = null;
         await SourceTransportAsync(token => preview?.PauseAsync(token) ?? Task.CompletedTask);
         await UpdatePreviewAsync();
     }

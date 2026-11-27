@@ -158,8 +158,11 @@ public struct ProjectClock: Sendable, Equatable {
     public static func label(_ reference: MediaReference) -> String {
         let path = reference.absolutePath.replacingOccurrences(of: "\\", with: "/")
         let url = URL(fileURLWithPath: path)
-        let stem = url.deletingPathExtension().lastPathComponent
+        let filename = url.deletingPathExtension().lastPathComponent
+        let suffix = reference.recordingHash.map { "--\($0)" } ?? ""
+        let stem = !suffix.isEmpty && filename.hasSuffix(suffix) ? String(filename.dropLast(suffix.count)) : filename
         let number = stem.range(of: "(?<![0-9])[0-9]{4}(?![0-9])", options: [.regularExpression, .backwards])
-        return number.map { String(stem[$0]) } ?? String(String.UnicodeScalarView(url.lastPathComponent.unicodeScalars.prefix(12)))
+        let originalName = stem == filename ? url.lastPathComponent : "\(stem).\(url.pathExtension)"
+        return number.map { String(stem[$0]) } ?? String(String.UnicodeScalarView(originalName.unicodeScalars.prefix(12)))
     }
 }

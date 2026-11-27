@@ -7,6 +7,52 @@ import Testing
 
 @MainActor @Suite("Reviewing a harness timeline", .offlineFixtures)
 struct HarnessReviewTests {
+    @Test func keepingACompanionStoryAndItsRecordingTakesOneUndo() async throws {
+        _ = NSApplication.shared
+        let shared = try SharedResources.locate()
+        let fixtures = shared.root.appendingPathComponent("fixtures/recordings")
+        struct Vector: Decodable { let project: String; let timeline: HarnessTimeline }
+        let vector = try JSONDecoder().decode(Vector.self, from: Data(contentsOf: fixtures.appendingPathComponent("harness-cases.json")))
+        let key = try #require(vector.timeline.recordingKey)
+        var base = try JSONProjectStore.decode(Data(contentsOf: fixtures.appendingPathComponent(vector.project)))
+        var transcript = try #require(base.media.spokenSources?.first?.transcript)
+        transcript.engine.id = .whispercpp; base.transcript?.engine.id = .whispercpp
+        base.media.spokenSources = nil; base.schemaVersion = 6
+        base.edits.clips = []; base.edits.activeClipId = nil
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-harness-recording-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("fixture.voxclip")
+        try JSONProjectStore.encode(base).write(to: url)
+        let locations = DataLocations(environment: ["VOXCLIP_DATA_DIR": folder.path])
+        RecordingTranscriptCache.write(transcript, key: key, cache: locations.cache)
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: locations)
+        let document = VoxClipDocument(project: base)
+        document.fileURL = url
+        let editor = EditorModel(document: document, app: app, preview: DemoPreviewEngine())
+        defer { editor.close(); document.fileURL = nil }
+        editor.mediaResolved = true
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        editor.undoManager = undo
+
+        let staged = try vector.timeline.pinningRecordingTranscript(transcript)
+        try HarnessInbox.stage(HarnessProposal(timeline: staged, project: base), for: url)
+        let pending = try #require(try HarnessInbox.read(for: url))
+        let prepared = try await editor.prepareHarnessRecording(pending, at: 0)
+        undo.beginUndoGrouping()
+        let actions = try editor.keepHarnessTimeline(pending, at: url, index: 0, recordingTranscript: prepared)
+        undo.endUndoGrouping()
+        #expect(editor.undoSteps == 1)
+        #expect(editor.project.media.spokenSources?.first?.sourceKey == key)
+        #expect(editor.project.edits.clips.first?.playParts.map(\.startWordId) == ["w1", "r2.w1"])
+        #expect(actions.isEmpty)
+        #expect(try HarnessInbox.read(for: url) == nil)
+        undo.undo()
+        #expect(editor.project.media == base.media)
+        #expect(editor.project.edits == base.edits)
+    }
+
     @Test func keepsOneUndoableEditAndRejectsStaleOrDismissedProposals() throws {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()

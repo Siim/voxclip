@@ -105,6 +105,7 @@ public sealed partial class EditorPage : Page
         ViewModel = new(project);
         preview = new PreviewEngine();
 #endif
+        ViewModel.SetOtherRecordingLinesExpanded(!demo && App.Services.Get(OtherRecordingLinesSetting, false));
         ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
         // Eviction never strips or removes the entry of a project open in any window, and opening it marks it used.
         if (!demo) { cacheLease = new(App.Services.Cache); cacheLease.Hold(project.Media.Source.ContentKey); }
@@ -128,6 +129,10 @@ public sealed partial class EditorPage : Page
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
+        Transcript.RecordingAuditionRequested = PlayRecordingAudition;
+        Transcript.StopRecordingAuditionRequested = StopRecordingAudition;
+        Transcript.LocateRecordingRequested = LocateRecording;
+        Transcript.TranscribingRecordingLabel = () => TranscribingRecordingLabel;
         Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
         Timeline.Attach(ViewModel);
         CaptionDrag.Attach(ViewModel);
@@ -1093,6 +1098,8 @@ public sealed partial class EditorPage : Page
         action();
         return true;
     }
+    private bool TimelineHasFocus => InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, TimelineHost);
+
     private void InstallAccelerators()
     {
         void Add(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
@@ -1102,8 +1109,16 @@ public sealed partial class EditorPage : Page
                 modifiers.HasFlag(VirtualKeyModifiers.Shift), modifiers.HasFlag(VirtualKeyModifiers.Menu));
             accelerator.Invoked += (_, args) =>
             {
+                var textFocus = InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot));
+                if (gesture == ShortcutPolicy.RecordingVersionsGesture)
+                {
+                    if (ShortcutPolicy.OpensRecordingVersions(key.ToString(), InputState.Down(VirtualKey.Control),
+                            InputState.Down(VirtualKey.Shift), InputState.Down(VirtualKey.Menu), textFocus, Transcript.CorrectionOpen))
+                        args.Handled = Transcript.ShowOtherRecordingVersions(TimelineHasFocus);
+                    return;
+                }
                 var unboundAlt = InputState.Down(VirtualKey.Menu) && !ShortcutPolicy.RecordingGestures.Contains(gesture);
-                if (!ShortcutPolicy.EditorMayHandle(InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), Transcript.CorrectionOpen, InputState.Down(VirtualKey.Control), unboundAlt, true)) return;
+                if (!ShortcutPolicy.EditorMayHandle(textFocus, Transcript.CorrectionOpen, InputState.Down(VirtualKey.Control), unboundAlt, true)) return;
                 action(); args.Handled = true;
             };
             EditorRoot.KeyboardAccelerators.Add(accelerator);
@@ -1111,6 +1126,7 @@ public sealed partial class EditorPage : Page
         }
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
+        Add(VirtualKey.Y, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => Transcript.ShowOtherRecordingVersions(TimelineHasFocus));
         Add(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ViewModel.Redo);
         // Ctrl+R on a word selection with an empty field rewrites it in the default tone at once (design §6.3.1).
         Add(VirtualKey.R, VirtualKeyModifiers.Control, () =>
