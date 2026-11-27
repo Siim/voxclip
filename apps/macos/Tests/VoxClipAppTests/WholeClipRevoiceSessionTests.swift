@@ -15,6 +15,51 @@ private struct FalKeyOnly: ProviderKeyStore {
 /// edited, the shorter-only reword round and its check before paying, Cancel and failure keeping the clip, Try Again and the
 /// sync-3 upgrade never paying a step twice, Review's Use and Undo.
 @Suite(.serialized) @MainActor struct WholeClipRevoiceSessionTests {
+    @Test func recordingVoiceActionsPointToTheRecordingOnItsOwn() throws {
+        let root = try SharedResources.locate().root
+        let project = try JSONProjectStore.decode(Data(contentsOf: root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")))
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let rewrite = RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: nil, connector: nil)
+        let reason = "Voice changes work on 0007's words for now. Open 0010 on its own to change its voice."
+        #expect(rewrite.wholeClipUnavailable == reason)
+        #expect(rewrite.wholeClipPrimaryUnavailable == reason)
+        #expect(rewrite.changedPhrasesUnavailable == reason)
+        #expect(rewrite.wholeClipPrimary() == nil)
+    }
+
+    @Test func usingARecordingVersionSelectsTheCopyAndKeepsPaidLipSync() throws {
+        let root = try SharedResources.locate().root
+        var project = try JSONProjectStore.decode(Data(contentsOf: root.appendingPathComponent("fixtures/voice-lab/whole-clip-revoice-project.voxclip")))
+        project.edits.clips[0].title = nil
+        var companion = project.media.source
+        companion.contentKey = String(repeating: "b", count: 64)
+        companion.absolutePath = "/synthetic/DJI_0010.MOV"
+        project.media.additionalSources.append(companion)
+        let transcript = try #require(project.transcript)
+        project = try RecordingEdits.apply(.addSpokenSource(key: companion.contentKey, transcript: transcript), project: project).get().project
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let clip = try #require(editor.activeClip), part = try #require(clip.playParts.first)
+        let recording = try #require(editor.recordingRegions.last)
+        let version = RecordingPartVersion(recording: recording, startWordID: "r2.w3", endWordID: "r2.w8", changedWordIDs: [], fillers: 0, longestPause: 0)
+        let proposed = try RecordingEdits.apply(version.edit(clipID: clip.id, partID: part.id), project: project).get().project
+        #expect(editor.recordingCopyReason(clip, part: part, changed: proposed)?.hasSuffix("Using another version makes a copy, “Clip 1 copy”, and keeps the paid lip sync in Clip 1.") == true)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        editor.undoManager = undo
+        let before = try ProjectJSON.encode(editor.project)
+        undo.beginUndoGrouping(); editor.useRecordingVersion(version, partID: part.id); undo.endUndoGrouping()
+        #expect(editor.activeClip?.title == "Clip 1 copy")
+        #expect(editor.lastAnnouncement == "Made Clip 1 copy to keep the lip sync")
+        #expect(editor.project.voiceLab == project.voiceLab)
+        #expect(undo.undoActionName == "Use version" && editor.undoSteps == 1)
+        let after = try ProjectJSON.encode(editor.project)
+        undo.undo(); #expect(try ProjectJSON.encode(editor.project) == before)
+        undo.redo(); #expect(try ProjectJSON.encode(editor.project) == after)
+    }
+
     @Test func storyClipVoiceActionsAreDisabledBeforeAnyVoicePreparation() throws {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
