@@ -223,7 +223,10 @@ internal static class CliOperations
         var destinations = ExportDestinations(snapshot, destination, srtPath, audioPath);
         // The exporter prepares the sidecar partial; the CLI owns publication of the complete set.
         Exporter.Validate(new(snapshot, target, aspect, quality, destination, null));
-        ValidateExportDestinations(snapshot, destinations);
+        var projectPath = Required(arguments, "--open");
+        var recordings = prepared.Project.Media.SpokenSources is { Count: > 0 }
+            ? await RecordingRendering.AvailableAsync(prepared.Project, new ProjectStore(), projectPath, ct).ConfigureAwait(false) : null;
+        ValidateExportDestinations(snapshot, destinations, recordings?.Values.Select(source => source.AbsolutePath));
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
         {
             var peak = Exporter.VoiceLabOutputAllocations(new(snapshot, target, aspect, quality,
@@ -283,10 +286,11 @@ internal static class CliOperations
         return paths.ToArray();
     }
 
-    internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations)
+    internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations, IEnumerable<string>? recordings = null)
     {
         var protectedPaths = new List<string> { snapshot.Media.Path };
         protectedPaths.AddRange(snapshot.SpanSources.Select(source => source.Path));
+        if (recordings is not null) protectedPaths.AddRange(recordings);
         if (snapshot.Clip?.Music is { } music) protectedPaths.Add(music.AssetPath);
         if (snapshot.VoiceLab is { } input)
         {

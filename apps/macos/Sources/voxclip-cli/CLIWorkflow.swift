@@ -217,13 +217,17 @@ enum CLIWorkflow {
         var project: Project
         let source: URL
         let probe: MediaProbeResult
+        var protectedRecordings: [URL] = []
         if inputURL.pathExtension.lowercased() == "voxclip" {
             let store = JSONProjectStore()
             project = try await store.load(from: inputURL)
             if let track = options.music { musicOverride = try CLIMusic.saved(track, in: project, dataRoot: dataRoot) }
             try Task.checkCancellation()
             source = try await store.resolveSource(for: project, projectURL: inputURL)
-            if checkingOutputs { try validateOutputs(outputs, inputs: inputs + [source]) }
+            if checkingOutputs {
+                protectedRecordings = RenderCallerInputs.recordingFiles(project: project, primary: source, projectURL: inputURL).map(\.url)
+                try validateOutputs(outputs, inputs: inputs + protectedRecordings)
+            }
             try Task.checkCancellation()
             probe = try await AVMediaProbe().probe(source)
             try Task.checkCancellation()
@@ -302,10 +306,20 @@ enum CLIWorkflow {
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
         var request = try renderRequest(project: project, source: source, plan: plan, style: style,
             output: output, voiceLab: voiceLab, dataRoot: dataRoot, aspectName: aspectName, projectURL: inputURL)
-        if checkingOutputs { try validateOutputs(outputs, inputs: inputs + request.recordings.map(\.url)) }
         request.clipControls = controls
         if let musicOverride { request.music = musicOverride }
         if checkingOutputs, let music = request.music { try validateOutputs(outputs, inputs: inputs + [source, music.assetURL]) }
+        if checkingOutputs, !protectedRecordings.isEmpty, options.format != "fcpxml", let path = options.output {
+            let destination = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+            var sidecars: [URL] = []
+            if options.cover != "off", ExportCover.forClip(activeClip?.id, in: project, render: request) != nil {
+                sidecars.append(ExportCover.url(for: destination))
+            }
+            if request.voiceLab?.prepared.disclosure.required == true {
+                sidecars.append(URL(fileURLWithPath: destination.path + ".provenance.json"))
+            }
+            try validateOutputs(sidecars, inputs: protectedRecordings)
+        }
         let render: RenderRequest
         switch try await captions(.export(request,
             state: effectiveState, activeClip: activeClip, overrides: project.captions.overrides, language: project.transcript?.language, project: project)) {

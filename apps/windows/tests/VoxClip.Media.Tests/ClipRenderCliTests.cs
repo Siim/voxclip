@@ -18,6 +18,23 @@ namespace VoxClip.Media.Tests;
 [Collection("CLI console")]
 public sealed class ClipRenderCliTests
 {
+    [Fact]
+    public async Task ExportRejectsAnUnusedSpokenRecordingAsADestination()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var companion = story.Project.Media.AdditionalSources![0];
+        var original = await File.ReadAllBytesAsync(companion.AbsolutePath, ct);
+        var (code, json) = await RecordingCliAsync(["--open", story.Path, "--range", "0:0", "--export", companion.AbsolutePath,
+            "--style", "off", "--json"], ct, (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)),
+            (_, _, _) => throw new InvalidOperationException("The encoder must not overwrite a recording."));
+        Assert.NotEqual(0, code);
+        Assert.Contains("overwrite", json);
+        Assert.DoesNotContain("encoder", json);
+        Assert.Equal(original, await File.ReadAllBytesAsync(companion.AbsolutePath, ct));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

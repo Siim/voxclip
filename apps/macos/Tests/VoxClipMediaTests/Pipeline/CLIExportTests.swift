@@ -340,6 +340,23 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test func cliProtectsAnUnusedSpokenRecordingFromExport() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var project = try await Self.recordingStoryProject()
+    let original = URL(fileURLWithPath: project.media.additionalSources[0].absolutePath)
+    let companion = directory.appendingPathComponent("companion.mp4")
+    try FileManager.default.copyItem(at: original, to: companion)
+    project.media.additionalSources[0].absolutePath = companion.path
+    project.edits.clips.append(.init(id: "primary-only", startWordId: "w1", endWordId: "w1"))
+    let input = directory.appendingPathComponent("story.voxclip")
+    try await JSONProjectStore().save(project, to: input)
+    let result = try runCLI(["export", "--open", input.path, "--clip", "primary-only", "--style", "off", "--export", companion.path, "--json"], directory: directory)
+    #expect(result.status != 0)
+    #expect((try result.json["error"] as? [String: Any])?["message"] as? String == "Output paths must not overwrite inputs or each other")
+    #expect(try JSONProjectStore.contentKey(for: companion) == project.media.additionalSources[0].contentKey)
+}
+
 @Test func cliExportsFivePartsAcrossRecordings() async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
