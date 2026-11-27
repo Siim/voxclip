@@ -575,7 +575,7 @@ public sealed class PreviewEngine : IPreviewEngine
 
     private void RequireSnapshot()
     {
-        if (snapshot is null || current is null || lookAhead is null) throw new InvalidOperationException("Load a preview snapshot first.");
+        if (snapshot is null) throw new InvalidOperationException("Load a preview snapshot first.");
     }
 
     private Task Invoke(Action action, CancellationToken ct)

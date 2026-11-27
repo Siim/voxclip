@@ -9,7 +9,17 @@ namespace VoxClip.Core.Domain.Shared;
 
 /// <summary>Probe result for the presentation timeline; architecture §4 and §6.2.</summary>
 public sealed record MediaInfo(string Path, double DurationSeconds, VideoTrackInfo? Video, AudioTrackInfo? Audio,
-    PixelSize OrientedSize, string? VideoCodec, string? AudioCodec, bool IsHdr, int VideoTrackIndex, int AudioTrackIndex, double AudioTimelineStart);
+    PixelSize OrientedSize, string? VideoCodec, string? AudioCodec, bool IsHdr, int VideoTrackIndex, int AudioTrackIndex, double AudioTimelineStart)
+{
+    /// <summary>The saved source geometry, for choosing an output before opening its recordings.</summary>
+    public static MediaInfo FromReference(MediaReference reference)
+    {
+        var video = reference.Video;
+        var size = video is { RotationDegrees: 90 or 270 } ? new PixelSize(video.Height, video.Width)
+            : new(video?.Width ?? 1920, video?.Height ?? 1080);
+        return new(reference.AbsolutePath, reference.DurationSeconds, video, reference.Audio, size, null, null, false, 0, reference.Audio is null ? -1 : 0, 0);
+    }
+}
 /// <summary>Audio extraction input; architecture §4 and transcription §4.</summary>
 public sealed record AudioExtractionRequest(MediaInfo Media, string ContentKey, string CacheDirectory);
 /// <summary>Media progress, throttled to at most 10Hz; architecture §7.2.</summary>

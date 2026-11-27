@@ -79,7 +79,12 @@ internal static class CliOperations
         if (!Path.GetExtension(path).Equals(".voxclip", StringComparison.OrdinalIgnoreCase))
             return (null, await ProbeInputAsync(path, ct).ConfigureAwait(false));
         var opened = await ServicesMergeAdapter.Projects().LoadAsync(path, ct).ConfigureAwait(false);
-        if (opened.ResolvedMediaPath is null) throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(opened.Project.Media.Source.AbsolutePath)}. Edits are saved.");
+        if (opened.ResolvedMediaPath is null)
+        {
+            if (opened.Project.Media.SpokenSources is { Count: > 0 })
+                return (opened.Project, MediaInfo.FromReference(opened.Project.Media.Source));
+            throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(opened.Project.Media.Source.AbsolutePath)}. Edits are saved.");
+        }
         return (opened.Project, await ProbeInputAsync(opened.ResolvedMediaPath, ct).ConfigureAwait(false));
     }
 

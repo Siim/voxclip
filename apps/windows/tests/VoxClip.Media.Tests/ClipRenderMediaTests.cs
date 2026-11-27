@@ -4,6 +4,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.ExportChecks;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Cli;
 using VoxClip.Media.Audio;
@@ -34,16 +35,16 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         var first = Path.Combine(FixtureLoader.SharedRoot, "fixtures/media/t4-recording-A.mp4");
         var second = Path.Combine(FixtureLoader.SharedRoot, "fixtures/media/t4-recording-B.mp4");
         var media = await new FfmpegMediaProbe().ProbeAsync(first, ct);
-        var parts = new[] { (false, 2.5), (true, .5), (false, .75), (true, 2.25), (false, 1.5) };
+        var parts = new[] { (true, .5), (false, .75), (false, 2.5), (true, 2.25), (false, 1.5) };
         static long Samples(double seconds) => (long)Math.Round(seconds * Rate);
         var offset = Samples(6);
-        RecordingRenderSource primary = new("first", "A", first, 0, Samples(4), 0, 0);
-        RecordingRenderSource companion = new("second", "B", second, offset, Samples(4), -6, 0);
+        RecordingRenderSource primary = new("first", "A", first, 0, Samples(5), 0, 0);
+        RecordingRenderSource companion = new("second", "B", second, offset, Samples(3), -6, 0);
         var kept = parts.Select(part => {
             var start = Samples(part.Item2) + (part.Item1 ? offset : 0);
             return new MediaInterval(start, start + Rate / 2);
         }).ToArray();
-        var plan = new EditPlan(Rate, Samples(10), [], kept, Samples(2.5), []);
+        var plan = new EditPlan(Rate, Samples(9), [], kept, Samples(2.5), []);
         var snapshot = new ComposeSnapshot(media, plan, null, new(new(320, 180), 30, 500_000))
         { SpanSources = parts.Select(part => part.Item1 ? companion : primary).ToArray() };
         var directory = Directory.CreateTempSubdirectory("voxclip-recording-story-");
@@ -89,6 +90,15 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
                 }
                 return true;
             }, ct);
+            if (mp4)
+            {
+                var checker = new ExportChecker(null, directory.FullName, FixtureLoader.SharedRoot);
+                var correct = await checker.CheckAsync(path, snapshot, ExportCheckExpectation.Make(snapshot, null), VoxClip.Core.Domain.Loudness.ExportLoudness.Off, ct);
+                Assert.DoesNotContain(correct.Report[ExportCheckKind.Sync]!.Items, item => item.Kind == ExportCheckItemKind.PictureSource);
+                var wrong = snapshot with { SpanSources = snapshot.SpanSources.Select(source => source with { Path = source.Path == first ? second : first }).ToArray() };
+                var checkedAgainstWrong = await checker.CheckAsync(path, wrong, ExportCheckExpectation.Make(wrong, null), VoxClip.Core.Domain.Loudness.ExportLoudness.Off, ct);
+                Assert.Contains(checkedAgainstWrong.Report[ExportCheckKind.Sync]!.Items, item => item.Kind == ExportCheckItemKind.PictureSource);
+            }
         }
         finally { directory.Delete(true); }
     }

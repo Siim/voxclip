@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using VoxClip.Cli;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
@@ -86,6 +87,32 @@ public sealed class ClipRenderCliTests
         private readonly DirectoryInfo directory = Directory.CreateTempSubdirectory("voxclip-recording-cli-");
         internal string Path => directory.FullName;
         public void Dispose() => directory.Delete(true);
+    }
+
+    [Fact]
+    public async Task StoryPreparedByTheCliSeeksPreviewInEachRecordingsLocalTime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var timeout = TimeSpan.FromSeconds(5);
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var arguments = CliApplication.Parse(["--open", story.Path, "--export", Path.Combine(directory.Path, "out.mp4"), "--style", "off"]);
+        var prepared = await CliOperations.PrepareExportAsync(arguments, ct,
+            (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)));
+        var snapshot = prepared.Snapshot;
+        Assert.Equal(["0010", "0007", "0007", "0010", "0007"], snapshot.SpanSources.Select(source => source.Label));
+        var workers = new Dictionary<string, Worker>();
+        await using var preview = new PreviewEngine(new Composer(), initialize: _ => { }, createWorker: (path, _) => workers[path] = new());
+        await preview.LoadAsync(snapshot, null, ct).WaitAsync(timeout, ct);
+        long cursor = 0;
+        foreach (var (part, source) in snapshot.Plan.Kept.Zip(snapshot.SpanSources))
+        {
+            var edited = (cursor + 4800) / snapshot.Plan.SampleRate;
+            await preview.SeekAsync(edited, true, ct).WaitAsync(timeout, ct);
+            Assert.Equal((part.StartSample + 4800 - source.OffsetSamples) / snapshot.Plan.SampleRate, workers[source.Path].Position, 8);
+            cursor += part.EndSample - part.StartSample;
+        }
+        Assert.Equal(2, workers.Count);
     }
 
     private static Project Fixture()

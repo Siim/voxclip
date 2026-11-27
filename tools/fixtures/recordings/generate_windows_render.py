@@ -12,9 +12,10 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def recording(label, width, height, background, tone, rate, duration):
     output = ROOT / f'shared/fixtures/media/t4-recording-{label}.mp4'
+    audio = f'0.116*sin(2*PI*t*({tone}+24*t))+0.055*sin(2*PI*t*({tone}*1.73+65*t))'
     command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24',
                '-s', f'{width}x{height}', '-r', '30', '-i', '-', '-f', 'lavfi', '-i',
-               f'sine=frequency={tone}:sample_rate={rate}:duration={duration}', '-c:v', 'h264_videotoolbox',
+               f'aevalsrc={audio}:sample_rate={rate}:duration={duration}', '-c:v', 'h264_videotoolbox',
                '-b:v', '180k', '-c:a', 'aac', '-movflags', '+faststart', str(output)]
     with subprocess.Popen(command, stdin=subprocess.PIPE) as encoder:
         for frame in range(30 * duration):
