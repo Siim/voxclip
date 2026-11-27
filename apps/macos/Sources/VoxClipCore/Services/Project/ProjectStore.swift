@@ -71,7 +71,7 @@ public actor JSONProjectStore: ProjectStore {
         catch { throw VoxClipError.projectUnreadable("/: invalid project document") }
     }
 
-    private static func decodingFailure(_ error: DecodingError) -> VoxClipError {
+    static func decodingFailure(_ error: DecodingError, under prefix: String? = nil) -> VoxClipError {
         let keys: [any CodingKey]
         let reason: String
         switch error {
@@ -84,8 +84,9 @@ public actor JSONProjectStore: ProjectStore {
         @unknown default:
             return .projectUnreadable("/: invalid project document")
         }
-        guard !keys.isEmpty else { return .projectUnreadable("/: invalid project document") }
-        let path = keys.map { key in key.intValue.map(String.init) ?? key.stringValue }.joined(separator: "/")
+        let segments = (prefix.map { [$0] } ?? []) + keys.map { key in key.intValue.map(String.init) ?? key.stringValue }
+        guard !segments.isEmpty else { return .projectUnreadable("/: invalid project document") }
+        let path = segments.joined(separator: "/")
         return .projectUnreadable("\(path): \(reason)")
     }
 

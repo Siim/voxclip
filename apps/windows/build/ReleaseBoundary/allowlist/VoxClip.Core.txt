@@ -768,6 +768,8 @@ literal "/video"
 literal "/with-timestamps"
 literal "/wordSeconds"
 literal "/words"
+literal "/x"
+literal "/y"
 literal "ANTHROPIC_API_KEY"
 literal "ANTHROPIC_AUTH_TOKEN"
 literal "API_KEY_INVALID"
@@ -18905,9 +18907,11 @@ member VoxClip.Core.Services.Project.ProjectStore :: method public SaveAsync(Vox
 member VoxClip.Core.Services.Project.ProjectValidation :: field private Hash
 member VoxClip.Core.Services.Project.ProjectValidation :: field private Id
 member VoxClip.Core.Services.Project.ProjectValidation :: field private Slug
+member VoxClip.Core.Services.Project.ProjectValidation :: method internal FieldPath(string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method internal Validate(System.Text.Json.JsonElement,bool)
 member VoxClip.Core.Services.Project.ProjectValidation :: method internal Validate(string,bool)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Array(System.Text.Json.JsonElement,string,System.Action`2<System.Text.Json.JsonElement,string>)
+member VoxClip.Core.Services.Project.ProjectValidation :: method private At(string,System.Action)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Boolean(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Choice(System.Text.Json.JsonElement,string[])
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Dictionary(System.Text.Json.JsonElement,string,System.Action`3<string,System.Text.Json.JsonElement,string>)

@@ -38,7 +38,12 @@ public sealed class ProjectPatternTests
         var project = TestStorage.ProjectJson();
         Set(project, path, value);
         if (accepted) ProjectValidation.Validate(project.ToJsonString());
-        else Assert.Throws<JsonException>(() => ProjectValidation.Validate(project.ToJsonString()));
+        else
+        {
+            // A rejected value inside a list or map names its path as an unreadable project; elsewhere it stays a schema error.
+            var error = Record.Exception(() => ProjectValidation.Validate(project.ToJsonString()));
+            Assert.True(error is JsonException or VoxClipException { Code: VoxClipErrorCode.ProjectUnreadable }, error?.GetType().Name);
+        }
     }
 
     [Theory]

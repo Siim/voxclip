@@ -278,7 +278,14 @@ internal static class ProjectValidation
                 Object(target, "kind displayName locator", path: $"{path}/target");
                 Choice(target.GetProperty("kind"), "desktopApp", "codeProject", "webPage");
             });
-            var context = ContextDemoCodec.Decode(System.Text.Encoding.UTF8.GetBytes(demo.GetRawText()));
+            ContextDemoDocument context;
+            // The demo decodes as its own document, so its error paths start inside `contextDemo`.
+            try { context = ContextDemoCodec.Decode(System.Text.Encoding.UTF8.GetBytes(demo.GetRawText())); }
+            catch (JsonException exception)
+            {
+                var inner = FieldPath(exception.Path);
+                throw Problem(inner.Length == 0 ? "contextDemo" : $"contextDemo/{inner}", "invalid value");
+            }
             Require(context.ProjectId == root.GetProperty("id").GetString() && context.SourceContentKey == source.GetProperty("contentKey").GetString());
         }
         if (root.TryGetProperty("motionCues", out var cues)) MotionCue.ValidateWire(cues);
@@ -383,8 +390,22 @@ internal static class ProjectValidation
 
     private static void Position(JsonElement position, string path)
     {
-        Object(position, "x y", path: path); Number(position.GetProperty("x"), 0, 1); Number(position.GetProperty("y"), 0, 1);
+        Object(position, "x y", path: path);
+        At($"{path}/x", () => Number(position.GetProperty("x"), 0, 1)); At($"{path}/y", () => Number(position.GetProperty("y"), 0, 1));
     }
+
+    // A failed value check inside an element reports that element's path, not the whole document.
+    private static void At(string path, Action validate)
+    {
+        try { validate(); }
+        catch (JsonException) { throw Problem(path, "invalid value"); }
+    }
+
+    // "$.a.b[0]['key']" (System.Text.Json) as "a/b/0/key"; empty when unknown.
+    internal static string FieldPath(string? jsonPath) => jsonPath is { Length: > 1 } && jsonPath[0] == '$'
+        ? Regex.Replace(jsonPath[1..], @"\.|\[(\d+)\]|\['(.*?)'\]", match =>
+            "/" + (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value)).TrimStart('/')
+        : "";
 
     private static void Timestamp(JsonElement value)
         => Require(value.ValueKind == JsonValueKind.String && UtcTimestamp.TryParse(value.GetString(), out _));
@@ -417,13 +438,21 @@ internal static class ProjectValidation
     {
         if (value.ValueKind != JsonValueKind.Array) throw Problem(path, "expected array");
         var index = 0;
-        foreach (var item in value.EnumerateArray()) validate(item, $"{path}/{index++}");
+        foreach (var item in value.EnumerateArray())
+        {
+            var itemPath = $"{path}/{index++}";
+            At(itemPath, () => validate(item, itemPath));
+        }
     }
 
     private static void Dictionary(JsonElement value, string path, Action<string, JsonElement, string> validate)
     {
         ExpectObject(value, path);
-        foreach (var property in value.EnumerateObject()) validate(property.Name, property.Value, $"{path}/{property.Name}");
+        foreach (var property in value.EnumerateObject())
+        {
+            var entryPath = $"{path}/{property.Name}";
+            At(entryPath, () => validate(property.Name, property.Value, entryPath));
+        }
     }
 
     private static void UniqueStrings(JsonElement value, string pattern, string path)

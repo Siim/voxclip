@@ -197,7 +197,10 @@ enum ProjectValidation {
         }
         if let extensions = root["extensions"] { _ = try map(extensions, at: "extensions") }
         if let demo = root["contextDemo"] {
-            let document = try ContextDemoCodec.decode(ProjectJSON.encoder().encode(demo))
+            let document: ContextDemoDocument
+            // The demo decodes as its own document, so its error paths start inside `contextDemo`.
+            do { document = try ContextDemoCodec.decode(ProjectJSON.encoder().encode(demo)) }
+            catch let error as DecodingError { throw JSONProjectStore.decodingFailure(error, under: "contextDemo") }
             try require(root["id"] == .string(document.projectId) && media["source"]?[ai: "contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
         }
         if let cues = root["motionCues"] { try validateMotionCues(cues) }
@@ -313,8 +316,11 @@ enum ProjectValidation {
         guard let text else { return }
         try require(text.unicodeScalars.count >= min && text.unicodeScalars.count <= max && (pattern.map { matches(text, $0) } ?? true), "Invalid project text")
     }
-    static func number(_ number: Double, min: Double = 0, max: Double = .greatestFiniteMagnitude) throws {
-        try require(number.isFinite && number >= min && number <= max, "Invalid project number")
+    static func number(_ number: Double, min: Double = 0, max: Double = .greatestFiniteMagnitude, at path: String? = nil) throws {
+        guard number.isFinite && number >= min && number <= max else {
+            if let path { try fail("invalid value", at: path) }
+            try fail("Invalid project number")
+        }
     }
     static let idPattern = EditingLimits.clipIDPattern
     static let hashPattern = "[0-9a-f]{64}"
@@ -387,8 +393,11 @@ enum ProjectValidation {
             try clipStyle.validate()
             for id in clipStyle.captionPicks.keys { try text(id, pattern: idPattern) }
         }
-        for position in Array(project.captions.positionByAspect.values) + [project.captions.position].compactMap({ $0 }) {
-            try number(position.x, max: 1); try number(position.y, max: 1)
+        // The wire check already limited the aspect keys to the three shapes, so they are safe in a path.
+        let positions = project.captions.positionByAspect.map { ("captions/positionByAspect/\($0.key)", $0.value) }
+            + [project.captions.position].compactMap { $0 }.map { ("captions/position", $0) }
+        for (path, position) in positions {
+            try number(position.x, max: 1, at: "\(path)/x"); try number(position.y, max: 1, at: "\(path)/y")
         }
         try text(project.export.folder, min: 1, max: 4096)
         for (id, caption) in project.share.captions { try text(id, pattern: "(?:full|" + idPattern + ")"); try text(caption, max: 3000) }

@@ -268,6 +268,7 @@ func musicFlagsRejectInvalidCombinationsBeforeOpeningInput(flags: [String], mess
     ("quality", "export/quality: invalid value"),
     ("assetDuration", "voiceLab/assets/0/durationSeconds: invalid value"),
     ("captionY", "captions/position/y: missing required field"),
+    ("captionX", "captions/position/x: invalid value"),
     ("aiPart", "ai/results/0/clips/0/parts/0/endWordId: missing required field"),
 ])
 func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throws {
@@ -282,9 +283,9 @@ func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throw
         var settings = try #require(project["export"] as? [String: Any])
         settings[defect] = privateContent
         project["export"] = settings
-    } else if defect == "captionY" {
+    } else if defect == "captionY" || defect == "captionX" {
         var captions = try #require(project["captions"] as? [String: Any])
-        captions["position"] = ["x": 0.5]
+        captions["position"] = defect == "captionY" ? ["x": 0.5] : ["x": 2, "y": 0.5]
         project["captions"] = captions
     } else if defect == "aiPart" {
         let part = ["startWordId": "w1"]

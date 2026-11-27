@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.ContextDemo;
@@ -30,10 +29,7 @@ public static class ProjectSerialization
         }
         catch (JsonException exception)
         {
-            var path = exception.Path is { Length: > 1 } jsonPath && jsonPath[0] == '$'
-                ? Regex.Replace(jsonPath[1..], @"\.|\[(\d+)\]|\['(.*?)'\]", match =>
-                    "/" + (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value)).TrimStart('/')
-                : "";
+            var path = VoxClip.Core.Services.Project.ProjectValidation.FieldPath(exception.Path);
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, path.Length == 0
                 ? "/: invalid project document" : $"{path}: invalid value");
         }
