@@ -48,7 +48,7 @@ internal static class HarnessChatTools
             {
                 HarnessTimeline.RequireObject(timeline, [.. HarnessTimeline.Keys, "label"]);
                 labels.Add(Text(timeline, "label", 120));
-                timelines.Add(EditFields(timeline));
+                timelines.Add((JsonNode)EditFields(timeline));
             }
             return (JsonElement.Parse(new JsonObject { ["timelines"] = timelines }.ToJsonString()), Text(arguments, "revises", 200), labels);
         }
@@ -143,7 +143,7 @@ public sealed class HarnessMusicLibrary(OpenverseMusicClient? library = null, st
         if (MusicLibraryFolder.Best(MusicLibraryFolder.Files(folder), brief.Keywords) is { } local) candidates.Add(local);
         return candidates.Where(candidate => candidate.Source is MusicSource.Library or MusicSource.File).Select(candidate =>
         {
-            var id = "free-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(candidate.Id)));
+            var id = "free-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(candidate.Id)).AsSpan(0, 16));
             discoveries[id] = candidate;
             return new JsonObject { ["id"] = id, ["title"] = candidate.Title, ["source"] = candidate.Source.ToString().ToLowerInvariant(),
                 ["durationSeconds"] = candidate.DurationSeconds, ["license"] = candidate.License.ToString().ToLowerInvariant() };

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import VoxClipCore
+@testable import VoxClipCore
 
 @Suite struct HarnessChatToolsTests {
     private func setup() throws -> (JSONValue, Project, SharedResources) {
@@ -17,7 +17,7 @@ import VoxClipCore
         let proposed = try await HarnessTools.call(.proposeTimeline, arguments: timeline, project: project, shared: shared)
         let prices = try #require(proposed.fields["pricedActions"]?.aiArray)
         var ids = Set<UUID>()
-        for (index, vector) in try #require(fixture[ai: "offers"].aiArray).enumerated() {
+        for (index, vector) in fixture[ai: "offers"].aiArray.enumerated() {
             let offered = try await HarnessTools.call(.offer, arguments: vector[ai: "arguments"], project: project, shared: shared)
             #expect(offered.fields["quote"] == vector[ai: "quote"])
             #expect(offered.fields["quote"] == prices[index][ai: "price"])
@@ -34,8 +34,7 @@ import VoxClipCore
         let (fixture, project, shared) = try setup()
         let timeline = try #require(fixture[ai: "savedCalls"][ai: "propose_timeline"].aiObject)
         let revision = fixture[ai: "revision"]
-        let metadata = try #require(revision.aiObject)
-        let input: JSONValue = .object(["timelines": .array([.object(timeline.merging(["label": metadata["label"]!]) { first, _ in first })]),
+        let input: JSONValue = .object(["timelines": .array([.object(timeline.merging(["label": revision[ai: "label"]]) { first, _ in first })]),
                                         "revises": revision[ai: "revises"]])
         let proposal = try await HarnessTools.call(.proposeTimeline, arguments: input, project: project, shared: shared)
         #expect(proposal.fields["revises"] == revision[ai: "revises"])
@@ -49,19 +48,23 @@ import VoxClipCore
     }
 
     @Test func folderSearchReturnsAnOpaqueIdUsableInATimeline() async throws {
-        let (_, project, shared) = try setup()
+        let (_, original, shared) = try setup()
+        let existing = ProjectMusic(id: "existing", clipId: nil,
+                                    asset: MusicAsset(file: "\(original.id)/music-existing.wav", sha256: String(repeating: "b", count: 64), durationSeconds: 15),
+                                    source: .file, title: "Existing", license: .own)
+        let project = try MusicProject.setting(existing, clipId: nil, in: original)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try Data().write(to: directory.appendingPathComponent("Calm Piano.wav"))
         let music = HarnessMusicLibrary(folder: directory) { candidate, projectID in
             ProjectMusic(id: candidate.id, clipId: nil,
-                         asset: MusicAsset(file: "\(projectID)/calm.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 15),
+                         asset: MusicAsset(file: "\(projectID)/music-calm.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 15),
                          source: candidate.source, title: candidate.title, license: candidate.license)
         }
         let search = try await HarnessTools.call(.findMusic, arguments: .object(["mood": .string("calm piano"), "lengthSeconds": .number(10)]),
                                                  project: project, shared: shared, music: music)
-        let track = try #require(search.fields["tracks"]?.aiArray?.first)
+        let track = try #require(search.fields["tracks"]?.aiArray.first)
         let id = try #require(track[ai: "id"].aiString)
         #expect(track[ai: "title"] == .string("Calm Piano"))
         #expect(!id.contains(directory.path))
@@ -70,5 +73,8 @@ import VoxClipCore
             project: project, shared: shared, music: music)
         #expect(proposal.preparedMusic.map(\.id) == [id])
         #expect(proposal.fields["pricedActions"] == .array([]))
+        let review = try #require(proposal.proposal).review(project, shared: shared, preparedMusic: proposal.preparedMusic)
+        #expect(review.project.music.first(where: { $0.clipId == nil }) == existing)
+        #expect(review.project.music.first(where: { $0.clipId == "clip-2f1c" })?.id == id)
     }
 }

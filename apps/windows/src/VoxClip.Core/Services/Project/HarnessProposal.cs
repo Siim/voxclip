@@ -338,7 +338,8 @@ public sealed class HarnessProposal
 
     /// <summary>Validate the revision and map a single timeline through the shared operation apply path.</summary>
     public (Domain.Shared.Project Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending)
-        Review(Domain.Shared.Project snapshot, string sharedRoot, int index = 0, Transcript? recordingTranscript = null, bool preview = false)
+        Review(Domain.Shared.Project snapshot, string sharedRoot, int index = 0, Transcript? recordingTranscript = null, bool preview = false,
+            IReadOnlyList<ProjectMusic>? preparedMusic = null)
     {
         ValidateRevision(snapshot);
         var original = snapshot;
@@ -367,7 +368,7 @@ public sealed class HarnessProposal
         var operations = ClipAutopilotMapping.Operations(proposal, clipId, snapshot, fonts, stickers);
         var clipStyle = operations.Any(operation => operation.Decision == ClipAutopilotDecision.Captions)
             ? snapshot.ClipStyle ?? ClipStyleCatalog.Load(sharedRoot).Initial(null) : null;
-        var result = ClipAutopilotMapping.Apply(operations, snapshot, clipStyle is null ? null : (clipId, clipStyle));
+        var result = ClipAutopilotMapping.Apply(operations, snapshot, clipStyle is null ? null : (clipId, clipStyle), preparedMusic);
         if (!result.Project.Edits.Clips.Any(clip => clip.Id == clipId))
             throw new HarnessException("The proposed clip duplicates an existing clip or doesn't have valid parts.");
         if (result.Pending.Any(operation => operation.Action is not (ClipAutopilotAction.Asset or ClipAutopilotAction.Music or ClipAutopilotAction.Rewrite)))

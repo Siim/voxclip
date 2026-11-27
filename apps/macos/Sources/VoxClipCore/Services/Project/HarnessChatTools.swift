@@ -105,7 +105,7 @@ public actor HarnessMusicLibrary {
         }
         if let local = MusicLibraryFolder.best(MusicLibraryFolder.files(in: folder), keywords: brief.keywords) { candidates.append(local) }
         return candidates.filter { $0.source == .library || $0.source == .file }.map { candidate in
-            let digest = SHA256.hash(data: Data(candidate.id.utf8)).map { String(format: "%02x", $0) }.joined()
+            let digest = SHA256.hash(data: Data(candidate.id.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
             let id = "free-" + digest
             discoveries[id] = candidate
             return .object(["id": .string(id), "title": .string(candidate.title), "source": .string(candidate.source.rawValue),

@@ -139,7 +139,7 @@ Both hosts dispatch through Core's `HarnessTools`. The live host supplies the op
 
 - In live `propose_timeline` calls, `label` names the changes on each timeline and `revises` names a pending turn. For a series, put `revises` next to `timelines` and each `label` on its own timeline. Core returns the revision id and aligned labels for the live host; it does not replace the turn itself. The CLI refuses `revises` with “Revising is only for the in-app chat.”
 - `check` takes a clip id and optional targets and forwards them to the host's timeline checker. These are plan checks, not the exported-file check. Timeline check rules are implemented separately in T7.
-- `find_music` takes a mood and length in seconds. It searches only the free Openverse library and the host-approved Music folder. Track ids can be used as `music.trackId`; the live host supplies the existing free audio importer, which receives only tracks returned by that session's search. The reply contains no file paths or download URLs.
+- `find_music` takes a mood and length in seconds. It searches only the free Openverse library and the host-approved Music folder. Track ids can be used as `music.trackId`; the live host supplies the existing free audio importer, which receives only tracks returned by that session's search. Proposal review uses the prepared tracks without adding them to the saved project's music. The reply contains no file paths or download URLs.
 - `offer` returns an id and a local quote only. No provider, approval, or spend API is available to the tool. Music and illustration use the same quote as a timeline proposal; the live host supplies the applicable Make it postable cap.
 - `point_to` returns a panel link and optionally a target; it doesn't open anything itself.
 

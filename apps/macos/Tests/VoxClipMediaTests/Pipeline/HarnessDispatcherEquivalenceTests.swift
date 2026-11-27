@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import VoxClipCore
+@testable import VoxClipCore
 import VoxClipMedia
 @testable import voxclip_cli
 
@@ -16,7 +16,7 @@ import VoxClipMedia
     var project = try JSONProjectStore.decode(bytes)
     let clipSource = shared.root.appendingPathComponent("fixtures/media/counter-1080p.mp4")
     project.media.source.absolutePath = clipSource.path
-    project.media.source.sizeBytes = try #require(try clipSource.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+    project.media.source.sizeBytes = Int64(try #require(try clipSource.resourceValues(forKeys: [.fileSizeKey]).fileSize))
     project.media.source.contentKey = try JSONProjectStore.contentKey(for: clipSource)
     try await JSONProjectStore().save(project, to: path)
     let saved = try HarnessProject(path: path.path)

@@ -127,10 +127,8 @@ public enum HarnessTools {
                 return try timeline.pinningRecordingTranscript(transcript)
             }
             let shared = try shared ?? SharedResources.locate()
-            var project = project
             let requestedTracks = Set(timelines.compactMap(\.musicTrackId)).subtracting(project.music.map(\.id))
             let imported = try await music?.prepare(requestedTracks.sorted(), projectID: project.id) ?? []
-            project.music.append(contentsOf: imported)
             let proposal = try HarnessProposal(timelines: timelines, project: project)
             var actions: [JSONValue] = []
             var free: [JSONValue] = []
@@ -139,7 +137,7 @@ public enum HarnessTools {
                 let review: (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation])
                 let recording = timelines[index].recordingKey
                 let transcript = recording.flatMap { HarnessRecording.cachedTranscript($0, cache: cache ?? DataLocations().cache) }
-                do { review = try proposal.review(project, shared: shared, at: index, recordingTranscript: transcript, preview: true) }
+                do { review = try proposal.review(project, shared: shared, at: index, recordingTranscript: transcript, preview: true, preparedMusic: imported) }
                 catch let refusal as TimelineEditRefusal {
                     refusals.append(.object(["timelineIndex": .number(Double(index)), "reason": .string(refusal.copy)]))
                     continue

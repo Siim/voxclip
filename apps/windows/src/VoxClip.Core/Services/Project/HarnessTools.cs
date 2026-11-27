@@ -48,7 +48,7 @@ public sealed record HarnessFrame(double Requested, double Actual, string Jpeg);
 /// <param name="Fields">Wire response fields.</param>
 /// <param name="Frames">JPEGs sent out of band in MCP.</param>
 /// <param name="Proposal">A validated sidecar document for the saved-file host.</param>
-/// <param name="PreparedMusic">Free tracks to include in the live proposal's base snapshot.</param>
+/// <param name="PreparedMusic">Free tracks to supply when reviewing the live proposal.</param>
 public sealed record HarnessResult(object Fields, IReadOnlyList<HarnessFrame>? Frames = null, JsonObject? Proposal = null,
     IReadOnlyList<ProjectMusic>? PreparedMusic = null);
 
@@ -103,7 +103,6 @@ public static class HarnessTools
                 var requestedTracks = timelines.Select(timeline => timeline.Proposal.Music?.TrackId).OfType<string>()
                     .Except(project.Music.Select(track => track.Id), StringComparer.Ordinal).Order(StringComparer.Ordinal);
                 var imported = musicLibrary is null ? [] : await musicLibrary.PrepareAsync(requestedTracks, project.Id, ct).ConfigureAwait(false);
-                if (imported.Count != 0) project = project with { Music = [.. project.Music, .. imported] };
                 var proposal = new HarnessProposal(timelines, project);
                 var pricedActions = new List<object>();
                 var freeActions = new List<object>();
@@ -114,7 +113,7 @@ public static class HarnessTools
                     (ClipProject Project, IReadOnlyList<ClipAutopilotOperation> Operations, IReadOnlyList<ClipAutopilotOperation> Pending) review;
                     var key = timelines[index].RecordingKey;
                     var transcript = key is null ? null : HarnessRecording.CachedTranscript(key, cache ?? DataLocations.Resolve().Cache);
-                    try { review = proposal.Review(project, shared, index, transcript, preview: true); }
+                    try { review = proposal.Review(project, shared, index, transcript, preview: true, preparedMusic: imported); }
                     catch (HarnessTimelineEditException refusal)
                     {
                         refusals.Add(new { timelineIndex = index, reason = refusal.Message });

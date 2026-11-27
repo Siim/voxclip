@@ -254,10 +254,10 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
     }
 
     public func review(_ project: Project, shared: SharedResources, at index: Int = 0, recordingTranscript: Transcript? = nil,
-                       preview: Bool = false) throws
+                       preview: Bool = false, preparedMusic: [ProjectMusic] = []) throws
         -> (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation]) {
         try validateRevision(of: project)
-        guard let key = timelines[index].recordingKey else { return try mapping(project, shared: shared, at: index) }
+        guard let key = timelines[index].recordingKey else { return try mapping(project, shared: shared, at: index, preparedMusic: preparedMusic) }
         let source = try HarnessRecording.source(key, in: project)
         if let expected = timelines[index].recordingRevision,
            try recordingTranscript.map(HarnessTimeline.transcriptRevision) != expected {
@@ -265,16 +265,16 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
         }
         if let recordingTranscript {
             let candidate = try HarnessRecording.add(key, transcript: recordingTranscript, to: project)
-            return try mapping(candidate, shared: shared, at: index)
+            return try mapping(candidate, shared: shared, at: index, preparedMusic: preparedMusic)
         }
         guard preview else { throw HarnessRecording.refusal(source) }
         if timelines[index].proposal.parts?.contains(where: { $0.endWord >= ProjectClock.build(project).words.count }) == true {
             throw HarnessRecording.refusal(source)
         }
-        return try mapping(project, shared: shared, at: index)
+        return try mapping(project, shared: shared, at: index, preparedMusic: preparedMusic)
     }
 
-    package func mapping(_ project: Project, shared: SharedResources, at index: Int) throws
+    package func mapping(_ project: Project, shared: SharedResources, at index: Int, preparedMusic: [ProjectMusic] = []) throws
         -> (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation]) {
         let proposal = timelines[index].proposal
         let clipID = try clipID(at: index)
@@ -287,7 +287,7 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
         let operations = try ClipAutopilotMapping.operations(for: proposal, clipID: clipID, project: project, fonts: fonts, stickers: stickers)
         let clipStyle = operations.contains(where: { $0.decision == .captions })
             ? try (project.clipStyle ?? ClipStyleCatalog.load(shared: shared).initial(saved: nil)) : nil
-        let result = try ClipAutopilotMapping.apply(operations, to: project, clipCaptions: clipStyle.map { (clipID, $0) })
+        let result = try ClipAutopilotMapping.apply(operations, to: project, clipCaptions: clipStyle.map { (clipID, $0) }, savedTracks: preparedMusic)
         guard result.project.edits.clips.contains(where: { $0.id == clipID }) else {
             throw HarnessError.invalid("The proposed clip duplicates an existing clip or doesn't have valid parts.")
         }

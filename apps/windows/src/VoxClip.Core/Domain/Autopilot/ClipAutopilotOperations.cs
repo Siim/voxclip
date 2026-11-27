@@ -362,7 +362,7 @@ public static partial class ClipAutopilotMapping
     /// rewrites and music come back as pending: a clip plays at one speed, a rewrite needs a paid voice, and music needs a source to
     /// fetch from (the App's Music section picks it). Pure: one undo step is the caller's choice.</summary>
     public static (Project Project, IReadOnlyList<ClipAutopilotOperation> Pending) Apply(IReadOnlyList<ClipAutopilotOperation> operations, Project project,
-        (string Id, ClipStyle Style)? clipCaptions = null)
+        (string Id, ClipStyle Style)? clipCaptions = null, IReadOnlyList<ProjectMusic>? savedTracks = null)
     {
         var result = project;
         var pending = new List<ClipAutopilotOperation>();
@@ -381,7 +381,8 @@ public static partial class ClipAutopilotMapping
                     else result = result with { Captions = captions.Settings };
                     break;
                 case ClipAutopilotAction.SavedMusic saved:
-                    var track = result.Music.FirstOrDefault(entry => entry.Id == saved.TrackId)
+                    var track = savedTracks?.FirstOrDefault(entry => entry.Id == saved.TrackId)
+                        ?? result.Music.FirstOrDefault(entry => entry.Id == saved.TrackId)
                         ?? throw new HarnessException("Choose a saved music track from this project.");
                     var taken = result.Music.Where(entry => entry.ClipId != saved.ClipId).Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
                     var id = track.Id;
