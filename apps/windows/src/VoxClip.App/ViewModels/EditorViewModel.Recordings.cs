@@ -376,6 +376,12 @@ public sealed partial class EditorViewModel
 
     internal bool RemoveRecording(string key) => !IsReadOnly && !isLeaving && !Busy && ApplyRecordingEdit(new RecordingEdit.RemoveSpokenSource(key));
 
+    private static Project WithRecordingGain(Project snapshot, string key, double gain) => snapshot with
+    {
+        Media = snapshot.Media with { SpokenSources = snapshot.Media.SpokenSources?.Select(source =>
+            source.SourceKey == key ? source with { GainDb = gain } : source).ToArray() },
+    };
+
     internal string[] ProposalRecordingReasons(ClipRange clip)
     {
         var suggestions = project.Ai.Results.FirstOrDefault(result => result.Id == clip.AiResultId)?.Clips;

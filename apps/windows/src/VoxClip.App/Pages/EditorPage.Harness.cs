@@ -8,6 +8,7 @@ using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Music;
 using VoxClip.Core.Services.Project;
+using VoxClip.Media.Audio;
 
 namespace VoxClip.App.Pages;
 
@@ -161,12 +162,19 @@ public sealed partial class EditorPage
             if (keep)
             {
                 if (HarnessBlock is not null || App.Services.SharedRoot is not { } root) return;
-                keepingHarnessRecording = pending.RecordingKeyAt(index) is not null;
+                var recordingKey = pending.RecordingKeyAt(index);
+                keepingHarnessRecording = recordingKey is not null;
                 if (keepingHarnessRecording) UpdateHarnessButtons();
+                var original = ViewModel.Project;
                 var transcript = await ViewModel.PrepareHarnessRecordingAsync(pending, index, App.Services.Data.Cache,
                     (source, plan, ct) => TranscribeHarnessRecordingAsync(source, path, plan, ct), lifetime.Token);
+                double? recordingGainDb = null;
+                if (recordingKey is not null && transcript is not null)
+                    recordingGainDb = (await RecordingLevelMatch.MatchOnAddAsync(original, new(recordingKey, transcript), App.Services.Projects,
+                        path, lifetime.Token)).GainDb;
                 if (disposed || !IsHarnessPath(path)) return;
-                harnessMusic = ViewModel.KeepHarnessTimeline(pending, path, root, index, out var assets, out var rewrites, transcript);
+                if (!ReferenceEquals(original, ViewModel.Project)) throw new HarnessException("The project changed. Ask for a new timeline proposal.");
+                harnessMusic = ViewModel.KeepHarnessTimeline(pending, path, root, index, out var assets, out var rewrites, transcript, recordingGainDb);
                 harnessAssets.AddRange(assets);
                 harnessRewrites.AddRange(rewrites);
                 harnessRewriteClipId = pending.ClipIdAt(index);
