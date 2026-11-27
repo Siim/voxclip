@@ -61,7 +61,7 @@ public struct RenderGraph {
     /// Bleep tones and sound effects (ai.md §18.5), a third audio track on the rendered timeline; nil without them.
     public let effectsTrack: AVMutableCompositionTrack?
     public let effectsLease: EffectAudioLease?
-    /// The clip's voice staged with its speed, volume, fades and mute (design.md §6.9); nil at the defaults.
+    /// Normalized recording audio, or the clip's voice staged with its controls (design.md §6.9).
     public let clipVoiceLease: ClipVoiceLease?
     /// The tracks a reader mixes: the voice, then the music bed and the effects when there are any.
     public var mixedAudioTracks: [AVMutableCompositionTrack] { [audioTrack, musicTrack, effectsTrack].compactMap { $0 } }
@@ -140,6 +140,7 @@ public struct CompositionBuilder: Sendable {
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw VoxClipError.exportFailed("Cannot create video track") }
         let audio = sources.values.contains { $0.audio != nil } ? composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) : nil
+        let normalizesRecordings = !synthetic && !request.recordings.isEmpty && audio != nil
         let rate = Int32(synthetic ? voicePlan!.sampleRate : plan.sampleRate)
         for span in videoSpans {
             try Task.checkCancellation()
@@ -171,12 +172,21 @@ public struct CompositionBuilder: Sendable {
                 video.scaleTimeRange(CMTimeRange(start: insertion, duration: frameDuration), toDuration: tailDuration)
             }
             if scaled { video.scaleTimeRange(CMTimeRange(start: cursor, duration: range.duration), toDuration: span.output.duration) }
-            if !synthetic, let audio {
+            if !synthetic, !normalizesRecordings, let audio {
                 if let sourceAudio = recording.audio { try audio.insertTimeRange(range, of: sourceAudio, at: cursor) }
                 else { audio.insertEmptyTimeRange(span.output) }
             }
         }
         let duration = CMTime(value: request.timeline.outputSamples, timescale: rate)
+        var recordingVoice: ClipVoiceLease?
+        if normalizesRecordings, let audio {
+            let staged = try await RecordingVoice.stage(videoSpans, sources: sources, scratchRoot: scratchRoot)
+            let asset = AVURLAsset(url: staged.url)
+            guard let track = try await MediaSupport.audioTrack(in: asset) else { throw VoxClipError.noAudioTrack }
+            let length = CMTime(value: Int64(staged.frames), timescale: 48_000)
+            try withExtendedLifetime(asset) { try audio.insertTimeRange(CMTimeRange(start: .zero, duration: length), of: track, at: .zero) }
+            recordingVoice = staged
+        }
         try EffectAudio.freeze(request, video: video, sources: sources, primaryKey: primaryKey, videoSpans: videoSpans, duration: duration)
         let demos = try await ContextDemoCompositionRoute.insert(request, into: composition, scratchRoot: scratchRoot)
         let lipsync = try await LipsyncComposition.insert(request, into: composition, scratchRoot: scratchRoot)
@@ -277,7 +287,7 @@ public struct CompositionBuilder: Sendable {
         return RenderGraph(composition: composition, videoTrack: video, audioTrack: voiceTrack, videoComposition: videoComposition,
                            audioMix: mix, renderSize: size, frameDuration: frameDuration, voiceLabLease: lease,
                            contextDemoLease: demos.lease, musicTrack: musicTrack, musicLease: musicLease,
-                           effectsTrack: effectsTrack, effectsLease: effectsLease, clipVoiceLease: voiceLease)
+                           effectsTrack: effectsTrack, effectsLease: effectsLease, clipVoiceLease: voiceLease ?? recordingVoice)
     }
 
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,
