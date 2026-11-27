@@ -159,7 +159,7 @@ def generated():
     reject('other-project-illustration-folder', [set_value('/clipEffects/14/imageFile', f'00000000-0000-0000-0000-000000000001/illustration-{"a" * 64}.png')], True)
     for version in (1, 2, 3):
         reject(f'v{version}-effects', [set_value('/schemaVersion', version)])
-    reject('future-project', [set_value('/schemaVersion', 8)])
+    reject('future-project', [set_value('/schemaVersion', 999)])
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-clip-effects-wire-cases/1', 'project': 'fixtures/clip-effects/effects-project.voxclip',
              'valid': valid, 'invalid': invalid}

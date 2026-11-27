@@ -47,6 +47,18 @@
     "patch": [{"path": "/edits/clips[id=story]/parts[id=opening]/endWordId", "before": "w5", "after": "w4"}]
   },
   {
+    "name": "look changes address controls by their clip id",
+    "before": {"clipControls": [
+      {"clipId": "clip-2f1c", "speed": 1, "shape": null, "look": "muted", "gainDb": 0, "fadeInSeconds": 0, "fadeOutSeconds": 0, "muteSource": false, "flipHorizontal": false, "rotationDegrees": 0},
+      {"clipId": "clip-9a0b", "speed": 1, "shape": null, "look": "bw", "gainDb": 0, "fadeInSeconds": 0, "fadeOutSeconds": 0, "muteSource": false, "flipHorizontal": false, "rotationDegrees": 0}
+    ]},
+    "after": {"clipControls": [
+      {"clipId": "clip-2f1c", "speed": 1, "shape": null, "look": "warm", "gainDb": 0, "fadeInSeconds": 0, "fadeOutSeconds": 0, "muteSource": false, "flipHorizontal": false, "rotationDegrees": 0},
+      {"clipId": "clip-9a0b", "speed": 1, "shape": null, "look": "bw", "gainDb": 0, "fadeInSeconds": 0, "fadeOutSeconds": 0, "muteSource": false, "flipHorizontal": false, "rotationDegrees": 0}
+    ]},
+    "patch": [{"path": "/clipControls[id=clip-2f1c]/look", "before": "muted", "after": "warm"}]
+  },
+  {
     "name": "a paid Voice Lab asset catalog and writer metadata are not changes",
     "after": {"modifiedAt": "2026-11-27T17:00:00Z", "voiceLab": {"speakingRateSamples": {}}},
     "patch": []

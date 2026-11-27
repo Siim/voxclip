@@ -57,7 +57,7 @@ import Testing
                 var changes: [AgentChange] = []
                 for edit in turn.changes {
                     let after = try Self.setting(edit.set, in: project)
-                    changes.append(try #require(AgentTurns.change(from: project, to: after, id: edit.id, label: edit.id, undoName: edit.id)))
+                    changes.append(try #require(try AgentTurns.change(from: project, to: after, id: edit.id, label: edit.id, undoName: edit.id)))
                     project = after
                 }
                 project = try Self.record(turn.id, changes, in: project)
@@ -90,7 +90,7 @@ import Testing
         let base = try Self.base()
         let first = try Self.setting(.object(["captions": .object(["styleId": .string("off")])]), in: base)
         let later = try Self.setting(.object(["captions": .object(["styleId": .string("vox-bold")])]), in: first)
-        let change = try #require(AgentTurns.change(from: base, to: first, id: "style", label: "Style", undoName: "Style"))
+        let change = try #require(try AgentTurns.change(from: base, to: first, id: "style", label: "Style", undoName: "Style"))
         let pending = try Self.record("t1", [change], in: first)
         var proposed = later
         proposed.agentThread = pending.agentThread
@@ -109,7 +109,7 @@ import Testing
     @Test func keepPrunesTheThirtyFirstKeptCheckpointButNeverAPendingOne() throws {
         let before = try Self.base()
         let after = try Self.setting(.object(["captions": .object(["styleId": .string("off")])]), in: before)
-        let change = try #require(AgentTurns.change(from: before, to: after, id: "style", label: "Style", undoName: "Style"))
+        let change = try #require(try AgentTurns.change(from: before, to: after, id: "style", label: "Style", undoName: "Style"))
         var project = try Self.record("pending", [change], in: after)
         for index in 1...31 { project = try AgentTurns.keep(Self.record("kept-\(index)", [change], in: project), turnId: "kept-\(index)") }
         #expect(project.agentThread?.turns[0].changes[0].patch == change.patch)

@@ -40,9 +40,11 @@ internal static class AgentPatchPath
         return tokens.ToArray();
     }
 
-    private static string? Id(JsonNode? node) => node is JsonObject item && item["id"] is JsonValue value &&
+    private static string IdentityKey(ReadOnlySpan<Token> collection) => collection.Length == 1 && collection[0] == new Token("clipControls") ? "clipId" : "id";
+
+    private static string? Id(JsonNode? node, string key) => node is JsonObject item && item[key] is JsonValue value &&
         value.TryGetValue<string>(out var id) && !string.IsNullOrEmpty(id) ? id : null;
-    private static string? Id(JsonElement node) => node.ValueKind == JsonValueKind.Object && node.TryGetProperty("id", out var id) &&
+    private static string? Id(JsonElement node, string key) => node.ValueKind == JsonValueKind.Object && node.TryGetProperty(key, out var id) &&
         id.ValueKind == JsonValueKind.String ? id.GetString() : null;
 
     internal static bool IsValid(AgentPatch patch)
@@ -55,8 +57,9 @@ internal static class AgentPatchPath
         var last = tokens[^1];
         if (last.Member)
         {
-            var addition = patch.BeforeMissing == true && patch.AfterMissing != true && Id(patch.After) == last.Name && patch.BeforeIndex is null && patch.AfterIndex >= 0;
-            var removal = patch.AfterMissing == true && patch.BeforeMissing != true && Id(patch.Before) == last.Name && patch.AfterIndex is null && patch.BeforeIndex >= 0;
+            var key = IdentityKey(tokens.AsSpan(0, tokens.Length - 1));
+            var addition = patch.BeforeMissing == true && patch.AfterMissing != true && Id(patch.After, key) == last.Name && patch.BeforeIndex is null && patch.AfterIndex >= 0;
+            var removal = patch.AfterMissing == true && patch.BeforeMissing != true && Id(patch.Before, key) == last.Name && patch.AfterIndex is null && patch.BeforeIndex >= 0;
             return (addition || removal) && patch.PreviousId != last.Name && patch.NextId != last.Name;
         }
         var noPosition = patch.BeforeIndex is null && patch.AfterIndex is null && patch.PreviousId is null && patch.NextId is null;
@@ -68,7 +71,7 @@ internal static class AgentPatchPath
             return noPosition && before.Length == after.Length && before.Concat(after).All(item => item.ValueKind == JsonValueKind.String && item.GetString()!.Length > 0) &&
                 before.Select(item => item.GetString()).ToHashSet(StringComparer.Ordinal) is { } ids && ids.Count == before.Length && ids.SetEquals(after.Select(item => item.GetString()));
         }
-        return noPosition && !(last == new Token("id") && tokens.Length > 1 && tokens[^2].Member);
+        return noPosition && !(tokens.Length > 1 && tokens[^2].Member && last == new Token(IdentityKey(tokens.AsSpan(0, tokens.Length - 2))));
     }
 
     internal static bool Overlaps(AgentPatch first, AgentPatch second)
@@ -88,7 +91,9 @@ internal static class AgentPatchPath
             foreach (var key in oldObject.Select(pair => pair.Key).Union(newObject.Select(pair => pair.Key), StringComparer.Ordinal).Order(StringComparer.Ordinal))
                 Diff(oldObject[key], oldObject.ContainsKey(key), newObject[key], newObject.ContainsKey(key), $"{path}/{Escape(key)}", patches);
         }
-        else if (before is JsonArray oldArray && after is JsonArray newArray && Identities(oldArray) is { } oldIds && Identities(newArray) is { } newIds)
+        else if (before is JsonArray oldArray && after is JsonArray newArray &&
+            Identities(oldArray, path == "/clipControls" ? "clipId" : "id") is { } oldIds &&
+            Identities(newArray, path == "/clipControls" ? "clipId" : "id") is { } newIds)
         {
             var order = oldIds.ToList();
             var oldPositions = oldIds.Index().ToDictionary(item => item.Item, item => item.Index, StringComparer.Ordinal);
@@ -126,9 +131,9 @@ internal static class AgentPatchPath
         return document.RootElement.Clone();
     }
 
-    private static string[]? Identities(JsonArray array)
+    private static string[]? Identities(JsonArray array, string key)
     {
-        var ids = array.Select(Id).OfType<string>().ToArray();
+        var ids = array.Select(item => Id(item, key)).OfType<string>().ToArray();
         return ids.Length == array.Count && ids.Distinct(StringComparer.Ordinal).Count() == ids.Length ? ids : null;
     }
 
@@ -161,7 +166,7 @@ internal static class AgentPatchPath
                 else obj[token.Name] = Desired();
                 return;
             }
-            if (node is not JsonArray array || Identities(array) is not { } ids) throw Conflict();
+            if (node is not JsonArray array || Identities(array, IdentityKey(tokens.AsSpan(0, position))) is not { } ids) throw Conflict();
             if (last && token == Order)
             {
                 Check(Names(ids), true);

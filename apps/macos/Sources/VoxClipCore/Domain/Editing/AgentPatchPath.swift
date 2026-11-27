@@ -37,8 +37,12 @@ enum AgentPatchPath {
         return result
     }
 
-    static func id(_ item: JSONValue) -> String? {
-        guard case .object(let object) = item, case .string(let id) = object["id"], !id.isEmpty else { return nil }
+    private static func identityKey(_ collection: ArraySlice<Token>) -> String {
+        collection.count == 1 && collection.first == .key("clipControls") ? "clipId" : "id"
+    }
+
+    private static func id(_ item: JSONValue, key: String) -> String? {
+        guard case .object(let object) = item, case .string(let id) = object[key], !id.isEmpty else { return nil }
         return id
     }
 
@@ -47,9 +51,10 @@ enum AgentPatchPath {
               patch.beforeMissing != true || patch.before == .null, patch.afterMissing != true || patch.after == .null,
               patch.before != patch.after || patch.beforeMissing != patch.afterMissing else { return false }
         if case .member(let member) = tokens.last {
-            let addition = patch.beforeMissing == true && patch.afterMissing != true && id(patch.after) == member &&
+            let key = identityKey(tokens.dropLast())
+            let addition = patch.beforeMissing == true && patch.afterMissing != true && id(patch.after, key: key) == member &&
                 patch.beforeIndex == nil && (patch.afterIndex ?? -1) >= 0
-            let removal = patch.afterMissing == true && patch.beforeMissing != true && id(patch.before) == member &&
+            let removal = patch.afterMissing == true && patch.beforeMissing != true && id(patch.before, key: key) == member &&
                 patch.afterIndex == nil && (patch.beforeIndex ?? -1) >= 0
             return (addition || removal) && patch.previousId != member && patch.nextId != member
         }
@@ -59,7 +64,7 @@ enum AgentPatchPath {
             return noPosition && before.allSatisfy { if case .string(let value) = $0 { return !value.isEmpty }; return false } &&
                 Set(before).count == before.count && after.count == before.count && Set(before) == Set(after)
         }
-        if tokens.last == .key("id"), case .member = tokens.dropLast().last { return false }
+        if case .member = tokens.dropLast().last, tokens.last == .key(identityKey(tokens.dropLast(2))) { return false }
         return noPosition
     }
 
@@ -80,7 +85,8 @@ enum AgentPatchPath {
                 diff(old[key], new[key], path: "\(path)/\(escape(key))", into: &patches)
             }
         } else if case .array(let old) = before, case .array(let new) = after,
-                  let oldIDs = identities(old), let newIDs = identities(new) {
+                  let oldIDs = identities(old, key: path == "/clipControls" ? "clipId" : "id"),
+                  let newIDs = identities(new, key: path == "/clipControls" ? "clipId" : "id") {
             let removed = Set(oldIDs).subtracting(newIDs), added = Set(newIDs).subtracting(oldIDs)
             let oldPositions = Dictionary(uniqueKeysWithValues: oldIDs.enumerated().map { ($0.element, $0.offset) })
             var order = oldIDs
@@ -112,8 +118,8 @@ enum AgentPatchPath {
         }
     }
 
-    private static func identities(_ values: [JSONValue]) -> [String]? {
-        let ids = values.compactMap(id)
+    private static func identities(_ values: [JSONValue], key: String) -> [String]? {
+        let ids = values.compactMap { id($0, key: key) }
         return ids.count == values.count && Set(ids).count == ids.count ? ids : nil
     }
 
@@ -128,9 +134,10 @@ enum AgentPatchPath {
         func replace(_ value: JSONValue?, _ remaining: ArraySlice<Token>) throws -> JSONValue? {
             guard let token = remaining.first else { try check(value); return desired }
             let tail = remaining.dropFirst()
+            let key = identityKey(tokens[..<remaining.startIndex])
             switch (token, value) {
             case (.key("@order"), .array(let items)) where tail.isEmpty:
-                guard let ids = identities(items), case .array(let wanted) = desired else { break }
+                guard let ids = identities(items, key: key), case .array(let wanted) = desired else { break }
                 try check(.array(ids.map(JSONValue.string)))
                 let lookup = Dictionary(uniqueKeysWithValues: zip(ids.map(JSONValue.string), items))
                 let reordered = wanted.compactMap { lookup[$0] }
@@ -141,7 +148,7 @@ enum AgentPatchPath {
                     return .object(object)
                 }
             case (.member(let member), .array(var items)):
-                guard let ids = identities(items) else { break }
+                guard let ids = identities(items, key: key) else { break }
                 if let index = ids.firstIndex(of: member) {
                     if let result = try replace(items[index], tail) { items[index] = result } else { items.remove(at: index) }
                     return .array(items)
