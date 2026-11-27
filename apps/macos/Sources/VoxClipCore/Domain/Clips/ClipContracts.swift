@@ -359,6 +359,22 @@ public struct ClipFinderRequest: Codable, Sendable, Equatable {
 
 }
 
+enum TranscriptLineBoundary {
+    static let pauseSeconds = 1.2
+    static let maxWords = 41
+    static let punctuation = ".!?。！？"
+    static let closingPunctuation = "\"'”’)"
+
+    static func endsLine(_ text: String, gap: Double, wordCount: Int) -> Bool {
+        gap >= pauseSeconds || wordCount >= maxWords || endsWithPunctuation(text, in: punctuation)
+    }
+
+    static func endsWithPunctuation(_ text: String, in punctuation: String) -> Bool {
+        text.unicodeScalars.reversed().first { !closingPunctuation.unicodeScalars.contains($0) }
+            .map { punctuation.unicodeScalars.contains($0) } == true
+    }
+}
+
 /// Canonical parsing and finalization; AI §4.5, §11.3 and §11.7.
 public func formatTranscript(_ words: [ClipWord]) throws -> FormattedTranscript {
     guard words.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start && $0.index >= 0 }) else {
@@ -370,8 +386,7 @@ public func formatTranscript(_ words: [ClipWord]) throws -> FormattedTranscript 
         let word = words[position]
         let next = position + 1 < words.count ? words[position + 1] : nil
         let gap = next.map { $0.start - word.end } ?? 0
-        let sentenceEnd = word.text.range(of: #"[.!?。！？][\"'”’)]*\z"#, options: .regularExpression) != nil
-        if next == nil || sentenceEnd || gap >= 1.2 || position - firstPosition >= 40 {
+        if next == nil || TranscriptLineBoundary.endsLine(word.text, gap: gap, wordCount: position - firstPosition + 1) {
             let first = words[firstPosition]
             let text = words[firstPosition...position].map(\.text).joined(separator: " ")
             let label = "[\(first.index)-\(word.index)] \(AIText.formatTime(first.start)) \(text)"
