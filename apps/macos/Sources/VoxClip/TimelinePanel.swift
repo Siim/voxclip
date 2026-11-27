@@ -20,14 +20,25 @@ import VoxClipCore
                 TimelineToolbar(model: model, shell: shell, zoom: zoom, exportsSelected: $exportsSelected, compactEdits: compactEdits)
                 if exportsSelected { TimelineExportsList(model: model) }
                 else {
-                    if !compactEdits { TimelineEditBar(model: model) }
+                    if model.timelineItemSelection.isEmpty, !compactEdits { TimelineEditBar(model: model) }
                     TimelineCanvas(model: model, shell: shell, zoom: zoom)
+                    if !model.timelineItemSelection.isEmpty {
+                        TimelineItemBar(model: model, zoom: zoom)
+                    }
+                    if let refusal = model.timelineItemRefusal {
+                        Text(refusal).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 4)
+                            .accessibilityIdentifier("voxclip.timeline.refusal")
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.window"))
-        .modifier(EditorPaneFocus(model: model, pane: .timeline))
+        .modifier(EditorPaneFocus(model: model, pane: .timeline, focusNative: {
+            guard !exportsSelected, let canvas = zoom.canvas, let window = canvas.window else { return false }
+            return window.makeFirstResponder(canvas)
+        }))
         .onKeyPress(keys: [.leftArrow, .rightArrow, .home, .end], phases: .down) { press in
             guard !exportsSelected else { return .ignored }
             let code: UInt16 = switch press.key {
@@ -106,12 +117,12 @@ import VoxClipCore
                 .accessibilityIdentifier("voxclip.timeline.askClaude")
             }
             if geometry.size.width >= 720 {
-                Button { model.timelineSnapping.toggle() } label: {
+                Button { model.toggleTimelineSnapping() } label: {
                     TimelineSnapGlyph().stroke(DesignValues.color(model.timelineSnapping ? "text.primary" : "text.tertiary"), lineWidth: 1)
                         .frame(width: 12, height: 12).frame(width: 24, height: 22)
                         .background(model.timelineSnapping ? DesignValues.color("bg.selectedRow") : .clear, in: RoundedRectangle(cornerRadius: 5))
                 }
-                    .buttonStyle(.plain).help("Snap to words").accessibilityLabel("Snapping")
+                    .buttonStyle(.plain).help(model.timelineSnapHint).accessibilityLabel("Snapping")
                     .accessibilityValue(model.timelineSnapping ? "On" : "Off")
                     .accessibilityIdentifier("voxclip.timeline.snapping")
                     .columnLayoutEvidence("timeline.snapping")
@@ -353,6 +364,9 @@ import VoxClipCore
             }
             TimelineToolbarButton(symbol: "plus", name: "Zoom timeline in", help: "Zoom Timeline In (⌘=)") { zoom.step(1) }
                 .columnLayoutEvidence("timeline.zoom.in")
+            Button("Fit") { zoom.canvas?.fitClip() }
+                .buttonStyle(.plain).font(VCType.small.font()).padding(.horizontal, 4)
+                .help("Fit Timeline (⇧Z)").accessibilityIdentifier("voxclip.timeline.fit")
         }
     }
 }

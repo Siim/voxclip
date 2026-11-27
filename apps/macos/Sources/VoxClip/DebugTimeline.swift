@@ -6,6 +6,52 @@ import SwiftUI
 import VoxClipCore
 
 @MainActor enum DebugTimeline {
+    static func directTitleDrag(app: AppModel, fixture: Project) throws -> DebugUISuite.Result {
+        let name = "Timeline title drag moves once and Undo restores it"
+        var project = fixture
+        project.edits.activeClipId = nil
+        // interview-take has nine words over 7 s: the title covers words 2–4 and has room to move a second later.
+        // A fixture problem fails this check instead of aborting the rest of the suite.
+        guard let words = project.transcript?.words, words.count >= 6 else { return .init(name: "\(name): the fixture has too few words", passed: false) }
+        let title = ClipEffect(id: "ui-self-test-title", clipId: nil, kind: .title,
+                               start: words[1].start, end: words[3].end, text: "Timeline title", position: .top)
+        project.clipEffects = [title]
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        let canvas = TimelineCanvasView(model: model)
+        let window = NSWindow(contentRect: NSRect(x: 300, y: 300, width: 1056, height: TimelineMetrics.height),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = canvas
+        window.makeKeyAndOrderFront(nil)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.timelineSnapping = false
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        canvas.renderContent()
+        canvas.zoom(by: 3)
+        canvas.layoutSubtreeIfNeeded()
+        guard let fragment = canvas.itemFragments.first(where: { $0.display.item.id == .effect(title.id) }) else {
+            return .init(name: name, passed: false)
+        }
+        let start = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let end = NSPoint(x: start.x + max(8, canvas.viewport.ptPerSecond), y: start.y)
+        func send(_ type: NSEvent.EventType, _ point: NSPoint) throws {
+            guard let event = NSEvent.mouseEvent(with: type, location: canvas.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else {
+                throw CocoaError(.coderInvalidValue)
+            }
+            window.sendEvent(event)
+        }
+        try send(.leftMouseDown, start)
+        try send(.leftMouseDragged, end)
+        let previewOnly = model.project.clipEffects == [title] && !undo.canUndo
+        undo.beginUndoGrouping()
+        try send(.leftMouseUp, end)
+        undo.endUndoGrouping()
+        let moved = model.project.clipEffects.first?.start != title.start && undo.undoActionName == "Move title" && model.undoSteps == 1
+        undo.undo()
+        return .init(name: name, passed: previewOnly && moved && model.project.clipEffects == [title])
+    }
+
     /// Five actual caption words per page, in the scope's output time; the lane maps their
     /// IDs back to Source. No caption service or media load delays a DEBUG fixture.
     static func captionPages(_ model: EditorModel) -> [CaptionPage] {
@@ -132,7 +178,7 @@ import VoxClipCore
         project.edits = ProjectEdits(cutWordIds: ["interaction-14", "interaction-15"], clips: [clip], activeClipId: clip.id)
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
         let canvas = TimelineCanvasView(model: model)
-        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: 188), styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = canvas
         defer { canvas.tearDown(); window.close(); model.close() }
@@ -192,10 +238,11 @@ import VoxClipCore
         for height in TrackHeight.allCases {
             shell.layout.trackHeight = height
             canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded(); canvas.renderContent()
-            canvas.verticalScroller.changed?(1)
+            let row = canvas.trackRows[TimelineItemLane.effects.index]
+            canvas.revealItem(time: nil, top: row.y, bottom: row.maxY)
             let expected: CGFloat = height == .small ? 20 : height == .medium ? 24 : 28
             results.append(.init(name: "FX \(height.label) height is \(Int(expected)) pt", passed: canvas.motion.frame.height == expected))
-            results.append(.init(name: "FX \(height.label) exposes the clip motion edit action", passed: !canvas.headers[3].button.isHidden && canvas.headers[3].action != nil && canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues"))
+            results.append(.init(name: "FX \(height.label) exposes the clip motion edit action", passed: !canvas.header(.effects).button.isHidden && canvas.header(.effects).action != nil && canvas.header(.effects).button.accessibilityLabel() == "Edit clip motion cues"))
             results.append(.init(name: "FX \(height.label) scrolls wholly into the tracks", passed: canvas.motion.frame.minY >= 0 && canvas.motion.frame.maxY <= canvas.trackClip.bounds.height))
             _ = try capture(canvas, name: "v2-timeline-motion-\(height.label.lowercased())", directory: directory)
         }
@@ -203,9 +250,9 @@ import VoxClipCore
         canvas.setFrameSize(NSSize(width: 1056, height: 155))
         canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
         canvas.verticalScroller.changed?(0)
-        results.append(.init(name: "short panel starts CC and FX wholly below the fold", passed: canvas.captions.frame.minY >= canvas.trackClip.bounds.height && canvas.motion.frame.minY >= canvas.trackClip.bounds.height))
+        results.append(.init(name: "short panel shows CC above the fold", passed: canvas.captions.frame.maxY <= canvas.trackClip.bounds.height))
         canvas.verticalScroller.changed?(1)
-        results.append(.init(name: "short panel scrolls to the complete FX lane", passed: canvas.motion.frame.maxY <= canvas.trackClip.bounds.height))
+        results.append(.init(name: "short panel scrolls to the complete music lane", passed: canvas.music.frame.minY >= 0 && canvas.music.frame.maxY <= canvas.trackClip.bounds.height))
         _ = try capture(canvas, name: "v2-timeline-motion-short-scrolled", directory: directory)
         return results
     }
@@ -229,7 +276,8 @@ import VoxClipCore
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         guard let clip = model.activeClip, let number = model.clipNumber(clip.id) else { throw CocoaError(.coderInvalidValue) }
-        let size = NSSize(width: 1056, height: 216)
+        // The compact default panel (eight lanes since #28): V1 and A1 sit in view below the picture lanes.
+        let size = NSSize(width: 1056, height: WorkspaceLayout.timelineCompactDefault)
         // A demo project reads no media: A1 draws a speech envelope made from its words.
         model.waveform = speech(words: model.words, duration: model.sourceDuration)
         // Two cuts inside the clip, so Edited has seams and Source removed ranges, and a
@@ -282,7 +330,7 @@ import VoxClipCore
             }
             let viewport = canvas.viewport
             let playX = TimelineMetrics.header + viewport.x(model.timelinePlayhead(on: axis))
-            let lineY = TimelineMetrics.tracks[1].y + 10
+            let lineY = TimelineMetrics.audio.y + 10
             check("\(name) draws the playhead as a 1 pt tint line through the tracks", matches(color(playX, lineY), "tint.default"))
             check("\(name) draws the playhead's head in the ruler's lower half", matches(color(playX, TimelineMetrics.ruler.y + 14), "tint.default"))
             let inX = TimelineMetrics.header + viewport.x(inOut.lowerBound)
@@ -291,7 +339,7 @@ import VoxClipCore
             if inX - 8 > TimelineMetrics.header {
                 check("\(name) darkens the ruler outside In/Out", matches(color(inX - 6, TimelineMetrics.ruler.y + 13), "timeline.rulerOut"))
             }
-            check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
+            check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18), axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
             let open = canvas.overview.x((model.timelineOverviewClips.first { $0.open }?.source.lowerBound ?? 0) + 0.3)
             // One 10 pt band (y 7–17), or two 8 pt rows (3.5–11.5 and 12.5–20.5) once clips overlap.
             check("\(name) draws the open clip's overview block at 42% clip.label",
@@ -299,7 +347,7 @@ import VoxClipCore
             check("\(name) has no red pixels", !hasRed(bitmap))
             check("\(name) draws filmstrip tiles and names only on wide V1 pieces", canvas.video.tiles > 0 && canvas.video.names > 0)
             check("\(name) fits CC words with a dim ellipsis and nothing below 24 pt", !canvas.captions.blocks.isEmpty && canvas.captions.ellipses > 0 && canvas.captions.textBlocks.allSatisfy { $0 >= 24 })
-            check("\(name) names the CC eye's current state", canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
+            check("\(name) names the CC eye's current state", canvas.header(.captions).button.accessibilityLabel() == "CC Captions, shown")
             results += audioChecks(name: name, canvas: canvas, model: model, matches: { matches(color($0, $1), $2, alpha: $3, over: $4) })
             // A playhead tick moves only the playhead layers: no lane draws again.
             let draws = lanes.map(\.draws)

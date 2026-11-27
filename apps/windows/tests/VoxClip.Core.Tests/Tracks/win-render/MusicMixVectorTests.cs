@@ -12,16 +12,19 @@ public sealed class MusicMixVectorTests
     private static JsonElement Cases() => FixtureLoader.ReadJson("fixtures/music/music-mix-cases.json").RootElement.Clone();
     private static double[] Doubles(JsonElement array) => array.EnumerateArray().Select(value => value.GetDouble()).ToArray();
     private static double? Optional(JsonElement value) => value.ValueKind == JsonValueKind.Null ? null : value.GetDouble();
+    private static MusicMix.LoopPiece[] Pieces(JsonElement array) => array.EnumerateArray().Select(piece => new MusicMix.LoopPiece(
+        piece.GetProperty("sourceStart").GetInt64(), piece.GetProperty("outputStart").GetInt64(), piece.GetProperty("count").GetInt64(),
+        piece.GetProperty("fadeIn").GetInt64(), piece.GetProperty("fadeOut").GetInt64())).ToArray();
     private static void Near(double expected, double actual, string where) => Assert.True(Math.Abs(expected - actual) < 1e-9, $"{where}: {expected} vs {actual}");
 
     [Fact]
     public void TheFileHasItsKeysCountAndTheMacsConstants()
     {
         var cases = Cases();
-        Assert.Equal(["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "caseCount"],
+        Assert.Equal(["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "crossfadeSpans", "caseCount"],
             cases.EnumerateObject().Select(property => property.Name));
         Assert.Equal("voxclip-music-mix-cases/1", cases.GetProperty("format").GetString());
-        Assert.Equal(36, cases.GetProperty("caseCount").GetInt32());
+        Assert.Equal(39, cases.GetProperty("caseCount").GetInt32());
         var constants = cases.GetProperty("constants");
         Assert.Equal((MusicMix.FrameSeconds, MusicMix.DuckDb, MusicMix.AttackSeconds, MusicMix.ReleaseSeconds, MusicMix.LoopCrossfadeSeconds),
             (constants.GetProperty("frameSeconds").GetDouble(), constants.GetProperty("duckDb").GetDouble(), constants.GetProperty("attackSeconds").GetDouble(),
@@ -29,6 +32,24 @@ public sealed class MusicMixVectorTests
         Assert.Equal((MusicMix.FallbackSpeechDb, MusicMix.SilenceFloorDb, MusicMix.MaximumBoostDb, MusicMix.MinimumBedDb, MusicMix.BridgeGapSeconds, MusicMix.MinimumSpeechSeconds),
             (constants.GetProperty("fallbackSpeechDb").GetDouble(), constants.GetProperty("silenceFloorDb").GetDouble(), constants.GetProperty("maximumBoostDb").GetDouble(),
              constants.GetProperty("minimumBedDb").GetDouble(), constants.GetProperty("bridgeGapSeconds").GetDouble(), constants.GetProperty("minimumSpeechSeconds").GetDouble()));
+    }
+
+    [Fact]
+    public void CrossfadeSpansAndWeightsReplay()
+    {
+        foreach (var row in Cases().GetProperty("crossfadeSpans").EnumerateArray())
+        {
+            var keepWhole = row.TryGetProperty("keepWhole", out var whole) && whole.GetBoolean();
+            var spans = MusicMix.CrossfadeSpans(Pieces(row.GetProperty("spans")), row.GetProperty("sampleRate").GetInt32(), keepWhole);
+            Assert.Equal(Pieces(row.GetProperty("expected")), spans);
+            for (var index = 0; index < spans.Count; index++)
+            {
+                var frames = row.GetProperty("weightAt")[index].EnumerateArray().Select(frame => frame.GetInt64()).ToArray();
+                var weights = Doubles(row.GetProperty("weights")[index]);
+                for (var probe = 0; probe < frames.Length; probe++)
+                    Near(weights[probe], MusicMix.PieceWeight(spans[index], frames[probe]), $"span {index}, frame {frames[probe]}");
+            }
+        }
     }
 
     [Fact]
@@ -80,9 +101,7 @@ public sealed class MusicMixVectorTests
         {
             var pieces = MusicMix.LoopPieces(item.GetProperty("trackFrames").GetInt64(), item.GetProperty("offsetFrames").GetInt64(),
                 item.GetProperty("outputFrames").GetInt64(), item.GetProperty("crossfadeFrames").GetInt64());
-            var expected = item.GetProperty("pieces").EnumerateArray().Select(piece => new MusicMix.LoopPiece(piece.GetProperty("sourceStart").GetInt64(),
-                piece.GetProperty("outputStart").GetInt64(), piece.GetProperty("count").GetInt64(), piece.GetProperty("fadeIn").GetInt64(),
-                piece.GetProperty("fadeOut").GetInt64())).ToArray();
+            var expected = Pieces(item.GetProperty("pieces"));
             Assert.Equal(expected, pieces);
             var at = item.GetProperty("weightAt").EnumerateArray().ToArray();
             var weights = item.GetProperty("weights").EnumerateArray().ToArray();

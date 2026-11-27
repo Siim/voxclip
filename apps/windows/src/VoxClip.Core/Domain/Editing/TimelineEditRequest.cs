@@ -28,7 +28,8 @@ public sealed class TimelineEditRequest
             keys.UnionWith(operation switch
             {
                 "move" => ["toWord"], "trim" => ["edge", "toWord"], "split" or "splitAll" => ["atWord"],
-                "fade" => ["edge", "seconds"], "setGain" => ["db"], "addGainPoint" => ["atWord", "db"],
+                "fade" => ["edge", "seconds"], "setGain" => ["db"], "setTrackGain" => ["track", "db"],
+                "dipGain" => ["startWord", "endWord", "byDb"], "addGainPoint" => ["atWord", "db"],
                 "moveGainPoint" => ["fromSeconds", "toWord", "db"], "removeGainPoint" => ["atSeconds"],
                 "slip" => ["bySeconds"], "setLoop" => ["enabled"], "setDuck" => ["track", "db"],
                 "nudge" => fields.ContainsKey("words") && (!fields.ContainsKey("frames") ||
@@ -36,7 +37,7 @@ public sealed class TimelineEditRequest
                 "duplicate" when fields["toWord"] is JsonValue word && word.TryGetValue<double>(out var target) && target >= 0 => ["toWord"],
                 _ => [],
             });
-            if (operation is not ("splitAll" or "setDuck"))
+            if (operation is not ("splitAll" or "setDuck" or "setTrackGain"))
                 keys.Add(fields["item"] is JsonValue item && item.TryGetValue<string>(out var itemId) && itemId is { Length: > 0 } ? "item" : "items");
             var projected = new JsonObject();
             foreach (var (key, field) in fields) if (keys.Contains(key)) projected[key] = field?.DeepClone();
@@ -129,6 +130,12 @@ public sealed class TimelineEditRequest
             case "setGain":
                 Check(["item", "db"]);
                 return new TimelineEdit.SetGain(Item(), Number("db"));
+            case "setTrackGain":
+                Check(["track", "db"]);
+                return new TimelineEdit.SetTrackGain(Text("track"), Number("db"));
+            case "dipGain":
+                Check(["item", "startWord", "endWord", "byDb"]);
+                return new TimelineEdit.DipGain(Item(), Anchor("startWord"), Anchor("endWord", end: true), Number("byDb"));
             case "addGainPoint":
                 Check(["item", "atWord", "db"]);
                 return new TimelineEdit.AddGainPoint(Item(), Anchor("atWord"), Number("db"));

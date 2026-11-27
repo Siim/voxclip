@@ -11429,6 +11429,566 @@
           ]
         }
       ]
+    },
+    "dense-sound": {
+      "format": "voxclip-project",
+      "schemaVersion": 6,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic clip effects wire fixture",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+          "relativePath": "interview-take-3.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8,
+          "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        }
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w1",
+            "text": "So",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "So",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "So",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "So",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "So",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "So",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "So",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "So",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "So",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "So",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "So",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "So",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "So",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "So",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "So",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "So",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": 0.99,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 7,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [
+          {
+            "id": "clip-main",
+            "startWordId": "w1",
+            "endWordId": "w16",
+            "title": "Synthetic clip",
+            "origin": "manual",
+            "aiResultId": null,
+            "aiClipIndex": null,
+            "selected": true
+          }
+        ],
+        "activeClipId": "clip-main"
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {},
+      "clipEffects": [
+        {
+          "id": "sound",
+          "clipId": "clip-main",
+          "kind": "sound",
+          "start": 2,
+          "end": 3,
+          "gainDb": -6,
+          "sound": {
+            "source": "bundled",
+            "id": "whoosh",
+            "durationSeconds": 2,
+            "title": "Whoosh",
+            "license": "cc0"
+          },
+          "mediaOffsetSeconds": 0.125,
+          "gainPoints": [
+            {
+              "t": 0.0,
+              "db": -8
+            },
+            {
+              "t": 0.00390625,
+              "db": -8
+            },
+            {
+              "t": 0.0078125,
+              "db": -8
+            },
+            {
+              "t": 0.01171875,
+              "db": -8
+            },
+            {
+              "t": 0.015625,
+              "db": -8
+            },
+            {
+              "t": 0.01953125,
+              "db": -8
+            },
+            {
+              "t": 0.0234375,
+              "db": -8
+            },
+            {
+              "t": 0.02734375,
+              "db": -8
+            },
+            {
+              "t": 0.03125,
+              "db": -8
+            },
+            {
+              "t": 0.03515625,
+              "db": -8
+            },
+            {
+              "t": 0.0390625,
+              "db": -8
+            },
+            {
+              "t": 0.04296875,
+              "db": -8
+            },
+            {
+              "t": 0.046875,
+              "db": -8
+            },
+            {
+              "t": 0.05078125,
+              "db": -8
+            },
+            {
+              "t": 0.0546875,
+              "db": -8
+            },
+            {
+              "t": 0.05859375,
+              "db": -8
+            },
+            {
+              "t": 0.0625,
+              "db": -8
+            },
+            {
+              "t": 0.06640625,
+              "db": -8
+            },
+            {
+              "t": 0.0703125,
+              "db": -8
+            },
+            {
+              "t": 0.07421875,
+              "db": -8
+            },
+            {
+              "t": 0.078125,
+              "db": -8
+            },
+            {
+              "t": 0.08203125,
+              "db": -8
+            },
+            {
+              "t": 0.0859375,
+              "db": -8
+            },
+            {
+              "t": 0.08984375,
+              "db": -8
+            },
+            {
+              "t": 0.09375,
+              "db": -8
+            },
+            {
+              "t": 0.09765625,
+              "db": -8
+            },
+            {
+              "t": 0.1015625,
+              "db": -8
+            },
+            {
+              "t": 0.10546875,
+              "db": -8
+            },
+            {
+              "t": 0.109375,
+              "db": -8
+            },
+            {
+              "t": 0.11328125,
+              "db": -8
+            },
+            {
+              "t": 0.1171875,
+              "db": -8
+            },
+            {
+              "t": 0.12109375,
+              "db": -8
+            },
+            {
+              "t": 0.125,
+              "db": -8
+            },
+            {
+              "t": 0.12890625,
+              "db": -8
+            },
+            {
+              "t": 0.1328125,
+              "db": -8
+            },
+            {
+              "t": 0.13671875,
+              "db": -8
+            },
+            {
+              "t": 0.140625,
+              "db": -8
+            },
+            {
+              "t": 0.14453125,
+              "db": -8
+            },
+            {
+              "t": 0.1484375,
+              "db": -8
+            },
+            {
+              "t": 0.15234375,
+              "db": -8
+            },
+            {
+              "t": 0.15625,
+              "db": -8
+            },
+            {
+              "t": 0.16015625,
+              "db": -8
+            },
+            {
+              "t": 0.1640625,
+              "db": -8
+            },
+            {
+              "t": 0.16796875,
+              "db": -8
+            },
+            {
+              "t": 0.171875,
+              "db": -8
+            },
+            {
+              "t": 0.17578125,
+              "db": -8
+            },
+            {
+              "t": 0.1796875,
+              "db": -8
+            },
+            {
+              "t": 0.18359375,
+              "db": -8
+            },
+            {
+              "t": 0.1875,
+              "db": -8
+            },
+            {
+              "t": 0.19140625,
+              "db": -8
+            },
+            {
+              "t": 0.1953125,
+              "db": -8
+            },
+            {
+              "t": 0.19921875,
+              "db": -8
+            },
+            {
+              "t": 0.203125,
+              "db": -8
+            },
+            {
+              "t": 0.20703125,
+              "db": -8
+            },
+            {
+              "t": 0.2109375,
+              "db": -8
+            },
+            {
+              "t": 0.21484375,
+              "db": -8
+            },
+            {
+              "t": 0.21875,
+              "db": -8
+            },
+            {
+              "t": 0.22265625,
+              "db": -8
+            },
+            {
+              "t": 0.2265625,
+              "db": -8
+            },
+            {
+              "t": 0.23046875,
+              "db": -8
+            },
+            {
+              "t": 0.234375,
+              "db": -8
+            }
+          ]
+        }
+      ]
     }
   },
   "cases": [
@@ -26140,6 +26700,167 @@
       "undo": "Change volume"
     },
     {
+      "name": "bed/setTrackGain",
+      "base": "bed",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            24000,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "setTrackGain",
+        "track": "music-main",
+        "db": -50
+      },
+      "expected": {
+        "schemaVersion": 6,
+        "music": [
+          {
+            "id": "music-main",
+            "clipId": "clip-main",
+            "asset": {
+              "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm-intro.mp3",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "durationSeconds": 222
+            },
+            "source": "library",
+            "title": "Synthetic calm intro",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": "\"Synthetic calm intro\" by Synthetic artist is licensed under CC BY 3.0.",
+            "sourceUrl": "https://example.com/track/1",
+            "prompt": null,
+            "gainDb": -40,
+            "ducking": true,
+            "fadeInSeconds": 0.5,
+            "fadeOutSeconds": 1.5,
+            "startOffsetSeconds": 0
+          }
+        ]
+      },
+      "undo": "Change volume"
+    },
+    {
+      "name": "bed/unchanged-track-gain",
+      "base": "bed",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "setTrackGain",
+        "track": "music-main",
+        "db": -20
+      },
+      "expected": {
+        "schemaVersion": 4
+      },
+      "undo": "Change volume"
+    },
+    {
+      "name": "music/setTrackGain",
+      "base": "music",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "setTrackGain",
+        "track": "music-main",
+        "db": -10
+      },
+      "expected": {
+        "schemaVersion": 6,
+        "music": [
+          {
+            "id": "music-main",
+            "clipId": "clip-main",
+            "asset": {
+              "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm-intro.mp3",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "durationSeconds": 222
+            },
+            "source": "library",
+            "title": "Synthetic calm intro",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": "\"Synthetic calm intro\" by Synthetic artist is licensed under CC BY 3.0.",
+            "sourceUrl": "https://example.com/track/1",
+            "prompt": null,
+            "gainDb": -10,
+            "ducking": true,
+            "fadeInSeconds": 0.5,
+            "fadeOutSeconds": 1.5,
+            "startOffsetSeconds": 0,
+            "segments": [
+              {
+                "id": "music",
+                "anchorSeconds": 2,
+                "lengthSeconds": 1,
+                "songFromSeconds": 0.5,
+                "loop": true,
+                "gainDb": 0,
+                "fadeInSeconds": 0.25,
+                "fadeOutSeconds": 0.125,
+                "gainPoints": [
+                  {
+                    "t": 0.25,
+                    "db": -8
+                  },
+                  {
+                    "t": 0.75,
+                    "db": -12
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "undo": "Change volume"
+    },
+    {
+      "name": "bed/track-outside-scope",
+      "base": "bed",
+      "scope": null,
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "setTrackGain",
+        "track": "music-main",
+        "db": -10
+      },
+      "refusal": "Select an item on this timeline."
+    },
+    {
       "name": "bed/delete",
       "base": "bed",
       "scope": "clip-main",
@@ -27913,6 +28634,242 @@
         "db": -6
       },
       "refusal": "There is already a volume keyframe here."
+    },
+    {
+      "name": "sound/dipGain",
+      "base": "sound",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "dipGain",
+        "item": [
+          "effect",
+          "sound"
+        ],
+        "fromSource": 2.125005,
+        "toSource": 2.875005,
+        "byDb": -6
+      },
+      "expected": {
+        "schemaVersion": 6,
+        "clipEffects": [
+          {
+            "id": "sound",
+            "clipId": "clip-main",
+            "kind": "sound",
+            "start": 2,
+            "end": 3,
+            "gainDb": -6,
+            "sound": {
+              "source": "bundled",
+              "id": "whoosh",
+              "durationSeconds": 2,
+              "title": "Whoosh",
+              "license": "cc0"
+            },
+            "mediaOffsetSeconds": 0.125,
+            "gainPoints": [
+              {
+                "t": 0.125,
+                "db": -8
+              },
+              {
+                "t": 0.175,
+                "db": -14
+              },
+              {
+                "t": 0.825,
+                "db": -18
+              },
+              {
+                "t": 0.875,
+                "db": -12
+              }
+            ]
+          }
+        ]
+      },
+      "undo": "Dip volume"
+    },
+    {
+      "name": "music/dipGain",
+      "base": "music",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "dipGain",
+        "item": [
+          "music",
+          "music"
+        ],
+        "fromSource": 2.125,
+        "toSource": 2.218770833333333,
+        "byDb": -75
+      },
+      "expected": {
+        "schemaVersion": 6,
+        "music": [
+          {
+            "id": "music-main",
+            "clipId": "clip-main",
+            "asset": {
+              "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm-intro.mp3",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "durationSeconds": 222
+            },
+            "source": "library",
+            "title": "Synthetic calm intro",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": "\"Synthetic calm intro\" by Synthetic artist is licensed under CC BY 3.0.",
+            "sourceUrl": "https://example.com/track/1",
+            "prompt": null,
+            "gainDb": -20,
+            "ducking": true,
+            "fadeInSeconds": 0.5,
+            "fadeOutSeconds": 1.5,
+            "startOffsetSeconds": 0,
+            "segments": [
+              {
+                "id": "music",
+                "anchorSeconds": 2,
+                "lengthSeconds": 1,
+                "songFromSeconds": 0.5,
+                "loop": true,
+                "gainDb": 0,
+                "fadeInSeconds": 0.25,
+                "fadeOutSeconds": 0.125,
+                "gainPoints": [
+                  {
+                    "t": 0.125,
+                    "db": -8
+                  },
+                  {
+                    "t": 0.15625,
+                    "db": -60
+                  },
+                  {
+                    "t": 0.18752083333333333,
+                    "db": -60
+                  },
+                  {
+                    "t": 0.21877083333333333,
+                    "db": -8
+                  },
+                  {
+                    "t": 0.25,
+                    "db": -8
+                  },
+                  {
+                    "t": 0.75,
+                    "db": -12
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "undo": "Dip volume"
+    },
+    {
+      "name": "sound/dip-below-three-samples",
+      "base": "sound",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "dipGain",
+        "item": [
+          "effect",
+          "sound"
+        ],
+        "fromSource": 2.5,
+        "toSource": 2.5000416666666667,
+        "byDb": -6
+      },
+      "refusal": "Select a longer range inside the item."
+    },
+    {
+      "name": "dense-sound/dipGain",
+      "base": "dense-sound",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "dipGain",
+        "item": [
+          "effect",
+          "sound"
+        ],
+        "fromSource": 2.5,
+        "toSource": 2.75,
+        "byDb": -6
+      },
+      "refusal": "An item can have up to 64 volume keyframes."
+    },
+    {
+      "name": "dense-sound/zero-depth-dip",
+      "base": "dense-sound",
+      "scope": "clip-main",
+      "plan": {
+        "kept": [
+          [
+            0,
+            384000
+          ]
+        ],
+        "seams": [],
+        "total": 384000
+      },
+      "edit": {
+        "op": "dipGain",
+        "item": [
+          "effect",
+          "sound"
+        ],
+        "fromSource": 2.5,
+        "toSource": 2.75,
+        "byDb": 0
+      },
+      "expected": {
+        "schemaVersion": 6
+      },
+      "undo": "Dip volume"
     },
     {
       "name": "bRoll/reject-overlap",

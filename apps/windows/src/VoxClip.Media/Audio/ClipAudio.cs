@@ -186,8 +186,8 @@ internal static class EffectAudio
         return gain;
     }
 
-    /// <summary>A sound placed on the rendered timeline: its first frame, interleaved stereo samples and linear gain.</summary>
-    internal sealed record PlacedSound(long StartFrame, float[] Samples, float Gain);
+    /// <summary>A sound placed on the rendered timeline: its span, interleaved stereo samples and linear gain.</summary>
+    internal sealed record PlacedSound(MusicMix.LoopPiece Span, float[] Samples, float Gain);
 
     /// <summary>The bleep tones (rendered seconds) and sounds of a render.</summary>
     internal sealed record Track((double Start, double End)[] Tones, PlacedSound[] Sounds)
@@ -230,9 +230,12 @@ internal static class EffectAudio
                     samples[frame * 2 + 1] *= gain;
                 }
             }
-            sounds.Add(new(start, samples, (float)Math.Pow(10, (effect.GainDb ?? 0) / 20)));
+            sounds.Add(new(new(0, start, samples.Length / 2), samples, (float)Math.Pow(10, (effect.GainDb ?? 0) / 20)));
         }
-        return new(tones, sounds.ToArray());
+        var ordered = sounds.OrderBy(sound => sound.Span.OutputStart).ToArray();
+        var spans = MusicMix.CrossfadeSpans(ordered.Select(sound => sound.Span).ToArray(), rate, keepWhole: true);
+        for (var index = 0; index < ordered.Length; index++) ordered[index] = ordered[index] with { Span = spans[index] };
+        return new(tones, ordered);
     }
 
     /// <summary>Adds the effects track at rendered frames <paramref name="firstFrame"/>… into <paramref name="target"/>.</summary>
@@ -258,15 +261,17 @@ internal static class EffectAudio
         }
         foreach (var sound in track.Sounds)
         {
-            var soundFrames = sound.Samples.Length / 2;
-            var from = Math.Max(firstFrame, sound.StartFrame);
-            var to = Math.Min(firstFrame + frames, sound.StartFrame + soundFrames);
+            var span = sound.Span;
+            var from = Math.Max(firstFrame, span.OutputStart);
+            var to = Math.Min(firstFrame + frames, span.OutputStart + span.Count);
             for (var frame = from; frame < to; frame++)
             {
-                var source = (int)(frame - sound.StartFrame) * 2;
+                var local = frame - span.OutputStart;
+                var source = (int)local * 2;
                 var index = (int)(frame - firstFrame) * 2;
-                target[index] += sound.Samples[source] * sound.Gain;
-                target[index + 1] += sound.Samples[source + 1] * sound.Gain;
+                var weight = (float)MusicMix.PieceWeight(span, local);
+                target[index] += sound.Samples[source] * sound.Gain * weight;
+                target[index + 1] += sound.Samples[source + 1] * sound.Gain * weight;
             }
         }
     }

@@ -20,11 +20,12 @@ public struct TimelineEditRequest: Sendable, Equatable {
             guard let fields = entry.aiObject, let op = fields["op"]?.aiString else { return entry }
             let keys: [String: Set<String>] = ["move": ["toWord"], "nudge": ["frames", "words"], "trim": ["edge", "toWord"],
                 "split": ["atWord"], "splitAll": ["atWord"], "fade": ["edge", "seconds"], "setGain": ["db"],
+                "setTrackGain": ["track", "db"], "dipGain": ["startWord", "endWord", "byDb"],
                 "addGainPoint": ["atWord", "db"], "moveGainPoint": ["fromSeconds", "toWord", "db"],
                 "removeGainPoint": ["atSeconds"], "slip": ["bySeconds"], "setLoop": ["enabled"], "setDuck": ["track", "db"],
                 "duplicate": ["toWord"], "delete": []]
             var used = (keys[op] ?? []).union(["op"])
-            if !["splitAll", "setDuck"].contains(op) {
+            if !["splitAll", "setDuck", "setTrackGain"].contains(op) {
                 used.insert(fields["item"]?.aiString?.isEmpty == false ? "item" : "items")
             }
             if op == "nudge", fields["words"]?.aiInt != 0, fields["words"] != nil { used.remove("frames") }
@@ -113,6 +114,12 @@ public struct TimelineEditRequest: Sendable, Equatable {
         case "setGain":
             try check(["item", "db"])
             return try .setGain(item: item(), db: number("db"))
+        case "setTrackGain":
+            try check(["track", "db"])
+            return try .setTrackGain(track: text("track"), db: number("db"))
+        case "dipGain":
+            try check(["item", "startWord", "endWord", "byDb"])
+            return try .dipGain(item: item(), fromSource: anchor("startWord"), toSource: anchor("endWord", end: true), byDb: number("byDb"))
         case "addGainPoint":
             try check(["item", "atWord", "db"])
             return try .addGainPoint(item: item(), atSource: anchor("atWord"), db: number("db"))

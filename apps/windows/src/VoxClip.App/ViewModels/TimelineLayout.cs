@@ -17,7 +17,7 @@ internal static class TimelineLayout
     internal const double ToolbarHeight = 32;
     internal const double OverviewHeight = 24;
     internal const double RulerHeight = 22;
-    internal static TimelineTrackGeometry Tracks(int size, bool video, bool captions, bool effects) => new(size, video, captions, effects);
+    internal static TimelineTrackGeometry Tracks(int size, IReadOnlyDictionary<TimelineLane, int>? rows = null) => new(size, rows);
     internal static TimelineWindow Clamp(TimelineWindow window, double duration)
     {
         duration = double.IsFinite(duration) ? Math.Max(.001, duration) : .001;
@@ -105,7 +105,13 @@ internal static class TimelineLayout
         if (model.IsReadOnly || model.Busy || first < 0 || last < first || last >= model.Words.Count) return false;
         var clip = model.Clips.FirstOrDefault(clip => clip.Id == clipId);
         if (clip is null || first == model.Index(clip.Clip.StartWordId) && last == model.Index(clip.Clip.EndWordId)) return false;
-        return model.ApplyBatch([new EditOperation.UpdateClip(clipId, first, last)]);
+        if (clip.Clip.Parts is not null) return false;
+        var id = new TimelineItemId(TimelineItemType.Clip, clipId);
+        var edits = new List<TimelineEdit>();
+        if (last > model.Index(clip.Clip.EndWordId)) edits.Add(new TimelineEdit.Trim(id, TimelineEdge.End, model.Words[last].End));
+        if (first != model.Index(clip.Clip.StartWordId)) edits.Add(new TimelineEdit.Trim(id, TimelineEdge.Start, model.Words[first].Start));
+        if (last < model.Index(clip.Clip.EndWordId)) edits.Add(new TimelineEdit.Trim(id, TimelineEdge.End, model.Words[last].End));
+        return new TimelineEditSession(model, clipId).Commit(edits);
     }
     internal static string ValueText(double time, double total, int cuts, bool edited) =>
         $"{Spoken(time)} of {Spoken(total)}{(edited ? " after cuts" : " source")}, {cuts.ToString(CultureInfo.InvariantCulture)} cuts";
@@ -118,30 +124,41 @@ internal static class TimelineLayout
 
 internal readonly record struct TimelineTrackGeometry
 {
-    internal double VideoTop { get; }
-    internal double AudioTop { get; }
-    internal double CaptionTop { get; }
-    internal double EffectsTop { get; }
-    internal double MusicTop { get; }
-    internal double VideoHeight { get; }
-    internal double AudioHeight { get; }
-    internal double CaptionHeight { get; }
-    internal double EffectsHeight { get; }
-    internal double MusicHeight { get; }
+    private readonly (double Top, double Height, double Row)[] lanes;
+    internal double Top(TimelineLane lane) => lanes[(int)lane].Top;
+    internal double LaneHeight(TimelineLane lane) => lanes[(int)lane].Height;
+    internal double RowHeight(TimelineLane lane) => lanes[(int)lane].Row;
+    internal double VideoTop => Top(TimelineLane.V1);
+    internal double AudioTop => Top(TimelineLane.A1);
+    internal double CaptionTop => Top(TimelineLane.CC);
+    internal double EffectsTop => Top(TimelineLane.FX);
+    internal double MusicTop => Top(TimelineLane.M1);
+    internal double VideoHeight => LaneHeight(TimelineLane.V1);
+    internal double AudioHeight => LaneHeight(TimelineLane.A1);
+    internal double CaptionHeight => LaneHeight(TimelineLane.CC);
+    internal double EffectsHeight => LaneHeight(TimelineLane.FX);
+    internal double MusicHeight => LaneHeight(TimelineLane.M1);
     internal double Height { get; }
-    internal TimelineTrackGeometry(int size, bool video, bool captions, bool effects)
+    internal TimelineTrackGeometry(int size, IReadOnlyDictionary<TimelineLane, int>? rows)
     {
         size = Math.Clamp(size, 0, 2);
-        VideoHeight = video ? size switch { 0 => 28, 2 => 52, _ => 36 } : 0;
-        AudioHeight = size switch { 0 => 32, 2 => 64, _ => 44 };
-        CaptionHeight = captions ? size switch { 0 => 20, 2 => 28, _ => 24 } : 0;
-        EffectsHeight = effects ? size switch { 0 => 20, 2 => 28, _ => 24 } : 0;
-        MusicHeight = size switch { 0 => 20, 2 => 28, _ => 24 };
-        VideoTop = TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight + 1;
-        AudioTop = VideoTop + (video ? VideoHeight + 1 : 0);
-        CaptionTop = AudioTop + AudioHeight + 1;
-        EffectsTop = CaptionTop + (captions ? CaptionHeight + 1 : 0);
-        MusicTop = EffectsTop + (effects ? EffectsHeight + 1 : 0);
-        Height = MusicTop + MusicHeight + 10;
+        var ordered = Enum.GetValues<TimelineLane>();
+        lanes = new (double, double, double)[ordered.Length];
+        double top = TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight + 1;
+        foreach (var lane in ordered)
+        {
+            var count = Math.Max(1, rows?.GetValueOrDefault(lane) ?? 1);
+            var row = lane switch
+            {
+                TimelineLane.V1 => size switch { 0 => 28, 2 => 52, _ => 36 },
+                TimelineLane.A1 => size switch { 0 => 32, 2 => 64, _ => 44 },
+                TimelineLane.S1 or TimelineLane.M1 => size switch { 0 => 22, 2 => 44, _ => 30 },
+                _ => size switch { 0 => 20, 2 => 28, _ => 24 }
+            };
+            var height = row * count;
+            lanes[(int)lane] = (top, height, row);
+            top += height + 1;
+        }
+        Height = top + 9;
     }
 }

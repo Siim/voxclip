@@ -523,7 +523,9 @@ public sealed class AskClaudeAppTests
         Assert.Contains("AutomationProperties.AutomationId=\"Clip.AskClaude\"", window.Split("x:Key=\"ClipRow\"")[1].Split("</MenuFlyout>")[0]);
         var timeline = File.ReadAllText(Path.Combine(app, "Controls", "TimelineView.cs"));
         Assert.Contains("model?.OpenAskClaudeOnTimeRange()", timeline);
-        Assert.Contains("model.AdjustAskClaudeFromTimeline(hit)", timeline);
+        Assert.Contains("HitItem(args.GetPosition(track)) is { } hit) { OpenItem(hit.Item)", timeline);
+        var items = File.ReadAllText(Path.Combine(app, "Controls", "TimelineView.Items.cs"));
+        Assert.Contains("item.Id.Type == TimelineItemType.Effect) model?.AdjustAskClaudeFromTimeline(item.Id.Value)", items);
         var page = File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml"));
         Assert.Contains("<controls:AskClaudeBoxOverlay x:Name=\"AskClaudeBox\"/>", page);
         var services = File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.AskClaude.cs"));

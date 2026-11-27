@@ -189,8 +189,15 @@ public static class MusicMix
         if (seconds < 0 || seconds >= length) return 0;
         var fade = FadeFactor(seconds, length, shape.FadeInSeconds ?? 0, shape.FadeOutSeconds ?? 0);
         if (fade == 0 || shape.GainPoints is not { Count: > 0 } points) return fade;
-        if (seconds <= points[0].T) return fade * Math.Pow(10, points[0].Db / 20);
-        if (seconds >= points[^1].T) return fade * Math.Pow(10, points[^1].Db / 20);
+        return fade * Math.Pow(10, EnvelopeDb(seconds, points) / 20);
+    }
+
+    /// <summary>Interpolate item-local gain in dB, holding the endpoints outside the keyed range.</summary>
+    public static double EnvelopeDb(double seconds, IReadOnlyList<GainPoint> points)
+    {
+        if (points.Count == 0) return 0;
+        if (seconds <= points[0].T) return points[0].Db;
+        if (seconds >= points[^1].T) return points[^1].Db;
         var lower = 0;
         var upper = points.Count - 1;
         while (upper - lower > 1)
@@ -201,8 +208,7 @@ public static class MusicMix
         }
         var first = points[lower];
         var second = points[upper];
-        var db = first.Db + (second.Db - first.Db) * (seconds - first.T) / (second.T - first.T);
-        return fade * Math.Pow(10, db / 20);
+        return first.Db + (second.Db - first.Db) * ((seconds - first.T) / (second.T - first.T));
     }
 
     /// <summary>One stretch of the source track placed in the bed. Neighbours overlap by FadeIn/FadeOut frames.</summary>
@@ -231,18 +237,30 @@ public static class MusicMix
             if (pieces.Count > 0) placements.Add(new(segment, new(offset, start, count), pieces));
         }
         var ordered = placements.OrderBy(placement => placement.Span.OutputStart).ToArray();
-        for (var index = 1; index < ordered.Length; index++)
-        {
-            var previous = ordered[index - 1];
-            var current = ordered[index];
-            var previousEnd = previous.Span.OutputStart + previous.Span.Count;
-            var overlap = Math.Min(crossfadeFrames, Math.Min(current.Span.Count, previousEnd - current.Span.OutputStart));
-            if (overlap <= 0) continue;
-            ordered[index - 1] = previous with { Span = previous.Span with
-                { Count = current.Span.OutputStart + overlap - previous.Span.OutputStart, FadeOut = overlap } };
-            ordered[index] = current with { Span = current.Span with { FadeIn = overlap } };
-        }
+        var spans = CrossfadeSpans(ordered.Select(placement => placement.Span).ToArray(), rate);
+        for (var index = 0; index < ordered.Length; index++) ordered[index] = ordered[index] with { Span = spans[index] };
         return ordered;
+    }
+
+    /// <summary>Hand off between start-ordered spans over at most two seconds using equal-power piece weights. With
+    /// keepWhole (sounds), only an edge overlap that fits the hand-off crossfades (the next sound starts later and ends
+    /// later), so no item loses samples and a sound inside another just adds.</summary>
+    public static IReadOnlyList<LoopPiece> CrossfadeSpans(IReadOnlyList<LoopPiece> ordered, int rate, bool keepWhole = false)
+    {
+        var spans = ordered.ToArray();
+        for (var index = 1; index < spans.Length; index++)
+        {
+            var previous = spans[index - 1];
+            var current = spans[index];
+            var overlap = Math.Min(2L * rate, Math.Min(current.Count, previous.OutputStart + previous.Count - current.OutputStart));
+            var previousEnd = previous.OutputStart + previous.Count;
+            var edge = current.OutputStart > previous.OutputStart && current.OutputStart + current.Count > previousEnd
+                && overlap == previousEnd - current.OutputStart;
+            if (overlap <= 0 || keepWhole && !edge) continue;
+            spans[index - 1] = previous with { Count = current.OutputStart + overlap - previous.OutputStart, FadeOut = overlap };
+            spans[index] = current with { FadeIn = overlap };
+        }
+        return spans;
     }
 
     /// <summary>How a track of <paramref name="trackFrames"/> fills <paramref name="outputFrames"/> starting

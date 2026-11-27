@@ -661,6 +661,7 @@ member VoxClip.App.Controls.MusicSection :: field private syncing
 member VoxClip.App.Controls.MusicSection :: field private volume
 member VoxClip.App.Controls.MusicSection :: field private window
 member VoxClip.App.Controls.MusicSection :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,System.Func`1<nint>)
+member VoxClip.App.Controls.MusicSection :: method internal FocusSearch()
 member VoxClip.App.Controls.MusicSection :: method private AddFileAsync()
 member VoxClip.App.Controls.MusicSection :: method private Render()
 member VoxClip.App.Controls.MusicSection :: method private Row(VoxClip.Core.Domain.Music.MusicCandidate,VoxClip.Core.Domain.Music.ProjectMusic)
@@ -992,6 +993,23 @@ member VoxClip.App.Controls.ShellTextFocus :: method public Dispose()
 member VoxClip.App.Controls.StoryPartStyle :: field private Colors
 member VoxClip.App.Controls.StoryPartStyle :: method internal Brush(Microsoft.UI.Xaml.FrameworkElement,int)
 member VoxClip.App.Controls.StoryPartStyle :: method private .cctor()
+member VoxClip.App.Controls.TimelineItemControl :: method internal UpdateSelection(bool)
+member VoxClip.App.Controls.TimelineItemControl :: method internal get_Container()
+member VoxClip.App.Controls.TimelineItemControl :: method internal get_SelectItem()
+member VoxClip.App.Controls.TimelineItemControl :: method internal get_Selected()
+member VoxClip.App.Controls.TimelineItemControl :: method internal set_Container(VoxClip.App.Controls.TimelineSelectionCanvas)
+member VoxClip.App.Controls.TimelineItemControl :: method internal set_SelectItem(System.Action`2<bool,bool>)
+member VoxClip.App.Controls.TimelineItemControl :: method private set_Selected(bool)
+member VoxClip.App.Controls.TimelineItemControl :: method protected OnCreateAutomationPeer()
+member VoxClip.App.Controls.TimelineItemControl :: method public .ctor()
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method protected GetClassNameCore()
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method protected GetPatternCore(Microsoft.UI.Xaml.Automation.Peers.PatternInterface)
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method public .ctor(VoxClip.App.Controls.TimelineItemControl)
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method public AddToSelection()
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method public RemoveFromSelection()
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method public Select()
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method public get_IsSelected()
+member VoxClip.App.Controls.TimelineItemControl+ItemPeer :: method public get_SelectionContainer()
 member VoxClip.App.Controls.TimelineRangeControl :: field private previous
 member VoxClip.App.Controls.TimelineRangeControl :: field private previousReadOnly
 member VoxClip.App.Controls.TimelineRangeControl :: field private reported
@@ -1016,6 +1034,16 @@ member VoxClip.App.Controls.TimelineRangeControl+RangePeer :: method public get_
 member VoxClip.App.Controls.TimelineRangeControl+RangePeer :: method public get_Minimum()
 member VoxClip.App.Controls.TimelineRangeControl+RangePeer :: method public get_SmallChange()
 member VoxClip.App.Controls.TimelineRangeControl+RangePeer :: method public get_Value()
+member VoxClip.App.Controls.TimelineSelectionCanvas :: method protected OnCreateAutomationPeer()
+member VoxClip.App.Controls.TimelineSelectionCanvas :: method public .ctor()
+member VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer :: method protected GetAutomationControlTypeCore()
+member VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer :: method protected GetNameCore()
+member VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer :: method protected GetPatternCore(Microsoft.UI.Xaml.Automation.Peers.PatternInterface)
+member VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer :: method public .ctor(VoxClip.App.Controls.TimelineSelectionCanvas)
+member VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer :: method public GetSelection()
+member VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer :: method public get_CanSelectMultiple()
+member VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer :: method public get_IsSelectionRequired()
+member VoxClip.App.Controls.TimelineView :: field private OpenMusicRequested
 member VoxClip.App.Controls.TimelineView :: field private PlayRequested
 member VoxClip.App.Controls.TimelineView :: field private PreferredPanelHeightChanged
 member VoxClip.App.Controls.TimelineView :: field private SeekRequested
@@ -1031,8 +1059,16 @@ member VoxClip.App.Controls.TimelineView :: field private animationStart
 member VoxClip.App.Controls.TimelineView :: field private askClaude
 member VoxClip.App.Controls.TimelineView :: field private askRange
 member VoxClip.App.Controls.TimelineView :: field private attachedSource
+member VoxClip.App.Controls.TimelineView :: field private audioBand
+member VoxClip.App.Controls.TimelineView :: field private audioBandItem
 member VoxClip.App.Controls.TimelineView :: field private audioDrawing
+member VoxClip.App.Controls.TimelineView :: field private audioProject
 member VoxClip.App.Controls.TimelineView :: field private audioTransform
+member VoxClip.App.Controls.TimelineView :: field private barCommands
+member VoxClip.App.Controls.TimelineView :: field private barEditable
+member VoxClip.App.Controls.TimelineView :: field private barHead
+member VoxClip.App.Controls.TimelineView :: field private barProject
+member VoxClip.App.Controls.TimelineView :: field private barSelection
 member VoxClip.App.Controls.TimelineView :: field private bracketFigures
 member VoxClip.App.Controls.TimelineView :: field private bracketLines
 member VoxClip.App.Controls.TimelineView :: field private bracketTransform
@@ -1049,18 +1085,17 @@ member VoxClip.App.Controls.TimelineView :: field private cueBlocks
 member VoxClip.App.Controls.TimelineView :: field private cueCuts
 member VoxClip.App.Controls.TimelineView :: field private disposed
 member VoxClip.App.Controls.TimelineView :: field private edited
-member VoxClip.App.Controls.TimelineView :: field private effectBlocks
-member VoxClip.App.Controls.TimelineView :: field private effectHits
 member VoxClip.App.Controls.TimelineView :: field private elapsed
 member VoxClip.App.Controls.TimelineView :: field private endHandle
 member VoxClip.App.Controls.TimelineView :: field private envelope
+member VoxClip.App.Controls.TimelineView :: field private fallbackDucking
 member VoxClip.App.Controls.TimelineView :: field private filmstrip
 member VoxClip.App.Controls.TimelineView :: field private filmstripRequest
 member VoxClip.App.Controls.TimelineView :: field private frame
 member VoxClip.App.Controls.TimelineView :: field private frameWidth
-member VoxClip.App.Controls.TimelineView :: field private fxHint
 member VoxClip.App.Controls.TimelineView :: field private geometryBand
 member VoxClip.App.Controls.TimelineView :: field private geometryCache
+member VoxClip.App.Controls.TimelineView :: field private gestureReadout
 member VoxClip.App.Controls.TimelineView :: field private handles
 member VoxClip.App.Controls.TimelineView :: field private head
 member VoxClip.App.Controls.TimelineView :: field private headTransform
@@ -1071,17 +1106,42 @@ member VoxClip.App.Controls.TimelineView :: field private heightPicker
 member VoxClip.App.Controls.TimelineView :: field private hide
 member VoxClip.App.Controls.TimelineView :: field private hideCommand
 member VoxClip.App.Controls.TimelineView :: field private hoverWord
+member VoxClip.App.Controls.TimelineView :: field private hoveredItem
+member VoxClip.App.Controls.TimelineView :: field private itemActions
+member VoxClip.App.Controls.TimelineView :: field private itemAxis
+member VoxClip.App.Controls.TimelineView :: field private itemBar
+member VoxClip.App.Controls.TimelineView :: field private itemBarHeight
+member VoxClip.App.Controls.TimelineView :: field private itemDrag
+member VoxClip.App.Controls.TimelineView :: field private itemDrawing
+member VoxClip.App.Controls.TimelineView :: field private itemFeedback
+member VoxClip.App.Controls.TimelineView :: field private itemFeedbackOrigin
+member VoxClip.App.Controls.TimelineView :: field private itemFields
+member VoxClip.App.Controls.TimelineView :: field private itemGuide
+member VoxClip.App.Controls.TimelineView :: field private itemHits
+member VoxClip.App.Controls.TimelineView :: field private itemLayout
+member VoxClip.App.Controls.TimelineView :: field private itemMessage
+member VoxClip.App.Controls.TimelineView :: field private itemNodes
+member VoxClip.App.Controls.TimelineView :: field private itemOverlay
+member VoxClip.App.Controls.TimelineView :: field private itemPeers
+member VoxClip.App.Controls.TimelineView :: field private itemPlan
+member VoxClip.App.Controls.TimelineView :: field private itemProject
+member VoxClip.App.Controls.TimelineView :: field private itemReason
+member VoxClip.App.Controls.TimelineView :: field private itemWaveformRequest
+member VoxClip.App.Controls.TimelineView :: field private itemWaveforms
 member VoxClip.App.Controls.TimelineView :: field private laneDrawing
 member VoxClip.App.Controls.TimelineView :: field private laneTransform
+member VoxClip.App.Controls.TimelineView :: field private lastItemWidth
+member VoxClip.App.Controls.TimelineView :: field private lastItemWindow
 member VoxClip.App.Controls.TimelineView :: field private leftDim
+member VoxClip.App.Controls.TimelineView :: field private marquee
+member VoxClip.App.Controls.TimelineView :: field private marqueeSelection
 member VoxClip.App.Controls.TimelineView :: field private maximize
 member VoxClip.App.Controls.TimelineView :: field private maximizeCommand
 member VoxClip.App.Controls.TimelineView :: field private mediaPaths
 member VoxClip.App.Controls.TimelineView :: field private metrics
 member VoxClip.App.Controls.TimelineView :: field private mode
 member VoxClip.App.Controls.TimelineView :: field private model
-member VoxClip.App.Controls.TimelineView :: field private musicLabel
-member VoxClip.App.Controls.TimelineView :: field private musicRamp
+member VoxClip.App.Controls.TimelineView :: field private musicFile
 member VoxClip.App.Controls.TimelineView :: field private overview
 member VoxClip.App.Controls.TimelineView :: field private overviewActive
 member VoxClip.App.Controls.TimelineView :: field private overviewBadgeLeft
@@ -1090,6 +1150,7 @@ member VoxClip.App.Controls.TimelineView :: field private overviewClips
 member VoxClip.App.Controls.TimelineView :: field private overviewDragging
 member VoxClip.App.Controls.TimelineView :: field private overviewGrab
 member VoxClip.App.Controls.TimelineView :: field private overviewHead
+member VoxClip.App.Controls.TimelineView :: field private overviewOrigin
 member VoxClip.App.Controls.TimelineView :: field private overviewSuggestions
 member VoxClip.App.Controls.TimelineView :: field private overviewWindow
 member VoxClip.App.Controls.TimelineView :: field private plan
@@ -1098,10 +1159,13 @@ member VoxClip.App.Controls.TimelineView :: field private playGlyph
 member VoxClip.App.Controls.TimelineView :: field private playhead
 member VoxClip.App.Controls.TimelineView :: field private playheadTransform
 member VoxClip.App.Controls.TimelineView :: field private preferredHeight
+member VoxClip.App.Controls.TimelineView :: field private previousMarqueeSelection
+member VoxClip.App.Controls.TimelineView :: field private priorAskRange
 member VoxClip.App.Controls.TimelineView :: field private rangeAnchor
 member VoxClip.App.Controls.TimelineView :: field private ranging
 member VoxClip.App.Controls.TimelineView :: field private rendered
 member VoxClip.App.Controls.TimelineView :: field private renderingBlocked
+member VoxClip.App.Controls.TimelineView :: field private resizeCursor
 member VoxClip.App.Controls.TimelineView :: field private retained
 member VoxClip.App.Controls.TimelineView :: field private rightDim
 member VoxClip.App.Controls.TimelineView :: field private rulerLabels
@@ -1111,7 +1175,11 @@ member VoxClip.App.Controls.TimelineView :: field private scene
 member VoxClip.App.Controls.TimelineView :: field private scope
 member VoxClip.App.Controls.TimelineView :: field private scrollRange
 member VoxClip.App.Controls.TimelineView :: field private scrollThumb
+member VoxClip.App.Controls.TimelineView :: field private scrubOrigin
+member VoxClip.App.Controls.TimelineView :: field private scrubSelection
 member VoxClip.App.Controls.TimelineView :: field private scrubbing
+member VoxClip.App.Controls.TimelineView :: field private selectedGainPoint
+member VoxClip.App.Controls.TimelineView :: field private selectedItems
 member VoxClip.App.Controls.TimelineView :: field private selecting
 member VoxClip.App.Controls.TimelineView :: field private selectionBar
 member VoxClip.App.Controls.TimelineView :: field private selectionLength
@@ -1122,9 +1190,13 @@ member VoxClip.App.Controls.TimelineView :: field private shownSourceElapsed
 member VoxClip.App.Controls.TimelineView :: field private shownSourceFrames
 member VoxClip.App.Controls.TimelineView :: field private slider
 member VoxClip.App.Controls.TimelineView :: field private snapping
+member VoxClip.App.Controls.TimelineView :: field private soundFiles
 member VoxClip.App.Controls.TimelineView :: field private sourceClock
 member VoxClip.App.Controls.TimelineView :: field private sourceElapsed
 member VoxClip.App.Controls.TimelineView :: field private sourceFrames
+member VoxClip.App.Controls.TimelineView :: field private stagedDucking
+member VoxClip.App.Controls.TimelineView :: field private stagedDuckingProject
+member VoxClip.App.Controls.TimelineView :: field private stagedDuckingTiming
 member VoxClip.App.Controls.TimelineView :: field private startHandle
 member VoxClip.App.Controls.TimelineView :: field private stateMessage
 member VoxClip.App.Controls.TimelineView :: field private story
@@ -1150,7 +1222,9 @@ member VoxClip.App.Controls.TimelineView :: field private trimBrackets
 member VoxClip.App.Controls.TimelineView :: field private trimFirst
 member VoxClip.App.Controls.TimelineView :: field private trimId
 member VoxClip.App.Controls.TimelineView :: field private trimLast
-member VoxClip.App.Controls.TimelineView :: field private trimSnapshot
+member VoxClip.App.Controls.TimelineView :: field private trimMoved
+member VoxClip.App.Controls.TimelineView :: field private trimOriginX
+member VoxClip.App.Controls.TimelineView :: field private trimSession
 member VoxClip.App.Controls.TimelineView :: field private trimStart
 member VoxClip.App.Controls.TimelineView :: field private trimming
 member VoxClip.App.Controls.TimelineView :: field private updatingControls
@@ -1164,62 +1238,115 @@ member VoxClip.App.Controls.TimelineView :: field private viewportTransform
 member VoxClip.App.Controls.TimelineView :: field private waveformRequest
 member VoxClip.App.Controls.TimelineView :: field private waveformUnavailable
 member VoxClip.App.Controls.TimelineView :: field private zoom
+member VoxClip.App.Controls.TimelineView :: method internal SetStagedDucking(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Core.Domain.Clips.ClipSpeedTiming)
 member VoxClip.App.Controls.TimelineView :: method internal SetTransport(string,string,bool)
 member VoxClip.App.Controls.TimelineView :: method internal SetWaveform(System.Collections.Generic.IReadOnlyList`1<float>)
+member VoxClip.App.Controls.TimelineView :: method internal ZoomItems(VoxClip.App.ViewModels.TimelineShortcut)
 member VoxClip.App.Controls.TimelineView :: method internal get_FocusTarget()
 member VoxClip.App.Controls.TimelineView :: method internal set_ShowsTransport(bool)
+member VoxClip.App.Controls.TimelineView :: method private AddCommand(string,System.Func`1<VoxClip.Core.Domain.Editing.TimelineEdit>,string)
 member VoxClip.App.Controls.TimelineView :: method private ApplyBrushes()
 member VoxClip.App.Controls.TimelineView :: method private AskClaudeChanged(object,System.EventArgs)
+member VoxClip.App.Controls.TimelineView :: method private AudioX(VoxClip.App.Controls.TimelineView+ItemHit,double)
+member VoxClip.App.Controls.TimelineView :: method private BarLabel(string)
 member VoxClip.App.Controls.TimelineView :: method private Brush(string)
 member VoxClip.App.Controls.TimelineView :: method private CancelTrim()
 member VoxClip.App.Controls.TimelineView :: method private ChangeTrim(bool,int)
 member VoxClip.App.Controls.TimelineView :: method private ChangeWindow(VoxClip.App.ViewModels.TimelineWindow)
 member VoxClip.App.Controls.TimelineView :: method private Changed(object,System.EventArgs)
 member VoxClip.App.Controls.TimelineView :: method private ClearFilmstrip()
+member VoxClip.App.Controls.TimelineView :: method private ClearItemSelection()
 member VoxClip.App.Controls.TimelineView :: method private ClipBounds()
 member VoxClip.App.Controls.TimelineView :: method private Command(string,string,System.Action)
+member VoxClip.App.Controls.TimelineView :: method private CommitItems(VoxClip.Core.Domain.Editing.TimelineEdit)
 member VoxClip.App.Controls.TimelineView :: method private ConfigureTrim(VoxClip.App.Controls.TimelineRangeControl,bool)
 member VoxClip.App.Controls.TimelineView :: method private CreateRetained(int)
+member VoxClip.App.Controls.TimelineView :: method private DragRect(Windows.Foundation.Point,Windows.Foundation.Point)
 member VoxClip.App.Controls.TimelineView :: method private Draw()
+member VoxClip.App.Controls.TimelineView :: method private DrawAskRange(double)
 member VoxClip.App.Controls.TimelineView :: method private DrawCaptions(double)
-member VoxClip.App.Controls.TimelineView :: method private DrawEffects(double)
+member VoxClip.App.Controls.TimelineView :: method private DrawFade(VoxClip.App.Controls.TimelineView+ItemHit,bool,Microsoft.UI.Xaml.Media.Brush)
 member VoxClip.App.Controls.TimelineView :: method private DrawHeaders()
-member VoxClip.App.Controls.TimelineView :: method private DrawMusic(double)
+member VoxClip.App.Controls.TimelineView :: method private DrawItem(VoxClip.App.Controls.TimelineView+ItemHit,bool,double)
+member VoxClip.App.Controls.TimelineView :: method private DrawItemAudio(VoxClip.App.Controls.TimelineView+ItemHit)
+member VoxClip.App.Controls.TimelineView :: method private DrawItemFeedback(double)
+member VoxClip.App.Controls.TimelineView :: method private DrawItemWaveform(VoxClip.App.Controls.TimelineView+ItemHit,Microsoft.UI.Xaml.Media.Brush)
+member VoxClip.App.Controls.TimelineView :: method private DrawItems(double)
 member VoxClip.App.Controls.TimelineView :: method private DrawOverview(double)
 member VoxClip.App.Controls.TimelineView :: method private DrawRuler(double)
 member VoxClip.App.Controls.TimelineView :: method private DrawStory(double)
+member VoxClip.App.Controls.TimelineView :: method private DuckContour(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.Editing.EditPlan)
 member VoxClip.App.Controls.TimelineView :: method private EffectsChanged(object,System.EventArgs)
+member VoxClip.App.Controls.TimelineView :: method private EndSource(double,VoxClip.Core.Domain.Editing.EditPlan)
+member VoxClip.App.Controls.TimelineView :: method private EndTimelineCapture()
+member VoxClip.App.Controls.TimelineView :: method private Exact(string,double,string,bool,System.Func`2<double,VoxClip.Core.Domain.Editing.TimelineEdit>)
 member VoxClip.App.Controls.TimelineView :: method private FromDisplay(double)
 member VoxClip.App.Controls.TimelineView :: method private Geometry(System.Collections.Generic.IEnumerable`1<VoxClip.App.ViewModels.TimelineMark>,bool,bool)
+member VoxClip.App.Controls.TimelineView :: method private HandleItemKey(VoxClip.App.ViewModels.TimelineShortcut)
+member VoxClip.App.Controls.TimelineView :: method private HitItem(Windows.Foundation.Point)
+member VoxClip.App.Controls.TimelineView :: method private InitializeItemBar(Microsoft.UI.Xaml.Controls.Grid)
+member VoxClip.App.Controls.TimelineView :: method private InitializeItemEditing(Microsoft.UI.Xaml.Controls.Grid)
+member VoxClip.App.Controls.TimelineView :: method private ItemAt(Windows.Foundation.Point)
+member VoxClip.App.Controls.TimelineView :: method private ItemMoved(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
+member VoxClip.App.Controls.TimelineView :: method private ItemPressed(Windows.Foundation.Point,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
+member VoxClip.App.Controls.TimelineView :: method private ItemReleased(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
+member VoxClip.App.Controls.TimelineView :: method private ItemText(Microsoft.UI.Xaml.Controls.Canvas,string,double,double,double,string)
+member VoxClip.App.Controls.TimelineView :: method private ItemToScreen(double)
+member VoxClip.App.Controls.TimelineView :: method private ItemX(double,double)
+member VoxClip.App.Controls.TimelineView :: method private LoadItemWaveformsAsync(string[],System.Threading.CancellationTokenSource)
 member VoxClip.App.Controls.TimelineView :: method private LoadThumbnail(int,double,string,VoxClip.Core.Domain.Shared.MediaReference,VoxClip.App.Services.Thumbnails,System.Threading.CancellationTokenSource)
 member VoxClip.App.Controls.TimelineView :: method private LoadWaveform(System.Collections.Generic.IReadOnlyList`1<float>,double)
+member VoxClip.App.Controls.TimelineView :: method private LocalTime(VoxClip.App.Controls.TimelineView+ItemHit,double)
 member VoxClip.App.Controls.TimelineView :: method private MediaGeometry(VoxClip.App.ViewModels.TimelineMediaTile)
 member VoxClip.App.Controls.TimelineView :: method private MovePlayhead()
+member VoxClip.App.Controls.TimelineView :: method private OpenItem(VoxClip.Core.Domain.Editing.TimelineItem)
 member VoxClip.App.Controls.TimelineView :: method private Ordered(double,double)
+member VoxClip.App.Controls.TimelineView :: method private Overlaps(Windows.Foundation.Rect,Windows.Foundation.Rect)
 member VoxClip.App.Controls.TimelineView :: method private OverviewKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private OverviewMoved(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private OverviewPressed(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
+member VoxClip.App.Controls.TimelineView :: method private Paint(Microsoft.UI.Xaml.Controls.Canvas,Microsoft.UI.Xaml.Media.Brush,double,double,double,double,double)
+member VoxClip.App.Controls.TimelineView :: method private PlaceItemPeers(VoxClip.App.Controls.TimelineView+ItemHit,bool)
 member VoxClip.App.Controls.TimelineView :: method private PlayheadKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private PointerTime(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
+member VoxClip.App.Controls.TimelineView :: method private PreviewClipTrim(Windows.Foundation.Point)
 member VoxClip.App.Controls.TimelineView :: method private PropertyChanged(object,System.ComponentModel.PropertyChangedEventArgs)
+member VoxClip.App.Controls.TimelineView :: method private ReadItemRange(VoxClip.Core.Domain.Editing.TimelineItemId,System.Nullable`1<VoxClip.Core.Domain.Editing.TimelineEdge>)
 member VoxClip.App.Controls.TimelineView :: method private ReadPlayhead()
 member VoxClip.App.Controls.TimelineView :: method private ReadTrim(bool)
 member VoxClip.App.Controls.TimelineView :: method private Rebuild(bool)
+member VoxClip.App.Controls.TimelineView :: method private RedrawItems()
 member VoxClip.App.Controls.TimelineView :: method private RefreshCues()
+member VoxClip.App.Controls.TimelineView :: method private RefreshItemActions(bool)
+member VoxClip.App.Controls.TimelineView :: method private RefreshItemAudio()
+member VoxClip.App.Controls.TimelineView :: method private RefreshItemBar()
+member VoxClip.App.Controls.TimelineView :: method private RefreshItemProjection()
 member VoxClip.App.Controls.TimelineView :: method private RequestFilmstrip(VoxClip.App.ViewModels.TimelineMediaTile,double)
+member VoxClip.App.Controls.TimelineView :: method private ResetItemAudio()
 member VoxClip.App.Controls.TimelineView :: method private RestoreCut(object,Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs)
+member VoxClip.App.Controls.TimelineView :: method private RestoreItemWords(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.Controls.TimelineView :: method private RestoreScrub()
+member VoxClip.App.Controls.TimelineView :: method private ScreenToItem(double)
 member VoxClip.App.Controls.TimelineView :: method private Scrub(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private ScrubMoved(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private ScrubPressed(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private ScrubReleased(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private Seek(double)
+member VoxClip.App.Controls.TimelineView :: method private SelectItem(VoxClip.Core.Domain.Editing.TimelineItemId,bool,bool)
 member VoxClip.App.Controls.TimelineView :: method private SelectionChanged(object,System.EventArgs)
 member VoxClip.App.Controls.TimelineView :: method private SetClockRun(Microsoft.UI.Xaml.Documents.Run,string,string&)
+member VoxClip.App.Controls.TimelineView :: method private SetItemRange(VoxClip.Core.Domain.Editing.TimelineItemId,System.Nullable`1<VoxClip.Core.Domain.Editing.TimelineEdge>,double)
+member VoxClip.App.Controls.TimelineView :: method private SetItemSelection(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.TimelineItemId>)
 member VoxClip.App.Controls.TimelineView :: method private ToDisplay(double)
+member VoxClip.App.Controls.TimelineView :: method private UpdateItemHover(System.Nullable`1<Windows.Foundation.Point>)
 member VoxClip.App.Controls.TimelineView :: method private UpdateViewport(System.Nullable`1<double>,System.Nullable`1<double>)
+member VoxClip.App.Controls.TimelineView :: method private VolumeY(VoxClip.App.Controls.TimelineView+ItemHit,double)
 member VoxClip.App.Controls.TimelineView :: method private WheelChanged(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.Controls.TimelineView :: method private get_AxisDuration()
+member VoxClip.App.Controls.TimelineView :: method private get_CanEditItems()
 member VoxClip.App.Controls.TimelineView :: method private get_Edited()
+member VoxClip.App.Controls.TimelineView :: method private get_ItemAxis()
+member VoxClip.App.Controls.TimelineView :: method private get_ItemOffset()
 member VoxClip.App.Controls.TimelineView :: method public .ctor()
 member VoxClip.App.Controls.TimelineView :: method public Attach(VoxClip.App.ViewModels.EditorViewModel)
 member VoxClip.App.Controls.TimelineView :: method public Detach()
@@ -1228,6 +1355,7 @@ member VoxClip.App.Controls.TimelineView :: method public SetAudioEnvelope(VoxCl
 member VoxClip.App.Controls.TimelineView :: method public SetCaptionTrack(VoxClip.Core.Domain.Captions.CaptionTrack,VoxClip.Core.Domain.VoiceLab.RenderTimeline,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.Controls.TimelineView :: method public SetPanelCommands(System.Action,System.Action)
 member VoxClip.App.Controls.TimelineView :: method public SetVisibleRange(VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.App.Controls.TimelineView :: method public add_OpenMusicRequested(System.EventHandler)
 member VoxClip.App.Controls.TimelineView :: method public add_PlayRequested(System.EventHandler)
 member VoxClip.App.Controls.TimelineView :: method public add_PreferredPanelHeightChanged(System.EventHandler`1<double>)
 member VoxClip.App.Controls.TimelineView :: method public add_SeekRequested(System.EventHandler`1<double>)
@@ -1238,6 +1366,7 @@ member VoxClip.App.Controls.TimelineView :: method public get_PreferredPanelHeig
 member VoxClip.App.Controls.TimelineView :: method public get_ShowsCuts()
 member VoxClip.App.Controls.TimelineView :: method public get_TrackSize()
 member VoxClip.App.Controls.TimelineView :: method public get_VisibleRange()
+member VoxClip.App.Controls.TimelineView :: method public remove_OpenMusicRequested(System.EventHandler)
 member VoxClip.App.Controls.TimelineView :: method public remove_PlayRequested(System.EventHandler)
 member VoxClip.App.Controls.TimelineView :: method public remove_PreferredPanelHeightChanged(System.EventHandler`1<double>)
 member VoxClip.App.Controls.TimelineView :: method public remove_SeekRequested(System.EventHandler`1<double>)
@@ -1246,6 +1375,83 @@ member VoxClip.App.Controls.TimelineView :: method public remove_TrackSizeChange
 member VoxClip.App.Controls.TimelineView :: method public remove_VisibleRangeChanged(System.EventHandler`1<VoxClip.Core.Domain.Shared.TimeRange>)
 member VoxClip.App.Controls.TimelineView :: method public set_ShowsCuts(bool)
 member VoxClip.App.Controls.TimelineView :: method public set_TrackSize(int)
+member VoxClip.App.Controls.TimelineView+ItemBarPanel :: method protected OnCreateAutomationPeer()
+member VoxClip.App.Controls.TimelineView+ItemBarPanel :: method public .ctor()
+member VoxClip.App.Controls.TimelineView+ItemBarPanel+ItemBarPeer :: method protected GetAutomationControlTypeCore()
+member VoxClip.App.Controls.TimelineView+ItemBarPanel+ItemBarPeer :: method public .ctor(VoxClip.App.Controls.TimelineView+ItemBarPanel)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method internal get_Moved()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method internal set_Moved(bool)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method private .ctor(VoxClip.App.Controls.TimelineView+ItemDrag)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method private get_EqualityContract()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public .ctor(VoxClip.App.ViewModels.TimelineEditSession,VoxClip.App.Controls.TimelineView+ItemHit,VoxClip.App.ViewModels.TimelineItemGesture,Windows.Foundation.Point,VoxClip.Core.Domain.Editing.TimelineItemId[],System.Nullable`1<VoxClip.Core.Domain.Editing.GainPoint>,bool,bool,System.Nullable`1<VoxClip.Core.Domain.Shared.TimeRange>,System.Nullable`1<VoxClip.Core.Domain.Editing.TimelineItemId>)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public Deconstruct(VoxClip.App.ViewModels.TimelineEditSession&,VoxClip.App.Controls.TimelineView+ItemHit&,VoxClip.App.ViewModels.TimelineItemGesture&,Windows.Foundation.Point&,VoxClip.Core.Domain.Editing.TimelineItemId[]&,System.Nullable`1<VoxClip.Core.Domain.Editing.GainPoint>&,bool&,bool&,System.Nullable`1<VoxClip.Core.Domain.Shared.TimeRange>&,System.Nullable`1<VoxClip.Core.Domain.Editing.TimelineItemId>&)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public Equals(VoxClip.App.Controls.TimelineView+ItemDrag)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public Equals(object)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public GetHashCode()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public ToString()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_AddPoint()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_Band()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_Gesture()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_Hit()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_Ids()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_Origin()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_Point()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_PreviousBand()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_PreviousBandItem()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public get_Session()
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public op_Equality(VoxClip.App.Controls.TimelineView+ItemDrag,VoxClip.App.Controls.TimelineView+ItemDrag)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public op_Inequality(VoxClip.App.Controls.TimelineView+ItemDrag,VoxClip.App.Controls.TimelineView+ItemDrag)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_AddPoint(bool)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_Band(bool)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_Gesture(VoxClip.App.ViewModels.TimelineItemGesture)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_Hit(VoxClip.App.Controls.TimelineView+ItemHit)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_Ids(VoxClip.Core.Domain.Editing.TimelineItemId[])
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_Origin(Windows.Foundation.Point)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_Point(System.Nullable`1<VoxClip.Core.Domain.Editing.GainPoint>)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_PreviousBand(System.Nullable`1<VoxClip.Core.Domain.Shared.TimeRange>)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_PreviousBandItem(System.Nullable`1<VoxClip.Core.Domain.Editing.TimelineItemId>)
+member VoxClip.App.Controls.TimelineView+ItemDrag :: method public set_Session(VoxClip.App.ViewModels.TimelineEditSession)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method private .ctor(VoxClip.App.Controls.TimelineView+ItemHit)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method private get_EqualityContract()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public .ctor(VoxClip.Core.Domain.Editing.TimelineItem,VoxClip.App.ViewModels.TimelineItemDetails,VoxClip.Core.Domain.Shared.TimeRange,Windows.Foundation.Rect,double,double)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public Deconstruct(VoxClip.Core.Domain.Editing.TimelineItem&,VoxClip.App.ViewModels.TimelineItemDetails&,VoxClip.Core.Domain.Shared.TimeRange&,Windows.Foundation.Rect&,double&,double&)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public Equals(VoxClip.App.Controls.TimelineView+ItemHit)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public Equals(object)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public GetHashCode()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public ToString()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public get_Details()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public get_Item()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public get_Left()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public get_Range()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public get_Rect()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public get_Right()
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public op_Equality(VoxClip.App.Controls.TimelineView+ItemHit,VoxClip.App.Controls.TimelineView+ItemHit)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public op_Inequality(VoxClip.App.Controls.TimelineView+ItemHit,VoxClip.App.Controls.TimelineView+ItemHit)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public set_Details(VoxClip.App.ViewModels.TimelineItemDetails)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public set_Item(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public set_Left(double)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public set_Range(VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public set_Rect(Windows.Foundation.Rect)
+member VoxClip.App.Controls.TimelineView+ItemHit :: method public set_Right(double)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method private .ctor(VoxClip.App.Controls.TimelineView+ItemNodes)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method private get_EqualityContract()
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public .ctor(VoxClip.App.Controls.TimelineItemControl,VoxClip.App.Controls.TimelineRangeControl,VoxClip.App.Controls.TimelineRangeControl)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public Deconstruct(VoxClip.App.Controls.TimelineItemControl&,VoxClip.App.Controls.TimelineRangeControl&,VoxClip.App.Controls.TimelineRangeControl&)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public Equals(VoxClip.App.Controls.TimelineView+ItemNodes)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public Equals(object)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public GetHashCode()
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public ToString()
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public get_End()
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public get_Item()
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public get_Start()
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public op_Equality(VoxClip.App.Controls.TimelineView+ItemNodes,VoxClip.App.Controls.TimelineView+ItemNodes)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public op_Inequality(VoxClip.App.Controls.TimelineView+ItemNodes,VoxClip.App.Controls.TimelineView+ItemNodes)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public set_End(VoxClip.App.Controls.TimelineRangeControl)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public set_Item(VoxClip.App.Controls.TimelineItemControl)
+member VoxClip.App.Controls.TimelineView+ItemNodes :: method public set_Start(VoxClip.App.Controls.TimelineRangeControl)
 member VoxClip.App.Controls.TranscriptOverlay :: field private above
 member VoxClip.App.Controls.TranscriptOverlay :: field private behind
 member VoxClip.App.Controls.TranscriptOverlay :: field private bounds
@@ -1873,6 +2079,7 @@ member VoxClip.App.Pages.EditorPage :: field private preview
 member VoxClip.App.Pages.EditorPage :: field private previewChanges
 member VoxClip.App.Pages.EditorPage :: field private previewClipId
 member VoxClip.App.Pages.EditorPage :: field private previewDuration
+member VoxClip.App.Pages.EditorPage :: field private previewProject
 member VoxClip.App.Pages.EditorPage :: field private previewSpeed
 member VoxClip.App.Pages.EditorPage :: field private previewStage
 member VoxClip.App.Pages.EditorPage :: field private previewStop
@@ -1894,6 +2101,7 @@ member VoxClip.App.Pages.EditorPage :: field private shellJobs
 member VoxClip.App.Pages.EditorPage :: field private shortcuts
 member VoxClip.App.Pages.EditorPage :: field private standInGeneration
 member VoxClip.App.Pages.EditorPage :: field private timelineMaximized
+member VoxClip.App.Pages.EditorPage :: field private timelineMusicSection
 member VoxClip.App.Pages.EditorPage :: field private timelineShowCuts
 member VoxClip.App.Pages.EditorPage :: field private timelineVisible
 member VoxClip.App.Pages.EditorPage :: field private transportCoordinator
@@ -2109,6 +2317,7 @@ member VoxClip.App.Pages.EditorPage :: method private UpdateTimelineHeight()
 member VoxClip.App.Pages.EditorPage :: method private UpdateToneButton()
 member VoxClip.App.Pages.EditorPage :: method private ViewerClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private WorkflowStatusChanged(object,System.EventArgs)
+member VoxClip.App.Pages.EditorPage :: method private ZoomFocusedEditor(int)
 member VoxClip.App.Pages.EditorPage :: method private get_CurrentHarnessQuote()
 member VoxClip.App.Pages.EditorPage :: method private get_HarnessBlock()
 member VoxClip.App.Pages.EditorPage :: method private get_ShellEditable()
@@ -7732,6 +7941,22 @@ member VoxClip.App.ViewModels.TimelineBadgeFrame :: method public op_Equality(Vo
 member VoxClip.App.ViewModels.TimelineBadgeFrame :: method public op_Inequality(VoxClip.App.ViewModels.TimelineBadgeFrame,VoxClip.App.ViewModels.TimelineBadgeFrame)
 member VoxClip.App.ViewModels.TimelineBadgeFrame :: method public set_Left(double)
 member VoxClip.App.ViewModels.TimelineBadgeFrame :: method public set_Visible(bool)
+member VoxClip.App.ViewModels.TimelineEditSession :: field private activeScope
+member VoxClip.App.ViewModels.TimelineEditSession :: field private pending
+member VoxClip.App.ViewModels.TimelineEditSession :: field private undoName
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal Cancel()
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal Commit()
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal Commit(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>)
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal Preview(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>,string)
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal Probe(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>,VoxClip.Core.Domain.Shared.Project&,string&)
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal get_Baseline()
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal get_IsCurrent()
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal get_Plan()
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal get_PreviewProject()
+member VoxClip.App.ViewModels.TimelineEditSession :: method internal get_Reason()
+member VoxClip.App.ViewModels.TimelineEditSession :: method private set_PreviewProject(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.TimelineEditSession :: method private set_Reason(string)
+member VoxClip.App.ViewModels.TimelineEditSession :: method public .ctor(VoxClip.App.ViewModels.EditorViewModel,string)
 member VoxClip.App.ViewModels.TimelineFilmstrip :: field internal Limit
 member VoxClip.App.ViewModels.TimelineFilmstrip :: method internal Fill(System.Span`1<VoxClip.App.ViewModels.TimelineThumbnailSlot>,VoxClip.Core.Domain.Editing.TimelinePieces,VoxClip.App.ViewModels.TimelineWindow,double,VoxClip.Core.Domain.Editing.TimelineAxis)
 member VoxClip.App.ViewModels.TimelineFrame :: method internal Compute(VoxClip.App.ViewModels.TimelineViewportState,VoxClip.App.ViewModels.TimelineScene,VoxClip.Core.Domain.Editing.EditPlan,VoxClip.App.ViewModels.TimelineWindow,VoxClip.App.ViewModels.TimelineWindow,double,double,bool,bool,bool,string,int,int,bool,System.Nullable`1<double>,VoxClip.App.ViewModels.TimelineStory)
@@ -7786,6 +8011,21 @@ member VoxClip.App.ViewModels.TimelineFrame :: method private set_StartVisible(b
 member VoxClip.App.ViewModels.TimelineFrame :: method private set_Translation(double)
 member VoxClip.App.ViewModels.TimelineFrame :: method private set_TrimEnabled(bool)
 member VoxClip.App.ViewModels.TimelineFrame :: method public .ctor()
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>,string,System.Nullable`1<double>)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>&,string&,System.Nullable`1<double>&)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public Equals(VoxClip.App.ViewModels.TimelineGestureEdit)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public Equals(object)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public GetHashCode()
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public ToString()
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Edits()
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Guide()
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public get_Readout()
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public op_Equality(VoxClip.App.ViewModels.TimelineGestureEdit,VoxClip.App.ViewModels.TimelineGestureEdit)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public op_Inequality(VoxClip.App.ViewModels.TimelineGestureEdit,VoxClip.App.ViewModels.TimelineGestureEdit)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Edits(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineEdit>)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Guide(System.Nullable`1<double>)
+member VoxClip.App.ViewModels.TimelineGestureEdit :: method public set_Readout(string)
 member VoxClip.App.ViewModels.TimelineIntervalIndex :: field private root
 member VoxClip.App.ViewModels.TimelineIntervalIndex :: method internal .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.App.ViewModels.TimelineIntervalIndex :: method internal Query(double,double,System.Action`1<VoxClip.Core.Domain.Shared.TimedWord>)
@@ -7815,6 +8055,70 @@ member VoxClip.App.ViewModels.TimelineIntervalIndex+Node :: method public set_En
 member VoxClip.App.ViewModels.TimelineIntervalIndex+Node :: method public set_Left(VoxClip.App.ViewModels.TimelineIntervalIndex+Node)
 member VoxClip.App.ViewModels.TimelineIntervalIndex+Node :: method public set_Right(VoxClip.App.ViewModels.TimelineIntervalIndex+Node)
 member VoxClip.App.ViewModels.TimelineIntervalIndex+Node :: method public set_Starts(VoxClip.Core.Domain.Shared.TimedWord[])
+member VoxClip.App.ViewModels.TimelineItemDetails :: method internal Envelope(double)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method internal Read(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method internal SetGain(VoxClip.Core.Domain.Editing.TimelineItemId,double)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method internal get_Level()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method private .ctor(VoxClip.App.ViewModels.TimelineItemDetails)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public .ctor(string,double,double,double,double,double,double,bool,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.GainPoint>,VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public Deconstruct(string&,double&,double&,double&,double&,double&,double&,bool&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.GainPoint>&,VoxClip.Core.Domain.Music.ProjectMusic&)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public Equals(VoxClip.App.ViewModels.TimelineItemDetails)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public Equals(object)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public GetHashCode()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public ToString()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_Available()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_FadeIn()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_FadeOut()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_Gain()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_Loop()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_Offset()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_Points()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_Title()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_Track()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public get_TrackGain()
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public op_Equality(VoxClip.App.ViewModels.TimelineItemDetails,VoxClip.App.ViewModels.TimelineItemDetails)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public op_Inequality(VoxClip.App.ViewModels.TimelineItemDetails,VoxClip.App.ViewModels.TimelineItemDetails)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_Available(double)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_FadeIn(double)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_FadeOut(double)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_Gain(double)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_Loop(bool)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_Offset(double)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_Points(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.GainPoint>)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_Title(string)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_Track(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.App.ViewModels.TimelineItemDetails :: method public set_TrackGain(double)
+member VoxClip.App.ViewModels.TimelineItemEditing :: field internal Help
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Audio(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Build(VoxClip.App.ViewModels.TimelineItemGesture,VoxClip.Core.Domain.Editing.TimelineItem,VoxClip.App.ViewModels.TimelineItemDetails,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineItemId>,VoxClip.Core.Domain.Editing.TimelineItemLayout,VoxClip.Core.Domain.Editing.EditPlan,VoxClip.Core.Domain.Editing.TimelineAxis,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,double,double,double,double,bool,System.Nullable`1<VoxClip.Core.Domain.Editing.GainPoint>,System.Nullable`1<VoxClip.Core.Domain.Shared.TimeRange>)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal CanFade(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal CanSlip(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Clock(double)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Connected(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Decibels(double)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Delta(double)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal DuckingDbAt(double,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Core.Domain.Clips.ClipSpeedTiming,System.Collections.Generic.IReadOnlyList`1<double>)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Editable(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Label(VoxClip.Core.Domain.Editing.TimelineItem,VoxClip.App.ViewModels.TimelineItemDetails,double,double,bool)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Length(VoxClip.Core.Domain.Editing.TimelineItem)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Name(string)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Seconds(double)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal Word(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,double)
+member VoxClip.App.ViewModels.TimelineItemEditing :: method internal WordStepValue(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,double,System.Nullable`1<VoxClip.Core.Domain.Editing.TimelineEdge>)
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public Dip
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public Duplicate
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public End
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public FadeIn
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public FadeOut
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public Keyframe
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public Move
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public Slip
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public Start
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public Volume
+member VoxClip.App.ViewModels.TimelineItemGesture :: field public value__
+member VoxClip.App.ViewModels.TimelineKeys :: method internal Resolve(int,bool,bool,bool)
 member VoxClip.App.ViewModels.TimelineLayout :: field internal BadgeTop
 member VoxClip.App.ViewModels.TimelineLayout :: field internal BracketTop
 member VoxClip.App.ViewModels.TimelineLayout :: field internal HeaderWidth
@@ -7829,7 +8133,7 @@ member VoxClip.App.ViewModels.TimelineLayout :: method internal FitWords(string,
 member VoxClip.App.ViewModels.TimelineLayout :: method internal HatchPeriod(bool)
 member VoxClip.App.ViewModels.TimelineLayout :: method internal Plan(VoxClip.App.ViewModels.EditorViewModel)
 member VoxClip.App.ViewModels.TimelineLayout :: method internal Step(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,double,int,bool)
-member VoxClip.App.ViewModels.TimelineLayout :: method internal Tracks(int,bool,bool,bool)
+member VoxClip.App.ViewModels.TimelineLayout :: method internal Tracks(int,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Editing.TimelineLane,int>)
 member VoxClip.App.ViewModels.TimelineLayout :: method internal Trim(int,int,int,int,bool)
 member VoxClip.App.ViewModels.TimelineLayout :: method internal ValueText(double,double,int,bool)
 member VoxClip.App.ViewModels.TimelineLayout :: method internal Window(double,System.Nullable`1<double>,System.Nullable`1<double>)
@@ -7964,6 +8268,28 @@ member VoxClip.App.ViewModels.TimelineScene :: method internal get_VisitedWords(
 member VoxClip.App.ViewModels.TimelineScene :: method private set_BuildVersion(int)
 member VoxClip.App.ViewModels.TimelineScene :: method private set_VisitedWords(int)
 member VoxClip.App.ViewModels.TimelineScene :: method public .ctor()
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Delete
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Duplicate
+member VoxClip.App.ViewModels.TimelineShortcut :: field public EarlierFrame
+member VoxClip.App.ViewModels.TimelineShortcut :: field public EarlierWord
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Escape
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Fit
+member VoxClip.App.ViewModels.TimelineShortcut :: field public LaterFrame
+member VoxClip.App.ViewModels.TimelineShortcut :: field public LaterWord
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Next
+member VoxClip.App.ViewModels.TimelineShortcut :: field public None
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Previous
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Select
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Snapping
+member VoxClip.App.ViewModels.TimelineShortcut :: field public Split
+member VoxClip.App.ViewModels.TimelineShortcut :: field public SplitAll
+member VoxClip.App.ViewModels.TimelineShortcut :: field public TrimEnd
+member VoxClip.App.ViewModels.TimelineShortcut :: field public TrimStart
+member VoxClip.App.ViewModels.TimelineShortcut :: field public VolumeDown
+member VoxClip.App.ViewModels.TimelineShortcut :: field public VolumeUp
+member VoxClip.App.ViewModels.TimelineShortcut :: field public ZoomIn
+member VoxClip.App.ViewModels.TimelineShortcut :: field public ZoomOut
+member VoxClip.App.ViewModels.TimelineShortcut :: field public value__
 member VoxClip.App.ViewModels.TimelineStory :: field private edited
 member VoxClip.App.ViewModels.TimelineStory :: field private editedSeams
 member VoxClip.App.ViewModels.TimelineStory :: field private editedSources
@@ -8028,7 +8354,11 @@ member VoxClip.App.ViewModels.TimelineTileCache+Key :: method public set_Story(V
 member VoxClip.App.ViewModels.TimelineTileCache+Key :: method public set_View(VoxClip.App.ViewModels.TimelineWindow)
 member VoxClip.App.ViewModels.TimelineTileCache+Key :: method public set_Waveform(VoxClip.App.ViewModels.TimelineWaveform)
 member VoxClip.App.ViewModels.TimelineTileCache+Key :: method public set_Width(double)
-member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal .ctor(int,bool,bool,bool)
+member VoxClip.App.ViewModels.TimelineTrackGeometry :: field private lanes
+member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal .ctor(int,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Editing.TimelineLane,int>)
+member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal LaneHeight(VoxClip.Core.Domain.Editing.TimelineLane)
+member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal RowHeight(VoxClip.Core.Domain.Editing.TimelineLane)
+member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal Top(VoxClip.Core.Domain.Editing.TimelineLane)
 member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal get_AudioHeight()
 member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal get_AudioTop()
 member VoxClip.App.ViewModels.TimelineTrackGeometry :: method internal get_CaptionHeight()
@@ -9130,9 +9460,18 @@ type VoxClip.App.Controls.RightColumn
 type VoxClip.App.Controls.SelectionFlyout
 type VoxClip.App.Controls.ShellTextFocus
 type VoxClip.App.Controls.StoryPartStyle
+type VoxClip.App.Controls.TimelineItemControl
+type VoxClip.App.Controls.TimelineItemControl+ItemPeer
 type VoxClip.App.Controls.TimelineRangeControl
 type VoxClip.App.Controls.TimelineRangeControl+RangePeer
+type VoxClip.App.Controls.TimelineSelectionCanvas
+type VoxClip.App.Controls.TimelineSelectionCanvas+SelectionPeer
 type VoxClip.App.Controls.TimelineView
+type VoxClip.App.Controls.TimelineView+ItemBarPanel
+type VoxClip.App.Controls.TimelineView+ItemBarPanel+ItemBarPeer
+type VoxClip.App.Controls.TimelineView+ItemDrag
+type VoxClip.App.Controls.TimelineView+ItemHit
+type VoxClip.App.Controls.TimelineView+ItemNodes
 type VoxClip.App.Controls.TranscriptOverlay
 type VoxClip.App.Controls.TranscriptView
 type VoxClip.App.Controls.TranscriptView+DisplayRun
@@ -9447,10 +9786,16 @@ type VoxClip.App.ViewModels.StuckTakeReason+Words
 type VoxClip.App.ViewModels.TakeRowPresentation
 type VoxClip.App.ViewModels.TimelineAmplitude
 type VoxClip.App.ViewModels.TimelineBadgeFrame
+type VoxClip.App.ViewModels.TimelineEditSession
 type VoxClip.App.ViewModels.TimelineFilmstrip
 type VoxClip.App.ViewModels.TimelineFrame
+type VoxClip.App.ViewModels.TimelineGestureEdit
 type VoxClip.App.ViewModels.TimelineIntervalIndex
 type VoxClip.App.ViewModels.TimelineIntervalIndex+Node
+type VoxClip.App.ViewModels.TimelineItemDetails
+type VoxClip.App.ViewModels.TimelineItemEditing
+type VoxClip.App.ViewModels.TimelineItemGesture
+type VoxClip.App.ViewModels.TimelineKeys
 type VoxClip.App.ViewModels.TimelineLayout
 type VoxClip.App.ViewModels.TimelineMark
 type VoxClip.App.ViewModels.TimelineMediaGeometry`1
@@ -9460,6 +9805,7 @@ type VoxClip.App.ViewModels.TimelinePartSeam
 type VoxClip.App.ViewModels.TimelineRange
 type VoxClip.App.ViewModels.TimelineRetainedPool`1
 type VoxClip.App.ViewModels.TimelineScene
+type VoxClip.App.ViewModels.TimelineShortcut
 type VoxClip.App.ViewModels.TimelineStory
 type VoxClip.App.ViewModels.TimelineThumbnailSlot
 type VoxClip.App.ViewModels.TimelineTileCache

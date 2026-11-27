@@ -45,16 +45,12 @@ enum SidebarItem: Hashable {
     }
     static let explorerRange = Double(VCTokens.sizeSidebarMin)...Double(VCTokens.sizeSidebarMax)
     static let rightRange = Double(VCTokens.sizeRightColumnMin)...Double(VCTokens.sizeRightColumnMax)
-    /// notes.md §6: the bottom panel defaults to 242, so V1, A1, CC, FX and M1 all show at track height M, when the window
-    /// has room for it beside a 16:9 viewer and the panel's minimum body; else to 216 (the five-track default before M1).
-    static let timelineDefault = 242.0
-    static let timelineCompactDefault = 216.0
+    static let timelineDefault = 346.0
+    static let timelineCompactDefault = 300.0
     static let timelineRange = Double(ShellMetrics.timelineMinimum)...640.0
     /// impl-plan §3.5: the panel starts at its default or 40% of the work area's height, whichever is less.
     static let timelineShare = 0.4
-    /// The timeline's starting height in a work area `workHeight` tall beside a right column `rightWidth` wide: 242 when
-    /// the title row, a 16:9 viewer, the panel header and `PanelHost.bodyMinimum` still fit above it, else what is left
-    /// down to 216, and never more than 40% of the work area.
+    /// Fits the eight-lane timeline beside a 16:9 viewer when possible, capped at 40% of the work area.
     @MainActor static func defaultTimelineHeight(workHeight: Double, rightWidth: Double) -> Double {
         let reserve = Double(ShellMetrics.titleRow) + Double(ViewerSection.boxHeight(forWidth: CGFloat(rightWidth)))
             + Double(PanelHost.headerHeight) + Double(PanelHost.bodyMinimum)
@@ -84,7 +80,7 @@ enum SidebarItem: Hashable {
         return Self.fitted(app.number(Self.rightWidthKey, fallback: Self.rightColumnWidth(windowWidth: windowWidth, explorer: explorer)), windowWidth: windowWidth, explorer: explorer)
     }
     /// The timeline panel's height below its top edge: where the user last dragged that
-    /// edge, else 242 within 40% of the work area (impl-plan §3.5).
+    /// edge, else enough for the eight lanes within 40% of the work area.
     var timelineHeight: Double {
         // Maximized: everything but the columns' minimum and the 1 pt edge.
         if timelineMaximized { return (workHeight - Double(ShellMetrics.topMinimum) - 1).clamped(to: Self.timelineRange) }
@@ -98,7 +94,7 @@ enum SidebarItem: Hashable {
         timelineMaximized = false
         app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange)))
     }
-    /// V1, A1 and CC's height in the timeline (notes.md §6, impl-plan V9): the one the user
+    /// Lane height in the timeline (notes.md §6, impl-plan V9): the one the user
     /// last picked, kept for every project, else M.
     var trackHeight: TrackHeight {
         get { TrackHeight(rawValue: app.string(Self.trackHeightKey)) ?? .medium }
@@ -898,6 +894,11 @@ enum SidebarItem: Hashable {
 @MainActor final class MainWindow: NSWindow {
     var closeProject: (() async -> Bool)?
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, attachedSheet == nil,
+           let canvas = TimelineItemShortcut.focusedCanvas(firstResponder),
+           (event.keyCode == 53 || TimelineItemShortcut(event) != nil), canvas.interaction.keyDown(event) {
+            return
+        }
         if event.type == .keyDown, event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control]).isEmpty, attachedSheet == nil,
            let shell = (windowController as? ShellWindowController)?.shell, shell.dismissOverlaysOnEscape(in: self) {
             return

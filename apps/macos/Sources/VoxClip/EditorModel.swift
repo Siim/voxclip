@@ -34,13 +34,20 @@ struct EditorRenderSnapshot {
     var selectedWordIDs: Set<String> = [] {
         didSet {
             guard selectedWordIDs != oldValue else { return }
+            if !selectedWordIDs.isEmpty { selectTimelineItems([]) }
             rewriteOpenTask?.cancel()
             // Changing the selection ends an open inline correction, as a click elsewhere ends an inline rename.
             if correctionID != nil { endCorrection() }
             updateSelectionEnds(); refreshPendingSendScope()
         }
     }
-    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope() } } }
+    var selectedPauseIDs: Set<String> = [] {
+        didSet {
+            guard selectedPauseIDs != oldValue else { return }
+            if !selectedPauseIDs.isEmpty { selectTimelineItems([]) }
+            rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope()
+        }
+    }
     var previewStop: Double?
     var storyPartPlaybackEnd: Double?
     var selectedStoryPartID: String?
@@ -78,6 +85,8 @@ struct EditorRenderSnapshot {
     var timelineEffectID: String?
     private(set) var timelineEffectsRevision = 0
     var timelineSnapping = true
+    var timelineItemSelection: Set<TimelineItemID> = []
+    var timelineItemRefusal: String?
     /// The selection's first and last word or pause in reading order (a pause follows the
     /// word before it), one id when they are the same. A fold opens while one of them is in
     /// it (`openFoldEnds`), so what is selected always shows.
@@ -665,6 +674,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var updateTask: Task<Void, Never>?
     @ObservationIgnored private var previewRevision: UInt64 = 0
+    var stagedTimelineDucking: (revision: Int, contour: TimelineDuckingContour)?
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
@@ -1825,10 +1835,14 @@ struct EditorRenderSnapshot {
             captionPages = request.captionLayout?.pages.map(\.page) ?? []
             if load { try await preview.load(request) } else { try await preview.update(request) }
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
+            stagedTimelineDucking = nativePreview?.musicDuckingGainsDb.map { gains in
+                (projectRevision, TimelineDuckingContour(gains: gains, timing: request.speedTiming))
+            }
             previewError = nil
         } catch is CancellationError {} catch {
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             preview.close(); isPlaying = false; previewStop = nil
+            stagedTimelineDucking = nil
             let message = await app.safeError(error, context: .preview)
             guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             previewError = message

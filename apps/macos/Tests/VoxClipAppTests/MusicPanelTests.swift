@@ -252,9 +252,14 @@ private actor DelayedCatalog {
         #expect(draft.captionDraft.hasSuffix("\n\nMusic: \"Quiet piano\" by Artist is licensed under CC BY 3.0."))
         panel.setGain(-25.3, model: editor)
         #expect(editor.currentMusic?.gainDb == -25.5 && MusicSection.gainLabel(-25.5) == "\u{2212}25.5 dB")
+        let canvas = TimelineCanvasView(model: editor)
+        defer { canvas.tearDown() }
+        canvas.renderContent()
+        #expect(canvas.content.items.first { $0.item.id == .music(entry.id) }?.audio?.gainDb == -25.5)
         #expect(editor.timelineMusic(on: .edited).map { $0.range.lowerBound == 0 && abs($0.range.upperBound - editor.duration) < 1e-9 } == true)
         panel.remove(model: editor)
         #expect(editor.currentMusic == nil && editor.project.music.isEmpty && editor.timelineMusic(on: .edited) == nil)
+        #expect(FileManager.default.fileExists(atPath: MusicRenderInput.url(for: entry.asset, dataRoot: fixture.root).path))
         #expect(fixture.fetches.ids == [Self.library.id])
     }
 
@@ -286,6 +291,33 @@ private actor DelayedCatalog {
         #expect(fixture.fetches.ids.isEmpty && editor.currentMusic == nil)
     }
 
+    @Test func generatedSegmentsSurviveUndoAndRedoWithoutRemovingTheAsset() async throws {
+        let candidate = Self.generated(), fixture = try fixture(suggest: .init(candidates: [candidate]))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor, panel = editor.musicPanel
+        await quote(fixture)
+        panel.use(candidate, model: editor)
+        await panel.settled()
+        let original = try #require(editor.currentMusic)
+        let plan = try #require(editor.itemEditPlan)
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        undo.beginUndoGrouping()
+        let split = editor.commitTimelineItemEdit(.split(items: [.music(original.id)], atSource: plan.sourceTime(plan.duration / 2)))
+        undo.endUndoGrouping()
+        #expect(split && undo.undoActionName == "Split music")
+        let segments = try #require(editor.currentMusic?.segments)
+        #expect(segments.count == 2)
+        undo.undo()
+        #expect(editor.currentMusic == original)
+        undo.redo()
+        #expect(editor.currentMusic?.segments == segments)
+        undo.beginUndoGrouping(); panel.remove(model: editor); undo.endUndoGrouping()
+        #expect(editor.currentMusic == nil)
+        #expect(FileManager.default.fileExists(atPath: MusicRenderInput.url(for: original.asset, dataRoot: fixture.root).path))
+        undo.undo()
+        #expect(editor.currentMusic?.segments == segments)
+    }
+
     @Test func replacingAndTurningOffMusicKeepMixAndUndoInSeparateSteps() async throws {
         let fixture = try fixture(suggest: .init(candidates: [Self.library]), files: ["Current.wav"])
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
@@ -295,7 +327,8 @@ private actor DelayedCatalog {
         let file = try #require(panel.folderFiles.first)
         undo.beginUndoGrouping(); panel.use(file, model: editor); await panel.settled(); undo.endUndoGrouping()
         var previous = try #require(editor.currentMusic)
-        previous.gainDb = -27; previous.ducking = false; previous.fadeInSeconds = 0.25; previous.fadeOutSeconds = 2
+        previous.gainDb = -27; previous.ducking = true; previous.duckDb = -18
+        previous.fadeInSeconds = 0.25; previous.fadeOutSeconds = 2
         undo.beginUndoGrouping()
         editor.replace(try MusicProject.setting(previous, clipId: previous.clipId, in: editor.project), name: "Change mix")
         undo.endUndoGrouping()
@@ -304,6 +337,7 @@ private actor DelayedCatalog {
         undo.beginUndoGrouping(); panel.use(Self.library, model: editor); await panel.settled(); undo.endUndoGrouping()
         let picked = try #require(editor.currentMusic)
         #expect(picked.gainDb == previous.gainDb && picked.ducking == previous.ducking && picked.fadeInSeconds == previous.fadeInSeconds && picked.fadeOutSeconds == previous.fadeOutSeconds)
+        #expect(picked.duckDb == -18)
         undo.beginUndoGrouping(); panel.remove(model: editor); undo.endUndoGrouping()
         #expect(editor.currentMusic == nil)
         undo.undo(); #expect(editor.currentMusic == picked)
@@ -361,18 +395,20 @@ private actor DelayedCatalog {
         let shell = WorkspaceShell(app: fixture.app)
         let canvas = TimelineCanvasView(model: fixture.editor, shell: shell)
         defer { canvas.tearDown() }
-        canvas.frame = NSRect(x: 0, y: 0, width: 1056, height: 260)
+        canvas.frame = NSRect(x: 0, y: 0, width: 1056, height: TimelineMetrics.height)
         canvas.layoutSubtreeIfNeeded()
-        #expect(canvas.music.state.music == nil && canvas.music.accessibilityLabel() == "Music: none")
+        #expect(canvas.music.state.fragments.isEmpty && canvas.itemAXGroups[.music] == nil)
         fixture.editor.musicPanel.search(model: fixture.editor)
         await fixture.editor.musicPanel.settled()
         fixture.editor.musicPanel.use(Self.library, model: fixture.editor)
         await fixture.editor.musicPanel.settled()
         canvas.renderContent()
-        #expect(canvas.music.state.music?.title == "Quiet piano")
-        #expect(canvas.music.accessibilityLabel() == "Music: Quiet piano, \u{2212}20 dB")
+        #expect(canvas.music.state.fragments.first?.display.title == "Quiet piano")
+        #expect(canvas.itemAXGroups[.music]?.accessibilityLabel() == "Music lane")
+        let trackID = try #require(fixture.editor.currentMusic?.id)
+        #expect(canvas.itemAXElements[.music(trackID)]?.accessibilityLabel()?.hasPrefix("Music, Quiet piano, ") == true)
         shell.choosePanelJob(.export, for: fixture.editor)
-        canvas.headers[4].action?()
+        canvas.header(.music).action?()
         #expect(shell.panelJob(for: fixture.editor) == .music)
     }
 }

@@ -1,18 +1,31 @@
 #if WIN_UI_TESTS
+using System.Text.Json.Nodes;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Media;
 using VoxClip.Core.Services.Project;
+using VoxClip.Tests.Support;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
 
 public sealed class TimelineTests
 {
+    [Fact]
+    public void MusicContourUsesTheStagedRenderedClockOrFallsBackToKeptWords()
+    {
+        double[] fallback = [-1, -2, -3];
+        double[] staged = [-12, -4, -8];
+        Assert.Equal(-8, TimelineItemEditing.DuckingDbAt(.02, staged, new(2), fallback)!.Value, 10);
+        Assert.Equal(-3d, TimelineItemEditing.DuckingDbAt(.02, null, new(2), fallback));
+        Assert.Null(TimelineItemEditing.DuckingDbAt(.02, [], new(2), fallback));
+    }
+
     [Fact]
     public void StoryTimelineKeepsPartJumpsSeparateFromCutsOnBothAxes()
     {
@@ -128,12 +141,164 @@ public sealed class TimelineTests
         range = TimelineLayout.Trim(range.First, range.Last, 11, model.Words.Count, false);
         Assert.Equal(before, model.Clips.Single().Clip);
         Assert.True(TimelineLayout.CommitTrim(model, id, range.First, range.Last));
+        Assert.Equal("Trim clip", model.UndoActionName);
         Assert.Equal(model.Words[11].Id, model.Clips.Single().Clip.EndWordId);
         Assert.False(TimelineLayout.CommitTrim(model, id, range.First, range.Last));
         model.Undo();
         Assert.Equal(before, model.Clips.Single().Clip);
         model.Undo();
         Assert.Empty(model.Clips);
+    }
+
+    [Theory]
+    [InlineData("Move", "Move sound", 2.5)]
+    [InlineData("Duplicate", "Duplicate sound", 2.5)]
+    [InlineData("Start", "Trim sound", 2.25)]
+    [InlineData("End", "Trim sound", 2.75)]
+    [InlineData("FadeIn", "Fade sound", .25)]
+    [InlineData("FadeOut", "Fade sound", .25)]
+    [InlineData("Slip", "Slip sound", .25)]
+    [InlineData("Volume", "Change volume", -9)]
+    [InlineData("Keyframe", "Move volume keyframe", .125)]
+    [InlineData("Dip", "Dip volume", 6)]
+    public void DirectDragPreviewsThenCommitsAndUndoesOnce(string gestureName, string undoName, double expected)
+    {
+        var model = PlacementModel("sound");
+        var scope = model.Project.Edits.ActiveClipId;
+        var session = new TimelineEditSession(model, scope);
+        var layout = TimelineItems.Layout(model.Project, session.Plan, scope, TimelineAxis.Source);
+        var item = Assert.Single(layout.Items, item => item.Kind == "sound");
+        var details = TimelineItemDetails.Read(model.Project, scope, item);
+        var gesture = Enum.Parse<TimelineItemGesture>(gestureName);
+        var delta = gesture switch
+        {
+            TimelineItemGesture.Move or TimelineItemGesture.Duplicate => .5,
+            TimelineItemGesture.End or TimelineItemGesture.FadeOut => -.25,
+            TimelineItemGesture.Keyframe => -.125,
+            TimelineItemGesture.Slip => .125,
+            _ => .25
+        };
+        TimelineGestureEdit Build(double change) => TimelineItemEditing.Build(gesture, item, details, [item.Id], layout, session.Plan,
+            TimelineAxis.Source, model.Words, delta * change, -3 * change, 2.125, .08, false, details.Points![0], new(2.35, 2.65));
+        var early = Build(.5); session.Preview(early.Edits);
+        var final = Build(1);
+        if (gesture == TimelineItemGesture.Slip) Assert.Equal("Slip +0:00.1 · sound 0:00.1 → 0:00.3", final.Readout);
+        if (gesture == TimelineItemGesture.Dip)
+        {
+            Assert.IsType<TimelineEdit.DipGain>(Assert.Single(final.Edits));
+            Assert.Equal("0:02.4–0:02.7 · −3.0 dB", final.Readout);
+        }
+        Assert.True(session.Preview(final.Edits), session.Reason);
+        Assert.Same(session.Baseline, model.Project);
+        Assert.False(model.CanUndo);
+        Assert.True(session.Commit(), session.Reason);
+        Assert.Equal(undoName, model.UndoActionName);
+        var effects = model.Project.ClipEffects.Select(ClipEffect.Parse).ToArray();
+        var sound = gesture == TimelineItemGesture.Duplicate ? Assert.Single(effects, effect => effect.Id != item.Id.Value) : Assert.Single(effects);
+        var actual = gesture switch
+        {
+            TimelineItemGesture.Move or TimelineItemGesture.Duplicate or TimelineItemGesture.Start => sound.Start,
+            TimelineItemGesture.End => sound.End,
+            TimelineItemGesture.FadeIn => sound.FadeInSeconds!.Value,
+            TimelineItemGesture.FadeOut => sound.FadeOutSeconds!.Value,
+            TimelineItemGesture.Slip => sound.MediaOffsetSeconds!.Value,
+            TimelineItemGesture.Volume => sound.GainDb!.Value,
+            TimelineItemGesture.Keyframe => sound.GainPoints![0].T,
+            TimelineItemGesture.Dip => sound.GainPoints!.Count,
+            _ => throw new ArgumentOutOfRangeException()
+        };
+        Assert.Equal(expected, actual, 5);
+        model.Undo();
+        Assert.False(model.CanUndo);
+        Assert.Equal(session.Baseline.ClipEffects[0].GetRawText(), Assert.Single(model.Project.ClipEffects).GetRawText());
+        Assert.Equal(undoName, model.RedoActionName);
+    }
+
+    [Theory]
+    [InlineData("Split sound")]
+    [InlineData("Split all")]
+    [InlineData("Duplicate sound")]
+    [InlineData("Delete sound")]
+    [InlineData("Nudge sound")]
+    [InlineData("Add volume keyframe")]
+    [InlineData("Remove volume keyframe")]
+    [InlineData("Change ducking")]
+    [InlineData("Loop music")]
+    [InlineData("Trim music")]
+    [InlineData("Move part")]
+    [InlineData("Trim part 1")]
+    public void TimelineActionsAreNamedAndAtomic(string name)
+    {
+        var model = PlacementModel(name switch { "Change ducking" or "Loop music" => "music", "Trim music" => "nonloop", "Move part" or "Trim part 1" => "story", _ => "sound" });
+        var scope = model.Project.Edits.ActiveClipId;
+        var session = new TimelineEditSession(model, scope);
+        var sound = new TimelineItemId(TimelineItemType.Effect, "sound");
+        var music = new TimelineItemId(TimelineItemType.Music, "music");
+        var part = new TimelineItemId(TimelineItemType.Part, "first");
+        if (name == "Trim music")
+        {
+            var track = Assert.Single(model.Project.Music);
+            var segment = Assert.Single(track.Segments!);
+            model = new EditorViewModel(model.Project with { Music = [track with { Segments = [segment with { Loop = true }] }] });
+            session = new(model, scope);
+            var layout = TimelineItems.Layout(model.Project, session.Plan, scope, TimelineAxis.Source);
+            var item = Assert.Single(layout.Items, item => item.Id == music);
+            var details = TimelineItemDetails.Read(model.Project, scope, item);
+            var extend = TimelineItemEditing.Build(TimelineItemGesture.End, item, details, [music], layout, session.Plan,
+                TimelineAxis.Source, model.Words, 1, 0, 4, .08, false);
+            Assert.Equal("∞ 1 loop · 2.0 s", extend.Readout);
+            Assert.True(session.Commit(extend.Edits), session.Reason);
+            Assert.Equal(2, Assert.Single(Assert.Single(model.Project.Music).Segments!).LengthSeconds);
+        }
+        else
+        {
+            TimelineEdit command = name switch
+            {
+                "Split sound" => new TimelineEdit.Split([sound], 2.5),
+                "Split all" => new TimelineEdit.SplitAll(2.5),
+                "Duplicate sound" => new TimelineEdit.Duplicate([sound]),
+                "Delete sound" => new TimelineEdit.Delete([sound]),
+                "Nudge sound" => new TimelineEdit.Nudge([sound], TimelineNudge.Words, 1),
+                "Add volume keyframe" => new TimelineEdit.AddGainPoint(sound, 2.5, -10),
+                "Remove volume keyframe" => new TimelineEdit.RemoveGainPoint(sound, .25),
+                "Change ducking" => new TimelineEdit.SetDuck("music-main", -18),
+                "Loop music" => new TimelineEdit.SetLoop(music, false),
+                "Move part" => new TimelineEdit.Move([part], 4),
+                "Trim part 1" => new TimelineEdit.Trim(part, TimelineEdge.End, 2),
+                _ => throw new ArgumentOutOfRangeException(nameof(name))
+            };
+            Assert.True(session.Commit([command]), session.Reason);
+        }
+        Assert.Equal(name, model.UndoActionName);
+        model.Undo();
+        Assert.False(model.CanUndo);
+        Assert.Equal(name, model.RedoActionName);
+    }
+
+    [Fact]
+    public void EscapeDiscardsPreviewAndRefusalDoesNotReplayEarlierMotion()
+    {
+        var model = PlacementModel("story");
+        var session = new TimelineEditSession(model, model.Project.Edits.ActiveClipId);
+        var title = new TimelineItemId(TimelineItemType.Effect, "title");
+        Assert.True(session.Preview([new TimelineEdit.Move([title], 1)]), session.Reason);
+        Assert.NotSame(model.Project, session.PreviewProject);
+        Assert.False(session.Preview([new TimelineEdit.Move([title], 3.5)]));
+        Assert.Equal("Place it inside one part.", session.Reason);
+        Assert.False(session.Commit());
+        Assert.True(session.Preview([new TimelineEdit.Move([title], 1)]));
+        Assert.Equal(TimelineShortcut.Escape, TimelineKeys.Resolve(27, false, false, false));
+        session.Cancel();
+        Assert.Same(session.Baseline, session.PreviewProject);
+        Assert.Same(session.Baseline, model.Project);
+        Assert.False(session.Commit());
+        Assert.False(model.CanUndo);
+    }
+
+    private static EditorViewModel PlacementModel(string basis)
+    {
+        var fixture = JsonNode.Parse(FixtureLoader.ReadText("fixtures/timeline-edits/edit-cases.json"));
+        return new(ProjectSerialization.Deserialize(fixture!["bases"]![basis]!.ToJsonString()));
     }
 
     [Fact]
@@ -187,20 +352,19 @@ public sealed class TimelineTests
     [InlineData(0, 28, 32, 20, 20)]
     [InlineData(1, 36, 44, 24, 24)]
     [InlineData(2, 52, 64, 28, 28)]
-    public void V2TracksHaveTheSpecifiedGeometry(int size, double video, double audio, double caption, double effects)
+    public void EightTracksStackInScreenOrder(int size, double video, double audio, double caption, double effects)
     {
-        var geometry = TimelineLayout.Tracks(size, true, true, true);
+        var geometry = TimelineLayout.Tracks(size, new Dictionary<TimelineLane, int> { [TimelineLane.B1] = 2 });
         Assert.Equal(video, geometry.VideoHeight); Assert.Equal(audio, geometry.AudioHeight);
         Assert.Equal(caption, geometry.CaptionHeight); Assert.Equal(effects, geometry.EffectsHeight);
-        Assert.Equal(47, geometry.VideoTop);
-        Assert.Equal(geometry.VideoTop + video + 1, geometry.AudioTop);
-        Assert.Equal(geometry.AudioTop + audio + 1, geometry.CaptionTop);
-        Assert.Equal(geometry.CaptionTop + caption + 1, geometry.EffectsTop);
-        Assert.Equal(geometry.EffectsTop + effects + 1, geometry.MusicTop);
+        Assert.Equal(47, geometry.CaptionTop);
+        Assert.Equal(2 * caption, geometry.LaneHeight(TimelineLane.B1));
+        var lanes = Enum.GetValues<TimelineLane>();
+        Assert.Equal(8, lanes.Length);
+        for (var index = 1; index < lanes.Length; index++)
+            Assert.Equal(geometry.Top(lanes[index - 1]) + geometry.LaneHeight(lanes[index - 1]) + 1, geometry.Top(lanes[index]));
         Assert.True(geometry.Height > geometry.MusicTop + geometry.MusicHeight);
-        var audioOnly = TimelineLayout.Tracks(size, false, false, false);
-        Assert.Equal(0, audioOnly.VideoHeight); Assert.Equal(47, audioOnly.AudioTop);
-        Assert.Equal(0, audioOnly.CaptionHeight); Assert.Equal(0, audioOnly.EffectsHeight);
+        Assert.Equal(44, TimelineLayout.Tracks(2).MusicHeight);
     }
 
     [Fact]

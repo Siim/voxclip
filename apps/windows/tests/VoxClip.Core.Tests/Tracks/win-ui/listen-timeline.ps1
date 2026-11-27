@@ -28,6 +28,39 @@ $window = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWin
 $playhead = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
     [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'NativeProbe.Playhead'))
 if (-not $playhead -or $playhead.Current.ProcessId -ne $appId) { throw 'The owned probe playhead did not realize.' }
+$itemId = 'Timeline.Item.Effect.timeline-native-title'
+function FindOwnedTimelineItem([string]$id) {
+    $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id))
+    if (-not $element -or $element.Current.ProcessId -ne $appId -or $element.Current.IsOffscreen) { throw "Missing visible owned timeline peer: $id" }
+    return $element
+}
+$item = FindOwnedTimelineItem $itemId
+$selection = $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+$range = $item.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
+if ($range.Current.IsReadOnly -or $range.Current.SmallChange -ne 1 -or $item.Current.HelpText -cne 'Split: B. Duplicate: Ctrl+D. Delete: Delete. Trim to playhead: Ctrl+Shift+[ or ].') { throw 'Title peer did not expose its word step and key help.' }
+$selection.Select()
+if (-not $selection.Current.IsSelected) { throw 'SelectionItem.Select did not select the title.' }
+$before = $range.Current.Value
+$range.SetValue($before + 1)
+if ($range.Current.Value -ne $before + 1) { throw 'Moving the title through RangeValue did not step one word.' }
+$range.SetValue($before)
+$edges = foreach ($suffix in @('Start','End')) {
+    $edge = FindOwnedTimelineItem "$itemId.$suffix"
+    $edgeRange = $edge.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
+    if ($edge.Current.ControlType -ne [System.Windows.Automation.ControlType]::Slider -or $edgeRange.Current.SmallChange -ne 1 -or $edge.Current.HelpText -notlike '*Trim to playhead*') { throw "Incorrect $suffix slider." }
+    $edgeBefore = $edgeRange.Current.Value
+    $step = if ($suffix -eq 'Start') { 1 } else { -1 }
+    $edgeRange.SetValue($edgeBefore + $step)
+    $after = $edgeRange.Current.Value
+    if ($after -ne $edgeBefore + $step) { throw "$suffix did not step by a word." }
+    $edgeRange.SetValue($edgeBefore)
+    @{ name = $edge.Current.Name; value = $edgeBefore; changed = $after; help = $edge.Current.HelpText }
+}
+$selection.RemoveFromSelection()
+if ($selection.Current.IsSelected) { throw 'Removing title selection did not clear the selection.' }
+@{ item = $item.Current.Name; value = $before; help = $item.Current.HelpText; edges = @($edges) } |
+    ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $EvidenceDir 'timeline-item-peers.json')
 try {
     [System.Windows.Automation.Automation]::AddAutomationPropertyChangedEventHandler($playhead,
         [System.Windows.Automation.TreeScope]::Element, [TimelinePropertyListener]::Handler,

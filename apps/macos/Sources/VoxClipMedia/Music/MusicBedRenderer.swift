@@ -6,7 +6,10 @@ import VoxClipCore
 public final class MusicBedLease: Sendable {
     public let url: URL
     public let frames: Int
-    init(url: URL, frames: Int) { self.url = url; self.frames = frames }
+    public let duckingGainsDb: [Double]
+    init(url: URL, frames: Int, duckingGainsDb: [Double] = []) {
+        self.url = url; self.frames = frames; self.duckingGainsDb = duckingGainsDb
+    }
     deinit { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 }
 
@@ -68,7 +71,7 @@ enum MusicBedRenderer {
         let directory = scratchRoot.appendingPathComponent("voxclip-music-" + UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         let url = directory.appendingPathComponent("bed.caf")
-        let lease = MusicBedLease(url: url, frames: outputFrames)
+        let lease = MusicBedLease(url: url, frames: outputFrames, duckingGainsDb: plan.ducking)
         let file = try MusicCAFWriter(url: url, channels: 2)
         try write(track: track, plan: plan, to: file)
         file.close()

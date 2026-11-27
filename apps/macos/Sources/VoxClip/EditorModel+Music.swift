@@ -356,7 +356,7 @@ struct MusicPanelServices: Sendable {
                     self.phase = .failed("The clip changed. The downloaded track was not added to it."); return
                 }
                 if let current = model.currentMusic {
-                    entry.gainDb = current.gainDb; entry.ducking = current.ducking
+                    entry.gainDb = current.gainDb; entry.ducking = current.ducking; entry.duckDb = current.duckDb
                     entry.fadeInSeconds = current.fadeInSeconds; entry.fadeOutSeconds = current.fadeOutSeconds
                 }
                 if let timelineShape, let shaped = try? timelineShape.placing(entry, in: model.project, clipID: clipId) { entry = shaped }
@@ -385,15 +385,10 @@ struct MusicPanelServices: Sendable {
 
     /// The one volume control: the bed's level under the voice, −40 to 0 dB (−20 by default).
     func setGain(_ gainDb: Double, model: EditorModel) {
-        guard model.capabilities.edit, var entry = model.currentMusic else { return }
+        guard model.capabilities.edit, let entry = model.currentMusic else { return }
         let rounded = (gainDb.clamped(to: ProjectMusic.gainRange) * 2).rounded() / 2
         guard rounded != entry.gainDb else { return }
-        entry.gainDb = rounded
-        do { try apply(entry, clipId: entry.clipId, model: model, name: "Change music volume") }
-        catch {
-            phase = .failed(UserMessages.message(error))
-            Task { await model.app.logFailure(error, context: .music) }
-        }
+        model.commitTimelineItemEdit(.setTrackGain(track: entry.id, db: rounded))
     }
 
     private func apply(_ entry: ProjectMusic?, clipId: String?, model: EditorModel, name: String) throws {

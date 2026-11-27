@@ -26,6 +26,8 @@ public sealed partial class EditorPage
         engine.PlaybackFaulted -= PlaybackFaulted;
         engine.AudioStatusChanged -= AudioStatusChanged;
         engine.CompositorFailed -= CompositorFailed;
+        previewProject = null;
+        if (!disposed) Timeline.SetStagedDucking(null, null, previewSpeed);
     }
 
     /// <summary>Raised on the engine owner thread, once per loaded preview.</summary>

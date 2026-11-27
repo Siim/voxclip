@@ -21,7 +21,7 @@ using Windows.System;
 
 namespace VoxClip.App.Controls;
 
-public sealed class TimelineView : UserControl
+public sealed partial class TimelineView : UserControl
 {
     private const double TrackTop = TimelineLayout.TrackTop;
     private const double TrackHeight = 30;
@@ -116,21 +116,17 @@ public sealed class TimelineView : UserControl
     private readonly TextBlock sourceClock = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock selectionLength = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock stateMessage = new() { FontSize = 11, Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
-    private readonly TextBlock fxHint = new() { Text = "Director results land here", FontSize = 11, IsHitTestVisible = false };
-    /// <summary>Ask Claude's effects in the FX lane (design §6.8 "On the timeline"): a labelled block each; a click opens its Adjust.</summary>
-    private readonly Border[] effectBlocks = Enumerable.Range(0, 24).Select(_ => new Border { CornerRadius = new(2), IsHitTestVisible = false, Child = new TextBlock { FontSize = 11, Margin = new(4, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis } }).ToArray();
-    private readonly List<(string Id, double Left, double Right)> effectHits = [];
     /// <summary>A range dragged across empty FX-lane time, for the toolbar's ✦ Ask Claude.</summary>
     private readonly Rectangle askRange = new() { IsHitTestVisible = false, RadiusX = 2, RadiusY = 2 };
     private readonly Button askClaude = new() { Height = 28, Padding = new(8, 0, 8, 0), Visibility = Visibility.Collapsed };
     private bool ranging;
     private double rangeAnchor;
     private readonly TextBlock videoName = new() { FontSize = 9, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis };
-    private TimelineTrackGeometry metrics = TimelineLayout.Tracks(1, true, true, true);
+    private TimelineTrackGeometry metrics = TimelineLayout.Tracks(1);
     private TimelineWaveform? envelope;
     private CancellationTokenSource? waveformRequest;
     private CancellationTokenSource? filmstripRequest;
-    private Project? trimSnapshot;
+    private TimelineEditSession? trimSession;
     private IReadOnlyList<TimelineCaptions.Page> captionPages = [];
     private IReadOnlyList<TimelineCue> captionCues = [];
     private Project? captionSnapshot;
@@ -144,10 +140,8 @@ public sealed class TimelineView : UserControl
     private bool waveformUnavailable;
     private bool overviewDragging;
     private double overviewGrab;
-    private readonly TextBlock[] headerNames = Enumerable.Range(0, 5).Select(_ => new TextBlock { FontSize = 11 }).ToArray();
-    private readonly TextBlock[] headerIds = Enumerable.Range(0, 5).Select(_ => new TextBlock { FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }).ToArray();
-    private readonly Polygon musicRamp = new();
-    private readonly TextBlock musicLabel = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock[] headerNames = Enum.GetValues<TimelineLane>().Select(_ => new TextBlock { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Width = 77 }).ToArray();
+    private readonly TextBlock[] headerIds = Enum.GetValues<TimelineLane>().Select(_ => new TextBlock { FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }).ToArray();
     private readonly LinkedList<(TimelineMediaTile Tile, TimelineMediaGeometry<PathGeometry> Geometry)> geometryCache = new();
     private readonly Microsoft.UI.Xaml.Shapes.Path cueBackgrounds = new();
     private readonly double[] overviewBadgeLeft = new double[TimelineRetainedPool<object>.Badges];
@@ -158,7 +152,7 @@ public sealed class TimelineView : UserControl
     private readonly CancellationTokenSource?[] thumbnailLoading = new CancellationTokenSource?[TimelineFilmstrip.Limit];
     private readonly Microsoft.UI.Xaml.Shapes.Path videoSeams = new();
     private readonly Rectangle scrollThumb = new() { Height = 4, RadiusX = 2, RadiusY = 2 };
-    private readonly TimelineRangeControl scrollRange = new("Timeline horizontal scroll") { Height = 32, VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly TimelineRangeControl scrollRange = new("Timeline horizontal scroll") { Height = 10, VerticalAlignment = VerticalAlignment.Bottom };
     private readonly CompositeTransform rulerTransform = new();
     private readonly CompositeTransform captionTransform = new();
     private readonly double[] tickTimes = new double[20];
@@ -170,7 +164,7 @@ public sealed class TimelineView : UserControl
     private string shownClockFrames = "";
     private string shownSourceElapsed = "";
     private string shownSourceFrames = "";
-    public double PreferredPanelHeight => TimelineLayout.ToolbarHeight + metrics.Height;
+    public double PreferredPanelHeight => TimelineLayout.ToolbarHeight + metrics.Height + itemBarHeight;
     public event EventHandler<double>? PreferredPanelHeightChanged;
     public int TrackSize { get => Math.Max(0, heightPicker.SelectedIndex); set => heightPicker.SelectedIndex = Math.Clamp(value, 0, 2); }
     public event EventHandler<int>? TrackSizeChanged;
@@ -290,10 +284,9 @@ public sealed class TimelineView : UserControl
         canvas.Children.Add(captions); canvas.Children.Add(overviewClips); canvas.Children.Add(overviewActive); canvas.Children.Add(overviewSuggestions);
         canvas.Children.Add(storyOverview);
         canvas.Children.Add(overviewWindow); canvas.Children.Add(overviewHead);
-        canvas.Children.Add(rulerTicks); canvas.Children.Add(rulerLabels); canvas.Children.Add(trimBrackets); canvas.Children.Add(selectionBar); canvas.Children.Add(fxHint); canvas.Children.Add(scrollThumb);
+        canvas.Children.Add(rulerTicks); canvas.Children.Add(rulerLabels); canvas.Children.Add(trimBrackets); canvas.Children.Add(selectionBar); canvas.Children.Add(scrollThumb);
         canvas.Children.Add(askRange);
-        foreach (var block in effectBlocks) canvas.Children.Add(block);
-        canvas.Children.Add(musicRamp); canvas.Children.Add(musicLabel);
+        canvas.Children.Add(itemDrawing);
         captions.RenderTransform = captionTransform; rulerTicks.RenderTransform = rulerTransform;
         var bracketGeometry = new PathGeometry();
         for (var index = 0; index < bracketFigures.Length; index++)
@@ -303,6 +296,7 @@ public sealed class TimelineView : UserControl
         canvas.Children.Add(playhead); canvas.Children.Add(head);
         track.Children.Add(canvas); track.Children.Add(slider); track.Children.Add(overview); track.Children.Add(scrollRange); track.Children.Add(handles); track.Children.Add(stateMessage);
         handles.Children.Add(startHandle); handles.Children.Add(endHandle);
+        InitializeItemEditing(layout);
         Content = layout;
         for (var index = 0; index < headerNames.Length; index++)
         {
@@ -330,8 +324,8 @@ public sealed class TimelineView : UserControl
         slider.PointerPressed += ScrubPressed;
         slider.PointerMoved += ScrubMoved;
         slider.PointerReleased += ScrubReleased;
-        slider.PointerCanceled += (_, _) => { scrubbing = selecting = ranging = false; };
-        slider.PointerCaptureLost += (_, _) => { scrubbing = selecting = ranging = false; };
+        slider.PointerCanceled += (_, _) => EndTimelineCapture();
+        slider.PointerCaptureLost += (_, _) => EndTimelineCapture();
         slider.DoubleTapped += RestoreCut;
         ConfigureTrim(startHandle, true);
         ConfigureTrim(endHandle, false);
@@ -352,7 +346,7 @@ public sealed class TimelineView : UserControl
             if (fraction >= 1) { animation.Stop(); Draw(); }
         };
         Loaded += (_, _) => { if (!disposed) { Ui.EffectsChanged -= EffectsChanged; Ui.EffectsChanged += EffectsChanged; Draw(); } };
-        Unloaded += (_, _) => { animation.Stop(); CancelTrim(); ClearFilmstrip(); Ui.EffectsChanged -= EffectsChanged; };
+        Unloaded += (_, _) => { animation.Stop(); CancelTrim(); EndTimelineCapture(); ResetItemAudio(); ClearFilmstrip(); Ui.EffectsChanged -= EffectsChanged; };
         ApplyBrushes();
     }
 
@@ -465,7 +459,7 @@ public sealed class TimelineView : UserControl
     public void Detach()
     {
         if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; }
-        disposed = true; CancelTrim(); ClearFilmstrip(); waveformRequest?.Cancel();
+        disposed = true; CancelTrim(); EndTimelineCapture(); ResetItemAudio(); itemPeers.Children.Clear(); itemNodes.Clear(); ClearFilmstrip(); waveformRequest?.Cancel();
         model = null; plan = null; envelope = null; captionPages = []; captionCues = []; captionSnapshot = null; storyRendering = null; story = null;
         scene.Tiles.Clear(); geometryCache.Clear(); attachedSource = null;
         animation.Stop(); Ui.EffectsChanged -= EffectsChanged;
@@ -473,10 +467,15 @@ public sealed class TimelineView : UserControl
     private void Changed(object? sender, EventArgs args)
     {
         CancelTrim();
+        if (itemDrag is { Session.IsCurrent: false }) EndTimelineCapture();
         if (!ReferenceEquals(captionSnapshot, model?.Project)) { captionPages = []; captionCues = []; captionSnapshot = null; storyRendering = null; }
         Rebuild(false);
     }
-    private void SelectionChanged(object? sender, EventArgs args) => Draw();
+    private void SelectionChanged(object? sender, EventArgs args)
+    {
+        if (model?.HasSelection == true) ClearItemSelection();
+        Draw();
+    }
     private void PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         if (args.PropertyName is nameof(EditorViewModel.IsReadOnly) or nameof(EditorViewModel.Busy)) { CancelTrim(); Draw(); }
@@ -493,7 +492,7 @@ public sealed class TimelineView : UserControl
         clockPrefix.Foreground = Brush("VcTextTertiaryBrush");
         playhead.Fill = head.Fill = Brush("VcTintDefaultBrush");
         sourceClock.Foreground = selectionLength.Foreground = Brush("VcTextSecondaryBrush");
-        fxHint.Foreground = stateMessage.Foreground = videoName.Foreground = Brush("VcTextTertiaryBrush");
+        stateMessage.Foreground = videoName.Foreground = Brush("VcTextTertiaryBrush");
         foreach (var handle in new[] { startHandle, endHandle })
         {
             var clear = ((SolidColorBrush)Brush("VcTimelineTrackBrush")).Color; clear.A = 0;
@@ -592,16 +591,19 @@ public sealed class TimelineView : UserControl
         if (!args.GetCurrentPoint(slider).Properties.IsLeftButtonPressed) return;
         if (model is null || renderingBlocked || model.IsReadOnly) return;
         var point = args.GetCurrentPoint(track).Position;
-        if (!InputState.Down(VirtualKey.Control) && point.Y >= metrics.EffectsTop && point.Y < metrics.EffectsTop + metrics.EffectsHeight)
+        if (ItemPressed(point, args)) return;
+        ClearItemSelection();
+        if (InputState.Down(VirtualKey.Control) && InputState.Down(VirtualKey.Shift) && point.Y >= metrics.EffectsTop && point.Y < metrics.EffectsTop + metrics.EffectsHeight)
         {
-            // The FX lane: a click on an effect opens its Adjust; a drag across empty time marks a range to ask Claude about.
-            if (effectHits.FirstOrDefault(hit => point.X >= hit.Left && point.X <= hit.Right) is { Id: { } hit } && model.AdjustAskClaudeFromTimeline(hit)) { args.Handled = true; return; }
+            priorAskRange = model.AskClaude.TimeRange;
             ranging = true; rangeAnchor = PointerTime(args);
             model.SetAskClaudeTimeRange(null);
             slider.Focus(FocusState.Pointer); slider.CapturePointer(args.Pointer); args.Handled = true;
             return;
         }
         if (model.AskClaude.TimeRange is not null) model.SetAskClaudeTimeRange(null);
+        scrubOrigin = model.SourceTime;
+        scrubSelection = model.HasSelection ? (model.SelectionStart, model.SelectionEnd) : null;
         scrubbing = true; selecting = InputState.Down(VirtualKey.Control);
         slider.Focus(FocusState.Pointer); slider.CapturePointer(args.Pointer);
         if (selecting && model.Words.Count > 0) model.Select(TimelineLayout.WordAt(model.Words, PointerTime(args)));
@@ -609,6 +611,8 @@ public sealed class TimelineView : UserControl
     }
     private void ScrubMoved(object sender, PointerRoutedEventArgs args)
     {
+        if (ItemMoved(args)) return;
+        UpdateItemHover(args.GetCurrentPoint(track).Position);
         if (ranging && model is not null) { model.SetAskClaudeTimeRange(Ordered(rangeAnchor, PointerTime(args))); return; }
         if (scrubbing) Scrub(args);
         if (model is null || model.Words.Count == 0) return;
@@ -625,6 +629,7 @@ public sealed class TimelineView : UserControl
     private static (double, double) Ordered(double a, double b) => (Math.Min(a, b), Math.Max(a, b));
     private void ScrubReleased(object sender, PointerRoutedEventArgs args)
     {
+        if (ItemReleased(args)) return;
         if (ranging)
         {
             ranging = false; slider.ReleasePointerCapture(args.Pointer); args.Handled = true;
@@ -636,6 +641,7 @@ public sealed class TimelineView : UserControl
     }
     private void RestoreCut(object sender, DoubleTappedRoutedEventArgs args)
     {
+        if (HitItem(args.GetPosition(track)) is { } hit) { OpenItem(hit.Item); args.Handled = true; return; }
         if (Edited || model?.State is not { } state || model.IsReadOnly || model.Busy) return;
         var source = FromDisplay(view.Time(args.GetPosition(track).X, track.ActualWidth));
         var ids = model.Words.Where(word => word.Start <= source && source < word.End && state.CutWordIds.Contains(word.Id)).Select(word => word.Id)
@@ -650,7 +656,6 @@ public sealed class TimelineView : UserControl
         handle.Set = value => ChangeTrim(start, (int)Math.Round(value));
         handle.KeyDown += (_, args) =>
         {
-            if (args.Key == VirtualKey.Escape && trimming) { CancelTrim(); Draw(); args.Handled = true; return; }
             if (args.Key is VirtualKey.Home or VirtualKey.End)
             {
                 var range = ReadTrim(start);
@@ -661,29 +666,53 @@ public sealed class TimelineView : UserControl
         };
         handle.PointerPressed += (_, args) =>
         {
-            if (model?.State?.ActiveClipId is not { } id || model.IsReadOnly || model.Busy || renderingBlocked || !args.GetCurrentPoint(handle).Properties.IsLeftButtonPressed) return;
+            if (model?.State?.ActiveClipId is not { } id || model.IsStoryClip || model.IsReadOnly || model.Busy || renderingBlocked || !args.GetCurrentPoint(handle).Properties.IsLeftButtonPressed) return;
             var clip = model.Clips.First(clip => clip.Id == id);
             trimId = id; trimFirst = model.Index(clip.Clip.StartWordId); trimLast = model.Index(clip.Clip.EndWordId);
-            trimSnapshot = model.Project; trimming = true; trimStart = start; animation.Stop();
+            trimSession = new(model, id); trimming = true; trimStart = start; animation.Stop();
+            trimOriginX = args.GetCurrentPoint(track).Position.X; trimMoved = false;
             handle.Focus(FocusState.Pointer); handle.CapturePointer(args.Pointer); args.Handled = true;
         };
         handle.PointerMoved += (_, args) =>
         {
-            if (!trimming || trimStart != start || model is null || !ReferenceEquals(trimSnapshot, model.Project)) return;
-            UpdateViewport(args.GetCurrentPoint(track).Position.X); args.Handled = true;
+            if (!trimming || trimStart != start || trimSession?.IsCurrent != true) return;
+            PreviewClipTrim(args.GetCurrentPoint(track).Position); args.Handled = true;
         };
         handle.PointerReleased += (_, args) =>
         {
             if (!trimming || trimStart != start) return;
-            if (model is null || !ReferenceEquals(trimSnapshot, model.Project)) { CancelTrim(); Draw(); return; }
-            UpdateViewport(args.GetCurrentPoint(track).Position.X);
-            var id = trimId; var first = trimFirst; var last = trimLast;
+            if (model is null || trimSession?.IsCurrent != true) { CancelTrim(); Draw(); return; }
+            PreviewClipTrim(args.GetCurrentPoint(track).Position);
+            var session = trimSession;
+            trimSession = null;
             CancelTrim();
-            if (id is not null) TimelineLayout.CommitTrim(model, id, first, last);
+            if (trimMoved && session.Commit()) model.Announce(model.UndoActionName ?? "Trim clip");
+            itemMessage = session.Reason;
             Draw(); args.Handled = true;
         };
         handle.PointerCanceled += (_, _) => { CancelTrim(); Draw(); };
         handle.PointerCaptureLost += (_, _) => { if (trimming) { CancelTrim(); Draw(); } };
+    }
+    private void PreviewClipTrim(Point point)
+    {
+        if (model is null || trimId is null || trimSession is null) return;
+        trimMoved = Math.Abs(point.X - trimOriginX) >= 3;
+        var edge = trimStart ? TimelineEdge.Start : TimelineEdge.End;
+        var original = trimStart ? viewport.First : viewport.Last;
+        if (trimMoved) UpdateViewport(point.X);
+        else { trimFirst = viewport.First; trimLast = viewport.Last; UpdateViewport(); }
+        var final = trimStart ? trimFirst : trimLast;
+        if (!trimMoved || original == final || original < 0 || final < 0)
+        {
+            trimSession.Cancel(); gestureReadout = null; itemFeedbackOrigin = null; DrawItemFeedback(track.ActualWidth); return;
+        }
+        double Time(int index) => trimStart ? model.Words[index].Start : model.Words[index].End;
+        trimSession.Preview([new TimelineEdit.Trim(new(TimelineItemType.Clip, trimId), edge, Time(final))]);
+        if (trimSession.Reason is not null) { trimFirst = viewport.First; trimLast = viewport.Last; UpdateViewport(); }
+        var length = model.Words[trimLast].End - model.Words[trimFirst].Start;
+        gestureReadout = trimSession.Reason ?? $"{(trimStart ? "In" : "Out")} {TimelineItemEditing.Delta(Time(final) - Time(original))} · {TimelineItemEditing.Seconds(length)}";
+        itemFeedbackOrigin = point;
+        DrawItemFeedback(track.ActualWidth);
     }
     private TimelineRange ReadTrim(bool start)
     {
@@ -699,7 +728,8 @@ public sealed class TimelineView : UserControl
     }
     private void CancelTrim()
     {
-        trimming = false; trimSnapshot = null; trimId = null;
+        if (trimming) { gestureReadout = null; itemFeedbackOrigin = null; }
+        trimming = false; trimSession?.Cancel(); trimSession = null; trimId = null;
         startHandle.ReleasePointerCaptures(); endHandle.ReleasePointerCaptures();
     }
 
@@ -707,7 +737,10 @@ public sealed class TimelineView : UserControl
     {
         var width = track.ActualWidth;
         if (model is null || width <= 0 || plan is null) return;
-        metrics = TimelineLayout.Tracks(heightPicker.SelectedIndex, model.Project.Media.Source.Video is not null, true, true);
+        RefreshItemProjection();
+        RefreshItemAudio();
+        metrics = TimelineLayout.Tracks(heightPicker.SelectedIndex, itemLayout?.RowCounts);
+        RefreshItemBar();
         track.Height = canvas.Height = handles.Height = metrics.Height;
         MinHeight = PreferredPanelHeight;
         var heightChanged = preferredHeight != PreferredPanelHeight;
@@ -717,8 +750,8 @@ public sealed class TimelineView : UserControl
         handles.Clip = new RectangleGeometry { Rect = new(0, 0, width, metrics.Height) };
         canvas.Background = Brush("VcTimelineLaneBrush");
         leftDim.Fill = rightDim.Fill = Brush("VcTimelineScopeDimBrush");
-        leftDim.Height = rightDim.Height = metrics.MusicTop + metrics.MusicHeight - metrics.VideoTop;
-        Canvas.SetTop(leftDim, metrics.VideoTop); Canvas.SetTop(rightDim, metrics.VideoTop);
+        leftDim.Height = rightDim.Height = metrics.MusicTop + metrics.MusicHeight - metrics.CaptionTop;
+        Canvas.SetTop(leftDim, metrics.CaptionTop); Canvas.SetTop(rightDim, metrics.CaptionTop);
         slider.Margin = new(0, TimelineLayout.OverviewHeight, 0, 0);
         slider.Height = metrics.Height - TimelineLayout.OverviewHeight;
         playhead.Height = metrics.MusicTop + metrics.MusicHeight - TimelineLayout.OverviewHeight - 11;
@@ -727,11 +760,10 @@ public sealed class TimelineView : UserControl
         viewportTransform.ScaleY = (metrics.MusicTop + metrics.MusicHeight - metrics.VideoTop) / 30;
         Canvas.SetTop(audioDrawing, metrics.AudioTop); audioTransform.ScaleY = metrics.AudioHeight / 30;
         Canvas.SetTop(videoDrawing, metrics.VideoTop); videoTransform.ScaleY = metrics.VideoHeight / 30;
-        videoDrawing.Visibility = filmstrip.Visibility = videoName.Visibility = metrics.VideoHeight > 0 ? Visibility.Visible : Visibility.Collapsed;
+        videoDrawing.Visibility = filmstrip.Visibility = videoName.Visibility = model.Project.Media.Source.Video is not null ? Visibility.Visible : Visibility.Collapsed;
         Canvas.SetTop(filmstrip, metrics.VideoTop + 11); filmstrip.Height = Math.Max(0, metrics.VideoHeight - 11);
         Canvas.SetTop(videoName, metrics.VideoTop); Canvas.SetLeft(videoName, 4); videoName.Width = Math.Max(0, width - 8);
         videoName.Text = System.IO.Path.GetFileNameWithoutExtension(model.Project.Media.Source.AbsolutePath);
-        Canvas.SetTop(fxHint, metrics.EffectsTop + 4); Canvas.SetLeft(fxHint, 6);
         play.IsEnabled = slider.IsEnabled = !renderingBlocked && !model.IsReadOnly;
         foreach (var button in transport.Children.OfType<Button>()) button.IsEnabled = play.IsEnabled;
         stateMessage.Text = renderingBlocked ? "Timeline preview isn't available for this edit. Your media and edits are safe." : model.IsReadOnly ? "Relink the source to preview this take."
@@ -765,13 +797,13 @@ public sealed class TimelineView : UserControl
             path.Fill = Brush(index == 8 ? "VcTintDefaultBrush" : "VcAiTintBrush");
             path.Opacity = index == 8 ? .07 : .1;
         }
-        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawEffects(width); DrawMusic(width); DrawStory(width);
+        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawAskRange(width); DrawStory(width);
         selectionLength.Text = model.HasSelection ? string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"{Math.Max(0, ToDisplay(model.Words[model.SelectionEnd].End) - ToDisplay(model.Words[model.SelectionStart].Start)):0.0} s selected") : "";
         updatingControls = true;
         zoom.Value = AxisDuration > .1 ? Math.Clamp(Math.Log(Math.Max(1, AxisDuration / view.Duration)) / Math.Log(AxisDuration / .1) * 100, 0, 100) : 0;
         updatingControls = false;
-        if (!renderingBlocked && !model.IsReadOnly && metrics.VideoHeight > 0 && IsLoaded) RequestFilmstrip(tile, width);
+        if (!renderingBlocked && !model.IsReadOnly && model.Project.Media.Source.Video is not null && IsLoaded) RequestFilmstrip(tile, width);
         else ClearFilmstrip();
         UpdateViewport();
         if (heightChanged) PreferredPanelHeightChanged?.Invoke(this, preferredHeight);
@@ -790,60 +822,18 @@ public sealed class TimelineView : UserControl
     }
     private void DrawHeaders()
     {
-        string[] ids = ["V1", "A1", "CC", "FX", "M1"];
-        string[] names = ["Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", model?.CaptionStyleId == "off" ? "Captions off" : "Captions", "Effects", "Music"];
-        double[] tops = [metrics.VideoTop, metrics.AudioTop, metrics.CaptionTop, metrics.EffectsTop, metrics.MusicTop];
-        for (var index = 0; index < ids.Length; index++)
+        string[] names = [model?.CaptionStyleId == "off" ? "Captions off" : "Captions", "Titles & effects", "B-roll & pictures", "Zoom, looks & speed",
+            "Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", "Sounds", "Music"];
+        foreach (var lane in Enum.GetValues<TimelineLane>())
         {
-            headerIds[index].Text = ids[index]; headerNames[index].Text = names[index];
-            Canvas.SetTop(headerIds[index], tops[index] + 4); Canvas.SetTop(headerNames[index], tops[index] + 4);
+            var index = (int)lane;
+            headerIds[index].Text = lane.ToString(); headerNames[index].Text = names[index];
+            ToolTipService.SetToolTip(headerNames[index], names[index]);
+            Canvas.SetTop(headerIds[index], metrics.Top(lane) + 4); Canvas.SetTop(headerNames[index], metrics.Top(lane) + 4);
             headerIds[index].Foreground = Brush("VcTextSecondaryBrush"); headerNames[index].Foreground = Brush("VcTextTertiaryBrush");
-            headerIds[index].Visibility = headerNames[index].Visibility = index == 0 && metrics.VideoHeight == 0 ? Visibility.Collapsed : Visibility.Visible;
         }
     }
 
-    private void DrawMusic(double width)
-    {
-        Canvas.SetTop(musicLabel, metrics.MusicTop + (metrics.MusicHeight - 15) / 2);
-        if (model?.Music.Current is not { } entry)
-        {
-            musicRamp.Visibility = Visibility.Collapsed;
-            musicLabel.Visibility = Visibility.Visible;
-            musicLabel.Text = "Choose background music";
-            musicLabel.Foreground = Brush("VcTextTertiaryBrush");
-            musicLabel.Width = Math.Max(0, width - 10);
-            Canvas.SetLeft(musicLabel, 10);
-            AutomationProperties.SetName(headerNames[4], "Music: none");
-            return;
-        }
-        var bounds = ClipBounds();
-        var start = bounds is { } clip ? ToDisplay(clip.Start) : 0;
-        var end = bounds is { } clipEnd ? ToDisplay(clipEnd.End) : AxisDuration;
-        var left = rendered.X(start, width);
-        var right = rendered.X(end, width);
-        var visibleLeft = Math.Max(0, left);
-        var visibleRight = Math.Min(width, right);
-        var level = $"{entry.GainDb:0.#} dB".Replace('-', '−');
-        AutomationProperties.SetName(headerNames[4], $"Music: {entry.Title}, {level}");
-        musicRamp.Visibility = visibleRight > visibleLeft ? Visibility.Visible : Visibility.Collapsed;
-        musicLabel.Visibility = visibleRight - visibleLeft > 60 ? Visibility.Visible : Visibility.Collapsed;
-        if (visibleRight <= visibleLeft) return;
-        var top = metrics.MusicTop + 2;
-        var bottom = metrics.MusicTop + metrics.MusicHeight - 2;
-        var fadeIn = Math.Min((right - left) / 2, entry.FadeInSeconds * width / rendered.Duration);
-        var fadeOut = Math.Min((right - left) / 2, entry.FadeOutSeconds * width / rendered.Duration);
-        double RampTop(double x) => x < left + fadeIn && fadeIn > 0 ? bottom - (bottom - top) * (x - left) / fadeIn
-            : x > right - fadeOut && fadeOut > 0 ? bottom - (bottom - top) * (right - x) / fadeOut : top;
-        var inEnd = Math.Clamp(left + fadeIn, visibleLeft, visibleRight);
-        var outStart = Math.Clamp(right - fadeOut, visibleLeft, visibleRight);
-        musicRamp.Points = [new(visibleLeft, bottom), new(visibleLeft, RampTop(visibleLeft)), new(inEnd, RampTop(inEnd)),
-            new(outStart, RampTop(outStart)), new(visibleRight, RampTop(visibleRight)), new(visibleRight, bottom)];
-        musicRamp.Fill = Brush("VcTimelineCueBrush");
-        musicLabel.Text = $"♪ {entry.Title} · {level}" + (entry.Ducking ? " · dips under voice" : "");
-        musicLabel.Foreground = Brush("VcTimelineCueTextBrush");
-        musicLabel.Width = visibleRight - visibleLeft - 8;
-        Canvas.SetLeft(musicLabel, visibleLeft + 4);
-    }
     private void DrawOverview(double width)
     {
         if (model is null) return;
@@ -930,12 +920,12 @@ public sealed class TimelineView : UserControl
             Canvas.SetLeft(label, left); Canvas.SetTop(label, top);
             return label;
         }
-        static void Paint(Canvas canvas, Brush brush, double left, double top, double markWidth, double markHeight, double opacity)
-        {
-            var mark = new Rectangle { Fill = brush, Width = markWidth, Height = markHeight, Opacity = opacity };
-            Canvas.SetLeft(mark, left); Canvas.SetTop(mark, top);
-            canvas.Children.Add(mark);
-        }
+    }
+    private static void Paint(Canvas canvas, Brush brush, double left, double top, double markWidth, double markHeight, double opacity)
+    {
+        var mark = new Rectangle { Fill = brush, Width = markWidth, Height = markHeight, Opacity = opacity };
+        Canvas.SetLeft(mark, left); Canvas.SetTop(mark, top);
+        canvas.Children.Add(mark);
     }
     private void DrawRuler(double width)
     {
@@ -1009,28 +999,8 @@ public sealed class TimelineView : UserControl
 
     /// <summary>The FX lane: each Ask Claude effect of the open scope as a labelled block (source times on the display axis), the
     /// dragged range, and the toolbar's "✦ Ask Claude · 0:12–0:15" while a range is marked.</summary>
-    private void DrawEffects(double width)
+    private void DrawAskRange(double width)
     {
-        effectHits.Clear();
-        var effects = model is null || renderingBlocked ? [] : model.TimelineEffects();
-        var index = 0;
-        foreach (var effect in effects)
-        {
-            var left = Math.Clamp(rendered.X(ToDisplay(effect.Start), width), 0, width);
-            var right = Math.Clamp(rendered.X(ToDisplay(effect.End), width), 0, width);
-            if (right - left < 2 || index >= effectBlocks.Length) continue;
-            var block = effectBlocks[index++];
-            block.Visibility = Visibility.Visible;
-            block.Background = Brush("VcAiTintBrush");
-            block.Width = right - left; block.Height = Math.Max(0, metrics.EffectsHeight - 4);
-            Canvas.SetLeft(block, left); Canvas.SetTop(block, metrics.EffectsTop + 2);
-            var label = (TextBlock)block.Child;
-            label.Text = right - left >= 24 ? effect.Label : "";
-            label.Foreground = Brush("VcTimelineCueTextBrush");
-            effectHits.Add((effect.Id, left, right));
-        }
-        for (var rest = index; rest < effectBlocks.Length; rest++) effectBlocks[rest].Visibility = Visibility.Collapsed;
-        fxHint.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (model?.AskClaude.TimeRange is { } range)
         {
             var left = Math.Clamp(rendered.X(ToDisplay(range.Start), width), 0, width);
@@ -1068,6 +1038,7 @@ public sealed class TimelineView : UserControl
     private void OverviewPressed(object sender, PointerRoutedEventArgs args)
     {
         if (!args.GetCurrentPoint(overview).Properties.IsLeftButtonPressed) return;
+        overviewOrigin = view;
         var time = Math.Clamp(args.GetCurrentPoint(track).Position.X / Math.Max(1, track.ActualWidth), 0, 1) * AxisDuration;
         overviewGrab = time >= view.Start && time <= view.End ? time - view.Start : view.Duration / 2;
         var target = (TimelineRangeControl)sender;
@@ -1190,8 +1161,8 @@ public sealed class TimelineView : UserControl
         }
         leftDim.Width = frame.LeftDim; rightDim.Width = frame.RightDim; Canvas.SetLeft(rightDim, frame.RightEdge);
         bracketTransform.ScaleX = frame.BracketScale; bracketTransform.TranslateX = frame.BracketTranslation;
-        startHandle.Visibility = frame.HasTrim && frame.StartVisible ? Visibility.Visible : Visibility.Collapsed;
-        endHandle.Visibility = frame.HasTrim && frame.EndVisible ? Visibility.Visible : Visibility.Collapsed;
+        startHandle.Visibility = !model.IsStoryClip && frame.HasTrim && frame.StartVisible ? Visibility.Visible : Visibility.Collapsed;
+        endHandle.Visibility = !model.IsStoryClip && frame.HasTrim && frame.EndVisible ? Visibility.Visible : Visibility.Collapsed;
         if (frame.HasTrim)
         {
             startHandle.IsEnabled = endHandle.IsEnabled = frame.TrimEnabled && !renderingBlocked;
@@ -1210,6 +1181,7 @@ public sealed class TimelineView : UserControl
         overviewWindow.Width = Math.Min(frameWidth, view.Duration / Math.Max(.001, AxisDuration) * frameWidth);
         Canvas.SetLeft(overviewWindow, view.Start / Math.Max(.001, AxisDuration) * frameWidth);
         scrollThumb.Width = overviewWindow.Width; Canvas.SetLeft(scrollThumb, view.Start / Math.Max(.001, AxisDuration) * frameWidth); scrollRange.Refresh();
+        DrawItems(frameWidth);
         MovePlayhead();
     }
     private void MovePlayhead()
@@ -1229,6 +1201,7 @@ public sealed class TimelineView : UserControl
         for (var index = 0; index < overviewBadgeVisible.Length; index++)
             retained.Nodes[TimelineRetainedPool<object>.Layers + index].Visibility = overviewBadgeVisible[index] && Math.Abs(overviewBadgeLeft[index] + 9 - overviewX) > 14 ? Visibility.Visible : Visibility.Collapsed;
         slider.Refresh();
+        RefreshItemActions();
     }
     private static void SetClockRun(Run run, string value, ref string shown)
     {

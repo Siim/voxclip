@@ -301,6 +301,27 @@ private actor AskFixtureConnector: LLMConnector {
         #expect(editor.timelineEffects(on: .source).compactMap(\.label).sorted() == ["Blur", "Title"])
     }
 
+    @Test func doubleClickOpensTheAskClaudeEffectsAdjustRow() async throws {
+        let ops = [Self.op("title", ["startWord": 2, "endWord": 8, "text": "Day 2", "position": "top"])]
+        let (shell, editor, _, undo) = try await open(reply: try Self.reply(ops))
+        defer { editor.close() }
+        select(editor, 2...8)
+        editor.openAskClaudeOnSelection()
+        editor.askClaude.text = "Add a title"
+        undo.beginUndoGrouping(); editor.sendAskClaude(); await editor.askClaude.task?.value; undo.endUndoGrouping()
+        let effect = try #require(editor.project.clipEffects.first)
+        let canvas = TimelineCanvasView(model: editor, shell: shell)
+        defer { canvas.tearDown() }
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect(effect.id) })
+        let location = canvas.convert(NSPoint(x: fragment.rect.midX, y: fragment.rect.midY), to: nil)
+        let click = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [], timestamp: 0,
+            windowNumber: 0, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
+        let steps = editor.undoSteps
+        canvas.mouseDown(with: click)
+        #expect(editor.timelineEffectsOpen && editor.timelineEffectID == effect.id)
+        #expect(editor.undoSteps == steps)
+    }
+
     @Test func aTimelineRangeAndAClipRowOpenTheFieldToo() async throws {
         let (shell, editor, _, _) = try await open()
         defer { editor.close() }

@@ -41,6 +41,8 @@ def timeline_commands(index):
                 command("splitAll", {"atWord": index}),
                 command("fade", {**single, "edge": {"enum": ["in", "out"]}, "seconds": seconds}),
                 command("setGain", {**single, "db": number}),
+                command("setTrackGain", {"track": text(), "db": number}),
+                command("dipGain", {**single, "startWord": index, "endWord": index, "byDb": number}),
                 command("addGainPoint", {**single, "atWord": index, "db": number}),
                 command("moveGainPoint", {**single, "fromSeconds": seconds, "toWord": index, "db": number}),
                 command("removeGainPoint", {**single, "atSeconds": seconds}),

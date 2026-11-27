@@ -17,6 +17,21 @@ public sealed class TimelineItemTests
     public static TheoryData<string> EditNames => Names(Edits);
     public static TheoryData<string> LayoutNames => Names(Layouts);
 
+    [Fact]
+    public void HarnessVolumeEditsKeepTheLastWordInsideTheDip()
+    {
+        var project = ProjectSerialization.Deserialize(Edits["bases"]!["music"]!.ToJsonString());
+        using var wire = JsonDocument.Parse("""
+            [{"op":"setTrackGain","track":"music-main","db":-10},
+             {"op":"dipGain","item":"music","startWord":5,"endWord":5,"byDb":-6}]
+            """);
+        var quieter = new TimelineEditRequest(wire.RootElement[0]).Apply(project, "clip-main");
+        var dipped = new TimelineEditRequest(wire.RootElement[1]).Apply(quieter.Project, "clip-main");
+        var track = Assert.Single(dipped.Project.Music);
+        Assert.Equal(-10, track.GainDb);
+        Assert.Equal([0.25, 0.5, 0.55, 0.95, 1], Assert.Single(track.Segments!).GainPoints!.Select(point => point.T));
+    }
+
     [Theory]
     [MemberData(nameof(EditNames))]
     public void ReplayTimelineEdit(string name)
@@ -155,6 +170,8 @@ public sealed class TimelineItemTests
             "splitAll" => new TimelineEdit.SplitAll(source),
             "fade" => new TimelineEdit.Fade(Item(), edge, Number(row, "seconds")),
             "setGain" => new TimelineEdit.SetGain(Item(), db),
+            "setTrackGain" => new TimelineEdit.SetTrackGain(Text(row, "track"), db),
+            "dipGain" => new TimelineEdit.DipGain(Item(), Number(row, "fromSource"), Number(row, "toSource"), Number(row, "byDb")),
             "addGainPoint" => new TimelineEdit.AddGainPoint(Item(), source, db),
             "moveGainPoint" => new TimelineEdit.MoveGainPoint(Item(), old, source, db),
             "removeGainPoint" => new TimelineEdit.RemoveGainPoint(Item(), old),

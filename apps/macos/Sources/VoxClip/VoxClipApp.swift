@@ -306,6 +306,10 @@ import VoxClipCore
     var settingsWindowForTests: NSWindow? { settingsWindow }
     #endif
     @objc private func performEditorCommand(_ item: NSMenuItem) {
+        if let shortcut = TimelineItemShortcut(menuTag: item.tag) {
+            TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder)?.interaction.handleItemShortcut(shortcut)
+            return
+        }
         let shell = model.shell
         switch item.tag {
         case 13: shell.selection = .home; return
@@ -453,6 +457,12 @@ import VoxClipCore
             return NSApp.keyWindow != nil
         }
         if item.action == #selector(performEditorCommand(_:)) {
+            if let shortcut = TimelineItemShortcut(menuTag: item.tag) {
+                guard let canvas = TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder) else { return false }
+                if shortcut == .snap { item.state = canvas.model.timelineSnapping ? .on : .off }
+                if shortcut == .duplicate { return canvas.model.capabilities.edit && !canvas.selectedItemIDs.isEmpty }
+                return shortcut == .snap || shortcut == .fit || canvas.model.capabilities.edit
+            }
             if item.tag == 38 {
                 item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take"
                 item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
@@ -632,6 +642,12 @@ import VoxClipCore
         command(edit, "Tighten Pauses", 8, "p", [.command, .option])
         command(edit, "Restore All Cuts", 9, "r", [.command, .option])
         command(edit, "Transcribe Again…", 37)
+        command(edit, "Split at Playhead", 71, "b")
+        command(edit, "Split at Playhead", 71, "b", [])
+        edit.items.last?.isHidden = true
+        edit.items.last?.allowsKeyEquivalentWhenHidden = true
+        command(edit, "Split All at Playhead", 73, "b", [.command, .shift])
+        command(edit, "Duplicate Item", 74, "d")
         let view = menu("View")
         command(view, "Show Cuts", 60, "c", [.command, .option])
         command(view, "Show Pauses", 11)
@@ -649,6 +665,8 @@ import VoxClipCore
         frame.submenu = frameMenu
         view.addItem(frame)
         addZoomCommands(to: view)
+        command(view, "Snapping", 75, "n", [])
+        command(view, "Fit Timeline", 76, "z", [.shift])
         add(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
         let playback = menu("Playback")
         command(playback, "Play/Pause", 21, " ", [])

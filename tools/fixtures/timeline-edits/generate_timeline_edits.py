@@ -204,6 +204,13 @@ def edit_vectors(project, templates, asset, track):
                gainDb=0, fadeInSeconds=track["fadeInSeconds"], fadeOutSeconds=track["fadeOutSeconds"])
     edit("bed", "setGain", dict(music=[dict(track, segments=[dict(bed, gainDb=-4)])]), "Change volume", edit_plan=plan((0.5, 8)),
          item=["music", track["id"]], db=-4)
+    edit("bed", "setTrackGain", dict(music=[dict(track, gainDb=-40)]), "Change volume",
+         edit_plan=plan((0.5, 8)), track=track["id"], db=-50)
+    edit("bed", "setTrackGain", dict(schemaVersion=bases["bed"]["schemaVersion"]), "Change volume", label="bed/unchanged-track-gain",
+         track=track["id"], db=track["gainDb"])
+    edit("music", "setTrackGain", dict(music=[dict(bases["music"]["music"][0], gainDb=-10)]), "Change volume",
+         track=track["id"], db=-10)
+    edit("bed", "setTrackGain", refusal=NO_ITEM, label="bed/track-outside-scope", scope=None, track=track["id"], db=-10)
     edit("bed", "delete", dict(music=None), "Delete music", items=[["music", track["id"]]])
     bases["nonloop"] = dict(bases["music"], music=[dict(track, asset=dict(track["asset"], durationSeconds=161),
                                                       segments=[dict(bases["music"]["music"][0]["segments"][0], loop=False, songFromSeconds=160)])])
@@ -280,6 +287,25 @@ def edit_vectors(project, templates, asset, track):
     edit("zoom", "split", refusal="Too short to split here.", label="zoom/split-too-short", items=[["motion", "zoom"]], source=2.125)
     edit("sound", "addGainPoint", refusal="There is already a volume keyframe here.", label="sound/reject-duplicate-keyframe",
          item=["effect", "sound"], source=2.25, db=-6)
+    sound = bases["sound"]["clipEffects"][0]
+    edit("sound", "dipGain", dict(clipEffects=[dict(sound, gainPoints=[
+        dict(t=0.125, db=-8), dict(t=0.175, db=-14), dict(t=0.825, db=-18), dict(t=0.875, db=-12),
+    ])]), "Dip volume", item=["effect", "sound"], fromSource=2.125005, toSource=2.875005, byDb=-6)
+    music = bases["music"]["music"][0]
+    segment = music["segments"][0]
+    edit("music", "dipGain", dict(music=[dict(music, segments=[dict(segment, gainPoints=[
+        dict(t=0.125, db=-8), dict(t=7500 / RATE, db=-60), dict(t=9001 / RATE, db=-60), dict(t=10501 / RATE, db=-8),
+        *segment["gainPoints"],
+    ])])]), "Dip volume", item=["music", "music"], fromSource=2.125, toSource=2 + 10501 / RATE, byDb=-75)
+    edit("sound", "dipGain", refusal="Select a longer range inside the item.", label="sound/dip-below-three-samples",
+         item=["effect", "sound"], fromSource=2.5, toSource=2.5 + 2 / RATE, byDb=-6)
+    bases["dense-sound"] = dict(bases["sound"], clipEffects=[dict(sound, gainPoints=[
+        dict(t=index / 256, db=-8) for index in range(61)
+    ])])
+    edit("dense-sound", "dipGain", refusal="An item can have up to 64 volume keyframes.",
+         item=["effect", "sound"], fromSource=2.5, toSource=2.75, byDb=-6)
+    edit("dense-sound", "dipGain", undo="Dip volume", label="dense-sound/zero-depth-dip",
+         item=["effect", "sound"], fromSource=2.5, toSource=2.75, byDb=0)
     edit("bRoll", "duplicate", refusal="Place it where no other recording plays.", label="bRoll/reject-overlap", items=[["footage", "bRoll"]], source=2.2)
     media = bases["bRoll"]["media"]
     edit("bRoll", "duplicate", dict(media=dict(media, footage=media["footage"] + [dict(media["footage"][0], id="bRoll-2", start=3, end=4)])),

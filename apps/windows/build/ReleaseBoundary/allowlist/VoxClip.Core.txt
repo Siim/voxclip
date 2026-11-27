@@ -6696,6 +6696,26 @@ member VoxClip.Core.Domain.Editing.TimelineEdit+Delete :: method public get_Item
 member VoxClip.Core.Domain.Editing.TimelineEdit+Delete :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineEdit+Delete,VoxClip.Core.Domain.Editing.TimelineEdit+Delete)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Delete :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineEdit+Delete,VoxClip.Core.Domain.Editing.TimelineEdit+Delete)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Delete :: method public set_Items(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineItemId>)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method private .ctor(VoxClip.Core.Domain.Editing.TimelineEdit+DipGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public .ctor(VoxClip.Core.Domain.Editing.TimelineItemId,double,double,double)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public Deconstruct(VoxClip.Core.Domain.Editing.TimelineItemId&,double&,double&,double&)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public Equals(VoxClip.Core.Domain.Editing.TimelineEdit)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public Equals(VoxClip.Core.Domain.Editing.TimelineEdit+DipGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public ToString()
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public get_ByDb()
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public get_FromSource()
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public get_Item()
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public get_ToSource()
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineEdit+DipGain,VoxClip.Core.Domain.Editing.TimelineEdit+DipGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineEdit+DipGain,VoxClip.Core.Domain.Editing.TimelineEdit+DipGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public set_ByDb(double)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public set_FromSource(double)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public set_Item(VoxClip.Core.Domain.Editing.TimelineItemId)
+member VoxClip.Core.Domain.Editing.TimelineEdit+DipGain :: method public set_ToSource(double)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Duplicate :: method private .ctor(VoxClip.Core.Domain.Editing.TimelineEdit+Duplicate)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Duplicate :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Duplicate :: method protected get_EqualityContract()
@@ -6848,6 +6868,22 @@ member VoxClip.Core.Domain.Editing.TimelineEdit+SetLoop :: method public op_Equa
 member VoxClip.Core.Domain.Editing.TimelineEdit+SetLoop :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineEdit+SetLoop,VoxClip.Core.Domain.Editing.TimelineEdit+SetLoop)
 member VoxClip.Core.Domain.Editing.TimelineEdit+SetLoop :: method public set_Enabled(bool)
 member VoxClip.Core.Domain.Editing.TimelineEdit+SetLoop :: method public set_Item(VoxClip.Core.Domain.Editing.TimelineItemId)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method private .ctor(VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public .ctor(string,double)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public Deconstruct(string&,double&)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public Equals(VoxClip.Core.Domain.Editing.TimelineEdit)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public Equals(VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public ToString()
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public get_Db()
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public get_Track()
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain,VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain,VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public set_Db(double)
+member VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain :: method public set_Track(string)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Slip :: method private .ctor(VoxClip.Core.Domain.Editing.TimelineEdit+Slip)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Slip :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Editing.TimelineEdit+Slip :: method protected get_EqualityContract()
@@ -7007,6 +7043,7 @@ member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private Check
 member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private CheckSpeech(VoxClip.Core.Domain.Editing.ClipRange)
 member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private CopyScope(string,VoxClip.Core.Domain.Editing.ClipRange,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private Delete(VoxClip.Core.Domain.Editing.TimelineEntry)
+member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private DipGain(VoxClip.Core.Domain.Editing.TimelineItemId,double,double,double)
 member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private DuplicateOffset(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.TimelineEntry>)
 member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private Edited(double,VoxClip.Core.Domain.Editing.TimelineEntry)
 member VoxClip.Core.Domain.Editing.TimelineEdits+Reducer :: method private Effect(string)
@@ -9022,9 +9059,11 @@ member VoxClip.Core.Domain.Music.MusicMix :: field public SilenceFloorDb
 member VoxClip.Core.Domain.Music.MusicMix :: method private ReplaceRuns(bool[],bool,int,bool,bool)
 member VoxClip.Core.Domain.Music.MusicMix :: method public BedGainDb(System.Nullable`1<double>,System.Nullable`1<double>,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public Crossfade(long,long)
+member VoxClip.Core.Domain.Music.MusicMix :: method public CrossfadeSpans(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,int,bool)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckFactor(System.Collections.Generic.IReadOnlyList`1<double>,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckingGainsDb(System.Collections.Generic.IReadOnlyList`1<bool>,bool)
 member VoxClip.Core.Domain.Music.MusicMix :: method public DuckingGainsDb(System.Collections.Generic.IReadOnlyList`1<bool>,bool,double)
+member VoxClip.Core.Domain.Music.MusicMix :: method public EnvelopeDb(double,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.GainPoint>)
 member VoxClip.Core.Domain.Music.MusicMix :: method public FadeFactor(double,double,double,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public FrameLevels(System.ReadOnlySpan`1<float>,double)
 member VoxClip.Core.Domain.Music.MusicMix :: method public FrameSize(double)
@@ -20599,6 +20638,7 @@ type VoxClip.Core.Domain.Editing.TimelineEdge
 type VoxClip.Core.Domain.Editing.TimelineEdit
 type VoxClip.Core.Domain.Editing.TimelineEdit+AddGainPoint
 type VoxClip.Core.Domain.Editing.TimelineEdit+Delete
+type VoxClip.Core.Domain.Editing.TimelineEdit+DipGain
 type VoxClip.Core.Domain.Editing.TimelineEdit+Duplicate
 type VoxClip.Core.Domain.Editing.TimelineEdit+Fade
 type VoxClip.Core.Domain.Editing.TimelineEdit+Move
@@ -20608,6 +20648,7 @@ type VoxClip.Core.Domain.Editing.TimelineEdit+RemoveGainPoint
 type VoxClip.Core.Domain.Editing.TimelineEdit+SetDuck
 type VoxClip.Core.Domain.Editing.TimelineEdit+SetGain
 type VoxClip.Core.Domain.Editing.TimelineEdit+SetLoop
+type VoxClip.Core.Domain.Editing.TimelineEdit+SetTrackGain
 type VoxClip.Core.Domain.Editing.TimelineEdit+Slip
 type VoxClip.Core.Domain.Editing.TimelineEdit+Split
 type VoxClip.Core.Domain.Editing.TimelineEdit+SplitAll

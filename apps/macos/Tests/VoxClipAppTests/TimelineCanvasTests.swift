@@ -18,6 +18,559 @@ private actor TimelineTestSettings: SettingsStore {
 /// waveform. No window is shown; each test has its own data folder.
 @Suite("v2 timeline", .serialized, .offlineFixtures)
 @MainActor struct TimelineCanvasTests {
+    @Test func soundFadePreviewsAndCommitsOnce() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "sound", clipId: fixture.edits.activeClipId, kind: .sound,
+            start: 11, end: 13, sound: .init(source: .bundled, id: "pop", durationSeconds: 2, title: "Pop", license: "cc0"), gainDb: -20)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("sound") })
+        let grip = try #require(fragment.fadeGrip(.start))
+        let start = NSPoint(x: grip.midX, y: grip.midY)
+        let end = NSPoint(x: start.x + 0.8 * canvas.viewport.ptPerSecond, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(model.timelineItemRefusal == nil)
+        #expect(canvas.itemOverlay.preview?.readout == "Fade in 0.8 s")
+        #expect(!undo.canUndo)
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.project == fixture && !undo.canUndo && canvas.itemOverlay.preview == nil)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        undo.endUndoGrouping()
+        #expect(undo.undoActionName == "Fade sound" && model.undoSteps == 1)
+        #expect(model.project.clipEffects.first?.fadeInSeconds == 0.8)
+    }
+
+    private enum MusicDrag: CaseIterable { case fade, volume, keyframe, dip, gripSlip, modifierSlip, loop }
+
+    private func projectWithMusic(segmented: Bool = true) throws -> Project {
+        var fixture = try project()
+        let asset = MusicAsset(file: "\(fixture.id)/music-night.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 46)
+        let segment = MusicSegment(id: "music", anchorSeconds: 11, lengthSeconds: 4, songFromSeconds: 42,
+                                   loop: true, fadeInSeconds: 0, fadeOutSeconds: 0)
+        fixture.music = [.init(id: "music", clipId: fixture.edits.activeClipId, asset: asset, source: .file, title: "Night Drive",
+                               license: .own, gainDb: -30, fadeInSeconds: 0, fadeOutSeconds: 0, startOffsetSeconds: 42,
+                               segments: segmented ? [segment] : nil)]
+        return fixture
+    }
+
+    @Test(arguments: MusicDrag.allCases) private func musicDragPreviewsCancelsAndCommitsOnce(_ gesture: MusicDrag) throws {
+        var fixture = try projectWithMusic(segmented: gesture != .volume)
+        if gesture == .keyframe { fixture.music[0].segments?[0].gainPoints = [.init(t: 1, db: 0)] }
+        let app = try app(), model = editor(app, project: fixture)
+        let shell = WorkspaceShell(app: app)
+        shell.layout.trackHeight = .large
+        let (canvas, window) = windowed(model, shell: shell)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        model.timelineSnapping = false
+        let id = TimelineItemID.music("music")
+        let item = try #require(canvas.content.items.first { $0.item.id == id })
+        canvas.selectAndRevealItem(item)
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == id })
+        let rect = fragment.rect
+        let scale = canvas.viewport.ptPerSecond
+        let line = fragment.volumeY(-30)
+        var flags: NSEvent.ModifierFlags = []
+        let start: NSPoint, end: NSPoint, name: String, readout: String
+        switch gesture {
+        case .fade:
+            let grip = try #require(fragment.fadeGrip(.start))
+            start = .init(x: grip.midX, y: grip.midY); end = .init(x: start.x + 0.8 * scale, y: start.y)
+            name = "Fade music"; readout = "Fade in 0.8 s"
+        case .volume:
+            start = .init(x: rect.midX, y: line); end = .init(x: start.x, y: line - 12.5 / fragment.dbPerPoint)
+            name = "Change volume"; readout = "−17.5 dB"
+        case .keyframe:
+            start = try #require(fragment.volumePoints.first?.center)
+            end = .init(x: start.x + 0.5 * scale, y: line - 10 / fragment.dbPerPoint)
+            name = "Move volume keyframe"; readout = "−20.0 dB"
+        case .dip:
+            start = .init(x: rect.midX, y: line); end = .init(x: start.x, y: line + 8 / fragment.dbPerPoint)
+            name = "Dip volume"
+            readout = "\(timelineItemTime(fragment.range.start + 1))–\(timelineItemTime(fragment.range.start + 3)) · −8.0 dB"
+        case .gripSlip, .modifierSlip:
+            if gesture == .gripSlip {
+                let grip = try #require(fragment.slipGrip)
+                start = .init(x: grip.midX, y: grip.midY)
+            } else {
+                flags = [.option, .command]
+                start = .init(x: rect.midX, y: rect.midY)
+            }
+            end = .init(x: start.x + 2.5 * scale, y: start.y)
+            name = "Slip music"; readout = "Slip +0:02.5 · song 0:42.0 → 0:44.5"
+        case .loop:
+            start = .init(x: rect.maxX - 1, y: rect.midY); end = .init(x: start.x + 4 * scale, y: start.y)
+            name = "Trim music"; readout = "∞ 1 loop · 8.0 s"
+        }
+        func selectDipRange(cancel: Bool = false) throws {
+            let lower = NSPoint(x: rect.minX + scale, y: rect.maxY - 1)
+            let upper = NSPoint(x: rect.minX + 3 * scale, y: lower.y)
+            canvas.mouseDown(with: try mouse(.leftMouseDown, lower, in: canvas))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, upper, in: canvas))
+            #expect(canvas.itemOverlay.preview != nil)
+            if cancel { canvas.keyDown(with: try timelineKey(53)) }
+            canvas.mouseUp(with: try mouse(.leftMouseUp, upper, in: canvas))
+            #expect(!undo.canUndo && canvas.itemOverlay.audioSelection.isEmpty == cancel)
+        }
+        func begin() throws {
+            if gesture == .dip { try selectDipRange() }
+            canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas, flags: flags))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas, flags: flags))
+            #expect(canvas.itemOverlay.preview?.readout == readout)
+            #expect(model.project == fixture && !undo.canUndo)
+        }
+        if gesture == .dip { try selectDipRange(cancel: true) }
+        try begin()
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas, flags: flags))
+        #expect(model.project == fixture && !undo.canUndo && canvas.itemOverlay.preview == nil)
+        try begin()
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas, flags: flags))
+        undo.endUndoGrouping()
+        #expect(model.timelineItemRefusal == nil)
+        #expect(undo.undoActionName == name && model.undoSteps == 1)
+        if gesture == .volume {
+            // Track level only: the bed stays one continuous bed that follows the clip.
+            #expect(model.currentMusic?.gainDb == -17.5 && model.currentMusic?.segments == nil)
+        } else {
+            let segment = try #require(model.currentMusic?.segments?.first)
+            switch gesture {
+            case .fade: #expect(segment.fadeInSeconds == 0.8)
+            case .volume: break
+            case .keyframe: #expect(segment.gainPoints == [.init(t: 1.5, db: 10)])
+            case .dip: #expect(segment.gainPoints?.map(\.db) == [0, -8, -8, 0])
+            case .gripSlip, .modifierSlip: #expect(segment.songFromSeconds == 44.5 && segment.anchorSeconds == 11)
+            case .loop:
+                #expect(abs(segment.lengthSeconds - 8) < 0.001)
+                #expect(canvas.content.musicGraphics.loops["music"]?.count == 1)
+            }
+        }
+        undo.undo()
+        #expect(model.project.music == fixture.music)
+    }
+
+    @Test func optionClickAddsAKeyframeAtThePointerAndOnTheLine() throws {
+        var fixture = try projectWithMusic()
+        fixture.music[0].segments?[0].gainPoints = [.init(t: 0, db: 0), .init(t: 3, db: 9)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .music("music") })
+        let time = fragment.range.start + 2
+        let point = NSPoint(x: canvas.headerWidth + canvas.viewport.x(time), y: fragment.volumeY(-24))
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas, flags: .option))
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, point, in: canvas, flags: .option))
+        #expect(!undo.canUndo && model.project == fixture)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas, flags: .option))
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, point, in: canvas, flags: .option))
+        undo.endUndoGrouping()
+        #expect(undo.undoActionName == "Add volume keyframe")
+        #expect(model.currentMusic?.segments?.first?.gainPoints?[1] == .init(t: 2, db: 6))
+        let newFragment = try #require(canvas.itemFragments.first { $0.display.item.id == .music("music") })
+        let keyframe = try #require(newFragment.volumePoints.first { $0.gain.t == 2 })
+        #expect(hypot(keyframe.center.x - point.x, keyframe.center.y - point.y) < 0.01)
+    }
+
+    @Test func audioVoiceOverAndKeyboardUseTheSameUndoableActions() throws {
+        let model = editor(try app(), project: try projectWithMusic())
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let id = TimelineItemID.music("music")
+        model.sourceTime = 12
+        model.playhead = model.timelineTime(source: 12, on: .edited)
+        model.selectTimelineItems([id]); canvas.apply()
+        func perform(_ title: String) throws {
+            let action = try #require(canvas.itemAXElements[id]?.accessibilityCustomActions()?.first { $0.name == title }?.handler)
+            undo.beginUndoGrouping(); defer { undo.endUndoGrouping() }
+            #expect(action())
+        }
+        for edge in ["in", "out"] {
+            try perform("Fade \(edge) longer")
+            #expect(undo.undoActionName == "Fade music" && model.lastAnnouncement == "Fade \(edge) 0.1 seconds.")
+            try perform("Fade \(edge) shorter")
+            #expect(model.lastAnnouncement == "Fade \(edge) 0.0 seconds.")
+        }
+        try perform("Volume up 1 dB")
+        #expect(undo.undoActionName == "Change volume" && model.lastAnnouncement == "Volume −29.0 dB.")
+        try perform("Volume down 1 dB")
+        #expect(model.lastAnnouncement == "Volume −30.0 dB.")
+        try perform("Add volume keyframe")
+        #expect(undo.undoActionName == "Add volume keyframe")
+        #expect(model.lastAnnouncement == "Volume keyframe added at the playhead.")
+        undo.undo()
+        for (code, character, flags, undoName): (UInt16, String, NSEvent.ModifierFlags, String) in [
+            (24, "=", .control, "Change volume"), (27, "-", .control, "Change volume"), (40, "k", .option, "Add volume keyframe")
+        ] {
+            let event = try timelineKey(code, character, flags: flags)
+            undo.beginUndoGrouping()
+            #expect(canvas.interaction.keyDown(event))
+            undo.endUndoGrouping()
+            #expect(undo.undoActionName == undoName)
+        }
+    }
+
+    @Test func musicContourDrawsStagedDipsAndMarksTheCrossfade() throws {
+        var fixture = try projectWithMusic()
+        fixture.music[0].gainDb = -20
+        fixture.music[0].segments?.append(.init(id: "tail", anchorSeconds: 13, lengthSeconds: 3, songFromSeconds: 39,
+                                               loop: false, fadeInSeconds: 0, fadeOutSeconds: 0))
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let piece = try #require(canvas.itemFragments.first { $0.display.item.id == .music("music") })
+        let speech = piece.range.start + 2
+        let activity = (0..<800).map { abs((Double($0) + 0.5) * MusicMix.frameSeconds - speech) < 0.3 }
+        let contour = TimelineDuckingContour(gains: MusicMix.duckingGainsDb(activity: activity), timing: .init(speed: 1))
+        model.stagedTimelineDucking = (model.projectRevision, contour)
+        canvas.renderContent()
+        let staged = try #require(canvas.music.state.music.contour)
+        #expect(!canvas.music.state.music.usesFallback)
+        #expect(abs(piece.duckingY(atX: piece.audioX(at: speech), contour: staged) - piece.volumeY(-32)) < 0.001)
+        #expect(piece.duckingY(atX: piece.audioX(at: speech - 1), contour: staged) == piece.volumeY(-20))
+        let band = try #require(canvas.music.state.music.fades["tail"])
+        #expect(abs(band.end - band.start - 2) < 0.001)
+    }
+
+    @Test func audioFieldsExplainUnavailableEditsAndZeroDuckingTurnsItOff() throws {
+        var fixture = try projectWithMusic()
+        fixture.music[0].segments?[0].lengthSeconds = 6
+        fixture.clipEffects = [.init(id: "hidden", clipId: fixture.edits.activeClipId, kind: .sound,
+            start: 31, end: 31.8, sound: .init(source: .bundled, id: "pop", durationSeconds: 0.8, title: "Pop", license: "cc0"))]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let id = TimelineItemID.music("music")
+        let music = try #require(canvas.content.items.first { $0.item.id == id })
+        let hidden = try #require(canvas.content.items.first { $0.item.id == .effect("hidden") })
+        #expect(model.timelineFieldDisabledReason(hidden) == "Hidden · outside this clip")
+        #expect(model.timelineFieldDisabledReason(music) == nil && music.audio?.duckDb == -12)
+        #expect(model.timelineEditReason(.setLoop(item: id, false))?.hasSuffix("Turn on Loop to extend it.") == true)
+        #expect(!undo.canUndo)
+        for (input, expected) in [(-30.0, -24.0), (0, 0)] {
+            undo.beginUndoGrouping()
+            #expect(model.commitTimelineItemEdit(.setDuck(track: "music", db: input)))
+            undo.endUndoGrouping()
+            canvas.renderContent()
+            #expect(canvas.content.items.first { $0.item.id == id }?.audio?.duckDb == expected)
+            #expect(model.currentMusic?.ducking == (expected != 0))
+        }
+        undo.undo()
+        #expect(model.currentMusic?.duckDb == -24 && model.currentMusic?.ducking == true)
+        undo.undo()
+        #expect(model.currentMusic == fixture.music.first)
+    }
+
+    @Test func aTitleDragWritesOneNamedUndoOnRelease() throws {
+        let app = try app()
+        var fixture = try project()
+        fixture.clipEffects = [ClipEffect(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                          start: 12, end: 13, text: "Faster edits", position: .top)]
+        let model = editor(app, project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        model.undoManager = undo
+        model.timelineSnapping = false
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let point = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let end = NSPoint(x: point.x + canvas.viewport.ptPerSecond, y: point.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(!undo.canUndo && model.project.clipEffects.first?.start == 12)
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        undo.endUndoGrouping()
+        #expect(model.timelineItemRefusal == nil)
+        #expect(undo.undoActionName == "Move title" && model.undoSteps == 1)
+        #expect(model.project.clipEffects.first?.start == 13)
+        undo.undo()
+        #expect(model.project.clipEffects.first?.start == 12)
+    }
+
+    @Test func itemHitRegionsAndMarqueeFollowTheLanes() throws {
+        var fixture = try project()
+        let clip = try #require(fixture.edits.activeClipId)
+        fixture.clipEffects = [ClipEffect(id: "title", clipId: clip, kind: .title, start: 12, end: 13, text: "Faster edits", position: .top),
+                               ClipEffect(id: "sound", clipId: clip, kind: .bleep, start: 16, end: 16.8, wordIds: ["t16"])]
+        fixture.media.footage = [.init(id: "picture", clipID: clip, kind: .bRoll, start: 12, end: 13,
+                                       footage: .init(sourceKey: "picture-source", start: 0))]
+        fixture.motionCues = [.init(id: "zoom", clipID: clip, sourceStart: 12, sourceEnd: 13)]
+        let asset = MusicAsset(file: "demo.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 60)
+        fixture.music = [.init(id: "music", clipId: clip, asset: asset, source: .file, title: "Night Drive", license: .own)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        #expect(canvas.headers.map(\.trackID) == ["CC", "T1", "B1", "FX", "V1", "A1", "S1", "M1"])
+        for (id, lane, label): (TimelineItemID, TimelineItemLane, String) in [
+            (.effect("title"), .titles, "Title, Faster edits"), (.footage("picture"), .pictures, "B-roll"),
+            (.motion("zoom"), .effects, "Zoom, Pan & Zoom"), (.effect("sound"), .sounds, "Bleep"), (.music("music"), .music, "Music, Night Drive")
+        ] {
+            let piece = try #require(canvas.itemFragments.first { $0.display.item.id == id })
+            #expect(canvas.itemAXElements[id]?.accessibilityLabel()?.hasPrefix(label + ", ") == true)
+            let body = NSPoint(x: piece.rect.midX, y: piece.rect.midY)
+            #expect(canvas.item(at: body)?.display.item.lane == lane)
+            #expect(canvas.item(at: body)?.edge(at: body) == nil)
+            let start = NSPoint(x: piece.rect.minX + 1, y: piece.rect.midY)
+            #expect(canvas.item(at: start)?.edge(at: start) == .start)
+            let end = NSPoint(x: piece.rect.maxX - 1, y: piece.rect.midY)
+            #expect(canvas.item(at: end)?.edge(at: end) == .end)
+        }
+        let start = NSPoint(x: canvas.headerWidth + 1, y: canvas.effects.frame.midY + canvas.trackClip.frame.minY)
+        let end = NSPoint(x: canvas.headerWidth + canvas.viewport.x(4), y: canvas.motion.frame.midY + canvas.trackClip.frame.minY)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(canvas.itemOverlay.preview?.marquee == true)
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.timelineItemSelection == [.effect("title"), .footage("picture"), .motion("zoom")])
+    }
+
+    @Test func itemDragThresholdEscapeAndWordGuideLeaveUndoUntouched() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); model.undoManager = undo
+        let original = model.project
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let start = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let small = NSPoint(x: start.x + 2.99, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, small, in: canvas))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, small, in: canvas))
+        #expect(model.project == original && !undo.canUndo)
+        let word = model.timelineTime(source: 12, on: model.timelineAxis)
+        let end = NSPoint(x: start.x + canvas.viewport.ptPerSecond + 2, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        let preview = try #require(canvas.itemOverlay.preview)
+        #expect(preview.readout == "+0:01.0 · on “word”")
+        #expect(abs((preview.guide ?? 0) - (canvas.headerWidth + canvas.viewport.x(word))) < 0.01)
+        let endGrip = NSPoint(x: fragment.rect.maxX - 2, y: start.y)
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.project == original && !undo.canUndo && model.undoSteps == 0 && canvas.itemOverlay.preview == nil)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, endGrip, in: canvas))
+        let trim = NSPoint(x: endGrip.x + 0.4 * canvas.viewport.ptPerSecond, y: endGrip.y)
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, trim, in: canvas, flags: .option))
+        #expect(canvas.itemOverlay.preview?.readout == "Out +0:00.4 · 1.4 s")
+        #expect(canvas.itemOverlay.preview?.guide == nil)
+        canvas.keyDown(with: try timelineKey(53))
+    }
+
+    @Test func aDragAcrossTheClipEdgePreviewsTheReducerRefusal() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                     start: 12, end: 15, text: "Faster edits", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.timelineSnapping = false
+        let undo = UndoManager(); model.undoManager = undo
+        let original = model.project
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let start = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let end = NSPoint(x: canvas.headerWidth + canvas.viewport.x(model.duration - 1), y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        let preview = try #require(canvas.itemOverlay.preview)
+        #expect(preview.readout == "Place it inside one part.")
+        #expect(preview.rectangles == [fragment.rect])
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.timelineItemRefusal == preview.readout && model.project == original && !undo.canUndo)
+    }
+
+    @Test func aTitleCornerFadesWithoutMovingTheItem() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                     start: 11, end: 13, text: "Faster edits", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        model.selectTimelineItems([.effect("title")]); canvas.apply()
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let start = NSPoint(x: fragment.rect.minX + 10, y: fragment.rect.minY + 4)
+        let end = NSPoint(x: start.x + canvas.viewport.ptPerSecond * 0.4, y: start.y)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+        #expect(canvas.itemOverlay.preview?.readout == "Fade in 0.4 s" && !undo.canUndo)
+        canvas.keyDown(with: try timelineKey(53))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        #expect(model.project == fixture && !undo.canUndo)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+        undo.endUndoGrouping()
+        #expect(model.project.clipEffects.first?.start == 11 && model.project.clipEffects.first?.fadeInSeconds == 0.4)
+        #expect(undo.undoActionName == "Fade title" && model.undoSteps == 1)
+        let actions = Set(canvas.itemAXElements[.effect("title")]?.accessibilityCustomActions()?.map(\.name) ?? [])
+        #expect(actions.isSuperset(of: ["Fade in longer", "Fade in shorter", "Fade out longer", "Fade out shorter"]))
+    }
+
+    @Test func optionCommandDragSlipsBRollWithoutMovingItsAnchor() throws {
+        var fixture = try project()
+        var recording = fixture.media.source
+        recording.contentKey = "picture-source"
+        recording.recordingHash = nil
+        fixture.media.additionalSources = [recording]
+        fixture.media.footage = [.init(id: "picture", clipID: try #require(fixture.edits.activeClipId), kind: .bRoll,
+                                       start: 11, end: 13, footage: .init(sourceKey: recording.footageKey, start: 2))]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .footage("picture") })
+        let start = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        let end = NSPoint(x: start.x + canvas.viewport.ptPerSecond, y: start.y)
+        let flags: NSEvent.ModifierFlags = [.option, .command]
+        canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas, flags: flags))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas, flags: flags))
+        #expect(canvas.itemOverlay.preview?.readout == "Slip +0:01.0 · recording 0:02.0 → 0:03.0")
+        #expect(canvas.itemOverlay.preview?.rectangles == [fragment.rect] && model.project == fixture && !undo.canUndo)
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas, flags: flags))
+        undo.endUndoGrouping()
+        #expect(model.project.media.footage.map(\.start) == [11] && model.project.media.footage.first?.footage.start == 3)
+        #expect(undo.undoActionName == "Slip B-roll" && model.undoSteps == 1)
+    }
+
+    @Test func voiceOverCanMoveAnItemByWordAndExposesItsActions() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.selectTimelineItems([.effect("title")]); canvas.apply()
+        let title = try #require(canvas.itemAXElements[.effect("title")])
+        let label = try #require(title.accessibilityLabel())
+        #expect(label == "Title, Faster edits, 0:01.1 to 0:02.1, selected")
+        #expect(canvas.itemAXEdges[.effect("title")]?.compactMap { $0.accessibilityLabel() } == ["Title start", "Title end"])
+        #expect(title.accessibilityValue() is NSNumber)
+        let actions = Set(title.accessibilityCustomActions()?.map(\.name) ?? [])
+        #expect(actions.isSuperset(of: ["Move later a frame", "Trim start to playhead", "Split at playhead", "Duplicate", "Delete", "Open editor"]))
+        #expect(title.accessibilityPerformIncrement())
+        #expect(model.timelineItemRefusal == nil)
+        #expect(model.project.clipEffects.first?.start == 12)
+        #expect(title.accessibilityPerformDecrement())
+        #expect(model.project.clipEffects.first?.start == 11)
+    }
+
+    @Test func aHiddenTitleCanRestoreItsWordsFromTheTimeline() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title,
+                                     start: 14, end: 15.8, text: "Faster edits", position: .top)]
+        fixture.edits.cutWordIds.append("t24")
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let element = try #require(canvas.itemAXElements[.effect("title")])
+        #expect(element.accessibilityLabel() == "Title, Faster edits, Hidden · its words are cut")
+        let restore = try #require(element.accessibilityCustomActions()?.first { $0.name == "Restore Words" }?.handler)
+        undo.beginUndoGrouping()
+        #expect(restore())
+        undo.endUndoGrouping()
+        #expect(model.cutWordIDs == ["t24"] && model.project.clipEffects == fixture.clipEffects)
+        #expect(canvas.itemFragments.first(where: { $0.display.item.id == .effect("title") })?.display.item.hidden == false)
+        #expect(undo.undoActionName == "Restore words" && model.undoSteps == 1)
+    }
+
+    @Test func timelineNAndTheToolbarActionToggleTheSameStateAndFitRestoresTheViewport() throws {
+        let model = editor(try app(), project: try project())
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let fitted = canvas.viewport
+        canvas.zoom(by: 2)
+        #expect(canvas.viewport.ptPerSecond > fitted.ptPerSecond)
+        canvas.keyDown(with: try timelineKey(6, "Z", shift: true))
+        #expect(canvas.viewport == fitted)
+        let previous = model.timelineSnapping
+        canvas.keyDown(with: try timelineKey(45, "n"))
+        #expect(model.timelineSnapping != previous)
+        model.toggleTimelineSnapping()
+        #expect(model.timelineSnapping == previous)
+        #expect(model.timelineSnapHint == (previous ? "Snapping on (N)" : "Snapping off (N)"))
+    }
+
+    @Test func fitShowsBothSourceClipEdgesEvenWithCutsAndContext() throws {
+        var fixture = try project()
+        fixture.edits.cutWordIds = (13...26).map { "t\($0)" }
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.showsCuts = true
+        model.showsSurroundingContext = true
+        canvas.renderContent()
+        let scope = try #require(model.scopeSourceRange)
+        canvas.zoom(by: 4)
+        canvas.keyDown(with: try timelineKey(6, "Z", shift: true))
+        #expect(canvas.viewport.axis == .source)
+        #expect(canvas.viewport.visible.contains(scope.lowerBound) && canvas.viewport.visible.contains(scope.upperBound))
+        #expect(!canvas.viewport.visible.contains(model.sourceDuration) && model.undoSteps == 0)
+    }
+
+    @Test func doubleClickOpensTheExistingEffectEditor() throws {
+        var fixture = try project()
+        fixture.clipEffects = [.init(id: "title", clipId: fixture.edits.activeClipId, kind: .title, start: 11, end: 12, text: "Faster edits", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let fragment = try #require(canvas.itemFragments.first { $0.display.item.id == .effect("title") })
+        let point = NSPoint(x: fragment.rect.midX, y: fragment.rect.midY)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas))
+        #expect(!model.timelineEffectsOpen)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas, clicks: 2))
+        #expect(model.timelineEffectsOpen && model.timelineEffectID == "title")
+        #expect(model.undoSteps == 0)
+    }
+
+    @Test func aV1PartBandReordersAndItsEdgeTrimsByWord() throws {
+        var fixture = try project()
+        fixture.edits.clips = [.init(id: "clip-1", startWordId: "t10", endWordId: "t29", parts: [
+            .init(id: "first", startWordId: "t10", endWordId: "t13"),
+            .init(id: "second", startWordId: "t25", endWordId: "t29")
+        ], kind: .story)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        func part(_ id: String) throws -> TimelineItemFragment {
+            try #require(canvas.itemFragments.first { $0.display.item.id == .part(id) })
+        }
+        func drag(_ start: NSPoint, _ end: NSPoint) throws {
+            canvas.mouseDown(with: try mouse(.leftMouseDown, start, in: canvas))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, end, in: canvas))
+            undo.beginUndoGrouping()
+            canvas.mouseUp(with: try mouse(.leftMouseUp, end, in: canvas))
+            undo.endUndoGrouping()
+        }
+        let first = try part("first").rect, second = try part("second").rect
+        try drag(.init(x: first.midX, y: first.midY), .init(x: second.midX, y: second.midY))
+        #expect(model.activeClip?.parts?.map(\.id) == ["second", "first"])
+        #expect(undo.undoActionName == "Move part")
+        undo.undo(); canvas.renderContent()
+        let edge = try part("second").rect
+        let start = NSPoint(x: edge.maxX - 1, y: edge.midY)
+        try drag(start, .init(x: start.x - canvas.viewport.ptPerSecond, y: start.y))
+        #expect(model.activeClip?.parts?.last?.endWordId == "t28")
+        #expect(undo.undoActionName == "Trim part 2")
+    }
+
     private func app() throws -> AppModel {
         let parent = ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
         let root = parent.appendingPathComponent("voxclip-timeline-\(UUID().uuidString)", isDirectory: true)
@@ -396,7 +949,7 @@ private actor TimelineTestSettings: SettingsStore {
         defer { canvas.tearDown(); window.close() }
         canvas.renderContent()
         canvas.followPlayhead()
-        let y = TimelineMetrics.tracks[1].y + 10
+        let y = TimelineMetrics.audio.y + 10
         canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: TimelineMetrics.header + 300, y: y), in: canvas))
         canvas.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: 40, y: y), in: canvas))
         let early = canvas.viewport.time(atX: Double(40 - TimelineMetrics.header))
@@ -416,7 +969,7 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(try pixels.shows(40, y, "bg.window"))
         #expect(try pixels.shows(80, y, "bg.window"))
         // V1's bare lane under the wash (A1 draws the take's audio there).
-        #expect(try pixels.shows(TimelineMetrics.header + canvas.viewport.x(11), TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.videoPiece"))
+        #expect(try pixels.shows(TimelineMetrics.header + canvas.viewport.x(11), TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18, "tint.wash", over: "timeline.videoPiece"))
         let zoom = canvas.viewport.ptPerSecond
         canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 40, y: y), in: canvas))
         #expect(canvas.viewport.visible.contains(early) && canvas.viewport.ptPerSecond == zoom)
@@ -437,7 +990,7 @@ private actor TimelineTestSettings: SettingsStore {
         let pieces = model.timelinePieces.pieces
         let after = try #require(pieces.indices.dropFirst().first { pieces[$0].source.lowerBound - pieces[$0 - 1].source.upperBound > 1 })
         let seam = TimelineMetrics.header + CGFloat(canvas.viewport.x(pieces[after].edited.lowerBound))
-        let y = TimelineMetrics.tracks[1].y + 10
+        let y = TimelineMetrics.audio.y + 10
         let steps = model.undoSteps
         canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: seam + TimelineMetrics.reach + 3, y: y), in: canvas, clicks: 2))
         #expect(model.cutWordIDs == ["t14", "t15"] && model.undoSteps == steps)
@@ -500,14 +1053,14 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.overlay.playhead.isHidden = false
         let viewport = canvas.viewport
         let play = TimelineMetrics.header + CGFloat(viewport.x(model.timelinePlayhead(on: axis)))
-        #expect(try pixels.showsLine(play, TimelineMetrics.tracks[1].y + 10, "tint.default", ground: ground))
+        #expect(try pixels.showsLine(play, TimelineMetrics.audio.y + 10, "tint.default", ground: ground))
         #expect(try pixels.shows(play, TimelineMetrics.ruler.y + 14, "tint.default"))
         let inOut = try #require(model.timelineInOut(on: axis))
         let inX = TimelineMetrics.header + CGFloat(viewport.x(inOut.lowerBound))
         #expect(try pixels.shows(inX + 0.75, TimelineMetrics.ruler.y + 12, "clip.label"))
         #expect(try pixels.shows(inX + 3, TimelineMetrics.ruler.y + 13, "bg.window"))
         #expect(try pixels.shows(inX - 6, TimelineMetrics.ruler.y + 13, "timeline.rulerOut"))
-        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18, axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
+        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18, axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
         let block = canvas.overview.x(try #require(model.timelineOverviewClips.first).source.lowerBound + 0.3)
         #expect(try pixels.shows(block, TimelineMetrics.overview.y + 12, "clip.label", alpha: 0.42, over: "timeline.lane"))
         // The header column and its hairline stay beside every lane.
@@ -1025,17 +1578,17 @@ private actor TimelineTestSettings: SettingsStore {
         let canvas = TimelineCanvasView(model: model, shell: shell)
         defer { canvas.tearDown() }
         let steps = model.undoSteps
-        #expect(TrackHeight.small.heights == [28, 32, 20, 20, 20, 20])
-        #expect(TrackHeight.medium.heights == [36, 44, 24, 24, 24, 24])
-        #expect(TrackHeight.large.heights == [52, 64, 28, 28, 28, 28])
+        #expect(TrackHeight.small.heights == [20, 20, 20, 20, 28, 32, 20, 20])
+        #expect(TrackHeight.medium.heights == [24, 24, 24, 24, 36, 44, 24, 24])
+        #expect(TrackHeight.large.heights == [28, 28, 28, 28, 52, 64, 40, 40])
         for height in TrackHeight.allCases {
             shell.layout.trackHeight = height
             canvas.layoutSubtreeIfNeeded(); canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
-            #expect([canvas.video, canvas.audio, canvas.captions, canvas.motion, canvas.music, canvas.effects].map { $0.frame.height } == height.heights)
+            #expect(canvas.trackLanes.map { $0.frame.height } == height.heights)
         }
-        #expect(canvas.headers[0].button.isHidden)
-        #expect(canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
-        canvas.headers[1].action?()
+        #expect(canvas.header(.video).button.isHidden)
+        #expect(canvas.header(.captions).button.accessibilityLabel() == "CC Captions, shown")
+        canvas.header(.voice).action?()
         #expect(model.previewMuted)
         #expect(model.undoSteps == steps)
         shell.layout.windowWidth = 960
@@ -1056,9 +1609,10 @@ private actor TimelineTestSettings: SettingsStore {
         shell.layout.trackHeight = .medium
         canvas.setFrameSize(NSSize(width: 960, height: 155)) // 183 pt panel, including toolbar
         canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
-        #expect(canvas.captions.frame.minY >= canvas.trackClip.bounds.height)
+        canvas.verticalScroller.changed?(0)
+        #expect(canvas.captions.frame.maxY <= canvas.trackClip.bounds.height && canvas.audio.frame.minY >= canvas.trackClip.bounds.height)
         canvas.verticalScroller.changed?(1)
-        #expect(canvas.captions.frame.maxY <= canvas.trackClip.bounds.height)
+        #expect(canvas.music.frame.minY >= 0 && canvas.music.frame.maxY <= canvas.trackClip.bounds.height)
     }
 
     @Test(arguments: [CGFloat(1), 2], [NSAppearance.Name.aqua, .darkAqua]) func captionLaneFitsWholeWordsAndLeavesAOnePointSeam(backingScale: CGFloat, appearance: NSAppearance.Name) throws {
@@ -1280,8 +1834,8 @@ private actor TimelineTestSettings: SettingsStore {
 
     // MARK: Timeline III
 
-    private func timelineKey(_ code: UInt16, _ characters: String = "", shift: Bool = false) throws -> NSEvent {
-        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [], timestamp: 0,
+    private func timelineKey(_ code: UInt16, _ characters: String = "", shift: Bool = false, flags: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? flags.union(.shift) : flags, timestamp: 0,
                                       windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: characters,
                                       isARepeat: false, keyCode: code))
     }
@@ -1641,7 +2195,7 @@ private actor TimelineTestSettings: SettingsStore {
         let pixels = try Pixels(canvas)
         #expect(try pixels.shows(x, TimelineMetrics.ruler.y + 20, "tint.default"))
         #expect(try pixels.shows(x, TimelineMetrics.ruler.y + 21, "tint.default"))
-        #expect(try pixels.shows(x, TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.videoPiece"))
+        #expect(try pixels.shows(x, TimelineMetrics.tracks[TimelineItemLane.video.index].y + 18, "tint.wash", over: "timeline.videoPiece"))
         #expect(abs((canvas.overlay.wash.backgroundColor?.alpha ?? 0) - 0.07) < 0.001)
     }
 
@@ -1665,18 +2219,17 @@ private actor TimelineTestSettings: SettingsStore {
         shell.layout.windowWidth = 1280
         let (canvas, window) = windowed(model, shell: shell)
         defer { canvas.tearDown(); window.close() }
-        #expect(canvas.headers.count == 6)
-        // E1 lists Ask Claude's effects; it has no add button (design.md §6.8).
-        #expect(canvas.headers[5].accessibilityLabel() == "E1 Effects" && canvas.headers[5].button.isHidden)
-        #expect(canvas.headers[4].accessibilityLabel() == "M1 Music")
-        #expect(canvas.headers[4].button.accessibilityLabel() == "Choose background music" && canvas.headers[4].action != nil)
+        #expect(canvas.headers.count == 8)
+        #expect(canvas.header(.titles).accessibilityLabel() == "T1 Titles & effects" && canvas.header(.titles).button.isHidden)
+        #expect(canvas.header(.music).accessibilityLabel() == "M1 Music")
+        #expect(canvas.header(.music).button.accessibilityLabel() == "Choose background music" && canvas.header(.music).action != nil)
         shell.layout.rightVisible = false
-        canvas.headers[4].action?()
+        canvas.header(.music).action?()
         #expect(shell.viewerShown && shell.panelJob(for: model) == .music)
         #expect(model.project.music.isEmpty) // Opening the browser never attaches or generates a track.
-        #expect(canvas.headers[3].accessibilityLabel() == "FX Motion")
-        #expect(canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues")
-        #expect(!canvas.headers[3].button.isHidden && canvas.headers[3].action != nil)
+        #expect(canvas.header(.effects).accessibilityLabel() == "FX Zoom, looks & speed")
+        #expect(canvas.header(.effects).button.accessibilityLabel() == "Edit clip motion cues")
+        #expect(!canvas.header(.effects).button.isHidden && canvas.header(.effects).action != nil)
         let expected: [CGFloat] = [20, 24, 28]
         for (index, height) in TrackHeight.allCases.enumerated() {
             shell.layout.trackHeight = height

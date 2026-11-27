@@ -6,6 +6,13 @@ import Testing
 /// tools/fixtures/music/generate_music_mix.py writes as a port of this MusicMix and Windows replays (Core MusicMixVectorTests,
 /// Media MusicBedTests). Media MusicBedVectorTests replays its whole beds through the Mac renderer.
 struct MusicMixVectorTests {
+    private struct Piece: Decodable {
+        let sourceStart: Int, outputStart: Int, count: Int, fadeIn: Int, fadeOut: Int
+        var value: MusicMix.LoopPiece {
+            .init(sourceStart: sourceStart, outputStart: outputStart, count: count, fadeIn: fadeIn, fadeOut: fadeOut)
+        }
+    }
+
     private static func cases() throws -> [String: JSONValue] {
         try #require(JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json")).aiObject)
     }
@@ -19,9 +26,9 @@ struct MusicMixVectorTests {
     @Test("The file has its keys, its count and the Mac's constants")
     func fileShape() throws {
         let cases = try Self.cases()
-        #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "caseCount"])
+        #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "crossfadeSpans", "caseCount"])
         #expect(cases["format"]?.aiString == "voxclip-music-mix-cases/1")
-        #expect(cases["caseCount"]?.aiInt == 36)
+        #expect(cases["caseCount"]?.aiInt == 39)
         let constants = try #require(cases["constants"]?.aiObject)
         let expected: [String: Double] = [
             "frameSeconds": MusicMix.frameSeconds, "duckDb": MusicMix.duckDb, "attackSeconds": MusicMix.attackSeconds,
@@ -33,18 +40,30 @@ struct MusicMixVectorTests {
         for (key, value) in expected { #expect(constants[key]?.aiDouble == value, "\(key)") }
     }
 
+    @Test func crossfadeSpansAndWeightsReplay() throws {
+        struct Vector: Decodable {
+            let sampleRate: Double, spans: [Piece], expected: [Piece], weightAt: [[Int]], weights: [[Double]], keepWhole: Bool?
+        }
+        struct Fixture: Decodable { let crossfadeSpans: [Vector] }
+        let fixture = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json"))
+        #expect(fixture.crossfadeSpans.contains { $0.keepWhole == true })
+        for row in fixture.crossfadeSpans {
+            let spans = MusicMix.crossfadeSpans(row.spans.map(\.value), rate: row.sampleRate, keepingWhole: row.keepWhole ?? false)
+            try #require(spans == row.expected.map(\.value))
+            for (index, span) in spans.enumerated() {
+                for (frame, expected) in zip(row.weightAt[index], row.weights[index]) {
+                    #expect(Self.near(expected, MusicMix.pieceWeight(span, at: frame)))
+                }
+            }
+        }
+    }
+
     @Test func timelinePlacementsAndGainReplay() throws {
         struct Vector: Decodable {
             let sampleRate: Double, trackFrames: Int, speed: Double
             let segments: [MusicSegment], starts: [Int], fades: [[Int]], pieces: [[Piece]]
             let itemSeconds: [Double], itemGains: [Double], crossfadeFrame: Int, crossfadeWeight: Double
             let activity: [Bool], depthDb: Double, duckingDb: [Double]
-        }
-        struct Piece: Decodable {
-            let sourceStart: Int, outputStart: Int, count: Int, fadeIn: Int, fadeOut: Int
-            var value: MusicMix.LoopPiece {
-                .init(sourceStart: sourceStart, outputStart: outputStart, count: count, fadeIn: fadeIn, fadeOut: fadeOut)
-            }
         }
         struct Fixture: Decodable { let timeline: [Vector] }
         let fixture = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/music/music-mix-cases.json"))

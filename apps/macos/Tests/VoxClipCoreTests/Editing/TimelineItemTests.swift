@@ -16,6 +16,20 @@ import Testing
         #expect(restoredItem.editedIntervals == [TimeRange(start: 1, end: 1.5)])
     }
 
+    @Test func harnessVolumeEditsKeepTheLastWordInsideTheDip() throws {
+        let fixture = try load("edit-cases")
+        let project = try decode(fixture["bases"]["music"].value)
+        let wire = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            [{"op":"setTrackGain","track":"music-main","db":-10},
+             {"op":"dipGain","item":"music","startWord":5,"endWord":5,"byDb":-6}]
+            """.utf8))
+        let edits = try TimelineEditRequest.read(wire)
+        let quieter = try edits[0].applying(to: project, scope: "clip-main")
+        let dipped = try edits[1].applying(to: quieter.project, scope: "clip-main")
+        #expect(dipped.project.music.first?.gainDb == -10)
+        #expect(dipped.project.music.first?.segments?.first?.gainPoints?.map(\.t) == [0.25, 0.5, 0.55, 0.95, 1])
+    }
+
     @Test func replayEditVectors() throws {
         let fixture = try load("edit-cases")
         #expect(fixture["cases"].array.count >= 345)
@@ -155,6 +169,8 @@ import Testing
         case "splitAll": return .splitAll(atSource: source)
         case "fade": return try .fade(item: item(), edge: edge, seconds: row["seconds"].number)
         case "setGain": return try .setGain(item: item(), db: db)
+        case "setTrackGain": return .setTrackGain(track: row["track"].string, db: db)
+        case "dipGain": return try .dipGain(item: item(), fromSource: row["fromSource"].number, toSource: row["toSource"].number, byDb: row["byDb"].number)
         case "addGainPoint": return try .addGainPoint(item: item(), atSource: source, db: db)
         case "moveGainPoint": return try .moveGainPoint(item: item(), from: old, toSource: source, db: db)
         case "removeGainPoint": return try .removeGainPoint(item: item(), at: old)

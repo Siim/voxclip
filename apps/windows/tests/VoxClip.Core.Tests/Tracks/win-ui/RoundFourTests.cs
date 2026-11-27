@@ -17,7 +17,7 @@ public sealed class RoundFourTests(ITestOutputHelper output)
         var control = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TimelineRangeControl.cs"));
         Assert.Contains("AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) && FrameworkElementAutomationPeer.FromElement(this)", control);
         Assert.DoesNotContain("AutomationProperties.SetHelpText", control);
-        Assert.Contains("GetHelpTextCore() => owner.Read().Text", control);
+        Assert.Contains("GetHelpTextCore() => AutomationProperties.GetHelpText(owner) is { Length: > 0 } help ? help : owner.Read().Text", control);
         var timeline = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TimelineView.cs"));
         var position = timeline[timeline.IndexOf("public void Position", StringComparison.Ordinal)..timeline.IndexOf("private TimelineRange ReadPlayhead", StringComparison.Ordinal)];
         Assert.Contains("ComputePlayhead", position);

@@ -9,7 +9,7 @@ using VoxClip.App.ViewModels;
 
 namespace VoxClip.App.Controls;
 
-internal sealed class TimelineRangeControl : ContentControl
+internal class TimelineRangeControl : ContentControl
 {
     internal Func<TimelineRange> Read { get; set; } = () => new(0, 1, 0, 1, "");
     internal Action<double>? Set { get; set; }
@@ -49,11 +49,11 @@ internal sealed class TimelineRangeControl : ContentControl
         previousReadOnly = readOnly;
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new RangePeer(this);
-    private sealed class RangePeer(TimelineRangeControl owner) : FrameworkElementAutomationPeer(owner), IRangeValueProvider, IValueProvider
+    protected class RangePeer(TimelineRangeControl owner) : FrameworkElementAutomationPeer(owner), IRangeValueProvider, IValueProvider
     {
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Slider;
         protected override string GetClassNameCore() => "VoxClipTimelineRange";
-        protected override string GetHelpTextCore() => owner.Read().Text;
+        protected override string GetHelpTextCore() => AutomationProperties.GetHelpText(owner) is { Length: > 0 } help ? help : owner.Read().Text;
         protected override object GetPatternCore(PatternInterface pattern) => pattern is PatternInterface.RangeValue or PatternInterface.Value ? this : base.GetPatternCore(pattern);
         public bool IsReadOnly => !owner.IsEnabled || owner.Set is null;
         public double LargeChange => Math.Max(SmallChange, (Maximum - Minimum) / 10);

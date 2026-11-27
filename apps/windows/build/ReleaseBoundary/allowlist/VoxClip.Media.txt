@@ -79,20 +79,20 @@ member VoxClip.Media.Audio.EffectAudio :: method private Decode(string,double,in
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method private .ctor(VoxClip.Media.Audio.EffectAudio+PlacedSound)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method private get_EqualityContract()
-member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public .ctor(long,float[],float)
-member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public Deconstruct(long&,float[]&,float&)
+member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public .ctor(VoxClip.Core.Domain.Music.MusicMix+LoopPiece,float[],float)
+member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public Deconstruct(VoxClip.Core.Domain.Music.MusicMix+LoopPiece&,float[]&,float&)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public Equals(VoxClip.Media.Audio.EffectAudio+PlacedSound)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public Equals(object)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public GetHashCode()
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public ToString()
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public get_Gain()
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public get_Samples()
-member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public get_StartFrame()
+member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public get_Span()
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public op_Equality(VoxClip.Media.Audio.EffectAudio+PlacedSound,VoxClip.Media.Audio.EffectAudio+PlacedSound)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public op_Inequality(VoxClip.Media.Audio.EffectAudio+PlacedSound,VoxClip.Media.Audio.EffectAudio+PlacedSound)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public set_Gain(float)
 member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public set_Samples(float[])
-member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public set_StartFrame(long)
+member VoxClip.Media.Audio.EffectAudio+PlacedSound :: method public set_Span(VoxClip.Core.Domain.Music.MusicMix+LoopPiece)
 member VoxClip.Media.Audio.EffectAudio+Track :: method internal get_IsEmpty()
 member VoxClip.Media.Audio.EffectAudio+Track :: method private .ctor(VoxClip.Media.Audio.EffectAudio+Track)
 member VoxClip.Media.Audio.EffectAudio+Track :: method private PrintMembers(System.Text.StringBuilder)
@@ -226,6 +226,7 @@ member VoxClip.Media.Audio.MusicBed :: method internal SpeechLevels(VoxClip.Medi
 member VoxClip.Media.Audio.MusicBed :: method internal Stage(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,System.Func`1<VoxClip.Media.Audio.RenderedAudioReader>,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.MusicBed :: method internal Stage(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.MusicBed :: method internal get_BedGainDb()
+member VoxClip.Media.Audio.MusicBed :: method internal get_DuckingGainsDb()
 member VoxClip.Media.Audio.MusicBed :: method internal get_OutputFrames()
 member VoxClip.Media.Audio.MusicBed :: method internal get_SpeechDb()
 member VoxClip.Media.Audio.MusicBed :: method private .ctor(float[],System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,double[],VoxClip.Core.Domain.Music.ProjectMusic,int,long,double,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+SegmentPlacement>)
@@ -1758,9 +1759,7 @@ member VoxClip.Media.Pipeline.PreviewEngine :: field private generation
 member VoxClip.Media.Pipeline.PreviewEngine :: field private initialize
 member VoxClip.Media.Pipeline.PreviewEngine :: field private leases
 member VoxClip.Media.Pipeline.PreviewEngine :: field private lookAhead
-member VoxClip.Media.Pipeline.PreviewEngine :: field private musicBed
-member VoxClip.Media.Pipeline.PreviewEngine :: field private musicFor
-member VoxClip.Media.Pipeline.PreviewEngine :: field private musicLock
+member VoxClip.Media.Pipeline.PreviewEngine :: field private musicRevision
 member VoxClip.Media.Pipeline.PreviewEngine :: field private nextFrame
 member VoxClip.Media.Pipeline.PreviewEngine :: field private origin
 member VoxClip.Media.Pipeline.PreviewEngine :: field private playbackFailure
@@ -1771,6 +1770,7 @@ member VoxClip.Media.Pipeline.PreviewEngine :: field private prepared
 member VoxClip.Media.Pipeline.PreviewEngine :: field private preparedPart
 member VoxClip.Media.Pipeline.PreviewEngine :: field private seekRequest
 member VoxClip.Media.Pipeline.PreviewEngine :: field private snapshot
+member VoxClip.Media.Pipeline.PreviewEngine :: field private stagedMusic
 member VoxClip.Media.Pipeline.PreviewEngine :: field private stopped
 member VoxClip.Media.Pipeline.PreviewEngine :: field private terminalFailure
 member VoxClip.Media.Pipeline.PreviewEngine :: field private useFrameLeases
@@ -1790,7 +1790,7 @@ member VoxClip.Media.Pipeline.PreviewEngine :: method private OpenAudio(double,S
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Own()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Pause()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Present(double,bool,System.Threading.CancellationToken)
-member VoxClip.Media.Pipeline.PreviewEngine :: method private PreviewMusic(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.PreviewEngine :: method private PreviewMusic(VoxClip.Core.Domain.Shared.ComposeSnapshot,long,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private RecoverPlayback(System.Exception)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private ReopenAfterLoss(VoxClip.Media.Audio.IPreviewAudioOutput,System.Exception)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private ReportAudio(VoxClip.Core.Services.Media.PreviewAudioStatus)
@@ -1816,10 +1816,26 @@ member VoxClip.Media.Pipeline.PreviewEngine :: method public UpdateSnapshotAsync
 member VoxClip.Media.Pipeline.PreviewEngine :: method public add_AudioStatusChanged(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewAudioStatus>)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public add_CompositorFailed(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewFailureReason>)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public add_PlaybackFaulted(System.EventHandler`1<System.Exception>)
+member VoxClip.Media.Pipeline.PreviewEngine :: method public get_MusicDuckingGainsDb()
 member VoxClip.Media.Pipeline.PreviewEngine :: method public get_Position()
 member VoxClip.Media.Pipeline.PreviewEngine :: method public remove_AudioStatusChanged(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewAudioStatus>)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public remove_CompositorFailed(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewFailureReason>)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public remove_PlaybackFaulted(System.EventHandler`1<System.Exception>)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method private .ctor(VoxClip.Media.Pipeline.PreviewEngine+StagedMusic)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method private get_EqualityContract()
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public .ctor(long,VoxClip.Media.Audio.MusicBed)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public Deconstruct(long&,VoxClip.Media.Audio.MusicBed&)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public Equals(VoxClip.Media.Pipeline.PreviewEngine+StagedMusic)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public Equals(object)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public GetHashCode()
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public ToString()
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public get_Bed()
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public get_Revision()
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public op_Equality(VoxClip.Media.Pipeline.PreviewEngine+StagedMusic,VoxClip.Media.Pipeline.PreviewEngine+StagedMusic)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public op_Inequality(VoxClip.Media.Pipeline.PreviewEngine+StagedMusic,VoxClip.Media.Pipeline.PreviewEngine+StagedMusic)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public set_Bed(VoxClip.Media.Audio.MusicBed)
+member VoxClip.Media.Pipeline.PreviewEngine+StagedMusic :: method public set_Revision(long)
 member VoxClip.Media.Pipeline.PreviewFrameFailures :: field private gate
 member VoxClip.Media.Pipeline.PreviewFrameFailures :: field private reported
 member VoxClip.Media.Pipeline.PreviewFrameFailures :: method internal Failed(VoxClip.Media.Pipeline.PreviewFrameFailures,bool,VoxClip.Core.Services.Media.PreviewFailureReason,System.Exception)
@@ -3582,6 +3598,7 @@ type VoxClip.Media.Pipeline.Mp4CoverEmbed
 type VoxClip.Media.Pipeline.OutputSafety
 type VoxClip.Media.Pipeline.OutputSafety+FileInformation
 type VoxClip.Media.Pipeline.PreviewEngine
+type VoxClip.Media.Pipeline.PreviewEngine+StagedMusic
 type VoxClip.Media.Pipeline.PreviewFrameFailures
 type VoxClip.Media.Pipeline.PreviewFrameLease
 type VoxClip.Media.Pipeline.PreviewFramePool

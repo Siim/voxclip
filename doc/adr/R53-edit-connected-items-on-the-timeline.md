@@ -16,6 +16,9 @@ Keep one [music track](../spec/music.md#2-project-contract) per scope; a track w
 bed. Store fades and gain points on the item, not the asset. A gain point is `{t, db}`: finite seconds from the item's
 start, `t ≥ 0`, and relative gain `−60…+12 dB`. An item has at most 64 points, with strictly increasing times. Gain
 interpolates linearly in dB, holds outside the first and last point, and the fades multiply after the envelope.
+The Core reducer applies a range dip as one edit: it replaces points inside the range with four sample-aligned points,
+keeping the original envelope at both ends and lowering the inner points by the requested depth (up to 60 dB).
+Each ramp is the shorter of 50 ms or one third of the range, rounded to the sample grid. A valid 0 dB dip changes nothing.
 An illustration split reuses the image; timeline edits do not delete asset files. Motion cues need no new fields.
 
 The first write of a new field (or a sound length the older format cannot represent) promotes the document to schema v6.

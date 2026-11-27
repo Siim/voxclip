@@ -91,6 +91,9 @@ enum EffectAudio {
             sounds.append((start, samples, Float(pow(10, (effect.gainDb ?? 0) / 20)), shape, length))
         }
         guard !tones.isEmpty || !sounds.isEmpty else { return nil }
+        sounds.sort { $0.start < $1.start }
+        let spans = MusicMix.crossfadeSpans(sounds.map { .init(sourceStart: 0, outputStart: $0.start, count: $0.samples.count / 2) }, rate: rate,
+                                            keepingWhole: true)
         try Task.checkCancellation()
         let directory = scratchRoot.appendingPathComponent("voxclip-effects-" + UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -117,15 +120,16 @@ enum EffectAudio {
                     samples[2 * (frame - start) + 1] += value
                 }
             }
-            for sound in sounds where sound.start < start + count && sound.start + sound.samples.count / 2 > start {
-                let from = max(start, sound.start), to = min(start + count, sound.start + sound.samples.count / 2)
+            for (sound, span) in zip(sounds, spans) where sound.start < start + count && sound.start + span.count > start {
+                let from = max(start, sound.start), to = min(start + count, sound.start + span.count)
                 for frame in from..<to {
                     let index = 2 * (frame - sound.start)
                     let gain = sound.shape.map {
                         sound.gain * Float(MusicMix.itemGain(at: Double(frame - sound.start) / rate, shape: $0, length: sound.length))
                     } ?? sound.gain
-                    samples[2 * (frame - start)] += sound.samples[index] * gain
-                    samples[2 * (frame - start) + 1] += sound.samples[index + 1] * gain
+                    let weight = Float(MusicMix.pieceWeight(span, at: frame - sound.start))
+                    samples[2 * (frame - start)] += sound.samples[index] * gain * weight
+                    samples[2 * (frame - start) + 1] += sound.samples[index + 1] * gain * weight
                 }
             }
             try file.append(samples)

@@ -3,6 +3,26 @@ import AppKit
 import Testing
 @testable import VoxClip
 
+extension MenuShortcutTests {
+    @Test func directTimelineShortcutKeysKeepTextFieldsOutOfScope() throws {
+        let keys: [(UInt16, NSEvent.ModifierFlags, TimelineItemShortcut)] = [
+            (11, [], .split), (11, .command, .split), (11, [.command, .shift], .splitAll),
+            (45, [], .snap), (6, .shift, .fit), (2, .command, .duplicate),
+            (43, [], .nudge(-1, word: false)), (47, [], .nudge(1, word: false)),
+            (43, .shift, .nudge(-1, word: true)), (47, .shift, .nudge(1, word: true)),
+            (33, .option, .start), (30, .option, .end)
+        ]
+        let text = NSTextField(string: "An exact timeline value")
+        for (code, flags, expected) in keys {
+            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+                windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: code))
+            #expect(TimelineItemShortcut(event) == expected)
+            #expect(TimelineItemShortcut.focusedCanvas(text) == nil)
+            #expect(TimelineItemShortcut.focusedCanvas(NSTextView()) == nil)
+        }
+    }
+}
+
 /// The main menu's key equivalents and tags stay unique as packages add commands (V3b's clip bar, V13's Rewrite, V14's
 /// and V15's Keep flow): each tag names one command, each shortcut one item, apart from the pairs below that act in
 /// different panes and the hidden alternates. The transcript's own change keys (V14) stay off the menu.

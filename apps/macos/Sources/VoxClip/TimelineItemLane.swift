@@ -1,0 +1,438 @@
+import AppKit
+import VoxClipCore
+
+extension TimelineItemLane {
+    var index: Int { Self.allCases.firstIndex(of: self)! }
+
+    var title: String {
+        switch self {
+        case .captions: "Captions"
+        case .titles: "Titles & effects"
+        case .pictures: "B-roll & pictures"
+        case .effects: "Zoom, looks & speed"
+        case .video: "Video"
+        case .voice: "Voice"
+        case .sounds: "Sounds"
+        case .music: "Music"
+        }
+    }
+
+    var hint: String {
+        switch self {
+        case .titles: "Add a title with Titles & effects"
+        case .pictures: "Add B-roll with ✦ Ask Claude"
+        case .effects: "Add motion with FX +"
+        case .sounds: "Add a sound with ✦ Ask Claude"
+        case .music: "Choose background music"
+        default: ""
+        }
+    }
+}
+
+struct TimelineItemFades: Equatable {
+    let fadeIn: Double
+    let fadeOut: Double
+    let maximum: Double
+
+    subscript(edge: TimelineEdge) -> Double { edge == .start ? fadeIn : fadeOut }
+}
+
+struct TimelineAudioItem: Equatable {
+    let gainDb: Double
+    let gainRange: ClosedRange<Double>
+    let points: [GainPoint]
+    let length: Double
+    let mediaStart: Double
+    let mediaDuration: Double
+    var music: ProjectMusic? = nil
+    var loop = false
+
+    var offsetLabel: String { music == nil ? "Sound from" : "Song from" }
+    var duckDb: Double { music.map { $0.ducking ? $0.duckDb ?? MusicMix.duckDb : 0 } ?? 0 }
+
+    func setGain(_ id: TimelineItemID, db: Double) -> TimelineEdit {
+        if let music {
+            if music.segments == nil { return .setTrackGain(track: music.id, db: db) }
+            return .setGain(item: id, db: db - music.gainDb)
+        }
+        return .setGain(item: id, db: db)
+    }
+}
+
+struct TimelineItemDisplay: Equatable {
+    let item: TimelineItem
+    let title: String
+    let kind: String
+    let ranges: [TimeRange]
+    let marker: Double?
+    var fades: TimelineItemFades? = nil
+    var recordingStart: Double? = nil
+    var audio: TimelineAudioItem? = nil
+
+    var mediaStart: Double? { audio?.mediaStart ?? recordingStart }
+
+    var movable: Bool {
+        switch item.id {
+        case .clip, .voice, .contextDemo: false
+        default: true
+        }
+    }
+    var wordLocked: Bool { item.kind == "bleep" || item.kind == "mute" }
+    var hasHiddenWords: Bool { item.hidden && item.reason == "Hidden · its words are cut" }
+
+    func accessibilityLabel(selected: Bool) -> String {
+        let times = ranges.first.flatMap { first in ranges.last.map { "\(timelineItemTime(first.start)) to \(timelineItemTime($0.end))" } }
+        let name = kind == title ? kind : "\(kind), \(title)"
+        return [name, times ?? item.reason, selected ? "selected" : nil].compactMap { $0 }.joined(separator: ", ")
+    }
+}
+
+func timelineItemTime(_ seconds: Double) -> String {
+    let tenths = Int((min(abs(seconds), Double(Int32.max)) * 10).rounded())
+    return String(format: "%d:%02d.%d", tenths / 600, tenths / 10 % 60, tenths % 10)
+}
+
+func timelineItemDelta(_ seconds: Double) -> String { (seconds < 0 ? "−" : "+") + timelineItemTime(seconds) }
+func timelineItemDecibels(_ value: Double) -> String {
+    (value < 0 ? "−" : "") + String(format: "%.1f dB", abs(value))
+}
+
+struct TimelineItemFragment: Equatable {
+    let display: TimelineItemDisplay
+    let range: TimeRange
+    let rect: NSRect
+    let hasStart: Bool
+    let hasEnd: Bool
+    var audioRange: TimeRange? = nil
+
+    func grip(_ edge: TimelineEdge) -> NSRect {
+        let reach = min(rect.width / 3, rect.width < 26 ? 8 : 6)
+        return NSRect(x: edge == .start ? rect.minX : rect.maxX - reach, y: rect.minY, width: reach, height: rect.height)
+    }
+
+    func edge(at point: NSPoint) -> TimelineEdge? {
+        guard display.movable else { return nil }
+        if hasStart, grip(.start).contains(point) { return .start }
+        if hasEnd, grip(.end).contains(point) { return .end }
+        return nil
+    }
+
+    func fadeGrip(_ edge: TimelineEdge) -> NSRect? {
+        guard let fades = display.fades, rect.width >= 24, edge == .start ? hasStart : hasEnd else { return nil }
+        let fade = display.audio.map { CGFloat(fades[edge] / $0.length) * rect.width } ?? 0
+        let inset = max(10, min(rect.width / 2, fade))
+        let center = edge == .start ? rect.minX + inset : rect.maxX - inset
+        return NSRect(x: center - 4, y: rect.minY, width: 8, height: 8)
+    }
+
+    var slipGrip: NSRect? {
+        guard display.mediaStart != nil, !display.item.hidden, rect.width >= 48 else { return nil }
+        if display.audio != nil { return NSRect(x: rect.maxX - 31, y: rect.minY + 1, width: 18, height: 12) }
+        return NSRect(x: rect.maxX - 27, y: rect.midY - 7, width: 19, height: 14)
+    }
+}
+
+@MainActor final class TimelineConnectedLane: TimelineLane {
+    struct State: Equatable {
+        var fragments: [TimelineItemFragment] = []
+        var selected: Set<TimelineItemID> = []
+        var hasItems = false
+        var music = TimelineMusicGraphics()
+    }
+
+    let kind: TimelineItemLane
+    var state = State() { didSet { if state != oldValue { invalidate() } } }
+
+    init(_ kind: TimelineItemLane) {
+        self.kind = kind
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private var color: NSColor {
+        switch kind {
+        case .titles: .systemPurple
+        case .pictures: .systemBlue
+        case .effects: .systemOrange
+        case .sounds: .systemTeal
+        case .music: .systemIndigo
+        default: DesignValues.nsColor("timeline.cue")
+        }
+    }
+
+    override func drawLane(in context: CGContext) {
+        let lane = CGRect(x: headerWidth, y: 0, width: max(0, bounds.width - headerWidth), height: bounds.height)
+        context.setFillColor(DesignValues.nsColor("timeline.lane").cgColor)
+        context.fill(lane)
+        context.saveGState()
+        context.clip(to: lane)
+        defer { context.restoreGState() }
+        let font = NSFont.systemFont(ofSize: 11)
+        if !state.hasItems {
+            Self.draw(kind.hint, font: font, color: DesignValues.nsColor("text.disabled"), x: headerWidth + 10,
+                      baseline: bounds.midY + font.xHeight / 2)
+        }
+        for fragment in state.fragments where fragment.rect.intersects(lane) {
+            let rect = fragment.rect
+            let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+            context.addPath(path)
+            if fragment.display.item.hidden {
+                context.setStrokeColor(color.cgColor)
+                context.strokePath()
+            } else {
+                context.setFillColor(color.withAlphaComponent(0.65).cgColor)
+                context.fillPath()
+            }
+            if !fragment.hasStart, !fragment.display.item.hidden {
+                context.setStrokeColor(NSColor.white.withAlphaComponent(0.7).cgColor)
+                context.move(to: CGPoint(x: rect.minX, y: rect.minY + 1))
+                context.addLine(to: CGPoint(x: rect.minX + 3, y: rect.midY))
+                context.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - 1))
+                context.strokePath()
+            }
+            let selected = state.selected.contains(fragment.display.item.id)
+            if selected {
+                context.addPath(path)
+                context.setStrokeColor(DesignValues.nsColor("text.primary").cgColor)
+                context.setLineWidth(1.5)
+                context.strokePath()
+                if fragment.display.movable {
+                    for edge: TimelineEdge in [.start, .end] where edge == .start ? fragment.hasStart : fragment.hasEnd {
+                        context.setFillColor(DesignValues.nsColor("text.primary").cgColor)
+                        context.fill(fragment.grip(edge).insetBy(dx: 1, dy: 3))
+                    }
+                }
+            }
+            fragment.drawAudioFades(in: context)
+            fragment.drawVolume(in: context, clip: lane, contour: state.music.contour)
+            drawMusicMarks(fragment, in: context)
+            if selected || fragment.display.audio != nil {
+                for edge: TimelineEdge in [.start, .end] {
+                    if let fade = fragment.fadeGrip(edge) {
+                        context.setFillColor(NSColor.white.cgColor)
+                        context.setStrokeColor(NSColor.black.cgColor)
+                        context.fillEllipse(in: fade)
+                        context.strokeEllipse(in: fade)
+                    }
+                }
+            }
+            guard rect.width > 20 else { continue }
+            context.saveGState()
+            let slip = selected || fragment.display.audio != nil ? fragment.slipGrip : nil
+            let labelWidth = (slip?.minX ?? rect.maxX) - rect.minX - 3
+            context.clip(to: .init(x: rect.minX + 3, y: rect.minY, width: labelWidth, height: rect.height))
+            let baseline = fragment.display.audio == nil ? rect.midY + font.xHeight / 2 : rect.maxY - 3
+            Self.draw(fragment.display.title, font: font, color: .white, x: rect.minX + 8, baseline: baseline)
+            context.restoreGState()
+            if let slip {
+                Self.draw("⇔", font: font, color: .white, x: slip.minX + 3, baseline: slip.midY + font.xHeight / 2)
+            }
+        }
+    }
+
+    private func drawMusicMarks(_ fragment: TimelineItemFragment, in context: CGContext) {
+        guard case .music(let id) = fragment.display.item.id, !fragment.display.item.hidden else { return }
+        let edited = fragment.audioRange ?? fragment.range
+        let rect = fragment.rect
+        if let fade = state.music.fades[id], fade.start < edited.end, fade.end > edited.start {
+            let left = fragment.audioX(at: fade.start), right = min(rect.maxX, fragment.audioX(at: fade.end))
+            context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor)
+            context.fill(NSRect(x: left, y: rect.minY, width: max(0, right - left), height: rect.height))
+            context.setStrokeColor(NSColor.white.withAlphaComponent(0.7).cgColor)
+            context.setLineWidth(1)
+            context.move(to: NSPoint(x: left, y: rect.minY))
+            context.addLine(to: NSPoint(x: right, y: rect.maxY))
+            context.move(to: NSPoint(x: left, y: rect.maxY))
+            context.addLine(to: NSPoint(x: right, y: rect.minY))
+            context.strokePath()
+        }
+        let font = NSFont.systemFont(ofSize: 11)
+        for time in state.music.loops[id] ?? [] where edited.start <= time && time < edited.end {
+            Self.draw("∞", font: font, color: .white, x: fragment.audioX(at: time), baseline: rect.minY + 10)
+        }
+    }
+}
+
+struct TimelineItemPreview: Equatable {
+    let rectangles: [NSRect]
+    let readout: String?
+    let point: NSPoint
+    let guide: Double?
+    var marquee = false
+    var audio: [TimelineItemFragment] = []
+    var music = TimelineMusicGraphics()
+}
+
+@MainActor final class TimelineItemOverlay: NSView {
+    var preview: TimelineItemPreview? { didSet { if preview != oldValue { needsDisplay = true } } }
+    var clip = NSRect.zero
+    var audioSelection: [NSRect] = [] { didSet { if audioSelection != oldValue { needsDisplay = true } } }
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard preview != nil || !audioSelection.isEmpty else { return }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSBezierPath(rect: clip).addClip()
+        NSColor.systemYellow.withAlphaComponent(0.22).setFill()
+        for rect in audioSelection { rect.fill() }
+        guard let preview else { return }
+        for rect in preview.rectangles {
+            let outline = NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
+            let color = preview.marquee ? NSColor.systemBlue : NSColor.white
+            color.withAlphaComponent(0.2).setFill()
+            outline.fill()
+            color.setStroke()
+            outline.stroke()
+        }
+        if let context = NSGraphicsContext.current?.cgContext {
+            for fragment in preview.audio {
+                context.setFillColor(NSColor.black.withAlphaComponent(0.6).cgColor)
+                context.fill(fragment.rect)
+                fragment.drawAudioFades(in: context)
+                fragment.drawVolume(in: context, clip: clip, contour: preview.music.contour)
+            }
+        }
+        if let guide = preview.guide {
+            NSColor.systemYellow.setFill()
+            NSRect(x: guide - 0.5, y: clip.minY, width: 1, height: clip.height).fill()
+        }
+        guard let readout = preview.readout else { return }
+        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.white]
+        let size = (readout as NSString).size(withAttributes: attributes)
+        let rect = NSRect(x: max(clip.minX, min(preview.point.x + 10, clip.maxX - size.width - 12)),
+                          y: max(clip.minY, min(preview.point.y - 24, clip.maxY - size.height - 8)),
+                          width: size.width + 12, height: size.height + 8)
+        NSColor.black.withAlphaComponent(0.9).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+        (readout as NSString).draw(at: NSPoint(x: rect.minX + 6, y: rect.minY + 4), withAttributes: attributes)
+    }
+}
+
+extension TimelineCanvasView {
+    var itemClip: NSRect {
+        NSRect(x: headerWidth, y: trackClip.frame.minY, width: max(0, trackClip.frame.width - headerWidth), height: trackClip.frame.height)
+    }
+
+    func fragments(for items: [TimelineItemDisplay]) -> [TimelineItemFragment] {
+        var fragments: [TimelineItemFragment] = []
+        for display in items {
+            let item = display.item
+            let lane = trackLanes[item.lane.index]
+            let height = trackHeight.heights[item.lane.index]
+            let isSpeech = item.lane == .video || item.lane == .voice
+            let y = trackClip.frame.minY + lane.frame.minY + 2 + (isSpeech ? 0 : height * CGFloat(item.row))
+            let ranges = display.marker.map { [TimeRange(start: $0, end: $0)] } ?? display.ranges
+            for (index, range) in ranges.enumerated() {
+                let lower = headerWidth + viewport.x(range.start)
+                let upper = headerWidth + viewport.x(range.end)
+                let rect = NSRect(x: lower, y: y, width: max(item.hidden ? 5 : 1, upper - lower - 1), height: isSpeech ? 15 : height - 4)
+                guard rect.intersects(itemClip) else { continue }
+                var edited: TimeRange?
+                if display.audio != nil, content.axis == .source, let plan = itemPlan {
+                    let first = itemSourceTime(range.start), last = itemSourceTime(range.end)
+                    let begin = plan.mapTime(first)
+                    edited = .init(start: begin, end: max(begin, plan.mapTime(last)))
+                }
+                fragments.append(.init(display: display, range: range, rect: rect,
+                                       hasStart: !item.hidden && index == 0, hasEnd: !item.hidden && index == ranges.count - 1,
+                                       audioRange: edited))
+            }
+        }
+        return fragments
+    }
+
+    func updateTimelineItems() {
+        let fragments = fragments(for: content.items)
+        itemFragments = fragments
+        itemOverlay.clip = itemClip
+        interaction.updateAudioSelection()
+        for lane in connectedLanes {
+            let offset = lane.frame.minY + trackClip.frame.minY
+            let local = fragments.filter { $0.display.item.lane == lane.kind }.map { fragment in
+                TimelineItemFragment(display: fragment.display, range: fragment.range, rect: fragment.rect.offsetBy(dx: 0, dy: -offset),
+                                     hasStart: fragment.hasStart, hasEnd: fragment.hasEnd, audioRange: fragment.audioRange)
+            }
+            lane.state = .init(fragments: local, selected: model.timelineItemSelection,
+                               hasItems: content.items.contains { $0.item.lane == lane.kind },
+                               music: lane.kind == .music ? content.musicGraphics : .init())
+        }
+    }
+
+    var itemEdgeCursorRects: [NSRect] {
+        guard model.capabilities.edit else { return [] }
+        return itemFragments.flatMap { fragment -> [NSRect] in
+            guard fragment.display.movable else { return [] }
+            let edges = [(TimelineEdge.start, fragment.hasStart), (.end, fragment.hasEnd)].compactMap { edge, exists -> NSRect? in
+                guard exists else { return nil }
+                let rect = fragment.grip(edge).intersection(itemClip)
+                return rect.isEmpty ? nil : rect
+            }
+            guard model.timelineItemSelection.contains(fragment.display.item.id) else { return edges }
+            return edges + [fragment.fadeGrip(.start), fragment.fadeGrip(.end), fragment.slipGrip].compactMap { grip in
+                guard let rect = grip?.intersection(itemClip), !rect.isEmpty else { return nil }
+                return rect
+            }
+        }
+    }
+
+    func item(at point: NSPoint) -> TimelineItemFragment? {
+        guard itemClip.contains(point) else { return nil }
+        return itemFragments.last { fragment in
+            if case .clip = fragment.display.item.id { return false }
+            return fragment.rect.contains(point)
+        }
+    }
+
+    func isConnectedLane(at point: NSPoint) -> Bool {
+        itemClip.contains(point) && connectedLanes.contains { $0.frame.contains(convert(point, to: trackClip)) }
+    }
+
+    func openItem(_ id: TimelineItemID) {
+        switch id {
+        case .effect(let id): model.adjustAskClaudeEffect(fromTimeline: id)
+        case .motion(let id): openMotionCue(id: id)
+        case .music: (shell ?? model.app.shell).showMusic(for: model)
+        case .footage, .contextDemo:
+            if let span = model.timelineItemSpan(id) {
+                model.openAskClaude(.init(scope: .time(span), clipID: model.activeClip?.id))
+            }
+        default: break
+        }
+    }
+
+    var selectedItemIDs: [TimelineItemID] {
+        content.items.map(\.item.id).filter { model.timelineItemSelection.contains($0) }
+    }
+
+    func itemSourceTime(_ time: Double) -> Double {
+        if content.axis == .source { return model.timelineSourceTime(time, on: .source) }
+        guard let plan = itemPlan else { return model.timelineSourceTime(time, on: .edited) }
+        if time >= plan.duration, let last = plan.kept.last { return Double(last.endSample) / plan.sampleRate }
+        return TimelineItems.sourceAnchor(at: max(0, time), axis: .edited, plan: plan)
+    }
+
+    func snapItemTime(_ time: Double, excluding ids: Set<TimelineItemID>, wordsOnly: Bool, reach: Double) -> Double? {
+        let playhead = model.timelinePlayhead(on: content.axis)
+        var closest: Double? = !wordsOnly && abs(playhead - time) <= reach ? playhead : nil
+        var distance = closest.map { abs($0 - time) } ?? reach
+        for target in content.itemLayout?.snapTargets ?? [] {
+            if wordsOnly && target.kind != .word { continue }
+            if let id = target.item, ids.contains(id) { continue }
+            let candidate = content.axis == .source ? content.story?.time(forSource: target.time) ?? target.time : target.time
+            let gap = abs(candidate - time)
+            if gap < distance || (closest == nil && gap == distance) { closest = candidate; distance = gap }
+        }
+        return closest
+    }
+
+    func selectAndRevealItem(_ item: TimelineItemDisplay) {
+        model.selectTimelineItems([item.item.id])
+        let row = trackRows[item.item.lane.index]
+        let top = row.y + CGFloat(item.item.row) * trackHeight.heights[item.item.lane.index]
+        let bottom = min(row.maxY, top + trackHeight.heights[item.item.lane.index])
+        revealItem(time: item.ranges.first?.start ?? item.marker, top: top, bottom: bottom)
+    }
+}
