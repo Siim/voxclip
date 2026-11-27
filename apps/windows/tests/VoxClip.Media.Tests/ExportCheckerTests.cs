@@ -196,6 +196,20 @@ public sealed class ExportCheckerTests : IDisposable
     }
 
     [Fact]
+    public async Task RecordingLevelIgnoresAudioOutsideTheWordsOnEitherSide()
+    {
+        var samples = SyntheticExport.Speech(3, -13).Concat(SyntheticExport.Speech(3, -21)).ToArray();
+        var edit = new ExportCheckExpectation.Edit([new("Before", 1, 2.8), new("After", 3.2, 5)], [], [3], 6)
+        { RecordingSeams = [new(3, "0007", "0010")] };
+        var result = await Checker(null, new SyntheticExport(new(0, 6), new(0, 6), samples))
+            .CheckAsync("clip.mp4", Snapshot(new(1920, 1080)), edit, ExportLoudness.Off, TestContext.Current.CancellationToken);
+        var warning = Assert.Single(result.Report[ExportCheckKind.Loudness]!.Items);
+        Assert.Equal(ExportCheckItemKind.RecordingLevel, warning.Kind);
+        Assert.Equal("0010 is quieter than 0007 at 0:03. Listen there.", warning.Reason);
+        Assert.InRange(warning.Value!.Value, -8.3, -7.7);
+    }
+
+    [Fact]
     public async Task SocialLoudnessOffTargetWarns()
     {
         var outcome = await Checker(null, new SyntheticExport(new(0, 6), new(0, 6), SyntheticExport.Speech(6, -20)))

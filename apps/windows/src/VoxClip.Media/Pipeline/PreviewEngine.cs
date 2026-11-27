@@ -12,7 +12,7 @@ using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.Media.Pipeline;
 
-/// <summary>Audio-master edited playback with two owner-thread video decoders; architecture §6.3.</summary>
+/// <summary>Audio-master edited playback with owner-thread video decoders; architecture §6.3.</summary>
 public sealed class PreviewEngine : IPreviewEngine
 {
     private readonly BlockingCollection<OwnerCommand<bool>> commands = new();
@@ -40,6 +40,7 @@ public sealed class PreviewEngine : IPreviewEngine
     private PreviewPosition position = new(0, 0, false);
     private IPreviewVideoWorker? current;
     private IPreviewVideoWorker? lookAhead;
+    private readonly Dictionary<string, (string Path, IPreviewVideoWorker Worker)> recordingWorkers = new(StringComparer.Ordinal);
     private Task<PixelBuffer>? prepared;
     private int preparedPart = -1;
     private CancellationTokenSource? prefetchCancellation;
@@ -99,8 +100,7 @@ public sealed class PreviewEngine : IPreviewEngine
             voiceSession = VoiceLabRenderSession.PrepareAsync(snapshot, ct).GetAwaiter().GetResult();
             this.snapshot = CapPreview(snapshot);
             if (composer is FrameComposer concrete) concrete.PrepareSnapshot(this.snapshot);
-            current = createWorker(snapshot.Media.Path, "vc-dec-a"); lookAhead = createWorker(snapshot.Media.Path, "vc-dec-b");
-            Task.WhenAll(current.Ready, lookAhead.Ready).WaitAsync(ct).GetAwaiter().GetResult();
+            if (snapshot.SpanSources.Count == 0) OpenLegacyWorkers(snapshot.Media.Path, ct);
             Seek(0, ct);
         }
         catch { StopMedia(); this.snapshot = null; UpdatePosition(0); throw; }
@@ -298,22 +298,33 @@ public sealed class PreviewEngine : IPreviewEngine
     {
         var local = snapshot!;
         var source = cursor!.Source(Math.Min(edited, Math.Max(0, local.Timeline.Duration - 1 / local.Timeline.SampleRate)));
-        if (cursor.Part != currentPart)
+        var (recording, localTime) = cursor.Picture(local, source);
+        if (recording is null)
         {
-            if (preparedPart == cursor.Part && prepared is { } pending)
+            OpenLegacyWorkers(local.Media.Path, ct);
+            if (cursor.Part != currentPart)
             {
-                try { pending.GetAwaiter().GetResult(); (current, lookAhead) = (lookAhead, current); }
-                catch (Exception) when (pending.IsFaulted || pending.IsCanceled) { exact = true; }
+                if (preparedPart == cursor.Part && prepared is { } pending)
+                {
+                    try { pending.GetAwaiter().GetResult(); (current, lookAhead) = (lookAhead, current); }
+                    catch (Exception) when (pending.IsFaulted || pending.IsCanceled) { exact = true; }
+                }
+                prepared = null; preparedPart = -1; currentPart = cursor.Part;
             }
-            prepared = null; preparedPart = -1; currentPart = cursor.Part;
         }
         PixelBuffer decoded;
-        try { decoded = current!.ReadAsync(local.Clip?.Effects?.PictureTime(source) ?? source, exact, ct).GetAwaiter().GetResult(); }
+        double sourcePts;
+        try
+        {
+            var worker = recording is null ? current! : OpenRecordingWorker(recording, ct);
+            decoded = worker.ReadAsync(localTime, recording is null && exact, ct).GetAwaiter().GetResult();
+            sourcePts = worker.Position + (recording?.OffsetSamples ?? 0) / local.Timeline.SampleRate;
+        }
         catch (Exception exception) { PreviewFrameFailures.Failed(failures, true, PreviewFailureReason.SourceFrame, exception); throw; }
         if (useFrameLeases)
         {
             if (framePool is null || framePool.Size != local.Output.Size) framePool = new(local.Output.Size);
-            var lease = framePool.TryRent(edited, current.Position, generation);
+            var lease = framePool.TryRent(edited, sourcePts, generation);
             if (lease is not null)
             {
                 try
@@ -334,14 +345,35 @@ public sealed class PreviewEngine : IPreviewEngine
             }
             var pixels = new PixelBuffer(bytes, local.Output.Size.Width, local.Output.Size.Height, local.Output.Size.Width * 4);
             Compose(decoded, pixels, local, edited, ct);
-            frames.Writer.TryWrite(new(pixels, edited, current.Position, generation));
+            frames.Writer.TryWrite(new(pixels, edited, sourcePts, generation));
         }
-        if (prepared is null && cursor.NextJoin - edited <= 2 && double.IsFinite(cursor.NextSource))
+        if (recording is null && prepared is null && cursor.NextJoin - edited <= 2 && double.IsFinite(cursor.NextSource))
         {
             prefetchCancellation ??= new();
             preparedPart = cursor.Part + 1;
             prepared = lookAhead!.ReadAsync(cursor.NextSource, true, prefetchCancellation.Token);
         }
+    }
+
+    private void OpenLegacyWorkers(string path, CancellationToken ct)
+    {
+        if (current is not null) return;
+        current = createWorker(path, "vc-dec-a"); lookAhead = createWorker(path, "vc-dec-b");
+        Task.WhenAll(current.Ready, lookAhead.Ready).WaitAsync(ct).GetAwaiter().GetResult();
+    }
+
+    private IPreviewVideoWorker OpenRecordingWorker(RecordingRenderSource recording, CancellationToken ct)
+    {
+        if (recordingWorkers.TryGetValue(recording.ContentKey, out var opened))
+        {
+            if (opened.Path == recording.Path) return opened.Worker;
+            recordingWorkers.Remove(recording.ContentKey);
+            opened.Worker.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        var worker = createWorker(RecordingRendering.RequirePath(recording), "vc-dec-recording");
+        recordingWorkers.Add(recording.ContentKey, (recording.Path, worker));
+        worker.Ready.WaitAsync(ct).GetAwaiter().GetResult();
+        return worker;
     }
 
     /// <summary>The shared compositor, told about this preview's failures; another composer composes as given.</summary>
@@ -526,6 +558,8 @@ public sealed class PreviewEngine : IPreviewEngine
                 finally
                 {
                     current = null; lookAhead = null; prepared = null;
+                    foreach (var entry in recordingWorkers.Values) entry.Worker.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    recordingWorkers.Clear();
                     if (composer is FrameComposer concrete) concrete.ReleaseSnapshot(snapshot);
                     voiceSession?.Dispose(); voiceSession = null;
                 }
@@ -541,7 +575,7 @@ public sealed class PreviewEngine : IPreviewEngine
 
     private void RequireSnapshot()
     {
-        if (snapshot is null || current is null || lookAhead is null) throw new InvalidOperationException("Load a preview snapshot first.");
+        if (snapshot is null) throw new InvalidOperationException("Load a preview snapshot first.");
     }
 
     private Task Invoke(Action action, CancellationToken ct)

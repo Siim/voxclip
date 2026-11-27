@@ -4,6 +4,7 @@ using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
@@ -193,9 +194,11 @@ public sealed partial class EditorPage
         if (demo || MediaPath is not { Length: > 0 } path || project.Media.Source.Video is null ||
             project.Transcript?.Words is not { } words || !words.Any(word => word.Kind == WordKind.Word)) return null;
         frameText ??= new WindowsFrameText();
-        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(frameText), new FfmpegFrameDecoder(), new FrameAnalysisCache());
-        return new VideoFramePass(analyzer, path, project.Media.Source.ContentKey, words,
-            line => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "frames", line));
+        var clock = ProjectClock.Build(project);
+        var recordings = clock.Regions.Count > 1 ? new RecordingFrameDecoder(project, clock, App.Services.Projects, owner.ProjectPath ?? path) : null;
+        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(frameText), (IFrameDecoding?)recordings ?? new FfmpegFrameDecoder(), new FrameAnalysisCache());
+        return new VideoFramePass(analyzer, path, recordings?.ContentKey ?? project.Media.Source.ContentKey, recordings is null ? words : clock.Words,
+            line => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "frames", line), clock);
     }
 
     /// <summary>One OCR engine for every pass this page starts; it serialises its own recognitions.</summary>

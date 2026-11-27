@@ -79,7 +79,12 @@ internal static class CliOperations
         if (!Path.GetExtension(path).Equals(".voxclip", StringComparison.OrdinalIgnoreCase))
             return (null, await ProbeInputAsync(path, ct).ConfigureAwait(false));
         var opened = await ServicesMergeAdapter.Projects().LoadAsync(path, ct).ConfigureAwait(false);
-        if (opened.ResolvedMediaPath is null) throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(opened.Project.Media.Source.AbsolutePath)}. Edits are saved.");
+        if (opened.ResolvedMediaPath is null)
+        {
+            if (opened.Project.Media.SpokenSources is { Count: > 0 })
+                return (opened.Project, MediaInfo.FromReference(opened.Project.Media.Source));
+            throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(opened.Project.Media.Source.AbsolutePath)}. Edits are saved.");
+        }
         return (opened.Project, await ProbeInputAsync(opened.ResolvedMediaPath, ct).ConfigureAwait(false));
     }
 
@@ -133,7 +138,7 @@ internal static class CliOperations
             }
             else project = media.Audio is null ? NewProject(media, null, string.Empty) : await TranscribeMediaAsync(media, arguments, ct).ConfigureAwait(false);
         }
-        ValidateRequestedScope(project.Edits.Clips, project.Transcript?.Words.Count ?? 0,
+        ValidateRequestedScope(project.Edits.Clips, ProjectClock.Build(project).Words.Count,
             arguments.GetValue<string?>("--clip"), arguments.GetValue<string?>("--range"));
         if (arguments.GetValue<bool>("--cut-fillers") || arguments.GetValue<bool>("--tighten-pauses") ||
             arguments.GetValue<string?>("--clip") is not null || arguments.GetValue<string?>("--range") is not null)
@@ -196,6 +201,7 @@ internal static class CliOperations
         }
         var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
+        snapshot = await RecordingRendering.BindAsync(project, snapshot, new ProjectStore(), path, ct).ConfigureAwait(false);
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md).
         snapshot = snapshot with
         {
@@ -280,6 +286,7 @@ internal static class CliOperations
     internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations)
     {
         var protectedPaths = new List<string> { snapshot.Media.Path };
+        protectedPaths.AddRange(snapshot.SpanSources.Select(source => source.Path));
         if (snapshot.Clip?.Music is { } music) protectedPaths.Add(music.AssetPath);
         if (snapshot.VoiceLab is { } input)
         {
@@ -528,7 +535,7 @@ internal static class CliOperations
     {
         var reference = project.Media.Source;
         var rate = reference.Audio?.SampleRate ?? 48_000;
-        if (project.Edits.CutWordIds.Count == 0 && project.Edits.CutPauseIds.Count == 0 && (!activeClip || project.Edits.ActiveClipId is null))
+        if (project.Media.SpokenSources is not { Count: > 0 } && project.Edits.CutWordIds.Count == 0 && project.Edits.CutPauseIds.Count == 0 && (!activeClip || project.Edits.ActiveClipId is null))
         {
             var total = checked((long)Math.Floor(reference.DurationSeconds * rate + 0.5));
             return new(rate, total, [], total > 0 ? [new(0, total)] : [], total, []);

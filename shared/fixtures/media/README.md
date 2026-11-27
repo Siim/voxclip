@@ -13,6 +13,11 @@ is quieter, uses 44.1 kHz audio, and has a 90° rotation in its track metadata.
 Regenerate just these files with
 `swift tools/fixtures/media/generate.swift --recordings shared/fixtures/media`.
 
+`t4-recording-A.mp4` and `t4-recording-B.mp4` are Windows story-render inputs,
+with a drawn frame counter, different frame sizes and distinct tones at 48 kHz
+and 44.1 kHz. Regenerate them with `python3 tools/fixtures/recordings/generate_windows_render.py`
+on macOS with FFmpeg and VideoToolbox. They are not part of the canonical CLI media index.
+
 ## Test-only Windows Main 10 input
 
 The Windows native suite also needs `hevc10-two-audio.mp4`, a four-second

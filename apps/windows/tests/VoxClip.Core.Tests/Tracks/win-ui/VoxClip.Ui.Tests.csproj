@@ -23,6 +23,7 @@
     <Compile Include="ViewModelTests.cs" />
     <Compile Include="HarnessReviewTests.cs" />
     <Compile Include="../../../Support/FixtureLoader.cs" Link="Support/FixtureLoader.cs" />
+    <Compile Include="../../../Support/RecordingStoryFixture.cs" Link="Support/RecordingStoryFixture.cs" />
     <Compile Include="ProjectLeavePaidWorkTests.cs" />
     <Compile Include="AccessibilityMonitorTests.cs" />
     <Compile Include="RoundThreeTests.cs" />

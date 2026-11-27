@@ -191,11 +191,12 @@ public sealed class FrameComposer : IFrameComposer
     /// left out of the frame; a missing disclosure, context-demo frame or other failure still fails the frame, marked with its reason. An
     /// export (<paramref name="forPreview"/> false) fails exactly as before.</summary>
     internal unsafe void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview,
-        PreviewFrameFailures? failures, CancellationToken ct, bool pictureOnly = false, bool renderedVoicePicture = false)
+        PreviewFrameFailures? failures, CancellationToken ct, bool pictureOnly = false, bool renderedVoicePicture = false, int? rotationOverride = null)
     {
         ct.ThrowIfCancellationRequested();
         Validate(decoded); Validate(output);
-        var rotation = renderedVoicePicture ? 0 : snapshot.Media.Video?.RotationDegrees ?? 0;
+        var rotation = renderedVoicePicture ? 0 : rotationOverride ?? snapshot.RecordingAtTime(snapshot.Timeline.SourceTime(editedTime))?.RotationDegrees
+            ?? snapshot.Media.Video?.RotationDegrees ?? 0;
         var controls = snapshot.Clip?.Controls;
         byte[]? oriented = null;
         byte[]? turned = null;

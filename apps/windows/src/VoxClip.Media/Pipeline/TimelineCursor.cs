@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Media.Ffmpeg;
 
@@ -19,6 +20,15 @@ internal sealed class TimelineCursor(RenderTimeline timeline)
     internal double NextSource => voice is { } synthetic
         ? part + 1 < synthetic.Pieces.Count ? synthetic.Pieces[part + 1].SourceStartSample / synthetic.SampleRate : double.PositiveInfinity
         : part + 1 < legacy!.Kept.Count ? legacy.Kept[part + 1].StartSample / legacy.SampleRate : double.PositiveInfinity;
+
+    internal (RecordingRenderSource? Recording, double LocalTime) Picture(ComposeSnapshot snapshot, double sourceTime)
+    {
+        var recording = snapshot.RecordingAtTime(sourceTime);
+        if (recording is null && snapshot.SpanSources.Count > 0)
+            throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "A part comes from one recording.");
+        var picture = snapshot.Clip?.Effects?.PictureTime(sourceTime) ?? sourceTime;
+        return (recording, recording?.LocalTime(picture, timeline.SampleRate) ?? picture);
+    }
 
     internal double Source(double editedTime)
     {

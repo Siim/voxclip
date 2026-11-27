@@ -155,7 +155,8 @@ public sealed class ProjectClock
     private static long? Samples(double seconds, int rate) => seconds >= 0 && rate > 0 &&
         EditingMath.Round(seconds * rate) is >= 0 and < 9223372036854775808.0 and var sample ? (long)sample : null;
 
-    private static string Label(MediaReference reference)
+    /// <summary>The display label of a file before it has been added to the project clock.</summary>
+    public static string Label(MediaReference reference)
     {
         var path = reference.AbsolutePath.Replace('\\', '/');
         var stem = Path.GetFileNameWithoutExtension(path);

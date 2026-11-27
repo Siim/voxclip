@@ -49,10 +49,10 @@ member VoxClip.Media.Audio.AudioRing :: method internal get_BufferedBytes()
 member VoxClip.Media.Audio.AudioRing :: method public Read(System.Span`1<byte>)
 member VoxClip.Media.Audio.AudioRing :: method public Read(byte[],int,int)
 member VoxClip.Media.Audio.AudioRing :: method public get_WaveFormat()
+member VoxClip.Media.Audio.EditedAudioReader :: field private audio
 member VoxClip.Media.Audio.EditedAudioReader :: field private converted
 member VoxClip.Media.Audio.EditedAudioReader :: field private convertedCount
 member VoxClip.Media.Audio.EditedAudioReader :: field private convertedOffset
-member VoxClip.Media.Audio.EditedAudioReader :: field private decoder
 member VoxClip.Media.Audio.EditedAudioReader :: field private draining
 member VoxClip.Media.Audio.EditedAudioReader :: field private mixer
 member VoxClip.Media.Audio.EditedAudioReader :: field private outputIndex
@@ -62,6 +62,7 @@ member VoxClip.Media.Audio.EditedAudioReader :: field private plan
 member VoxClip.Media.Audio.EditedAudioReader :: field private produced
 member VoxClip.Media.Audio.EditedAudioReader :: field private resample
 member VoxClip.Media.Audio.EditedAudioReader :: field private source
+member VoxClip.Media.Audio.EditedAudioReader :: field private spanSources
 member VoxClip.Media.Audio.EditedAudioReader :: method internal .ctor(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.EditedAudioReader :: method internal Read(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.EditedAudioReader :: method internal WriteWaveAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,string,System.Threading.CancellationToken,bool,bool)
@@ -109,6 +110,12 @@ member VoxClip.Media.Audio.EffectAudio+Track :: method public op_Equality(VoxCli
 member VoxClip.Media.Audio.EffectAudio+Track :: method public op_Inequality(VoxClip.Media.Audio.EffectAudio+Track,VoxClip.Media.Audio.EffectAudio+Track)
 member VoxClip.Media.Audio.EffectAudio+Track :: method public set_Sounds(VoxClip.Media.Audio.EffectAudio+PlacedSound[])
 member VoxClip.Media.Audio.EffectAudio+Track :: method public set_Tones(System.ValueTuple`2<double,double>[])
+member VoxClip.Media.Audio.GatedSpeechMeter :: field private meter
+member VoxClip.Media.Audio.GatedSpeechMeter :: field private next
+member VoxClip.Media.Audio.GatedSpeechMeter :: method internal Append(long,System.ReadOnlySpan`1<float>)
+member VoxClip.Media.Audio.GatedSpeechMeter :: method internal Finish()
+member VoxClip.Media.Audio.GatedSpeechMeter :: method internal Ranges(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Shared.TimeRange>,int,double,double,double)
+member VoxClip.Media.Audio.GatedSpeechMeter :: method public .ctor(int,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
 member VoxClip.Media.Audio.IMicrophoneEndpoint :: method public Start(VoxClip.Media.Audio.MicrophonePacket,System.Action`1<System.Exception>)
 member VoxClip.Media.Audio.IMicrophoneEndpoint :: method public Stop()
 member VoxClip.Media.Audio.IMicrophoneEndpoint :: method public get_Channels()
@@ -235,6 +242,28 @@ member VoxClip.Media.Audio.MusicFiles :: method public DurationSecondsAsync(stri
 member VoxClip.Media.Audio.PhraseCueOutput :: method public DefaultOutputIsHeadphones()
 member VoxClip.Media.Audio.PhraseCueOutput :: method public HasMicrophone()
 member VoxClip.Media.Audio.PhraseCueOutput :: method public PlayAsync(float[],int,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RecordingAudio :: field private inputs
+member VoxClip.Media.Audio.RecordingAudio :: method internal Read(VoxClip.Core.Domain.Shared.RecordingRenderSource,long,System.Span`1<float>,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RecordingAudio :: method public .ctor(VoxClip.Core.Domain.Shared.ComposeSnapshot,int)
+member VoxClip.Media.Audio.RecordingAudio :: method public Dispose()
+member VoxClip.Media.Audio.RecordingAudio :: method public Read(long,System.Span`1<float>,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method internal get_Next()
+member VoxClip.Media.Audio.RecordingAudio+Input :: method internal set_Next(long)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method private .ctor(VoxClip.Media.Audio.RecordingAudio+Input)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method private get_EqualityContract()
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public .ctor(VoxClip.Media.Ffmpeg.AudioDecoder)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public Deconstruct(VoxClip.Media.Ffmpeg.AudioDecoder&)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public Equals(VoxClip.Media.Audio.RecordingAudio+Input)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public Equals(object)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public GetHashCode()
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public ToString()
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public get_Decoder()
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public op_Equality(VoxClip.Media.Audio.RecordingAudio+Input,VoxClip.Media.Audio.RecordingAudio+Input)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public op_Inequality(VoxClip.Media.Audio.RecordingAudio+Input,VoxClip.Media.Audio.RecordingAudio+Input)
+member VoxClip.Media.Audio.RecordingAudio+Input :: method public set_Decoder(VoxClip.Media.Ffmpeg.AudioDecoder)
+member VoxClip.Media.Audio.RecordingLevelMatch :: method private Measure(string,System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Shared.TimedWord>,double,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RecordingLevelMatch :: method public MatchOnAddAsync(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.RecordingEdit+AddSpokenSource,VoxClip.Core.Services.Project.IProjectStore,string,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: field private edited
 member VoxClip.Media.Audio.RenderedAudioReader :: field private editedRead
 member VoxClip.Media.Audio.RenderedAudioReader :: field private editedStart
@@ -908,7 +937,7 @@ member VoxClip.Media.Ffmpeg.AudioDecoder :: field private inputRate
 member VoxClip.Media.Ffmpeg.AudioDecoder :: field private nextSample
 member VoxClip.Media.Ffmpeg.AudioDecoder :: field private position
 member VoxClip.Media.Ffmpeg.AudioDecoder :: field private resample
-member VoxClip.Media.Ffmpeg.AudioDecoder :: method internal .ctor(string,int)
+member VoxClip.Media.Ffmpeg.AudioDecoder :: method internal .ctor(string,int,System.Nullable`1<int>)
 member VoxClip.Media.Ffmpeg.AudioDecoder :: method internal Read(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Ffmpeg.AudioDecoder :: method internal Seek(long)
 member VoxClip.Media.Ffmpeg.AudioDecoder :: method internal get_BytesRead()
@@ -1204,6 +1233,13 @@ member VoxClip.Media.Frames.OnnxFrameFaces :: method public Faces(VoxClip.Core.D
 member VoxClip.Media.Frames.OnnxFrameFaces :: method public FacesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.OnnxFrameFaces :: method public Installed(VoxClip.Core.Domain.Frames.FrameModelCatalog,string)
 member VoxClip.Media.Frames.OnnxFrameFaces :: method public Load(VoxClip.Core.Domain.Frames.FrameModel,string)
+member VoxClip.Media.Frames.RecordingFrameDecoder :: method public .ctor(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.ProjectClock,VoxClip.Core.Services.Project.IProjectStore,string)
+member VoxClip.Media.Frames.RecordingFrameDecoder :: method public Open(string,int,double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.RecordingFrameDecoder :: method public get_ContentKey()
+member VoxClip.Media.Frames.RecordingFrameDecoder+Reader :: field private readers
+member VoxClip.Media.Frames.RecordingFrameDecoder+Reader :: method public .ctor(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.ProjectClock,VoxClip.Core.Services.Project.IProjectStore,string,int,double)
+member VoxClip.Media.Frames.RecordingFrameDecoder+Reader :: method public Dispose()
+member VoxClip.Media.Frames.RecordingFrameDecoder+Reader :: method public Read(double,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.VideoFramePass :: field private analyzer
 member VoxClip.Media.Frames.VideoFramePass :: field private cancellation
 member VoxClip.Media.Frames.VideoFramePass :: field private contentKey
@@ -1222,7 +1258,7 @@ member VoxClip.Media.Frames.VideoFramePass :: method private set_Cached(int)
 member VoxClip.Media.Frames.VideoFramePass :: method private set_Ended(System.Nullable`1<double>)
 member VoxClip.Media.Frames.VideoFramePass :: method private set_Seconds(System.Nullable`1<double>)
 member VoxClip.Media.Frames.VideoFramePass :: method private set_Started(System.Nullable`1<double>)
-member VoxClip.Media.Frames.VideoFramePass :: method public .ctor(VoxClip.Media.Frames.FrameAnalyzer,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Action`1<string>)
+member VoxClip.Media.Frames.VideoFramePass :: method public .ctor(VoxClip.Media.Frames.FrameAnalyzer,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Action`1<string>,VoxClip.Core.Domain.Editing.ProjectClock)
 member VoxClip.Media.Frames.VideoFramePass :: method public Cancel()
 member VoxClip.Media.Frames.VideoFramePass :: method public FinishAsync(System.Threading.CancellationToken)
 member VoxClip.Media.Frames.VideoFramePass :: method public FramesAsync(VoxClip.Core.Domain.Frames.FrameClip,System.Threading.CancellationToken)
@@ -1507,7 +1543,7 @@ member VoxClip.Media.Pipeline.ExportChecker :: field private sharedRoot
 member VoxClip.Media.Pipeline.ExportChecker :: method internal CheckAsync(VoxClip.Media.Pipeline.IExportFile,VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit,VoxClip.Core.Domain.Loudness.ExportLoudness,System.Diagnostics.Stopwatch,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ExportChecker :: method internal TitleBoxes(VoxClip.Core.Domain.Shared.ComposeSnapshot,string)
 member VoxClip.Media.Pipeline.ExportChecker :: method private HearAsync(string,long,VoxClip.Media.Pipeline.ExportChecker+Hearing,System.Threading.CancellationToken)
-member VoxClip.Media.Pipeline.ExportChecker :: method private Measure(VoxClip.Media.Pipeline.IExportFile,VoxClip.Core.Domain.Shared.OutputSpec,string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.ExportChecker :: method private Measure(VoxClip.Media.Pipeline.IExportFile,VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit,string,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ExportChecker :: method public .ctor(VoxClip.Media.Pipeline.ExportChecker+Hearing,string,string)
 member VoxClip.Media.Pipeline.ExportChecker :: method public CheckAsync(string,VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit,VoxClip.Core.Domain.Loudness.ExportLoudness,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ExportChecker :: method public LocalHearingAsync(VoxClip.Core.Domain.Transcript.Transcript,VoxClip.Core.Services.Models.IModelCatalog,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.Models.InstalledModel>,VoxClip.Core.Services.Speech.ITranscriber,System.Threading.CancellationToken)
@@ -1529,8 +1565,8 @@ member VoxClip.Media.Pipeline.ExportChecker+Hearing :: method public set_Transcr
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method private .ctor(VoxClip.Media.Pipeline.ExportChecker+Measured)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method private get_EqualityContract()
-member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,double,VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement,System.Nullable`1<long>)
-member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public Deconstruct(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack&,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack&,double&,VoxClip.Core.Domain.Shared.PixelSize&,VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement&,System.Nullable`1<long>&)
+member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,double,VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement,System.Nullable`1<long>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckRecordingMeasurement>)
+member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public Deconstruct(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack&,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack&,double&,VoxClip.Core.Domain.Shared.PixelSize&,VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement&,System.Nullable`1<long>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckRecordingMeasurement>&)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public Equals(VoxClip.Media.Pipeline.ExportChecker+Measured)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public Equals(object)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public GetHashCode()
@@ -1540,6 +1576,7 @@ member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public get_Frame(
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public get_FrameSeconds()
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public get_HeardSamples()
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public get_Loudness()
+member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public get_Recordings()
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public get_Video()
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public op_Equality(VoxClip.Media.Pipeline.ExportChecker+Measured,VoxClip.Media.Pipeline.ExportChecker+Measured)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public op_Inequality(VoxClip.Media.Pipeline.ExportChecker+Measured,VoxClip.Media.Pipeline.ExportChecker+Measured)
@@ -1548,6 +1585,7 @@ member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public set_Frame(
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public set_FrameSeconds(double)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public set_HeardSamples(System.Nullable`1<long>)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public set_Loudness(VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement)
+member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public set_Recordings(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckRecordingMeasurement>)
 member VoxClip.Media.Pipeline.ExportChecker+Measured :: method public set_Video(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack)
 member VoxClip.Media.Pipeline.ExportChecker+Outcome :: method private .ctor(VoxClip.Media.Pipeline.ExportChecker+Outcome)
 member VoxClip.Media.Pipeline.ExportChecker+Outcome :: method private PrintMembers(System.Text.StringBuilder)
@@ -1647,13 +1685,14 @@ member VoxClip.Media.Pipeline.FfmpegAudioExtractor :: method public .ctor()
 member VoxClip.Media.Pipeline.FfmpegAudioExtractor :: method public ExtractAsync(VoxClip.Core.Domain.Shared.AudioExtractionRequest,System.IProgress`1<VoxClip.Core.Domain.Shared.MediaProgress>,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FfmpegExportFile :: field private decoder
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method internal Open(string,System.Threading.CancellationToken)
-member VoxClip.Media.Pipeline.FfmpegExportFile :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,System.Nullable`1<double>,System.Nullable`1<VoxClip.Core.Domain.Shared.PixelSize>,VoxClip.Media.Ffmpeg.AudioDecoder)
+member VoxClip.Media.Pipeline.FfmpegExportFile :: method private .ctor(string,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,System.Nullable`1<double>,System.Nullable`1<VoxClip.Core.Domain.Shared.PixelSize>,VoxClip.Media.Ffmpeg.AudioDecoder)
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public Dispose()
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public Read(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public get_Audio()
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public get_Channels()
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public get_Frame()
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public get_FrameRate()
+member VoxClip.Media.Pipeline.FfmpegExportFile :: method public get_PicturePath()
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public get_SampleRate()
 member VoxClip.Media.Pipeline.FfmpegExportFile :: method public get_Video()
 member VoxClip.Media.Pipeline.FfmpegMediaProbe :: method internal PresentationDuration(double,System.Nullable`1<double>,double,double)
@@ -1676,7 +1715,7 @@ member VoxClip.Media.Pipeline.FrameComposer :: field private rasterizer
 member VoxClip.Media.Pipeline.FrameComposer :: field private sharedRoot
 member VoxClip.Media.Pipeline.FrameComposer :: field private state
 member VoxClip.Media.Pipeline.FrameComposer :: method internal .ctor(VoxClip.Core.Domain.Captions.ICaptionRasterizer,string,System.Func`2<VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers,VoxClip.Media.Pipeline.IVideoLayerFrames>,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.FootageRenderLayer>,VoxClip.Media.Pipeline.IVideoLayerFrames>)
-member VoxClip.Media.Pipeline.FrameComposer :: method internal Compose(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken,bool,bool)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal Compose(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken,bool,bool,System.Nullable`1<int>)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal DrawContextDemo(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal DrawOverlays(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal FinishClipFrame(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,int,int,VoxClip.Core.Domain.Shared.RectD,System.Threading.CancellationToken,bool,VoxClip.Media.Pipeline.PreviewFrameFailures)
@@ -1702,6 +1741,7 @@ member VoxClip.Media.Pipeline.IExportFile :: method public get_Audio()
 member VoxClip.Media.Pipeline.IExportFile :: method public get_Channels()
 member VoxClip.Media.Pipeline.IExportFile :: method public get_Frame()
 member VoxClip.Media.Pipeline.IExportFile :: method public get_FrameRate()
+member VoxClip.Media.Pipeline.IExportFile :: method public get_PicturePath()
 member VoxClip.Media.Pipeline.IExportFile :: method public get_SampleRate()
 member VoxClip.Media.Pipeline.IExportFile :: method public get_Video()
 member VoxClip.Media.Pipeline.IPreviewVideoWorker :: method public ReadAsync(double,bool,System.Threading.CancellationToken)
@@ -1768,6 +1808,7 @@ member VoxClip.Media.Pipeline.PreviewEngine :: field private position
 member VoxClip.Media.Pipeline.PreviewEngine :: field private prefetchCancellation
 member VoxClip.Media.Pipeline.PreviewEngine :: field private prepared
 member VoxClip.Media.Pipeline.PreviewEngine :: field private preparedPart
+member VoxClip.Media.Pipeline.PreviewEngine :: field private recordingWorkers
 member VoxClip.Media.Pipeline.PreviewEngine :: field private seekRequest
 member VoxClip.Media.Pipeline.PreviewEngine :: field private snapshot
 member VoxClip.Media.Pipeline.PreviewEngine :: field private stagedMusic
@@ -1787,6 +1828,8 @@ member VoxClip.Media.Pipeline.PreviewEngine :: method private CreateWasapi()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Invoke(System.Action,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private NewFailures()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private OpenAudio(double,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.PreviewEngine :: method private OpenLegacyWorkers(string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.PreviewEngine :: method private OpenRecordingWorker(VoxClip.Core.Domain.Shared.RecordingRenderSource,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Own()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Pause()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Present(double,bool,System.Threading.CancellationToken)
@@ -1852,11 +1895,26 @@ member VoxClip.Media.Pipeline.PreviewFramePool :: field private free
 member VoxClip.Media.Pipeline.PreviewFramePool :: method internal .ctor(VoxClip.Core.Domain.Shared.PixelSize)
 member VoxClip.Media.Pipeline.PreviewFramePool :: method internal TryRent(double,double,long)
 member VoxClip.Media.Pipeline.PreviewFramePool :: method internal get_Size()
+member VoxClip.Media.Pipeline.RecordingChecks :: method internal Levels(VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit,int,int,double)
+member VoxClip.Media.Pipeline.RecordingChecks :: method internal Pictures(string,VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit,double,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.RecordingChecks :: method private Distance(double[],double[])
+member VoxClip.Media.Pipeline.RecordingChecks :: method private Fingerprint(VoxClip.Core.Domain.Captions.PixelBuffer)
+member VoxClip.Media.Pipeline.RecordingRendering :: method internal RecordingMissing(string)
+member VoxClip.Media.Pipeline.RecordingRendering :: method internal RequirePath(VoxClip.Core.Domain.Shared.RecordingRenderSource)
+member VoxClip.Media.Pipeline.RecordingRendering :: method internal RequirePathAsync(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.ProjectClock+Region,VoxClip.Core.Services.Project.IProjectStore,string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.RecordingRendering :: method private Reference(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Media.Pipeline.RecordingRendering :: method public AvailableAsync(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Services.Project.IProjectStore,string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.RecordingRendering :: method public BindAsync(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Services.Project.IProjectStore,string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.RecordingVideo :: field private decoders
+member VoxClip.Media.Pipeline.RecordingVideo :: method internal Read(VoxClip.Core.Domain.Shared.RecordingRenderSource,double,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.RecordingVideo :: method public .ctor(string,bool)
+member VoxClip.Media.Pipeline.RecordingVideo :: method public Dispose()
 member VoxClip.Media.Pipeline.TimelineCursor :: field private legacy
 member VoxClip.Media.Pipeline.TimelineCursor :: field private outputStart
 member VoxClip.Media.Pipeline.TimelineCursor :: field private part
 member VoxClip.Media.Pipeline.TimelineCursor :: field private voice
 member VoxClip.Media.Pipeline.TimelineCursor :: method internal .ctor(VoxClip.Core.Domain.Editing.EditPlan)
+member VoxClip.Media.Pipeline.TimelineCursor :: method internal Picture(VoxClip.Core.Domain.Shared.ComposeSnapshot,double)
 member VoxClip.Media.Pipeline.TimelineCursor :: method internal Source(double)
 member VoxClip.Media.Pipeline.TimelineCursor :: method internal get_NextJoin()
 member VoxClip.Media.Pipeline.TimelineCursor :: method internal get_NextSource()
@@ -2091,9 +2149,6 @@ member VoxClip.Media.VoiceLab.MicrophoneTakeException :: method public get_Error
 member VoxClip.Media.VoiceLab.MicrophoneTakeMaker :: field public AssetRate
 member VoxClip.Media.VoiceLab.MicrophoneTakeMaker :: method public MakeAsync(float[],int,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Media.VoiceLab.IMicrophoneTakeTranscriber,VoxClip.Media.VoiceLab.VoiceLabTakeStorage,System.Guid,System.DateTimeOffset,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.MicrophoneTakeMaker :: method public Publish(VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake,System.DateTimeOffset,System.Threading.CancellationToken)
-member VoxClip.Media.VoiceLab.NativeVoiceLabSource :: field private next
-member VoxClip.Media.VoiceLab.NativeVoiceLabSource :: method public .ctor(VoxClip.Media.Ffmpeg.AudioDecoder)
-member VoxClip.Media.VoiceLab.NativeVoiceLabSource :: method public Read(long,System.Span`1<float>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber :: method public .ctor(VoxClip.Core.Services.Speech.ITranscriber,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<string>>>,string)
 member VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber :: method public WordsAsync(float[],string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: field private lifetime
@@ -3482,6 +3537,7 @@ type VoxClip.Media.Audio.EditedWaveWriter
 type VoxClip.Media.Audio.EffectAudio
 type VoxClip.Media.Audio.EffectAudio+PlacedSound
 type VoxClip.Media.Audio.EffectAudio+Track
+type VoxClip.Media.Audio.GatedSpeechMeter
 type VoxClip.Media.Audio.IMicrophoneEndpoint
 type VoxClip.Media.Audio.IPreviewAudioOutput
 type VoxClip.Media.Audio.IVoiceLabRenderEndpoint
@@ -3497,6 +3553,9 @@ type VoxClip.Media.Audio.MicrophoneTake
 type VoxClip.Media.Audio.MusicBed
 type VoxClip.Media.Audio.MusicFiles
 type VoxClip.Media.Audio.PhraseCueOutput
+type VoxClip.Media.Audio.RecordingAudio
+type VoxClip.Media.Audio.RecordingAudio+Input
+type VoxClip.Media.Audio.RecordingLevelMatch
 type VoxClip.Media.Audio.RenderedAudioReader
 type VoxClip.Media.Audio.SharedWasapiOutput
 type VoxClip.Media.Audio.StereoRead
@@ -3557,6 +3616,8 @@ type VoxClip.Media.Frames.FrameScanKind
 type VoxClip.Media.Frames.IFrameDecoding
 type VoxClip.Media.Frames.IFrameReader
 type VoxClip.Media.Frames.OnnxFrameFaces
+type VoxClip.Media.Frames.RecordingFrameDecoder
+type VoxClip.Media.Frames.RecordingFrameDecoder+Reader
 type VoxClip.Media.Frames.VideoFramePass
 type VoxClip.Media.Frames.VideoFramePass+ClipFrames
 type VoxClip.Media.Frames.VideoFramePass+Found
@@ -3603,6 +3664,9 @@ type VoxClip.Media.Pipeline.PreviewEngine+StagedMusic
 type VoxClip.Media.Pipeline.PreviewFrameFailures
 type VoxClip.Media.Pipeline.PreviewFrameLease
 type VoxClip.Media.Pipeline.PreviewFramePool
+type VoxClip.Media.Pipeline.RecordingChecks
+type VoxClip.Media.Pipeline.RecordingRendering
+type VoxClip.Media.Pipeline.RecordingVideo
 type VoxClip.Media.Pipeline.TimelineCursor
 type VoxClip.Media.Pipeline.VideoWorker
 type VoxClip.Media.Pipeline.WindowsAdapterIdentity
@@ -3629,7 +3693,6 @@ type VoxClip.Media.VoiceLab.LipsyncVideoLayer+Span
 type VoxClip.Media.VoiceLab.MicrophoneTakeError
 type VoxClip.Media.VoiceLab.MicrophoneTakeException
 type VoxClip.Media.VoiceLab.MicrophoneTakeMaker
-type VoxClip.Media.VoiceLab.NativeVoiceLabSource
 type VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber
 type VoxClip.Media.VoiceLab.PreparedVoiceLabAsset
 type VoxClip.Media.VoiceLab.SavedLipsyncPicture

@@ -512,6 +512,18 @@ Acceptance (the on-demand `--long-hevc` clip of section 9.5): a 10-minute 1080p 
 
 ### 6.4 Export: decode → overlay → encode
 
+For a story spanning recordings, the Windows compose snapshot associates each kept span with its verified file and local offset. Voice readers open one decoder per content key, resample each recording to the project grid, and apply its saved gain before the bed and ducking. Captions and connected items stay on the project clock.
+
+The same mapping drives preview and export picture reads. A recording uses its own rotation, dimensions and part framing. If a used file is missing or its content key has changed, stop with “{recording} is missing. Locate it to use its words.” Unused recordings do not block the render.
+
+The timeline filmstrip and poster candidates translate project time to each verified recording’s local time before opening its cache. The waveform joins the per-file envelopes on the project clock and leaves the guard gaps silent. Frame analysis uses local readers and returns observations on the project clock.
+
+The export check reports recording seams at rendered times (`at`, `from`, `to`). The words check includes cuts between recordings. Picture-source findings go in `sync`; speech-level findings go in `loudness`, including when social normalization is off.
+
+The picture check samples at 0.2 s after the switch (or inside the new recording if it ends sooner), then compares 16×16 luma against candidate frames with the same layout. Audio is measured over expected speech for up to two seconds on each side; a change of more than 3 LU warns. If connected picture hides the recording or there is too little speech to meter, that measurement is unavailable.
+
+When preparing an Add recording edit, measure integrated loudness over kept words in the primary and the new recording. Store the primary-minus-new gain on the edit, rounded to a tenth of a decibel and capped at ±12 dB. An explicit zero leaves the recording unchanged. Social normalization stays a separate pass on the mixed export.
+
 - **Video.** Output frames sit on a constant grid `te = k / fps`, `k = 0 … round(plan.duration × fps) − 1`. For each `te`: `ts = plan.sourceTime(te)`; decode forward until the next frame's PTS > `ts` and keep the latest frame with PTS ≤ `ts`; seek only when the next kept range starts more than 2 s past the decoder position. One decoder suffices because kept ranges are monotonic.
 - **Compose.** Same function as preview at output size: crop and scale with `sws_scale` (`SWS_LANCZOS`), Skia captions at `te`, then BGRA → NV12 with `sws_scale` using the BT.709 matrix and limited range. Hardware encoders require NV12 input.
 - **Audio.** Kept ranges by sample index, join gains from Core, `swr` to 48 kHz stereo float, FFmpeg's native `aac` encoder at 160 kbps (frame size 1024), PTS = running output sample count.

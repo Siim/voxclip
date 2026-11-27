@@ -115,7 +115,13 @@ public sealed partial class HomePage : Page
             row.Load(project, media is null, DateTimeOffset.Now, card);
             var source = project.Media.Source;
             if (media is null || source.Video is null) { row.FramePath = null; return; }
-            try { row.FramePath = await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), source.Video.RotationDegrees, ct); }
+            try
+            {
+                row.FramePath = project.Media.SpokenSources is { Count: > 0 }
+                    ? await App.Services.Thumbnails.GetProjectAsync(project, null,
+                        await VoxClip.Media.Pipeline.RecordingRendering.AvailableAsync(project, App.Services.Projects, row.Path, ct), ct)
+                    : await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), source.Video.RotationDegrees, ct);
+            }
             catch (VoxClipException exception)
             {
                 // The video is there but the decoder can't read it: the card with the warning chip, and Open (design §5.4.4 f).

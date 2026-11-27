@@ -1,7 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using VoxClip.Cli;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
@@ -16,6 +18,103 @@ namespace VoxClip.Media.Tests;
 [Collection("CLI console")]
 public sealed class ClipRenderCliTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AUsedRecordingThatIsMissingOrChangedStopsCliExport(bool changed)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var companion = story.Project.Media.AdditionalSources![0];
+        if (changed)
+        {
+            var bytes = await File.ReadAllBytesAsync(companion.AbsolutePath, ct);
+            bytes[bytes.Length / 2] ^= 1;
+            await File.WriteAllBytesAsync(companion.AbsolutePath, bytes, ct);
+        }
+        else File.Delete(companion.AbsolutePath);
+        var destination = Path.Combine(directory.Path, "out.mp4");
+        var (code, json) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--json"], ct,
+            (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)),
+            (_, _, _) => throw new InvalidOperationException("The encoder must not run without both recordings."));
+        Assert.NotEqual(0, code);
+        Assert.Contains("0010 is missing. Locate it to use its words.", json);
+        Assert.False(File.Exists(destination));
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresFFmpeg")]
+    [Trait("Category", "RequiresWindows")]
+    public async Task WindowsCliExportsAndChecksTheSharedFivePartStory()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var destination = Path.Combine(directory.Path, "out.mp4");
+        var (exportCode, json) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--loudness", "off", "--json"], ct);
+        Assert.True(exportCode == 0, json);
+        using var export = JsonDocument.Parse(json);
+        var plan = EditingEngine.BuildPlan(EditingEngine.FromProject(story.Project)!, story.Primary.DurationSeconds, 48_000);
+        Assert.Equal(plan.Duration, export.RootElement.GetProperty("durationSeconds").GetDouble(), 7);
+        var (checkCode, checkedJson) = await RecordingCliAsync(["check", destination, "--project", story.Path, "--clip", "clip-recordings",
+            "--aspect", "source", "--style", "off", "--loudness", "off", "--json"], ct);
+        Assert.True(checkCode is 0 or 8, checkedJson);
+        using var checkedReport = JsonDocument.Parse(checkedJson);
+        var report = checkedReport.RootElement.GetProperty("check");
+        Assert.Equal(["0007", "0010", "0007"], report.GetProperty("recordingSeams").EnumerateArray().Select(seam => seam.GetProperty("to").GetString()));
+        Assert.DoesNotContain(report.GetProperty("sync").GetProperty("items").EnumerateArray(), item => item.GetProperty("kind").GetString() == "pictureSource");
+    }
+
+    private static async Task<(int Code, string Json)> RecordingCliAsync(string[] args, CancellationToken ct,
+        VoxClip.Cli.ExportInputReader? open = null, VoxClip.Cli.ExportPreparer? prepare = null)
+    {
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetOut(output);
+            Console.SetError(output);
+            return (await AcceptedCli.RunAsync(args, ct, open, prepare), output.ToString());
+        }
+        finally { Console.SetOut(previousOut); Console.SetError(previousError); }
+    }
+
+    private sealed class RecordingTemp : IDisposable
+    {
+        private readonly DirectoryInfo directory = Directory.CreateTempSubdirectory("voxclip-recording-cli-");
+        internal string Path => directory.FullName;
+        public void Dispose() => directory.Delete(true);
+    }
+
+    [Fact]
+    public async Task StoryPreparedByTheCliSeeksPreviewInEachRecordingsLocalTime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var timeout = TimeSpan.FromSeconds(5);
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var arguments = CliApplication.Parse(["--open", story.Path, "--export", Path.Combine(directory.Path, "out.mp4"), "--style", "off"]);
+        var prepared = await CliOperations.PrepareExportAsync(arguments, ct,
+            (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)));
+        var snapshot = prepared.Snapshot;
+        Assert.Equal(["0010", "0007", "0007", "0010", "0007"], snapshot.SpanSources.Select(source => source.Label));
+        var workers = new Dictionary<string, Worker>();
+        await using var preview = new PreviewEngine(new Composer(), initialize: _ => { }, createWorker: (path, _) => workers[path] = new());
+        await preview.LoadAsync(snapshot, null, ct).WaitAsync(timeout, ct);
+        long cursor = 0;
+        foreach (var (part, source) in snapshot.Plan.Kept.Zip(snapshot.SpanSources))
+        {
+            var edited = (cursor + 4800) / snapshot.Plan.SampleRate;
+            await preview.SeekAsync(edited, true, ct).WaitAsync(timeout, ct);
+            Assert.Equal((part.StartSample + 4800 - source.OffsetSamples) / snapshot.Plan.SampleRate, workers[source.Path].Position, 8);
+            cursor += part.EndSample - part.StartSample;
+        }
+        Assert.Equal(2, workers.Count);
+    }
+
     private static Project Fixture()
     {
         var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/clip-controls/clip-controls-project.voxclip"));

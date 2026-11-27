@@ -4,6 +4,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.ExportChecks;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Cli;
 using VoxClip.Media.Audio;
@@ -22,6 +23,85 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
 {
     private const int Rate = 48_000;
     private static JsonElement Cases() => FixtureLoader.ReadJson("fixtures/clip-render/clip-render-cases.json").RootElement.Clone();
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "RequiresFFmpeg")]
+    public async Task FiveStoryPartsRenderVoiceFromTheirOwnRecording(bool mp4)
+    {
+        await NativeTest.RequireAsync(windows: mp4);
+        var ct = TestContext.Current.CancellationToken;
+        var first = Path.Combine(FixtureLoader.SharedRoot, "fixtures/media/t4-recording-A.mp4");
+        var second = Path.Combine(FixtureLoader.SharedRoot, "fixtures/media/t4-recording-B.mp4");
+        var media = await new FfmpegMediaProbe().ProbeAsync(first, ct);
+        var parts = new[] { (true, .5), (false, .75), (false, 2.5), (true, 2.25), (false, 1.5) };
+        static long Samples(double seconds) => (long)Math.Round(seconds * Rate);
+        var offset = Samples(6);
+        RecordingRenderSource primary = new("first", "A", first, 0, Samples(5), 0, 0);
+        RecordingRenderSource companion = new("second", "B", second, offset, Samples(3), -6, 0);
+        var kept = parts.Select(part => {
+            var start = Samples(part.Item2) + (part.Item1 ? offset : 0);
+            return new MediaInterval(start, start + Rate / 2);
+        }).ToArray();
+        var plan = new EditPlan(Rate, Samples(9), [], kept, Samples(2.5), []);
+        var snapshot = new ComposeSnapshot(media, plan, null, new(new(320, 180), 30, 500_000))
+        { SpanSources = parts.Select(part => part.Item1 ? companion : primary).ToArray() };
+        var directory = Directory.CreateTempSubdirectory("voxclip-recording-story-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, mp4 ? "story.mp4" : "story.wav");
+            if (mp4)
+                await new Exporter().ExportAsync(new(snapshot, new ExportTarget.Clip("story"), ExportAspect.Source, ExportQuality.Standard, path, null)
+                    { Loudness = VoxClip.Core.Domain.Loudness.ExportLoudness.Off }, null, ct);
+            else await EditedAudioReader.WriteWaveAsync(snapshot, path, ct);
+            await MediaThread.Run("vc-test-recording-story", () =>
+            {
+                using var firstAudio = new AudioDecoder(first, 2);
+                using var secondAudio = new AudioDecoder(second, 2);
+                using var renderedAudio = new AudioDecoder(path, 2);
+                var rendered = new float[Samples(2.5) * 2];
+                renderedAudio.Read(rendered, rendered.Length / 2, ct);
+                for (var partIndex = 0; partIndex < parts.Length; partIndex++)
+                {
+                    var (isCompanion, start) = parts[partIndex];
+                    var decoder = isCompanion ? secondAudio : firstAudio;
+                    decoder.Seek((long)Math.Round(start * decoder.SampleRate));
+                    var original = new float[decoder.SampleRate];
+                    decoder.Read(original, original.Length / 2, ct);
+                    var cursor = partIndex * Rate / 2;
+                    var strongest = Enumerable.Range(-32, 65).Max(shift =>
+                    {
+                        double dot = 0, beforePower = 0, afterPower = 0;
+                        for (var index = 2400; index < 9600; index++)
+                        {
+                            var before = original[(int)Math.Round(index * (double)decoder.SampleRate / Rate) * 2];
+                            var after = rendered[(cursor + index + shift) * 2];
+                            dot += before * after; beforePower += before * before; afterPower += after * after;
+                        }
+                        return dot / Math.Sqrt(beforePower * afterPower);
+                    });
+                    Assert.True(strongest > .90, $"Part {partIndex + 1}: {strongest}");
+                    if (!mp4)
+                    {
+                        var rms = Math.Sqrt(Enumerable.Range(2400, 7200).Average(index => Math.Pow(rendered[(cursor + index) * 2], 2)));
+                        Assert.InRange(rms, isCompanion ? .040 : .080, isCompanion ? .050 : .100);
+                    }
+                }
+                return true;
+            }, ct);
+            if (mp4)
+            {
+                var checker = new ExportChecker(null, directory.FullName, FixtureLoader.SharedRoot);
+                var correct = await checker.CheckAsync(path, snapshot, ExportCheckExpectation.Make(snapshot, null), VoxClip.Core.Domain.Loudness.ExportLoudness.Off, ct);
+                Assert.DoesNotContain(correct.Report[ExportCheckKind.Sync]!.Items, item => item.Kind == ExportCheckItemKind.PictureSource);
+                var wrong = snapshot with { SpanSources = snapshot.SpanSources.Select(source => source with { Path = source.Path == first ? second : first }).ToArray() };
+                var checkedAgainstWrong = await checker.CheckAsync(path, wrong, ExportCheckExpectation.Make(wrong, null), VoxClip.Core.Domain.Loudness.ExportLoudness.Off, ct);
+                Assert.Contains(checkedAgainstWrong.Report[ExportCheckKind.Sync]!.Items, item => item.Kind == ExportCheckItemKind.PictureSource);
+            }
+        }
+        finally { directory.Delete(true); }
+    }
 
     [Theory]
     [InlineData(false)]
