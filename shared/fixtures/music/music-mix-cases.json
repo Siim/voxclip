@@ -6321,7 +6321,63 @@
      1.0
     ]
    ]
+  },
+  {
+   "sampleRate": 10,
+   "keepWhole": true,
+   "spans": [
+    {
+     "sourceStart": 0,
+     "outputStart": 0,
+     "count": 5,
+     "fadeIn": 0,
+     "fadeOut": 0
+    },
+    {
+     "sourceStart": 0,
+     "outputStart": 0,
+     "count": 10,
+     "fadeIn": 0,
+     "fadeOut": 0
+    }
+   ],
+   "expected": [
+    {
+     "sourceStart": 0,
+     "outputStart": 0,
+     "count": 5,
+     "fadeIn": 0,
+     "fadeOut": 0
+    },
+    {
+     "sourceStart": 0,
+     "outputStart": 0,
+     "count": 10,
+     "fadeIn": 0,
+     "fadeOut": 0
+    }
+   ],
+   "weightAt": [
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     9
+    ]
+   ],
+   "weights": [
+    [
+     1.0,
+     1.0
+    ],
+    [
+     1.0,
+     1.0
+    ]
+   ]
   }
  ],
- "caseCount": 38
+ "caseCount": 39
 }

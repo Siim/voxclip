@@ -24,7 +24,7 @@ public sealed class MusicMixVectorTests
         Assert.Equal(["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "crossfadeSpans", "caseCount"],
             cases.EnumerateObject().Select(property => property.Name));
         Assert.Equal("voxclip-music-mix-cases/1", cases.GetProperty("format").GetString());
-        Assert.Equal(38, cases.GetProperty("caseCount").GetInt32());
+        Assert.Equal(39, cases.GetProperty("caseCount").GetInt32());
         var constants = cases.GetProperty("constants");
         Assert.Equal((MusicMix.FrameSeconds, MusicMix.DuckDb, MusicMix.AttackSeconds, MusicMix.ReleaseSeconds, MusicMix.LoopCrossfadeSeconds),
             (constants.GetProperty("frameSeconds").GetDouble(), constants.GetProperty("duckDb").GetDouble(), constants.GetProperty("attackSeconds").GetDouble(),

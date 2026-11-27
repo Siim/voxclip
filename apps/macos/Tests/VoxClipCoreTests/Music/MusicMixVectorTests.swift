@@ -28,7 +28,7 @@ struct MusicMixVectorTests {
         let cases = try Self.cases()
         #expect(Set(cases.keys) == ["format", "description", "constants", "levels", "activity", "bedGain", "musicLevel", "fades", "loops", "beds", "timeline", "crossfadeSpans", "caseCount"])
         #expect(cases["format"]?.aiString == "voxclip-music-mix-cases/1")
-        #expect(cases["caseCount"]?.aiInt == 38)
+        #expect(cases["caseCount"]?.aiInt == 39)
         let constants = try #require(cases["constants"]?.aiObject)
         let expected: [String: Double] = [
             "frameSeconds": MusicMix.frameSeconds, "duckDb": MusicMix.duckDb, "attackSeconds": MusicMix.attackSeconds,

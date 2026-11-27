@@ -204,7 +204,8 @@ public enum MusicMix {
         return placements
     }
 
-    /// `keepingWhole` (sounds): only an edge overlap that fits the hand-off crossfades, so no item loses samples.
+    /// `keepingWhole` (sounds): only an edge overlap that fits the hand-off crossfades (the next sound starts later and
+    /// ends later), so no item loses samples and a sound inside another just adds.
     public static func crossfadeSpans(_ ordered: [LoopPiece], rate: Double, keepingWhole: Bool = false) -> [LoopPiece] {
         var spans = ordered
         for index in spans.indices.dropFirst() {
@@ -213,7 +214,9 @@ public enum MusicMix {
             let outgoing = spans[previous]
             let overlap = min(outgoing.outputStart + outgoing.count - start, spans[index].count,
                               Int((2 * rate).rounded()))
-            guard overlap > 0, !keepingWhole || overlap == outgoing.outputStart + outgoing.count - start else { continue }
+            let outgoingEnd = outgoing.outputStart + outgoing.count
+            let edge = start > outgoing.outputStart && start + spans[index].count > outgoingEnd && overlap == outgoingEnd - start
+            guard overlap > 0, !keepingWhole || edge else { continue }
             spans[previous] = LoopPiece(sourceStart: outgoing.sourceStart, outputStart: outgoing.outputStart,
                 count: start + overlap - outgoing.outputStart, fadeIn: outgoing.fadeIn, fadeOut: overlap)
             spans[index].fadeIn = overlap
