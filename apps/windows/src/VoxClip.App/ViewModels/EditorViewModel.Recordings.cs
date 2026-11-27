@@ -27,6 +27,8 @@ public sealed partial class EditorViewModel
     internal static string RecordingTime(double seconds) => Duration(Math.Floor(seconds));
 
     internal ProjectClock? RecordingClock => state?.ProjectClock;
+    internal double ProjectClockDuration => RecordingClock is { } clock ? (double)clock.TotalSamples / clock.SampleRate : project.Media.Source.DurationSeconds;
+    internal double ClampProjectTime(double time) => Math.Clamp(time, 0, ProjectClockDuration);
     internal IReadOnlyList<ProjectClock.Region> RecordingRegions => RecordingClock?.Regions ?? [];
     internal bool HasSeveralRecordings => RecordingRegions.Count > 1;
     internal ProjectClock.Region? RecordingOf(int index) => index >= 0 && index < Words.Count ? RecordingClock?.RegionOf(Words[index].Id) : null;

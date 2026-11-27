@@ -167,7 +167,7 @@ public sealed partial class TimelineView : UserControl
     private string shownSourceFrames = "";
     public double PreferredPanelHeight => TimelineLayout.ToolbarHeight + metrics.Height + itemBarHeight + RecordingOverviewHeight;
     private double RecordingOverviewHeight => (story?.RecordingOverview.Count ?? 0) * 18;
-    private double SourceDuration => model?.RecordingClock is { } clock ? (double)clock.TotalSamples / clock.SampleRate : model?.Project.Media.Source.DurationSeconds ?? 1;
+    private double SourceDuration => model?.ProjectClockDuration ?? 1;
     public event EventHandler<double>? PreferredPanelHeightChanged;
     public int TrackSize { get => Math.Max(0, heightPicker.SelectedIndex); set => heightPicker.SelectedIndex = Math.Clamp(value, 0, 2); }
     public event EventHandler<int>? TrackSizeChanged;
@@ -235,7 +235,7 @@ public sealed partial class TimelineView : UserControl
         time.Inlines.Add(clockPrefix); time.Inlines.Add(elapsed); time.Inlines.Add(clockFrames); time.Inlines.Add(total);
         sourceClock.FontFamily = time.FontFamily; sourceClock.Inlines.Add(sourceElapsed); sourceClock.Inlines.Add(sourceFrames);
         var previous = Command("⏮", "Go to In", () => { if (ClipBounds() is { } bounds) Seek(bounds.Start); else Seek(0); });
-        var next = Command("⏭", "Go to Out", () => Seek(ClipBounds()?.End ?? model?.Project.Media.Source.DurationSeconds ?? 0));
+        var next = Command("⏭", "Go to Out", () => Seek(ClipBounds()?.End ?? SourceDuration));
         transport.Children.Add(previous); transport.Children.Add(play); transport.Children.Add(next); transport.Children.Add(time);
         transport.Children.Add(sourceClock); transport.Children.Add(selectionLength);
         Grid.SetColumn(mode, 1); toolbar.Children.Add(mode);
@@ -574,7 +574,7 @@ public sealed partial class TimelineView : UserControl
     private void Seek(double source)
     {
         if (model is null || renderingBlocked || model.IsReadOnly || !double.IsFinite(source)) return;
-        source = Math.Clamp(source, 0, model.Project.Media.Source.DurationSeconds);
+        source = model.ClampProjectTime(source);
         model.SourceTime = source;
         Position(source);
         SeekRequested?.Invoke(this, source);

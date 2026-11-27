@@ -809,7 +809,7 @@ public sealed partial class EditorViewModel : ObservableObject
     }
     public bool CanPreviewCut => HasSelection && CanExport;
     internal TimeRange? PreviewCutRange() => CanPreviewCut
-        ? new TimeRange(Math.Max(0, Words[SelectionStart].Start - 2), Math.Min(project.Media.Source.DurationSeconds, Words[SelectionEnd].End + 2)) : null;
+        ? new TimeRange(ClampProjectTime(Words[SelectionStart].Start - 2), ClampProjectTime(Words[SelectionEnd].End + 2)) : null;
     /// <summary>Playhead and paragraph times as <c>m:ss.d</c>, or <c>h:mm:ss.d</c> past an hour; design §4.1 (C4).</summary>
     public static string Timecode(double seconds)
     {
