@@ -11,6 +11,7 @@ public struct RecordingEditOutcome: Sendable {
     public let undoName: String
     public let announcement: String?
     public let details: RecordingEditDetails?
+    public internal(set) var undoStep: RecordingEditStep?
 
     init(_ project: Project, _ undoName: String, _ announcement: String? = nil, details: RecordingEditDetails? = nil) {
         self.project = project
@@ -18,6 +19,12 @@ public struct RecordingEditOutcome: Sendable {
         self.announcement = announcement
         self.details = details
     }
+}
+
+public struct RecordingEditStep: Sendable {
+    public let name: String
+    public let before: Project
+    public let after: Project
 }
 
 public struct RecordingEditDetails: Sendable {
@@ -39,6 +46,16 @@ public enum RecordingEdits {
 
     public static func apply(_ edit: RecordingEdit, project: Project)
         -> Result<RecordingEditOutcome, RecordingEditRefusal> {
+        reduce(edit, project: project).map { applied in
+            var result = applied
+            if result.project != project {
+                result.undoStep = .init(name: result.undoName, before: project, after: result.project)
+            }
+            return result
+        }
+    }
+
+    private static func reduce(_ edit: RecordingEdit, project: Project) -> Result<RecordingEditOutcome, RecordingEditRefusal> {
         do {
             switch edit {
             case let .addSpokenSource(key, label, transcript, gain):
@@ -123,20 +140,50 @@ public enum RecordingEdits {
         let title = EditingAlgorithms.clipTitle(ranges.lazy.flatMap { $0 }.map { state.textOf(clock.words[$0]) })
         let clip = ClipRange(id: id, startWordId: first.startWordId, endWordId: last.endWordId, title: title,
                              parts: parts.count > 1 ? parts : nil, kind: parts.count > 1 ? .story : nil)
-        let added = try reduceEditingState(state, command: .addClip(clip), aiResults: project.ai.results, project: project)
-        guard added.clips.count > state.clips.count else { throw RecordingEditRefusal("This recording has too many separate parts.") }
-        let selected = try reduceEditingState(added, command: .setActiveClip(clipId: id))
-        var result = project
-        result.edits = selected.projectEdits
-        return .init(try ProjectMigrations.forWriting(result), "Start from recording",
-                     details: .init(clipId: id, madePartIds: parts.map(\.id), leftOut: leftOut))
+        let original = state.activeClip.flatMap { needsPaidCopy(from: $0, to: clip, project: project, words: clock.words) ? $0 : nil }
+        let applied = try addShortcutClip(clip, copyOf: original, project: project, state: state, name: "Start from recording")
+        let added = applied.project.edits.clips.last!
+        return .init(applied.project, applied.undoName, applied.announcement,
+                     details: .init(clipId: added.id, madePartIds: added.playParts.map(\.id), leftOut: leftOut))
     }
 
     static func freshID(_ base: String, reserved: Set<String>) -> String {
-        if !reserved.contains(base) { return base }
-        var number = 2
-        while reserved.contains("\(base)-\(number)") { number += 1 }
-        return "\(base)-\(number)"
+        var number = 1
+        while true {
+            let suffix = number == 1 ? "" : "-\(number)"
+            let id = String(base.prefix(64 - suffix.count)) + suffix
+            if !reserved.contains(id) { return id }
+            number += 1
+        }
+    }
+
+    static func needsPaidCopy(from original: ClipRange, to changed: ClipRange, project: Project, words: [TimedWord]) -> Bool {
+        let before = StoryClips.times(original, words: words)
+        let after = StoryClips.times(changed, words: words)
+        if before != after, project.voiceLab.wholeClipRevoices?.contains(where: { $0.clipId == original.id }) == true { return true }
+        let protected = protectedSpans(for: original.id, project: project, words: words)
+        return StoryClips.lipsyncWindows(project).contains { window in
+            before.contains { StoryClips.contains($0, window) } && !after.contains { StoryClips.contains($0, window) } &&
+                !protected.contains { StoryClips.contains($0, window) }
+        }
+    }
+
+    static func addShortcutClip(_ proposed: ClipRange, copyOf original: ClipRange?, project: Project, state: EditState,
+                                name: String) throws -> RecordingEditOutcome {
+        guard state.clips.count < 64 else { throw RecordingEditRefusal("There isn't room for another clip.") }
+        var clip = proposed, result = project
+        var announcement: String?
+        if let original, let index = state.clips.firstIndex(where: { $0.id == original.id }) {
+            clip.id = freshID(String(original.id.prefix(59)) + "-copy", reserved: Set(state.clips.map(\.id)))
+            let title = original.title ?? "Clip \(index + 1)"
+            clip.title = String(title.unicodeScalars.prefix(EditingLimits.maxClipTitleScalars - 5)) + " copy"
+            recordCopy(clip.id, of: original.id, in: &result)
+            announcement = "Made \(clip.title!) to keep the paid voice work."
+        }
+        let added = try reduceEditingState(state, command: .addClip(clip), aiResults: project.ai.results, project: result)
+        guard added.clips.count > state.clips.count else { throw RecordingEditRefusal("Choose up to 12 non-overlapping parts in the clip's transcript.") }
+        result.edits = try reduceEditingState(added, command: .setActiveClip(clipId: clip.id)).projectEdits
+        return .init(try ProjectMigrations.forWriting(result), name, announcement)
     }
 
     private static func adding(_ key: String, label: String?, transcript: Transcript, gain: Double?, project: Project) throws -> Project {
@@ -270,5 +317,9 @@ public enum RecordingEdits {
         guard let id = project.extensions?[copyOrigins]?.aiObject?[copy]?.aiString,
               let original = project.edits.clips.first(where: { $0.id == id }) else { return [] }
         return StoryClips.times(original, words: words)
+    }
+
+    static func isRecordingCopy(_ id: String, project: Project) -> Bool {
+        project.extensions?[copyOrigins]?.aiObject?[id]?.aiString != nil
     }
 }

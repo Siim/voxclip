@@ -124,9 +124,11 @@ public enum VoiceLabOutputPlanner {
         let edits = project.edits
         let activeClip: ClipRange?
         let clipRange: TimeRange?
+        let recordingCopy: Bool
         switch scope {
-        case .full: activeClip = nil; clipRange = nil
+        case .full: activeClip = nil; clipRange = nil; recordingCopy = false
         case .clip(let id):
+            recordingCopy = RecordingEdits.isRecordingCopy(id, project: project)
             guard let clip = partOverride ?? edits.clips.first(where: { $0.id == id }) else { throw VoiceLabProjectError.invalidScope }
             if clip.parts != nil {
                 guard windows.isEmpty, StoryClips.valid(clip, words: transcript.words) else { throw VoiceLabProjectError.invalidScope }
@@ -141,7 +143,10 @@ public enum VoiceLabOutputPlanner {
         let enabled = project.voiceLab.segments.filter { segment in
             guard segment.enabled else { return false }
             if let clipRange {
-                if partOverride != nil { return grid.contains(clipRange.start, clipRange.end, start: segment.replace.start, end: segment.replace.end) }
+                if recordingCopy, let video = segment.candidates[segment.selectedCandidateIndex].recipe?.video, video.mode == .lipsync,
+                   let start = video.windowStartSample, let end = video.windowEndSample,
+                   (grid.sample(clipRange.start) > Double(start) || grid.sample(clipRange.end) < Double(end)) { return false }
+                if partOverride != nil || recordingCopy { return grid.contains(clipRange.start, clipRange.end, start: segment.replace.start, end: segment.replace.end) }
                 if grid.sample(segment.replace.end) <= grid.sample(clipRange.start)
                     || grid.sample(segment.replace.start) >= grid.sample(clipRange.end) { return false }
             }

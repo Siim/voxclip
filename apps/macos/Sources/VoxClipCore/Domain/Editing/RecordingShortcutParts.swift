@@ -59,7 +59,24 @@ extension RecordingEdits {
     private static func finishShortcut(_ proposed: ShortcutParts, project: Project, name: String) throws -> RecordingEditOutcome {
         var change = proposed
         change.join()
-        let applied = try changeParts(change.clip.id, project: project, name: name) { $0 = change.parts; _ = $1 }.get()
+        let words = change.clock.words
+        guard let state = try EditState(project: project), let first = change.parts.first,
+              let ranges = StoryClips.indices(change.parts.map { ($0.startWordId, $0.endWordId) }, words: words),
+              let start = ranges.map(\.lowerBound).min(), let end = ranges.map(\.upperBound).max() else {
+            throw RecordingEditRefusal("Choose non-overlapping parts in the clip's transcript.")
+        }
+        var clip = change.clip
+        clip.startWordId = words[start].id
+        clip.endWordId = words[end].id
+        clip.parts = change.parts.count > 1 ? change.parts : nil
+        clip.kind = clip.parts == nil ? nil : clip.kind ?? .story
+        if change.clip.playParts.first?.startWordId != first.startWordId { clip.leadInSeconds = nil }
+        let applied: RecordingEditOutcome
+        if needsPaidCopy(from: change.clip, to: clip, project: project, words: words) {
+            applied = try addShortcutClip(clip, copyOf: change.clip, project: project, state: state, name: name)
+        } else {
+            applied = try changeParts(change.clip.id, project: project, name: name) { parts, _ in parts = change.parts }.get()
+        }
         let clipId = applied.project.edits.clips.count > project.edits.clips.count ? applied.project.edits.clips.last!.id : change.clip.id
         return .init(applied.project, name, applied.announcement,
                      details: .init(clipId: clipId, madePartIds: change.made, leftOut: [], splitPartId: change.split, joins: change.joins))
