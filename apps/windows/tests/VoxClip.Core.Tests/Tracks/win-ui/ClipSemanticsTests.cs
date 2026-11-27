@@ -4,6 +4,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -106,6 +107,47 @@ public sealed class ClipSemanticsTests
         Assert.Equal(("r2.w18", "r2.w21"), (model.ClipParts[^1].Part.StartWordId, model.ClipParts[^1].Part.EndWordId));
         model.Undo();
         Assert.Equal(before, ProjectSerialization.Serialize(model.Project));
+    }
+
+    [Fact]
+    public void LineVersionKeepsPaidLipSyncInTheOriginalAndSelectsOnlyOneCopy()
+    {
+        var starter = RecordingReference();
+        Assert.True(starter.StartFromRecording(starter.RecordingRegions[0].Key));
+        var opening = Assert.Single(starter.RecordingClipLines, line => line.FirstId == "w1");
+        var voice = Fixture("lipsync-render-v3.voxclip", "voice-lab").VoiceLab;
+        var segment = voice.Segments.First(segment => segment.Candidates.Any(candidate => candidate.Recipe?.Video.Mode == VoiceLabVideoMode.Lipsync));
+        var candidate = segment.Candidates.First(candidate => candidate.Recipe?.Video.Mode == VoiceLabVideoMode.Lipsync);
+        var recipe = candidate.Recipe!;
+        var window = recipe.Video with { WindowStartSample = (long)(starter.Words[starter.Index(opening.FirstId)].Start * 48_000) + 480,
+            WindowEndSample = (long)(starter.Words[starter.Index(opening.LastId)].End * 48_000) - 480 };
+        var paid = voice with { Segments = [segment with { Candidates = [candidate with { Recipe = recipe with { Video = window } }], SelectedCandidateIndex = 0 }] };
+        var model = new EditorViewModel(starter.Project with { VoiceLab = paid });
+        var line = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        var alternate = Assert.Single(line.Alternatives);
+        var announcements = new List<string>();
+        model.Announcement += (_, message) => announcements.Add(message);
+        model.IsRecordingMissing = media => media.ContentKey == alternate.Key;
+        Assert.Equal("0010 is missing. Locate it to use its words.", model.RecordingLineDisabledReason(line, alternate.Key));
+        Assert.Null(model.RecordingLineAudition(line, alternate.Key));
+        Assert.False(model.UseRecordingLineVersion(line, alternate.Key));
+        model.IsRecordingMissing = null;
+        Assert.Contains("keeps the paid lip sync in Clip 1", model.RecordingLineCopyReason(line, alternate.Key));
+        Assert.True(model.UseRecordingLineVersion(line, alternate.Key));
+        var copyTitle = $"{starter.ActiveClip?.Title ?? "Clip 1"} copy";
+        Assert.Equal($"Made {copyTitle} to keep the lip sync", Assert.Single(announcements));
+        Assert.Equal(announcements[0], model.Notice);
+        Assert.Equal(copyTitle, model.ActiveClip?.Title);
+        Assert.Equal(starter.ActiveClip, model.Project.Edits.Clips[0]);
+        Assert.Equal("Use version", model.UndoActionName);
+
+        var copiedOpening = Assert.Single(model.RecordingClipLines, line => line.FirstId == "r2.w1");
+        Assert.True(model.UseRecordingLineVersion(copiedOpening, starter.RecordingRegions[0].Key));
+        Assert.Equal(2, model.Project.Edits.Clips.Count);
+        model.Undo();
+        model.Undo();
+        Assert.Equal(starter.ActiveClip, Assert.Single(model.Project.Edits.Clips));
+        Assert.Equal(paid.Segments, model.Project.VoiceLab.Segments);
     }
 
     internal static EditorViewModel RecordingOpening()
