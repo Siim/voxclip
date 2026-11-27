@@ -29,6 +29,32 @@ public sealed class ClipSemanticsTests
     internal static EditorViewModel RecordingStory() => new(Fixture("two-recordings.voxclip", "recordings"));
     internal static EditorViewModel RecordingReference() => new(Fixture("reference-recordings.voxclip", "recordings"));
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LevelMatchingDoesNotCommitAfterCancellationOrAProjectEdit(bool cancel)
+    {
+        var project = RecordingReference().Project;
+        var spoken = Assert.Single(project.Media.SpokenSources!);
+        var source = project.Media.AdditionalSources!.Single(reference => reference.ContentKey == spoken.SourceKey);
+        var model = new EditorViewModel(project with { Media = project.Media with { SpokenSources = null } });
+        using var job = new CancellationTokenSource();
+        var measured = new TaskCompletionSource<RecordingEdit.AddSpokenSource>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var adding = model.AddSpokenRecordingAsync(source, spoken.Transcript, (_, _, token) =>
+        {
+            Assert.Equal(job.Token, token);
+            return measured.Task;
+        }, job.Token);
+        if (cancel) job.Cancel();
+        else model.Apply(new EditOperation.SetWordCuts(["w1"], true));
+        var before = model.Project;
+        measured.SetResult(new(source.ContentKey, spoken.Transcript, GainDb: -3));
+        if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => adding);
+        else Assert.False(await adding);
+        Assert.Same(before, model.Project);
+        Assert.Null(model.Project.Media.SpokenSources);
+    }
+
     [Fact]
     public void StartFromAndPutBackUseSeparateUndoSteps()
     {

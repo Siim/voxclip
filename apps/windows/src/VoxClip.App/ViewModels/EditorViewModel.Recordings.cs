@@ -371,6 +371,16 @@ public sealed partial class EditorViewModel
         return project with { Media = project.Media with { AdditionalSources = references } };
     }
 
+    internal async Task<bool> AddSpokenRecordingAsync(MediaReference source, Transcript transcript,
+        Func<Project, RecordingEdit.AddSpokenSource, CancellationToken, Task<RecordingEdit.AddSpokenSource>> match, CancellationToken ct)
+    {
+        var original = project;
+        ct.ThrowIfCancellationRequested();
+        var matched = await match(WithRecordingReference(source), new(source.ContentKey, transcript), ct);
+        ct.ThrowIfCancellationRequested();
+        return ReferenceEquals(original, project) && AddSpokenRecording(source, transcript, matched.GainDb);
+    }
+
     internal bool AddSpokenRecording(MediaReference source, Transcript transcript, double? gainDb = null)
     {
         if (IsReadOnly || isLeaving || !HasTranscript || RecordingRegions.Count >= 6 || RecordingRegions.Any(region => region.Key == source.ContentKey)) return false;
