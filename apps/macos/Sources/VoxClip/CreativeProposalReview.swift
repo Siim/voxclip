@@ -27,7 +27,7 @@ import VoxClipCore
 
     func creativeProposalData(_ run: MakeItRun) -> CreativeProposalData? {
         guard let plan = run.plan else { return nil }
-        let parts = ProposalStripPart.from(plan.parts, words: words)
+        let parts = ProposalStripPart.from(plan.parts, words: words, clock: recordingClock)
         let cuts = run.proposalOperations.filter { $0.decision == .cut || $0.decision == .pauseCut }.count
         var summary = [durationLabel(run.seconds), "\(plan.score)/10", MakeItPanel.verdict(plan.verdict).lowercased()]
         if parts.count > 1 { summary.append(plan.kind == .showreel ? "\(parts.count) quick parts · music-led" : "\(parts.count) parts in your order") }

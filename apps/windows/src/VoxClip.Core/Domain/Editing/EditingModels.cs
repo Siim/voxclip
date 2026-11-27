@@ -33,7 +33,8 @@ public sealed record ClipPart(string Id, string StartWordId, string EndWordId,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TakeReason = null);
 
 /// <summary>One inclusive range in a persisted AI suggestion.</summary>
-public sealed record ClipWordRange(string StartWordId, string EndWordId);
+public sealed record ClipWordRange(string StartWordId, string EndWordId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TakeReason = null);
 
 /// <summary>Inclusive word-id range; editing §2.5 and project schema. A range never rewrites cuts. <paramref name="LeadInSeconds"/>
 /// (schema v4, ADR-R48 part 2) opens the clip up to 0.6 s before its first word, inside the pause before it (never across the

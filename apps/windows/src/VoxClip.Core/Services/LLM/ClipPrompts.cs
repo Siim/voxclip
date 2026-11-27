@@ -11,18 +11,21 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
 {
     internal JsonObject Clips { get; } = catalog.ReadAsset("prompts/clip-finder.json");
     internal JsonObject Tighten { get; } = catalog.ReadAsset("prompts/ai-tighten.json");
-    internal JsonObject Preset(ClipPreset preset) => Clips["presets"]!.AsArray().OfType<JsonObject>().Single(item => item["id"]!.GetValue<string>() == preset.ToString().ToLowerInvariant());
+    internal static string PresetId(ClipPreset preset) => preset == ClipPreset.BestTakes ? "bestTakes" : preset.ToString().ToLowerInvariant();
+    internal JsonObject Preset(ClipPreset preset) => Clips["presets"]!.AsArray().OfType<JsonObject>().Single(item => item["id"]!.GetValue<string>() == PresetId(preset));
     internal ClipPresetRules Rules(ClipPreset preset)
     {
         var settings = Preset(preset);
-        return new(settings["minSeconds"]!.GetValue<double>(), settings["maxSeconds"]!.GetValue<double>(), settings["maxClips"]!.GetValue<int>(), settings["noOverlap"]!.GetValue<bool>(), MaxParts(preset));
+        return new(settings["minSeconds"]!.GetValue<double>(), settings["maxSeconds"]!.GetValue<double>(), settings["maxClips"]!.GetValue<int>(), settings["noOverlap"]!.GetValue<bool>(), MaxParts(preset), preset == ClipPreset.BestTakes);
     }
-    private int MaxParts(ClipPreset preset) => preset == ClipPreset.Custom ? Clips["output"]!["customMaxParts"]!.GetValue<int>() : 1;
+    private int MaxParts(ClipPreset preset) => preset is ClipPreset.Custom or ClipPreset.BestTakes ? Clips["output"]!["customMaxParts"]!.GetValue<int>() : 1;
 
     private JsonObject Schema(ClipPreset preset)
     {
         var schema = Clips["output"]!["schema"]!.DeepClone().AsObject();
-        schema["properties"]!["clips"]!["items"]!["properties"]!["parts"]!["maxItems"] = MaxParts(preset);
+        var parts = schema["properties"]!["clips"]!["items"]!["properties"]!["parts"]!;
+        parts["maxItems"] = MaxParts(preset);
+        if (preset == ClipPreset.BestTakes) parts["items"]!["properties"]!["take_reason"] = Clips["output"]!["takeReason"]!.DeepClone();
         return schema;
     }
     internal string Instructions(string? text) => ClipText.Limit(ClipText.Trim(text ?? ""), Clips["request"]!["maxInstructionsLength"]!.GetValue<int>());
@@ -104,7 +107,7 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
     internal IReadOnlyList<ClipWindow> Windows(IReadOnlyList<NumberedLine> lines, ClipPreset preset, string instructions, double duration, int context, int outputCap)
         => Plan(lines, preset.ToString().ToLowerInvariant(), instructions, duration, context, outputCap).Windows;
 
-    internal PromptWindowPlan Plan(IReadOnlyList<NumberedLine> lines, string choice, string instructions, double duration, int context, int outputCap, bool tighten = false, bool localServer = false, string model = "")
+    internal PromptWindowPlan Plan(IReadOnlyList<NumberedLine> lines, string choice, string instructions, double duration, int context, int outputCap, bool tighten = false, bool localServer = false, string model = "", string? takesBlock = null)
     {
         var prompt = tighten ? Tighten : Clips;
         if (lines.Count == 0) return new(context, 0, 0, 0, null, []);
@@ -119,6 +122,13 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
         if (localServer) reserve = Math.Min(reserve, Math.Max(1024, context / 4));
         var budget = (int)Math.Floor((context - overhead - reserve) * catalog.Data["policy"]!["tokenEstimate"]!["contextSafetyFactor"]!.GetValue<double>());
         if (budget < 600) throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, feature: tighten ? LlmFeature.AiTighten : LlmFeature.ClipFinder);
+        if (!tighten && preset == ClipPreset.BestTakes)
+        {
+            var estimated = lines.Sum(line => catalog.Estimate(line.Line.Text + "\n")) + catalog.Estimate(takesBlock ?? "") + catalog.Estimate(Clips["takesSystem"]!.GetValue<string>());
+            if (estimated > budget || lines[^1].LastPosition + 1 > prompt["limits"]!["maxWordsPerRequest"]!.GetValue<int>())
+                throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, feature: LlmFeature.ClipFinder);
+            return new(context, reserve, overhead, budget, 1, [new(lines, estimated, budget, 0)]);
+        }
         var windows = ClipWindowing.Pack(lines, budget, prompt["limits"]!["maxWordsPerRequest"]!.GetValue<int>(), tighten ? 0 : Math.Min(Rules(preset).MaxSeconds, Clips["limits"]!["windowOverlapMaxSeconds"]!.GetValue<double>()), catalog.BytesPerToken);
         return new(context, reserve, overhead, budget, tighten ? null : WindowClips(preset, windows.Count), windows);
     }
@@ -148,7 +158,13 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
     {
         var timeout = catalog.Timeout(input.Connector switch { ConnectorId.ClaudeCode or ConnectorId.Codex => "cli", ConnectorId.Ollama or ConnectorId.LmStudio => "localServer", ConnectorId.AppleFoundation => "appleFoundation", _ => "cloud" });
         var entries = ClipText.Entries(input.Words, input.Corrections, Clips["limits"]!["maxWordTextLength"]!.GetValue<int>());
-        return new(LlmFeature.ClipFinder, Clips["system"]!.GetValue<string>(), SentenceBlock(entries, ClipText.Lines(entries), lines), instruction, Clips["output"]!["name"]!.GetValue<string>(), Schema(input.Preset),
-            outputReserve ?? Clips["generation"]!["maxOutputTokens"]!.GetValue<int>(), GenerationEffort(Clips), timeout, input.Language, $"clips/{input.Preset.ToString().ToLowerInvariant()} part {part} of {count}");
+        var takes = input.Preset == ClipPreset.BestTakes;
+        var system = Clips["system"]!.GetValue<string>() + (takes ? "\n\n" + Clips["takesSystem"]!.GetValue<string>() : "");
+        var block = SentenceBlock(entries, ClipText.Lines(entries), lines) + (takes ? "\n" + RecordingBlock(input.Recordings, lines) : "");
+        return new(LlmFeature.ClipFinder, system, block, instruction, Clips["output"]!["name"]!.GetValue<string>(), Schema(input.Preset),
+            outputReserve ?? Clips["generation"]!["maxOutputTokens"]!.GetValue<int>(), GenerationEffort(Clips), timeout, input.Language, $"clips/{PresetId(input.Preset)} part {part} of {count}");
     }
+
+    internal static string RecordingBlock(RecordingProposalContext? recordings, IReadOnlyList<NumberedLine> lines) =>
+        recordings?.Block("lines", range => new(LineNumber(range.Start, lines), LineNumber(range.End, lines))) ?? "";
 }

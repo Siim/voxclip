@@ -70,7 +70,13 @@ public enum ClipAutopilotValidator {
             lengthReason: lengthReason, seconds: seconds,
             questions: questions(value[ai: "questions"], context: context, log: &log), repairs: log.repairs,
             flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits), tone: tone, frames: frames, effects: effects)
-        if value[ai: "parts"] != .null { plan.orderedParts = parts.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) } }
+        if value[ai: "parts"] != .null {
+            plan.orderedParts = parts.map { range in
+                let offered = context.offeredParts?.first { $0.startWord <= range.lowerBound && range.upperBound <= $0.endWord }
+                let reason = checkedTakeReason(offered?.takeReason, range: range, words: context.words, cut: cutIDs, corrections: context.corrections)
+                return .init(startWord: range.lowerBound, endWord: range.upperBound, takeReason: reason)
+            }
+        }
         plan.shape = kind == .showreel ? .showreel : nil
         plan.missingFromTake = [context.missingFromTake, value[ai: "not_in_take"].aiString].compactMap { $0 }.first { !$0.isEmpty }
         plan.coverTitle = value[ai: "coverTitle"].aiString
@@ -198,7 +204,15 @@ public enum ClipAutopilotValidator {
                 scoreReason: text(item[ai: "scoreReason"], limit: limits.maxReasonScalars, field: field + ".scoreReason", log: &log),
                 captionStyle: style,
                 captionReason: text(item[ai: "captionReason"], limit: limits.maxReasonScalars, field: field + ".captionReason", log: &log))
-            if item[ai: "parts"] != .null { moment.orderedParts = parts.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) } }
+            if item[ai: "parts"] != .null {
+                moment.orderedParts = parts.map { range in
+                    let offered = item[ai: "parts"].aiArray.first {
+                        (integer($0[ai: "startWord"]) ?? Int.max) <= range.lowerBound && range.upperBound <= (integer($0[ai: "endWord"]) ?? -1)
+                    }
+                    let reason = context.recordings == nil ? nil : checkedTakeReason(offered?[ai: "takeReason"].aiString, range: range, words: context.words, cut: context.cutWordIDs, corrections: context.corrections)
+                    return .init(startWord: range.lowerBound, endWord: range.upperBound, takeReason: reason)
+                }
+            }
             moment.shape = kind == .showreel ? .showreel : nil
             moment.missingFromTake = item[ai: "not_in_take"].aiString
             moments.append(moment)
@@ -300,6 +314,7 @@ public enum ClipAutopilotValidator {
         func contains(_ start: Int, _ end: Int) -> Bool {
             context.scope.contains(start) && context.scope.contains(end) && context.words.indices.contains(start)
                 && context.words.indices.contains(end) && offered.contains { $0.startWord <= start && end <= $0.endWord }
+                && context.recordings?.contains(start...end) != false
         }
         guard value[ai: "parts"] != .null else {
             guard let legacy = span(value, context: context, isSeries: isSeries, log: &log),
@@ -311,6 +326,7 @@ public enum ClipAutopilotValidator {
         var parts: [ClosedRange<Int>] = []
         var rawParts: [ClosedRange<Int>] = []
         var used = Set<Int>()
+        var beatsUsed: Set<String> = []
         for item in items {
             guard let start = integer(item[ai: "startWord"]), let end = integer(item[ai: "endWord"]), start <= end, contains(start, end),
                   let first = (start...end).first(where: context.isListedWord), let last = (start...end).last(where: context.isListedWord),
@@ -319,6 +335,11 @@ public enum ClipAutopilotValidator {
                 guard let index = offered.firstIndex(where: { $0.startWord <= start && end <= $0.endWord }), used.insert(index).inserted else { return nil }
             }
             rawParts.append(start...end)
+            if isSeries {
+                let beats = context.recordings?.beatIDs(in: first...last) ?? []
+                guard beatsUsed.isDisjoint(with: beats) else { continue }
+                beatsUsed.formUnion(beats)
+            }
             parts.append(first...last)
         }
         if isSeries {
@@ -331,7 +352,7 @@ public enum ClipAutopilotValidator {
             }
             guard (context.prompt.limits.minClipSeconds...context.prompt.limits.maxClipSeconds).contains(durations.reduce(0, +)) else { return nil }
         }
-        return parts
+        return parts.isEmpty ? nil : parts
     }
 
     static func seamChecked(_ value: JSONValue, parts: [ClosedRange<Int>], log: inout Log) -> JSONValue {

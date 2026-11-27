@@ -107,7 +107,8 @@ def main():
             "else": {"properties": {"parts": {"minItems": 2}}}}}
 
     write("clip-proposal", "VoxClip canonical clip proposal", {
-        **obj({"target": target, "reason": reason, **edits}, ["target", "reason"]),
+        **obj({"target": target, "reason": reason, **edits, "parts": array(obj({**span, "takeReason": text(160)}, span), 12)},
+              ["target", "reason"]),
         "anyOf": [requires(key) for key in edits],
         "allOf": [parts_for_new({"properties": {"target": requires("new")}}, "target")],
     })

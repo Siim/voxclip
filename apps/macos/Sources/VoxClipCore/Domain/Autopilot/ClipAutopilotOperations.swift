@@ -89,8 +89,11 @@ public enum ClipAutopilotMapping {
     private static func operations(for proposal: ClipProposal, clipID: String, project: Project,
                                    fonts: [ClipAutopilotPlan.Font: String], stickers: Set<String>,
                                    plan: ClipAutopilotPlan?) throws -> [ClipAutopilotOperation] {
-        guard let transcript = project.transcript else { throw VoiceLabError.invalidInput }
-        let words = transcript.words
+        let prepared: EditState?
+        if plan != nil { prepared = try EditState(project: project) }
+        else { prepared = try project.transcript.map { try EditState(transcript: $0, edits: project.edits) } }
+        guard let state = prepared else { throw VoiceLabError.invalidInput }
+        let words = state.transcript.words
         let existing = project.edits.clips.first { $0.id == clipID }
         guard clipID.range(of: "\\A(?:" + EditingLimits.clipIDPattern + ")\\z", options: .regularExpression) != nil,
               (proposal.target.clipId == clipID && existing != nil && proposal.target.new == nil) ||
@@ -112,11 +115,12 @@ public enum ClipAutopilotMapping {
                 })
                 if var part = exact ?? enclosing, reusedIDs.insert(part.id).inserted {
                     part.startWordId = start; part.endWordId = end
+                    if plan != nil { part.takeReason = range.takeReason }
                     return part
                 }
                 var id = "proposal-part-\(index + 1)"
                 while previous.contains(where: { $0.id == id }) { id += "-new" }
-                return ClipPart(id: id, startWordId: start, endWordId: end)
+                return ClipPart(id: id, startWordId: start, endWordId: end, takeReason: plan == nil ? nil : range.takeReason)
             }
         } ?? previous
         guard (1...12).contains(parts.count),
@@ -130,7 +134,6 @@ public enum ClipAutopilotMapping {
             return spans.first { $0.contains(start) && $0.contains(end) }
         }
         let strictScope = plan == nil || parts.count > 1
-        let state = try EditState(transcript: transcript, edits: project.edits)
         var operations: [ClipAutopilotOperation] = []
         func add(_ id: String, _ decision: ClipAutopilotOperation.Decision, _ action: ClipAutopilotOperation.Action, _ reason: String = "") {
             operations.append(.init(id: id, decision: decision, action: action, reason: reason))

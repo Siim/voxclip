@@ -315,10 +315,12 @@ public struct ClipPart: Codable, Sendable, Equatable {
 public struct ClipWordRange: Codable, Sendable, Equatable {
     public var startWordId: String
     public var endWordId: String
+    public var takeReason: String?
 
-    public init(startWordId: String, endWordId: String) {
+    public init(startWordId: String, endWordId: String, takeReason: String? = nil) {
         self.startWordId = startWordId
         self.endWordId = endWordId
+        self.takeReason = takeReason
     }
 }
 

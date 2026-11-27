@@ -501,14 +501,19 @@ import VoxClipCore
 
 @MainActor extension EditorModel {
     func suggestedCardDetails(_ clip: ClipRange) -> (badge: String, summary: String, parts: [ProposalStripPart], reason: String, missing: String?)? {
-        guard let found = foundSuggestion(clip), let ranges = clip.playPartIndices(in: words) else { return nil }
-        let parts = ProposalStripPart.from(ranges.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }, words: words)
+        guard let found = foundSuggestion(clip) else { return nil }
+        guard let ranges = clip.playPartIndices(in: words) else { return nil }
+        let proposalParts = zip(ranges, clip.playParts).map { range, part in
+            let reason = part.takeReason ?? found.parts?.first { $0.startWordId == part.startWordId && $0.endWordId == part.endWordId }?.takeReason
+            return ClipProposal.Part(startWord: range.lowerBound, endWord: range.upperBound, takeReason: reason)
+        }
+        let parts = ProposalStripPart.from(proposalParts, words: words, clock: recordingClock)
         let kind: ClipProposal.NewClip.Kind = parts.count == 1 ? .stretch : clip.kind == .showreel ? .showreel : .story
         let score = suggestionScore(clip) ?? found.score
         let locations = parts.count > 1 ? "in your order, from \(parts.count) places in the take" : parts.first.map { "\(durationLabel($0.start))–\(durationLabel($0.start + $0.duration))" }
         let summary = [durationLabel(editedDuration(clip)), "\(score)/10", locations].compactMap { $0 }.joined(separator: " · ")
         let missing = found.notInTake.flatMap { $0.isEmpty ? nil : "Not in this take: \($0)" }
-        return (kind.cardLabel(parts: parts.count), summary, parts.count > 1 ? parts : [], found.reason, missing)
+        return (kind.cardLabel(parts: parts.count), summary, parts.count > 1 || parts.contains { $0.takeReason != nil } ? parts : [], found.reason, missing)
     }
 }
 

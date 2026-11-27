@@ -176,7 +176,7 @@ public sealed class ClipAutopilotTests
     public void PromptFileFillsItsLimitsAndEveryFixturePinsIt()
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
-        Assert.Equal(12, prompt.PromptVersion);
+        Assert.Equal(13, prompt.PromptVersion);
         foreach (var system in new[] { prompt.System, prompt.MomentsSystem })
         {
             Assert.DoesNotContain("{", system, StringComparison.Ordinal);
@@ -670,7 +670,7 @@ public sealed class ClipAutopilotTests
         var stub = Stub("not json", Sendable(Reply("overlaps")).ToJsonString());
         var result = await Service().PlanAsync(new(Transcript(), Edits(), new ClipAutopilotMode.Clip(new(0, 29))), stub, "fixture", ct: TestContext.Current.CancellationToken);
         Assert.Equal((1, 2), (result.Plan!.Rewrites.Count, result.Plan.Cuts.Count));
-        Assert.Equal((12, 64), (result.PromptVersion, result.PromptSha256.Length));
+        Assert.Equal((13, 64), (result.PromptVersion, result.PromptSha256.Length));
         Assert.Equal(2, stub.Requests.Count);
         Assert.All(stub.Requests, request => Assert.Equal((Effort.XHigh, LlmFeature.ClipAutopilot), (request.Effort!.Value, request.Feature)));
         Assert.Contains("Your previous reply was not valid JSON", stub.Requests[1].Instruction, StringComparison.Ordinal);
@@ -689,6 +689,80 @@ public sealed class ClipAutopilotTests
         Assert.Equal([0], result.Series.Moments.Select(item => item.StartWord));
         Assert.Equal([0], result.Series.Plans.Select(item => item.StartWord));
         Assert.Equal(["clip_autopilot_moments", "clip_autopilot_plan"], stub.Requests.Select(request => request.SchemaName));
+    }
+
+    [Fact]
+    public async Task SeriesCarriesValidatedTakeReasonsAcrossRecordings()
+    {
+        var vector = Fixture("plan-parts-cases.json")["withRecordings"]!;
+        var project = ProjectSerialization.Deserialize(vector["project"]!.ToJsonString());
+        var clock = ProjectClock.Build(project);
+        var recordings = Assert.IsType<RecordingProposalContext>(RecordingProposalContext.Create(clock));
+        var transcript = Assert.IsType<Transcript>(clock.Transcript);
+        var input = new ClipAutopilotRequest(transcript, project.Edits, new ClipAutopilotMode.Series(null)) { Recordings = recordings };
+        var planReply = Sendable(Reply("valid-clip"));
+        planReply["parts"] = vector["planReply"]!["parts"]!.DeepClone();
+        var stub = Stub(vector["momentsReply"]!.ToJsonString(), planReply.ToJsonString());
+        var result = await Service().PlanAsync(input, stub, "fixture", ct: TestContext.Current.CancellationToken);
+        var moment = Assert.Single(result.Series.Moments);
+        var plan = Assert.Single(result.Series.Plans);
+        var loaded = ClipAutopilotPlan.FromJson(plan.ToJson());
+        foreach (var (parts, prefix) in new[] { (moment.Parts, "moment"), (loaded.Parts, "plan") })
+        {
+            Assert.Equal(vector[prefix + "Parts"]!.AsArray().Select(Range), parts.Select(part => new WordSpan(part.StartWord, part.EndWord)));
+            Assert.Equal(vector[prefix + "Reasons"]!.AsArray().Select(reason => reason?.GetValue<string>()), parts.Select(part => part.TakeReason));
+        }
+        Assert.Equal(plan.Parts, loaded.CanonicalProposal().Parts!);
+        var operations = ClipAutopilotMapping.Operations(loaded, "best-versions", project, ClipAutopilotFonts.Load(Root));
+        var (kept, _) = ClipAutopilotMapping.Apply(operations.Where(item => item.Decision == ClipAutopilotDecision.Clip).ToArray(), project);
+        var clip = Assert.Single(kept.Edits.Clips);
+        Assert.Equal(loaded.Parts.Select(part => part.TakeReason), clip.PlayParts.Select(part => part.TakeReason));
+        Assert.Equal(loaded.Parts.Select(part => (part.StartWord, part.EndWord)), clip.PlayPartIndices(transcript.Words)!.Select(part => (part.Start, part.End)));
+        Assert.Equal(2, stub.Requests.Count);
+        Assert.Contains("Recording take-3:", stub.Requests[0].CachedBlock, StringComparison.Ordinal);
+        Assert.Contains("<takes>", stub.Requests[0].CachedBlock, StringComparison.Ordinal);
+        Assert.Contains("Solo:", stub.Requests[0].CachedBlock, StringComparison.Ordinal);
+        Assert.Contains("Use one take of each beat", stub.Requests[0].System, StringComparison.Ordinal);
+        Assert.Equal(160, stub.Requests[0].Schema["properties"]!["clips"]!["items"]!["properties"]!["parts"]!["items"]!["properties"]!["takeReason"]!["maxLength"]!.GetValue<int>());
+        Assert.DoesNotContain("<takes>", stub.Requests[1].CachedBlock, StringComparison.Ordinal);
+        var context = Context(transcript, new(0, transcript.Words.Count - 1), project.Edits) with { Recordings = recordings };
+        Assert.Empty(ClipAutopilotValidator.Moments(vector["crossRecordingReply"], context).Moments);
+    }
+
+    [Fact]
+    public void OneRecordingKeepsVersion12RequestBytes()
+    {
+        var temporary = Directory.CreateTempSubdirectory("voxclip-autopilot-v12-");
+        try
+        {
+            foreach (var directory in new[] { "prompts", "caption-styles", "fonts" })
+                foreach (var source in Directory.EnumerateFiles(Path.Combine(Root, directory), "*.json", SearchOption.AllDirectories))
+                {
+                    var destination = Path.Combine(temporary.FullName, Path.GetRelativePath(Root, source));
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(source, destination);
+                }
+            var path = Path.Combine(temporary.FullName, ClipAutopilotPrompt.Path);
+            var version12 = string.Join('\n', File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').Where(line =>
+                !line.StartsWith("    \"takes\":", StringComparison.Ordinal) && !line.StartsWith("  \"takeReason\":", StringComparison.Ordinal)))
+                .Replace("\"promptVersion\": 13", "\"promptVersion\": 12", StringComparison.Ordinal);
+            File.WriteAllText(path, version12);
+            Assert.Equal("100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672", ClipAutopilotPrompt.Load(temporary.FullName).Sha256);
+            var catalog = AiTestSupport.Catalog();
+            var old = new ClipAutopilotService(new LlmRunner(new MemoryKeys(null), catalog, new Redactor()), catalog, temporary.FullName);
+            var current = Service();
+            var vector = Fixture("plan-parts-cases.json")["withRecordings"]!;
+            var project = ProjectSerialization.Deserialize(vector["project"]!.ToJsonString());
+            var transcript = Assert.IsType<Transcript>(project.Transcript);
+            ClipAutopilotMode[] modes = [new ClipAutopilotMode.Series(null), new ClipAutopilotMode.Clip(new(0, transcript.Words.Count - 1))];
+            foreach (var mode in modes)
+            {
+                var input = new ClipAutopilotRequest(transcript, project.Edits, mode);
+                Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(old.Request(input, ConnectorId.ClaudeCode)),
+                    JsonSerializer.SerializeToUtf8Bytes(current.Request(input, ConnectorId.ClaudeCode)));
+            }
+        }
+        finally { temporary.Delete(recursive: true); }
     }
 
     [Fact]

@@ -81,6 +81,8 @@ public struct ClipAutopilotPrompt: Sendable {
     public let system: String
     /// The series' first stage: picking the moments.
     public let momentsSystem: String
+    let takesSystem: String
+    let takesReason: JSONValue
     let shapeInstructions: String
     public let limits: ClipAutopilotLimits
     public let defaults: ClipAutopilotDefaults
@@ -169,6 +171,8 @@ public struct ClipAutopilotPrompt: Sendable {
         self.sha256 = sha256
         self.system = try Self.system(document, "plan", templateValues, zoomSection: zoomSection)
         self.momentsSystem = try Self.system(document, "moments", templateValues)
+        self.takesSystem = document[ai: "sections"][ai: "takes"].aiString ?? ""
+        self.takesReason = document[ai: "takeReason"]
         self.shapeInstructions = document[ai: "sections"][ai: "shapes"].aiString ?? ""
         self.limits = limits
         self.defaults = ClipAutopilotDefaults(styleID: style, font: .init(family: family, weight: weight), textCase: textCase,

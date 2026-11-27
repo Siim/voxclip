@@ -149,7 +149,7 @@ func aiSharedFixtureEnvelopes() throws {
     let root = try aiGoldenSharedRoot()
     let actualFiles = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("fixtures/llm"), includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }.map { $0.deletingPathExtension().lastPathComponent }.sorted()
     #expect(actualFiles == AIGoldenCorpus.files)
-    let knownKinds: Set<String> = ["format-transcript", "to-fixed-1", "format-time", "to-fixed-random", "finalize-clips", "snap-pair", "prepare-entries", "string-helpers", "windows", "pack-lines", "tighten-verifier", "render-request", "connector-request", "voice-rewrite-request", "patch-rewrite-request", "cli-reply"]
+    let knownKinds: Set<String> = ["format-transcript", "to-fixed-1", "format-time", "to-fixed-random", "finalize-clips", "snap-pair", "prepare-entries", "string-helpers", "windows", "pack-lines", "tighten-verifier", "render-request", "recording-request", "connector-request", "voice-rewrite-request", "patch-rewrite-request", "cli-reply"]
     for file in actualFiles {
         let document = try AIGoldenCorpus.document(file)
         #expect(document[ai: "schema"].aiString == "voxclip-llm-fixtures/1")
@@ -192,6 +192,16 @@ private func aiSharedGoldenVector(_ vector: AIGoldenVector) async throws {
         }
         return
     case "finalize-clips":
+        if let project = input[ai: "project"].aiString {
+            let clock = ProjectClock.build(try ProjectJSON.decode(FixtureLoader.data("fixtures/recordings/\(project)")))
+            let builder = ClipRequestBuilder(prompt: try ClipPromptDocument(data: FixtureLoader.data("prompts/clip-finder.json")))
+            let lines = try formatTranscript(builder.clipWords(#require(clock.transcript))).lines
+            let candidates = try JSONDecoder().decode([ClipLineCandidate].self, from: input[ai: "reply"][ai: "clips"].aiEncoded()).map { $0.candidate(lines: lines) }
+            let clips = try finalizeClips(candidates, words: clock.words, preset: AIClipTestData.preset(.bestTakes), lines: lines,
+                                          options: .init(snap: true), recordings: RecordingProposalContext(clock: clock))
+            actual = try AIGoldenCorpus.json(clips)
+            break
+        }
         let entries = try AIGoldenCorpus.entries(input[ai: "words"])
         let candidates = try input[ai: "candidates"].aiArray.map { candidate in
             if candidate[ai: "parts"] != .null { return try JSONDecoder().decode(ClipCandidate.self, from: candidate.aiEncoded()) }
@@ -228,6 +238,22 @@ private func aiSharedGoldenVector(_ vector: AIGoldenVector) async throws {
         return
     case "render-request":
         try await aiGoldenRequest(vector)
+        return
+    case "recording-request":
+        let project = try #require(input[ai: "project"].aiString)
+        let clock = ProjectClock.build(try ProjectJSON.decode(FixtureLoader.data("fixtures/recordings/\(project)")))
+        let builder = ClipRequestBuilder(prompt: try ClipPromptDocument(data: FixtureLoader.data("prompts/clip-finder.json")))
+        let preset = try AIClipTestData.preset(.bestTakes)
+        let words = builder.clipWords(try #require(clock.transcript))
+        let recordings = try #require(RecordingProposalContext(clock: clock))
+        let window = try #require(builder.windows(words: words, preset: preset, contextTokens: 32_000, recordings: recordings).first)
+        let request = builder.request(words: words, window: window, preset: preset, timeout: .seconds(120), recordings: recordings)
+        let parts = request.schema[ai: "properties"][ai: "clips"][ai: "items"][ai: "properties"][ai: "parts"]
+        for snippet in expected[ai: "contains"].aiArray.compactMap(\.aiString) { #expect(request.cachedBlock?.contains(snippet) == true, "Missing \(snippet)") }
+        #expect(request.instruction.hasSuffix(expected[ai: "instruction"].aiString ?? ""))
+        #expect(request.system.hasSuffix(expected[ai: "system"].aiString ?? ""))
+        #expect(parts[ai: "items"][ai: "properties"][ai: "take_reason"] == expected[ai: "reasonSchema"])
+        #expect(parts[ai: "maxItems"] == expected[ai: "maxParts"])
         return
     case "voice-rewrite-request":
         try await voiceRewriteGoldenRequest(item, label: vector.description)

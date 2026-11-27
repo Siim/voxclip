@@ -4,7 +4,7 @@ import Testing
 
 @Test("AI shared prompt and schema contracts") func macAI() throws {
     let prompt = try AIClipTestData.prompt()
-    #expect(prompt.presets.map(\.id) == [.best, .hooks, .topics, .quotes, .custom])
+    #expect(prompt.presets.map(\.id) == [.best, .hooks, .topics, .quotes, .bestTakes, .custom])
     let catalog = try LLMCatalog(shared: SharedResources(root: FixtureLoader.sharedRoot()))
     let tighten = try FixtureLoader.decode(JSONValue.self, at: "prompts/ai-tighten.json")
     for schema in [prompt.document[ai: "output"][ai: "schema"], tighten[ai: "output"][ai: "schema"], catalog.document[ai: "testRequest"][ai: "schema"]] {

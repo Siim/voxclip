@@ -257,7 +257,9 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         var shown = input.IsSeries ? null : frames;
         var rendered = ClipAutopilotRequestBuilder.Render(input, prompt, resources.Styles, resources.Fonts, pauses, moment, shown);
         var moments = input.IsSeries;
-        var system = moments ? prompt.MomentsSystem : prompt.System;
+        var takes = moments && input.Recordings?.CanCompare == true && prompt.TakesSystem.Length > 0;
+        var system = moments ? prompt.MomentsSystem + (takes ? "\n\n" + prompt.TakesSystem : "") : prompt.System;
+        var block = rendered.CachedBlock + (takes ? "\n\n" + input.Recordings!.Block("words", range => range, new(rendered.Scope.Start, rendered.Scope.End)) : "");
         var offered = moments ? [] : input.FootageSources.Where(source => source.Video is not null).Take(32).ToArray();
         var tracks = new SortedDictionary<string, string>(StringComparer.Ordinal);
         if (!moments)
@@ -277,13 +279,15 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         }
         if (tracks.Count > 0) instruction += "\n\nSaved music tracks by id:\n" + new JsonObject(tracks.Select(track =>
             new KeyValuePair<string, JsonNode?>(track.Key, JsonValue.Create(track.Value)))).ToJsonString();
-        if (System.Text.Encoding.UTF8.GetByteCount(system + rendered.CachedBlock + instruction) > 400_000)
+        if (System.Text.Encoding.UTF8.GetByteCount(system + block + instruction) > 400_000)
             throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", "", LlmFeature.ClipAutopilot);
         var output = catalog.Cap(connector, moments ? prompt.MomentsOutputTokens : prompt.ClipOutputTokens);
         var timeout = catalog.Timeout(TimeoutKind(connector));
         if (timeout < prompt.MinimumTimeout) timeout = prompt.MinimumTimeout;
-        var request = new LlmRequest(LlmFeature.ClipAutopilot, system, rendered.CachedBlock, instruction,
-            moments ? prompt.MomentsSchemaName : prompt.SchemaName, (moments ? prompt.MomentsSchema : prompt.Schema).DeepClone().AsObject(), output,
+        var schema = (moments ? prompt.MomentsSchema : prompt.Schema).DeepClone().AsObject();
+        if (takes) schema["properties"]!["clips"]!["items"]!["properties"]!["parts"]!["items"]!["properties"]!["takeReason"] = prompt.TakesReason!.DeepClone();
+        var request = new LlmRequest(LlmFeature.ClipAutopilot, system, block, instruction,
+            moments ? prompt.MomentsSchemaName : prompt.SchemaName, schema, output,
             moments ? MomentsEffort : PlanEffort, timeout, input.Language ?? input.Transcript.Language,
             moments ? "clip-autopilot-moments" : moment is null ? "clip-autopilot" : "clip-autopilot-series-clip") { Images = shown?.Images ?? [] };
         var context = new ClipAutopilotContext(input.Transcript.Words, input.Edits.Corrections, input.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal),
@@ -292,6 +296,7 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         {
             OfferedParts = moments ? null : moment?.Moment.Parts ?? input.SelectedParts ?? [new(rendered.Scope.Start, rendered.Scope.End)],
             Kind = moment?.Moment.Kind ?? input.SelectedKind, MissingFromTake = moment?.Moment.MissingFromTake,
+            Recordings = input.Recordings,
             FootageSources = offered.GroupBy(source => source.FootageKey, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First().DurationSeconds, StringComparer.Ordinal),
             MusicTrackIds = tracks.Keys.ToHashSet(StringComparer.Ordinal)
         };

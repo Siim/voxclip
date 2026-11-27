@@ -8,6 +8,41 @@ import Testing
 /// /tmp/voxclip-autopilot-eval, and it refuses to send when Claude Code would bill an API key. Its output stays in /tmp.
 private let liveEval = ProcessInfo.processInfo.environment["VOXCLIP_AUTOPILOT_LIVE_EVAL"] == "1"
 
+@Test("Live three-recording best-take evaluation",
+      .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_LIVE_TESTS"] == "1", "Requires VOXCLIP_LIVE_TESTS=1 and Claude Code plan sign-in"))
+func threeRecordingLiveEvaluation() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let keyVariables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "VOXCLIP_ANTHROPIC_API_KEY"]
+    try #require(keyVariables.allSatisfy { (environment[$0] ?? "").isEmpty }, "Remove API-key overrides before running the plan-only eval.")
+    let shared = try ClipAutopilotTests.shared()
+    let catalog = try LLMCatalog(shared: shared)
+    let log = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
+    let cli = CLIConnector(id: .claudeCode, catalog: catalog, log: log)
+    let detection = try await cli.detection()
+    try #require(detection.authMethod == "claude.ai", "A Claude Code plan sign-in is required; nothing was sent.")
+
+    let vector = try ClipAutopilotTests.recordingsVector()
+    var input = try ClipAutopilotTests.recordingsInput(vector)
+    input.note = "Make one story from the best take of each line. Keep the ending if the speaker says it."
+    let runner = LLMRunner(keys: LLMEnvironmentKeyProvider(catalog: catalog), catalog: catalog, log: log)
+    let service = ClipAutopilotService(runner: runner, shared: shared)
+    let request = try await service.request(input, connector: .claudeCode)
+    let reply = try await runner.run(request, on: cli, model: environment["VOXCLIP_AUTOPILOT_EVAL_MODEL"] ?? "opus")
+    let winner = try #require(reply.object[ai: "clips"].aiArray.first)
+    let recordings = try #require(input.recordings)
+    let parts = try winner[ai: "parts"].aiArray.map { part in
+        let first = try #require(part[ai: "startWord"].aiInt)
+        let last = try #require(part[ai: "endWord"].aiInt)
+        try #require(first <= last)
+        return first...last
+    }
+    let punchline = try ClipAutopilotTests.range(#require(vector[ai: "momentParts"].aiArray.last))
+    #expect(parts.contains { $0.contains(punchline.lowerBound) && $0.contains(punchline.upperBound) })
+    #expect(parts.allSatisfy(recordings.contains))
+    let beats = parts.flatMap(recordings.beatIDs)
+    #expect(Set(beats).count == beats.count)
+}
+
 @Test("Live Make it postable evaluation", .enabled(if: liveEval, "Requires VOXCLIP_AUTOPILOT_LIVE_EVAL=1 and a Claude Code plan sign-in"),
       .timeLimit(.minutes(60)))
 func clipAutopilotLiveEvaluation() async throws {

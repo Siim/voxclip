@@ -99,7 +99,8 @@ public static partial class ClipAutopilotValidator
             Corrections = corrections, Rewrites = rewrites, CaptionChoice = captions, ClipLookChoice = look, SpeedChoice = speed, MusicChoices = music,
             MusicPick = pick, Zooms = zooms, Effects = effects, PostText = postText, Score = score, Verdict = verdict, ScoreReason = scoreReason, LengthReason = lengthReason,
             Seconds = seconds, Questions = questions, Repairs = log.Repairs.ToArray(), Flags = Flags(seconds, lengthReason, limits), ToneChoice = tone,
-            Frames = frames, OrderedParts = AiJson.Get(value, "parts") is null ? null : CanonicalParts(parts),
+            Frames = frames, OrderedParts = AiJson.Get(value, "parts") is null ? null : CanonicalParts(parts, corrected, cutIds, part =>
+                corrected.OfferedParts?.FirstOrDefault(offered => offered.StartWord <= part.Start && part.End <= offered.EndWord)?.TakeReason),
             Shape = kind == "showreel" ? kind : null, SavedMusicTrackId = trackId,
             MissingFromTake = new[] { context.MissingFromTake, AiJson.String(AiJson.Get(value, "not_in_take")) }.FirstOrDefault(item => !string.IsNullOrEmpty(item)),
             CoverTitle = AiJson.String(AiJson.Get(value, "coverTitle"))
@@ -211,7 +212,10 @@ public static partial class ClipAutopilotValidator
             var captionReason = Text(AiJson.Get(item, "captionReason"), limits.MaxReasonScalars, field + ".captionReason", log);
             moments.Add(new(span.Start, span.End, title.Length == 0 ? fallbackTitle : title, idea, score, verdict, scoreReason, style, captionReason)
             {
-                OrderedParts = AiJson.Get(item, "parts") is null ? null : CanonicalParts(parts), Shape = kind == "showreel" ? kind : null,
+                OrderedParts = AiJson.Get(item, "parts") is not { } raw ? null : CanonicalParts(parts, context, context.CutWordIds, part =>
+                    context.Recordings is null ? null : AiJson.String(AiJson.Get(AiJson.Array(raw).FirstOrDefault(offered =>
+                        AiJson.Integer(AiJson.Get(offered, "startWord")) <= part.Start && AiJson.Integer(AiJson.Get(offered, "endWord")) >= part.End), "takeReason"))),
+                Shape = kind == "showreel" ? kind : null,
                 MissingFromTake = AiJson.String(AiJson.Get(item, "not_in_take"))
             });
         }
@@ -289,8 +293,9 @@ public static partial class ClipAutopilotValidator
         return new(first, last);
     }
 
-    private static IReadOnlyList<ClipProposal.Part> CanonicalParts(IReadOnlyList<WordSpan> parts) =>
-        parts.Select(item => new ClipProposal.Part(item.Start, item.End)).ToArray();
+    private static IReadOnlyList<ClipProposal.Part> CanonicalParts(IReadOnlyList<WordSpan> parts, ClipAutopilotContext context,
+        IReadOnlySet<string> cuts, Func<WordSpan, string?> reason) => parts.Select(item => new ClipProposal.Part(item.Start, item.End,
+            ClipValidation.CheckTakeReason(reason(item), new(item.Start, item.End), context.Words, cuts, context.Corrections))).ToArray();
 
     private static WordSpan Bounds(IReadOnlyList<WordSpan> parts) => new(parts.Min(item => item.Start), parts.Max(item => item.End));
 
@@ -301,7 +306,7 @@ public static partial class ClipAutopilotValidator
     {
         var offered = context.OfferedParts ?? [new(context.Scope.Start, context.Scope.End)];
         bool Contains(int start, int end) => context.Scope.Contains(start) && context.Scope.Contains(end) && start >= 0 && end < context.Words.Count &&
-            offered.Any(part => part.StartWord <= start && end <= part.EndWord);
+            offered.Any(part => part.StartWord <= start && end <= part.EndWord) && context.Recordings?.Contains(new(start, end)) != false;
         if (AiJson.Get(value, "parts") is not { } raw)
             return Span(value, context, isSeries, log) is { } legacy && Contains(legacy.Start, legacy.End) ? [legacy] : null;
         var items = AiJson.Array(raw);
@@ -309,6 +314,7 @@ public static partial class ClipAutopilotValidator
         var parts = new List<WordSpan>();
         var rawParts = new List<WordSpan>();
         var used = new HashSet<int>();
+        var usedBeats = new HashSet<string>();
         foreach (var item in items)
         {
             if (AiJson.Integer(AiJson.Get(item, "startWord")) is not { } start || AiJson.Integer(AiJson.Get(item, "endWord")) is not { } end ||
@@ -318,6 +324,12 @@ public static partial class ClipAutopilotValidator
             while (start <= end && !context.IsListedWord(start)) start++;
             while (end >= start && !context.IsListedWord(end)) end--;
             if (start > end) return null;
+            if (isSeries && context.Recordings is { } recordings)
+            {
+                var beats = recordings.BeatIds(new(start, end)).ToArray();
+                if (usedBeats.Overlaps(beats)) continue;
+                usedBeats.UnionWith(beats);
+            }
             parts.Add(new(start, end));
         }
         if (isSeries)
@@ -328,7 +340,7 @@ public static partial class ClipAutopilotValidator
                 (kind == "showreel" && !ValidShowreel(durations)) || durations.Sum() < context.Prompt.Limits.MinClipSeconds ||
                 durations.Sum() > context.Prompt.Limits.MaxClipSeconds) return null;
         }
-        return parts;
+        return parts.Count == 0 ? null : parts;
     }
 
     private static JsonNode? SeamChecked(JsonNode? value, IReadOnlyList<WordSpan> parts, Log log)

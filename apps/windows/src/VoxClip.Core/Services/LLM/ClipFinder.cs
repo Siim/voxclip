@@ -9,7 +9,7 @@ namespace VoxClip.Core.Services.LLM;
 /// <summary>Explicit clip finder request; AI §11.1. Consent must be obtained by the caller before cloud use.</summary>
 public sealed record ClipFinderRequest(IReadOnlyList<TimedWord> Words, IReadOnlyDictionary<string, string> Corrections,
     IReadOnlySet<string> CutWordIds, ClipPreset Preset, string? Instructions, string? Language,
-    ConnectorId Connector, string Model, bool Snap = true, bool DryRun = false);
+    ConnectorId Connector, string Model, bool Snap = true, bool DryRun = false, RecordingProposalContext? Recordings = null);
 /// <summary>Progress without prompt or transcript text; AI §4.9.</summary>
 public sealed record ClipFinderProgress(string Stage, double? Fraction, int Window, int WindowCount);
 /// <summary>Cancelable clip pipeline; architecture §7.2 and AI §11.</summary>
@@ -79,6 +79,8 @@ public sealed class ClipFinder : IClipFinder
         LastUsedFallback = null;
         var prompts = new ClipPrompts(catalog);
         if (input.Words.Count == 0) throw new ClipFinderGateException(ClipFinderGateKind.NoWords, prompts.Clips["messages"]!["noWords"]!.GetValue<string>());
+        if (input.Preset == ClipPreset.BestTakes && input.Recordings?.CanCompare != true)
+            throw new ClipFinderGateException(ClipFinderGateKind.NoWords, prompts.Clips["messages"]!["needRecordings"]!.GetValue<string>());
         var instructions = prompts.Instructions(input.Instructions);
         if (input.Preset == ClipPreset.Custom && instructions.Length == 0) throw new ClipFinderGateException(ClipFinderGateKind.NeedInstructions, prompts.Clips["messages"]!["needInstructions"]!.GetValue<string>());
         if (!Enum.IsDefined(input.Connector)) throw LlmErrors.Create(LlmErrorKind.NoConnector, "");
@@ -88,8 +90,9 @@ public sealed class ClipFinder : IClipFinder
         var limits = prompts.ValidationLimits;
         if (!input.DryRun) await runner.PreflightAsync(connector, input.Model, LlmFeature.ClipFinder, ct, reportErrors: false).ConfigureAwait(false);
         var context = await catalog.ResolveContextTokensAsync(connector, input.Model, ct, queryConnector: !input.DryRun).ConfigureAwait(false);
-        var plan = prompts.Plan(lines, input.Preset.ToString().ToLowerInvariant(), instructions, input.Words[^1].End, context, catalog.Cap(input.Connector, 16000),
-            localServer: input.Connector is ConnectorId.Ollama or ConnectorId.LmStudio, model: input.Model);
+        var plan = prompts.Plan(lines, ClipPrompts.PresetId(input.Preset), instructions, input.Words[^1].End, context, catalog.Cap(input.Connector, 16000),
+            localServer: input.Connector is ConnectorId.Ollama or ConnectorId.LmStudio, model: input.Model,
+            takesBlock: input.Preset == ClipPreset.BestTakes ? ClipPrompts.RecordingBlock(input.Recordings, lines) : null);
         var windows = plan.Windows;
         var candidates = new List<RawClip>();
         var dryRequests = new List<LlmRequest>();
@@ -107,16 +110,7 @@ public sealed class ClipFinder : IClipFinder
             var result = await runner.RunCoreAsync(request, connector, input.Model, ct, reportErrors: false).ConfigureAwait(false);
             model = result.Model;
             if (result.UsedFallback) fallbackModel = result.Model;
-            var current = result.Object["clips"]!.AsArray().OfType<JsonObject>().Select(clip =>
-            {
-                var parts = clip["parts"]!.AsArray().OfType<JsonObject>().Select(part =>
-                {
-                    var range = ClipPrompts.WordRange(LlmOutput.Number(part["start_line"]!), LlmOutput.Number(part["end_line"]!), lines);
-                    return new RawClipPart(range.Start, range.End);
-                }).ToArray();
-                var missing = clip["not_in_take"]!.GetValue<string>();
-                return new RawClip(clip["title"]!.GetValue<string>(), clip["reason"]!.GetValue<string>(), LlmOutput.Number(clip["score"]!), Parts: parts, NotInTake: missing.Length == 0 ? null : missing);
-            }).ToArray();
+            var current = ReadCandidates(result.Object, lines);
             candidates.AddRange(current);
             foreach (var candidate in current)
             {
@@ -125,10 +119,10 @@ public sealed class ClipFinder : IClipFinder
             }
         }
         DryRunRequests = dryRequests;
-        var final = ClipValidation.FinalizeClips(new(candidates, input.Words, prompts.Rules(input.Preset), lines.Select(line => line.Line).ToArray(), input.CutWordIds, windows.Count, input.Snap, input.Corrections), limits);
+        var final = ClipValidation.FinalizeClips(new(candidates, input.Words, prompts.Rules(input.Preset), lines.Select(line => line.Line).ToArray(), input.CutWordIds, windows.Count, input.Snap, input.Corrections, input.Recordings), limits);
         var clips = final.Clips.Select(clip => new AiClip(clip.Title.Length > 0 ? clip.Title : FallbackTitle(clip.PlayParts.SelectMany(part => entries.Skip(part.Start).Take(part.Length)), limits.TitleMaxLength), clip.Reason, clip.Score,
             input.Words[clip.Start].Id, input.Words[clip.End].Id,
-            clip.Parts?.Select(part => new ClipWordRange(input.Words[part.Start].Id, input.Words[part.End].Id)).ToArray(), clip.NotInTake)).ToArray();
+            clip.Parts?.Select((part, index) => new ClipWordRange(input.Words[part.Start].Id, input.Words[part.End].Id, clip.TakeReasons?[index])).ToArray(), clip.NotInTake)).ToArray();
         ct.ThrowIfCancellationRequested();
         progress?.Report(new("Finding clips…", 1, windows.Count, windows.Count));
         var answeringModel = fallbackModel ?? model;
@@ -137,6 +131,17 @@ public sealed class ClipFinder : IClipFinder
         return new(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, LlmCatalog.WireId(input.Connector), resultModel, input.Preset, instructions.Length == 0 ? null : instructions, input.Language,
             Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(prompts.SentenceBlock(entries, lines, lines)))), clips);
     }
+
+    internal static RawClip[] ReadCandidates(JsonObject reply, IReadOnlyList<NumberedLine> lines) => reply["clips"]!.AsArray().OfType<JsonObject>().Select(clip =>
+    {
+        var parts = clip["parts"]!.AsArray().OfType<JsonObject>().Select(part =>
+        {
+            var range = ClipPrompts.WordRange(LlmOutput.Number(part["start_line"]!), LlmOutput.Number(part["end_line"]!), lines);
+            return new RawClipPart(range.Start, range.End, part["take_reason"]?.GetValue<string>());
+        }).ToArray();
+        var missing = clip["not_in_take"]!.GetValue<string>();
+        return new RawClip(clip["title"]!.GetValue<string>(), clip["reason"]!.GetValue<string>(), LlmOutput.Number(clip["score"]!), Parts: parts, NotInTake: missing.Length == 0 ? null : missing);
+    }).ToArray();
 
     private static string FallbackTitle(IEnumerable<ClipWord> entries, int maxLength)
     {
