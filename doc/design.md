@@ -715,6 +715,8 @@ On Mac, a single editable source word shows **Edit word** first, then **✦ Rewr
 
 **Story clips (Mac).** A numbered transcript band marks each part in its Outline colour. On the edited timeline, a part seam is a 3 pt white line with ↶ (back) or ↷ (ahead) and the take time it jumps to, such as `↶ 8:04`; cuts within parts remain 1 pt lines. The overview shows each coloured part at its original position in the take. **Show cuts** puts the parts side by side in play order on their own take ranges, with cuts open inside each part. Captions, effects and a single continuous music bed follow the edit. For a cross-seam effect, say “Place it inside one part.” For a cross-seam translation, say “Translate inside one part.”
 
+**Several recordings (Mac).** V1 and A1 use the recording colours. Label V1 at the part start, “0010 · 0:04”. At a 3 pt cross-recording seam say “→ 0007 0:21”; a same-recording seam keeps its jump arrow and local time, or “↷ 0:29 · restart out” if a restart was left out. A1 shows a level-match badge such as “−1.8 dB”. The overview adds one row per recording, with locally positioned, coloured and numbered parts. Source keeps the recordings on the joined clock, with a hatched “Between recordings” region. Reject drops there with “Lands between recordings · move it onto a recording's words.” Titles and other connected items follow their words; music stays continuous.
+
 Layout, left to right:
 
 - the compact transport, only while the viewer is collapsed (§5.3);

@@ -4,30 +4,56 @@ import VoxClipMedia
 
 struct RecordingPartVersion: Identifiable {
     let recording: ProjectClock.Region
-    let span: TakeMatch.AlignedSpan
-    let signals: TakeMatch.DeliverySignals
+    let startWordID: String
+    let endWordID: String
+    let changedWordIDs: Set<String>
+    let fillers: Int
+    let longestPause: Double
     var id: String { recording.key }
 
     func edit(clipID: String, partID: String) -> RecordingEdit {
-        .swapTake(clipId: clipID, partId: partID, startWordId: span.startWordId, endWordId: span.endWordId)
+        .swapTake(clipId: clipID, partId: partID, startWordId: startWordID, endWordId: endWordID)
     }
 }
 
 extension EditorModel {
-    func recordingVersions(of part: ClipPart) -> [RecordingPartVersion] {
-        guard hasSeveralRecordings, let clock = recordingClock, let region = clock.region(of: part.startWordId) else { return [] }
+    var recordingTakeMatches: TakeMatch.Result? {
+        guard hasSeveralRecordings, let clock = recordingClock else { return nil }
         if recordingMatchesClock != clock {
             recordingMatches = TakeMatch.build(clock: clock)
             recordingMatchesClock = clock
         }
-        guard let beat = recordingMatches?.beats.first(where: { beat in
-            beat.takes.contains { $0.key == region.key && $0.startWordId == part.startWordId && $0.endWordId == part.endWordId }
-                || beat.spans.contains { $0.toKey == region.key && $0.startWordId == part.startWordId && $0.endWordId == part.endWordId }
-        }) else { return [] }
+        return recordingMatches
+    }
+
+    func recordingVersions(of part: ClipPart) -> [RecordingPartVersion] {
+        guard let region = recordingClock?.region(of: part.startWordId), let matches = recordingTakeMatches,
+              let first = index(part.startWordId), let last = index(part.endWordId) else { return [] }
+        let beats = matches.beats.compactMap { beat -> (beat: TakeMatch.Beat, range: ClosedRange<Int>)? in
+            guard let take = beat.takes.first(where: { $0.key == region.key }),
+                  let lower = index(take.startWordId), let upper = index(take.endWordId), lower <= last, upper >= first else { return nil }
+            return (beat, lower...upper)
+        }.sorted { $0.range.lowerBound < $1.range.lowerBound }
+        guard let opening = beats.first, let closing = beats.last else { return [] }
+        let whole = opening.range.lowerBound == first && closing.range.upperBound == last
+        let aligned = beats.count == 1 && opening.beat.spans.contains {
+            $0.toKey == region.key && $0.startWordId == part.startWordId && $0.endWordId == part.endWordId
+        }
+        guard whole || aligned else { return [] }
         return recordingRegions.compactMap { candidate in
-            guard let span = beat.spans.first(where: { $0.fromKey == region.key && $0.toKey == candidate.key }),
-                  let take = beat.takes.first(where: { $0.key == candidate.key }) else { return nil }
-            return .init(recording: candidate, span: span, signals: take.signals)
+            let mapped = beats.compactMap { entry -> (TakeMatch.AlignedSpan, TakeMatch.Take)? in
+                guard let span = entry.beat.spans.first(where: { $0.fromKey == region.key && $0.toKey == candidate.key }),
+                      let take = entry.beat.takes.first(where: { $0.key == candidate.key }) else { return nil }
+                return (span, take)
+            }
+            guard mapped.count == beats.count, let start = mapped.first, let end = mapped.last,
+                  zip(mapped, mapped.dropFirst()).allSatisfy({ previous, next in
+                      guard let upper = index(previous.1.endWordId), let lower = index(next.1.startWordId) else { return false }
+                      return upper + 1 == lower
+                  }) else { return nil }
+            return .init(recording: candidate, startWordID: start.0.startWordId, endWordID: end.0.endWordId,
+                changedWordIDs: Set(mapped.flatMap { $0.0.changedWordIds }), fillers: mapped.reduce(0) { $0 + $1.1.signals.fillers },
+                longestPause: mapped.map { $0.1.signals.longestPause }.max() ?? 0)
         }
     }
 
@@ -35,7 +61,7 @@ extension EditorModel {
         guard let clip = activeClip, !recordingIsMissing(version.recording.key) else { return }
         if applyRecordingEdit(version.edit(clipID: clip.id, partID: partID)) {
             selectedStoryPartID = partID
-            chooseRecordingTranscript(.recording(version.recording.key), scrollTo: version.span.startWordId, announceChange: false)
+            chooseRecordingTranscript(.recording(version.recording.key), scrollTo: version.startWordID, announceChange: false)
         }
     }
 
@@ -103,7 +129,13 @@ extension EditorModel {
 @MainActor struct RecordingPartVersions: View {
     let editor: EditorModel
     let part: ClipPart
-    @State private var expanded = false
+    @State private var expanded: Bool
+
+    init(editor: EditorModel, part: ClipPart, expanded: Bool = false) {
+        self.editor = editor
+        self.part = part
+        _expanded = State(initialValue: expanded)
+    }
 
     var body: some View {
         let versions = editor.recordingVersions(of: part)
@@ -111,27 +143,46 @@ extension EditorModel {
             VStack(alignment: .leading, spacing: 5) {
                 if let reason = part.takeReason { Text(reason).foregroundStyle(.secondary) }
                 if !versions.isEmpty {
-                    Button(expanded ? "Other versions" : "\(versions.count) \(versions.count == 1 ? "version" : "versions")",
+                    Button(expanded ? "Other versions" : "\(versions.count + 1) versions",
                            systemImage: expanded ? "chevron.down" : "chevron.right") { expanded.toggle() }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(versions.count) other versions of part \(editor.activeClip?.playParts.firstIndex(where: { $0.id == part.id }).map { $0 + 1 } ?? 1)")
                         .accessibilityValue(expanded ? "Expanded" : "Collapsed")
                 }
-                if expanded { ForEach(versions) { version in versionRow(version) } }
+                if expanded {
+                    currentVersion
+                    ForEach(versions) { version in versionRow(version) }
+                }
             }
             .font(.system(size: 11))
             .padding(.leading, 20).padding(.bottom, 5)
         }
     }
 
+    @ViewBuilder private var currentVersion: some View {
+        if let clock = editor.recordingClock, let region = clock.region(of: part.startWordId),
+           let first = editor.index(part.startWordId), let last = editor.index(part.endWordId) {
+            let offset = Double(region.offsetSamples) / Double(clock.sampleRate)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    Text("Playing").foregroundStyle(.secondary)
+                    RecordingLabel(region: region)
+                    Text("\(storyTakeTime(editor.words[first].start - offset))–\(storyTakeTime(editor.words[last].end - offset))").monospacedDigit()
+                }
+                Text(editor.words[first...last].map { editor.text($0) }.joined(separator: " "))
+            }
+            .padding(6).frame(maxWidth: .infinity, alignment: .leading)
+            .background(DesignValues.color("bg.muted"), in: .rect(cornerRadius: 6))
+        }
+    }
+
     @ViewBuilder private func versionRow(_ version: RecordingPartVersion) -> some View {
-        if let clip = editor.activeClip, let first = editor.index(version.span.startWordId), let last = editor.index(version.span.endWordId) {
+        if let clip = editor.activeClip, let first = editor.index(version.startWordID), let last = editor.index(version.endWordID) {
             let outcome = RecordingEdits.apply(version.edit(clipID: clip.id, partID: part.id), project: editor.project)
             let copyReason = (try? outcome.get()).flatMap { editor.recordingCopyReason(clip, part: part, changed: $0.project) }
             let missing = editor.recordingMissingReason(version.recording)
             let offset = Double(version.recording.offsetSamples) / Double(editor.recordingClock?.sampleRate ?? 48_000)
             let start = editor.words[first].start - offset, end = editor.words[last].end - offset
-            let changed = Set(version.span.changedWordIds)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 5) {
                     RecordingLabel(region: version.recording)
@@ -140,10 +191,10 @@ extension EditorModel {
                 Text(editor.words[first...last].reduce(into: AttributedString()) { text, word in
                     if !text.characters.isEmpty { text += AttributedString(" ") }
                     var value = AttributedString(editor.text(word))
-                    if changed.contains(word.id) { value.underlineStyle = .single }
+                    if version.changedWordIDs.contains(word.id) { value.underlineStyle = .single }
                     text += value
                 })
-                Text("\(version.signals.fillers) \(version.signals.fillers == 1 ? "filler" : "fillers") · \(toFixed1(version.signals.longestPause)) s pause · \(toFixed1(end - start)) s")
+                Text("\(version.fillers) \(version.fillers == 1 ? "filler" : "fillers") · \(toFixed1(version.longestPause)) s pause · \(toFixed1(end - start)) s")
                     .foregroundStyle(.secondary)
                 ViewThatFits(in: .horizontal) {
                     HStack { versionActions(version, copy: copyReason != nil, disabled: missing != nil || (try? outcome.get()) == nil) }

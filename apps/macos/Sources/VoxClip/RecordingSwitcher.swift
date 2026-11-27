@@ -2,6 +2,33 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VoxClipCore
 
+struct RecordingFeedback: Equatable {
+    let text: String
+    let revision: Int
+}
+
+@MainActor struct RecordingEditToast: View {
+    let editor: EditorModel
+
+    var body: some View {
+        if let feedback = editor.recordingFeedback, feedback.revision == editor.projectRevision {
+            HStack {
+                Text(feedback.text).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                if editor.undoManager?.canUndo == true {
+                    Button("Undo") { editor.recordingFeedback = nil; editor.undoManager?.undo() }
+                }
+                Button("Dismiss", systemImage: "xmark") { editor.recordingFeedback = nil }.labelStyle(.iconOnly)
+            }
+            .font(.system(size: 11)).padding(8).background(DesignValues.color("bg.muted"))
+            .task(id: feedback.revision) {
+                try? await Task.sleep(for: .seconds(8))
+                if !Task.isCancelled, editor.recordingFeedback == feedback { editor.recordingFeedback = nil }
+            }
+        }
+    }
+}
+
 @MainActor struct RecordingSwitcher: View {
     let editor: EditorModel
 
@@ -17,13 +44,28 @@ import VoxClipCore
                             HStack(spacing: 5) {
                                 RecordingLabel(region: region)
                                 Text("· \(storyTakeTime(Double(region.durationSamples) / Double(editor.recordingClock?.sampleRate ?? 48_000)))")
-                                Text("· Transcribed").foregroundStyle(.secondary)
+                                if region.gainDb != 0, let primary = editor.recordingRegions.first {
+                                    let gain = region.gainDb
+                                    Text("· \(gain < 0 ? "−" : "+")\(toFixed1(abs(gain))) dB to match \(primary.label)").foregroundStyle(.secondary)
+                                } else {
+                                    Text("· Transcribed").foregroundStyle(.secondary)
+                                }
                             }
                         }
                         .accessibilityLabel("Recording \(region.label), \(index + 1) of \(editor.recordingRegions.count), transcribed")
                     }
                 }
                 if editor.hasSeveralRecordings { chip(.all) { Text("All") } }
+                ForEach(editor.recordingCompanions.filter { $0.contentKey != editor.pendingRecording?.reference.contentKey }, id: \.contentKey) { source in
+                    HStack(spacing: 5) {
+                        Text("\(ProjectClock.label(source)) · Not transcribed")
+                        Button("Transcribe on this Mac") {
+                            editor.addRecording(at: editor.recordingURL(source), companion: source)
+                        }
+                        .disabled(editor.addRecordingReason != nil)
+                    }
+                    .font(.system(size: 11))
+                }
                 if let pending = editor.pendingRecording {
                     Text("\(pending.label) · \(pending.state)").font(.system(size: 11))
                     if pending.transcriber.isRunning {

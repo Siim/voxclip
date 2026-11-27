@@ -138,6 +138,7 @@ import VoxClipCore
     var body: some View {
         VStack(spacing: 0) {
             RecordingSwitcher(editor: model)
+            RecordingEditToast(editor: model)
             if let pending = model.pendingRecording {
                 if pending.transcriber.isVisible && !pending.transcriber.isRunning {
                     InlineTranscriptionView(transcription: pending.transcriber)

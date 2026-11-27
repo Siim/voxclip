@@ -113,7 +113,7 @@ import VoxClipCore
                 Text(reason).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if editor.hasSeveralRecordings {
-                ForEach(editor.recordingRegions, id: \.key) { region in
+                ForEach(editor.recordingRegions.dropFirst(), id: \.key) { region in
                     let missing = editor.recordingMissingReason(region)
                     let removal = region.prefix.isEmpty ? nil : editor.removeRecordingReason(region)
                     HStack(spacing: 4) {
@@ -150,6 +150,13 @@ import VoxClipCore
                 Button(pending.transcriber.paid ? "Transcribe with ElevenLabs" : "Transcribe on this Mac") {
                     Task { await pending.transcriber.open() }
                 }
+            }
+            ForEach(editor.recordingCompanions.filter { $0.contentKey != editor.pendingRecording?.reference.contentKey }, id: \.contentKey) { source in
+                let label = ProjectClock.label(source)
+                Button("Add a part from \(label)") {}.disabled(true)
+                Text("\(label) isn't transcribed yet.").font(.system(size: 11)).foregroundStyle(.secondary)
+                Button("Transcribe on this Mac") { editor.addRecording(at: editor.recordingURL(source), companion: source) }
+                    .disabled(editor.addRecordingReason != nil)
             }
             AddRecordingMenu(editor: editor)
         }

@@ -760,6 +760,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var recordingTranscriptRecipient: ((Transcript) -> Void)?
     @ObservationIgnored var recordingMatchesClock: ProjectClock?
     @ObservationIgnored var recordingMatches: TakeMatch.Result?
+    var recordingFeedback: RecordingFeedback?
     @ObservationIgnored var recordingAuditionTask: Task<Void, Never>?
     @ObservationIgnored var recordingAuditionEnd: Double?
     var words: [TimedWord] { recordingClock?.words ?? project.transcript?.words ?? [] }

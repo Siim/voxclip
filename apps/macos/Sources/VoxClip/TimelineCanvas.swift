@@ -475,7 +475,8 @@ struct TimelineContent: Equatable {
                                               clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
                                               showsSurroundingContext: content.showsSurroundingContext, partMarkers: content.partMarkers,
                                               storySource: content.axis == .source ? content.story : nil,
-                                              recordings: content.recordingRegions, recordingGaps: content.recordingGaps, recordingRate: content.recordingRate)
+                                              recordings: content.partMarkers.contains(where: { $0.recording != nil }) ? content.recordingRegions : [],
+                                              recordingGaps: content.recordingGaps, recordingRate: content.recordingRate)
         video.state = VideoLane.State(viewport: viewport, pieces: content.pieces, inOut: content.axis == .source ? shownInOut : nil,
                                       clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
                                       showsSurroundingContext: content.showsSurroundingContext, partMarkers: content.partMarkers,

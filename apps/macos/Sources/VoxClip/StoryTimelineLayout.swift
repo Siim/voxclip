@@ -11,6 +11,7 @@ struct StoryTimelineLayout: Equatable {
         var recording: ProjectClock.Region? = nil
         var localTime: Double? = nil
         var alternateRecordingShade = false
+        var restartOut = false
         var offset: Double { take.lowerBound - display.lowerBound }
     }
 
@@ -49,6 +50,11 @@ struct StoryTimelineLayout: Equatable {
         let rate = Double(clock?.sampleRate ?? 48_000)
         clockLength = clock.map { Double($0.totalSamples) / Double($0.sampleRate) }
         let pieces = model.timelinePieces
+        let restarts = model.recordingTakeMatches?.beats.flatMap(\.takes).compactMap { take -> ClosedRange<Int>? in
+            guard take.flags.contains("restart") || take.flags.contains("falseStart"),
+                  let first = model.index(take.startWordId), let last = model.index(take.endWordId) else { return nil }
+            return first...last
+        } ?? []
         var next = 0.0
         var previous: ProjectClock.Region?
         var alternate = false
@@ -69,8 +75,11 @@ struct StoryTimelineLayout: Equatable {
                 return piece.source.upperBound - take.lowerBound > tolerance && take.upperBound - piece.source.lowerBound > tolerance
             }
             let edited = kept.first.flatMap { first in kept.last.map { first.edited.lowerBound..<$0.edited.upperBound } }
+            let restartOut = position > 0 && region != nil && region == clock?.region(of: words[ranges[position - 1].upperBound].id)
+                && restarts.contains { $0.lowerBound > ranges[position - 1].upperBound && $0.upperBound < bounds.lowerBound }
             return Part(position: position, take: take, display: display, edited: edited, firstWordTime: words[bounds.lowerBound].start,
-                recording: colored ? region : nil, localTime: region.map { _ in words[bounds.lowerBound].start - offset }, alternateRecordingShade: alternate)
+                recording: colored ? region : nil, localTime: region.map { _ in words[bounds.lowerBound].start - offset },
+                alternateRecordingShade: alternate, restartOut: restartOut)
         }
     }
 
@@ -88,7 +97,7 @@ struct StoryTimelineLayout: Equatable {
             previous = part
             return Marker(position: part.position, range: range, time: part.localTime ?? part.firstWordTime,
                 jump: axis == .source && usesRecordingClock ? nil : jump, recording: part.recording,
-                alternateRecordingShade: part.alternateRecordingShade, crossRecording: cross)
+                alternateRecordingShade: part.alternateRecordingShade, crossRecording: cross, restartOut: part.restartOut)
         }
     }
 

@@ -163,9 +163,16 @@ extension EditorModel {
             guard let step = outcome.undoStep else { return false }
             let copy = step.after.edits.activeClipId != project.edits.activeClipId
             replace(step.after, name: step.name, restoresRecordingScope: copy)
+            let announcement: String?
             if copy, case .swapTake = edit, let title = activeClip?.title {
-                announce("Made \(title) to keep the lip sync")
-            } else if let announcement = outcome.announcement ?? message { announce(announcement) }
+                announcement = "Made \(title) to keep the lip sync"
+            } else { announcement = outcome.announcement ?? message }
+            if let announcement {
+                announce(announcement)
+                if hasSeveralRecordings || base?.media.spokenSources?.isEmpty == false {
+                    recordingFeedback = .init(text: announcement, revision: projectRevision)
+                }
+            }
             return true
         case .failure(let refusal):
             storyPartError = refusal.message

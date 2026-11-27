@@ -452,6 +452,11 @@ import ApplicationServices
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             let shell = app.shell
             let documents = NSDocumentController.shared
+            if CommandLine.arguments.contains("-recordingScenesOnly"), let root = app.shared?.root {
+                results = try await DebugRecordingScenes.capture(app: app, root: root, directory: destination)
+                try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("scene-results.json"), options: .atomic)
+                exit(0)
+            }
             try await waitUntil { shell.windowController?.window?.isVisible == true }
             guard let window = shell.windowController?.window, let root = app.shared?.root else { throw CocoaError(.coderInvalidValue) }
             func titledWindows() -> [NSWindow] { NSApp.windows.filter { $0.isVisible && $0.styleMask.contains(.titled) && !($0 is NSPanel) } }
@@ -629,6 +634,7 @@ import ApplicationServices
             results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugClipBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugExplorer.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugRecordingScenes.capture(app: app, root: root, directory: destination)
             results += try await DebugExport.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugStatusBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
