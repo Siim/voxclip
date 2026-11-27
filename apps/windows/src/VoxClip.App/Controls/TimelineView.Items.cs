@@ -389,11 +389,14 @@ public sealed partial class TimelineView
             // time, which crosses a reordered story's seams correctly on Source; slips, fades and keyframes use screen time.
             var intervals = drag.Hit.Item.AxisIntervals;
             var anchor = intervals.Count == 0 ? 0 : drag.Gesture == TimelineItemGesture.End ? intervals[^1].End : intervals[0].Start;
-            // A trailing edge maps from one sample before, so an end dropped on a seam stays in the outgoing part.
+            // A trailing edge maps from one sample before, so an end dropped on a seam stays in the outgoing part. On a
+            // story's Source view it first stops at the story's end, so an overshoot lands on the last boundary.
             var sample = drag.Gesture == TimelineItemGesture.End ? 1 / drag.Session.Plan.SampleRate : 0;
+            var displayed = ItemToScreen(anchor) + dx / scale;
+            if (sample > 0 && !Edited && story is not null) displayed = Math.Min(displayed, AxisDuration);
             var delta = drag.Hit.Item.Lane != TimelineLane.V1 && intervals.Count > 0 && drag.Gesture is TimelineItemGesture.Move
                 or TimelineItemGesture.Duplicate or TimelineItemGesture.Start or TimelineItemGesture.End
-                ? ScreenToItem(ItemToScreen(anchor) + dx / scale - sample) + sample - anchor : dx / scale;
+                ? ScreenToItem(displayed - sample) + sample - anchor : dx / scale;
             var edit = TimelineItemEditing.Build(drag.Gesture, drag.Hit.Item, drag.Hit.Details, drag.Ids, layout, drag.Session.Plan,
                 ItemAxis, model.Words, delta, -dy * 46 / Math.Max(1, drag.Hit.Rect.Height - 10), ItemAt(position), 8 / scale,
                 snappingNow, drag.Point, audioBand);
