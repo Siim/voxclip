@@ -516,6 +516,8 @@ For a story spanning recordings, the Windows compose snapshot associates each ke
 
 The same mapping drives preview and export picture reads. A recording uses its own rotation, dimensions and part framing. If a used file is missing or its content key has changed, stop with “{recording} is missing. Locate it to use its words.” Unused recordings do not block the render.
 
+The export check reports recording seams at rendered times (`at`, `from`, `to`). The words check includes cuts between recordings. Picture-source findings go in `sync`; speech-level findings go in `loudness`, including when social normalization is off.
+
 - **Video.** Output frames sit on a constant grid `te = k / fps`, `k = 0 … round(plan.duration × fps) − 1`. For each `te`: `ts = plan.sourceTime(te)`; decode forward until the next frame's PTS > `ts` and keep the latest frame with PTS ≤ `ts`; seek only when the next kept range starts more than 2 s past the decoder position. One decoder suffices because kept ranges are monotonic.
 - **Compose.** Same function as preview at output size: crop and scale with `sws_scale` (`SWS_LANCZOS`), Skia captions at `te`, then BGRA → NV12 with `sws_scale` using the BT.709 matrix and limited range. Hardware encoders require NV12 input.
 - **Audio.** Kept ranges by sample index, join gains from Core, `swr` to 48 kHz stereo float, FFmpeg's native `aac` encoder at 160 kbps (frame size 1024), PTS = running output sample count.

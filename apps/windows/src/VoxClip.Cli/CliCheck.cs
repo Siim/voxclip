@@ -95,6 +95,8 @@ internal static class CliCheck
             encoded.Remove("check");
             fields[ExportCheck.Name(result.Check)] = encoded;
         }
+        if (outcome.Report.RecordingSeams.Count > 0)
+            fields["recordingSeams"] = new JsonArray(outcome.Report.RecordingSeams.Select(seam => (JsonNode)seam.ToJson()).ToArray());
         return fields;
     }
 
@@ -124,6 +126,7 @@ internal static class CliCheck
                 if (item["value"] is { } value) detail += " " + Fixed(value.GetValue<double>(), "0.000");
                 if (item["band"] is { } band) detail += " in the " + band.GetValue<string>() + " band";
                 if (item["count"] is { } count) detail += " (" + count.GetValue<int>().ToString(CultureInfo.InvariantCulture) + " cards)";
+                if (itemKind == "recordingLevel" && item["reason"] is { } reasonText) detail = "  " + reasonText.GetValue<string>();
                 lines.Add(detail);
             }
         }

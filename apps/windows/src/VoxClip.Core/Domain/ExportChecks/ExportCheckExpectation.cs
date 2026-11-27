@@ -14,15 +14,24 @@ namespace VoxClip.Core.Domain.ExportChecks;
 public static class ExportCheckExpectation
 {
     /// <summary>The render's words, phrases and cuts, and its rendered length in seconds.</summary>
-    public sealed record Edit(IReadOnlyList<ExportCheckWord> Words, IReadOnlyList<ExportCheckPhrase> Phrases, IReadOnlyList<double> Cuts, double Duration);
+    public sealed record Edit(IReadOnlyList<ExportCheckWord> Words, IReadOnlyList<ExportCheckPhrase> Phrases, IReadOnlyList<double> Cuts, double Duration)
+    {
+        /// <summary>Only the cuts that switch the recording, in rendered time.</summary>
+        public IReadOnlyList<ExportCheckRecordingSeam> RecordingSeams { get; init; } = [];
+    }
 
     /// <summary>The words of the render <paramref name="snapshot"/> describes: on the Voice Lab path the output plan's own words (each
     /// Rewrite's or revoiced phrase's words at their placed times, the kept source words mapped around them); otherwise the kept
     /// source words of <paramref name="state"/>'s active clip through the snapshot's plan, corrections applied, as the captions read
     /// them. A bleeped or muted word isn't heard and isn't expected; a kept filler is optional. A null <paramref name="state"/> (no
     /// transcript) expects no source words.</summary>
-    public static Edit Make(ComposeSnapshot snapshot, EditState? state) =>
-        Make(snapshot.Timeline, snapshot.Speed, snapshot.Clip?.Effects?.Effects ?? [], state, snapshot.RenderedDuration);
+    public static Edit Make(ComposeSnapshot snapshot, EditState? state)
+    {
+        var edit = Make(snapshot.Timeline, snapshot.Speed, snapshot.Clip?.Effects?.Effects ?? [], state, snapshot.RenderedDuration);
+        if (snapshot.SpanSources.Count == 0) return edit;
+        return edit with { RecordingSeams = RecordingSeams(snapshot.Timeline, snapshot.Speed, sample =>
+            snapshot.RecordingAt(sample) is { } source ? (source.ContentKey, source.Label) : null) };
+    }
 
     /// <summary><see cref="Make(ComposeSnapshot, EditState?)"/> from its parts: the render's timeline, the clip's speed, its effects
     /// and its rendered length.</summary>
@@ -31,6 +40,8 @@ public static class ExportCheckExpectation
         var bleeped = effects.Where(effect => effect.UsesWords).SelectMany(effect => effect.WordIds).ToHashSet(StringComparer.Ordinal);
         ExportCheckWord Word(CaptionWord caption, string? phrase = null) =>
             new(caption.Text, speed.Rendered(caption.Start), speed.Rendered(caption.End), EditingAlgorithms.IsFillerText(caption.Text), phrase);
+        var recordings = state?.ProjectClock is { Regions.Count: > 1 } clock
+            ? RecordingSeams(timeline, speed, sample => clock.RegionAt(sample) is { } region ? (region.Key, region.Label) : null) : [];
         switch (timeline)
         {
             case RenderTimeline.VoiceLab voiceLab:
@@ -60,7 +71,7 @@ public static class ExportCheckExpectation
                     if (plan.PartSeams.Contains(next.OutputStartSample) || previous.Kind != next.Kind || next.Kind == VoiceLabOutputPieceKind.Synth || next.SourceStartSample != previous.SourceEndSample)
                         cuts.Add(speed.Rendered(next.OutputStartSample / rate));
                 }
-                return new(words, phrases, cuts, duration);
+                return new(words, phrases, cuts, duration) { RecordingSeams = recordings };
             }
             case RenderTimeline.Legacy legacy:
             {
@@ -72,12 +83,39 @@ public static class ExportCheckExpectation
                     position += interval.EndSample - interval.StartSample;
                     cuts.Add(speed.Rendered(position / plan.SampleRate));
                 }
-                if (state is null || state.Transcript.Words.Count == 0) return new([], [], cuts, duration);
+                if (state is null || state.Transcript.Words.Count == 0) return new([], [], cuts, duration) { RecordingSeams = recordings };
                 var captions = EditingEngine.CaptionWords(state, plan);
-                return new(captions.Where(caption => !bleeped.Contains(caption.Id)).Select(caption => Word(caption)).ToArray(), [], cuts, duration);
+                return new(captions.Where(caption => !bleeped.Contains(caption.Id)).Select(caption => Word(caption)).ToArray(), [], cuts, duration)
+                { RecordingSeams = recordings };
             }
             default: throw new InvalidOperationException("Unknown render timeline.");
         }
+    }
+
+    private static IReadOnlyList<ExportCheckRecordingSeam> RecordingSeams(RenderTimeline timeline, ClipSpeedTiming speed,
+        Func<long, (string Key, string Label)?> recordingAt)
+    {
+        var seams = new List<ExportCheckRecordingSeam>();
+        (string Key, string Label)? previous = null;
+        void Visit(long sourceStart, long outputStart)
+        {
+            var next = recordingAt(sourceStart);
+            if (previous is { } before && next is { } after && before.Key != after.Key)
+                seams.Add(new(speed.Rendered(outputStart / timeline.SampleRate), before.Label, after.Label));
+            previous = next;
+        }
+        if (timeline is RenderTimeline.VoiceLab voice)
+            foreach (var piece in voice.Plan.Pieces) Visit(piece.SourceStartSample, piece.OutputStartSample);
+        else if (timeline is RenderTimeline.Legacy legacy)
+        {
+            long output = 0;
+            foreach (var span in legacy.Plan.Kept)
+            {
+                Visit(span.StartSample, output);
+                output += span.EndSample - span.StartSample;
+            }
+        }
+        return seams;
     }
 
     /// <summary>Each caption card the render draws: the page's visual rect (after the layout's clamp) with its boxes and emoji, top-left

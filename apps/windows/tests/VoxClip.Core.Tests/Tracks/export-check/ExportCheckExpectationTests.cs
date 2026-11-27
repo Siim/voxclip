@@ -1,7 +1,9 @@
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.ExportChecks;
+using VoxClip.Core.Domain.Loudness;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Tests.Support;
@@ -13,6 +15,45 @@ namespace VoxClip.Core.Tests.Tracks.ExportChecks;
 /// <c>ExportCheckExpectationTests</c>.</summary>
 public sealed class ExportCheckExpectationTests
 {
+    [Fact]
+    public void SharedRecordingPlansReportOnlyRecordingChangesAsRecordingSeams()
+    {
+        var fixture = JsonNode.Parse(FixtureLoader.ReadText("fixtures/recordings/plan-cases.json"))!;
+        var rate = fixture["sampleRate"]!.GetValue<double>();
+        foreach (var row in fixture["cases"]!.AsArray())
+        {
+            var document = JsonNode.Parse(FixtureLoader.ReadText("fixtures/recordings/" + row!["project"]!.GetValue<string>()))!;
+            var edits = row["edits"]!.DeepClone();
+            var clip = row["clip"];
+            edits["clips"] = clip is null ? new JsonArray() : new JsonArray(clip.DeepClone());
+            edits["activeClipId"] = clip?["id"]?.DeepClone();
+            document["edits"] = edits;
+            var project = ProjectSerialization.Deserialize(document.ToJsonString());
+            var state = EditingEngine.FromProject(project)!;
+            var plan = EditingEngine.BuildPlan(state, project.Media.Source.DurationSeconds, rate);
+            var edit = ExportCheckExpectation.Make(new RenderTimeline.Legacy(plan), new(1), [], state, plan.Duration);
+            Assert.Equal(row["recordingSeams"]!.AsArray().Select(value => value!.GetValue<long>() / rate), edit.RecordingSeams.Select(seam => seam.At));
+            Assert.All(edit.RecordingSeams, seam => { Assert.Contains(seam.At, edit.Cuts); Assert.NotEqual(seam.From, seam.To); });
+            Assert.Equal(row["captions"]!.AsArray().Select(word => word![1]!.GetValue<string>()), edit.Words.Select(word => word.Text));
+        }
+    }
+
+    [Fact]
+    public void WrongPictureAndAQuieterRecordingAreSeparateWarnings()
+    {
+        ExportCheckRecordingSeam seam = new(21.4, "0007", "0010");
+        ExportCheckInput input = new([], [], new(0, 30), new(0, 30), 1.0 / 30, new(ExportLoudness.Off, -15, -2), new(320, 180))
+        { Recordings = [new(seam, PictureMatches: false, BeforeLufs: -16, AfterLufs: -20)] };
+        var report = ExportCheck.Run(input);
+        Assert.False(report.Passed);
+        var picture = report[ExportCheckKind.Sync]!.ToJson()["items"]![0]!;
+        Assert.Equal("pictureSource", picture["kind"]!.GetValue<string>());
+        Assert.Equal("0010", picture["recordingSeam"]!["to"]!.GetValue<string>());
+        var level = Assert.Single(report[ExportCheckKind.Loudness]!.Items);
+        Assert.Equal("0010 is quieter than 0007 at 0:21. Listen there.", level.Reason);
+        Assert.True(ExportCheck.Run(input with { Recordings = [new(seam, true, -16, -19)] }).Passed);
+    }
+
     [Fact]
     public void StorySeamPassesUnlessTheNextPartLosesItsFirstWord()
     {
