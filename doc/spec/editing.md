@@ -206,6 +206,8 @@ On Windows, construction, record copies and decoding silently normalize supplied
 
 On Windows, timeline seeks, transport jumps and Preview This Cut use the project-clock end, not the primary file's end. Ctrl+Shift+Y from the timeline uses the playhead, even when the transcript is showing one recording, and opens the line's other versions in Play Order.
 
+A paid Voice Lab patch in the primary recording can play alongside source speech from a companion. On Windows, snapshot validation checks the primary file's own duration separately from the project-clock length of the edit plan.
+
 For a multi-recording project, `totalSamples` is the clock end. The edit and Voice Lab planners plan each recording in its own time on the primary grid, then add its offset to each kept span. A full take keeps regions in clock order; a story keeps its parts in play order. The complement of those spans includes every guard gap. Kept spans stay in project-clock samples so other edit layers still use one axis; a media caller resolves each span's start through `ProjectClock` to get the recording key and local sample.
 
 `TimelinePieces.isRecordingSeam(at:)` (`IsRecordingSeam` on Windows) identifies a change of recording between consecutive pieces in playback order. It also works on a full take with no part seams. The first caption after either kind of seam starts a new page. Fades are unchanged except that a recording's own start and end count as source edges, so a span touching one has no fade on that side.

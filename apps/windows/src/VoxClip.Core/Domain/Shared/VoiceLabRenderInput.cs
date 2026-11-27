@@ -88,7 +88,8 @@ public sealed class VoiceLabRenderInput
             media.Video != video || media.OrientedSize.Width <= 0 || media.OrientedSize.Height <= 0 ||
             (long)media.OrientedSize.Width * oriented.Height != (long)media.OrientedSize.Height * oriented.Width ||
             media.VideoTrackIndex < 0 || media.AudioTrackIndex < 0 ||
-            EditingMath.Round(media.DurationSeconds * Prepared.OutputPlan.SampleRate) != Prepared.OutputPlan.TotalSourceSamples ||
+            EditingMath.Round(media.DurationSeconds * Prepared.OutputPlan.SampleRate) !=
+                EditingMath.Round(reference.DurationSeconds * Prepared.OutputPlan.SampleRate) ||
             snapshot.Plan.SampleRate != Prepared.OutputPlan.SampleRate ||
             snapshot.Plan.TotalSamples != Prepared.OutputPlan.TotalSourceSamples ||
             snapshot.Output.Size.Width <= 0 || snapshot.Output.Size.Height <= 0 ||
