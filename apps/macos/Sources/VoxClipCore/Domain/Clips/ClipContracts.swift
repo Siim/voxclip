@@ -366,9 +366,12 @@ enum TranscriptLineBoundary {
     static let closingPunctuation = "\"'”’)"
 
     static func endsLine(_ text: String, gap: Double, wordCount: Int) -> Bool {
-        gap >= pauseSeconds || wordCount >= maxWords ||
-            text.unicodeScalars.reversed().first { !closingPunctuation.unicodeScalars.contains($0) }
-                .map { punctuation.unicodeScalars.contains($0) } == true
+        gap >= pauseSeconds || wordCount >= maxWords || endsWithPunctuation(text, in: punctuation)
+    }
+
+    static func endsWithPunctuation(_ text: String, in punctuation: String) -> Bool {
+        text.unicodeScalars.reversed().first { !closingPunctuation.unicodeScalars.contains($0) }
+            .map { punctuation.unicodeScalars.contains($0) } == true
     }
 }
 
