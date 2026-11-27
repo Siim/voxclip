@@ -908,7 +908,7 @@ public sealed partial class TimelineView : UserControl
             if (multiRecording && band.Part.Recording is { } recording)
             {
                 Paint(storyLane, brush, left, metrics.VideoTop, right - left, 3, 1);
-                storyLane.Children.Add(StoryLabel($"{recording.Label} · {EditorViewModel.Duration(band.Part.Start - band.Part.RecordingOffset)}",
+                storyLane.Children.Add(StoryLabel($"{recording.Label} · {band.Part.LocalTime(band.Part.Start)}",
                     left + 4, metrics.VideoTop + 5, Math.Max(0, right - left - 4)));
                 if (recording.GainDb != 0)
                     storyLane.Children.Add(StoryLabel(FormattableString.Invariant($"{(recording.GainDb < 0 ? "−" : "+")}{Math.Abs(recording.GainDb):0.0} dB"),
@@ -1281,7 +1281,7 @@ public sealed partial class TimelineView : UserControl
         SetClockRun(clockFrames, viewport.Frames(clock), ref shownClockFrames);
         SetClockRun(sourceElapsed, viewport.SourceClock(source), ref shownSourceElapsed);
         SetClockRun(sourceFrames, viewport.Frames(source), ref shownSourceFrames);
-        var overviewX = (story is not null ? source / Math.Max(.001, model!.Project.Media.Source.DurationSeconds) : ToDisplay(source) / Math.Max(.001, AxisDuration)) * frameWidth;
+        var overviewX = (story is not null ? source / Math.Max(.001, SourceDuration) : ToDisplay(source) / Math.Max(.001, AxisDuration)) * frameWidth;
         Canvas.SetLeft(overviewHead, Math.Clamp(overviewX, 0, Math.Max(0, frameWidth - 1.5)));
         for (var index = 0; index < overviewBadgeVisible.Length; index++)
             retained.Nodes[TimelineRetainedPool<object>.Layers + index].Visibility = overviewBadgeVisible[index] && Math.Abs(overviewBadgeLeft[index] + 9 - overviewX) > 14 ? Visibility.Visible : Visibility.Collapsed;

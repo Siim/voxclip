@@ -197,6 +197,16 @@ public sealed partial class MainWindow
         });
     }
 
+    private void SingleRecordingActionsLoaded(object sender, RoutedEventArgs args)
+    {
+        if (sender is not StackPanel host) return;
+        ObserveRecordingRows(host, (page, model) =>
+        {
+            host.Children.Clear();
+            if (!model.HasSeveralRecordings && model.RecordingCompanions.Count == 0) page.AddRecordingControl(host);
+        });
+    }
+
     private void ObserveRecordingRows(FrameworkElement host, Action<Pages.EditorPage, EditorViewModel> update)
     {
         if (editor is not { } page) return;

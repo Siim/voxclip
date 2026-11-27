@@ -328,7 +328,7 @@ public sealed class ShellViewModel
                     add.AccessibleName = add.Detail.Length == 0 ? add.Title : $"{add.Title}, {add.Detail}";
                     next.Add(add);
                 }
-                if (editor.HasTranscript)
+                if (editor.HasSeveralRecordings || editor.RecordingCompanions.Count > 0)
                 {
                     var recordings = Row(SidebarKind.Action, "action:recordings");
                     recordings.AccessibleName = "Outline recordings";

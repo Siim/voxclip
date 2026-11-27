@@ -64,4 +64,10 @@ internal sealed class TimelineEditSession(EditorViewModel model, string? scope)
         Reason = null;
         PreviewProject = Baseline;
     }
+
+    internal void Refuse(string reason)
+    {
+        Cancel();
+        Reason = reason;
+    }
 }

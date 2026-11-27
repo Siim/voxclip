@@ -5,13 +5,14 @@ using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.App.ViewModels;
 
 internal sealed record TimelinePartBand(ClipPartRow Part, TimeRange Range);
-internal sealed record TimelinePartSeam(double Position, double TakeTime, int PartNumber, bool Backward, string? Recording = null)
+internal sealed record TimelinePartSeam(double Position, double TakeTime, int PartNumber, bool Backward, string? Recording = null, bool UsesLocalClock = false)
 {
     internal const int Stroke = 3;
     internal int Width => Stroke;
-    internal string Label => Recording is { } label ? $"→ {label} {EditorViewModel.Duration(TakeTime)}" : $"{(Backward ? "↶" : "↷")} {EditorViewModel.Duration(TakeTime)}";
+    private string Time => UsesLocalClock ? EditorViewModel.RecordingTime(TakeTime) : EditorViewModel.Duration(TakeTime);
+    internal string Label => Recording is { } label ? $"→ {label} {Time}" : $"{(Backward ? "↶" : "↷")} {Time}";
     internal string Description => $"Seam to part {PartNumber}, " + (Recording is { } label ? $"recording {label} at " : $"jumps {(Backward ? "back" : "ahead")} to ") +
-        $"{EditorViewModel.Duration(TakeTime)}, fades over 5 ms";
+        $"{Time}, fades over 5 ms";
 }
 internal sealed record RecordingOverviewRow(ProjectClock.Region Recording, double Duration, IReadOnlyList<TimelinePartBand> Parts);
 
@@ -107,7 +108,8 @@ internal sealed class TimelineStory
     }
 
     private static TimelinePartSeam Seam(double position, double source, ClipPartRow part, ClipPartRow previous, double previousEnd) =>
-        new(position, source - part.RecordingOffset, part.Number, source < previousEnd, part.Recording != previous.Recording ? part.Recording?.Label : null);
+        new(position, source - part.RecordingOffset, part.Number, source < previousEnd,
+            part.Recording != previous.Recording ? part.Recording?.Label : null, part.UsesLocalClock);
 
     internal double Display(double source, bool closesCuts)
     {

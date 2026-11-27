@@ -419,7 +419,8 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateRewriteCommand()
     {
-        AutomationProperties.SetHelpText(RewriteCommand, ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : "");
+        var recordingReason = ViewModel.RecordingVoiceReason();
+        AutomationProperties.SetHelpText(RewriteCommand, recordingReason ?? (ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : ""));
         if (shellInitialized && shellJobs is not null)
         {
             RewriteCommand.Visibility = Visibility.Visible;
@@ -427,7 +428,7 @@ public sealed partial class EditorPage : Page
             return;
         }
         RewriteCommand.Visibility = Visibility.Visible;
-        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript && !ViewModel.IsStoryClip;
+        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript && !ViewModel.IsStoryClip && recordingReason is null;
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -668,7 +669,7 @@ public sealed partial class EditorPage : Page
     }
     private async Task OpenRewriteAsync(bool insertion, string? instruction = null, WholeClipIntent? wholeClipIntent = null)
     {
-        if (insertion || ViewModel.IsStoryClip ||
+        if (insertion || ViewModel.IsStoryClip || ViewModel.RecordingVoiceReason(wholeScope: wholeClipIntent is not null) is not null ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
 !ViewModel.HasTranscript) return;
         if (wholeClipIntent is { } existingIntent && rewrite is { IsOpen: true } existing && rewritePanel is { } existingPanel &&

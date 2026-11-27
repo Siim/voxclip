@@ -12,7 +12,7 @@ internal sealed record RecordingSection(int First, int Last, string? Heading);
 internal sealed record RecordingVersion(ProjectClock.Region Recording, string FirstId, string LastId,
     IReadOnlySet<string> ChangedWordIds, int Fillers, double Pause, double Start, double End)
 {
-    internal string Time => $"{EditorViewModel.Duration(Start)}–{EditorViewModel.Duration(End)}";
+    internal string Time => $"{EditorViewModel.RecordingTime(Start)}–{EditorViewModel.RecordingTime(End)}";
     internal string Delivery => FormattableString.Invariant($"{Fillers} {(Fillers == 1 ? "filler" : "fillers")} · {Pause:0.0} s pause · {End - Start:0.0} s");
 }
 
@@ -23,11 +23,15 @@ public sealed partial class EditorViewModel
     private ProjectClock? matchedRecordingClock;
     private TakeMatch.Result? recordingMatches;
     internal bool ShowsRecordingContext { get; private set; }
+    internal static string RecordingTime(double seconds) => Duration(Math.Floor(seconds));
 
     internal ProjectClock? RecordingClock => state?.ProjectClock;
     internal IReadOnlyList<ProjectClock.Region> RecordingRegions => RecordingClock?.Regions ?? [];
     internal bool HasSeveralRecordings => RecordingRegions.Count > 1;
     internal ProjectClock.Region? RecordingOf(int index) => index >= 0 && index < Words.Count ? RecordingClock?.RegionOf(Words[index].Id) : null;
+    internal string? RecordingGapReason(double sourceTime) => HasSeveralRecordings && RecordingClock is { } clock &&
+        clock.GuardGaps.Any(gap => sourceTime >= (double)gap.Start / clock.SampleRate && sourceTime < (double)gap.End / clock.SampleRate)
+        ? "Lands between recordings · move it onto a recording's words." : null;
     internal ProjectClock.Region? PartPickRecording => RecordingRegions.FirstOrDefault(region => region.Key == partPickKey);
     private ClipPartRow? PartInsertionAnchor => HasSeveralRecordings ? ClipParts.FirstOrDefault(part => part.Id == selectedPartId) : null;
     internal string ActiveClipLabel => ActiveClip is { } clip ? $"Clip {Number(clip.Id)}" : "";
@@ -127,7 +131,7 @@ public sealed partial class EditorViewModel
             }).ToArray();
         return clock.Regions.Where(region => bounds.ContainsKey(region.Key) && (choice.Kind == RecordingViewKind.All || region.Key == choice.Key))
             .Select(region => new RecordingSection(bounds[region.Key].First, bounds[region.Key].Last, choice.Kind == RecordingViewKind.All
-                ? $"{region.Label} · {Duration((double)region.DurationSamples / clock.SampleRate)}" : null)).ToArray();
+                ? $"{region.Label} · {RecordingTime((double)region.DurationSamples / clock.SampleRate)}" : null)).ToArray();
     }
 
     private void RefreshTranscriptParagraphs()
@@ -236,7 +240,7 @@ public sealed partial class EditorViewModel
                 start / rate < part.End && end / rate > part.Start);
         var lower = window?.WindowStartSample is { } startSample ? startSample / rate : part.Start;
         var upper = window?.WindowEndSample is { } endSample ? endSample / rate : part.End;
-        return $"Part {part.Number} is lip-synced at {Duration(lower)}–{Duration(upper)}. Using another version makes a copy, “{copy?.Title ?? name}”, and keeps the paid lip sync in {ActiveClipLabel}.";
+        return $"Part {part.Number} is lip-synced at {RecordingTime(lower)}–{RecordingTime(upper)}. Using another version makes a copy, “{copy?.Title ?? name}”, and keeps the paid lip sync in {ActiveClipLabel}.";
     }
 
     internal bool UseRecordingVersion(string partId, RecordingVersion version)
@@ -264,11 +268,21 @@ public sealed partial class EditorViewModel
         : RecordingRegions.Count >= 6 ? "A project can have up to six spoken recordings."
         : Busy ? "Finish the current job before adding a recording." : null;
 
-    internal string? RemoveRecordingReason(string key) => RecordingEdits.Apply(new RecordingEdit.RemoveSpokenSource(key), project) is RecordingEditResult.Refused refused
-        ? refused.Message : null;
+    internal string? RemoveRecordingReason(string key)
+    {
+        if (IsReadOnly || isLeaving) return "This project is read-only.";
+        if (RecordingEdits.Apply(new RecordingEdit.RemoveSpokenSource(key), project) is not RecordingEditResult.Refused refused) return null;
+        if (RecordingRegions.FirstOrDefault(region => region.Key == key) is not { } recording) return refused.Message;
+        foreach (var clip in project.Edits.Clips)
+        {
+            var count = clip.PlayParts.Count(part => RecordingClock?.RegionOf(part.StartWordId) == recording);
+            if (count == 1) return $"Clip {Number(clip.Id)} uses 1 part from {recording.Label}. Remove that part first.";
+            if (count > 1) return $"Clip {Number(clip.Id)} uses {count} parts from {recording.Label}. Remove those parts first.";
+        }
+        return refused.Message;
+    }
 
-    internal bool RemoveRecording(string key) => AddRecordingReason is null || RecordingRegions.Count >= 6
-        ? ApplyRecordingEdit(new RecordingEdit.RemoveSpokenSource(key)) : false;
+    internal bool RemoveRecording(string key) => !IsReadOnly && !isLeaving && !Busy && ApplyRecordingEdit(new RecordingEdit.RemoveSpokenSource(key));
 
     internal string[] ProposalRecordingReasons(ClipRange clip)
     {
@@ -282,18 +296,40 @@ public sealed partial class EditorViewModel
         }).OfType<string>().ToArray();
     }
 
-    internal bool AddSpokenRecording(MediaReference source, Transcript transcript)
+    internal Project WithRecordingReference(MediaReference source)
     {
-        if (IsReadOnly || isLeaving || !HasTranscript || RecordingRegions.Any(region => region.Key == source.ContentKey)) return false;
         var references = (project.Media.AdditionalSources ?? []).ToList();
         var existing = references.FindIndex(reference => reference.ContentKey == source.ContentKey);
         if (existing < 0) references.Add(source); else references[existing] = source;
-        var prepared = project with { Media = project.Media with { AdditionalSources = references } };
-        if (!ApplyRecordingEdit(new RecordingEdit.AddSpokenSource(source.ContentKey, transcript),
+        return project with { Media = project.Media with { AdditionalSources = references } };
+    }
+
+    internal bool AddSpokenRecording(MediaReference source, Transcript transcript, double? gainDb = null)
+    {
+        if (IsReadOnly || isLeaving || !HasTranscript || RecordingRegions.Count >= 6 || RecordingRegions.Any(region => region.Key == source.ContentKey)) return false;
+        var prepared = WithRecordingReference(source);
+        if (!ApplyRecordingEdit(new RecordingEdit.AddSpokenSource(source.ContentKey, transcript, GainDb: gainDb),
             announcement: $"Added recording {ProjectClock.Label(source)}", prepared: prepared)) return false;
         ChooseRecordingView(new(RecordingViewKind.Recording, source.ContentKey), announce: false);
         return true;
     }
+
+    internal ProjectClock.Region? RecordingVoiceRegion(string? clipId = null, bool wholeScope = false)
+    {
+        if (!HasSeveralRecordings || RecordingClock is not { } clock) return null;
+        if (!wholeScope && clipId is null && HasSelection)
+        {
+            var selected = Enumerable.Range(SelectionStart, SelectionEnd - SelectionStart + 1).Select(RecordingOf)
+                .FirstOrDefault(region => region is { Prefix.Length: > 0 });
+            if (selected is not null) return selected;
+        }
+        var clip = clipId is null ? ActiveClip : state?.Clips.FirstOrDefault(candidate => candidate.Id == clipId);
+        return clip is null && wholeScope ? clock.Regions[1] : clip?.PlayParts.Select(part => clock.RegionOf(part.StartWordId))
+            .FirstOrDefault(region => region is { Prefix.Length: > 0 });
+    }
+
+    internal string? RecordingVoiceReason(string? clipId = null, bool wholeScope = false) => RecordingVoiceRegion(clipId, wholeScope) is { } other
+        ? $"Voice changes work on {RecordingRegions[0].Label}'s words for now. Open {other.Label} on its own to change its voice." : null;
 
     internal bool LocateSpokenRecording(MediaReference previous, string path)
     {

@@ -393,6 +393,17 @@ public sealed partial class TimelineView
             // story's Source view it first stops at the story's end, so an overshoot lands on the last boundary.
             var sample = drag.Gesture == TimelineItemGesture.End ? 1 / drag.Session.Plan.SampleRate : 0;
             var displayed = ItemToScreen(anchor) + dx / scale;
+            if (!Edited && story is null && model.RecordingGapReason(displayed - sample) is { } gapReason && drag.Gesture is
+                TimelineItemGesture.Move or TimelineItemGesture.Duplicate or TimelineItemGesture.Start or TimelineItemGesture.End)
+            {
+                drag.Session.Refuse(gapReason);
+                gestureReadout = gapReason;
+                itemGuide = null;
+                itemFeedbackOrigin = position;
+                RedrawItems();
+                args.Handled = true;
+                return true;
+            }
             if (sample > 0 && !Edited && story is not null) displayed = Math.Min(displayed, AxisDuration);
             var delta = drag.Hit.Item.Lane != TimelineLane.V1 && intervals.Count > 0 && drag.Gesture is TimelineItemGesture.Move
                 or TimelineItemGesture.Duplicate or TimelineItemGesture.Start or TimelineItemGesture.End

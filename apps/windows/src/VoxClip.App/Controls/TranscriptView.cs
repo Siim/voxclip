@@ -48,7 +48,8 @@ public sealed partial class TranscriptView : UserControl
         }
     }
     public bool CorrectionOpen => inlineEditor is not null;
-    internal bool CanRewrite => RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true, IsStoryClip: false };
+    internal bool CanRewrite => RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true, IsStoryClip: false } &&
+        model.RecordingVoiceReason() is null;
     internal int InsertionAfterIndex => -1;
     internal void RequestRewrite()
     {
@@ -308,10 +309,11 @@ public sealed partial class TranscriptView : UserControl
         if (SelectionBarLayout.Below(top, bottom, ActualHeight, before, after) is not { } below) return;
         var cut = model.Words.Skip(model.SelectionStart).Take(model.SelectionEnd - model.SelectionStart + 1).Any(word => model.State!.CutWordIds.Contains(word.Id))
             || model.State!.Pauses.Any(pause => pause.AfterIndex >= model.SelectionStart && pause.AfterIndex < model.SelectionEnd && model.State.CutPauseIds.Contains(pause.Id));
+        selectionFlyout.AddRecordingPart = () => model.AddSelectionAsPart();
         selectionFlyout.Show(new(first.X, top, Math.Max(1, first.Width), bottom - top), below, keyboard, !model.IsReadOnly && !model.Busy,
             cut, RewriteRequested is not null, CanRewrite,
             model.Clips.FirstOrDefault(clip => clip.Clip.Parts is null && model.Index(clip.Clip.StartWordId) == model.SelectionStart && model.Index(clip.Clip.EndWordId) == model.SelectionEnd) is { } existing
-                ? $"Clip {existing.Number} already covers these words." : null, model.StoryVoice());
+                ? $"Clip {existing.Number} already covers these words." : null, model.StoryVoice(), model.RecordingPartSelectionTitle, model.AddPartHelp);
     }
 
     private void SelectionKeyDown(object sender, KeyRoutedEventArgs args)

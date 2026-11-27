@@ -54,13 +54,13 @@ internal sealed class TranscriptionDialog : InlineEditorJob
     private bool running;
     private bool preparing;
     private readonly MediaReference? recording;
-    private readonly Action<Transcript>? receiveRecording;
+    private readonly Func<Transcript, Task>? receiveRecording;
     private readonly Action<string>? recordingProgress;
     private MediaReference Source => recording ?? baseline.Project.Media.Source;
     private bool ReplacesTranscript => recording is null && model.HasTranscript;
 
     internal TranscriptionDialog(MainWindow owner, EditorViewModel model, MediaReference? recording = null, bool local = false,
-        Action<Transcript>? receiveRecording = null, Action<string>? recordingProgress = null) : base(model)
+        Func<Transcript, Task>? receiveRecording = null, Action<string>? recordingProgress = null) : base(model)
     {
         JobLabel = "Transcribe";
         baseline = new(model);
@@ -449,7 +449,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel);
                 if (announcements.Update(step, fraction, !local) is { } text) Ui.Announce(notice, text, "transcription");
                 recordingProgress?.Invoke((local ? "Transcribing on this PC" : "Transcribing with ElevenLabs") +
-                    (fraction is { } amount ? $" · {amount:P0}" : ""));
+                    (fraction is { } amount ? $" · {Math.Round(amount * 100)}%" : ""));
             }
             try
             {
@@ -567,8 +567,9 @@ internal sealed class TranscriptionDialog : InlineEditorJob
 
     private async Task ReceiveAsync(Transcript transcript)
     {
-        if (receiveRecording is null) model.SetTranscript(transcript);
-        else receiveRecording(transcript);
         await RecordingTranscriptCache.WriteAsync(Source.ContentKey, transcript);
+        if (!baseline.IsCurrent) return;
+        if (receiveRecording is null) model.SetTranscript(transcript);
+        else await receiveRecording(transcript);
     }
 }

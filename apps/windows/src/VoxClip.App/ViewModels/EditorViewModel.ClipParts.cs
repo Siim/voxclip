@@ -4,10 +4,11 @@ using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.App.ViewModels;
 
 internal sealed record ClipPartRow(ClipPart Part, int Number, int First, int Last, string Excerpt, double Start, double End,
-    ProjectClock.Region? Recording = null, double RecordingOffset = 0, bool RecordingShade = false)
+    ProjectClock.Region? Recording = null, double RecordingOffset = 0, bool RecordingShade = false, bool UsesLocalClock = false)
 {
     internal string Id => Part.Id;
-    internal string TakeTime => $"{EditorViewModel.Duration(Start - RecordingOffset)}–{EditorViewModel.Duration(End - RecordingOffset)}";
+    internal string TakeTime => $"{LocalTime(Start)}–{LocalTime(End)}";
+    internal string LocalTime(double seconds) => UsesLocalClock ? EditorViewModel.RecordingTime(seconds - RecordingOffset) : EditorViewModel.Duration(seconds);
 }
 
 internal sealed record StoryVoiceActions(string RewriteReason, string LipSyncReason, string MakeSelected, string MakeAll,
@@ -57,7 +58,8 @@ public sealed partial class EditorViewModel
             estimate = WholeClipRevoice.PriceFor(VoiceLabTextLength.Length(script), VoiceLabWordingFit.ModelId,
                 length, WholeClipLipsyncValues.Standard, prices);
         }
-        return new(StoryRewriteReason, $"Lip sync can't run across the {parts.Count - 1} seams of a story clip yet. Make a clip of the part first.",
+        var recordingReason = RecordingVoiceReason(clip.Id, wholeScope: true);
+        return new(recordingReason ?? StoryRewriteReason, recordingReason ?? $"Lip sync can't run across the {parts.Count - 1} seams of a story clip yet. Make a clip of the part first.",
             $"Make Clip of Part {number}", $"Make Clips of All {parts.Count} Parts", estimate?.Usd, estimate?.Lipsync.Usd);
     }
 
@@ -77,7 +79,7 @@ public sealed partial class EditorViewModel
             previous = recording;
             return first < 0 || last < first ? null : new ClipPartRow(part, index + 1, first, last,
                 string.Join(" ", Words.Skip(first).Take(Math.Min(8, last - first + 1)).Select(DisplayText)), Words[first].Start, Words[last].End,
-                recording, recording is null ? 0 : (double)recording.OffsetSamples / RecordingClock!.SampleRate, shade);
+                recording, recording is null ? 0 : (double)recording.OffsetSamples / RecordingClock!.SampleRate, shade, HasSeveralRecordings);
         }).OfType<ClipPartRow>().ToArray() ?? [];
         if (ClipParts.All(part => part.Id != selectedPartId)) selectedPartId = null;
     }

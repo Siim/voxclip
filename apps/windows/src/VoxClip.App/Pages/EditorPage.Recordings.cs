@@ -7,6 +7,8 @@ using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
+using VoxClip.Media.Audio;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -18,12 +20,12 @@ public sealed partial class EditorPage
     private static readonly string[] RecordingExtensions = [".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi"];
     private Button? pickAdd;
     private TextBlock? pickReason;
-    private Button? selectionAdd;
-    private TextBlock? selectionAddReason;
+    private StackPanel? recordingVoiceNotice;
     private MediaReference? pendingRecording;
     private TranscriptionDialog? recordingTranscription;
     private bool readingRecording;
     private string? recordingProgress;
+    private TextBlock? recordingProgressText;
 
     private string? RecordingImportReason => readingRecording || pendingRecording is not null
         ? "Finish or cancel the recording you're adding first." : ViewModel.AddRecordingReason;
@@ -35,6 +37,7 @@ public sealed partial class EditorPage
         var scroll = new ScrollViewer { Content = chips, HorizontalScrollMode = ScrollMode.Enabled,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
         SelectorBar.Children.Clear();
+        recordingProgressText = null;
         SelectorBar.Children.Add(scroll);
         var scope = ViewModel.TranscriptRecordingView;
         if (ViewModel.StoryRecordingRegions.Count > 1)
@@ -43,7 +46,7 @@ public sealed partial class EditorPage
         {
             foreach (var (region, index) in ViewModel.RecordingRegions.Select((region, index) => (region, index)))
             {
-                var duration = EditorViewModel.Duration((double)region.DurationSamples / ViewModel.RecordingClock!.SampleRate);
+                var duration = EditorViewModel.RecordingTime((double)region.DurationSamples / ViewModel.RecordingClock!.SampleRate);
                 var status = region.GainDb == 0 ? "Transcribed" : FormattableString.Invariant(
                     $"{(region.GainDb < 0 ? "−" : "+")}{Math.Abs(region.GainDb):0.0} dB to match {ViewModel.RecordingRegions[0].Label}");
                 Chip(new(RecordingViewKind.Recording, region.Key), $"{region.Label} · {duration} · {status}", region, $"Recording {region.Label}, {index + 1} of {ViewModel.RecordingRegions.Count}, transcribed");
@@ -59,7 +62,8 @@ public sealed partial class EditorPage
         }
         if (pendingRecording is { } pending)
         {
-            chips.Children.Add(Ui.Text($"{ProjectClock.Label(pending)} · {recordingProgress ?? "Not transcribed"}"));
+            recordingProgressText = Ui.Text($"{ProjectClock.Label(pending)} · {recordingProgress ?? "Not transcribed"}");
+            chips.Children.Add(recordingProgressText);
             var cancel = Ui.Button("Cancel", () => recordingTranscription?.RequestClose());
             chips.Children.Add(cancel);
         }
@@ -67,8 +71,6 @@ public sealed partial class EditorPage
         AddRecordingControl(SelectorBar);
         pickAdd = null;
         pickReason = null;
-        selectionAdd = null;
-        selectionAddReason = null;
         if (ViewModel.PartPickPrompt is { } prompt)
         {
             var strip = new StackPanel { Spacing = 4 };
@@ -82,17 +84,10 @@ public sealed partial class EditorPage
             strip.Children.Add(pickReason);
             SelectorBar.Children.Add(strip);
         }
-        else if (ViewModel.HasSeveralRecordings && ViewModel.ActiveClip is not null)
-        {
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            selectionAdd = Ui.Button("", () => ViewModel.AddSelectionAsPart());
-            actions.Children.Add(selectionAdd);
-            selectionAddReason = Ui.Text("", "HelperText");
-            actions.Children.Add(selectionAddReason);
-            SelectorBar.Children.Add(actions);
-            if (scope.Kind == RecordingViewKind.PlayOrder)
-                SelectorBar.Children.Add(Ui.Button(ViewModel.ShowsRecordingContext ? "Hide surrounding context" : "Show surrounding context", ViewModel.ToggleRecordingContext));
-        }
+        else if (scope.Kind == RecordingViewKind.PlayOrder)
+            SelectorBar.Children.Add(Ui.Button(ViewModel.ShowsRecordingContext ? "Hide surrounding context" : "Show surrounding context", ViewModel.ToggleRecordingContext));
+        recordingVoiceNotice = new StackPanel { Spacing = 3 };
+        SelectorBar.Children.Add(recordingVoiceNotice);
         RefreshRecordingSelection();
 
         void Chip(RecordingView choice, string title, ProjectClock.Region? region = null, string? accessible = null)
@@ -107,18 +102,24 @@ public sealed partial class EditorPage
     private void RefreshRecordingSelection()
     {
         if (pickAdd is not null && pickReason is not null)
-            Update(pickAdd, pickReason, $"Add as Part {ViewModel.RecordingPartNumber}");
-        if (selectionAdd is not null && selectionAddReason is not null)
-            Update(selectionAdd, selectionAddReason, ViewModel.RecordingPartSelectionTitle);
-
-        void Update(Button button, TextBlock reason, string? label)
         {
-            button.Content = label ?? "";
-            button.Visibility = label is null ? Visibility.Collapsed : Visibility.Visible;
-            button.IsEnabled = ViewModel.CanAddPart;
-            reason.Text = label is null ? "" : ViewModel.AddPartHelp;
-            reason.Visibility = reason.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-            AutomationProperties.SetHelpText(button, reason.Text);
+            pickAdd.Content = $"Add as Part {ViewModel.RecordingPartNumber}";
+            pickAdd.IsEnabled = ViewModel.CanAddPart;
+            pickReason.Text = ViewModel.AddPartHelp;
+            pickReason.Visibility = pickReason.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+            AutomationProperties.SetHelpText(pickAdd, pickReason.Text);
+        }
+        if (recordingVoiceNotice is not null)
+        {
+            recordingVoiceNotice.Children.Clear();
+            if (ViewModel.RecordingVoiceRegion() is { } region && ViewModel.RecordingVoiceReason() is { } reason &&
+                ViewModel.RecordingReference(region.Key) is { } source)
+            {
+                recordingVoiceNotice.Children.Add(Ui.Text(reason, "HelperText"));
+                var open = Ui.Button($"Open {region.Label}", () => _ = RunAsync(() => owner.OpenPathAsync(RecordingPath(source), ShellPath.ImportVideo), "Open recording"));
+                open.IsEnabled = File.Exists(RecordingPath(source));
+                recordingVoiceNotice.Children.Add(open);
+            }
         }
     }
 
@@ -232,16 +233,20 @@ public sealed partial class EditorPage
             if (companion is not null && companion.ContentKey != key) throw new InvalidOperationException("Choose the original recording.");
             var source = companion ?? ProjectFactory.Create(path, info, key).Media.Source;
             source = source with { AbsolutePath = path, Video = info.Video, Audio = info.Audio, DurationSeconds = info.DurationSeconds };
-            if (await RecordingTranscriptCache.ReadAsync(key, token) is { } cached && ViewModel.AddSpokenRecording(source, cached))
+            if (await RecordingTranscriptCache.ReadAsync(key, token) is { } cached && await CommitAsync(cached))
             {
                 RevealRecordingStart();
                 return;
             }
             pendingRecording = source;
-            var job = new TranscriptionDialog(owner, ViewModel, source, local, transcript =>
+            var job = new TranscriptionDialog(owner, ViewModel, source, local, async transcript =>
             {
-                if (ViewModel.AddSpokenRecording(source, transcript)) RevealRecordingStart();
-            }, progress => { recordingProgress = progress; RefreshSelectorBar(); });
+                if (await CommitAsync(transcript)) RevealRecordingStart();
+            }, progress =>
+            {
+                recordingProgress = progress;
+                if (recordingProgressText is not null) recordingProgressText.Text = $"{ProjectClock.Label(source)} · {progress}";
+            });
             recordingTranscription = job;
             job.Dismissed += (_, _) =>
             {
@@ -251,6 +256,14 @@ public sealed partial class EditorPage
                 RefreshSelectorBar();
             };
             await job.ShowAsync();
+
+            async Task<bool> CommitAsync(Transcript transcript)
+            {
+                var prepared = ViewModel.WithRecordingReference(source);
+                var command = await RecordingLevelMatch.MatchOnAddAsync(prepared, new(key, transcript), App.Services.Projects,
+                    owner.ProjectPath ?? path, token);
+                return !disposed && ViewModel.AddSpokenRecording(source, transcript, command.GainDb);
+            }
         }
         finally
         {

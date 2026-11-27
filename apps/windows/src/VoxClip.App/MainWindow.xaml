@@ -106,6 +106,10 @@
                     </Grid>
                 </ContentControl>
             </DataTemplate>
+            <DataTemplate x:Key="PartReasonLine">
+                <TextBlock Text="{Binding}" ToolTipService.ToolTip="{Binding}" AutomationProperties.Name="{Binding}"
+                    Foreground="{ThemeResource VcTextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+            </DataTemplate>
             <DataTemplate x:Key="SuggestionRow" x:DataType="vm:SidebarRow">
                 <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" MinHeight="28" Tag="{x:Bind ClipId}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
                     KeyboardAcceleratorPlacementMode="Hidden" Loaded="ScopeRowKeys" PointerEntered="ClipRowPointerEntered" PointerExited="ClipRowPointerExited">
@@ -152,12 +156,7 @@
                                 </StackPanel>
                             </Grid>
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Visibility="{x:Bind HasMetaStatus, Mode=OneWay}"><Run Text="{x:Bind MetaLine, Mode=OneWay}"/></TextBlock>
-                            <ItemsControl ItemsSource="{x:Bind RecordingReasons, Mode=OneWay}">
-                                <ItemsControl.ItemTemplate><DataTemplate>
-                                    <TextBlock Text="{Binding}" ToolTipService.ToolTip="{Binding}" AutomationProperties.Name="{Binding}"
-                                        Foreground="{ThemeResource VcTextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
-                                </DataTemplate></ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <ItemsControl ItemsSource="{x:Bind RecordingReasons, Mode=OneWay}" ItemTemplate="{StaticResource PartReasonLine}"/>
                         </StackPanel>
                         <!-- Keep and Dismiss: 32x32 subtle icon buttons that never select the row. -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -277,6 +276,7 @@
                     <Button Content="{x:Bind Title}" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" Click="AddPartClicked" Tapped="RowButtonTapped" Style="{ThemeResource SubtleButtonStyle}"
                         AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}"/>
                     <TextBlock Text="{x:Bind Detail, Mode=OneWay}" TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
+                    <StackPanel Loaded="SingleRecordingActionsLoaded" Spacing="3"/>
                 </StackPanel>
             </DataTemplate>
             <DataTemplate x:Key="RecordingActionsRow" x:DataType="vm:SidebarRow">
