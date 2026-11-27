@@ -36,6 +36,18 @@ public static class TakeMatch
     private static readonly string[][] RestartTokens = RestartPhrases.Values.SelectMany(phrases => phrases)
         .Select(phrase => phrase.Split(' ')).ToArray();
 
+    public static Result Build(ProjectClock clock)
+    {
+        if (clock.Regions.Count == 1) return Build([(clock.Regions[0].Key, clock.Words)]);
+        var byRegion = clock.Words.ToLookup(word => clock.RegionOf(word.Id)?.Key);
+        return Build(clock.Regions.Select(region => (region.Key, (IReadOnlyList<TimedWord>)byRegion[region.Key].Select(word =>
+            region.OffsetSamples == 0 ? word : word with
+            {
+                Start = (Math.Floor(word.Start * clock.SampleRate + 0.5) - region.OffsetSamples) / clock.SampleRate,
+                End = (Math.Floor(word.End * clock.SampleRate + 0.5) - region.OffsetSamples) / clock.SampleRate,
+            }).ToArray())).ToArray());
+    }
+
     public static Result Build(IReadOnlyList<(string Key, IReadOnlyList<TimedWord> Words)> recordings)
     {
         var sentences = new List<Sentence>();

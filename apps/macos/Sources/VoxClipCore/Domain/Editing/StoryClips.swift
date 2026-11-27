@@ -95,7 +95,11 @@ enum StoryClips {
 
     static func validatePlacement(_ clip: ClipRange, project: Project, words: [TimedWord]) throws {
         let spans = times(clip, words: words)
-        if let refusal = lipsyncRefusal(spans, windows: lipsyncWindows(project)) {
+        var windows = lipsyncWindows(project)
+        if RecordingEdits.isRecordingCopy(clip.id, project: project) {
+            windows = windows.filter { window in spans.contains { contains($0, window) } }
+        }
+        if let refusal = lipsyncRefusal(spans, windows: windows) {
             throw VoxClipError.projectUnreadable(refusal)
         }
         guard project.schemaVersion < TimelineEditFields.version else { return }

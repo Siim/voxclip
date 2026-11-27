@@ -122,8 +122,12 @@ public static class VoiceLabOutputPlanner
             if (part is not null) state = state with { Clips = [part] };
             clipRange = EditingPlanner.ScopedClipTimes(state, ranges[0].Start, ranges[0].End, clip.LeadInSeconds);
         }
+        var recordingCopy = scope.ClipId is { } currentId && RecordingEdits.IsRecordingCopy(currentId, project);
         var enabled = project.VoiceLab.Segments.Where(segment => segment.Enabled &&
-            (clipRange is null || (part is not null
+            (clipRange is null || (!recordingCopy ||
+                segment.Candidates[segment.SelectedCandidateIndex].Recipe?.Video is not { Mode: VoiceLabVideoMode.Lipsync, WindowStartSample: { } start, WindowEndSample: { } end } ||
+                grid.Sample(clipRange.Value.Start) <= start && grid.Sample(clipRange.Value.End) >= end)) &&
+            (clipRange is null || (part is not null || recordingCopy
                 ? grid.Contains(clipRange.Value.Start, clipRange.Value.End, segment.Replace.Start, segment.Replace.End)
                 : grid.Sample(segment.Replace.End) > grid.Sample(clipRange.Value.Start) && grid.Sample(segment.Replace.Start) < grid.Sample(clipRange.Value.End))))
             .OrderBy(segment => segment.Replace.Start).ToArray();
