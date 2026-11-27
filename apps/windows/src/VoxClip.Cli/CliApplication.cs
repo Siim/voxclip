@@ -228,7 +228,7 @@ internal static class CliApplication
         Stub(caption, "render-caption");
         var clips = Command(root, "find-clips", "Find clips without modifying the project.");
         Add(clips, "--open", "Project path.", true);
-        Choice(clips, "--preset", "Prompt preset.", "best", "hooks", "topics", "quotes", "custom").Required = true;
+        Choice(clips, "--preset", "Prompt preset.", "best", "hooks", "topics", "quotes", "bestTakes", "custom").Required = true;
         Add(clips, "--instruction", "Custom instruction (never logged).");
         Add(clips, "--connector", "Connector catalog id.", true);
         Add(clips, "--model", "Model id.");

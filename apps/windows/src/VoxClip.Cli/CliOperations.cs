@@ -459,11 +459,12 @@ internal static class CliOperations
         var connector = Connector(Required(arguments, "--connector"));
         var model = arguments.GetValue<string?>("--model") ?? await DefaultModelAsync(connector, ct).ConfigureAwait(false);
         var preset = Enum.Parse<ClipPreset>(Required(arguments, "--preset"), true);
+        var clock = preset == ClipPreset.BestTakes ? ProjectClock.Build(project) : null;
         var finder = await AiMergeAdapter.CreateClipFinderAsync(ct).ConfigureAwait(false);
         var dryRun = arguments.GetValue<bool>("--dry-run");
-        var result = await finder.FindClipsAsync(new(project.Transcript.Words, project.Edits.Corrections,
+        var result = await finder.FindClipsAsync(new(clock?.Words ?? project.Transcript.Words, project.Edits.Corrections,
             project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal), preset, arguments.GetValue<string?>("--instruction"), project.Transcript.Language,
-            connector, model, !arguments.GetValue<bool>("--no-snap"), dryRun),
+            connector, model, !arguments.GetValue<bool>("--no-snap"), dryRun, clock is null ? null : RecordingProposalContext.Create(clock)),
             Progress<ClipFinderProgress>(arguments, value => (value.Stage, value.Fraction)), ct).ConfigureAwait(false);
         if (dryRun)
         {

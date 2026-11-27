@@ -16,3 +16,4 @@ hand when the CLI contract changes, with the reason recorded here and in AI §10
 The initial cases pin architecture §9's flattened object convention, including
 explicit null instructions/language, an empty clip list, and rendered dry-run prompts.
 The canonical media E2E fixtures and their ten-report comparison remain unchanged.
+`bestTakesDryRun` also pins the recording and take blocks from both spoken recordings.
