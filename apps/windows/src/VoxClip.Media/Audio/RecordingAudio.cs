@@ -1,5 +1,6 @@
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
+using VoxClip.Media.Pipeline;
 using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.Media.Audio;
@@ -27,7 +28,8 @@ internal sealed class RecordingAudio(ComposeSnapshot snapshot, int rate) : IVoic
         var key = recording?.ContentKey ?? "";
         if (!inputs.TryGetValue(key, out var input))
         {
-            var decoder = new AudioDecoder(recording?.Path ?? snapshot.Media.Path, 2, recording is null ? null : rate);
+            var decoder = new AudioDecoder(recording is null ? snapshot.Media.Path : RecordingRendering.RequirePath(recording), 2,
+                recording is null ? null : rate);
             if (decoder.SampleRate != rate)
             {
                 decoder.Dispose();

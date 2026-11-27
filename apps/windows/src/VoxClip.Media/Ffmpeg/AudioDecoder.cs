@@ -21,10 +21,10 @@ internal sealed unsafe class AudioDecoder : IDisposable
     internal long PacketsRead => decoder.PacketsRead;
     internal long BytesRead => decoder.BytesRead;
 
-    internal AudioDecoder(string path, int channels = 0)
+    internal AudioDecoder(string path, int channels = 0, int? sampleRate = null)
     {
         decoder = new(path, AVMediaType.AVMEDIA_TYPE_AUDIO);
-        SampleRate = decoder.Codec->sample_rate;
+        SampleRate = sampleRate ?? decoder.Codec->sample_rate;
         Channels = channels == 0 ? decoder.Codec->ch_layout.nb_channels : channels;
     }
 
@@ -68,7 +68,24 @@ internal sealed unsafe class AudioDecoder : IDisposable
 
     private bool Next(CancellationToken ct)
     {
-        if (ended || !decoder.Next(ct)) { ended = true; return false; }
+        if (ended) return false;
+        if (!decoder.Next(ct))
+        {
+            ended = true;
+            if (resample is null || inputRate == SampleRate || nextSample is not { } end) return false;
+            var context = (SwrContext*)resample.Pointer;
+            var remaining = ffmpeg.swr_get_out_samples(context, 0);
+            Native.Check(remaining, "Size the audio conversion tail");
+            if (chunk.Length < remaining * Channels) chunk = new float[remaining * Channels];
+            fixed (float* samples = chunk)
+            {
+                var destination = (byte*)samples;
+                chunkFrames = ffmpeg.swr_convert(context, &destination, remaining, null, 0);
+                Native.Check(chunkFrames, "Drain audio conversion");
+            }
+            chunkStart = end;
+            return chunkFrames > 0;
+        }
         var frame = decoder.Frame;
         if (frame->ch_layout.nb_channels <= 0 || frame->sample_rate <= 0 || frame->nb_samples < 0 || frame->extended_data == null)
             throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: an audio frame cannot be converted. Your edits are saved.");
@@ -97,15 +114,18 @@ internal sealed unsafe class AudioDecoder : IDisposable
             }
             finally { ffmpeg.av_channel_layout_uninit(&layout); }
         }
-        var capacity = frame->nb_samples + 256;
+        var converter = (SwrContext*)resample.Pointer;
+        var capacity = ffmpeg.swr_get_out_samples(converter, frame->nb_samples);
+        Native.Check(capacity, "Size the audio conversion");
+        var delay = inputRate == SampleRate ? 0 : ffmpeg.swr_get_delay(converter, SampleRate);
         if (chunk.Length < capacity * Channels) chunk = new float[capacity * Channels];
         fixed (float* samples = chunk)
         {
             var destination = (byte*)samples;
-            chunkFrames = ffmpeg.swr_convert((SwrContext*)resample.Pointer, &destination, capacity, frame->extended_data, frame->nb_samples);
+            chunkFrames = ffmpeg.swr_convert(converter, &destination, capacity, frame->extended_data, frame->nb_samples);
             Native.Check(chunkFrames, "Convert audio samples");
         }
-        var timestamp = Native.Round(decoder.Timestamp * SampleRate);
+        var timestamp = Native.Round(decoder.Timestamp * SampleRate) - delay;
         var tolerance = Math.Max(1, (long)Math.Ceiling(ffmpeg.av_q2d(decoder.Stream->time_base) * SampleRate));
         chunkStart = nextSample is { } expected && Math.Abs(timestamp - expected) <= tolerance ? expected : timestamp;
         nextSample = chunkStart + chunkFrames;

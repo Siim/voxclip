@@ -195,7 +195,8 @@ public sealed class FrameComposer : IFrameComposer
     {
         ct.ThrowIfCancellationRequested();
         Validate(decoded); Validate(output);
-        var rotation = renderedVoicePicture ? 0 : snapshot.Media.Video?.RotationDegrees ?? 0;
+        var rotation = renderedVoicePicture ? 0 : snapshot.RecordingAtTime(snapshot.Timeline.SourceTime(editedTime))?.RotationDegrees
+            ?? snapshot.Media.Video?.RotationDegrees ?? 0;
         var controls = snapshot.Clip?.Controls;
         byte[]? oriented = null;
         byte[]? turned = null;

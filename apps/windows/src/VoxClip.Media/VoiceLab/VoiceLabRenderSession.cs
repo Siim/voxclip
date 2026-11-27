@@ -101,4 +101,3 @@ internal static class VoiceLabTempo
     // The permanent nonunity refusal (voice-lab.md §10.5). It stays until a later ADR adopts a micro-stretch (§8.9.5).
     internal static void RefuseNonunityFit() => throw new VoiceLabTempoException();
 }
-

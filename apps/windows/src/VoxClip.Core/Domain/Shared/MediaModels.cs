@@ -149,7 +149,7 @@ public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsR
         var music = MusicRenderInput.Resolve(project, clipId, dataRoot);
         var motion = ContextDemo.MotionCueRendering.For(project, clipId);
         (TimeRange Source, ReframeSettings Reframe)[] reframes = [];
-        if (clipId is not null && project.Transcript is { } transcript &&
+        if (clipId is not null && ProjectClock.Build(project).Transcript is { } transcript &&
             project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { Parts: { } parts } story)
             reframes = StoryClips.Times(story, transcript.Words).Zip(parts)
                 .Where(pair => pair.Second.Reframe is not null).Select(pair => (pair.First, pair.Second.Reframe!)).ToArray();

@@ -298,6 +298,7 @@ public sealed partial class EditorPage : Page
                 state.Transcript.Language, voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
         var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = voice?.CaptureSnapshot(snapshot) ?? snapshot;
+        snapshot = await RecordingRendering.BindAsync(project, snapshot, App.Services.Projects, owner.ProjectPath ?? source.Path, ct);
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md, design §6.9).
         return snapshot with
         {
