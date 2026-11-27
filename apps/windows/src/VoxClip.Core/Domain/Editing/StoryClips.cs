@@ -27,7 +27,7 @@ internal static class StoryClips
     {
         if (clip.Parts is not { } parts) return clip.Kind is null;
         return parts.Count is >= 2 and <= 12 && parts.Select(part => part.Id).Distinct(StringComparer.Ordinal).Count() == parts.Count &&
-            parts.All(part => PartId.IsMatch(part.Id) && (part.Reframe is null ||
+            parts.All(part => PartId.IsMatch(part.Id) && (part.TakeReason?.EnumerateRunes().Count() ?? 0) <= 200 && (part.Reframe is null ||
                 part.Reframe is { Mode: ReframeSettings.FaceMode, Zoom: 1, CenterX: >= 0 and <= 1, CenterY: >= 0 and <= 1 })) &&
             clip.PlayPartIndices(words) is { } ranges && clip.StartWordId == words[ranges.Min(range => range.Start)].Id &&
             clip.EndWordId == words[ranges.Max(range => range.End)].Id;
@@ -48,19 +48,26 @@ internal static class StoryClips
 
     internal static void Validate(Project project)
     {
-        var words = project.Transcript?.Words ?? [];
+        var clock = ProjectClock.Build(project);
+        var words = clock.Words;
         Require(project.SchemaVersion >= TimelineEditFields.Version || (project.SchemaVersion == 5) == project.Edits.Clips.Any(clip => clip.Parts is not null), "Invalid story clip project version.");
         foreach (var clip in project.Edits.Clips)
         {
             Require(Valid(clip, words), "Invalid story clip parts or source hull.");
+            if (clock.Regions.Count > 1)
+                Require(clip.PlayParts.All(part => clock.ContainsRange(part.StartWordId, part.EndWordId)), "A part comes from one recording.");
             if (clip.Parts is not null) ValidatePlacement(clip, project, words);
         }
         foreach (var clip in project.Ai.Results.SelectMany(result => result.Clips))
         {
             Require(clip.NotInTake is null || clip.NotInTake.EnumerateRunes().Count() <= 200, "Invalid missing-from-take note.");
             if (clip.Parts is { } parts)
+            {
                 Require(parts.Count is >= 2 and <= 12 && Indices(parts.Select(part => (part.StartWordId, part.EndWordId)), words) is not null,
                     "Invalid AI clip parts.");
+                if (clock.Regions.Count > 1)
+                    Require(parts.All(part => clock.ContainsRange(part.StartWordId, part.EndWordId)), "A part comes from one recording.");
+            }
         }
     }
 

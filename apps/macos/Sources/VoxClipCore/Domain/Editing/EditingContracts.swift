@@ -175,6 +175,7 @@ public struct TimeRange: Codable, Sendable, Equatable {
 
 /// Reducer state; editing §2.5. ProjectEdits is the serialized subset.
 public struct EditState: Codable, Sendable, Equatable {
+    public internal(set) var projectClock: ProjectClock? = nil
     /// transcript; Reducer state; editing §2.5. ProjectEdits is the serialized subset.
     public var transcript: Transcript
     /// pauses; Reducer state; editing §2.5. ProjectEdits is the serialized subset.
@@ -245,6 +246,16 @@ public struct EditState: Codable, Sendable, Equatable {
         try values.encode(self.activeClipId, forKey: .activeClipId)
     }
 
+}
+
+public enum RecordingEdit: Sendable {
+    case addSpokenSource(key: String, label: String? = nil, transcript: Transcript, gainDb: Double? = nil)
+    case removeSpokenSource(key: String)
+    case addPart(clipId: String, part: ClipPart, afterPartId: String? = nil)
+    case movePart(clipId: String, partId: String, afterPartId: String?)
+    case removePart(clipId: String, partId: String)
+    case trimPart(clipId: String, partId: String, startWordId: String, endWordId: String)
+    case swapTake(clipId: String, partId: String, startWordId: String, endWordId: String, takeReason: String? = nil)
 }
 
 /// Explicit segment identity; editing §2.6. Never infer it from IDs.

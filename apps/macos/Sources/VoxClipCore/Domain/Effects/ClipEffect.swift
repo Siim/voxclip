@@ -369,7 +369,7 @@ public enum ClipEffects {
         guard effects.count <= ClipEffect.maximumEntries else { throw ClipEffectError.invalidEntry("too many effects") }
         guard Set(effects.map(\.id)).count == effects.count else { throw ClipEffectError.invalidEntry("duplicate id") }
         let clips = Set(project.edits.clips.map(\.id))
-        let words = Set(project.transcript?.words.map(\.id) ?? [])
+        let words = Set(ProjectClock.build(project).words.map(\.id))
         let timelineEdits = project.schemaVersion >= TimelineEditFields.version
         for effect in effects {
             guard timelineEdits || !effect.usesTimelineEditFields else { throw ClipEffectError.unsupportedVersion }

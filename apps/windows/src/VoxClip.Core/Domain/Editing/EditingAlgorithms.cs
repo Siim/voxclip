@@ -238,10 +238,12 @@ public static partial class EditingAlgorithms
         for (var index = 0; index + 1 < words.Count; index++)
         {
             var duration = words[index + 1].Start - words[index].End;
-            if (duration >= threshold) result.Add(new("pause-after-" + words[index].Id, index, words[index].End, words[index + 1].Start, duration, "pause " + EditingFormat.ToFixed1(duration) + "s"));
+            if (duration >= threshold) result.Add(new(PauseId(words[index].Id), index, words[index].End, words[index + 1].Start, duration, "pause " + EditingFormat.ToFixed1(duration) + "s"));
         }
         return result;
     }
+
+    internal static string PauseId(string wordId) => "pause-after-" + wordId;
 
     /// <summary>Resolve inclusive clip indices with half-gap lead/tail padding, editing §7.2. A clip's opening lead-in (ADR-R48
     /// part 2) moves the start earlier, down to <see cref="ClipLeadInFloor"/>; twin of the Mac <c>clipTimes</c>.</summary>

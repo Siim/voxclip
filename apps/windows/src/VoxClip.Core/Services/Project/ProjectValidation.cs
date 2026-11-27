@@ -20,15 +20,16 @@ internal static class ProjectValidation
         var root = document.RootElement;
         RejectDuplicateKeys(root);
         Require(root.ValueKind == JsonValueKind.Object);
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > TimelineEditFields.Version)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > ProjectSerialization.CurrentVersion)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         var schemaVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var supported) ? supported : 0;
         var supportsContext = schemaVersion >= 4;
         var supportsStories = schemaVersion >= 5;
         var supportsTimelineEdits = schemaVersion >= TimelineEditFields.Version;
+        var supportsSpokenSources = schemaVersion == ProjectSerialization.CurrentVersion;
         Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""));
         String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, TimelineEditFields.Version, true);
+        Number(root.GetProperty("schemaVersion"), 1, ProjectSerialization.CurrentVersion, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
@@ -36,11 +37,26 @@ internal static class ProjectValidation
         var saved = root.GetProperty("savedBy");
         Object(saved, "app version platform"); String(saved.GetProperty("app"), "VoxClip");
         String(saved.GetProperty("version"), "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?"); Choice(saved.GetProperty("platform"), "macos", "windows");
-        var media = root.GetProperty("media"); Object(media, "source", supportsContext ? "additionalSources footage" : "");
+        var media = root.GetProperty("media"); Object(media, supportsSpokenSources ? "source spokenSources" : "source", supportsContext ? "additionalSources footage" : "");
+        if (supportsSpokenSources)
+        {
+            var spoken = media.GetProperty("spokenSources");
+            Array(spoken, item =>
+            {
+                Object(item, "sourceKey offsetSeconds wordIdPrefix transcript", "gainDb label");
+                String(item.GetProperty("sourceKey"), Hash);
+                Number(item.GetProperty("offsetSeconds"), 1, int.MaxValue, true);
+                if (item.TryGetProperty("label", out var label)) Text(label, 0, 24);
+                if (item.TryGetProperty("gainDb", out var gain)) Number(gain, -12, 12);
+                Transcript(item.GetProperty("transcript"), normalizeWordText);
+            });
+            Require(spoken.GetArrayLength() is >= 1 and <= 5);
+        }
         var source = media.GetProperty("source");
         ValidateSource(source);
         var sourceKeys = new HashSet<string>(StringComparer.Ordinal) { FootageKey(source) };
         var companionDurations = new Dictionary<string, double>(StringComparer.Ordinal);
+        var clockEnd = source.GetProperty("durationSeconds").GetDouble();
         if (media.TryGetProperty("additionalSources", out var additionalSources))
         {
             Array(additionalSources, reference =>
@@ -52,6 +68,14 @@ internal static class ProjectValidation
                     companionDurations.Add(key, reference.GetProperty("durationSeconds").GetDouble());
             });
             Require(additionalSources.GetArrayLength() > 0);
+            if (supportsSpokenSources)
+            {
+                var last = media.GetProperty("spokenSources").EnumerateArray().Last();
+                var lastKey = last.GetProperty("sourceKey").GetString();
+                foreach (var reference in additionalSources.EnumerateArray())
+                    if (reference.GetProperty("contentKey").GetString() == lastKey)
+                        clockEnd = last.GetProperty("offsetSeconds").GetDouble() + reference.GetProperty("durationSeconds").GetDouble();
+            }
         }
         var placements = new List<ProjectFootage>();
         var placementIds = new HashSet<string>(StringComparer.Ordinal);
@@ -75,7 +99,7 @@ internal static class ProjectValidation
                     placement.GetProperty("kind").GetString()!, placement.GetProperty("start").GetDouble(), placement.GetProperty("end").GetDouble(),
                     new FootageSelection(selected.GetProperty("sourceKey").GetString()!, selected.GetProperty("start").GetDouble()),
                     Fade("fadeInSeconds"), Fade("fadeOutSeconds"));
-                Require(placementIds.Add(entry.Id) && entry.End <= source.GetProperty("durationSeconds").GetDouble() &&
+                Require(placementIds.Add(entry.Id) && entry.End <= clockEnd &&
                     companionDurations.TryGetValue(entry.Footage.SourceKey, out var duration) &&
                     (supportsTimelineEdits ? entry.HasPlayableSource(duration) : entry.Fits(duration)) &&
                     !placements.Any(other => other.ClipId == entry.ClipId && other.Start < entry.End && entry.Start < other.End));
@@ -114,7 +138,8 @@ internal static class ProjectValidation
                 Require(clip.TryGetProperty("parts", out _) && kind.ValueKind == JsonValueKind.String && kind.GetString() is "story" or "showreel");
             if (clip.TryGetProperty("parts", out var parts)) Array(parts, part =>
             {
-                Object(part, "id startWordId endWordId", "reframe");
+                Object(part, "id startWordId endWordId", "reframe takeReason");
+                if (part.TryGetProperty("takeReason", out var reason)) Text(reason, 0, 200);
                 if (part.TryGetProperty("reframe", out var reframe))
                 {
                     Object(reframe, "mode zoom centerX centerY");

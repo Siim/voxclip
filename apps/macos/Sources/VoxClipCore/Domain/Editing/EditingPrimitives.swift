@@ -106,13 +106,15 @@ public enum EditingPrimitives {
 
 public func toFixed1(_ value: Double) -> String { EditingPrimitives.fixedOneDigits(value) }
 
+func pauseId(after wordId: String) -> String { "pause-after-" + wordId }
+
 public func detectPauses(_ words: [TimedWord], thresholdSeconds: Double) throws -> [Pause] {
     guard thresholdSeconds.isFinite, thresholdSeconds > 0 else { throw VoxClipError.projectUnreadable("Invalid pause threshold") }
     guard words.count > 1 else { return [] }
     return (0..<(words.count - 1)).compactMap { index in
         let before = words[index], after = words[index + 1]
         guard after.start - before.end >= thresholdSeconds else { return nil }
-        return Pause(id: "pause-after-" + before.id, afterIndex: index, start: before.end, end: after.start)
+        return Pause(id: pauseId(after: before.id), afterIndex: index, start: before.end, end: after.start)
     }
 }
 

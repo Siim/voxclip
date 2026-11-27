@@ -20,7 +20,7 @@ import Testing
         #expect(v2.schemaVersion == 2 && v2.voiceLab.segments.count == 1)
         #expect(try JSONProjectStore.decode(JSONProjectStore.encode(v2)) == v2)
         var future = try #require(JSONSerialization.jsonObject(with: v1Data) as? [String: Any])
-        future["schemaVersion"] = 7
+        future["schemaVersion"] = 8
         #expect(throws: VoxClipError.projectTooNew) { try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: future)) }
         var unknown = v2; unknown.extensions = ["example.keep": .object(["nested": .array([.number(7)])])]
         #expect(try JSONProjectStore.decode(JSONProjectStore.encode(unknown)).extensions == unknown.extensions)
@@ -76,6 +76,32 @@ import Testing
         #expect(project.edits.clips.last?.id == project.edits.activeClipId)
         #expect(project.voiceLab == original.voiceLab)
         #expect(try JSONProjectStore.decode(JSONProjectStore.encode(project)).voiceLab == original.voiceLab)
+    }
+
+    @Test func swapTakeSelectsCopyAndKeepsPaidVoiceInOriginal() throws {
+        var original = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/whole-clip-revoice-project.voxclip"))
+        original.edits.clips[0].title = nil
+        var companion = original.media.source
+        companion.contentKey = String(repeating: "b", count: 64)
+        original.media.additionalSources.append(companion)
+        let transcript = try #require(original.transcript)
+        original = try RecordingEdits.apply(.addSpokenSource(key: companion.contentKey, transcript: transcript), project: original).get().project
+        let clip = original.edits.clips[0]
+        let result = try RecordingEdits.apply(.swapTake(clipId: clip.id, partId: clip.playParts[0].id,
+                                                       startWordId: "r2.w3", endWordId: "r2.w8"), project: original).get()
+        #expect(result.undoName == "Use version")
+        #expect(result.announcement == "Made Clip 1 copy to keep the paid voice work.")
+        let copy = try #require(result.project.edits.clips.last)
+        #expect(copy.title == "Clip 1 copy")
+        #expect(copy.id == result.project.edits.activeClipId)
+        #expect(copy.startWordId == "r2.w3" && copy.endWordId == "r2.w8")
+        #expect(result.project.edits.clips[0] == clip)
+        let reloaded = try JSONProjectStore.decode(JSONProjectStore.encode(result.project))
+        #expect(reloaded.voiceLab == original.voiceLab)
+        let again = try RecordingEdits.apply(.swapTake(clipId: copy.id, partId: copy.playParts[0].id,
+                                                      startWordId: "w1", endWordId: "w2"), project: reloaded).get()
+        #expect(again.project.edits.clips.count == 2)
+        #expect(again.announcement == nil)
     }
 
     @Test func passageAndFullTakeUseCanonicalPieces() throws {

@@ -29,7 +29,8 @@ public enum StoryClipKind
 
 /// <summary>One inclusive source range in play order, with stable identity and optional face reframe.</summary>
 public sealed record ClipPart(string Id, string StartWordId, string EndWordId,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TakeReason = null);
 
 /// <summary>One inclusive range in a persisted AI suggestion.</summary>
 public sealed record ClipWordRange(string StartWordId, string EndWordId);
@@ -54,7 +55,31 @@ public sealed record ClipRange(string Id, string StartWordId, string EndWordId, 
 /// <summary>Immutable editor snapshot; editing §2.5.</summary>
 public sealed record EditState(TranscriptModel Transcript, IReadOnlyList<Pause> Pauses, double PauseThresholdSeconds,
     double PauseKeepSeconds, IReadOnlySet<string> CutWordIds, IReadOnlySet<string> CutPauseIds,
-    IReadOnlyDictionary<string, string> Corrections, IReadOnlyList<ClipRange> Clips, string? ActiveClipId);
+    IReadOnlyDictionary<string, string> Corrections, IReadOnlyList<ClipRange> Clips, string? ActiveClipId)
+{
+    /// <summary>Present when the editor snapshot uses the joined recording clock.</summary>
+    [JsonIgnore] public ProjectClock? ProjectClock { get; internal init; }
+}
+
+/// <summary>One undoable change to the spoken recordings or the clip's ordered parts.</summary>
+public abstract record RecordingEdit
+{
+    private RecordingEdit() { }
+    /// <summary>Promote a known companion into a spoken recording.</summary>
+    public sealed record AddSpokenSource(string Key, TranscriptModel Transcript, string? Label = null, double? GainDb = null) : RecordingEdit;
+    /// <summary>Remove an unreferenced recording from the clock, not from media.</summary>
+    public sealed record RemoveSpokenSource(string Key) : RecordingEdit;
+    /// <summary>Insert after a part, or append when none is specified.</summary>
+    public sealed record AddPart(string ClipId, ClipPart Part, string? AfterPartId = null) : RecordingEdit;
+    /// <summary>Move after a part, or to the start when none is specified.</summary>
+    public sealed record MovePart(string ClipId, string PartId, string? AfterPartId) : RecordingEdit;
+    /// <summary>Remove the part from the clip's play order.</summary>
+    public sealed record RemovePart(string ClipId, string PartId) : RecordingEdit;
+    /// <summary>Change the part's bounds within its recording.</summary>
+    public sealed record TrimPart(string ClipId, string PartId, string StartWordId, string EndWordId) : RecordingEdit;
+    /// <summary>Replace a part with a version from a different recording.</summary>
+    public sealed record SwapTake(string ClipId, string PartId, string StartWordId, string EndWordId, string? TakeReason = null) : RecordingEdit;
+}
 
 /// <summary>Explicit planner kind; editing §2.6. Never infer from an id.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<EditSegmentKind>))]
@@ -266,12 +291,16 @@ public static class EditingEngine
     {
         if (FromProject(project) is not { } state) return project;
         var changed = Reduce(state, operation, project);
-        return ReferenceEquals(state, changed) ? project : ApplyToProject(project, changed);
+        if (ReferenceEquals(state, changed)) return project;
+        var result = ApplyToProject(project, changed);
+        return operation is EditOperation.SetClipParts set && project.Media.SpokenSources is not null &&
+            changed.Clips.Count > state.Clips.Count && changed.ActiveClipId is { } copy
+            ? RecordingEdits.RecordCopy(result, copy, set.Id) : result;
     }
 
     /// <summary>Reduce one operation using the project for paid-work and placement checks.</summary>
     public static EditState Reduce(EditState state, EditOperation operation, Project project) =>
-        EditingSession.Reduce(state, operation, project.Ai.Results, project);
+        EditingSession.Reduce(state, operation, project.Ai.Results, project, project.Media.SpokenSources is null ? "story" : "copy");
     /// <summary>Compute scoped counts and gates without changing the snapshot; editing §6.4.</summary>
     public static EditSummary Summarize(EditState state) => EditingSession.Summarize(state);
     /// <summary>Reduce one undoable operation.</summary>

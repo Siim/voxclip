@@ -39,7 +39,7 @@ public enum TimelineEdits {
             var result = reducer.project
             if result != project {
                 if result.schemaVersion < 4 { result = try ContextDemoProject.upgradeToV4(result) }
-                result.schemaVersion = TimelineEditFields.version
+                result.schemaVersion = max(result.schemaVersion, TimelineEditFields.version)
             }
             return .success((result, name))
         } catch let refusal as TimelineEditRefusal {

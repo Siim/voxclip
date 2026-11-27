@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Mac and Windows project files can store spoken companions and story parts from different recordings, while keeping a clip’s paid voice work safe when its version changes.
 - On Windows, overlapping sounds crossfade, timeline volume and range dips match the Mac, and the music lane shows the ducking heard in preview.
 - On Windows, move, trim, split and shape timeline items in eight lanes, with music and sound fades, volume keyframes, snapping, named Undo and Narrator controls.
 - On Mac, fade, slip and adjust music and sounds directly on the timeline, with volume keyframes, range dips, loop markers and a contour showing how music dips under speech.

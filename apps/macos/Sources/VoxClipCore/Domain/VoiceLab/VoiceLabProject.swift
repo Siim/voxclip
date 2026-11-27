@@ -212,7 +212,7 @@ public enum VoiceLabProject {
             return
         }
         try WholeClipRevoice.validate(project)
-        guard (2...TimelineEditFields.version).contains(project.schemaVersion), let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
+        guard (2...ProjectMigrations.currentVersion).contains(project.schemaVersion), let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
         if project.schemaVersion == 2 && (project.voiceLab.cleanAudio != nil || project.voiceLab.voices != nil || project.voiceLab.videoAssets != nil || project.voiceLab.segments.contains(where: { $0.scope != nil || $0.groupId != nil || $0.provenance.region != nil || $0.candidates.contains(where: { $0.recipe != nil }) })) { throw VoiceLabProjectError.invalidSegment }
         guard VoiceLabAssetNaming.isSafeProjectID(project.id) else {
             throw VoiceLabProjectError.unsafePath
@@ -365,7 +365,7 @@ public enum VoiceLabProject {
     }
     /// Adds an own-voice consent reference (§6.8, §10.5). The project stores only IDs and the trimmed display name.
     public static func addVoiceReference(_ reference: VoiceLabVoiceReference, to project: Project) throws -> Project {
-        guard (3...TimelineEditFields.version).contains(project.schemaVersion) else { throw VoiceLabProjectError.requiresVersion3 }
+        guard (3...ProjectMigrations.currentVersion).contains(project.schemaVersion) else { throw VoiceLabProjectError.requiresVersion3 }
         var voice = reference
         // §6.1: the name counts 1–60 Unicode scalars after trimming whitespace, and the trimmed name is stored.
         voice.displayName = reference.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -384,7 +384,7 @@ public enum VoiceLabProject {
     /// Records provider deletion (§6.10). The reference, segments and paid assets stay; new own-voice accepts are refused.
     public static func markVoiceDeleted(id voiceID: String, in project: Project) throws -> Project {
         // §10.5: only version 3 holds voice references, so versions 1 and 2 report requiresVersion3.
-        guard (3...TimelineEditFields.version).contains(project.schemaVersion) else { throw VoiceLabProjectError.requiresVersion3 }
+        guard (3...ProjectMigrations.currentVersion).contains(project.schemaVersion) else { throw VoiceLabProjectError.requiresVersion3 }
         guard let index = project.voiceLab.voices?.firstIndex(where: { $0.id == voiceID }) else { throw VoiceLabProjectError.missingVoice }
         var result = project
         result.voiceLab.voices?[index].status = .deleted
@@ -412,7 +412,7 @@ public enum VoiceLabProject {
         guard candidates.indices.contains(index), let assetID = candidates[index].assetId, candidates[index].rejected == nil,
               let asset = result.voiceLab.assets?.first(where: { $0.id == assetID }) else { throw VoiceLabProjectError.invalidCandidate }
         result.voiceLab.segments[position].selectedCandidateIndex = index
-        if (3...TimelineEditFields.version).contains(result.schemaVersion) {
+        if (3...ProjectMigrations.currentVersion).contains(result.schemaVersion) {
             guard let recipe = candidates[index].recipe else { throw VoiceLabProjectError.missingRenderPolicy }
             result.voiceLab.segments[position].outDuration = recipe.outDuration
             result.voiceLab.segments[position].audio = recipe.audio

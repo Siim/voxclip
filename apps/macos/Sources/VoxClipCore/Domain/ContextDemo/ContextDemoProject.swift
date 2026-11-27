@@ -10,7 +10,7 @@ public enum ContextDemoProject {
     }
 
     public static func validate(_ project: Project) throws {
-        guard (1...TimelineEditFields.version).contains(project.schemaVersion) else { throw ContextDemoError.unsupportedVersion }
+        guard (1...ProjectMigrations.currentVersion).contains(project.schemaVersion) else { throw ContextDemoError.unsupportedVersion }
         guard project.schemaVersion >= 4 || (project.contextDemo == nil && project.motionCues.isEmpty) else {
             throw ContextDemoError.unsupportedVersion
         }
@@ -28,7 +28,7 @@ public enum ContextDemoProject {
             guard cue.isValid, ContextDemoValidation.identifier(cue.id), ContextDemoValidation.identifier(cue.clipID),
                   identities.insert(cue.id).inserted, clips.contains(cue.clipID),
                   cue.sourceStart.isFinite, cue.sourceEnd.isFinite, cue.sourceStart >= 0,
-                  cue.sourceEnd <= project.media.source.durationSeconds,
+                  cue.sourceEnd <= project.media.clockDurationSeconds,
                   cue.sourceEnd - cue.sourceStart <= MotionCue.maximumDuration + 1e-9,
                   (2...MotionCue.maximumKeyframes).contains(cue.keyframes.count) else {
                 throw ContextDemoError.invalidPlacement

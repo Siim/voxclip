@@ -234,24 +234,34 @@ public struct ProjectMedia: Codable, Sendable, Equatable {
     public var source: MediaReference
     public var additionalSources: [MediaReference]
     public var footage: [ClipFootage]
+    public var spokenSources: [SpokenSource]?
+
+    var clockDurationSeconds: Double {
+        guard let last = spokenSources?.last, let companion = additionalSources.first(where: { $0.contentKey == last.sourceKey }) else {
+            return source.durationSeconds
+        }
+        return Double(last.offsetSeconds) + companion.durationSeconds
+    }
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(source: MediaReference, additionalSources: [MediaReference] = [], footage: [ClipFootage] = []) {
+    public init(source: MediaReference, additionalSources: [MediaReference] = [], footage: [ClipFootage] = [], spokenSources: [SpokenSource]? = nil) {
         self.source = source
         var seen = Set([source.footageKey])
         self.additionalSources = additionalSources.filter { seen.insert($0.footageKey).inserted }
         self.footage = footage
+        self.spokenSources = spokenSources
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, additionalSources, footage
+        case source, additionalSources, footage, spokenSources
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(source: try values.decode(MediaReference.self, forKey: .source),
                   additionalSources: try values.decodeIfPresent([MediaReference].self, forKey: .additionalSources) ?? [],
-                  footage: try values.decodeIfPresent([ClipFootage].self, forKey: .footage) ?? [])
+                  footage: try values.decodeIfPresent([ClipFootage].self, forKey: .footage) ?? [],
+                  spokenSources: try values.decodeIfPresent([SpokenSource].self, forKey: .spokenSources))
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -259,8 +269,28 @@ public struct ProjectMedia: Codable, Sendable, Equatable {
         try values.encode(self.source, forKey: .source)
         if !additionalSources.isEmpty { try values.encode(additionalSources, forKey: .additionalSources) }
         if !footage.isEmpty { try values.encode(footage, forKey: .footage) }
+        try values.encodeIfPresent(spokenSources, forKey: .spokenSources)
     }
 
+}
+
+public struct SpokenSource: Codable, Sendable, Equatable {
+    public var sourceKey: String
+    public var label: String?
+    public var offsetSeconds: Int
+    public var wordIdPrefix: String
+    public var gainDb: Double?
+    public var transcript: Transcript
+
+    public init(sourceKey: String, label: String? = nil, offsetSeconds: Int, wordIdPrefix: String,
+                gainDb: Double? = nil, transcript: Transcript) {
+        self.sourceKey = sourceKey
+        self.label = label
+        self.offsetSeconds = offsetSeconds
+        self.wordIdPrefix = wordIdPrefix
+        self.gainDb = gainDb
+        self.transcript = transcript
+    }
 }
 
 /// doc/architecture.md §3; shared/schemas/project.schema.json
@@ -271,12 +301,14 @@ public struct ClipPart: Codable, Sendable, Equatable {
     public var startWordId: String
     public var endWordId: String
     public var reframe: ReframeSettings?
+    public var takeReason: String?
 
-    public init(id: String, startWordId: String, endWordId: String, reframe: ReframeSettings? = nil) {
+    public init(id: String, startWordId: String, endWordId: String, reframe: ReframeSettings? = nil, takeReason: String? = nil) {
         self.id = id
         self.startWordId = startWordId
         self.endWordId = endWordId
         self.reframe = reframe
+        self.takeReason = takeReason
     }
 }
 

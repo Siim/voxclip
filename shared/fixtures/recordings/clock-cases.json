@@ -1,0 +1,127 @@
+{
+  "schema": "voxclip-recording-clock/1",
+  "project": "two-recordings.voxclip",
+  "sampleRate": 48000,
+  "regions": [
+    {
+      "key": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+      "label": "0007",
+      "prefix": "",
+      "offsetSamples": 0,
+      "durationSamples": 102000,
+      "gainDb": 0,
+      "colourIndex": 0
+    },
+    {
+      "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "0010",
+      "prefix": "r2.",
+      "offsetSamples": 192000,
+      "durationSamples": 48001,
+      "gainDb": -1.8,
+      "colourIndex": 1
+    }
+  ],
+  "guardGaps": [
+    [
+      102000,
+      192000
+    ]
+  ],
+  "resolve": [
+    {
+      "clockSample": -1,
+      "source": null
+    },
+    {
+      "clockSample": 0,
+      "source": {
+        "key": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "localSample": 0
+      }
+    },
+    {
+      "clockSample": 101999,
+      "source": {
+        "key": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "localSample": 101999
+      }
+    },
+    {
+      "clockSample": 102000,
+      "source": null
+    },
+    {
+      "clockSample": 191999,
+      "source": null
+    },
+    {
+      "clockSample": 192000,
+      "source": {
+        "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "localSample": 0
+      }
+    },
+    {
+      "clockSample": 192001,
+      "source": {
+        "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "localSample": 1
+      }
+    },
+    {
+      "clockSample": 240000,
+      "source": {
+        "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "localSample": 48000
+      }
+    },
+    {
+      "clockSample": 240001,
+      "source": null
+    }
+  ],
+  "shiftedWords": [
+    {
+      "id": "r2.w1",
+      "samples": [
+        192005,
+        196354,
+        192001,
+        196463
+      ]
+    },
+    {
+      "id": "r2.w2",
+      "samples": [
+        237714,
+        239946,
+        null,
+        null
+      ]
+    }
+  ],
+  "selection": {
+    "startWordId": "w2",
+    "endWordId": "r2.w1",
+    "refusal": "A part comes from one recording."
+  },
+  "edits": {
+    "cutWordIds": [
+      "r2.w2"
+    ],
+    "cutPauseIds": [
+      "pause-after-r2.w1"
+    ],
+    "corrections": {
+      "r2.w1": "Report"
+    }
+  },
+  "removal": {
+    "removedKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "nextKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "afterBothOffset": 7,
+    "survivingPrefix": "r3.",
+    "readdedPrefix": "r4."
+  }
+}

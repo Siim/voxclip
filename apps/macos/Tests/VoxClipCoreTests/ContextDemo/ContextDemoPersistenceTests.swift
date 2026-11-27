@@ -48,7 +48,7 @@ import Testing
         var raw = try #require(JSONSerialization.jsonObject(with: ProjectJSON.encode(changed)) as? [String: Any])
         raw["schemaVersion"] = 3
         #expect(throws: (any Error).self) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: raw)) }
-        raw["schemaVersion"] = 7
+        raw["schemaVersion"] = 8
         #expect(throws: (any Error).self) { try JSONProjectStore.decode(JSONSerialization.data(withJSONObject: raw)) }
     }
 
@@ -90,7 +90,7 @@ import Testing
         #expect(upgraded.schemaVersion == 4 && upgraded.voiceLab == original.voiceLab)
         #expect(try VoiceLabProject.upgradeToV3(upgraded) == upgraded)
         var future = upgraded
-        future.schemaVersion = 7
+        future.schemaVersion = 8
         #expect(throws: (any Error).self) { try VoiceLabProject.upgradeToV3(future) }
     }
 

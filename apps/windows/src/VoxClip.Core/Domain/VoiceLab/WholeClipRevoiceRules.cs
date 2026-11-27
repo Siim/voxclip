@@ -440,7 +440,7 @@ public sealed class WholeClipScript
                     widest = double.NegativeInfinity;
                     for (var j = left; j < right; j++)
                     {
-                        var gap = cutPauseIds.Contains("pause-after-" + words[j].Id) ? 0.0 : words[j + 1].Start - reached[j];
+                        var gap = cutPauseIds.Contains(EditingAlgorithms.PauseId(words[j].Id)) ? 0.0 : words[j + 1].Start - reached[j];
                         if (gap > widest) { widest = gap; split = j; }
                     }
                 }

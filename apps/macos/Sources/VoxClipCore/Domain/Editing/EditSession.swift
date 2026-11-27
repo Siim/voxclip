@@ -1,6 +1,17 @@
 import Foundation
 
 extension EditState {
+    public init?(project: Project) throws {
+        let clock = ProjectClock.build(project)
+        guard let transcript = clock.transcript else { return nil }
+        let edits = project.edits
+        self.init(transcript: transcript, pauses: try clock.pauses(thresholdSeconds: edits.pauseThresholdSeconds),
+                  pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
+                  cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections,
+                  clips: edits.clips, activeClipId: edits.activeClipId)
+        if clock.regions.count > 1 { projectClock = clock }
+    }
+
     public init(transcript: Transcript, edits: ProjectEdits) throws {
         self.init(transcript: transcript, pauses: try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds),
                   pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
@@ -35,7 +46,8 @@ func pauseInScope(_ pause: Pause, bounds: [ClosedRange<Int>]?) -> Bool {
     bounds?.contains { $0.contains(pause.afterIndex) && $0.contains(pause.afterIndex + 1) } ?? true
 }
 
-func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [ProjectAIResult]? = nil, project: Project? = nil) throws -> EditState {
+func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [ProjectAIResult]? = nil, project: Project? = nil,
+                        copySuffix: String = "story") throws -> EditState {
     var result = state
     let words = state.transcript.words
     let bounds = state.activeClip?.playPartIndices(in: words)
@@ -53,6 +65,8 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
         guard validClipID(clip.id), (clip.title?.unicodeScalars.count ?? 0) <= EditingLimits.maxClipTitleScalars,
               clip.playPartIndices(in: words) != nil, StoryClips.valid(clip, words: words), clip.aiResultId.map(validClipID) ?? true,
               (clip.aiClipIndex ?? 0) >= 0 else { return false }
+        if let clock = state.projectClock,
+           !clip.playParts.allSatisfy({ clock.containsRange(startWordId: $0.startWordId, endWordId: $0.endWordId) }) { return false }
         guard let aiResults else { return true }
         guard let id = clip.aiResultId else { return clip.aiClipIndex == nil }
         guard let result = aiResults.first(where: { $0.id == id }) else { return false }
@@ -98,6 +112,7 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
         }
     case .updateClip(let id, let start, let end):
         if start >= 0, end >= start, end < words.count, let index = result.clips.firstIndex(where: { $0.id == id && $0.parts == nil }) {
+            if state.projectClock?.containsRange(startWordId: words[start].id, endWordId: words[end].id) == false { return state }
             // An opening lead-in was chosen for the clip's first word (ADR-R48): a new first word drops it.
             if result.clips[index].startWordId != words[start].id { result.clips[index].leadInSeconds = nil }
             result.clips[index].startWordId = words[start].id; result.clips[index].endWordId = words[end].id
@@ -112,16 +127,28 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
         clip.kind = clip.parts != nil ? kind ?? original.kind ?? .story : nil
         clip.startWordId = words[lower].id; clip.endWordId = words[upper].id
         if original.playParts.first?.startWordId != first.startWordId { clip.leadInSeconds = nil }
+        if let clock = state.projectClock,
+           !clip.playParts.allSatisfy({ clock.containsRange(startWordId: $0.startWordId, endWordId: $0.endWordId) }) {
+            throw VoxClipError.projectUnreadable("A part comes from one recording.")
+        }
         guard clip != original, validClip(clip) else { return state }
         if let project {
             let before = StoryClips.times(original, words: words), after = StoryClips.times(clip, words: words)
             let keyed = project.voiceLab.wholeClipRevoices?.contains { $0.clipId == id } == true
+            let protected = copySuffix == "copy" ? RecordingEdits.protectedSpans(for: original.id, project: project, words: words) : []
             let losesLipsync = StoryClips.lipsyncWindows(project).contains { window in
-                before.contains { StoryClips.overlaps($0, window) } && !after.contains { StoryClips.overlaps($0, window) }
+                before.contains { StoryClips.overlaps($0, window) } && !after.contains { StoryClips.overlaps($0, window) } &&
+                    !protected.contains { $0.start <= window.start && $0.end >= window.end }
             }
             if (keyed && before != after) || losesLipsync {
-                clip.id = uniqueID(id, suffix: "story")
-                clip.title = String(((original.title ?? "Clip \(index + 1)") + " story").prefix(EditingLimits.maxClipTitleScalars))
+                clip.id = uniqueID(id, suffix: copySuffix)
+                let suffix = " " + copySuffix
+                let title = original.title ?? "Clip \(index + 1)"
+                if copySuffix == "copy" {
+                    clip.title = String(title.unicodeScalars.prefix(EditingLimits.maxClipTitleScalars - suffix.count)) + suffix
+                } else {
+                    clip.title = String((title + suffix).prefix(EditingLimits.maxClipTitleScalars))
+                }
                 try StoryClips.validatePlacement(clip, project: project, words: words)
                 result.clips.append(clip); result.activeClipId = clip.id
                 return result
@@ -148,7 +175,8 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
     case .setPauseKeep(let seconds):
         if seconds.isFinite, (0...1).contains(seconds) { result.pauseKeepSeconds = seconds }
     case .setPauseThreshold(let seconds):
-        if seconds.isFinite, seconds > 0, seconds <= 10, let pauses = try? detectPauses(words, thresholdSeconds: seconds) {
+        if seconds.isFinite, seconds > 0, seconds <= 10,
+           let pauses = try? (state.projectClock?.pauses(thresholdSeconds: seconds) ?? detectPauses(words, thresholdSeconds: seconds)) {
             result.pauseThresholdSeconds = seconds; result.pauses = pauses; result.cutPauseIds.formIntersection(pauses.map(\.id))
         }
     }
@@ -167,12 +195,14 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
 
 extension Project {
     public mutating func applyEditing(_ command: EditCommand) throws {
-        guard let transcript else { return }
-        let state = try EditState(transcript: transcript, edits: edits)
-        let changed = try reduceEditingState(state, command: command, aiResults: ai.results, project: self)
+        guard let state = try EditState(project: self) else { return }
+        let changed = try reduceEditingState(state, command: command, aiResults: ai.results, project: self,
+                                             copySuffix: media.spokenSources == nil ? "story" : "copy")
         guard changed != state else { return }
         var next = self
         next.edits = changed.projectEdits
+        if case .setClipParts(let id, _, _) = command, media.spokenSources != nil, changed.clips.count > state.clips.count,
+           let copy = changed.activeClipId { RecordingEdits.recordCopy(copy, of: id, in: &next) }
         if case .removeClip(let id) = command {
             next.share.captions.removeValue(forKey: id)
             next.motionCues.removeAll { $0.clipID == id }

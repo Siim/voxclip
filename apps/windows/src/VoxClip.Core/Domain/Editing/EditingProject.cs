@@ -7,23 +7,24 @@ internal static class EditingProject
 {
     internal static EditState? FromProject(ProjectModel project)
     {
-        if (project.Transcript is not { } transcript) return null;
+        var clock = ProjectClock.Build(project);
+        if (clock.Transcript is not { } transcript) return null;
         project = Clean(project, []);
         var edits = project.Edits;
-        return new(transcript, EditingAlgorithms.DetectPauses(transcript.Words, edits.PauseThresholdSeconds),
+        return new(transcript, clock.Pauses(edits.PauseThresholdSeconds),
             edits.PauseThresholdSeconds, edits.PauseKeepSeconds, edits.CutWordIds.ToHashSet(StringComparer.Ordinal),
             edits.CutPauseIds.ToHashSet(StringComparer.Ordinal), new Dictionary<string, string>(edits.Corrections, StringComparer.Ordinal),
-            edits.Clips.ToArray(), edits.ActiveClipId);
+            edits.Clips.ToArray(), edits.ActiveClipId) { ProjectClock = clock.Regions.Count > 1 ? clock : null };
     }
 
     internal static ProjectModel ApplyToProject(ProjectModel project, EditState state)
     {
-        var replaced = !ReferenceEquals(project.Transcript, state.Transcript);
+        var replaced = !ReferenceEquals(project.Transcript, state.Transcript) && !ReferenceEquals(state.ProjectClock?.Transcript, state.Transcript);
         var edits = new ProjectEdits(state.PauseThresholdSeconds, state.PauseKeepSeconds,
             state.Transcript.Words.Where(word => state.CutWordIds.Contains(word.Id)).Select(word => word.Id).ToArray(),
             state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => pause.Id).ToArray(),
             new Dictionary<string, string>(state.Corrections, StringComparer.Ordinal), state.Clips.ToArray(), state.ActiveClipId);
-        return StoryClips.ForWriting(Clean(project with { Transcript = state.Transcript, Edits = edits,
+        return StoryClips.ForWriting(Clean(project with { Transcript = replaced ? state.Transcript : project.Transcript, Edits = edits,
             Ai = replaced ? new([]) : project.Ai,
             Share = replaced ? new(new Dictionary<string, string>(StringComparer.Ordinal)) : project.Share,
             VoiceLab = replaced ? project.VoiceLab with { Segments = [] } : project.VoiceLab,
@@ -36,9 +37,10 @@ internal static class EditingProject
 
     internal static ProjectModel Clean(ProjectModel project, List<string> warnings)
     {
-        var words = project.Transcript?.Words ?? [];
+        var clock = ProjectClock.Build(project);
+        var words = clock.Words;
         var ids = words.Select((word, index) => (word.Id, index)).ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
-        var pauses = EditingAlgorithms.DetectPauses(words, project.Edits.PauseThresholdSeconds);
+        var pauses = clock.Pauses(project.Edits.PauseThresholdSeconds);
         var results = project.Ai.Results.ToDictionary(result => result.Id, StringComparer.Ordinal);
         var clips = project.Edits.Clips.Where(clip =>
         {

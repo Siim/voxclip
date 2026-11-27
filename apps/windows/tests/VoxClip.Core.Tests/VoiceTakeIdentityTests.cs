@@ -39,6 +39,33 @@ public sealed class VoiceTakeIdentityTests
     }
 
     [Fact]
+    public void SwapTakeSelectsCopyAndKeepsPaidVoiceInOriginal()
+    {
+        var original = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/whole-clip-revoice-project.voxclip"));
+        var clip = original.Edits.Clips[0] with { Title = null };
+        var companion = original.Media.Source with { ContentKey = new string('b', 64) };
+        original = original with { Media = original.Media with { AdditionalSources = [companion] }, Edits = original.Edits with { Clips = [clip] } };
+        original = Assert.IsType<RecordingEditResult.Applied>(RecordingEdits.Apply(new RecordingEdit.AddSpokenSource(companion.ContentKey, original.Transcript!), original)).Project;
+        var swap = new RecordingEdit.SwapTake(clip.Id, clip.PlayParts[0].Id, "r2.w3", "r2.w8");
+        var result = Assert.IsType<RecordingEditResult.Applied>(RecordingEdits.Apply(swap, original));
+        Assert.Equal("Use version", result.UndoName);
+        Assert.Equal("Made Clip 1 copy to keep the paid voice work.", result.Announcement);
+        var copy = result.Project.Edits.Clips[^1];
+        Assert.Equal("Clip 1 copy", copy.Title);
+        Assert.Equal(copy.Id, result.Project.Edits.ActiveClipId);
+        Assert.Equal(("r2.w3", "r2.w8"), (copy.StartWordId, copy.EndWordId));
+        Assert.Equal(clip, result.Project.Edits.Clips[0]);
+        var reloaded = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(result.Project));
+        Assert.Equal(original.VoiceLab.WholeClipRevoices!.Select(record => record.Id), reloaded.VoiceLab.WholeClipRevoices!.Select(record => record.Id));
+        Assert.Equal(ProjectVoiceTakeIdentity.IdentityKey(original, new(clip.Id, null, null), null),
+            ProjectVoiceTakeIdentity.IdentityKey(reloaded, new(clip.Id, null, null), null));
+        var again = Assert.IsType<RecordingEditResult.Applied>(RecordingEdits.Apply(
+            new RecordingEdit.SwapTake(copy.Id, copy.PlayParts[0].Id, "w1", "w2"), reloaded));
+        Assert.Equal(2, again.Project.Edits.Clips.Count);
+        Assert.Null(again.Announcement);
+    }
+
+    [Fact]
     public void SharedCasesHaveTheirSchemaAndCount()
     {
         var root = Cases.Value;
