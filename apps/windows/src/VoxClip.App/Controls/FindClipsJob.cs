@@ -83,7 +83,7 @@ internal sealed class FindClipsJob
 
     /// <summary>Mount the inline job requested by <paramref name="target"/>. Missing connectors use the existing sidebar callout.</summary>
     internal string? BestVersionsDisabledReason => App.Services.Get("llm.connector", "").Length == 0
-        ? "Choose an AI connector in Settings › AI. Start from a recording works without one."
+        ? $"Choose an AI connector in Settings › {SettingsSections.ProvidersAndKeys}. Start from a recording works without one."
         : !model.HasSeveralRecordings ? "Add another recording of the same idea to compare versions."
         : !model.CanFindClips || starting || Running is not null ? "Wait for the current work to finish." : null;
 
