@@ -17,6 +17,25 @@ public sealed class RecordingClockFixtures
     }
 
     [Fact]
+    public void MalformedSpokenSourcesAreRefused()
+    {
+        var (cases, project) = Load();
+        var document = JsonNode.Parse(ProjectSerialization.Serialize(project))!;
+        var first = document["media"]!["spokenSources"]![0]!.AsObject();
+        foreach (var row in cases["invalidSpokenSources"]!.AsArray())
+        {
+            document["media"]!["spokenSources"] = row!["overrides"] is JsonArray overrides ? new JsonArray(overrides.Select(patch =>
+            {
+                var source = first.DeepClone().AsObject();
+                foreach (var (key, value) in patch!.AsObject()) source[key] = value?.DeepClone();
+                return (JsonNode)source;
+            }).ToArray()) : null;
+            var failure = Record.Exception(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+            Assert.True(failure is VoxClipException { Code: VoxClipErrorCode.ProjectUnreadable }, row["name"]!.GetValue<string>());
+        }
+    }
+
+    [Fact]
     public void ResolvesClockEdgesAndResamplesCompanionWords()
     {
         var (cases, project) = Load();
@@ -59,6 +78,17 @@ public sealed class RecordingClockFixtures
         }
         var primary = project.Transcript!.Words;
         Assert.Equal(primary, clock.Words.Take(primary.Count));
+    }
+
+    [Fact]
+    public void SourceTimelineOffersWordAnchorsInCompanionParts()
+    {
+        var (cases, project) = Load();
+        var clock = ProjectClock.Build(project);
+        var plan = new EditPlan(clock.SampleRate, clock.TotalSamples, [], [], 0, []);
+        var layout = TimelineItems.Layout(project, plan, "clip-main", TimelineAxis.Source);
+        var expected = cases["shiftedWords"]![0]!["samples"]![0]!.GetValue<long>() / plan.SampleRate;
+        Assert.Contains(layout.SnapTargets, target => target.Kind == TimelineSnapKind.Word && target.Time == expected);
     }
 
     [Fact]

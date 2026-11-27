@@ -19,6 +19,10 @@ grid. The same cut sets, corrections and clip parts work with these IDs. Times r
 or no recording in a guard gap. A one-recording clock returns the original transcript unchanged. An ordinary clip or a
 part cannot cross regions. A story can use parts from any number of regions in any play order.
 
+Word IDs are opaque after import: transcription numbers the local words and only the clock adds the recording prefix.
+Pause IDs use the complete preceding word ID, and cut commands distinguish words from pauses by lookup.
+Persistence, part validation and timeline word anchors look up joined words instead of only the primary transcript.
+
 A part edit that would drop paid lip sync or a whole-clip revoice edits a copy and selects it instead. The original
 and its paid assets remain in the project. Copies remember the clip protecting the paid window so later edits to the
 copy do not make another one for that window.

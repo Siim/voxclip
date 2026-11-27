@@ -11,6 +11,24 @@ import Testing
         return (cases, project)
     }
 
+    @Test func malformedSpokenSourcesAreRefusedOnBothReadPaths() throws {
+        let (cases, project) = try load()
+        let bytes = try ProjectJSON.encode(project)
+        let document = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        for row in cases["invalidSpokenSources"].array {
+            var invalid = document
+            var media = try #require(invalid["media"] as? [String: Any])
+            let base = try #require((media["spokenSources"] as? [[String: Any]])?.first)
+            let overrides = try #require(row.object["overrides"])
+            let replacement = try JSONSerialization.jsonObject(with: JSONEncoder().encode(overrides), options: .fragmentsAllowed)
+            media["spokenSources"] = (replacement as? [[String: Any]])?.map { base.merging($0) { _, updated in updated } } as Any? ?? NSNull()
+            invalid["media"] = media
+            let input = try JSONSerialization.data(withJSONObject: invalid)
+            #expect(throws: (any Error).self, "\(row["name"].string)") { try ProjectJSON.decode(input) }
+            #expect(throws: (any Error).self, "\(row["name"].string)") { try JSONProjectStore.decode(input) }
+        }
+    }
+
     @Test func resolvesClockEdgesAndResamplesCompanionWords() throws {
         let (cases, project) = try load()
         let clock = ProjectClock.build(project)
@@ -73,6 +91,15 @@ import Testing
         #expect(RecordingEdits.apply(.addPart(clipId: "clip-main", part: part), project: project).failure?.message == selection["refusal"].string)
         #expect(RecordingEdits.apply(.removeSpokenSource(key: cases["removal"]["removedKey"].string), project: project).failure?.message ==
                 "Two recordings uses 1 part from 0010. Remove that part first.")
+    }
+
+    @Test func sourceTimelineOffersWordAnchorsInCompanionParts() throws {
+        let (cases, project) = try load()
+        let clock = ProjectClock.build(project)
+        let plan = EditPlan(sampleRate: Double(clock.sampleRate), totalSamples: Int64(clock.totalSamples))
+        let layout = TimelineItems.layout(project: project, plan: plan, scope: "clip-main", axis: .source)
+        let expected = Double(cases["shiftedWords"].array[0]["samples"].array[0].int) / plan.sampleRate
+        #expect(layout.snapTargets.contains { $0.kind == .word && $0.time == expected })
     }
 
     @Test func removingRecordingDoesNotCompactOrReusePrefix() throws {
