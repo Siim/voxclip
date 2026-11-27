@@ -287,9 +287,12 @@ public sealed partial class EditorViewModel
     internal string? RecordingVersionDisabledReason(string partId, RecordingVersion version) => RecordingUnavailable(version.Recording.Key) ??
         (ActiveClip is { } clip && RecordingEdits.Apply(VersionEdit(clip.Id, partId, version), project) is RecordingEditResult.Refused refused ? refused.Message : null);
 
-    internal string? RecordingVersionCopyReason(ClipPartRow part, RecordingVersion version)
+    internal string? RecordingVersionCopyReason(ClipPartRow part, RecordingVersion version) => ActiveClip is { } clip
+        ? RecordingCopyReason(part, VersionEdit(clip.Id, part.Id, version)) : null;
+
+    private string? RecordingCopyReason(ClipPartRow part, RecordingEdit edit)
     {
-        if (ActiveClip is not { } clip || RecordingEdits.Apply(VersionEdit(clip.Id, part.Id, version), project) is not RecordingEditResult.Applied applied ||
+        if (ActiveClip is not { } clip || RecordingEdits.Apply(edit, project) is not RecordingEditResult.Applied applied ||
             applied.Project.Edits.ActiveClipId == clip.Id) return null;
         var copy = applied.Project.Edits.Clips.FirstOrDefault(row => row.Id == applied.Project.Edits.ActiveClipId);
         var name = $"{ActiveClipLabel} copy";

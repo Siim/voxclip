@@ -47,6 +47,36 @@ public sealed class ClipSemanticsTests
         Assert.Equal(original, model.ActiveClip);
     }
 
+    [Fact]
+    public void SevenRecordingActionsMakeTheSharedFivePartClip()
+    {
+        var model = RecordingReference();
+        var primary = model.RecordingRegions[0];
+        var alternate = model.RecordingRegions[1];
+        Assert.True(model.StartFromRecording(primary.Key));
+        var starter = model.ActiveClip;
+        var line = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        Assert.True(model.OpenRecordingVersions(line));
+        Assert.NotNull(model.RecordingLineAudition(line, alternate.Key));
+        Assert.Same(starter, model.ActiveClip);
+        Assert.True(model.UseRecordingLineVersion(line, alternate.Key));
+        Assert.Equal("Use version", model.UndoActionName);
+        var swapped = model.ActiveClip;
+        model.SetOtherRecordingLinesExpanded(true);
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        Assert.Equal("w23", model.RecordingPlacement(solo));
+        Assert.NotNull(model.RecordingSoloAudition(solo));
+        Assert.Same(swapped, model.ActiveClip);
+        Assert.True(model.InsertRecordingLine(solo));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Equal(new[] { ("r2.w1", "r2.w11"), ("w8", "w13"), ("w18", "w23"), ("r2.w18", "r2.w21"), ("w24", "w27") },
+            model.ClipParts.Select(part => (part.Part.StartWordId, part.Part.EndWordId)));
+        model.Undo();
+        Assert.Equal(swapped, model.ActiveClip);
+        model.Undo();
+        Assert.Equal(starter, model.ActiveClip);
+    }
+
     internal static EditorViewModel RecordingOpening()
     {
         var project = Fixture("reference-recordings.voxclip", "recordings");
