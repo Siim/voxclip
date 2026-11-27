@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "promptVersion": 12,
+  "promptVersion": 13,
   "directionalZooms": {
     "promptVersion": 11,
     "section": "Zooms\n- Leave the framing alone unless a specific spoken beat earns a move. Use zoomIn to draw attention to a key claim, number or punchline; use zoomOut to release emphasis on a resolution, pivot or reflective line. Do not alternate mechanically. Return an empty list when no beat benefits.\n- For each zoom, use direction (zoomIn or zoomOut), word (first spoken word), untilWord (last spoken word) and scale. Anchor both ends to the actual kept phrase in the indexed transcript, with no cuts or tightened pauses inside it. Use {minDirectionalZoomSeconds} to {maxDirectionalZoomSeconds} seconds, with starts at least {minDirectionalZoomSpacing} seconds apart, and a scale from {minZoomScale} to {maxDirectionalZoomScale}. In reason, briefly say why moving in or out on this particular phrase helps the viewer; do not invent a quote or a visual event.",
@@ -44,6 +44,7 @@
     ]
   },
   "sections": {
+    "takes": "When the transcript lists recordings and takes, you may assemble a story from different recordings. Use one take of each beat you keep. Prefer the take that says it most precisely; when equal, choose the one with fewer fillers, pauses and restarts. Keep a beat that only one recording has when it earns its place. Never put words from two recordings in one part. Say why in each part's takeReason (up to 160 characters), quoting the words that decide it, or use an empty string. Hide a seam between recordings with a punch-in or B-roll when the framing jumps.",
     "shapes": "Clip shapes\n- Vary the shapes. When moments build on each other, make one story from them in the order that tells it best.\n- When the take has several short, high-energy beats, make one showreel: 4–10 parts of 2–5 s, music-led, 15–35 s total, opening on a title card or logo sting.\n- Keep single stretches for ideas that land alone. Never make every clip the same shape just because it is simplest.\n- The creator's note decides the shape when present. A request to chain named moments in order becomes one story. Use only words the speaker actually said; if requested wording is absent, say so in not_in_take without inventing a quote.",
     "seams": "Clip parts\n- Keep all decisions anchored to words in one part. Never put a cut, pause cut, rewrite, zoom, or effect across a seam.\n- You may tighten individual parts, drop a part or reorder parts, but never extend a part or join two parts into one. Judge length by the sum, not the gaps.\n- For a showreel, keep 4–10 parts of 2–5 s and 15–35 s total. Open on a motionTemplate titleCard or logoSting. Music is required: choose a saved project track first, then a free library match, then Eleven Music within the cap. It is optional for other shapes.\n- The spoken track comes only from the take. Say what the take lacks in not_in_take (empty when nothing is missing); never fabricate a quote.",
     "companionEffects": "Other effects\n- Use motionTemplate with template.name titleCard, kineticCaption, logoSting or counter; use template.text for the first three and template.from/to for a counter. With any other effect use empty name and text and zero from/to.\n- Use bRoll for a visual cutaway, screenshot for a still, and videoStack to put the camera above a companion video. Only use an offered footage.sourceKey and source seconds in footage.start; use an empty sourceKey and zero start for other effects. Keep the primary voice and never guess what an unknown recording shows.",
@@ -574,6 +575,7 @@
     }
   },
   "momentsSchemaName": "clip_autopilot_moments",
+  "takeReason": { "type": "string", "maxLength": 160 },
   "momentsSchema": {
     "type": "object",
     "additionalProperties": false,

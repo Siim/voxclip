@@ -112,11 +112,12 @@ public enum ClipAutopilotMapping {
                 })
                 if var part = exact ?? enclosing, reusedIDs.insert(part.id).inserted {
                     part.startWordId = start; part.endWordId = end
+                    if plan != nil { part.takeReason = range.takeReason }
                     return part
                 }
                 var id = "proposal-part-\(index + 1)"
                 while previous.contains(where: { $0.id == id }) { id += "-new" }
-                return ClipPart(id: id, startWordId: start, endWordId: end)
+                return ClipPart(id: id, startWordId: start, endWordId: end, takeReason: plan == nil ? nil : range.takeReason)
             }
         } ?? previous
         guard (1...12).contains(parts.count),

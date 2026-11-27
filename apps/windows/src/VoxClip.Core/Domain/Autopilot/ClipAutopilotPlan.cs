@@ -331,7 +331,12 @@ public sealed record ClipAutopilotPlan
         };
         if (SpeedChoice is { } speed) json["speed"] = new JsonObject { ["rate"] = speed.Rate, ["reason"] = speed.Reason };
         if (MusicPick is { } pick) json["musicPick"] = pick;
-        if (OrderedParts is { } parts) json["parts"] = Array(parts, item => new JsonObject { ["startWord"] = item.StartWord, ["endWord"] = item.EndWord });
+        if (OrderedParts is { } parts) json["parts"] = Array(parts, item =>
+        {
+            var part = new JsonObject { ["startWord"] = item.StartWord, ["endWord"] = item.EndWord };
+            if (item.TakeReason is not null) part["takeReason"] = item.TakeReason;
+            return part;
+        });
         if (Shape is not null) json["kind"] = Shape;
         if (MissingFromTake is not null) json["not_in_take"] = MissingFromTake;
         if (CoverTitle is not null) json["coverTitle"] = CoverTitle;
@@ -369,7 +374,7 @@ public sealed record ClipAutopilotPlan
             return new ClipAutopilotPlan
             {
                 StartWord = I(json["startWord"]), EndWord = I(json["endWord"]), Title = S(json["title"]), Hook = S(json["hook"]),
-                OrderedParts = json["parts"] is { } parts ? Items(parts).Select(item => new ClipProposal.Part(I(item["startWord"]), I(item["endWord"]))).ToArray() : null,
+                OrderedParts = json["parts"] is { } parts ? Items(parts).Select(item => new ClipProposal.Part(I(item["startWord"]), I(item["endWord"]), AiJson.String(item["takeReason"]))).ToArray() : null,
                 Shape = json["kind"]?.GetValue<string>(), MissingFromTake = json["not_in_take"]?.GetValue<string>(),
                 CoverTitle = json["coverTitle"]?.GetValue<string>(), SavedMusicTrackId = json["savedMusicTrackId"]?.GetValue<string>(),
                 Cuts = Items(json["cuts"]).Select(item => new Cut(I(item["startWord"]), I(item["endWord"]), ClipAutopilotWire.CutKind(S(item["kind"])) ?? throw new JsonException(), S(item["reason"]))).ToArray(),

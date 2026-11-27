@@ -53,21 +53,38 @@ public struct RecordingProposalContext: Codable, Equatable, Sendable {
         beats.filter { $0.versions.contains { $0.words.overlaps(range) } }.map(\.id)
     }
 
-    func block(unit: String, bounds: (ClosedRange<Int>) -> ClosedRange<Int>) -> String {
+    func block(unit: String, scope: ClosedRange<Int>? = nil, bounds: (ClosedRange<Int>) -> ClosedRange<Int>) -> String {
+        func visible(_ words: ClosedRange<Int>) -> ClosedRange<Int>? {
+            guard let scope else { return words }
+            guard words.overlaps(scope) else { return nil }
+            return max(words.lowerBound, scope.lowerBound)...min(words.upperBound, scope.upperBound)
+        }
         func describe(_ words: ClosedRange<Int>) -> String {
             let span = bounds(words)
             return "\(unit) \(span.lowerBound)–\(span.upperBound)"
         }
         let labels = Dictionary(uniqueKeysWithValues: recordings.map { ($0.key, $0.label) })
-        let headers = recordings.map { "Recording \($0.label): \(describe($0.words))" }
+        let headers = recordings.compactMap { recording in visible(recording.words).map { "Recording \(recording.label): \(describe($0))" } }
         let versions = beats.flatMap { beat in
-            ["Beat \(beat.id):"] + beat.versions.map { version in
+            let lines = beat.versions.compactMap { version -> String? in
+                guard let words = visible(version.words) else { return nil }
                 let take = version.take
                 let signals = take.signals
                 let flags = take.flags.isEmpty ? "none" : take.flags.joined(separator: ", ")
-                return "- \(labels[take.key] ?? take.key) \(describe(version.words)); flags: \(flags); fillers: \(signals.fillers); longest pause: \(toFixed1(signals.longestPause))s; restarts: \(signals.restarts); cut off: \(signals.cutOff)"
+                return "- \(labels[take.key] ?? take.key) \(describe(words)); flags: \(flags); fillers: \(signals.fillers); longest pause: \(toFixed1(signals.longestPause))s; restarts: \(signals.restarts); cut off: \(signals.cutOff)"
             }
+            return lines.isEmpty ? [] : ["Beat \(beat.id):"] + lines
         }
-        return (["<recordings>"] + headers + ["</recordings>", "<takes>"] + versions + solo.map { "Solo: \(describe($0))" } + ["</takes>"]).joined(separator: "\n")
+        return (["<recordings>"] + headers + ["</recordings>", "<takes>"] + versions + solo.compactMap(visible).map { "Solo: \(describe($0))" } + ["</takes>"]).joined(separator: "\n")
+    }
+
+    static func momentsSchema(_ schema: JSONValue, reason: JSONValue) -> JSONValue {
+        func extend(_ value: JSONValue, path: ArraySlice<String>) -> JSONValue {
+            guard var fields = value.aiObject else { return value }
+            if let key = path.first { fields[key] = extend(value[ai: key], path: path.dropFirst()) }
+            else { fields["takeReason"] = reason }
+            return .object(fields)
+        }
+        return extend(schema, path: ["properties", "clips", "items", "properties", "parts", "items", "properties"][...])
     }
 }

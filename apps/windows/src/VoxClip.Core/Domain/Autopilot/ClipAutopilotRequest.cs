@@ -63,6 +63,8 @@ public sealed record ClipAutopilotRequest(TranscriptModel Transcript, ProjectEdi
     public IReadOnlyDictionary<string, string> MusicTracks { get; init; } = new Dictionary<string, string>();
     /// <summary>The active clip’s source ranges in playback order.</summary>
     public IReadOnlyList<ClipProposal.Part>? SelectedParts { get; init; }
+    /// <summary>Recording regions and matched takes, when the project has spoken companions.</summary>
+    public RecordingProposalContext? Recordings { get; init; }
     /// <summary>The active clip’s explicit shape, when it has one.</summary>
     public string? SelectedKind { get; init; }
     /// <summary>A series request.</summary>
@@ -83,6 +85,8 @@ public sealed record ClipAutopilotContext(IReadOnlyList<TimedWord> Words, IReadO
 {
     /// <summary>The parts the second stage may tighten but not extend.</summary>
     public IReadOnlyList<ClipProposal.Part>? OfferedParts { get; init; }
+    /// <summary>Recording regions and matched takes on the transcript's word index.</summary>
+    public RecordingProposalContext? Recordings { get; init; }
     /// <summary>The clip shape that these parts form.</summary>
     public string? Kind { get; init; }
     /// <summary>The saved music track IDs offered to this request.</summary>

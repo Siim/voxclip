@@ -282,7 +282,9 @@ public actor ClipAutopilotService {
         let moments = input.isSeries
         let offered = moments ? [] : Array(input.footageSources.filter { $0.video != nil }.prefix(32))
         let sources = Dictionary(offered.map { ($0.footageKey, $0.durationSeconds) }, uniquingKeysWith: { first, _ in first })
-        let system = moments ? prompt.momentsSystem : prompt.system
+        let takes = moments && input.recordings?.canCompare == true && !prompt.takesSystem.isEmpty
+        let system = moments ? prompt.momentsSystem + (takes ? "\n\n" + prompt.takesSystem : "") : prompt.system
+        let block = rendered.cachedBlock + (takes ? "\n\n" + (input.recordings?.block(unit: "words", scope: rendered.scope) { $0 } ?? "") : "")
         let inventory: JSONValue = .array(offered.map { source in
             var label = URL(fileURLWithPath: source.absolutePath).deletingPathExtension().lastPathComponent
             if let hash = source.recordingHash, label.hasSuffix("--" + hash) { label = String(label.dropLast(hash.count + 2)) }
@@ -295,19 +297,20 @@ public actor ClipAutopilotService {
         let instruction = rendered.instruction
             + (offered.isEmpty ? "" : "\n\nOffered recordings (metadata only):\n" + String(decoding: try encoder.encode(inventory), as: UTF8.self))
             + (tracks.isEmpty ? "" : "\n\nSaved music tracks by id:\n" + String(decoding: try encoder.encode(tracks), as: UTF8.self))
-        guard (system + rendered.cachedBlock + instruction).utf8.count <= 400_000 else { throw LLMError.contextTooLong }
+        guard (system + block + instruction).utf8.count <= 400_000 else { throw LLMError.contextTooLong }
         let promptCap = moments ? prompt.momentsOutputTokens : prompt.clipOutputTokens
         let output = min(promptCap, resources.catalog.connector(connector)[ai: "maxOutputTokensCap"].aiInt ?? promptCap)
         // Extra high replies take minutes: a plan waits at least the prompt file's minimum, more when the catalog allows it.
         let timeout = max(resources.catalog.timeout(for: connector, feature: .clipAutopilot), prompt.minimumTimeout)
         var schema = moments ? prompt.momentsSchema : prompt.schema
+        if takes { schema = RecordingProposalContext.momentsSchema(schema, reason: prompt.takesReason) }
         if !moments, input.creativeShapes || input.revision != nil, var form = schema.aiObject, var properties = form["properties"]?.aiObject {
             properties["kind"] = .object(["type": .string("string"), "enum": .array([.string("stretch"), .string("story"), .string("showreel")])])
             form["properties"] = .object(properties)
             form["required"] = .array((form["required"]?.aiArray ?? []) + [.string("kind")])
             schema = .object(form)
         }
-        let request = LLMRequest(feature: .clipAutopilot, system: system, cachedBlock: rendered.cachedBlock, instruction: instruction,
+        let request = LLMRequest(feature: .clipAutopilot, system: system, cachedBlock: block, instruction: instruction,
             schemaName: moments ? prompt.momentsSchemaName : prompt.schemaName, schema: schema,
             maxOutputTokens: output, effort: moments ? Self.momentsEffort : Self.effort, timeout: timeout,
             language: input.language ?? input.transcript.language,
@@ -317,6 +320,7 @@ public actor ClipAutopilotService {
             cutWordIDs: Set(input.edits.cutWordIds), pauses: state.pauses, cutPauseIDs: Set(input.edits.cutPauseIds),
             pauseKeepSeconds: input.edits.pauseKeepSeconds, scope: rendered.scope, styleIDs: Set(resources.styles.map(\.id)),
             fonts: resources.fonts, preference: input.captionPreference, prompt: prompt, tone: moments ? nil : input.tone, frames: shown, footageSources: sources)
+        context.recordings = input.recordings
         if !moments {
             context.offeredParts = moment?.moment.parts ?? input.selectedParts ?? [.init(startWord: rendered.scope.lowerBound, endWord: rendered.scope.upperBound)]
             context.kind = moment?.moment.kind ?? input.selectedKind

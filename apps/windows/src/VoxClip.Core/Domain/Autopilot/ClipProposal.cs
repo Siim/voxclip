@@ -6,7 +6,8 @@ namespace VoxClip.Core.Domain.Autopilot;
 #pragma warning disable CS1591
 public sealed record ClipProposal(ClipProposal.TargetChoice Target, string Reason)
 {
-    public sealed record Part(int StartWord, int EndWord);
+    public sealed record Part(int StartWord, int EndWord,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TakeReason = null);
     public sealed record NewClip(string Kind, string Title);
     public sealed record TargetChoice(string? ClipId = null, NewClip? New = null);
     public sealed record MusicChoice(string? TrackId = null, string? Brief = null)

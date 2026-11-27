@@ -40,8 +40,10 @@ public sealed class RecordingProposalContext
     internal IEnumerable<string> BeatIds(ClipIndexRange range) => beats.Where(beat =>
         beat.Versions.Any(version => version.Words.Intersection(range) > 0)).Select(beat => beat.Id);
 
-    internal string Block(string unit, Func<ClipIndexRange, ClipIndexRange> bounds)
+    internal string Block(string unit, Func<ClipIndexRange, ClipIndexRange> bounds, ClipIndexRange? scope = null)
     {
+        ClipIndexRange? Visible(ClipIndexRange words) => scope is not { } limit ? words : words.Intersection(limit) == 0 ? null :
+            new(Math.Max(words.Start, limit.Start), Math.Min(words.End, limit.End));
         string Describe(ClipIndexRange words)
         {
             var span = bounds(words);
@@ -49,20 +51,26 @@ public sealed class RecordingProposalContext
         }
         var labels = recordings.ToDictionary(recording => recording.Key, recording => recording.Label);
         var lines = new List<string> { "<recordings>" };
-        lines.AddRange(recordings.Select(recording => $"Recording {recording.Label}: {Describe(recording.Words)}"));
+        foreach (var recording in recordings)
+            if (Visible(recording.Words) is { } words) lines.Add($"Recording {recording.Label}: {Describe(words)}");
         lines.AddRange(["</recordings>", "<takes>"]);
         foreach (var beat in beats)
         {
-            lines.Add($"Beat {beat.Id}:");
+            var versionLines = new List<string>();
             foreach (var version in beat.Versions)
             {
+                if (Visible(version.Words) is not { } words) continue;
                 var take = version.Take;
                 var signals = take.Signals;
                 var flags = take.Flags.Count == 0 ? "none" : string.Join(", ", take.Flags);
-                lines.Add(string.Create(CultureInfo.InvariantCulture, $"- {labels.GetValueOrDefault(take.Key, take.Key)} {Describe(version.Words)}; flags: {flags}; fillers: {signals.Fillers}; longest pause: {EditingFormat.ToFixed1(signals.LongestPause)}s; restarts: {signals.Restarts}; cut off: {signals.CutOff.ToString().ToLowerInvariant()}"));
+                versionLines.Add(string.Create(CultureInfo.InvariantCulture, $"- {labels.GetValueOrDefault(take.Key, take.Key)} {Describe(words)}; flags: {flags}; fillers: {signals.Fillers}; longest pause: {EditingFormat.ToFixed1(signals.LongestPause)}s; restarts: {signals.Restarts}; cut off: {signals.CutOff.ToString().ToLowerInvariant()}"));
             }
+            if (versionLines.Count == 0) continue;
+            lines.Add($"Beat {beat.Id}:");
+            lines.AddRange(versionLines);
         }
-        lines.AddRange(solo.Select(range => $"Solo: {Describe(range)}"));
+        foreach (var range in solo)
+            if (Visible(range) is { } words) lines.Add($"Solo: {Describe(words)}");
         lines.Add("</takes>");
         return string.Join('\n', lines);
     }

@@ -1804,7 +1804,7 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 
 | File | Holds |
 | --- | --- |
-| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 12. Shared moments and plan schemas, shape and seam rules, the `partsInstruction` and `revise` templates, tone and frames, looks, limits, output caps and minimum timeout. |
+| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 13. Shared moments and plan schemas, recording takes, shape and seam rules, the `partsInstruction` and `revise` templates, tone and frames, looks, limits, output caps and minimum timeout. |
 | `shared/catalog/music-prices.json` | Eleven Music list price in the Voice Lab price format (`voxclip-voice-lab-prices/1`), read by `VoiceLabPriceCatalog`. It is a separate file because both Core suites pin `voice-lab.json`'s hash and entry count. **TODO (lead):** verify the 0.15 USD per minute row before the music package ships; the pricing page also says music is billed per generation |
 | `shared/fixtures/autopilot/plan-validation-cases.json` | `voxclip-autopilot-validation/1`: a synthetic 30-item transcript, two rendered-transcript vectors and eleven hand-derived validation cases (version 1 fields); its `series` case replays as the moments stage. `sources` pins the prompt's SHA-256 |
 | `shared/fixtures/autopilot/plan-tone-cases.json` | `voxclip-autopilot-tone/1`: eleven hand-derived tone cases on the version 1 fixture's transcript (fixed, saved, Auto, As I said it and no tone; a reply that names another tone, an unknown one or a long summary) and four instruction vectors, the tone line each mode adds. `sources` pins the prompt's and `shared/data/rewrite-tones.json`'s SHA-256 |
@@ -1818,6 +1818,7 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 `ClipAutopilotPlan` (`version` 4) is one clip's decisions. The saved-plan reader accepts versions 1–4 and supplies defaults for newer fields. Word indices are transcript item positions, as in §11.2, and every range is inclusive.
 
 - `parts`: 1–10 `{startWord, endWord}` ranges in playback order. The reader treats legacy `startWord` and `endWord` as one part; the normalized plan also records their source envelope. A plan may tighten, drop or reorder an offered part, but may not extend, split or join it.
+- With several spoken recordings, the moments request includes labelled recording ranges and TakeMatch beats. It can choose one take per beat and include a `takeReason` of at most 160 characters per part. The plan still replies with word indices; it inherits a reason only if its quote survives in that part's kept words.
 - `not_in_take`: what the creator asked for but the recording lacks. It never substitutes invented spoken words.
 - `title` (at most 120 scalars), `hook` (the on-screen text for the first 2 s), `postText` (short X or LinkedIn text).
 - `corrections` (v2): `{word, heard, text, reason}`, a misheard word spelled right in the transcript and captions. `heard` is the word as the transcript showed it, `text` its replacement; the audio is unchanged.
