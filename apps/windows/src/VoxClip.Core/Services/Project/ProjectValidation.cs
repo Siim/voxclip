@@ -17,35 +17,40 @@ internal static class ProjectValidation
     internal static void Validate(string json, bool normalizeWordText = false)
     {
         using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
+        Validate(document.RootElement, normalizeWordText);
+    }
+
+    internal static void Validate(JsonElement root, bool normalizeWordText)
+    {
         RejectDuplicateKeys(root);
-        Require(root.ValueKind == JsonValueKind.Object);
+        if (root.ValueKind != JsonValueKind.Object) throw Problem("/", "expected object");
         if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > TimelineEditFields.Version)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         var schemaVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var supported) ? supported : 0;
         var supportsContext = schemaVersion >= 4;
         var supportsStories = schemaVersion >= 5;
         var supportsTimelineEdits = schemaVersion >= TimelineEditFields.Version;
-        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""));
-        String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, TimelineEditFields.Version, true);
+        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), path: "/");
+        if (root.GetProperty("format").ValueKind != JsonValueKind.String || root.GetProperty("format").GetString() != "voxclip-project")
+            throw Problem("format", "invalid value");
+        if (schemaVersion < 1) throw Problem("schemaVersion", "expected a supported integer schema version");
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
-        if (root.TryGetProperty("extensions", out var extensions)) Dictionary(extensions, key => Pattern(key, "[a-z0-9]+(?:\\.[a-z0-9-]+)+"), _ => { });
+        if (root.TryGetProperty("extensions", out var extensions)) Dictionary(extensions, "extensions", (_, _, _) => { }, "[a-z0-9]+(?:\\.[a-z0-9-]+)+");
         var saved = root.GetProperty("savedBy");
-        Object(saved, "app version platform"); String(saved.GetProperty("app"), "VoxClip");
+        Object(saved, "app version platform", path: "savedBy"); String(saved.GetProperty("app"), "VoxClip");
         String(saved.GetProperty("version"), "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?"); Choice(saved.GetProperty("platform"), "macos", "windows");
-        var media = root.GetProperty("media"); Object(media, "source", supportsContext ? "additionalSources footage" : "");
+        var media = root.GetProperty("media"); Object(media, "source", supportsContext ? "additionalSources footage" : "", path: "media");
         var source = media.GetProperty("source");
-        ValidateSource(source);
+        ValidateSource(source, "media/source");
         var sourceKeys = new HashSet<string>(StringComparer.Ordinal) { FootageKey(source) };
         var companionDurations = new Dictionary<string, double>(StringComparer.Ordinal);
         if (media.TryGetProperty("additionalSources", out var additionalSources))
         {
-            Array(additionalSources, reference =>
+            Array(additionalSources, "media/additionalSources", (reference, path) =>
             {
-                ValidateSource(reference);
+                ValidateSource(reference, path);
                 var key = FootageKey(reference);
                 Require(sourceKeys.Add(key));
                 if (reference.GetProperty("video").ValueKind == JsonValueKind.Object)
@@ -57,13 +62,13 @@ internal static class ProjectValidation
         var placementIds = new HashSet<string>(StringComparer.Ordinal);
         if (media.TryGetProperty("footage", out var footage))
         {
-            Array(footage, placement =>
+            Array(footage, "media/footage", (placement, path) =>
             {
-                Object(placement, "id clipID kind start end footage", supportsTimelineEdits ? "fadeInSeconds fadeOutSeconds" : "");
+                Object(placement, "id clipID kind start end footage", supportsTimelineEdits ? "fadeInSeconds fadeOutSeconds" : "", path: path);
                 String(placement.GetProperty("id"), Id); String(placement.GetProperty("clipID"), Id);
                 Choice(placement.GetProperty("kind"), "bRoll", "screenshot", "videoStack");
                 Number(placement.GetProperty("start"), 0); Number(placement.GetProperty("end"), 0);
-                var selected = placement.GetProperty("footage"); Object(selected, "sourceKey start");
+                var selected = placement.GetProperty("footage"); Object(selected, "sourceKey start", path: $"{path}/footage");
                 String(selected.GetProperty("sourceKey"), Hash); Number(selected.GetProperty("start"), 0);
                 double? Fade(string key)
                 {
@@ -84,40 +89,43 @@ internal static class ProjectValidation
             Require(placements.Count > 0);
         }
         static string FootageKey(JsonElement reference) => (reference.TryGetProperty("recordingHash", out var hash) ? hash : reference.GetProperty("contentKey")).GetString()!;
-        void ValidateSource(JsonElement reference)
+        void ValidateSource(JsonElement reference, string path)
         {
-            Object(reference, "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", supportsContext ? "recordingHash" : "");
+            Object(reference, "absolutePath relativePath sizeBytes durationSeconds contentKey video audio", supportsContext ? "recordingHash" : "", path: path);
             if (reference.TryGetProperty("recordingHash", out var hash)) String(hash, Hash);
             Text(reference.GetProperty("absolutePath"), 1, 4096);
             Nullable(reference.GetProperty("relativePath"), value => { Text(value, 1, 4096); Require(!value.GetString()!.Contains('\\')); });
             Number(reference.GetProperty("sizeBytes"), 0, long.MaxValue, true); Number(reference.GetProperty("durationSeconds"), 0); String(reference.GetProperty("contentKey"), Hash);
             Nullable(reference.GetProperty("video"), video =>
             {
-                Object(video, "width height frameRate rotationDegrees"); Number(video.GetProperty("width"), 1, int.MaxValue, true); Number(video.GetProperty("height"), 1, int.MaxValue, true);
+                Object(video, "width height frameRate rotationDegrees", path: path + "/video"); Number(video.GetProperty("width"), 1, int.MaxValue, true); Number(video.GetProperty("height"), 1, int.MaxValue, true);
                 Number(video.GetProperty("frameRate"), double.Epsilon); Require(video.GetProperty("rotationDegrees").TryGetInt32(out var rotation) && rotation is 0 or 90 or 180 or 270);
             });
             Nullable(reference.GetProperty("audio"), audio =>
             {
-                Object(audio, "sampleRate channels"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
+                Object(audio, "sampleRate channels", path: path + "/audio"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
             });
         }
         Nullable(root.GetProperty("transcript"), value => Transcript(value, normalizeWordText));
-        var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId");
+        var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", path: "edits");
         Number(edits.GetProperty("pauseThresholdSeconds"), double.Epsilon, 10); Number(edits.GetProperty("pauseKeepSeconds"), 0, 1);
-        UniqueStrings(edits.GetProperty("cutWordIds"), Id); UniqueStrings(edits.GetProperty("cutPauseIds"), "pause-after-" + Id);
-        Dictionary(edits.GetProperty("corrections"), key => Pattern(key, Id), value => WordText(value, normalizeWordText));
-        Array(edits.GetProperty("clips"), clip =>
+        UniqueStrings(edits.GetProperty("cutWordIds"), Id, "edits/cutWordIds"); UniqueStrings(edits.GetProperty("cutPauseIds"), "pause-after-" + Id, "edits/cutPauseIds");
+        Dictionary(edits.GetProperty("corrections"), "edits/corrections", (_, value, _) => WordText(value, normalizeWordText), Id);
+        Array(edits.GetProperty("clips"), "edits/clips", (clip, path) =>
         {
             // leadInSeconds: schema v4 only, above 0 and at most the 0.6 s opening scan (ADR-R48 part 2).
-            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "");
-            if (clip.TryGetProperty("kind", out var kind))
-                Require(clip.TryGetProperty("parts", out _) && kind.ValueKind == JsonValueKind.String && kind.GetString() is "story" or "showreel");
-            if (clip.TryGetProperty("parts", out var parts)) Array(parts, part =>
+            if (!supportsStories && clip.ValueKind == JsonValueKind.Object && (clip.TryGetProperty("kind", out _) || clip.TryGetProperty("parts", out _)))
+                throw Problem(path, "story clip needs schemaVersion 5");
+            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "", path: path);
+            if (clip.TryGetProperty("kind", out var kind) &&
+                (!clip.TryGetProperty("parts", out _) || kind.ValueKind != JsonValueKind.String || kind.GetString() is not ("story" or "showreel")))
+                throw Problem(path + "/kind", "invalid clip kind");
+            if (clip.TryGetProperty("parts", out var parts)) Array(parts, path + "/parts", (part, partPath) =>
             {
-                Object(part, "id startWordId endWordId", "reframe");
+                Object(part, "id startWordId endWordId", "reframe", path: partPath);
                 if (part.TryGetProperty("reframe", out var reframe))
                 {
-                    Object(reframe, "mode zoom centerX centerY");
+                    Object(reframe, "mode zoom centerX centerY", path: partPath + "/reframe");
                     Require(reframe.GetProperty("mode").ValueKind == JsonValueKind.String && reframe.GetProperty("mode").GetString() == "face");
                     Number(reframe.GetProperty("zoom"), 1, 1);
                     Number(reframe.GetProperty("centerX"), 0, 1); Number(reframe.GetProperty("centerY"), 0, 1);
@@ -129,41 +137,54 @@ internal static class ProjectValidation
             Nullable(clip.GetProperty("aiResultId"), value => String(value, Id)); Nullable(clip.GetProperty("aiClipIndex"), value => Number(value, 0, int.MaxValue, true)); Boolean(clip.GetProperty("selected"));
         });
         UniqueIds(edits.GetProperty("clips").EnumerateArray().Select(clip => clip.GetProperty("id").GetString()!)); Nullable(edits.GetProperty("activeClipId"), value => String(value, Id));
-        var captions = root.GetProperty("captions"); Object(captions, "styleId overrides position positionByAspect"); String(captions.GetProperty("styleId"), Slug);
-        Require(captions.GetProperty("overrides").ValueKind == JsonValueKind.Object); Nullable(captions.GetProperty("position"), Position);
-        Dictionary(captions.GetProperty("positionByAspect"), key => Require(key is "16:9" or "9:16" or "1:1"), Position);
+        var captions = root.GetProperty("captions"); Object(captions, "styleId overrides position positionByAspect", path: "captions"); String(captions.GetProperty("styleId"), Slug);
+        ExpectObject(captions.GetProperty("overrides"), "captions/overrides");
+        Nullable(captions.GetProperty("position"), position => Position(position, "captions/position"));
+        Dictionary(captions.GetProperty("positionByAspect"), "captions/positionByAspect", (aspect, position, path) =>
+        {
+            if (aspect is not ("16:9" or "9:16" or "1:1")) throw Problem("captions/positionByAspect", "unknown field");
+            Position(position, path);
+        });
         if (root.TryGetProperty("clipStyle", out var clipStyle))
         {
             // Project schema $defs/clipStyle (design §6.6).
-            Object(clipStyle, "preset captions music maxLengthSec shapes rewording captionPicks", "tone");
+            Object(clipStyle, "preset captions music maxLengthSec shapes rewording captionPicks", "tone", path: "clipStyle");
             if (clipStyle.TryGetProperty("tone", out var tone)) { String(tone, Slug); Require(tone.GetString() != "auto" && System.Text.Encoding.UTF8.GetByteCount(tone.GetString()!) <= 64); }
             Choice(clipStyle.GetProperty("preset"), "auto", "punchy", "calm", "demo", "mine"); String(clipStyle.GetProperty("captions"), Slug);
             Choice(clipStyle.GetProperty("music"), "auto", "off"); Number(clipStyle.GetProperty("maxLengthSec"), 5, 600, true);
             var shapes = clipStyle.GetProperty("shapes");
-            Array(shapes, shape => Choice(shape, "16:9", "9:16", "1:1"));
+            Array(shapes, "clipStyle/shapes", (shape, _) => Choice(shape, "16:9", "9:16", "1:1"));
             Require(shapes.GetArrayLength() > 0 && shapes.EnumerateArray().Select(shape => shape.GetString()).Distinct().Count() == shapes.GetArrayLength());
             Choice(clipStyle.GetProperty("rewording"), "off", "fix-only", "tighten");
-            Dictionary(clipStyle.GetProperty("captionPicks"), key => Pattern(key, Id), pick =>
+            Dictionary(clipStyle.GetProperty("captionPicks"), "clipStyle/captionPicks", (_, pick, path) =>
             {
                 // Optional: the clip's overrides and "by": "user" for the creator's own choice (design §6.6).
-                Object(pick, "styleId reason", "overrides by"); String(pick.GetProperty("styleId"), Slug); Require(pick.GetProperty("styleId").GetString() != "auto");
-                if (pick.TryGetProperty("overrides", out var overrides)) Require(overrides.ValueKind == JsonValueKind.Object);
+                Object(pick, "styleId reason", "overrides by", path: path); String(pick.GetProperty("styleId"), Slug); Require(pick.GetProperty("styleId").GetString() != "auto");
+                if (pick.TryGetProperty("overrides", out var overrides)) ExpectObject(overrides, $"{path}/overrides");
                 if (pick.TryGetProperty("by", out var by)) Require(by.ValueKind == JsonValueKind.String && by.GetString() == "user");
                 Require(pick.GetProperty("reason").ValueKind == JsonValueKind.String && pick.GetProperty("reason").GetString()!.EnumerateRunes().Count() <= 120);
-            });
+            }, Id);
         }
-        var export = root.GetProperty("export"); Object(export, "aspect quality srt folder"); Choice(export.GetProperty("aspect"), "source", "16:9", "9:16", "1:1");
-        Choice(export.GetProperty("quality"), "standard", "high"); Boolean(export.GetProperty("srt")); Nullable(export.GetProperty("folder"), value => Text(value, 1, 4096));
-        var share = root.GetProperty("share"); Object(share, "captions"); Dictionary(share.GetProperty("captions"), key => Pattern(key, "(?:full|" + Id + ")"), value => Text(value, 0, 3000));
-        var ai = root.GetProperty("ai"); Object(ai, "results"); Array(ai.GetProperty("results"), result =>
+        var export = root.GetProperty("export"); Object(export, "aspect quality srt folder", path: "export");
+        var aspect = export.GetProperty("aspect");
+        if (aspect.ValueKind != JsonValueKind.String || aspect.GetString() is not ("source" or "16:9" or "9:16" or "1:1"))
+            throw Problem("export/aspect", "invalid value");
+        var quality = export.GetProperty("quality");
+        if (quality.ValueKind != JsonValueKind.String || quality.GetString() is not ("standard" or "high"))
+            throw Problem("export/quality", "invalid value");
+        Boolean(export.GetProperty("srt")); Nullable(export.GetProperty("folder"), value => Text(value, 1, 4096));
+        var share = root.GetProperty("share"); Object(share, "captions", path: "share");
+        Dictionary(share.GetProperty("captions"), "share/captions", (_, value, _) => Text(value, 0, 3000), "(?:full|" + Id + ")");
+        var ai = root.GetProperty("ai"); Object(ai, "results", path: "ai"); Array(ai.GetProperty("results"), "ai/results", (result, path) =>
         {
-            Object(result, "id createdAt provider model preset instructions language inputSha256 clips"); String(result.GetProperty("id"), Id); Timestamp(result.GetProperty("createdAt"));
+            Object(result, "id createdAt provider model preset instructions language inputSha256 clips", path: path); String(result.GetProperty("id"), Id); Timestamp(result.GetProperty("createdAt"));
             String(result.GetProperty("provider"), Slug); Text(result.GetProperty("model"), 1, 128); Choice(result.GetProperty("preset"), "best", "hooks", "topics", "quotes", "custom");
             Nullable(result.GetProperty("instructions"), value => Text(value, 0, 500)); Nullable(result.GetProperty("language"), value => Text(value, 0, 35)); String(result.GetProperty("inputSha256"), Hash);
-            Array(result.GetProperty("clips"), clip =>
+            Array(result.GetProperty("clips"), $"{path}/clips", (clip, clipPath) =>
             {
-                Object(clip, "title reason score startWordId endWordId", supportsStories ? "parts notInTake" : "");
-                if (clip.TryGetProperty("parts", out var parts)) Array(parts, part => Object(part, "startWordId endWordId"));
+                Object(clip, "title reason score startWordId endWordId", supportsStories ? "parts notInTake" : "", path: clipPath);
+                if (clip.TryGetProperty("parts", out var parts))
+                    Array(parts, $"{clipPath}/parts", (part, partPath) => Object(part, "startWordId endWordId", path: partPath));
                 if (clip.TryGetProperty("notInTake", out var note)) Text(note, 0, 200);
                 Text(clip.GetProperty("title"), 1, 120); Text(clip.GetProperty("reason"), 0, 300);
                 Number(clip.GetProperty("score"), 1, 10, true); String(clip.GetProperty("startWordId"), Id); String(clip.GetProperty("endWordId"), Id);
@@ -173,84 +194,97 @@ internal static class ProjectValidation
         var voice = root.GetProperty("voiceLab");
         var projectVersion = root.GetProperty("schemaVersion").GetInt32();
         if (voice.ValueKind == JsonValueKind.Object && voice.TryGetProperty("speakingRateSamples", out var rates))
-            Dictionary(rates, key => Require(key.Length > 0), samples =>
+            Dictionary(rates, "voiceLab/speakingRateSamples", (key, samples, path) =>
             {
-                Require(samples.ValueKind == JsonValueKind.Array && samples.GetArrayLength() <= VoiceLabWordingFit.ProjectSampleLimit);
-                Array(samples, sample =>
+                if (key.Length == 0) throw Problem("voiceLab/speakingRateSamples", "invalid value");
+                if (samples.ValueKind == JsonValueKind.Array && samples.GetArrayLength() > VoiceLabWordingFit.ProjectSampleLimit)
+                    throw Problem(path, "invalid value");
+                Array(samples, path, (sample, samplePath) =>
                 {
-                    Object(sample, "id ratio"); Text(sample.GetProperty("id"), 1, int.MaxValue);
+                    Object(sample, "id ratio", path: samplePath); Text(sample.GetProperty("id"), 1, int.MaxValue);
                     Require(sample.GetProperty("ratio").ValueKind == JsonValueKind.Number && sample.GetProperty("ratio").GetDouble() is var ratio && double.IsFinite(ratio) && ratio > 0);
                 });
             });
         if (projectVersion == 1)
         {
-            Object(voice, "segments", "speakingRateSamples"); Require(voice.GetProperty("segments").ValueKind == JsonValueKind.Array && voice.GetProperty("segments").GetArrayLength() == 0);
+            Object(voice, "segments", "speakingRateSamples", path: "voiceLab");
+            Array(voice.GetProperty("segments"), "voiceLab/segments", (_, _) => throw Problem("voiceLab/segments", "Version 1 Voice Lab must be empty"));
         }
         else
         {
-            Object(voice, projectVersion >= 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments",
-                projectVersion >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples");
+            Object(voice, projectVersion >= 3 ? "segments assets cleanAudio voices videoAssets" : "segments assets",
+                projectVersion >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples", path: "voiceLab");
             // A whole-clip revoice (ADR-R46): every key present, usd and match may be null; the rules are WholeClipRevoice.Validate's.
             if (voice.TryGetProperty("wholeClipRevoices", out var revoices))
-                Array(revoices, revoice =>
+                Array(revoices, "voiceLab/wholeClipRevoices", (revoice, path) =>
                 {
-                    Object(revoice, "id clipId segmentIds script consentRecordId videoRetime lipsyncModel usd match createdAt");
+                    Object(revoice, "id clipId segmentIds script consentRecordId videoRetime lipsyncModel usd match createdAt", path: path);
                     String(revoice.GetProperty("id"), Id); String(revoice.GetProperty("clipId"), Id);
-                    Array(revoice.GetProperty("segmentIds"), segment => Text(segment, 1, int.MaxValue));
+                    Array(revoice.GetProperty("segmentIds"), $"{path}/segmentIds", (segment, _) => Text(segment, 1, int.MaxValue));
                     Text(revoice.GetProperty("script"), 1, int.MaxValue); Text(revoice.GetProperty("consentRecordId"), 1, int.MaxValue);
                     Number(revoice.GetProperty("videoRetime"), double.MinValue);
                     Choice(revoice.GetProperty("lipsyncModel"), "fal-ai/sync-lipsync/v2:lipsync-2", "fal-ai/sync-lipsync/v3");
                     Nullable(revoice.GetProperty("usd"), usd => Number(usd, 0, double.MaxValue));
                     Nullable(revoice.GetProperty("match"), match =>
                     {
-                        Object(match, "take anchorBaseline realSpeech"); Number(match.GetProperty("take"), -1, 1);
+                        Object(match, "take anchorBaseline realSpeech", path: $"{path}/match"); Number(match.GetProperty("take"), -1, 1);
                         Nullable(match.GetProperty("anchorBaseline"), score => Number(score, -1, 1));
                         Nullable(match.GetProperty("realSpeech"), score => Number(score, -1, 1));
                     });
                     Timestamp(revoice.GetProperty("createdAt"));
                 });
-            Array(voice.GetProperty("assets"), asset => Object(asset, "id kind file sha256 durationSeconds sampleRate createdAt"));
-            Array(voice.GetProperty("segments"), segment =>
+            Array(voice.GetProperty("assets"), "voiceLab/assets", (asset, path) => Object(asset, "id kind file sha256 durationSeconds sampleRate createdAt", path: path));
+            Array(voice.GetProperty("segments"), "voiceLab/segments", (segment, path) =>
             {
-                Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (projectVersion >= 3 ? " scope" : ""), projectVersion >= 3 ? "groupId" : "");
+                Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (projectVersion >= 3 ? " scope" : ""), projectVersion >= 3 ? "groupId" : "", path: path);
                 if (projectVersion >= 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger", "recorded"); }
-                Object(segment.GetProperty("replace"), "start end firstWordId lastWordId");
-                Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb", "tiltDbPerOctave");
+                Object(segment.GetProperty("replace"), "start end firstWordId lastWordId", path: $"{path}/replace");
+                Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb", "tiltDbPerOctave", path: $"{path}/audio");
                 Nullable(segment.GetProperty("text"), text =>
                 {
-                    Object(text, "original new", "audioTags");
+                    Object(text, "original new", "audioTags", path: $"{path}/text");
                     if (text.TryGetProperty("audioTags", out var annotations))
-                        Array(annotations, annotation => Object(annotation, "beforeToken tag"));
+                        Array(annotations, $"{path}/text/audioTags", (annotation, annotationPath) => Object(annotation, "beforeToken tag", path: annotationPath));
                 });
-                Nullable(segment.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
-                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion >= 3 ? " region" : ""), "pace");
+                Nullable(segment.GetProperty("words"), words => Array(words, $"{path}/words", (word, wordPath) => Object(word, "text start end synthetic", path: wordPath)));
+                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion >= 3 ? " region" : ""), "pace", path: $"{path}/provenance");
                 if (segment.GetProperty("provenance").TryGetProperty("pace", out var pace)) Number(pace, VoiceLabPace.Minimum, VoiceLabPace.Maximum);
-                Object(segment.GetProperty("qa"), "transcriptMatch lufsJumpLu peakDbfs speakerScore");
-                Array(segment.GetProperty("candidates"), candidate =>
+                Object(segment.GetProperty("qa"), "transcriptMatch lufsJumpLu peakDbfs speakerScore", path: $"{path}/qa");
+                Array(segment.GetProperty("candidates"), $"{path}/candidates", (candidate, candidatePath) =>
                 {
-                    Object(candidate, "assetId score rejected" + (projectVersion >= 3 && candidate.GetProperty("rejected").ValueKind == JsonValueKind.Null ? " recipe" : ""), projectVersion >= 3 ? "recipe" : "");
-                    if (candidate.TryGetProperty("recipe", out var recipe)) RenderRecipe(recipe);
+                    Object(candidate, "assetId score rejected", projectVersion >= 3 ? "recipe" : "", path: candidatePath);
+                    var recipePath = $"{candidatePath}/recipe";
+                    if (candidate.TryGetProperty("recipe", out var recipe)) RenderRecipe(recipe, recipePath);
+                    else if (projectVersion >= 3 && candidate.GetProperty("rejected").ValueKind == JsonValueKind.Null)
+                        throw Problem(recipePath, "missing required field");
                 });
             });
             if (projectVersion >= 3)
             {
-                Object(voice.GetProperty("cleanAudio"), "mode assetId mix");
+                Object(voice.GetProperty("cleanAudio"), "mode assetId mix", path: "voiceLab/cleanAudio");
                 Choice(voice.GetProperty("cleanAudio").GetProperty("mode"), "off", "on");
-                Array(voice.GetProperty("voices"), item => { Object(item, "id provider voiceId consentRecordId displayName status"); Choice(item.GetProperty("status"), "active", "deleted"); });
-                Array(voice.GetProperty("videoAssets"), item => Object(item, "id file sha256 durationSeconds frameRate width height"));
+                Array(voice.GetProperty("voices"), "voiceLab/voices", (item, path) => { Object(item, "id provider voiceId consentRecordId displayName status", path: path); Choice(item.GetProperty("status"), "active", "deleted"); });
+                Array(voice.GetProperty("videoAssets"), "voiceLab/videoAssets", (item, path) => Object(item, "id file sha256 durationSeconds frameRate width height", path: path));
             }
         }
         if (root.TryGetProperty("contextDemo", out var demo))
         {
-            Object(demo, "format version projectId planId revision sourceContentKey narration assets placements");
-            Array(demo.GetProperty("assets"), asset =>
+            Object(demo, "format version projectId planId revision sourceContentKey narration assets placements", path: "contextDemo");
+            Array(demo.GetProperty("assets"), "contextDemo/assets", (asset, path) =>
             {
-                Require(asset.ValueKind == JsonValueKind.Object);
-                var target = asset.GetProperty("target");
-                Object(target, "kind displayName locator");
+                ExpectObject(asset, path);
+                if (!asset.TryGetProperty("target", out var target)) throw Problem($"{path}/target", "missing required field");
+                Object(target, "kind displayName locator", path: $"{path}/target");
                 Choice(target.GetProperty("kind"), "desktopApp", "codeProject", "webPage");
             });
-            var context = ContextDemoCodec.Decode(System.Text.Encoding.UTF8.GetBytes(demo.GetRawText()));
+            ContextDemoDocument context;
+            // The demo decodes as its own document, so its error paths start inside `contextDemo`.
+            try { context = ContextDemoCodec.Decode(System.Text.Encoding.UTF8.GetBytes(demo.GetRawText())); }
+            catch (JsonException exception)
+            {
+                var inner = FieldPath(exception.Path);
+                throw Problem(inner.Length == 0 ? "contextDemo" : $"contextDemo/{inner}", "invalid value");
+            }
             Require(context.ProjectId == root.GetProperty("id").GetString() && context.SourceContentKey == source.GetProperty("contentKey").GetString());
         }
         if (root.TryGetProperty("motionCues", out var cues)) MotionCue.ValidateWire(cues);
@@ -260,45 +294,47 @@ internal static class ProjectValidation
         if (root.TryGetProperty("captionTranslations", out var translations)) VoxClip.Core.Domain.Captions.CaptionTranslations.ValidateWire(translations);
     }
 
-    private static void RenderRecipe(JsonElement recipe)
+    private static void RenderRecipe(JsonElement recipe, string path)
     {
-        Object(recipe, "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", "edgeGain");
-        Object(recipe.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb", "tiltDbPerOctave");
-        Nullable(recipe.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
-        Array(recipe.GetProperty("chunks"), item => Object(item, "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame"));
-        Nullable(recipe.GetProperty("roomTone"), item => Object(item, "sourceStartSample sourceEndSample gainDb", "endGainDb"));
-        var seams = recipe.GetProperty("seams"); Object(seams, "in out");
+        Object(recipe, "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", "edgeGain", path: path);
+        Object(recipe.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb", "tiltDbPerOctave", path: $"{path}/audio");
+        Nullable(recipe.GetProperty("words"), words => Array(words, $"{path}/words", (word, wordPath) => Object(word, "text start end synthetic", path: wordPath)));
+        Array(recipe.GetProperty("chunks"), $"{path}/chunks", (item, itemPath) => Object(item, "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame", path: itemPath));
+        Nullable(recipe.GetProperty("roomTone"), item => Object(item, "sourceStartSample sourceEndSample gainDb", "endGainDb", path: $"{path}/roomTone"));
+        var seams = recipe.GetProperty("seams"); Object(seams, "in out", path: $"{path}/seams");
         foreach (var side in new[] { "in", "out" })
         {
             var seam = seams.GetProperty(side);
-            Object(seam, "kind fadeSamples sourceHandleSamples assetHandleFrames", "microPause");
-            if (seam.TryGetProperty("microPause", out var pause)) Object(pause, "wordStartSeconds wordEndSeconds");
+            var seamPath = $"{path}/seams/{side}";
+            Object(seam, "kind fadeSamples sourceHandleSamples assetHandleFrames", "microPause", path: seamPath);
+            if (seam.TryGetProperty("microPause", out var pause)) Object(pause, "wordStartSeconds wordEndSeconds", path: $"{seamPath}/microPause");
         }
         if (recipe.TryGetProperty("edgeGain", out var gains))
         {
-            Object(gains, "", "in out");
+            Object(gains, "", "in out", path: $"{path}/edgeGain");
             foreach (var side in new[] { "in", "out" })
                 if (gains.TryGetProperty(side, out var gain))
                 {
-                    Object(gain, "gainDb wordSeconds");
-                    Object(gain.GetProperty("wordSeconds"), "wordStartSeconds wordEndSeconds");
+                    var gainPath = $"{path}/edgeGain/{side}";
+                    Object(gain, "gainDb wordSeconds", path: gainPath);
+                    Object(gain.GetProperty("wordSeconds"), "wordStartSeconds wordEndSeconds", path: $"{gainPath}/wordSeconds");
                 }
         }
         Choice(seams.GetProperty("in").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
         Choice(seams.GetProperty("out").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
         var video = recipe.GetProperty("video");
-        Object(video, "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode", "cuts");
-        if (video.TryGetProperty("cuts", out var cuts)) Array(cuts, cut => Object(cut, "startSample endSample"));
+        Object(video, "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode", "cuts", path: $"{path}/video");
+        if (video.TryGetProperty("cuts", out var cuts)) Array(cuts, $"{path}/video/cuts", (cut, cutPath) => Object(cut, "startSample endSample", path: cutPath));
         Choice(video.GetProperty("mode"), "source", "cut", "retimed", "zoomCover", "lipsync");
         Choice(recipe.GetProperty("voiceSource"), "own", "stock");
         var qa = recipe.GetProperty("qa");
-        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory outputSpeakerCheckSkipped");
+        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory outputSpeakerCheckSkipped", path: $"{path}/qa");
         if (qa.TryGetProperty("outputSpeakerCheckSkipped", out var skipped)) Require(skipped.ValueKind == JsonValueKind.True);
         if (qa.TryGetProperty("joinAdvisory", out var advisory))
         {
-            Object(advisory, "seams acceptedAt");
-            Array(advisory.GetProperty("seams"), seam => {
-                Object(seam, "side excessLu");
+            Object(advisory, "seams acceptedAt", path: $"{path}/qa/joinAdvisory");
+            Array(advisory.GetProperty("seams"), $"{path}/qa/joinAdvisory/seams", (seam, seamPath) => {
+                Object(seam, "side excessLu", path: seamPath);
                 Choice(seam.GetProperty("side"), "left", "right");
                 Number(seam.GetProperty("excessLu"), 2);
             });
@@ -306,33 +342,33 @@ internal static class ProjectValidation
         }
         if (qa.TryGetProperty("shortSpeech", out var shortSpeech))
         {
-            Object(shortSpeech, "mode recordId consentMethod voicedFrames takeCount");
+            Object(shortSpeech, "mode recordId consentMethod voicedFrames takeCount", path: $"{path}/qa/shortSpeech");
             Choice(shortSpeech.GetProperty("mode"), "pooled", "unmeasured");
             Text(shortSpeech.GetProperty("recordId"), 0, int.MaxValue);
             Choice(shortSpeech.GetProperty("consentMethod"), "recordedStatement", "projectAttestation");
             Number(shortSpeech.GetProperty("voicedFrames"), 0, int.MaxValue, true);
             Number(shortSpeech.GetProperty("takeCount"), 0, int.MaxValue, true);
         }
-        Object(recipe.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt region", "pace");
+        Object(recipe.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt region", "pace", path: $"{path}/provenance");
         if (recipe.GetProperty("provenance").TryGetProperty("pace", out var pace)) Number(pace, VoiceLabPace.Minimum, VoiceLabPace.Maximum);
-        Object(recipe.GetProperty("cost"), "quoteId usd");
+        Object(recipe.GetProperty("cost"), "quoteId usd", path: $"{path}/cost");
     }
 
     private static void Transcript(JsonElement transcript, bool normalizeWordText)
     {
-        Object(transcript, "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt");
+        Object(transcript, "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt", path: "transcript");
         Number(transcript.GetProperty("schemaVersion"), 1, 1, true);
         Nullable(transcript.GetProperty("language"), value => String(value, "[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")); Nullable(transcript.GetProperty("languageProbability"), value => Number(value, 0, 1));
         Number(transcript.GetProperty("durationSeconds"), 0); Boolean(transcript.GetProperty("verbatim")); Boolean(transcript.GetProperty("refined")); Number(transcript.GetProperty("pipelineVersion"), 1, int.MaxValue, true);
         String(transcript.GetProperty("rawKey"), Hash); Timestamp(transcript.GetProperty("createdAt"));
-        var engine = transcript.GetProperty("engine"); Object(engine, "id modelId modelSha256 engineVersion locale"); Choice(engine.GetProperty("id"), "elevenlabs", "whispercpp", "apple-speech");
+        var engine = transcript.GetProperty("engine"); Object(engine, "id modelId modelSha256 engineVersion locale", path: "transcript/engine"); Choice(engine.GetProperty("id"), "elevenlabs", "whispercpp", "apple-speech");
         Nullable(engine.GetProperty("modelId"), value => Text(value, 0, 128)); Nullable(engine.GetProperty("modelSha256"), value => String(value, Hash));
         Text(engine.GetProperty("engineVersion"), 1, 128); Nullable(engine.GetProperty("locale"), value => Text(value, 0, 35));
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var previousStart = double.NegativeInfinity;
-        Array(transcript.GetProperty("words"), word =>
+        Array(transcript.GetProperty("words"), "transcript/words", (word, path) =>
         {
-            Object(word, "id text kind start end rawStart rawEnd conf speaker timing"); String(word.GetProperty("id"), Id); WordText(word.GetProperty("text"), normalizeWordText); Choice(word.GetProperty("kind"), "word", "event", "unlabeledSpeech");
+            Object(word, "id text kind start end rawStart rawEnd conf speaker timing", path: path); String(word.GetProperty("id"), Id); WordText(word.GetProperty("text"), normalizeWordText); Choice(word.GetProperty("kind"), "word", "event", "unlabeledSpeech");
             Number(word.GetProperty("start"), 0); Number(word.GetProperty("end"), 0);
             var start = word.GetProperty("start").GetDouble();
             Require(start >= previousStart && word.GetProperty("end").GetDouble() > start && ids.Add(word.GetProperty("id").GetString()!));
@@ -351,39 +387,91 @@ internal static class ProjectValidation
         Require(text == EditingAlgorithms.JsTrim(text) && string.Equals(EditingAlgorithms.Nfc(text), text, StringComparison.Ordinal));
     }
 
-    private static void Position(JsonElement position)
+    private static void Position(JsonElement position, string path)
     {
-        Object(position, "x y"); Number(position.GetProperty("x"), 0, 1); Number(position.GetProperty("y"), 0, 1);
+        Object(position, "x y", path: path);
+        At($"{path}/x", () => Number(position.GetProperty("x"), 0, 1)); At($"{path}/y", () => Number(position.GetProperty("y"), 0, 1));
+    }
+
+    // A failed value check inside an element reports that element's path, not the whole document.
+    private static void At(string path, Action validate)
+    {
+        try { validate(); }
+        catch (JsonException) { throw Problem(path, "invalid value"); }
+    }
+
+    // "$.a.b[0]['key']" (System.Text.Json) as "a/b/0/key"; empty when unknown.
+    // The path stops before the first key that is not a plain identifier, so a rejected key is never printed.
+    internal static string FieldPath(string? jsonPath)
+    {
+        if (jsonPath is not { Length: > 1 } || jsonPath[0] != '$') return "";
+        var segments = new List<string>();
+        foreach (Match match in Regex.Matches(jsonPath[1..], @"\.([^.\[]+)|\[(\d+)\]|\['(.*?)'\]"))
+        {
+            var segment = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+            if (!PathKey.IsMatch(segment)) break;
+            segments.Add(segment);
+        }
+        return string.Join('/', segments);
     }
 
     private static void Timestamp(JsonElement value)
         => Require(value.ValueKind == JsonValueKind.String && UtcTimestamp.TryParse(value.GetString(), out _));
 
-    private static void Object(JsonElement value, string required, string optional = "")
+    private static VoxClipException Problem(string path, string reason) => new(VoxClipErrorCode.ProjectUnreadable, $"{path}: {reason}");
+
+    private static void ExpectObject(JsonElement value, string path)
     {
-        Require(value.ValueKind == JsonValueKind.Object);
+        if (value.ValueKind != JsonValueKind.Object) throw Problem(path, "expected object");
+    }
+
+    private static void Object(JsonElement value, string required, string optional = "", string path = "/")
+    {
+        ExpectObject(value, path);
         var keys = required.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var key in keys) Require(value.TryGetProperty(key, out _));
+        foreach (var key in keys)
+        {
+            if (value.TryGetProperty(key, out _)) continue;
+            throw Problem(path == "/" ? key : path + "/" + key, "missing required field");
+        }
         var allowed = keys.Concat(optional.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToHashSet(StringComparer.Ordinal);
-        foreach (var property in value.EnumerateObject()) Require(allowed.Contains(property.Name));
+        foreach (var property in value.EnumerateObject())
+        {
+            if (allowed.Contains(property.Name)) continue;
+            throw Problem(path, "unknown field");
+        }
     }
 
-    private static void Array(JsonElement value, Action<JsonElement> validate)
+    private static void Array(JsonElement value, string path, Action<JsonElement, string> validate)
     {
-        Require(value.ValueKind == JsonValueKind.Array);
-        foreach (var item in value.EnumerateArray()) validate(item);
+        if (value.ValueKind != JsonValueKind.Array) throw Problem(path, "expected array");
+        var index = 0;
+        foreach (var item in value.EnumerateArray())
+        {
+            var itemPath = $"{path}/{index++}";
+            At(itemPath, () => validate(item, itemPath));
+        }
     }
 
-    private static void Dictionary(JsonElement value, Action<string> key, Action<JsonElement> item)
+    // A key that fails its pattern is reported at the map; an accepted key names its entry only when it is a plain identifier.
+    private static void Dictionary(JsonElement value, string path, Action<string, JsonElement, string> validate, string? keyPattern = null)
     {
-        Require(value.ValueKind == JsonValueKind.Object);
-        foreach (var property in value.EnumerateObject()) { key(property.Name); item(property.Value); }
+        ExpectObject(value, path);
+        foreach (var property in value.EnumerateObject())
+        {
+            if (keyPattern is not null) At(path, () => Pattern(property.Name, keyPattern));
+            var entryPath = Entry(path, property.Name);
+            At(entryPath, () => validate(property.Name, property.Value, entryPath));
+        }
     }
 
-    private static void UniqueStrings(JsonElement value, string pattern)
+    private static readonly Regex PathKey = new(@"\A[A-Za-z0-9._:-]{1,128}\z", RegexOptions.CultureInvariant);
+    private static string Entry(string parent, string key) => PathKey.IsMatch(key) ? $"{parent}/{key}" : parent;
+
+    private static void UniqueStrings(JsonElement value, string pattern, string path)
     {
         var found = new HashSet<string>(StringComparer.Ordinal);
-        Array(value, item => { String(item, pattern); Require(found.Add(item.GetString()!)); });
+        Array(value, path, (item, _) => { String(item, pattern); Require(found.Add(item.GetString()!)); });
     }
 
     private static void UniqueIds(IEnumerable<string> ids)

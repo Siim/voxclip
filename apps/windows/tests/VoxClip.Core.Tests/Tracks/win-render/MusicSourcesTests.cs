@@ -15,6 +15,18 @@ namespace VoxClip.Core.Tests.Tracks.WinRender;
 public sealed class MusicSourcesTests
 {
     [Fact]
+    public async Task SoundSearchKeepsShortUncategorizedFreesoundResults()
+    {
+        var recording = File.ReadAllBytes(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "music", "openverse-whoosh.json"));
+        var http = new Http(new MusicHttpReply(200, recording));
+        var results = await new OpenverseMusicClient(http).SearchAsync("whoosh", NoWords, 0, TestContext.Current.CancellationToken, sound: true);
+        Assert.Equal(["openverse-f1dc6045-7965-41de-87f8-4731d2583fd2", "openverse-f340c2c6-4b41-4acd-a593-b5bbdb2c2b8b", "openverse-limit"],
+            results.Select(item => item.Id));
+        Assert.Equal(new double?[] { 0.49, 10.5, 30 }, results.Select(item => item.DurationSeconds));
+        Assert.Equal("https://api.openverse.org/v1/audio/?q=whoosh&license=cc0%2Cby%2Cpdm&page_size=20", Assert.Single(http.Sent).Uri.AbsoluteUri);
+    }
+
+    [Fact]
     public void AChosenFolderWinsOverTheDefaultEvenWhenItIsMissing()
     {
         var root = Directory.CreateTempSubdirectory("voxclip-music-folder-").FullName;

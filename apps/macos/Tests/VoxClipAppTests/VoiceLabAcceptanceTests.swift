@@ -255,7 +255,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         model.undoManager = undo
         document.updateChangeCount(.changeCleared)
 
-        #expect(throws: VoxClipError.projectUnreadable("Invalid clip lead-in")) {
+        #expect(throws: VoxClipError.projectUnreadable("edits/clips/1/leadInSeconds: invalid clip lead-in")) {
             try model.applyVoiceLab(input.segments, assets: input.assets, voice: input.voice, scope: .fullTake,
                                     localCommands: [.addClip(badClip)])
         }

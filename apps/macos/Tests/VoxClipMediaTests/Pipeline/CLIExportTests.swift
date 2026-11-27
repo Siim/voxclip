@@ -258,6 +258,77 @@ func musicFlagsRejectInvalidCombinationsBeforeOpeningInput(flags: [String], mess
     #expect(try (result.json["error"] as? [String: Any])?["message"] as? String == message)
 }
 
+@Test(arguments: [
+    ("story", "edits/clips/0: story clip needs schemaVersion 5"),
+    ("assets", "voiceLab/assets: missing required field"),
+    ("cleanAudio", "voiceLab/cleanAudio: missing required field"),
+    ("voices", "voiceLab/voices: missing required field"),
+    ("videoAssets", "voiceLab/videoAssets: missing required field"),
+    ("aspect", "export/aspect: invalid value"),
+    ("quality", "export/quality: invalid value"),
+    ("assetDuration", "voiceLab/assets/0/durationSeconds: invalid value"),
+    ("captionY", "captions/position/y: missing required field"),
+    ("captionX", "captions/position/x: invalid value"),
+    ("correctionKey", "edits/corrections: invalid value"),
+    ("aiPart", "ai/results/0/clips/0/parts/0/endWordId: missing required field"),
+])
+func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let data = try FixtureLoader.data("fixtures/story-clips/story-project.voxclip")
+    var project = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let privateContent = "project-private-content-marker"
+    project["title"] = privateContent
+    if defect == "story" { project["schemaVersion"] = 4 }
+    else if defect == "correctionKey" {
+        // A rejected key is reported at its map, never printed: a newline would split the one-line diagnostic.
+        var edits = try #require(project["edits"] as? [String: Any])
+        edits["corrections"] = ["bad\n\(privateContent)": "fixed"]
+        project["edits"] = edits
+    }
+    else if defect == "aspect" || defect == "quality" {
+        var settings = try #require(project["export"] as? [String: Any])
+        settings[defect] = privateContent
+        project["export"] = settings
+    } else if defect == "captionY" || defect == "captionX" {
+        var captions = try #require(project["captions"] as? [String: Any])
+        captions["position"] = defect == "captionY" ? ["x": 0.5] : ["x": 2, "y": 0.5]
+        project["captions"] = captions
+    } else if defect == "aiPart" {
+        let part = ["startWordId": "w1"]
+        let clip: [String: Any] = ["title": privateContent, "reason": "", "score": 8,
+                                   "startWordId": "w1", "endWordId": "w2", "parts": [part]]
+        let result: [String: Any] = ["id": "result-1", "createdAt": try #require(project["createdAt"]),
+                                     "provider": "codex", "model": privateContent, "preset": "best",
+                                     "instructions": NSNull(), "language": NSNull(),
+                                     "inputSha256": String(repeating: "0", count: 64), "clips": [clip]]
+        project["ai"] = ["results": [result]]
+    } else {
+        var voiceLab = try #require(project["voiceLab"] as? [String: Any])
+        if defect == "assetDuration" {
+            voiceLab["assets"] = [["id": "asset-1", "kind": "audio", "file": "asset.wav",
+                                   "sha256": String(repeating: "0", count: 64), "durationSeconds": privateContent,
+                                   "sampleRate": 48000, "createdAt": try #require(project["createdAt"])]] as [[String: Any]]
+        } else {
+            voiceLab.removeValue(forKey: defect)
+        }
+        project["voiceLab"] = voiceLab
+    }
+    let input = directory.appendingPathComponent("invalid.voxclip")
+    try JSONSerialization.data(withJSONObject: project).write(to: input)
+    let arguments = ["plan", "--open", input.path]
+    let human = try runCLI(arguments, directory: directory)
+    #expect(human.status == 3)
+    #expect(human.stderr.contains(problem))
+    #expect(!(String(decoding: human.stdout, as: UTF8.self) + human.stderr).contains(privateContent))
+    let machine = try runCLI(arguments + ["--json"], directory: directory)
+    #expect(machine.status == 3)
+    let error = try #require(try machine.json["error"] as? [String: String])
+    #expect(error["code"] == "projectUnreadable")
+    #expect(error["message"] == "projectUnreadable: \(problem). Your video and edits are unchanged.")
+    #expect(!(String(decoding: machine.stdout, as: UTF8.self) + machine.stderr).contains(privateContent))
+}
+
 private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdits = ProjectEdits()) async throws -> Project {
     let probe = try await AVMediaProbe().probe(source)
     let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
@@ -269,6 +340,30 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test(.timeLimit(.minutes(2)), arguments: [false, true]) func cliExportsFourFiveAndChecksIt(_ explicit: Bool) async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+    let source = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/fillers-chirp.mp4")
+    var project = try await cliProject(source: source, transcript: fixture.transcript, edits: fixture.edits)
+    let clip = try #require(project.edits.clips.first)
+    project.export.aspect = .landscape
+    project.clipControls = [.init(clipId: clip.id, shape: explicit ? .portrait : .portraitFourFive)]
+    let input = directory.appendingPathComponent("frame.voxclip")
+    let output = directory.appendingPathComponent("frame.mp4")
+    try await JSONProjectStore().save(project, to: input)
+    let invocation = try runCLI(["export", "--open", input.path, "--clip", clip.id, "--export", output.path,
+        "--style", "off", "--loudness", "off", "--json", "--quiet"] + (explicit ? ["--aspect", "4:5"] : []), directory: directory)
+    try #require(invocation.status == 0, "CLI exit \(invocation.status): \(invocation.stderr)")
+    #expect(try invocation.json["aspect"] as? String == "4:5")
+    let video = try await AVMediaProbe().probe(output).video
+    #expect(video?.width == 1080 && video?.height == 1350)
+    let checked = try runCLI(["check", "--project", input.path, "--clip", clip.id, output.path,
+        "--aspect", "4:5", "--style", "off", "--loudness", "off", "--json"], directory: directory)
+    #expect([0, 8].contains(checked.status))
+    #expect(try checked.json["ok"] as? Bool == true)
+}
+
 @Test(.timeLimit(.minutes(1))) func cliExportsStoryClipCaptionsInPartOrder() async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

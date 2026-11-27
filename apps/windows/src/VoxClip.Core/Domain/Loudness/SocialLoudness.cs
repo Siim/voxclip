@@ -71,7 +71,7 @@ public static class SocialLoudness
     /// <summary>−1 dBTP.</summary>
     public const double CeilingDbtp = -1.0;
     /// <summary>+12 dB.</summary>
-    public const double MaximumBoostDb = 12.0;
+    public const double MaximumBoostDb = 20.0;
     /// <summary>−20 dB.</summary>
     public const double MaximumCutDb = -20.0;
     /// <summary>9 dB: the most the limiter may reduce.</summary>

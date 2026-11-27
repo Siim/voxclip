@@ -326,10 +326,15 @@ import Testing
         #expect(keys.count == 15)
         let partials = [withRecipeVideos(project) { video in video.filter { $0.value != .null } }]
             + keys.map { key in withRecipeVideos(project) { video in video.filter { $0.key != key } } }
-        for partial in partials {
+        for (index, partial) in partials.enumerated() {
             #expect(partial != project)
             let data = try JSONEncoder().encode(partial)
-            #expect(throws: VoxClipError.projectUnreadable("Unknown or missing project field")) { try JSONProjectStore.decode(data) }
+            if index == 0 {
+                #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data) }
+            } else {
+                let path = "voiceLab/segments/0/candidates/0/recipe/video/\(keys[index - 1])"
+                #expect(throws: VoxClipError.projectUnreadable("\(path): missing required field")) { try JSONProjectStore.decode(data) }
+            }
             #expect(throws: VoxClipError.projectUnreadable("Incomplete Voice Lab render recipe")) { try ProjectJSON.decode(data) }
         }
     }

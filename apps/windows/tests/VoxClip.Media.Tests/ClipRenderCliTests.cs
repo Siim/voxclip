@@ -86,6 +86,21 @@ public sealed class ClipRenderCliTests
         Assert.Equal(snapshot.RenderedDuration, result.RootElement.GetProperty("durationSeconds").GetDouble(), 9);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FourFiveExportsFromEitherClipShapeOrExplicitAspect(bool explicitAspect)
+    {
+        var project = Fixture();
+        project = project with { ClipControls = [Assert.Single(project.ClipControls) with
+            { Shape = explicitAspect ? ClipShape.Portrait : ClipShape.PortraitFourFive }] };
+        var (exit, job, output) = await ExportAsync(project, explicitAspect ? ["--clip", "clip-main", "--aspect", "4:5"] : ["--clip", "clip-main"]);
+        Assert.True(exit == 0, output);
+        Assert.Equal(new PixelSize(1080, 1350), Assert.IsType<ExportJob>(job).Snapshot.Output.Size);
+        using var json = JsonDocument.Parse(output[..(output.LastIndexOf('}') + 1)]);
+        Assert.Equal("4:5", json.RootElement.GetProperty("aspect").GetString());
+    }
+
     [Fact]
     public async Task TheFullVideoRendersWithoutClipControlsAndKeepsOnlyItsEffects()
     {

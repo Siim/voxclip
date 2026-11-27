@@ -13,16 +13,8 @@ public static class ProjectSerialization
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Expected a project object.");
-            if (document.RootElement.TryGetProperty("schemaVersion", out var version))
-            {
-                if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var number))
-                    throw new JsonException("Invalid project schema version.");
-                if (number > TimelineEditFields.Version)
-                    throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-                if (number >= 3) ValidateV3EnumWire(document.RootElement);
-            }
-            VoxClip.Core.Services.Project.ProjectValidation.Validate(json, normalizeWordText: true);
+            VoxClip.Core.Services.Project.ProjectValidation.Validate(document.RootElement, normalizeWordText: true);
+            if (document.RootElement.GetProperty("schemaVersion").GetInt32() >= 3) ValidateV3EnumWire(document.RootElement);
             var project = JsonSerializer.Deserialize(json, ProjectJsonContext.Default.Project) ?? throw new JsonException("Missing project.");
             project = project with {
                 Transcript = project.Transcript is { } transcript ? transcript with {
@@ -37,11 +29,13 @@ public static class ProjectSerialization
         }
         catch (JsonException exception)
         {
-            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "This project file can't be read.", exception);
+            var path = VoxClip.Core.Services.Project.ProjectValidation.FieldPath(exception.Path);
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, path.Length == 0
+                ? "/: invalid project document" : $"{path}: invalid value");
         }
-        catch (KeyNotFoundException exception)
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException)
         {
-            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "This project file can't be read.", exception);
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "/: invalid project document", exception);
         }
     }
     private static void ValidateV3EnumWire(JsonElement root)

@@ -101,11 +101,17 @@ final class CLIInterruptTiming: Sendable {
 /// Default subcommand keeps primary export flags from consuming subcommand options; architecture §9.1.
 struct Export: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Export a project or source media (the default command).")
+    static func validateAspect(_ aspect: String?) throws {
+        if let aspect, AspectRatio(rawValue: aspect) == nil, ClipShape(rawValue: aspect) == nil {
+            throw ValidationError("--aspect must be source, 16:9, 9:16, 1:1 or 4:5")
+        }
+    }
+
     @Option(name: .customLong("open"), help: "Project or source media file.") var input: String?
     @Option(name: .customLong("export"), help: "Destination MP4 or FCPXML file.") var output: String?
     @Option(help: "mp4 (default) or fcpxml (editable timeline).") var format = "mp4"
     @Option(help: "Caption style ID, or off.") var style: String?
-    @Option(help: "source, 16:9, 9:16 or 1:1.") var aspect: String?
+    @Option(help: "source, 16:9, 9:16, 1:1 or 4:5. Defaults to the clip's frame, then the project's aspect.") var aspect: String?
     @Option(help: "Saved clip ID, mutually exclusive with --range.") var clip: String?
     @Option(name: .customLong("range"), help: "Inclusive startWordIndex:endWordIndex.") var wordRange: String?
     @Option(help: "Fixture words JSON instead of transcription.") var transcript: String?
@@ -143,7 +149,7 @@ struct Export: AsyncParsableCommand {
             }
         }
         if let cover, cover != "on", cover != "off" { throw ValidationError("--cover must be on or off") }
-        if let aspect, AspectRatio(rawValue: aspect) == nil { throw ValidationError("--aspect must be source, 16:9, 9:16 or 1:1") }
+        try Self.validateAspect(aspect)
         if let quality, ExportQuality(rawValue: quality) == nil { throw ValidationError("--quality must be standard or high") }
         if let loudness, ExportLoudness(rawValue: loudness) == nil { throw ValidationError("--loudness must be social or off") }
         if let engine { _ = try CLIExecution.engine(engine) }

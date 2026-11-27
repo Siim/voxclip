@@ -622,7 +622,7 @@ The Windows CLI checks the separate per-user runtime agreement before dispatchin
 ```text
 voxclip-cli [export] --open <project.voxclip | media file> --export <out.mp4>
             [--style <captionStyleId> | --style off]          style id from shared/caption-styles (e.g. vox-highlight); default: the project's style, else "off"
-            [--aspect source | 16:9 | 9:16 | 1:1]               default: the project's aspect, else "source"
+            [--aspect source | 16:9 | 9:16 | 1:1 | 4:5]         default: the clip's frame, then the project's aspect, else "source"
             [--clip <clipId> | --range <startWordIndex>:<endWordIndex>]
             [--transcript <transcript.json>]                    use a stored Transcript instead of transcribing
             [--engine whisper | apple | elevenlabs] [--model <modelId>] [--language <bcp47>]
@@ -635,6 +635,9 @@ voxclip-cli [export] --open <project.voxclip | media file> --export <out.mp4>
 ```
 
 Behaviour:
+
+An explicit `--aspect` overrides the saved frame for this export only. `4:5` renders at 1080 × 1350. For `check`, pass
+the aspect used for export (including `4:5`), or omit the flag to read it from the exported frame.
 
 1. `--open` a `.voxclip` project: load it and relink media by the project rules (section 3) without prompts; a `contentKey` mismatch is exit 3.
 2. `--open` a media file: create an in-memory project. With `--transcript`, load that file: one JSON object exactly as `transcript` is stored in a project (`project.schema.json` `$defs/transcript`), used as is with no post-processing (stored timings never change); a file that does not decode is exit 3. Otherwise transcribe with `--engine` (default: whisper with the first installed model that matches `--language`, else exit 7).
@@ -691,6 +694,11 @@ Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its 
 ```
 
 On failure: `{ "ok": false, "command": "export", "error": { "code": "unsupportedContainer", "message": "…" }, "version": "0.1.0" }`.
+
+Project validation and decoding errors give a slash-separated field path and a reason in the terminal and in
+`error.message`, for example `edits/clips/0: story clip needs schemaVersion 5` or `export/quality: invalid value`.
+Array indices start at zero. `/` means the document itself. Error messages do not include field values or quote
+parser output.
 
 | Exit | Meaning |
 |---|---|

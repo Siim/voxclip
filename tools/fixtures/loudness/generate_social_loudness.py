@@ -4,7 +4,7 @@
 Writes two files, replayed by Mac Core and Windows Core SocialLoudnessReplayTests and SocialLimiterReplayTests:
 
 shared/fixtures/loudness/social-loudness-cases.json (format voxclip-social-loudness-cases/2), the meter and the plan:
-- rule: the gain from a measured integrated loudness and true peak alone: target -14 LUFS, at most +12 dB and at least
+- rule: the gain from a measured integrated loudness and true peak alone: target -14 LUFS, at most +20 dB and at least
   -20 dB, and lowered until the limiter would reduce at most 9 dB; whether the limiter has work; an undefined (silent)
   loudness gets 0 dB and no limiting.
 - signal: synthetic stereo Float32 signals (tones and noise bursts with gaps), measured as ITU-R BS.1770-4 integrated
@@ -37,7 +37,7 @@ LIMITER_DESTINATION = ROOT / 'shared/fixtures/loudness/social-limiter-cases.json
 RATE = 48000
 TARGET_LUFS = -14.0
 CEILING_DBTP = -1.0
-MAXIMUM_BOOST_DB = 12.0
+MAXIMUM_BOOST_DB = 20.0
 MAXIMUM_CUT_DB = -20.0
 MAXIMUM_REDUCTION_DB = 9.0
 LOOKAHEAD_SECONDS = 0.005
@@ -96,7 +96,7 @@ LANDING_TOLERANCE_LU = 0.5
 
 
 def bounded(gain, true_peak):
-    """(gain, limit) kept within -20 dB, +12 dB and the 9 dB reduction cap."""
+    """(gain, limit) kept within -20 dB, +20 dB and the 9 dB reduction cap."""
     cap = CEILING_DBTP + MAXIMUM_REDUCTION_DB - true_peak
     bound = min(MAXIMUM_BOOST_DB, cap)
     if gain > bound:
@@ -448,14 +448,14 @@ def envelope_case(case_id, left, right, gain, extra):
 # The rule's edges.
 rule_case('rule-at-target', -14.0, -6.0, 'none', False)
 rule_case('rule-quiet-boost', -20.7, -9.0, 'none', False)
-rule_case('rule-boost-limit', -30.0, -20.0, 'gainLimit', False)
-rule_case('rule-boost-limit-edge', -26.0, -13.0, 'none', False)
+rule_case('rule-boost-limit', -38.0, -30.0, 'gainLimit', False)
+rule_case('rule-boost-limit-edge', -34.0, -21.0, 'none', False)
 rule_case('rule-cut', -8.5, -0.2, 'none', False)
 rule_case('rule-cut-limit', 10.0, 12.0, 'gainLimit', False)
 # The true peak after the gain is over the ceiling: the limiter takes the overshoot, the gain stays.
 rule_case('rule-limited', -20.0, -3.0, 'none', True)
 rule_case('rule-ceiling-edge', -20.0, -7.0, 'none', False)
-rule_case('rule-limited-at-boost-limit', -40.0, -5.0, 'gainLimit', True)
+rule_case('rule-limited-at-boost-limit', -40.0, -13.0, 'gainLimit', True)
 rule_case('rule-limited-negative-peak-room', -16.0, 2.0, 'none', True)
 # The limiter would reduce more than 9 dB: the gain stops at ceiling + 9 - true peak and the clip lands quieter.
 rule_case('rule-reduction-cap', -28.0, 0.0, 'reductionCap', True)
@@ -513,7 +513,7 @@ signal_case('tone-1k-left-only', [sine(1000.0, -20.0, 4 * RATE)], [silence(4 * R
 # Speech-like Hann noise bursts with gaps at a typical talking-head level.
 signal_case('speech-bursts-typical', bursts(101, -10.0, 16, 14400, 9600), bursts(201, -10.0, 16, 14400, 9600), 'none',
             reaches_target)
-# The same bursts 22 dB down want about +26 dB; the boost stops at +12 and the clip lands quieter than -14.
+# The same bursts 22 dB down want about +26 dB; the boost stops at +20 and the clip lands quieter than -14.
 signal_case('speech-bursts-quiet-boost-limit', bursts(101, -32.0, 16, 14400, 9600), bursts(201, -32.0, 16, 14400, 9600),
             'gainLimit', boost_limited)
 # Quiet speech with sharp clicks 26 dB over it: the 9 dB reduction cap, not the boost limit, sets the gain.
@@ -573,6 +573,10 @@ def lands_quieter(measured, peak, plan_gain, trials, gain, output, largest, shar
     assert abs(largest - MAXIMUM_REDUCTION_DB) < 1e-9 and output < TARGET_LUFS - 0.5, (largest, output)
 
 
+def quiet_speech_lands(measured, peak, plan_gain, trials, gain, output, largest, share):
+    assert abs(measured + 30.0) <= 0.1 and abs(output - TARGET_LUFS) <= 0.1 and 0.0 < largest <= 9.0, (measured, output, largest)
+
+
 def pure_gain(measured, peak, plan_gain, trials, gain, output, largest, share):
     assert not trials and largest == 0.0 and share == 0.0 and abs(output - TARGET_LUFS) < 1e-9, (trials, output)
 
@@ -587,6 +591,8 @@ export_case('talk-clicks-limited', *stereo(talk(1901, -18.0, 4.0, 14.0), talk(20
 # more than 0.5 LU, and the second simulation's secant step lands it.
 export_case('talk-plosives-limited', *stereo(talk(1301, -18.0, 12.0, 14.0), talk(1401, -18.0, 12.0, 14.0)), 'none', True,
             2, lands)
+export_case('talk-quiet-minus30', *stereo(talk(1301, -25.647, 12.0, 14.0), talk(1401, -25.647, 12.0, 14.0)), 'none', True,
+            2, quiet_speech_lands)
 # Clicks 30 dB over quiet speech would need more than 9 dB of reduction: the gain stops there and the clip lands quieter.
 export_case('talk-reduction-cap', *stereo(talk(1501, -34.0, 20.0, 30.0), talk(1601, -34.0, 16.0, 18.0)), 'reductionCap',
             True, 0, lands_quieter)
@@ -615,7 +621,7 @@ document = {
     'format': 'voxclip-social-loudness-cases/2',
     'description': 'Social loudness (ADR-R47, amended 2026-11-08): BS.1770-4 integrated loudness with EBU R128 gating '
                    'and the Annex 2 true peak of stereo Float32 signals, and the plan: -14 LUFS, the gain within '
-                   '-20...+12 dB and lowered until the true-peak limiter would reduce at most 9 dB, 0 dB and no '
+                   '-20...+20 dB and lowered until the true-peak limiter would reduce at most 9 dB, 0 dB and no '
                    'limiting when the loudness is undefined. gainedLufs and gainedTruePeakDbtp are after the plan\'s '
                    'gain alone, before the limiter and the landing correction (social-limiter-cases.json). Floats '
                    'rounded to 6 decimals; replays compare within 1e-6.',

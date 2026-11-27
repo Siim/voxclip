@@ -186,7 +186,7 @@ func portableProjectRoundTrip(name: String) throws {
 
 @Test func projectStoreRejectsMissingInput() async {
     let store: any ProjectStore = JSONProjectStore()
-    await #expect(throws: VoxClipError.projectUnreadable("Invalid project document")) {
+    await #expect(throws: VoxClipError.projectUnreadable("/: the project file could not be opened")) {
         _ = try await store.load(from: URL(fileURLWithPath: "/tmp/not-a-project.voxclip"))
     }
 }

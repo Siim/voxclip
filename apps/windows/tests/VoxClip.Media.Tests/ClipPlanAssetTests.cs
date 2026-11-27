@@ -58,7 +58,7 @@ public sealed class ClipPlanAssetTests : IDisposable
         Assert.Equal("https://audio.example.test/credits/pop", effect.Sound?.SourceUrl);
         Assert.Equal(-15, effect.GainDb);
         Assert.Equal(2, http.Requests.Count);
-        Assert.Contains("category=sound_effect", http.Requests[0].Query);
+        Assert.DoesNotContain("category=", http.Requests[0].Query);
         Assert.Equal("/pop.wav", http.Requests[1].AbsolutePath);
     }
 

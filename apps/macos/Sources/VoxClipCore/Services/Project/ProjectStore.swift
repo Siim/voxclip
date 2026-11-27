@@ -32,7 +32,7 @@ public actor JSONProjectStore: ProjectStore {
             return (project, warnings)
         } catch let error as VoxClipError { throw error }
         catch let error as VoiceLabProjectError { throw error }
-        catch { throw VoxClipError.projectUnreadable("Invalid project document") }
+        catch { throw VoxClipError.projectUnreadable("/: the project file could not be opened") }
     }
 
     public func save(_ project: Project, to url: URL) async throws {
@@ -67,7 +67,29 @@ public actor JSONProjectStore: ProjectStore {
             return (cleaned.project, cleaned.warnings)
         } catch let error as VoxClipError { throw error }
         catch let error as VoiceLabProjectError { throw error }
-        catch { throw VoxClipError.projectUnreadable("Invalid project document") }
+        catch let error as DecodingError { throw decodingFailure(error) }
+        catch { throw VoxClipError.projectUnreadable("/: invalid project document") }
+    }
+
+    static func decodingFailure(_ error: DecodingError, under prefix: String? = nil) -> VoxClipError {
+        let keys: [any CodingKey]
+        let reason: String
+        switch error {
+        case .keyNotFound(let key, let context):
+            keys = context.codingPath + [key]
+            reason = "missing required field"
+        case .typeMismatch(_, let context), .valueNotFound(_, let context), .dataCorrupted(let context):
+            keys = context.codingPath
+            reason = "invalid value"
+        @unknown default:
+            return .projectUnreadable("/: invalid project document")
+        }
+        // The path stops before the first key that is not a plain identifier, so a rejected key is never printed.
+        let names = keys.map { key in key.intValue.map(String.init) ?? key.stringValue }
+        let segments = (prefix.map { [$0] } ?? []) + names.prefix { ProjectValidation.isPathKey($0) }
+        guard !segments.isEmpty else { return .projectUnreadable("/: invalid project document") }
+        let path = segments.joined(separator: "/")
+        return .projectUnreadable("\(path): \(reason)")
     }
 
     public static func encode(_ project: Project) throws -> Data {

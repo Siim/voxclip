@@ -142,7 +142,7 @@ internal static class CliApplication
         Add(root, "--open", "Project or media path.");
         Add(root, "--export", "Destination MP4 path.");
         Add(root, "--style", "Caption style id, or off.");
-        Choice(root, "--aspect", "Output aspect.", "source", "16:9", "9:16", "1:1");
+        Choice(root, "--aspect", "Output aspect (defaults to the clip's frame, then the project's aspect).", "source", "16:9", "9:16", "1:1", "4:5");
         Add(root, "--clip", "Stored clip id, mutually exclusive with --range.");
         Add(root, "--range", "Inclusive startWordIndex:endWordIndex.");
         Add(root, "--transcript", "Use a fixture word transcript.");
@@ -184,7 +184,7 @@ internal static class CliApplication
         Add(check, "--project", "The project the export came from.", true);
         Add(check, "--clip", "The clip: its number in the project's clip list (1 is the first) or its ID.", true);
         check.Arguments.Add(new Argument<string>("export") { Description = "The exported MP4." });
-        Choice(check, "--aspect", "16:9, 9:16, 1:1 or source, as exported; read from the export's frame when left out.", "source", "16:9", "9:16", "1:1");
+        Choice(check, "--aspect", "16:9, 9:16, 1:1, 4:5 or source, as exported; read from the export's frame when left out.", "source", "16:9", "9:16", "1:1", "4:5");
         Add(check, "--style", "Caption style ID or off, when the export was given --style.");
         Choice(check, "--loudness", "social (the default) or off: the loudness the export ran with.", "social", "off");
         Stub(check, "check", openExport);

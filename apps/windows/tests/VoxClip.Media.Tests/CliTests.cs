@@ -12,6 +12,67 @@ namespace VoxClip.Media.Tests;
 [Collection("CLI console")]
 public sealed class CliTests
 {
+    [Theory]
+    [InlineData("story", "edits/clips/0: story clip needs schemaVersion 5")]
+    [InlineData("assets", "voiceLab/assets: missing required field")]
+    [InlineData("cleanAudio", "voiceLab/cleanAudio: missing required field")]
+    [InlineData("voices", "voiceLab/voices: missing required field")]
+    [InlineData("videoAssets", "voiceLab/videoAssets: missing required field")]
+    [InlineData("aspect", "export/aspect: invalid value")]
+    [InlineData("quality", "export/quality: invalid value")]
+    [InlineData("assetDuration", "voiceLab/assets/0/durationSeconds: invalid value")]
+    [InlineData("captionY", "captions/position/y: missing required field")]
+    [InlineData("captionX", "captions/position/x: invalid value")]
+    [InlineData("correctionKey", "edits/corrections: invalid value")]
+    [InlineData("aiPart", "ai/results/0/clips/0/parts/0/endWordId: missing required field")]
+    public async Task ProjectFailuresNameTheFieldAndReasonWithoutItsValue(string defect, string problem)
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-project-error-").FullName;
+        var oldOutput = Console.Out; var oldErrors = Console.Error;
+        using var output = new StringWriter(); using var errors = new StringWriter();
+        const string privateContent = "project-private-content-marker";
+        try
+        {
+            var project = JsonNode.Parse(FixtureLoader.ReadText("fixtures/story-clips/story-project.voxclip"))!.AsObject();
+            project["title"] = privateContent;
+            if (defect == "story") project["schemaVersion"] = 4;
+            else if (defect is "aspect" or "quality") project["export"]![defect] = privateContent;
+            else if (defect == "captionY") project["captions"]!["position"] = new JsonObject { ["x"] = 0.5 };
+            else if (defect == "correctionKey") project["edits"]!["corrections"] = new JsonObject { ["bad\n" + privateContent] = "fixed" };
+            else if (defect == "captionX") project["captions"]!["position"] = new JsonObject { ["x"] = 2, ["y"] = 0.5 };
+            else if (defect == "aiPart")
+            {
+                var part = new JsonObject { ["startWordId"] = "w1" };
+                var clip = new JsonObject { ["title"] = privateContent, ["reason"] = "", ["score"] = 8,
+                    ["startWordId"] = "w1", ["endWordId"] = "w2", ["parts"] = new JsonArray(part) };
+                var result = new JsonObject { ["id"] = "result-1", ["createdAt"] = project["createdAt"]!.DeepClone(),
+                    ["provider"] = "codex", ["model"] = privateContent, ["preset"] = "best", ["instructions"] = null,
+                    ["language"] = null, ["inputSha256"] = new string('0', 64), ["clips"] = new JsonArray(clip) };
+                project["ai"]!["results"] = new JsonArray(result);
+            }
+            else if (defect == "assetDuration")
+                project["voiceLab"]!["assets"] = new JsonArray(new JsonObject { ["id"] = "asset-1", ["kind"] = "audio",
+                    ["file"] = "asset.wav", ["sha256"] = new string('0', 64), ["durationSeconds"] = privateContent,
+                    ["sampleRate"] = 48000, ["createdAt"] = project["createdAt"]!.DeepClone() });
+            else project["voiceLab"]!.AsObject().Remove(defect);
+            var input = Path.Combine(directory, "invalid.voxclip");
+            File.WriteAllText(input, project.ToJsonString());
+            Console.SetOut(output); Console.SetError(errors);
+            var ct = TestContext.Current.CancellationToken;
+            Assert.Equal(3, await AcceptedCli.RunAsync(["plan", "--open", input], ct));
+            Assert.Contains(problem, errors.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(privateContent, errors.ToString() + output.ToString(), StringComparison.Ordinal);
+            output.GetStringBuilder().Clear(); errors.GetStringBuilder().Clear();
+            Assert.Equal(3, await AcceptedCli.RunAsync(["plan", "--open", input, "--json"], ct));
+            using var json = JsonDocument.Parse(output.ToString());
+            var error = json.RootElement.GetProperty("error");
+            Assert.Equal("projectUnreadable", error.GetProperty("code").GetString());
+            Assert.Equal(problem, error.GetProperty("message").GetString());
+            Assert.DoesNotContain(privateContent, errors.ToString() + output.ToString(), StringComparison.Ordinal);
+        }
+        finally { Console.SetOut(oldOutput); Console.SetError(oldErrors); Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public void VersionUsesSharedRuntimeDisplayFallback() => Assert.Equal(AppVersion.Current, CliApplication.Version);
 

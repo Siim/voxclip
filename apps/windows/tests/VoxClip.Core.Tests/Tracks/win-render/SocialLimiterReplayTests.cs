@@ -48,9 +48,9 @@ public sealed class SocialLimiterReplayTests
         var document = Document();
         Assert.Equal(["format", "description", "constants", "caseCount", "counts", "cases"], document.EnumerateObject().Select(property => property.Name));
         Assert.Equal("voxclip-social-limiter-cases/1", document.GetProperty("format").GetString());
-        Assert.Equal(7, document.GetProperty("caseCount").GetInt32());
-        Assert.Equal(7, document.GetProperty("cases").GetArrayLength());
-        Assert.Equal((6, 1), (document.GetProperty("counts").GetProperty("export").GetInt32(), document.GetProperty("counts").GetProperty("envelope").GetInt32()));
+        Assert.Equal(8, document.GetProperty("caseCount").GetInt32());
+        Assert.Equal(8, document.GetProperty("cases").GetArrayLength());
+        Assert.Equal((7, 1), (document.GetProperty("counts").GetProperty("export").GetInt32(), document.GetProperty("counts").GetProperty("envelope").GetInt32()));
         var constants = document.GetProperty("constants");
         Assert.Equal(["targetLufs", "ceilingDbtp", "maximumReductionDb", "lookaheadSeconds", "lookaheadFrames", "releaseSeconds", "releaseFloorDb",
             "detectionTaps", "landingToleranceLu"], constants.EnumerateObject().Select(property => property.Name));
@@ -68,7 +68,7 @@ public sealed class SocialLimiterReplayTests
     public void ExportCasesPlanLandAndOutputTheirSamples()
     {
         var cases = Cases("export");
-        Assert.Equal(6, cases.Length);
+        Assert.Equal(7, cases.Length);
         foreach (var item in cases)
         {
             var id = item.GetProperty("id").GetString()!;
@@ -101,6 +101,13 @@ public sealed class SocialLimiterReplayTests
             if (run.Report.TruePeakDbtp is { } peak) Assert.True(peak <= SocialLoudness.CeilingDbtp + 1e-6, $"{id} ceiling {peak}");
             if (run.Decision.Limit == SocialLoudnessLimit.None && run.Report.OutputLufs is { } lufs)
                 Assert.InRange(lufs, SocialLoudness.TargetLufs - 0.5, SocialLoudness.TargetLufs + 0.5);
+            if (id == "talk-quiet-minus30")
+            {
+                Assert.InRange(run.Report.MeasuredLufs ?? double.PositiveInfinity, -30.1, -29.9);
+                Assert.InRange(run.Report.OutputLufs ?? double.PositiveInfinity, -14.1, -13.9);
+                Assert.InRange(run.Report.LimiterMaxReductionDb, 0, 9);
+                Assert.False(run.Report.Capped);
+            }
             CheckProbes(item, samples, run.Output, run.Decision.GainDb);
         }
     }

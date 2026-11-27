@@ -12,9 +12,9 @@
   "detectionTaps": 12,
   "landingToleranceLu": 0.5
  },
- "caseCount": 7,
+ "caseCount": 8,
  "counts": {
-  "export": 6,
+  "export": 7,
   "envelope": 1
  },
  "cases": [
@@ -2204,6 +2204,782 @@
      0.0,
      0.001015,
      -0.028702
+    ],
+    [
+     271967,
+     0.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "id": "talk-quiet-minus30",
+   "kind": "export",
+   "rate": 48000,
+   "frames": 271968,
+   "channels": [
+    [
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1801,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1301,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1302,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 2202,
+      "peakDbfs": -11.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1303,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1804,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1304,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1305,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1306,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 2206,
+      "peakDbfs": -11.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1807,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1307,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1308,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1309,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1810,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1310,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 2210,
+      "peakDbfs": -11.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1311,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1312,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     }
+    ],
+    [
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1901,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1401,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1402,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 2302,
+      "peakDbfs": -11.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1403,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1904,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1404,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1405,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1406,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 2306,
+      "peakDbfs": -11.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1907,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1407,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1408,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1409,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 240,
+      "seed": 1910,
+      "peakDbfs": -13.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1410,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 2310,
+      "peakDbfs": -11.646999999999998,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 1920
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1411,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 1412,
+      "peakDbfs": -25.647,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 7200
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -29.99996,
+    "truePeakDbtp": -9.890097,
+    "plan": {
+     "gainDb": 15.99996,
+     "limit": "none",
+     "limiting": true
+    },
+    "trials": [
+     [
+      15.99996,
+      -14.642613
+     ],
+     [
+      16.642572,
+      -14.047707
+     ]
+    ],
+    "gainDb": 16.694105,
+    "limit": "none",
+    "capped": false,
+    "limiting": true,
+    "outputLufs": -13.999869,
+    "outputTruePeakDbtp": -1.0,
+    "limiterMaxReductionDb": 7.804008,
+    "limitedFrames": 151788,
+    "limitedPercent": 55.810978
+   },
+   "probes": [
+    [
+     0,
+     3.215374,
+     0.0,
+     0.0
+    ],
+    [
+     8773,
+     0.645,
+     0.301852,
+     -0.092371
+    ],
+    [
+     17546,
+     0.065668,
+     0.0,
+     0.0
+    ],
+    [
+     26319,
+     0.0,
+     0.05031,
+     -0.042942
+    ],
+    [
+     35093,
+     0.0,
+     0.002323,
+     0.008742
+    ],
+    [
+     43866,
+     1.668338,
+     0.0,
+     0.0
+    ],
+    [
+     52639,
+     0.169855,
+     -0.224508,
+     0.014367
+    ],
+    [
+     61412,
+     0.017293,
+     0.001863,
+     0.000883
+    ],
+    [
+     70185,
+     5.02579,
+     0.006293,
+     0.006738
+    ],
+    [
+     78958,
+     0.511682,
+     0.236017,
+     0.116414
+    ],
+    [
+     87731,
+     0.052095,
+     0.0,
+     0.0
+    ],
+    [
+     96504,
+     0.0,
+     -0.229432,
+     0.291231
+    ],
+    [
+     105278,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     114051,
+     0.0,
+     -0.027363,
+     -0.018517
+    ],
+    [
+     122824,
+     0.0,
+     -0.172619,
+     -0.15036
+    ],
+    [
+     131597,
+     3.548846,
+     0.0,
+     0.0
+    ],
+    [
+     140370,
+     3.035884,
+     0.034091,
+     -0.021459
+    ],
+    [
+     149143,
+     0.309087,
+     0.126133,
+     -0.076845
+    ],
+    [
+     157916,
+     0.031468,
+     0.0,
+     0.0
+    ],
+    [
+     166689,
+     0.0,
+     -0.222894,
+     0.299334
+    ],
+    [
+     175463,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     184236,
+     0.0,
+     -0.093455,
+     0.084132
+    ],
+    [
+     193009,
+     0.0,
+     -0.095095,
+     0.051991
+    ],
+    [
+     201782,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     210555,
+     0.960986,
+     0.046675,
+     0.086524
+    ],
+    [
+     219328,
+     0.097839,
+     0.0,
+     0.0
+    ],
+    [
+     219340,
+     0.097534,
+     0.0,
+     0.0
+    ],
+    [
+     219359,
+     0.097052,
+     0.0,
+     0.0
+    ],
+    [
+     219360,
+     0.099236,
+     0.0,
+     0.0
+    ],
+    [
+     219361,
+     0.108392,
+     0.0,
+     0.0
+    ],
+    [
+     219400,
+     0.750998,
+     0.0,
+     0.0
+    ],
+    [
+     219480,
+     3.902004,
+     0.0,
+     0.0
+    ],
+    [
+     219540,
+     6.661137,
+     0.0,
+     0.0
+    ],
+    [
+     219588,
+     7.755968,
+     0.172549,
+     -0.255611
+    ],
+    [
+     219594,
+     7.791979,
+     -0.312304,
+     -0.370568
+    ],
+    [
+     219599,
+     7.803674,
+     -0.531248,
+     -0.248045
+    ],
+    [
+     219600,
+     7.804008,
+     0.115569,
+     -0.195075
+    ],
+    [
+     219601,
+     7.804008,
+     -0.653493,
+     -0.058984
+    ],
+    [
+     219606,
+     7.804008,
+     0.699377,
+     -0.317178
+    ],
+    [
+     219612,
+     7.801976,
+     -0.577889,
+     0.292444
+    ],
+    [
+     219660,
+     7.705058,
+     0.0,
+     0.0
+    ],
+    [
+     219840,
+     7.352218,
+     0.0,
+     0.0
+    ],
+    [
+     220560,
+     6.095203,
+     0.0,
+     0.0
+    ],
+    [
+     222000,
+     4.189167,
+     0.0,
+     0.0
+    ],
+    [
+     224400,
+     2.2423,
+     0.0,
+     0.0
+    ],
+    [
+     228101,
+     0.855303,
+     0.0,
+     0.0
+    ],
+    [
+     229200,
+     0.64243,
+     0.001867,
+     0.000876
+    ],
+    [
+     236874,
+     0.087079,
+     0.150681,
+     -0.325663
+    ],
+    [
+     245184,
+     0.010002,
+     0.0,
+     0.0
+    ],
+    [
+     245185,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     245648,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     254421,
+     0.0,
+     0.135939,
+     -0.182902
+    ],
+    [
+     263194,
+     0.0,
+     0.001015,
+     -0.028703
     ],
     [
      271967,
