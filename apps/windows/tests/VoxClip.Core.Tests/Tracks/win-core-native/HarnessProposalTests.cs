@@ -32,7 +32,7 @@ public sealed class HarnessProposalTests
 
         original = original with { Transcript = original.Transcript! with { Engine = original.Transcript.Engine with { Id = TranscriptEngine.Whispercpp } } };
         transcript = transcript with { Engine = transcript.Engine with { Id = TranscriptEngine.Whispercpp } };
-        var proposal = new HarnessProposal(timeline, original);
+        var proposal = new HarnessProposal(timeline.PinRecordingTranscript(transcript), original);
         var result = proposal.Review(original, FixtureLoader.SharedRoot, recordingTranscript: transcript);
         var clip = Assert.Single(result.Project.Edits.Clips);
         Assert.Equal(Values("operationIds"), result.Operations.Select(operation => operation.Id));
@@ -43,6 +43,8 @@ public sealed class HarnessProposalTests
         Assert.Empty(result.Pending);
         Assert.Null(original.Media.SpokenSources);
         Assert.Empty(original.Edits.Clips);
+        Assert.Equal("The recording transcript changed. Ask for a new timeline proposal.", Assert.Throws<HarnessException>(() =>
+            proposal.Review(original, FixtureLoader.SharedRoot, recordingTranscript: transcript with { Language = "et" })).Message);
 
         IEnumerable<string?> Values(string field) => expected.GetProperty(field).EnumerateArray().Select(item => item.GetString());
     }

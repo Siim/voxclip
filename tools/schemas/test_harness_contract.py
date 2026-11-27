@@ -148,10 +148,33 @@ class HarnessContract(unittest.TestCase):
         self.assertEqual(preview["structuredContent"]["words"][2]["id"], case["expected"]["startWordIds"][1])
         staged = staged["structuredContent"]
         proposal_validator().validate(staged["proposal"])
+        self.assertRegex(staged["proposal"]["timelines"][0]["edits"][0]["transcriptRevision"], r"^[a-f0-9]{64}$")
         self.assertEqual(json.loads(self.pending.read_text()), staged["proposal"])
         self.assertEqual(staged["freeActions"], [{"kind": "useRecording", "key": key, "timelineIndex": 0}])
         self.assertEqual(staged["pricedActions"], [])
         self.assertEqual(self.project.read_bytes(), original)
+
+    def test_uncached_local_recording_stages_no_transcription_or_paid_action(self):
+        project = json.loads((ROOT / "shared/fixtures/recordings/two-recordings.voxclip").read_text())
+        recording = project["media"]["additionalSources"][0]
+        project["media"].pop("spokenSources")
+        project["schemaVersion"] = 6
+        clip = project["edits"]["clips"][0]
+        clip.pop("parts")
+        clip.pop("kind")
+        clip.update(startWordId="w1", endWordId="w2")
+        project["transcript"]["engine"]["id"] = "whispercpp"
+        self.project.write_text(json.dumps(project))
+        before = self.project.read_bytes()
+        op = {"op": "useRecording", "key": recording["contentKey"]}
+        staged, = self.replay(self.call("propose_timeline", clipId=clip["id"], reason="Add the companion recording.", edits=[op]))
+        staged = staged["structuredContent"]
+        proposal_validator().validate(staged["proposal"])
+        self.assertEqual(staged["proposal"]["timelines"][0]["edits"], [op])
+        self.assertEqual(staged["freeActions"][0]["kind"], "useRecording")
+        self.assertEqual(staged["pricedActions"], [])
+        self.assertFalse((Path(self.environment["VOXCLIP_DATA_DIR"]) / "Cache" / recording["contentKey"]).exists())
+        self.assertEqual(self.project.read_bytes(), before)
 
     def test_replays_reads_and_stages_schema_valid_proposal(self):
         listing, transcript, clips, decisions, result, second = self.replay(
@@ -225,7 +248,9 @@ class HarnessContract(unittest.TestCase):
         jsonschema.validate(series, tool["inputSchema"])
         clip = clips["structuredContent"]["clips"][0]
         self.assertEqual(clip["kind"], "stretch")
-        self.assertEqual(clip["parts"], [{"startWord": clip["startWord"], "endWord": clip["endWord"]}])
+        recording = clips["structuredContent"]["recordings"][0]
+        self.assertEqual(clip["parts"], [{"startWord": clip["startWord"], "endWord": clip["endWord"],
+                                          "recording": recording["label"], "recordingKey": recording["key"]}])
         self.assertFalse(reply.get("isError", False), reply)
         staged = reply["structuredContent"]
         proposal_validator().validate(staged["proposal"])
