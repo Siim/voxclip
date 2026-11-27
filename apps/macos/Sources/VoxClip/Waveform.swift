@@ -189,6 +189,36 @@ actor WaveformCache {
         let source: URL
         let cache: URL
     }
+    enum ProjectKey: Equatable, Sendable {
+        struct Region: Equatable, Sendable {
+            let start: Int
+            let end: Int
+            let key: Key
+        }
+        case single(Key)
+        case clock(sampleRate: Int, totalSamples: Int, regions: [Region])
+    }
+
+    func load(_ project: ProjectKey) async -> WaveformData? {
+        switch project {
+        case .single(let key): return await load(key)
+        case .clock(let sampleRate, let totalSamples, let regions):
+            let samplesPerFrame = Double(sampleRate) * WaveformData.frameSeconds
+            guard samplesPerFrame > 0, totalSamples > 0 else { return nil }
+            let frameCount = Int(ceil(Double(totalSamples) / samplesPerFrame))
+            guard frameCount <= 6_000_000 else { return nil }
+            var fine: [Float] = []
+            for region in regions {
+                guard !Task.isCancelled else { return nil }
+                guard let waveform = await load(region.key) else { continue }
+                if fine.isEmpty { fine = Array(repeating: 0, count: frameCount) }
+                let start = Int(ceil(Double(region.start) / samplesPerFrame))
+                let end = min(fine.count, Int(ceil(Double(region.end) / samplesPerFrame)), start + waveform.fine.count)
+                if start < end { fine.replaceSubrange(start..<end, with: waveform.fine.prefix(end - start)) }
+            }
+            return fine.isEmpty ? nil : WaveformData(fine: fine)
+        }
+    }
     private var values: [Key: WaveformData] = [:]
     private var order: [Key] = []
     private var pending: [Key: Task<WaveformData?, Never>] = [:]

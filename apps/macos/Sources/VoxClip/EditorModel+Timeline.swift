@@ -369,7 +369,12 @@ extension EditorModel {
     /// media that is missing or unreadable, or a take without video.
     var timelineFilmstripSource: FilmstripSource? {
         guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.video != nil else { return nil }
-        return FilmstripSource(url: sourceURL, contentKey: project.media.source.contentKey, cache: app.locations.cache)
+        var result = FilmstripSource(url: sourceURL, contentKey: project.media.source.contentKey, cache: app.locations.cache)
+        if project.media.spokenSources != nil {
+            result.clock = ProjectClock.build(project)
+            result.recordings = RenderCallerInputs.recordingFiles(project: project, primary: sourceURL, projectURL: document.fileURL)
+        }
+        return result
     }
 
     /// V1's name strip (notes.md §6): the end of the take's file name, as "…0075_D".

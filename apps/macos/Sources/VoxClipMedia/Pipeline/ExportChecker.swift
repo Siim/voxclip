@@ -117,6 +117,7 @@ public struct ExportChecker: Sendable {
                                      boxes: ExportCheckExpectation.captionBoxes(render: render) + Self.titleBoxes(render: render),
                                      frame: frame)
         input.timelineAudio = timelineAudio
+        input.recordingMeasurements = try await RecordingExportCheck.measure(export: export, render: render, edit: edit)
         let report = ExportCheck.run(input)
         func seconds(_ duration: Duration) -> Double {
             let parts = duration.components

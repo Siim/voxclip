@@ -148,7 +148,7 @@ enum MakeItInverse {
     /// The clip's opening lead-in before "Opens on a clear look at you" (ADR-R48).
     case leadIn(clipID: String, previous: Double?)
     /// The clip's crop before "9:16 follows your face".
-    case reframe(clipID: String, previous: ReframeSettings?)
+    case reframe(clipID: String, previous: ReframeSettings?, parts: [ClipPicture.Crop.Part] = [])
     /// The clip's cover before "Cover frame chosen".
     case cover(clipID: String, previous: Double?, previousTitle: String?)
 }
@@ -1340,8 +1340,10 @@ extension EditorModel {
             guard let next = ClipPicture.settingLeadIn(previous, clipID: clipID, in: project) else { return false }
             if next != project { replace(next, name: name) }
             return true
-        case .reframe(let clipID, let previous):
-            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.reframe = previous }) else { return false }
+        case .reframe(let clipID, let previous, let parts):
+            let restored = parts.isEmpty ? ClipPicture.settingControls(clipID, in: project, { $0.reframe = previous }) :
+                ClipPicture.restorePartCrops(parts, clipID: clipID, in: project)
+            guard let next = restored else { return false }
             if next != project { replace(next, name: name) }
             return true
         case .cover(let clipID, let previous, let previousTitle):

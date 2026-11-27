@@ -649,6 +649,10 @@ On either plan, source-to-edited lookup uses a source-sorted index carrying each
 
 The Windows story render test compares framing at the opening and each part seam on the fixture's 30 fps output grid. It checks the center of each frame at its own resolution, both before encoding and in decoded MP4 output.
 
+On Mac, preview and export use the same plan and resolve each kept span to its recording and local sample. Each recording keeps its own picture orientation and framing. The filmstrip, waveform and frame analysis read each recording's cache; cover choices and reframe observations stay on the project clock. An unresolved or changed recording stops the render: “0010 is missing. Locate it to use its words.”
+
+The Mac measures integrated loudness over spoken words when adding a recording. It stores the difference from the primary, rounded to 0.1 dB and limited to ±12 dB. The composition decodes each kept audio span to a common 48 kHz stereo grid before applying the gain, music and ducking; the final social loudness pass does not change. Final Cut Pro XML references a separate asset per used recording and starts each span at that recording's local time. The export check compares each recording seam's picture and warns when the adjacent speech differs by more than 3 LU.
+
 ### 7.1 buildSegments
 
 ```text
@@ -1042,3 +1046,17 @@ Return solo runs in recording and transcript order. A run contains consecutive u
 For every take, report the §4.11 filler count (including unlabeled speech), longest nonnegative gap in seconds between speech items, and restart count. Count one restart for each run of **2 or more** equal consecutive lexical tokens where each adjacent pair spans at most **3 s** from the first token's start to the second's end. Words per minute counts transcribed word items, including verbal fillers, over the take's full span (zero for a zero-duration take). Mean ASR confidence averages only known confidences of transcribed word items and is absent if none are known. Report the same `cutOff` boolean as in the flags.
 
 Both Cores replay `shared/fixtures/recordings/take-match-cases.json`. Regenerate it with `python3 tools/fixtures/recordings/generate_takes.py`.
+
+### 13.5 Recording shortcuts
+
+Build `TakeMatch` from the project clock in region order. Each region contributes its own words, with the clock's word IDs and local timings. **Start from recording** keeps the whole recording except takes flagged `restart` or `falseStart`, which split the kept runs into parts. It selects the new clip in the same edit and reports the new part IDs and omitted takes. The title uses the first seven kept words, as in Make Clip.
+
+**Use version** replaces only the current take's range with the aligned span for the chosen recording. When there is a split, the first slice keeps the original ID; the later slices get new IDs. All slices inherit the part's reframe. **Add part** inserts a range after a word in the clip (splitting that part when needed), or appends if no word is supplied. Put Back uses Add part. `placement` returns the end of the preceding beat's version in the clip, or no word when the beat is absent.
+
+After an edit, a touched part joins a neighbour when both have the same reframe mode and their word ranges are consecutive in one recording. The earlier part keeps its ID. The edit reports any split and the IDs in each join. Word and time anchors stay unchanged, so an item can disappear with its words and reappear when the words return.
+
+A shortcut returns one named Undo step containing the exact before and after project snapshots; a no-op creates no step.
+
+A shortcut that would stop paid lip-sync or a whole-clip revoice from playing selects a copy instead. The original clip and voice data stay intact. A copy plays source speech where a part no longer includes the whole paid lip-sync window.
+
+Regenerate `shared/fixtures/recordings/command-cases.json` with `python3 tools/fixtures/recordings/generate_commands.py`. Its expected five-part ranges and sample plan come from `plan-cases.json`.

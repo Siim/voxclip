@@ -89,7 +89,9 @@ internal static class StoryClips
     internal static void ValidatePlacement(ClipRange clip, Project project, IReadOnlyList<TimedWord> words)
     {
         var spans = Times(clip, words);
-        if (LipsyncRefusal(spans, LipsyncWindows(project)) is { } refusal) Require(false, refusal);
+        var windows = LipsyncWindows(project);
+        if (RecordingEdits.IsRecordingCopy(clip.Id, project)) windows = windows.Where(window => spans.Any(span => Contains(span, window)));
+        if (LipsyncRefusal(spans, windows) is { } refusal) Require(false, refusal);
         if (project.SchemaVersion >= TimelineEditFields.Version) return;
         foreach (var effect in project.ClipEffects.Where(effect => effect.GetProperty("clipId").GetString() == clip.Id))
             Require(spans.Any(span => Contains(span, new(effect.GetProperty("start").GetDouble(), effect.GetProperty("end").GetDouble()))),
@@ -107,7 +109,7 @@ internal static class StoryClips
     }
 
     internal static bool Overlaps(TimeRange span, TimeRange window) => span.Start < window.End && window.Start < span.End;
-    private static bool Contains(TimeRange span, TimeRange window) => span.Start <= window.Start && window.End <= span.End;
+    internal static bool Contains(TimeRange span, TimeRange window) => span.Start <= window.Start && window.End <= span.End;
     internal static string Clock(double seconds) => $"{(long)seconds / 60}:{(long)seconds % 60:00}";
     private static void Require(bool condition, string message)
     {

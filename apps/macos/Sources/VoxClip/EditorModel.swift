@@ -620,13 +620,23 @@ struct EditorRenderSnapshot {
     private(set) var storyTimeline: StoryTimelineLayout?
     var editingAvailable = false
     var waveform: WaveformData?
-    var waveformKey: WaveformCache.Key? {
-        guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.audio != nil else { return nil }
-        return WaveformCache.Key(contentKey: project.media.source.contentKey, source: sourceURL, cache: app.locations.cache)
+    var waveformKey: WaveformCache.ProjectKey? {
+        guard !document.demo, mediaResolved, !mediaUnreadable else { return nil }
+        let cache = app.locations.cache
+        if project.media.spokenSources?.isEmpty == false {
+            let clock = ProjectClock.build(project)
+            let recordings = RenderCallerInputs.recordingFiles(project: project, primary: sourceURL, projectURL: document.fileURL)
+            return .clock(sampleRate: clock.sampleRate, totalSamples: clock.totalSamples, regions: recordings.map { recording in
+                .init(start: recording.region.offsetSamples, end: recording.region.endSample,
+                      key: .init(contentKey: recording.key, source: recording.url, cache: cache))
+            })
+        }
+        guard project.media.source.audio != nil else { return nil }
+        return .single(.init(contentKey: project.media.source.contentKey, source: sourceURL, cache: cache))
     }
     /// The load `followWaveformKey` started for `requestedWaveformKey`, until it ends.
     @ObservationIgnored private(set) var waveformTask: Task<Void, Never>?
-    @ObservationIgnored private var requestedWaveformKey: WaveformCache.Key?
+    @ObservationIgnored private var requestedWaveformKey: WaveformCache.ProjectKey?
     #if DEBUG
     @ObservationIgnored var beforeWaveformLoad: @MainActor () async -> Void = {}
     #endif
@@ -1768,6 +1778,7 @@ struct EditorRenderSnapshot {
             output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
         return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root.resolvingSymlinksInPath(),
             shared: app.shared, resolveFootageURL: { JSONProjectStore.footageURL($0, beside: request.sourceURL) },
+            projectURL: document.fileURL,
             reduceMotion: snapshot.reduceMotion, isCancelled: { Task.isCancelled })
     }
     func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,

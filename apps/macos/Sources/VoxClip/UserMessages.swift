@@ -58,6 +58,7 @@ enum UserMessages {
         switch error {
         case .unsupportedContainer(let detail): return "VoxClip can't open \(clean(detail).uppercased()) files on Mac yet. Export the video as MP4 or MOV and try again."
         case .mediaMissing(let detail): return "Can't find \(URL(fileURLWithPath: detail).lastPathComponent). Edits are saved."
+        case .recordingMissing: return error.localizedDescription
         case .noAudioTrack: return "This video has no audio track, so there is nothing to transcribe."
         case .decodeFailed(let detail): return "VoxClip couldn't decode this video: \(clean(detail)). Your edits are saved."
         case .noSpeech: return "We didn't hear any words. Check the audio track or choose the language."

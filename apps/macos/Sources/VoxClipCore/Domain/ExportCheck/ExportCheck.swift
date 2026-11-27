@@ -14,7 +14,7 @@ public struct ExportCheckItem: Codable, Sendable, Equatable {
         /// A word next to a cut or a clip edge not heard, or heard as a shorter different word.
         case cutOff
         /// The audio track starts or ends more than a frame from the video track.
-        case trackStart, trackEnd
+        case trackStart, trackEnd, recordingSeam, pictureSource, recordingLevel
         /// A revoiced or rewritten phrase's heard words sit further from where the edit placed them than the tolerance.
         case phraseOffset
         /// None of a phrase's words were heard, so its placement can't be measured.
@@ -44,6 +44,12 @@ public struct ExportCheckItem: Codable, Sendable, Equatable {
     public var reason: String?
     /// How many cards in a row reach the same depth into the band (from `time` on); nil for one.
     public var count: Int?
+    public struct RecordingSeam: Codable, Sendable, Equatable {
+        public var at: Double
+        public var from: String
+        public var to: String
+    }
+    public var recordingSeam: RecordingSeam?
 
     public init(kind: Kind, time: Double, expected: String? = nil, heard: String? = nil, value: Double? = nil, limit: Double? = nil,
                 band: CaptionSafeZones.Edge? = nil, phrase: String? = nil, reason: String? = nil) {
@@ -172,6 +178,16 @@ public struct ExportCheckInput: Sendable, Equatable {
         }
     }
     public var timelineAudio: [TimelineAudioLevel] = []
+    public struct RecordingMeasurement: Sendable, Equatable {
+        public var seam: ExportCheckItem.RecordingSeam
+        public var wrongPictureLabel: String?
+        public var levelDelta: Double?
+
+        public init(seam: ExportCheckItem.RecordingSeam, wrongPictureLabel: String?, levelDelta: Double?) {
+            self.seam = seam; self.wrongPictureLabel = wrongPictureLabel; self.levelDelta = levelDelta
+        }
+    }
+    public var recordingMeasurements: [RecordingMeasurement] = []
     public var boxes: [Box]
     /// The export frame's pixel size, which picks the safe-zone bands.
     public var frame: PixelSize
@@ -348,7 +364,7 @@ public enum ExportCheck {
             if abs(end) > frame + 1e-6 {
                 result.items.append(ExportCheckItem(kind: .trackEnd, time: min(audio.end, video.end), value: end, limit: frame))
             }
-        } else if input.phrases.isEmpty {
+        } else if input.phrases.isEmpty && input.recordingMeasurements.isEmpty {
             return .skipped(.sync, input.video == nil ? "No video track" : "No audio track")
         }
         if !input.phrases.isEmpty, let alignment {
@@ -356,7 +372,16 @@ public enum ExportCheck {
         } else if !input.phrases.isEmpty {
             result.items.append(ExportCheckItem(kind: .phrasesSkipped, time: input.phrases.map(\.start).min() ?? 0, reason: input.hearingSkipped))
         }
-        result.status = result.items.contains { $0.kind != .phrasesSkipped } ? .warning : .ok
+        for measurement in input.recordingMeasurements {
+            let seam = measurement.seam
+            var item = ExportCheckItem(kind: .recordingSeam, time: seam.at)
+            item.recordingSeam = seam
+            result.items.append(item)
+            if let wrong = measurement.wrongPictureLabel {
+                result.items.append(.init(kind: .pictureSource, time: seam.at, expected: seam.to, heard: wrong))
+            }
+        }
+        result.status = result.items.contains { $0.kind != .phrasesSkipped && $0.kind != .recordingSeam } ? .warning : .ok
         return result
     }
 
@@ -378,7 +403,7 @@ public enum ExportCheck {
 
     static func loudness(_ input: ExportCheckInput) -> ExportCheckResult {
         var result = feedLoudness(input)
-        guard !input.timelineAudio.isEmpty else { return result }
+        guard !input.timelineAudio.isEmpty || input.recordingMeasurements.contains(where: { $0.levelDelta != nil }) else { return result }
         let silenceDb = -60.0
         for level in input.timelineAudio {
             let silent = level.expectedDb <= silenceDb
@@ -388,6 +413,15 @@ public enum ExportCheck {
             result.items.append(.init(kind: silent ? .timelineAudioGap : .timelineAudioLevel, time: level.time,
                                       value: silent ? level.measuredDb : delta, limit: silent ? silenceDb : 1))
             if result.items.count >= 20 { break }
+        }
+        for measurement in input.recordingMeasurements {
+            guard let delta = measurement.levelDelta, abs(delta) > 3 else { continue }
+            let seam = measurement.seam
+            let (quiet, loud) = delta < 0 ? (seam.to, seam.from) : (seam.from, seam.to)
+            let seconds = Int(seam.at)
+            let time = String(format: "%d:%02d", seconds / 60, seconds % 60)
+            result.items.append(.init(kind: .recordingLevel, time: seam.at, value: delta, limit: 3,
+                                      reason: "\(quiet) is quieter than \(loud) at \(time). Listen there."))
         }
         result.reason = nil
         result.status = result.items.isEmpty ? .ok : .warning

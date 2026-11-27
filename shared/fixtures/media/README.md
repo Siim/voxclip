@@ -6,6 +6,13 @@ an intentional content change, review decoded frames, and commit the media and
 the updated `index.json` together. No provider, model, or recorded speech is used.
 Every committed file must remain below 2,000,000 bytes.
 
+The Mac cross-recording story tests use `recording-0007.mp4` and
+`recording-0010.mp4`, outside the architecture §9.5 index. Both contain six
+seconds of a synthetic chirp and a visible binary frame counter. The companion
+is quieter, uses 44.1 kHz audio, and has a 90° rotation in its track metadata.
+Regenerate just these files with
+`swift tools/fixtures/media/generate.swift --recordings shared/fixtures/media`.
+
 `t4-recording-A.mp4` and `t4-recording-B.mp4` are Windows story-render inputs,
 with a drawn frame counter, different frame sizes and distinct tones at 48 kHz
 and 44.1 kHz. Regenerate them with `python3 tools/fixtures/recordings/generate_windows_render.py`

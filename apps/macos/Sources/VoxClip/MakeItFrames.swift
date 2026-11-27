@@ -56,7 +56,8 @@ extension EditorModel {
     /// cached, so a reopened video costs little. Find Clips is never waited for or delayed by it.
     @discardableResult func startFramePass() -> VideoFramePass? {
         guard let transcript = project.transcript else { return nil }
-        let key = project.media.source.contentKey + ":" + transcript.rawKey + ":\(transcript.words.count)"
+        let recordings = (project.media.spokenSources ?? []).map { "\($0.sourceKey):\($0.offsetSeconds):\($0.transcript.rawKey):\($0.transcript.words.count)" }
+        let key = ([project.media.source.contentKey, transcript.rawKey, "\(transcript.words.count)"] + recordings).joined(separator: ":")
         if makeIt.framePassKey == key, let pass = makeIt.framePass { return pass }
         makeIt.framePass.map { pass in Task { await pass.cancel() } }
         let services = makeIt.services ?? .live
@@ -70,11 +71,13 @@ extension EditorModel {
 
     /// The app's own pass: Apple Vision on this Mac, cached under the video's content key.
     func liveFramePass() -> VideoFramePass? {
+        let clock = project.media.spokenSources == nil ? nil : ProjectClock.build(project)
         guard capabilities.ai, !document.demo, mediaResolved, !mediaUnreadable, project.media.source.video != nil,
-              let words = project.transcript?.words, words.contains(where: { $0.kind == .word }) else { return nil }
+              let words = clock?.words ?? project.transcript?.words, words.contains(where: { $0.kind == .word }) else { return nil }
         let log = app.log
+        let recordings = clock == nil ? [] : RenderCallerInputs.recordingFiles(project: project, primary: sourceURL, projectURL: document.fileURL)
         return VideoFramePass(analyzer: FrameAnalyzer(cache: FrameAnalysisCache(locations: app.locations)), source: sourceURL,
-                              contentKey: project.media.source.contentKey, words: words) { line in
+                              contentKey: project.media.source.contentKey, words: words, projectClock: clock, recordings: recordings) { line in
             Task { await log.write(LogEntry(level: .info, category: "frames", message: line)) }
         }
     }
@@ -140,15 +143,20 @@ extension EditorModel {
     /// what the run may still spend; it is charged before the send, so plans in flight at once never pass the cap together.
     /// Nil sends the clip as text only.
     func makeItFrames(clipIDs: [String], index: Int, span: ClosedRange<Int>) async -> ClipAutopilotFrames? {
-        guard clipIDs.indices.contains(index), let run = makeIt.run(for: clipIDs[index]), let transcript = project.transcript,
-              let clip = FrameClip(words: transcript.words, first: span.lowerBound, last: span.upperBound,
-                                   cutWordIds: Set(project.edits.cutWordIds)),
+        guard clipIDs.indices.contains(index), let run = makeIt.run(for: clipIDs[index]),
+              let transcript = ProjectClock.build(project).transcript,
               let pass = startFramePass() else { return nil }
+        let parts = project.media.spokenSources == nil ? [span] :
+            project.edits.clips.first(where: { $0.id == run.clipID })?.playPartIndices(in: transcript.words) ?? [span]
+        let cuts = Set(project.edits.cutWordIds)
+        let clips = parts.compactMap { FrameClip(words: transcript.words, first: $0.lowerBound, last: $0.upperBound, cutWordIds: cuts) }
+        guard let clip = clips.first else { return nil }
         let services = makeIt.services ?? .live
-        guard let ai = await services.frameAI(self), let found = await pass.frames(for: clip) else { return nil }
+        guard let ai = await services.frameAI(self), let found = await pass.frames(for: clips) else { return nil }
         // The opening scan runs beside the plan request; the apply waits for it.
         await pass.startOpening(for: clip)
-        var frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clip.end, images: ai.images,
+        var frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clips.map(\.start).min() ?? clip.start,
+                                         clipEnd: clips.map(\.end).max() ?? clip.end, images: ai.images,
                                          pitchBaseline: await pass.pitchBaseline())
         var usd: Decimal?
         if frames.sendsImages, case .key(let connector, let model) = ai.billing {
@@ -242,7 +250,7 @@ extension EditorModel {
     /// without a face or without a portrait or square shape to export.
     private func makeItFaceRow(_ record: MakeItFrameRecord, run: MakeItRun) -> MakeItRow? {
         guard let (next, crop) = ClipPicture.crop(project, clipID: run.clipID, sentences: record.sentences, shapes: makeItStyle.shapes) else { return nil }
-        run.inverses[ClipPicture.cropRowID] = .reframe(clipID: run.clipID, previous: crop.previous)
+        run.inverses[ClipPicture.cropRowID] = .reframe(clipID: run.clipID, previous: crop.previous, parts: crop.parts)
         replace(next, name: "Make it postable")
         return MakeItRow(id: ClipPicture.cropRowID, text: "\(crop.shape.rawValue) follows your face",
                          detail: "The crop is centred on your measured face position, not the middle of the frame",

@@ -1,8 +1,39 @@
 import Foundation
 import Testing
-import VoxClipCore
+@testable import VoxClipCore
 
 @Suite struct FCPXMLTests {
+    @Test func recordingsHaveLocalStartsAndSeparateFormats() throws {
+        struct Vector: Decodable { let name: String; let parts: [[Int]]; let expected: [String: [String]] }
+        let vector = try JSONDecoder().decode(Vector.self, from: FixtureLoader.data("fixtures/fcpxml/two-recordings.json"))
+        let rate = 48_000
+        let recordings: [RenderRecording] = ["0007", "0010"].enumerated().map { index, label in
+            .init(region: .init(key: label, label: label, colourIndex: index, offsetSamples: 7 * rate * index,
+                                durationSamples: 6 * rate, gainDb: 0, prefix: index == 0 ? "" : "r2."),
+                  url: URL(fileURLWithPath: "/Media/\(label).mov"))
+        }
+        let kept = vector.parts.map { part in
+            let offset = recordings[part[0]].region.offsetSamples
+            return MediaInterval(startSample: Int64(offset + part[1] * rate), endSample: Int64(offset + part[2] * rate))
+        }
+        let plan = EditPlan(sampleRate: Double(rate), totalSamples: Int64(13 * rate), kept: kept,
+                            partSeams: (1..<5).map { Int64($0 * rate) })
+        var request = RenderRequest(sourceURL: recordings[0].url, plan: plan,
+            output: .init(size: .init(width: 320, height: 180), fps: 30, videoBitrate: 0))
+        request.recordings = recordings
+        request.spanSources = vector.parts.map { recordings[$0[0]].key }
+        let primary = MediaProbeResult(durationSeconds: 6, video: .init(width: 320, height: 180, frameRate: 30),
+                                      audio: .init(sampleRate: 48_000, channels: 2), isPlayable: true)
+        let companion = MediaProbeResult(durationSeconds: 6, video: .init(width: 256, height: 144, frameRate: 24),
+                                        audio: .init(sampleRate: 44_100, channels: 1), isPlayable: true)
+        let xml = try XMLDocument(data: FCPXML.document(name: vector.name, render: request, source: primary,
+            replacementPictures: ["picture-r2": .init(url: recordings[1].url, probe: companion)]))
+        for (xpath, values) in vector.expected.sorted(by: { $0.key < $1.key }) {
+            #expect(try xml.nodes(forXPath: xpath).compactMap(\.stringValue) == values, "\(xpath)")
+        }
+        try validateWithAppleDTD(xml)
+    }
+
     @Test func segmentedMusicKeepsItsSourceClockAcrossCuts() throws {
         struct Vector: Decodable { let segments: [MusicSegment]; let expected: [String: [String]] }
         let vector = try JSONDecoder().decode(Vector.self, from: FixtureLoader.data("fixtures/fcpxml/music-segments.json"))

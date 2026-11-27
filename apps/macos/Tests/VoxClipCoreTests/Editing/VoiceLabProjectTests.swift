@@ -104,6 +104,35 @@ import Testing
         #expect(again.announcement == nil)
     }
 
+    @Test func recordingShortcutsCopyInsteadOfCuttingPaidVoice() throws {
+        var original = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/whole-clip-revoice-project.voxclip"))
+        original.voiceLab.wholeClipRevoices = nil
+        original.edits.clips[0].title = nil
+        original.edits.clips[0].startWordId = "w1"
+        original.edits.clips[0].endWordId = "w9"
+        var companion = original.media.source
+        companion.contentKey = String(repeating: "b", count: 64)
+        original.media.additionalSources.append(companion)
+        let transcript = try #require(original.transcript)
+        original = try RecordingEdits.apply(.addSpokenSource(key: companion.contentKey, transcript: transcript), project: original).get().project
+        let clip = original.edits.clips[0]
+        let beat = try #require(TakeMatch.build(clock: ProjectClock.build(original)).beats.first)
+        let commands: [RecordingEdit] = [.startFromRecording(key: companion.contentKey),
+                                         .useLineVersion(clipId: clip.id, beatId: beat.id, key: companion.contentKey),
+                                         .insertLine(clipId: clip.id, key: companion.contentKey, startWordId: "r2.w9", endWordId: "r2.w9", afterWordId: "w5")]
+        for command in commands {
+            let result = try RecordingEdits.apply(command, project: original).get()
+            let copy = try #require(result.project.edits.clips.last)
+            #expect(copy.title == "Clip 1 copy")
+            #expect(result.announcement == "Made Clip 1 copy to keep the paid voice work.")
+            #expect(result.project.edits.activeClipId == copy.id)
+            #expect(result.project.edits.clips.first == clip)
+            #expect(result.project.voiceLab == original.voiceLab)
+            let reopened = try JSONProjectStore.decode(JSONProjectStore.encode(result.project))
+            #expect(try VoiceLabOutputPlanner.build(reopened, scope: .clip(copy.id)).outputSamples > 0)
+        }
+    }
+
     @Test func passageAndFullTakeUseCanonicalPieces() throws {
         let expected = try expected()
         let passage = try fixture()
