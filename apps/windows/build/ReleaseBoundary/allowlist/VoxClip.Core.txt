@@ -749,13 +749,16 @@ literal "-story"
 literal "-zoom-"
 literal "/audio"
 literal "/cancel"
+literal "/engine"
 literal "/kind"
 literal "/parts"
 literal "/payloads"
 literal "/reframe"
 literal "/status"
+literal "/transcript"
 literal "/video"
 literal "/with-timestamps"
+literal "/words"
 literal "ANTHROPIC_API_KEY"
 literal "ANTHROPIC_AUTH_TOKEN"
 literal "API_KEY_INVALID"
@@ -19207,7 +19210,7 @@ member VoxClip.Core.Services.Project.ProjectValidation :: method private Require
 member VoxClip.Core.Services.Project.ProjectValidation :: method private String(System.Text.Json.JsonElement,string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Text(System.Text.Json.JsonElement,int,int)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Timestamp(System.Text.Json.JsonElement)
-member VoxClip.Core.Services.Project.ProjectValidation :: method private Transcript(System.Text.Json.JsonElement,bool)
+member VoxClip.Core.Services.Project.ProjectValidation :: method private Transcript(System.Text.Json.JsonElement,bool,string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private UniqueIds(System.Collections.Generic.IEnumerable`1<string>)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private UniqueStrings(System.Text.Json.JsonElement,string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private WordText(System.Text.Json.JsonElement,bool)
