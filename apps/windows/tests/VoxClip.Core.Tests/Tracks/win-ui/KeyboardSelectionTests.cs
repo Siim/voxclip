@@ -8,6 +8,30 @@ namespace VoxClip.Ui.Tests;
 /// words: So, um, (cut) today, we, ship (corrected to "shipped"), uh, (cut) the, clipper., Thanks.</summary>
 public sealed class KeyboardSelectionTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    public void ControlAltSelectsAllOrTheRecordingInClockOrder(int number)
+    {
+        var model = ClipSemanticsTests.RecordingStory();
+        var source = model.Project.Media.AdditionalSources![0];
+        var transcript = model.Project.Media.SpokenSources![0].Transcript;
+        for (var slot = 3; slot <= 6; slot++)
+            Assert.True(model.AddSpokenRecording(source with { ContentKey = new string((char)('0' + slot), 64),
+                AbsolutePath = $"/synthetic/DJI_001{slot}.MOV", RelativePath = $"DJI_001{slot}.MOV" }, transcript), model.Notice);
+        var before = model.Project;
+        Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture($"Number{number}", true, false, alt: true)));
+        Assert.False(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture($"Number{number}", true, true, alt: true)));
+        Assert.True(model.ChooseRecordingShortcut(number));
+        Assert.Equal(number == 0 ? new RecordingView(RecordingViewKind.All) : new(RecordingViewKind.Recording, model.RecordingRegions[number - 1].Key), model.TranscriptRecordingView);
+        Assert.Same(before, model.Project);
+    }
+
     [Fact]
     public void TimelineShortcutsReserveOnlyTheirExactModifiers()
     {

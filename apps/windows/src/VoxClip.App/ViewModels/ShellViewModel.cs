@@ -32,6 +32,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private MediaTile? media;
     private bool showsKeepAll;
     private bool showsCancel;
+    private IReadOnlyList<string> recordingReasons = [];
+    public IReadOnlyList<string> RecordingReasons { get => recordingReasons; set => SetProperty(ref recordingReasons, value); }
     private string cancelName = "";
     private ClipExportState exportState;
     private double? exportProgress;
@@ -226,6 +228,7 @@ public sealed class ShellViewModel
                 row.Title = clip.Title;
                 row.Number = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 row.MetaTime = EditorViewModel.Duration(clip.DurationSeconds);
+                row.RecordingReasons = clip.IsSuggested ? editor.ProposalRecordingReasons(clip.Clip) : [];
                 row.Badge = clip.PartsBadge;
                 row.MetaStatus = suggestion ? " · Suggested" : "";
                 var export = suggestion ? new ExportRowState(ClipExportState.None) : editor.ExportStatus(clip.Id);
@@ -284,7 +287,7 @@ public sealed class ShellViewModel
                 {
                     var outline = Row(SidebarKind.OutlineHeader, "outline");
                     outline.Title = "OUTLINE";
-                    outline.Detail = editor.IsStoryClip ? $"Clip {editor.Clips.FirstOrDefault(clip => clip.Id == active)?.Number} · {editor.ClipParts.Count} parts" : "";
+                    outline.Detail = editor.StoryRecordingHeading ?? (editor.IsStoryClip ? $"Clip {editor.Clips.FirstOrDefault(clip => clip.Id == active)?.Number} · {editor.ClipParts.Count} parts" : "");
                     outline.AccessibleName = editor.IsStoryClip ? "Outline, " + outline.Detail : "Transcript outline";
                     next.Add(outline);
                     if (editor.IsStoryClip)
@@ -298,8 +301,10 @@ public sealed class ShellViewModel
                             row.Title = part.Excerpt;
                             row.Detail = part.TakeTime;
                             row.IsActive = editor.SelectedPart?.Id == part.Id;
-                            row.Edits = editor.CanEditParts;
-                            row.AccessibleName = $"Part {part.Number} of {editor.ClipParts.Count}, {part.Excerpt}, take time {part.TakeTime}" + (row.IsActive ? ", selected" : "");
+                            row.Edits = editor.CanRemovePart;
+                            row.AccessibleName = $"Part {part.Number} of {editor.ClipParts.Count}, " +
+                                (editor.StoryRecordingRegions.Count > 1 ? $"recording {part.Recording?.Label}, " : "") +
+                                $"{part.Excerpt}, {(editor.StoryRecordingRegions.Count > 1 ? "recording" : "take")} time {part.TakeTime}" + (row.IsActive ? ", selected" : "");
                             next.Add(row);
                         }
                     }
@@ -322,6 +327,12 @@ public sealed class ShellViewModel
                     add.ToolTip = add.Detail;
                     add.AccessibleName = add.Detail.Length == 0 ? add.Title : $"{add.Title}, {add.Detail}";
                     next.Add(add);
+                }
+                if (editor.HasSeveralRecordings || editor.RecordingCompanions.Count > 0)
+                {
+                    var recordings = Row(SidebarKind.Action, "action:recordings");
+                    recordings.AccessibleName = "Outline recordings";
+                    next.Add(recordings);
                 }
                 next.Add(Row(SidebarKind.Separator, "separator:actions"));
                 var make = Row(SidebarKind.Action, "action:make");

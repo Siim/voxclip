@@ -66,7 +66,8 @@ public sealed class ConnectorPreflightTests
         Assert.Contains("PrimaryButtonVisible = true", source);
         Assert.Contains("cloud ? keySaved && allowCloud.IsChecked == true && price is not null", source);
         Assert.Contains("Upload and Transcribe · ", source);
-        Assert.Contains("RequiresExplicitApproval = cloud || model.HasTranscript", source);
+        Assert.Contains("RequiresExplicitApproval = cloud || ReplacesTranscript", source);
+        Assert.Contains("ReplacesTranscript => recording is null && model.HasTranscript", source);
         var handler = source[source.IndexOf("private async void Transcribe", StringComparison.Ordinal)..source.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal)];
         Assert.Contains("if (startingTranscription || closed || model.IsLeaving) return", handler);
         Assert.Contains("await RunTranscriptionAsync()", handler);

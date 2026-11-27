@@ -25,6 +25,7 @@ public sealed partial class ExplorerTemplates : DataTemplateSelector
     public DataTemplate? StoryPart { get; set; }
     public DataTemplate? OutlineHeader { get; set; }
     public DataTemplate? AddPart { get; set; }
+    public DataTemplate? RecordingActions { get; set; }
 
     /// <summary>Fluent glyph for an action row: New clip from selection, or Find clips with AI.</summary>
     public static string ActionGlyph(string key) => key == "action:find" ? "\uE721" : "\uE710";
@@ -41,7 +42,7 @@ public sealed partial class ExplorerTemplates : DataTemplateSelector
         SidebarKind.Clip => Clip,
         SidebarKind.SuggestedHeader => SuggestedHeader,
         SidebarKind.Suggestion => Suggestion,
-        SidebarKind.Action => row.Key == "action:add-part" ? AddPart : Action,
+        SidebarKind.Action => row.Key switch { "action:add-part" => AddPart, "action:recordings" => RecordingActions, _ => Action },
         SidebarKind.RecentHeader => RecentHeader,
         SidebarKind.Empty => Empty,
         SidebarKind.Finding => Finding,

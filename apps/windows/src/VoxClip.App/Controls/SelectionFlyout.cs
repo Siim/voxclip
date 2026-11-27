@@ -20,6 +20,9 @@ internal sealed class SelectionFlyout
     private readonly AppBarButton rewriteAs;
     private readonly AppBarButton rewriteReason = new() { IsEnabled = false, Visibility = Visibility.Collapsed };
     private readonly AppBarButton makePart = new() { Visibility = Visibility.Collapsed };
+    private readonly AppBarButton addRecordingPart;
+    private readonly AppBarButton addRecordingPartReason = new() { IsEnabled = false, Visibility = Visibility.Collapsed };
+    internal Action? AddRecordingPart { get; set; }
     private readonly AppBarButton askClaude;
     private readonly AppBarSeparator askSeparator = new();
     /// <summary>Whether ✦ Ask Claude can act on the selection (an AI is chosen and the project can change).</summary>
@@ -44,6 +47,7 @@ internal sealed class SelectionFlyout
         this.owner = owner;
         escape = Escape;
         make = Button("Make clip", Symbol.Add, makeClip, true);
+        addRecordingPart = Button("", Symbol.Add, () => AddRecordingPart?.Invoke());
         cut = Button("Cut", Symbol.Cut, cutWords);
         restore = Button("Restore", Symbol.Undo, restoreWords);
         rewrite = Button("Rewrite…", Symbol.Edit, rewriteWords, true);
@@ -60,12 +64,14 @@ internal sealed class SelectionFlyout
         flyout.PrimaryCommands.Add(askClaude);
         flyout.PrimaryCommands.Add(askSeparator);
         flyout.PrimaryCommands.Add(make);
+        flyout.PrimaryCommands.Add(addRecordingPart);
         flyout.PrimaryCommands.Add(cut);
         flyout.PrimaryCommands.Add(restore);
         flyout.PrimaryCommands.Add(separator);
         flyout.PrimaryCommands.Add(rewrite);
         flyout.PrimaryCommands.Add(rewriteAs);
         flyout.SecondaryCommands.Add(rewriteReason);
+        flyout.SecondaryCommands.Add(addRecordingPartReason);
         flyout.SecondaryCommands.Add(makePart);
         makePart.Click += (_, _) => { Hide(); MakePart?.Invoke(); };
         timer.Tick += (_, _) => { timer.Stop(); var action = pending; pending = null; action?.Invoke(); };
@@ -146,12 +152,19 @@ internal sealed class SelectionFlyout
     }
 
     internal void Show(Rect selection, bool below, bool keyboard, bool editable, bool canRestore, bool voiceLab, bool rewriteAvailable, string? existingClip,
-        VoxClip.App.ViewModels.StoryVoiceActions? story = null)
+        VoxClip.App.ViewModels.StoryVoiceActions? story = null, string? recordingPart = null, string? recordingPartReason = null)
     {
         restoreFocus = false;
         flyout.AreOpenCloseAnimationsEnabled = Ui.EffectPolicy.Animations;
         ToolTipService.SetToolTip(make, existingClip ?? "Make clip (Ctrl+Alt+K)");
         cut.IsEnabled = make.IsEnabled = editable;
+        addRecordingPart.Label = recordingPart ?? "";
+        addRecordingPart.Visibility = recordingPart is null ? Visibility.Collapsed : Visibility.Visible;
+        addRecordingPart.IsEnabled = editable && string.IsNullOrEmpty(recordingPartReason);
+        addRecordingPartReason.Label = recordingPartReason ?? "";
+        addRecordingPartReason.Visibility = recordingPart is not null && !string.IsNullOrEmpty(recordingPartReason) ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(addRecordingPart, recordingPart ?? "");
+        AutomationProperties.SetHelpText(addRecordingPart, recordingPartReason ?? "");
         // Shown only when it can act: an AI is chosen and the project can change.
         askClaude.Visibility = askSeparator.Visibility = editable && CanAskClaude?.Invoke() == true ? Visibility.Visible : Visibility.Collapsed;
         restore.IsEnabled = editable && canRestore;

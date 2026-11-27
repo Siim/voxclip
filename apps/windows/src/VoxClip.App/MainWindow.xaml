@@ -106,6 +106,10 @@
                     </Grid>
                 </ContentControl>
             </DataTemplate>
+            <DataTemplate x:Key="PartReasonLine">
+                <TextBlock Text="{Binding}" ToolTipService.ToolTip="{Binding}" AutomationProperties.Name="{Binding}"
+                    Foreground="{ThemeResource VcTextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+            </DataTemplate>
             <DataTemplate x:Key="SuggestionRow" x:DataType="vm:SidebarRow">
                 <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" MinHeight="28" Tag="{x:Bind ClipId}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
                     KeyboardAcceleratorPlacementMode="Hidden" Loaded="ScopeRowKeys" PointerEntered="ClipRowPointerEntered" PointerExited="ClipRowPointerExited">
@@ -152,6 +156,7 @@
                                 </StackPanel>
                             </Grid>
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Visibility="{x:Bind HasMetaStatus, Mode=OneWay}"><Run Text="{x:Bind MetaLine, Mode=OneWay}"/></TextBlock>
+                            <ItemsControl ItemsSource="{x:Bind RecordingReasons, Mode=OneWay}" ItemTemplate="{StaticResource PartReasonLine}"/>
                         </StackPanel>
                         <!-- Keep and Dismiss: 32x32 subtle icon buttons that never select the row. -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -240,6 +245,7 @@
             </DataTemplate>
             <DataTemplate x:Key="StoryPartRow" x:DataType="vm:SidebarRow">
                 <Border Background="Transparent" Loaded="PartRowLoaded" AllowDrop="True" DragOver="PartDragOver" DragLeave="PartDragLeave" Drop="PartDrop">
+                    <StackPanel Spacing="3">
                     <Grid ColumnSpacing="4" MinHeight="32">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <TextBlock Text="⋮⋮" Width="16" VerticalAlignment="Center" CanDrag="True" DragStarting="PartDragStarting" DropCompleted="PartDropCompleted"
@@ -247,11 +253,16 @@
                         <Border Grid.Column="1" Loaded="PartBadgeLoaded" BorderThickness="1" Padding="3,0" CornerRadius="4" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontSize="11"/>
                         </Border>
-                        <TextBlock Grid.Column="2" Text="{x:Bind Title, Mode=OneWay}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                            <ContentPresenter Loaded="PartRecordingLabelLoaded"/>
+                            <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
                         <TextBlock Grid.Column="3" Text="{x:Bind Detail, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="11" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center"/>
                         <Button Grid.Column="4" Content="×" Width="28" Height="32" Padding="0" IsEnabled="{x:Bind Edits, Mode=OneWay}" Click="RemovePartClicked" Tapped="RowButtonTapped"
                             Style="{ThemeResource SubtleButtonStyle}" ToolTipService.ToolTip="Remove Part (Delete)" AutomationProperties.Name="Remove Part"/>
                     </Grid>
+                    <StackPanel Loaded="PartVersionRowsLoaded" Spacing="4"/>
+                    </StackPanel>
                 </Border>
             </DataTemplate>
             <DataTemplate x:Key="OutlineHeaderRow" x:DataType="vm:SidebarRow">
@@ -265,10 +276,14 @@
                     <Button Content="{x:Bind Title}" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" Click="AddPartClicked" Tapped="RowButtonTapped" Style="{ThemeResource SubtleButtonStyle}"
                         AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}"/>
                     <TextBlock Text="{x:Bind Detail, Mode=OneWay}" TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
+                    <StackPanel Loaded="SingleRecordingActionsLoaded" Spacing="3"/>
                 </StackPanel>
             </DataTemplate>
+            <DataTemplate x:Key="RecordingActionsRow" x:DataType="vm:SidebarRow">
+                <StackPanel Loaded="OutlineRecordingRowsLoaded" Spacing="5" Padding="0,4"/>
+            </DataTemplate>
             <controls:ExplorerTemplates x:Key="SidebarTemplates" Home="{StaticResource HomeRow}" Separator="{StaticResource SeparatorRow}" Project="{StaticResource ProjectRow}" Outline="{StaticResource OutlineRow}"
-                StoryPart="{StaticResource StoryPartRow}" OutlineHeader="{StaticResource OutlineHeaderRow}" AddPart="{StaticResource AddPartRow}"
+                StoryPart="{StaticResource StoryPartRow}" OutlineHeader="{StaticResource OutlineHeaderRow}" AddPart="{StaticResource AddPartRow}" RecordingActions="{StaticResource RecordingActionsRow}"
                 FullTake="{StaticResource FullTakeRow}" Clip="{StaticResource ClipRow}" SuggestedHeader="{StaticResource SuggestedHeaderRow}" Suggestion="{StaticResource SuggestionRow}"
                 Action="{StaticResource ActionRow}" RecentHeader="{StaticResource RecentHeaderRow}" Recent="{StaticResource RecentRow}"
                 Empty="{StaticResource EmptyRow}" Finding="{StaticResource FindingRow}" Callout="{StaticResource CalloutRow}" NoneFound="{StaticResource NoneFoundRow}"/>

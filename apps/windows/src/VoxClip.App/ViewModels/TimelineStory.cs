@@ -5,13 +5,16 @@ using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.App.ViewModels;
 
 internal sealed record TimelinePartBand(ClipPartRow Part, TimeRange Range);
-internal sealed record TimelinePartSeam(double Position, double TakeTime, int PartNumber, bool Backward)
+internal sealed record TimelinePartSeam(double Position, double TakeTime, int PartNumber, bool Backward, string? Recording = null, bool UsesLocalClock = false)
 {
     internal const int Stroke = 3;
     internal int Width => Stroke;
-    internal string Label => $"{(Backward ? "↶" : "↷")} {EditorViewModel.Duration(TakeTime)}";
-    internal string Description => $"Seam to part {PartNumber}, jumps {(Backward ? "back" : "ahead")} to {EditorViewModel.Duration(TakeTime)}, fades over 5 ms";
+    private string Time => UsesLocalClock ? EditorViewModel.RecordingTime(TakeTime) : EditorViewModel.Duration(TakeTime);
+    internal string Label => Recording is { } label ? $"→ {label} {Time}" : $"{(Backward ? "↶" : "↷")} {Time}";
+    internal string Description => $"Seam to part {PartNumber}, " + (Recording is { } label ? $"recording {label} at " : $"jumps {(Backward ? "back" : "ahead")} to ") +
+        $"{Time}, fades over 5 ms";
 }
+internal sealed record RecordingOverviewRow(ProjectClock.Region Recording, double Duration, IReadOnlyList<TimelinePartBand> Parts);
 
 internal sealed class TimelineStory
 {
@@ -25,6 +28,7 @@ internal sealed class TimelineStory
     internal TimelinePieces EditedPieces { get; }
     internal TimelinePieces OpenPieces { get; }
     internal IReadOnlyList<TimelinePartBand> Overview { get; }
+    internal IReadOnlyList<RecordingOverviewRow> RecordingOverview { get; }
     internal IReadOnlyList<TimeRange> OpenCuts { get; }
     internal double Duration(bool closesCuts) => closesCuts ? rendering.Duration : open.LastOrDefault()?.Range.End ?? 0;
     internal IReadOnlyList<TimelinePartBand> Bands(bool closesCuts) => closesCuts ? edited : open;
@@ -36,6 +40,9 @@ internal sealed class TimelineStory
         this.rendering = rendering ?? legacy;
         var parts = model.ClipParts;
         Overview = parts.Select(part => new TimelinePartBand(part, new(part.Start, part.End))).ToArray();
+        RecordingOverview = model.HasSeveralRecordings && model.RecordingClock is { } clock ? clock.Regions.Select(region =>
+            new RecordingOverviewRow(region, (double)region.DurationSamples / clock.SampleRate, parts.Where(part => part.Recording == region)
+                .Select(part => new TimelinePartBand(part, new(part.Start - part.RecordingOffset, part.End - part.RecordingOffset))).ToArray())).ToArray() : [];
         sources = parts.Select((part, index) =>
         {
             var range = EditingAlgorithms.ClipTimes(model.Words, part.First, part.Last, index == 0 ? model.ActiveClip?.LeadInSeconds : null);
@@ -43,8 +50,7 @@ internal sealed class TimelineStory
         }).ToArray();
         double cursor = 0;
         open = parts.Select((part, index) => new TimelinePartBand(part, new(cursor, cursor += sources[index].End - sources[index].Start))).ToArray();
-        openSeams = open.Skip(1).Select((band, index) => new TimelinePartSeam(band.Range.Start, band.Part.Start,
-            band.Part.Number, band.Part.Start < open[index].Part.End)).ToArray();
+        openSeams = open.Skip(1).Select((band, index) => Seam(band.Range.Start, band.Part.Start, band.Part, open[index].Part, open[index].Part.End)).ToArray();
 
         EditedPieces = new(this.rendering);
         var bands = new List<TimelinePartBand>();
@@ -56,8 +62,12 @@ internal sealed class TimelineStory
             var section = PartIndex(piece);
             if (section < 0) continue;
             var part = parts[section];
-            if (EditedPieces.IsPartSeam(index))
-                seams.Add(new(piece.Edited.Start, piece.Source.Start, part.Number, piece.Source.Start < EditedPieces.Pieces[index - 1].Source.End));
+            if (index > 0 && EditedPieces.IsPartSeam(index))
+            {
+                var before = EditedPieces.Pieces[index - 1];
+                var previous = PartIndex(before);
+                seams.Add(Seam(piece.Edited.Start, piece.Source.Start, part, previous < 0 ? part : parts[previous], before.Source.End));
+            }
             if (bands.Count > 0 && bands[^1].Part.Id == part.Id)
             {
                 bands[^1] = bands[^1] with { Range = new(bands[^1].Range.Start, piece.Edited.End) };
@@ -96,6 +106,10 @@ internal sealed class TimelineStory
             source.Start <= piece.Source.Start && source.End > piece.Source.Start ||
             source.Start < piece.Source.End && source.End > piece.Source.Start);
     }
+
+    private static TimelinePartSeam Seam(double position, double source, ClipPartRow part, ClipPartRow previous, double previousEnd) =>
+        new(position, source - part.RecordingOffset, part.Number, source < previousEnd,
+            part.Recording != previous.Recording ? part.Recording?.Label : null, part.UsesLocalClock);
 
     internal double Display(double source, bool closesCuts)
     {
