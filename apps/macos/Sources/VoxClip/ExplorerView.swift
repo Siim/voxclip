@@ -496,14 +496,12 @@ import VoxClipCore
 @MainActor extension EditorModel {
     func suggestedCardDetails(_ clip: ClipRange) -> (badge: String, summary: String, parts: [ProposalStripPart], reason: String, missing: String?)? {
         guard let found = foundSuggestion(clip) else { return nil }
-        let clock = project.media.spokenSources == nil ? nil : ProjectClock.build(project)
-        let sourceWords = clock?.words ?? words
-        guard let ranges = clip.playPartIndices(in: sourceWords) else { return nil }
+        guard let ranges = clip.playPartIndices(in: words) else { return nil }
         let proposalParts = zip(ranges, clip.playParts).map { range, part in
             let reason = part.takeReason ?? found.parts?.first { $0.startWordId == part.startWordId && $0.endWordId == part.endWordId }?.takeReason
             return ClipProposal.Part(startWord: range.lowerBound, endWord: range.upperBound, takeReason: reason)
         }
-        let parts = ProposalStripPart.from(proposalParts, words: sourceWords, clock: clock)
+        let parts = ProposalStripPart.from(proposalParts, words: words, clock: recordingClock)
         let kind: ClipProposal.NewClip.Kind = parts.count == 1 ? .stretch : clip.kind == .showreel ? .showreel : .story
         let score = suggestionScore(clip) ?? found.score
         let locations = parts.count > 1 ? "in your order, from \(parts.count) places in the take" : parts.first.map { "\(durationLabel($0.start))–\(durationLabel($0.start + $0.duration))" }
