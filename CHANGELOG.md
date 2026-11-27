@@ -6,6 +6,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - Mac and Windows agent chat can suggest next steps based on the recordings, clip edits and export status.
 - Projects on Mac and Windows can now save agent turns with their own undo history, separate from your manual edits.
+- On Mac, make one clip from the best lines across card recordings, or combine them in a project without AI; the Outline’s ✦ chip runs Best versions.
 - On Windows, start a clip from one recording, audition and swap individual line versions, and insert lines only another recording says.
 - Claude Code and Codex can read recordings and matched takes and propose a story across recordings, without sending media or spending money.
 - On Mac, start a clip from one recording, audition and swap in another recording's version of a line, or insert a line only another recording has.
