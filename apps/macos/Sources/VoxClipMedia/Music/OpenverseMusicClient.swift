@@ -65,8 +65,9 @@ public final class OpenverseMusicClient: Sendable {
 
     public static func searchURL(query: String, pageSize: Int = OpenverseMusicClient.pageSize, page: Int = 1, sound: Bool = false) -> URL {
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "license", value: "cc0,by,pdm"),
-                                 URLQueryItem(name: "category", value: sound ? "sound_effect" : "music"), URLQueryItem(name: "page_size", value: String(pageSize))]
+        components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "license", value: "cc0,by,pdm")]
+        if !sound { components.queryItems?.append(URLQueryItem(name: "category", value: "music")) }
+        components.queryItems?.append(URLQueryItem(name: "page_size", value: String(pageSize)))
         if page > 1 { components.queryItems?.append(URLQueryItem(name: "page", value: String(page))) }
         return components.url!
     }
@@ -143,10 +144,12 @@ public final class OpenverseMusicClient: Sendable {
               !landing.contains(where: \.isWhitespace), URL(string: landing)?.host != nil,
               let fileExtension = fileExtension(row["filetype"] as? String, url: file) else { return nil }
         let category = row["category"] as? String
-        if sound ? category != "sound_effect" : (category != nil && category != "music") { return nil }
+        if sound {
+            guard row["category"] == nil || row["category"] is NSNull || category == "sound_effect" else { return nil }
+        } else if category != nil && category != "music" { return nil }
         let duration = (row["duration"] as? NSNumber).map { $0.doubleValue / 1_000 }
         if sound {
-            guard let duration, duration > 0 && duration <= ClipEffect.maximumSoundSeconds else { return nil }
+            guard let duration, duration > 0 && duration <= 30 else { return nil }
         } else if let duration, !duration.isFinite || duration < 10 || duration > ProjectMusic.maximumDuration { return nil }
         let title = clipped(row["title"] as? String, 200) ?? "Untitled"
         let creator = clipped(row["creator"] as? String, 200)

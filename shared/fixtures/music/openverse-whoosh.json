@@ -1,0 +1,17 @@
+{
+  "result_count": 240,
+  "page_count": 12,
+  "page_size": 20,
+  "page": 1,
+  "results": [
+    {"id":"f1dc6045-7965-41de-87f8-4731d2583fd2","provider":"freesound","category":null,"duration":490,"filetype":"mp3","license":"cc0","mature":false,"url":"https://cdn.example/short.mp3","foreign_landing_url":"https://example.com/short"},
+    {"id":"f340c2c6-4b41-4acd-a593-b5bbdb2c2b8b","provider":"freesound","category":null,"duration":10500,"filetype":"mp3","license":"by","mature":false,"url":"https://cdn.example/credited.mp3","foreign_landing_url":"https://example.com/credited","attribution":"Whoosh, CC BY 4.0"},
+    {"id":"limit","category":"sound_effect","duration":30000,"filetype":"wav","license":"pdm","url":"https://cdn.example/limit.wav","foreign_landing_url":"https://example.com/limit"},
+    {"id":"long","category":null,"duration":30001,"filetype":"mp3","license":"cc0","url":"https://cdn.example/long.mp3","foreign_landing_url":"https://example.com/long"},
+    {"id":"music","category":"music","duration":12000,"filetype":"mp3","license":"cc0","url":"https://cdn.example/music.mp3","foreign_landing_url":"https://example.com/music"},
+    {"id":"uncredited","category":null,"duration":500,"filetype":"mp3","license":"by","url":"https://cdn.example/uncredited.mp3","foreign_landing_url":"https://example.com/uncredited"},
+    {"id":"restricted","category":null,"duration":500,"filetype":"mp3","license":"by-nc","url":"https://cdn.example/restricted.mp3","foreign_landing_url":"https://example.com/restricted"},
+    {"id":"insecure","category":null,"duration":500,"filetype":"mp3","license":"cc0","url":"http://cdn.example/insecure.mp3","foreign_landing_url":"https://example.com/insecure"},
+    {"id":"unsupported","category":null,"duration":500,"filetype":"ogg","license":"cc0","url":"https://cdn.example/unsupported.ogg","foreign_landing_url":"https://example.com/unsupported"}
+  ]
+}

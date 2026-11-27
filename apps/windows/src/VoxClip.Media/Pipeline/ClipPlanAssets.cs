@@ -36,14 +36,16 @@ public sealed class ClipPlanAssets(IMusicHttp http)
         var length = request.End - request.Start;
         var offset = request.SoundFrom ?? 0;
         var results = await openverse.SearchAsync(request.Text, new HashSet<string>(), 0, ct, sound: true).ConfigureAwait(false);
-        if (results.FirstOrDefault(candidate => candidate.DurationSeconds <= length + offset && candidate.DurationSeconds - offset >= 0.05) is not { } candidate) return null;
+        if (results.FirstOrDefault(candidate => candidate.DurationSeconds <= Math.Min(length + offset, ClipEffect.MaximumSoundSeconds) &&
+            candidate.DurationSeconds - offset >= 0.05) is not { } candidate) return null;
         var bytes = await openverse.DownloadAsync(candidate, ct).ConfigureAwait(false);
         if (bytes.Length > 16 * 1024 * 1024) return null;
         var hash = Hash(bytes);
         var relative = $"{projectId}/sfx-{hash[..48]}.{candidate.FileExtension}";
         var path = Save(bytes, relative, projectId, ClipEffectsRenderInput.SoundRoot(root));
         var probe = await new FfmpegMediaProbe().ProbeAsync(path, ct).ConfigureAwait(false);
-        if (probe.Audio is null || !double.IsFinite(probe.DurationSeconds) || probe.DurationSeconds - offset < 0.05 || probe.DurationSeconds > length + offset + 1e-9) return null;
+        if (probe.Audio is null || !double.IsFinite(probe.DurationSeconds) || probe.DurationSeconds - offset < 0.05 ||
+            probe.DurationSeconds > Math.Min(length + offset + 1e-9, ClipEffect.MaximumSoundSeconds)) return null;
         var effect = Entry(request, "sound");
         if (request.Shape != new VoxClip.Core.Domain.Editing.ItemShape() || request.SoundFrom is not null)
             effect["end"] = Math.Min(request.End, request.Start + probe.DurationSeconds - offset);

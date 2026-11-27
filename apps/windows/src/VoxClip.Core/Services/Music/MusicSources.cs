@@ -77,7 +77,7 @@ public sealed class OpenverseMusicClient(IMusicHttp http, Func<DateTimeOffset>? 
 
     /// <summary>The search URL for <paramref name="query"/>.</summary>
     public static Uri SearchUri(string query, int pageSize = 20, bool sound = false) =>
-        new($"{Endpoint}?q={Uri.EscapeDataString(query)}&license=cc0%2Cby%2Cpdm&category={(sound ? "sound_effect" : "music")}&page_size={pageSize}");
+        new($"{Endpoint}?q={Uri.EscapeDataString(query)}&license=cc0%2Cby%2Cpdm{(sound ? "" : "&category=music")}&page_size={pageSize}");
 
     /// <summary>Playable library candidates for <paramref name="query"/>, best first for the brief's keywords and the clip's length.</summary>
     public async Task<IReadOnlyList<MusicCandidate>> SearchAsync(string query, IReadOnlySet<string> keywords, double clipSeconds, CancellationToken ct, bool sound = false)
@@ -130,10 +130,10 @@ public sealed class OpenverseMusicClient(IMusicHttp http, Func<DateTimeOffset>? 
         if (file is null || !Uri.TryCreate(file, UriKind.Absolute, out var fileUri) || fileUri.Scheme != Uri.UriSchemeHttps) return null;
         if (landing is null || !landing.StartsWith("https://", StringComparison.Ordinal) || landing.Length > 2048 || landing.Any(char.IsWhiteSpace)) return null;
         var category = Text(row["category"]);
-        if (sound ? category != "sound_effect" : category is not null and not "music") return null;
+        if (sound ? row["category"] is not null && category != "sound_effect" : category is not null and not "music") return null;
         if (Extension(Text(row["filetype"]), fileUri) is not { } extension) return null;
         double? duration = row["duration"] is JsonValue length && length.TryGetValue<double>(out var milliseconds) ? milliseconds / 1000 : null;
-        if (sound ? duration is not (> 0 and <= 10) : duration is < 10 or > 1800) return null;
+        if (sound ? duration is not (> 0 and <= 30) : duration is < 10 or > 1800) return null;
         var attribution = Clipped(Text(row["attribution"]), 1000);
         var licensed = license switch { "cc0" => MusicLicense.Cc0, "by" => MusicLicense.By, _ => MusicLicense.Pdm };
         if (licensed == MusicLicense.By && attribution is null) return null;

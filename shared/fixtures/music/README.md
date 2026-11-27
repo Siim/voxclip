@@ -16,3 +16,9 @@ beds. `python3 tools/fixtures/music/generate_music_mix.py` writes it from a port
 runs it). Floats are rounded to 9 decimals. C# `MusicMixVectorTests` (Core) and `MusicBedTests` (Media) replay every case,
 as do Swift `MusicMixVectorTests` (Core) and `MusicBedVectorTests` (Media, the beds through the renderer's `MusicBedPlan`).
 The `timeline` vector adds rendered placement at speed, slipped and looped pieces, overlap weights, envelope and fade factors, and custom duck depth.
+# Openverse sound search replay
+
+`openverse-whoosh.json` keeps the category, duration, type and licence of two rows from the anonymous November 27,
+2026 Freesound response, with private or irrelevant fields omitted and URLs and credit text replaced. The remaining
+rows exercise the category, duration, licence, attribution, HTTPS and audio-type boundaries without a live call.
+

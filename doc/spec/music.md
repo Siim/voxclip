@@ -85,6 +85,11 @@ ready `attribution` string. VoxClip:
   15 s, doubling to 10 min). It never retries on its own. Anonymous limits were 20 per minute and 200 per day;
 - downloads the file only on Use (at most 60 MB, refused when the host sends text or JSON).
 
+Sound-effect search omits `category` from the request. It accepts uncategorized results (including Freesound) and
+results tagged `sound_effect` with known durations over 0 s and up to 30 s, using the same licence, attribution,
+HTTPS and audio-type filters as music. The clip planner still only imports sounds that fit the requested span and
+the project's sound-asset limit.
+
 ### 3.2 Generated: Eleven Music
 
 Verified against the API reference on 2026-11-04 (https://elevenlabs.io/docs/api-reference/music/compose):
