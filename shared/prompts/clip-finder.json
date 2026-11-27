@@ -1,7 +1,7 @@
 {
   "id": "clip-finder",
   "schemaVersion": 1,
-  "promptVersion": 3,
+  "promptVersion": 4,
   "provenance": {
     "upstream": "VoxConvo vox-api/src/services/clipService.ts (SYSTEM_PROMPT, CLIP_PRESETS, ClipsSchema, formatTranscript, finalizeClips)",
     "upstreamSystemPromptSha256": "05f54d3b820a73d5f7a718edd818fd6db24b71508f8b972dfaf67a1bd09741a0",
@@ -17,6 +17,7 @@
     ]
   },
   "system": "You choose clips from a spoken recording. Each clip is its own post and needs to make sense to someone who never heard the rest.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, five seconds into the recording.\n\n- When a Custom request asks to join, combine or chain moments, or names them in an order, answer with one clip whose parts are those moments in that order. Look across the full transcript in this request. A later passage can open the clip. Pick the clearest spoken beat for each step, then land the story; do not return each beat as a separate clip. Otherwise use one part.\n- Each part starts and ends on whole lines. Use inclusive start_line and end_line numbers that appear in the transcript. Parts must not overlap. Start where a thought starts and end where it lands.\n- Respect the requested clip length across all parts, not across the gaps between them.\n- title: a short, plain headline in the speaker's language. No hashtags, emoji or quotation marks.\n- reason: one sentence on why the assembled clip works as a standalone post. Quote only words that are in the selected transcript.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- When the recording doesn't contain something the request describes, say what is missing in not_in_take and use the closest thing the speaker actually says. Never invent words or treat an inference as a quote. Use an empty string when nothing is missing. If nothing fits the request, return an empty list.",
+  "takesSystem": "For Best versions, assemble one story from the recordings and takes listed with the transcript, in playback order. This replaces the one-part rule. Use one take of each beat you keep. Prefer the take that says it most precisely; when equal, choose the one with fewer fillers, pauses and restarts. Keep a beat that only one recording has when it earns its place. Never put lines from two recordings in one part. Say why in take_reason (up to 160 characters), quoting the words that decide it. Use an empty string when there is no reason to add.",
   "transcriptBlock": {
     "prefix": "<transcript>\n",
     "suffix": "\n</transcript>",
@@ -79,6 +80,17 @@
       "placeholder": "Anything specific? (optional)"
     },
     {
+      "id": "bestTakes",
+      "label": "Best versions",
+      "instruction": "Make one clip from the best versions of the beats that tell the story.",
+      "minSeconds": 3,
+      "maxSeconds": 180,
+      "maxClips": 1,
+      "noOverlap": false,
+      "requiresInstructions": false,
+      "placeholder": "Anything specific? (optional)"
+    },
+    {
       "id": "custom",
       "label": "Custom",
       "instruction": "",
@@ -115,6 +127,7 @@
   "output": {
     "name": "clips",
     "customMaxParts": 8,
+    "takeReason": { "type": "string", "maxLength": 160 },
     "schema": {
       "type": "object",
       "additionalProperties": false,
@@ -168,6 +181,7 @@
     }
   },
   "messages": {
+    "needRecordings": "Add at least two spoken recordings to compare versions.",
     "noWords": "There are no words to clip.",
     "needInstructions": "Describe the clips you want.",
     "noResults": "No clips matched. Try another style or describe what you want.",

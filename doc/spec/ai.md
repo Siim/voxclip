@@ -1194,6 +1194,8 @@ own version string. Both native CLI suites check `shared/fixtures/cli/find-clips
 
 ## 11. Clip finder pipeline (M1)
 
+**Best versions** (`bestTakes`, prompt v4) compares spoken recordings in one request. Existing presets retain their v3 request bytes. The new preset sends labelled recording ranges and TakeMatch beats with sentence flags and delivery signals. Its ordered reply parts may include `take_reason`; only quotes in that part's kept words survive. Keep the first valid take of a beat and drop parts crossing recording regions.
+
 Constants come from `shared/prompts/clip-finder.json` (`limits`, `presets`, `request`, `generation`).
 
 ### 11.1 Inputs and gates
