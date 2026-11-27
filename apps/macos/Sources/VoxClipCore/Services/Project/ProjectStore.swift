@@ -67,7 +67,26 @@ public actor JSONProjectStore: ProjectStore {
             return (cleaned.project, cleaned.warnings)
         } catch let error as VoxClipError { throw error }
         catch let error as VoiceLabProjectError { throw error }
+        catch let error as DecodingError { throw decodingFailure(error) }
         catch { throw VoxClipError.projectUnreadable("/: invalid project document") }
+    }
+
+    private static func decodingFailure(_ error: DecodingError) -> VoxClipError {
+        let keys: [any CodingKey]
+        let reason: String
+        switch error {
+        case .keyNotFound(let key, let context):
+            keys = context.codingPath + [key]
+            reason = "missing required field"
+        case .typeMismatch(_, let context), .valueNotFound(_, let context), .dataCorrupted(let context):
+            keys = context.codingPath
+            reason = "invalid value"
+        @unknown default:
+            return .projectUnreadable("/: invalid project document")
+        }
+        guard !keys.isEmpty else { return .projectUnreadable("/: invalid project document") }
+        let path = keys.map { key in key.intValue.map(String.init) ?? key.stringValue }.joined(separator: "/")
+        return .projectUnreadable("\(path): \(reason)")
     }
 
     public static func encode(_ project: Project) throws -> Data {

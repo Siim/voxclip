@@ -19,6 +19,10 @@ public sealed class CliTests
     [InlineData("voices", "voiceLab/voices: missing required field")]
     [InlineData("videoAssets", "voiceLab/videoAssets: missing required field")]
     [InlineData("aspect", "export/aspect: invalid value")]
+    [InlineData("quality", "export/quality: invalid value")]
+    [InlineData("assetDuration", "voiceLab/assets/0/durationSeconds: invalid value")]
+    [InlineData("captionY", "captions/position/y: missing required field")]
+    [InlineData("aiPart", "ai/results/0/clips/0/parts/0/endWordId: missing required field")]
     public async Task ProjectFailuresNameTheFieldAndReasonWithoutItsValue(string defect, string problem)
     {
         var directory = Directory.CreateTempSubdirectory("voxclip-project-error-").FullName;
@@ -30,7 +34,22 @@ public sealed class CliTests
             var project = JsonNode.Parse(FixtureLoader.ReadText("fixtures/story-clips/story-project.voxclip"))!.AsObject();
             project["title"] = privateContent;
             if (defect == "story") project["schemaVersion"] = 4;
-            else if (defect == "aspect") project["export"]!["aspect"] = privateContent;
+            else if (defect is "aspect" or "quality") project["export"]![defect] = privateContent;
+            else if (defect == "captionY") project["captions"]!["position"] = new JsonObject { ["x"] = 0.5 };
+            else if (defect == "aiPart")
+            {
+                var part = new JsonObject { ["startWordId"] = "w1" };
+                var clip = new JsonObject { ["title"] = privateContent, ["reason"] = "", ["score"] = 8,
+                    ["startWordId"] = "w1", ["endWordId"] = "w2", ["parts"] = new JsonArray(part) };
+                var result = new JsonObject { ["id"] = "result-1", ["createdAt"] = project["createdAt"]!.DeepClone(),
+                    ["provider"] = "codex", ["model"] = privateContent, ["preset"] = "best", ["instructions"] = null,
+                    ["language"] = null, ["inputSha256"] = new string('0', 64), ["clips"] = new JsonArray(clip) };
+                project["ai"]!["results"] = new JsonArray(result);
+            }
+            else if (defect == "assetDuration")
+                project["voiceLab"]!["assets"] = new JsonArray(new JsonObject { ["id"] = "asset-1", ["kind"] = "audio",
+                    ["file"] = "asset.wav", ["sha256"] = new string('0', 64), ["durationSeconds"] = privateContent,
+                    ["sampleRate"] = 48000, ["createdAt"] = project["createdAt"]!.DeepClone() });
             else project["voiceLab"]!.AsObject().Remove(defect);
             var input = Path.Combine(directory, "invalid.voxclip");
             File.WriteAllText(input, project.ToJsonString());
@@ -44,7 +63,7 @@ public sealed class CliTests
             using var json = JsonDocument.Parse(output.ToString());
             var error = json.RootElement.GetProperty("error");
             Assert.Equal("projectUnreadable", error.GetProperty("code").GetString());
-            Assert.Contains(problem, error.GetProperty("message").GetString(), StringComparison.Ordinal);
+            Assert.Equal(problem, error.GetProperty("message").GetString());
             Assert.DoesNotContain(privateContent, errors.ToString() + output.ToString(), StringComparison.Ordinal);
         }
         finally { Console.SetOut(oldOutput); Console.SetError(oldErrors); Directory.Delete(directory, true); }

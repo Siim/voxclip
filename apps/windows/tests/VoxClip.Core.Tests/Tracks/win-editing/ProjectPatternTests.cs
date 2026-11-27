@@ -88,7 +88,7 @@ public sealed class ProjectPatternTests
     }
 
     [Fact]
-    public async Task MissingCandidateDiscriminatorMapsTheRawLookupFailure()
+    public async Task MissingCandidateDiscriminatorNamesTheField()
     {
         using var storage = new TestStorage();
         var fixture = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "passage-render-v3.voxclip");
@@ -99,7 +99,7 @@ public sealed class ProjectPatternTests
         await File.WriteAllTextAsync(file, json, TestContext.Current.CancellationToken);
         var error = await Assert.ThrowsAsync<VoxClipException>(() => new ProjectStore().LoadAsync(file, TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.ProjectUnreadable, error.Code);
-        Assert.IsType<KeyNotFoundException>(error.InnerException);
+        Assert.Equal("voiceLab/segments/0/candidates/0/rejected: missing required field", error.Message);
         Assert.Equal(json, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
     }
 

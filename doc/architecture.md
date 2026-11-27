@@ -695,9 +695,10 @@ Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its 
 
 On failure: `{ "ok": false, "command": "export", "error": { "code": "unsupportedContainer", "message": "…" }, "version": "0.1.0" }`.
 
-Project validation errors give a slash-separated field path and a reason in the terminal and in `error.message`,
-for example `edits/clips/0: story clip needs schemaVersion 5`. `/` means the document itself. Error messages do
-not include field values or quote parser output.
+Project validation and decoding errors give a slash-separated field path and a reason in the terminal and in
+`error.message`, for example `edits/clips/0: story clip needs schemaVersion 5` or `export/quality: invalid value`.
+Array indices start at zero. `/` means the document itself. Error messages do not include field values or quote
+parser output.
 
 | Exit | Meaning |
 |---|---|

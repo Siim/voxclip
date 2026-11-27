@@ -20,25 +20,26 @@ enum ProjectValidation {
         return array
     }
 
-    static func map(_ value: JSONValue?) throws -> [String: JSONValue] {
-        guard case .object(let object) = value else { try fail("Expected object") }
+    static func map(_ value: JSONValue?, at path: String) throws -> [String: JSONValue] {
+        guard case .object(let object) = value else { try fail("expected object", at: path) }
         return object
     }
 
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
-        let wireVersion = try map(raw)["schemaVersion"]
+        let wireVersion = try map(raw, at: "/")["schemaVersion"]
         let isV6 = wireVersion == .number(6)
         let isV5 = isV6 || wireVersion == .number(5)
         let isV4 = isV5 || wireVersion == .number(4)
         let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), at: "/")
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone", at: "clipStyle")
-            for (_, pick) in try map(style["captionPicks"]) {
+            for (key, pick) in try map(style["captionPicks"], at: "clipStyle/captionPicks") {
                 // Optional: the clip's caption overrides and "by": "user" for the creator's own choice (design.md §6.6).
-                let fields = try object(pick, required: "styleId reason", optional: "overrides by")
-                if let overrides = fields["overrides"] { _ = try map(overrides) }
-                if let by = fields["by"], by != .string("user") { try fail("Invalid caption pick") }
+                let path = "clipStyle/captionPicks/\(key)"
+                let fields = try object(pick, required: "styleId reason", optional: "overrides by", at: path)
+                if let overrides = fields["overrides"] { _ = try map(overrides, at: "\(path)/overrides") }
+                if let by = fields["by"], by != .string("user") { try fail("invalid value", at: "\(path)/by") }
             }
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
@@ -58,13 +59,14 @@ enum ProjectValidation {
             if source["audio"] != .null { _ = try object(source["audio"], required: "sampleRate channels", at: "\(path)/audio") }
         }
         if let footage = media["footage"] {
-            let entries = try array(footage)
-            try require(!entries.isEmpty, "Empty companion placement list")
-            for raw in entries {
-                let fields = try object(raw, required: "id clipID kind start end footage", optional: isV6 ? "fadeInSeconds fadeOutSeconds" : "")
-                _ = try object(fields["footage"], required: "sourceKey start")
+            let entries = try array(footage, at: "media/footage")
+            guard !entries.isEmpty else { try fail("empty companion placement list", at: "media/footage") }
+            for (index, raw) in entries.enumerated() {
+                let path = "media/footage/\(index)"
+                let fields = try object(raw, required: "id clipID kind start end footage", optional: isV6 ? "fadeInSeconds fadeOutSeconds" : "", at: path)
+                _ = try object(fields["footage"], required: "sourceKey start", at: "\(path)/footage")
                 for key in ["fadeInSeconds", "fadeOutSeconds"] where fields[key] != nil {
-                    guard case .number(let fade) = fields[key], (0...2).contains(fade) else { try fail("Invalid footage fade") }
+                    guard case .number(let fade) = fields[key], (0...2).contains(fade) else { try fail("invalid value", at: "\(path)/\(key)") }
                 }
             }
         }
@@ -100,23 +102,29 @@ enum ProjectValidation {
             }
         }
         let captions = try object(root["captions"], required: "styleId overrides position positionByAspect", at: "captions")
-        _ = try map(captions["overrides"])
-        if captions["position"] != .null { _ = try object(captions["position"], required: "x y") }
-        for (aspect, position) in try map(captions["positionByAspect"]) {
-            guard ["16:9", "9:16", "1:1"].contains(aspect) else { try fail("Invalid caption aspect") }
-            _ = try object(position, required: "x y")
+        _ = try map(captions["overrides"], at: "captions/overrides")
+        if captions["position"] != .null { _ = try object(captions["position"], required: "x y", at: "captions/position") }
+        for (aspect, position) in try map(captions["positionByAspect"], at: "captions/positionByAspect") {
+            guard ["16:9", "9:16", "1:1"].contains(aspect) else { try fail("unknown field", at: "captions/positionByAspect") }
+            _ = try object(position, required: "x y", at: "captions/positionByAspect/\(aspect)")
         }
         let export = try object(root["export"], required: "aspect quality srt folder", at: "export")
         guard export["aspect"]?.aiString.flatMap(AspectRatio.init(rawValue:)) != nil else { try fail("invalid value", at: "export/aspect") }
         _ = try object(root["share"], required: "captions", at: "share")
         let ai = try object(root["ai"], required: "results", at: "ai")
-        for rawResult in try array(ai["results"]) {
-            let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips")
-            for clip in try array(result["clips"]) {
-                let fields = try object(clip, required: "title reason score startWordId endWordId", optional: isV5 ? "parts notInTake" : "")
-                if let parts = fields["parts"] { for part in try array(parts) { _ = try object(part, required: "startWordId endWordId") } }
+        for (index, rawResult) in try array(ai["results"], at: "ai/results").enumerated() {
+            let path = "ai/results/\(index)"
+            let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips", at: path)
+            for (clipIndex, clip) in try array(result["clips"], at: "\(path)/clips").enumerated() {
+                let clipPath = "\(path)/clips/\(clipIndex)"
+                let fields = try object(clip, required: "title reason score startWordId endWordId", optional: isV5 ? "parts notInTake" : "", at: clipPath)
+                if let parts = fields["parts"] {
+                    for (partIndex, part) in try array(parts, at: "\(clipPath)/parts").enumerated() {
+                        _ = try object(part, required: "startWordId endWordId", at: "\(clipPath)/parts/\(partIndex)")
+                    }
+                }
                 if let note = fields["notInTake"] {
-                    guard case .string = note else { try fail("Invalid missing-from-take note") }
+                    guard case .string = note else { try fail("invalid value", at: "\(clipPath)/notInTake") }
                 }
             }
         }
@@ -124,43 +132,56 @@ enum ProjectValidation {
         let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments",
                                optional: version >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples", at: "voiceLab")
         if let rates = voice["speakingRateSamples"] {
-            for samples in try map(rates).values {
-                for sample in try array(samples) { _ = try object(sample, required: "id ratio") }
+            for (key, samples) in try map(rates, at: "voiceLab/speakingRateSamples") {
+                let path = "voiceLab/speakingRateSamples/\(key)"
+                for (index, sample) in try array(samples, at: path).enumerated() { _ = try object(sample, required: "id ratio", at: "\(path)/\(index)") }
             }
         }
         // A whole-clip revoice (ADR-R46): every key present, `usd` and `match` may be null.
         if let revoices = voice["wholeClipRevoices"] {
-            for revoice in try array(revoices) {
-                let item = try object(revoice, required: "id clipId segmentIds script consentRecordId videoRetime lipsyncModel usd match createdAt")
-                if item["match"] != .null { _ = try object(item["match"], required: "take anchorBaseline realSpeech") }
+            for (index, revoice) in try array(revoices, at: "voiceLab/wholeClipRevoices").enumerated() {
+                let path = "voiceLab/wholeClipRevoices/\(index)"
+                let item = try object(revoice, required: "id clipId segmentIds script consentRecordId videoRetime lipsyncModel usd match createdAt", at: path)
+                if item["match"] != .null { _ = try object(item["match"], required: "take anchorBaseline realSpeech", at: "\(path)/match") }
             }
         }
-        if version == 1 { try require(try array(voice["segments"]).isEmpty, "Version 1 Voice Lab must be empty") }
+        if version == 1, try !array(voice["segments"], at: "voiceLab/segments").isEmpty {
+            try fail("Version 1 Voice Lab must be empty", at: "voiceLab/segments")
+        }
         if version >= 2 {
             for (index, asset) in try array(voice["assets"], at: "voiceLab/assets").enumerated() {
                 _ = try object(asset, required: "id kind file sha256 durationSeconds sampleRate createdAt", at: "voiceLab/assets/\(index)")
             }
             for (index, segment) in try array(voice["segments"], at: "voiceLab/segments").enumerated() {
-                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version >= 3 ? " scope" : ""), optional: version >= 3 ? "groupId" : "", at: "voiceLab/segments/\(index)")
-                _ = try object(item["replace"], required: "start end firstWordId lastWordId")
-                _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb", optional: "tiltDbPerOctave")
+                let path = "voiceLab/segments/\(index)"
+                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version >= 3 ? " scope" : ""), optional: version >= 3 ? "groupId" : "", at: path)
+                _ = try object(item["replace"], required: "start end firstWordId lastWordId", at: "\(path)/replace")
+                _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb", optional: "tiltDbPerOctave", at: "\(path)/audio")
                 if item["text"] != .null {
-                    let text = try object(item["text"], required: "original new", optional: "audioTags")
+                    let text = try object(item["text"], required: "original new", optional: "audioTags", at: "\(path)/text")
                     if let annotations = text["audioTags"] {
-                        for annotation in try array(annotations) { _ = try object(annotation, required: "beforeToken tag") }
+                        let tagsPath = "\(path)/text/audioTags"
+                        for (tagIndex, annotation) in try array(annotations, at: tagsPath).enumerated() {
+                            _ = try object(annotation, required: "beforeToken tag", at: "\(tagsPath)/\(tagIndex)")
+                        }
                     }
                 }
                 if item["words"] != .null {
-                    for word in try array(item["words"]) { _ = try object(word, required: "text start end synthetic") }
+                    for (wordIndex, word) in try array(item["words"], at: "\(path)/words").enumerated() {
+                        _ = try object(word, required: "text start end synthetic", at: "\(path)/words/\(wordIndex)")
+                    }
                 }
-                let provenance = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (version >= 3 ? " region" : ""), optional: "pace")
+                let provenance = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (version >= 3 ? " region" : ""), optional: "pace", at: "\(path)/provenance")
                 if let pace = provenance["pace"] {
-                    guard case .number(let value) = pace, VoiceLabPace.isValid(value) else { try fail("Invalid speech pace") }
+                    guard case .number(let value) = pace, VoiceLabPace.isValid(value) else { try fail("invalid value", at: "\(path)/provenance/pace") }
                 }
-                _ = try object(item["qa"], required: "transcriptMatch lufsJumpLu peakDbfs speakerScore")
-                for candidate in try array(item["candidates"]) {
-                    let record = try object(candidate, required: "assetId score rejected" + (version >= 3 && (try map(candidate))["rejected"] == .null ? " recipe" : ""), optional: version >= 3 ? "recipe" : "")
-                    if let recipe = record["recipe"] { try validateRenderRecipe(recipe) }
+                _ = try object(item["qa"], required: "transcriptMatch lufsJumpLu peakDbfs speakerScore", at: "\(path)/qa")
+                for (candidateIndex, candidate) in try array(item["candidates"], at: "\(path)/candidates").enumerated() {
+                    let candidatePath = "\(path)/candidates/\(candidateIndex)"
+                    let record = try object(candidate, required: "assetId score rejected", optional: version >= 3 ? "recipe" : "", at: candidatePath)
+                    let recipePath = "\(candidatePath)/recipe"
+                    if let recipe = record["recipe"] { try validateRenderRecipe(recipe, at: recipePath) }
+                    else if version >= 3, record["rejected"] == .null { try fail("missing required field", at: recipePath) }
                 }
             }
         }
@@ -174,7 +195,7 @@ enum ProjectValidation {
                 _ = try object(value, required: "id file sha256 durationSeconds frameRate width height", at: "voiceLab/videoAssets/\(index)")
             }
         }
-        if let extensions = root["extensions"] { _ = try map(extensions) }
+        if let extensions = root["extensions"] { _ = try map(extensions, at: "extensions") }
         if let demo = root["contextDemo"] {
             let document = try ContextDemoCodec.decode(ProjectJSON.encoder().encode(demo))
             try require(root["id"] == .string(document.projectId) && media["source"]?[ai: "contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
@@ -192,18 +213,19 @@ enum ProjectValidation {
             guard case .number(let number) = value, number.isFinite else { try fail("Invalid motion number") }
             return number
         }
-        for value in try array(value) {
-            let cue = try object(value, required: "id clipID sourceStart sourceEnd keyframes")
+        for (cueIndex, value) in try array(value, at: "motionCues").enumerated() {
+            let path = "motionCues/\(cueIndex)"
+            let cue = try object(value, required: "id clipID sourceStart sourceEnd keyframes", at: path)
             guard case .string(let id) = cue["id"], !id.isEmpty,
                   case .string(let clipID) = cue["clipID"], !clipID.isEmpty else { try fail("Invalid motion identity") }
             let start = try scalar(cue["sourceStart"])
             let end = try scalar(cue["sourceEnd"])
             try require(start >= 0 && end - start + 1e-9 >= 0.1 && end - start <= 120 + 1e-9, "Invalid motion duration")
-            let frames = try array(cue["keyframes"])
+            let frames = try array(cue["keyframes"], at: "\(path)/keyframes")
             try require((2...8).contains(frames.count), "Invalid motion keyframe count")
             var previous = -Double.infinity
             for (index, value) in frames.enumerated() {
-                let frame = try object(value, required: "progress scale anchorX anchorY")
+                let frame = try object(value, required: "progress scale anchorX anchorY", at: "\(path)/keyframes/\(index)")
                 let progress = try scalar(frame["progress"])
                 try number(progress, max: 1)
                 try number(scalar(frame["scale"]), min: 1, max: 1.35)
@@ -215,55 +237,71 @@ enum ProjectValidation {
         }
     }
 
-    static func validateRenderRecipe(_ value: JSONValue) throws {
-        let recipe = try object(value, required: "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", optional: "edgeGain")
-        _ = try object(recipe["audio"], required: "assetId trimStart trimEnd stretch gainDb", optional: "tiltDbPerOctave")
-        if recipe["words"] != .null { for word in try array(recipe["words"]) { _ = try object(word, required: "text start end synthetic") } }
-        for value in try array(recipe["chunks"]) { _ = try object(value, required: "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame") }
-        if recipe["roomTone"] != .null { _ = try object(recipe["roomTone"], required: "sourceStartSample sourceEndSample gainDb", optional: "endGainDb") }
-        let seams = try object(recipe["seams"], required: "in out")
+    static func validateRenderRecipe(_ value: JSONValue, at path: String) throws {
+        let recipe = try object(value, required: "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", optional: "edgeGain", at: path)
+        _ = try object(recipe["audio"], required: "assetId trimStart trimEnd stretch gainDb", optional: "tiltDbPerOctave", at: "\(path)/audio")
+        if recipe["words"] != .null {
+            for (index, word) in try array(recipe["words"], at: "\(path)/words").enumerated() {
+                _ = try object(word, required: "text start end synthetic", at: "\(path)/words/\(index)")
+            }
+        }
+        for (index, value) in try array(recipe["chunks"], at: "\(path)/chunks").enumerated() {
+            _ = try object(value, required: "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame", at: "\(path)/chunks/\(index)")
+        }
+        if recipe["roomTone"] != .null { _ = try object(recipe["roomTone"], required: "sourceStartSample sourceEndSample gainDb", optional: "endGainDb", at: "\(path)/roomTone") }
+        let seams = try object(recipe["seams"], required: "in out", at: "\(path)/seams")
         for side in ["in", "out"] {
-            let seam = try object(seams[side], required: "kind fadeSamples sourceHandleSamples assetHandleFrames", optional: "microPause")
-            if let pause = seam["microPause"] { _ = try object(pause, required: "wordStartSeconds wordEndSeconds") }
+            let seamPath = "\(path)/seams/\(side)"
+            let seam = try object(seams[side], required: "kind fadeSamples sourceHandleSamples assetHandleFrames", optional: "microPause", at: seamPath)
+            if let pause = seam["microPause"] { _ = try object(pause, required: "wordStartSeconds wordEndSeconds", at: "\(seamPath)/microPause") }
         }
         if let value = recipe["edgeGain"] {
-            let gains = try object(value, required: "", optional: "in out")
+            let gains = try object(value, required: "", optional: "in out", at: "\(path)/edgeGain")
             for side in ["in", "out"] {
                 if let value = gains[side] {
-                    let gain = try object(value, required: "gainDb wordSeconds")
-                    _ = try object(gain["wordSeconds"], required: "wordStartSeconds wordEndSeconds")
+                    let gainPath = "\(path)/edgeGain/\(side)"
+                    let gain = try object(value, required: "gainDb wordSeconds", at: gainPath)
+                    _ = try object(gain["wordSeconds"], required: "wordStartSeconds wordEndSeconds", at: "\(gainPath)/wordSeconds")
                 }
             }
         }
-        let video = try object(recipe["video"], required: "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode", optional: "cuts")
+        let video = try object(recipe["video"], required: "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode", optional: "cuts", at: "\(path)/video")
         if let cuts = video["cuts"] {
-            for cut in try array(cuts) { _ = try object(cut, required: "startSample endSample") }
+            for (index, cut) in try array(cuts, at: "\(path)/video/cuts").enumerated() {
+                _ = try object(cut, required: "startSample endSample", at: "\(path)/video/cuts/\(index)")
+            }
         }
-        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory outputSpeakerCheckSkipped")
-        if let skipped = qa["outputSpeakerCheckSkipped"], skipped != .bool(true) { try fail("Invalid output speaker check status") }
+        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory outputSpeakerCheckSkipped", at: "\(path)/qa")
+        if let skipped = qa["outputSpeakerCheckSkipped"], skipped != .bool(true) { try fail("invalid value", at: "\(path)/qa/outputSpeakerCheckSkipped") }
         if let value = qa["joinAdvisory"] {
-            let advisory = try object(value, required: "seams acceptedAt")
-            for seam in try array(advisory["seams"]) { _ = try object(seam, required: "side excessLu") }
+            let advisoryPath = "\(path)/qa/joinAdvisory"
+            let advisory = try object(value, required: "seams acceptedAt", at: advisoryPath)
+            for (index, seam) in try array(advisory["seams"], at: "\(advisoryPath)/seams").enumerated() {
+                _ = try object(seam, required: "side excessLu", at: "\(advisoryPath)/seams/\(index)")
+            }
         }
         if let evidence = qa["shortSpeech"] {
-            _ = try object(evidence, required: "mode recordId consentMethod voicedFrames takeCount")
+            _ = try object(evidence, required: "mode recordId consentMethod voicedFrames takeCount", at: "\(path)/qa/shortSpeech")
         }
-        let provenance = try object(recipe["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt region", optional: "pace")
+        let provenance = try object(recipe["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt region", optional: "pace", at: "\(path)/provenance")
         if let pace = provenance["pace"] {
-            guard case .number(let value) = pace, VoiceLabPace.isValid(value) else { try fail("Invalid speech pace") }
+            guard case .number(let value) = pace, VoiceLabPace.isValid(value) else { try fail("invalid value", at: "\(path)/provenance/pace") }
         }
-        _ = try object(recipe["cost"], required: "quoteId usd")
+        _ = try object(recipe["cost"], required: "quoteId usd", at: "\(path)/cost")
     }
 
     static func validateDates(_ raw: JSONValue) throws {
-        let root = try map(raw)
-        var dates = [root["createdAt"], root["modifiedAt"]]
-        if case .object(let transcript) = root["transcript"] { dates.append(transcript["createdAt"]) }
+        let root = try map(raw, at: "/")
+        var dates = [(root["createdAt"], "createdAt"), (root["modifiedAt"], "modifiedAt")]
+        if case .object(let transcript) = root["transcript"] { dates.append((transcript["createdAt"], "transcript/createdAt")) }
         if case .object(let ai) = root["ai"] {
-            for result in try array(ai["results"]) { dates.append(try map(result)["createdAt"]) }
+            for (index, result) in try array(ai["results"], at: "ai/results").enumerated() {
+                let path = "ai/results/\(index)"
+                dates.append((try map(result, at: path)["createdAt"], "\(path)/createdAt"))
+            }
         }
-        for value in dates {
-            guard case .string(let text) = value, UTCTimestamp.date(from: text) != nil else { try fail("Invalid UTC timestamp") }
+        for (value, path) in dates {
+            guard case .string(let text) = value, UTCTimestamp.date(from: text) != nil else { try fail("invalid UTC timestamp", at: path) }
         }
     }
 

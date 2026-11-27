@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.ContextDemo;
@@ -27,7 +28,16 @@ public static class ProjectSerialization
             Validate(project);
             return project;
         }
-        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (JsonException exception)
+        {
+            var path = exception.Path is { Length: > 1 } jsonPath && jsonPath[0] == '$'
+                ? Regex.Replace(jsonPath[1..], @"\.|\[(\d+)\]|\['(.*?)'\]", match =>
+                    "/" + (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value)).TrimStart('/')
+                : "";
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, path.Length == 0
+                ? "/: invalid project document" : $"{path}: invalid value");
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException)
         {
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "/: invalid project document", exception);
         }
