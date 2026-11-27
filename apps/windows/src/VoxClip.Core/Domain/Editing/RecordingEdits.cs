@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Editing;
@@ -105,19 +106,50 @@ public static partial class RecordingEdits
             .Select(index => state.Corrections.GetValueOrDefault(clock.Words[index].Id, clock.Words[index].Text)));
         var clip = new ClipRange(id, parts[0].StartWordId, parts[^1].EndWordId, title, ClipOrigin.Manual, null, null, true,
             Parts: parts.Count > 1 ? parts : null, Kind: parts.Count > 1 ? StoryClipKind.Story : null);
-        var added = EditingSession.Reduce(state, new EditOperation.AddClip(clip), project.Ai.Results, project);
-        if (added.Clips.Count <= state.Clips.Count) throw new Refusal("This recording has too many separate parts.");
-        var selected = EditingSession.Reduce(added, new EditOperation.SetActiveClip(id));
-        return new(EditingEngine.ApplyToProject(project, selected), "Start from recording", Details:
-            new(id, parts.Select(part => part.Id).ToArray(), leftOut));
+        var active = state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId);
+        var original = active is not null && NeedsPaidCopy(active, clip, project, clock.Words) ? active : null;
+        var applied = AddShortcutClip(clip, original, project, state, "Start from recording");
+        var added = applied.Project.Edits.Clips[^1];
+        return applied with { Details = new(added.Id, added.PlayParts.Select(part => part.Id).ToArray(), leftOut) };
     }
 
     private static string FreshId(string basis, HashSet<string> reserved)
     {
-        if (!reserved.Contains(basis)) return basis;
-        var number = 2;
-        while (reserved.Contains($"{basis}-{number}")) number++;
-        return $"{basis}-{number}";
+        for (var number = 1; ; number++)
+        {
+            var suffix = number == 1 ? "" : $"-{number}";
+            var id = basis[..Math.Min(basis.Length, 64 - suffix.Length)] + suffix;
+            if (!reserved.Contains(id)) return id;
+        }
+    }
+
+    private static bool NeedsPaidCopy(ClipRange original, ClipRange changed, Project project, IReadOnlyList<TimedWord> words)
+    {
+        var before = StoryClips.Times(original, words);
+        var after = StoryClips.Times(changed, words);
+        if (!before.SequenceEqual(after) && project.VoiceLab.WholeClipRevoices?.Any(record => record.ClipId == original.Id) == true) return true;
+        var protectedSpans = ProtectedSpans(original.Id, project, words);
+        return StoryClips.LipsyncWindows(project).Any(window => before.Any(span => StoryClips.Contains(span, window)) &&
+            !after.Any(span => StoryClips.Contains(span, window)) && !protectedSpans.Any(span => StoryClips.Contains(span, window)));
+    }
+
+    private static RecordingEditResult.Applied AddShortcutClip(ClipRange clip, ClipRange? original, Project project, EditState state, string name)
+    {
+        if (state.Clips.Count >= 64) throw new Refusal("There isn't room for another clip.");
+        string? announcement = null;
+        if (original is not null)
+        {
+            var index = state.Clips.ToList().FindIndex(clip => clip.Id == original.Id);
+            var title = string.Concat((original.Title ?? $"Clip {index + 1}").EnumerateRunes().Take(EditingLimits.MaxClipTitleCodePoints - 5)) + " copy";
+            var id = FreshId(original.Id[..Math.Min(original.Id.Length, 59)] + "-copy", state.Clips.Select(clip => clip.Id).ToHashSet());
+            clip = clip with { Id = id, Title = title };
+            project = RecordCopy(project, id, original.Id);
+            announcement = $"Made {title} to keep the paid voice work.";
+        }
+        var added = EditingSession.Reduce(state, new EditOperation.AddClip(clip), project.Ai.Results, project);
+        if (added.Clips.Count <= state.Clips.Count) throw new Refusal("Choose up to 12 non-overlapping parts in the clip's transcript.");
+        var selected = EditingSession.Reduce(added, new EditOperation.SetActiveClip(clip.Id));
+        return new(EditingEngine.ApplyToProject(project, selected), name, announcement);
     }
 
     private static Project Adding(RecordingEdit.AddSpokenSource add, Project project)
@@ -231,6 +263,10 @@ public static partial class RecordingEdits
         project.Extensions?.TryGetValue(CopyOrigins, out var origins) == true && origins.ValueKind == JsonValueKind.Object &&
         origins.TryGetProperty(copy, out var value) && value.ValueKind == JsonValueKind.String &&
         project.Edits.Clips.FirstOrDefault(clip => clip.Id == value.GetString()) is { } original ? StoryClips.Times(original, words) : [];
+
+    internal static bool IsRecordingCopy(string id, Project project) =>
+        project.Extensions?.TryGetValue(CopyOrigins, out var origins) == true && origins.ValueKind == JsonValueKind.Object &&
+        origins.TryGetProperty(id, out var value) && value.ValueKind == JsonValueKind.String;
 
     private sealed class Refusal(string message) : Exception(message);
 }

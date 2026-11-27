@@ -66,7 +66,20 @@ public static partial class RecordingEdits
     private static RecordingEditResult.Applied FinishShortcut(ShortcutParts change, Project project, string name)
     {
         change.Join();
-        var applied = (RecordingEditResult.Applied)ChangeParts(change.Clip.Id, project, name, (parts, _) =>
+        var words = change.Clock.Words;
+        if (EditingEngine.FromProject(project) is not { } state ||
+            StoryClips.Indices(change.Parts.Select(part => (part.StartWordId, part.EndWordId)), words) is not { Count: > 0 } ranges)
+            throw new Refusal("Choose non-overlapping parts in the clip's transcript.");
+        var proposed = change.Clip with
+        {
+            StartWordId = words[ranges.Min(range => range.Start)].Id,
+            EndWordId = words[ranges.Max(range => range.End)].Id,
+            Parts = change.Parts.Count > 1 ? change.Parts : null,
+            Kind = change.Parts.Count > 1 ? change.Clip.Kind ?? StoryClipKind.Story : null,
+            LeadInSeconds = change.Clip.PlayParts[0].StartWordId == change.Parts[0].StartWordId ? change.Clip.LeadInSeconds : null,
+        };
+        var applied = NeedsPaidCopy(change.Clip, proposed, project, words) ? AddShortcutClip(proposed, change.Clip, project, state, name) :
+            (RecordingEditResult.Applied)ChangeParts(change.Clip.Id, project, name, (parts, _) =>
         {
             parts.Clear();
             parts.AddRange(change.Parts);

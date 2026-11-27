@@ -1051,4 +1051,6 @@ Build `TakeMatch` from the project clock in region order. Each region contribute
 
 After an edit, a touched part joins a neighbour when both have the same reframe mode and their word ranges are consecutive in one recording. The earlier part keeps its ID. The edit reports any split and the IDs in each join. Word and time anchors stay unchanged, so an item can disappear with its words and reappear when the words return.
 
+A shortcut that would stop paid lip-sync or a whole-clip revoice from playing selects a copy instead. The original clip and voice data stay intact. A copy plays source speech where a part no longer includes the whole paid lip-sync window.
+
 Regenerate `shared/fixtures/recordings/command-cases.json` with `python3 tools/fixtures/recordings/generate_commands.py`. Its expected five-part ranges and sample plan come from `plan-cases.json`.
