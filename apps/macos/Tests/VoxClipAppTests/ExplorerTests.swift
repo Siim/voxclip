@@ -7,6 +7,28 @@ import Testing
 
 @Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
+    @Test func recordingPartsFollowPlayOrderAndUndoExactly() async throws {
+        let (shell, editor) = try await open(projectID: UUID().uuidString.lowercased())
+        defer { editor.close() }
+        let fixture = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        project.id = editor.project.id
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); editor.replace(project, name: "Set up recordings"); undo.endUndoGrouping()
+        shell.choose(.clip("clip-main"))
+        #expect(shell.outlineEntries.map(\.partID) == ["first", "second"])
+        #expect(shell.outlineEntries.first?.words.lowerBound == editor.index("r2.w1"))
+        let before = try ProjectJSON.encode(editor.project)
+        undo.beginUndoGrouping(); editor.moveStoryPart("first", to: 1); undo.endUndoGrouping()
+        #expect(shell.outlineEntries.map(\.partID) == ["second", "first"])
+        #expect(undo.undoActionName == "Move part")
+        let after = try ProjectJSON.encode(editor.project)
+        undo.undo()
+        #expect(try ProjectJSON.encode(editor.project) == before)
+        undo.redo()
+        #expect(try ProjectJSON.encode(editor.project) == after)
+    }
+
     private func open(demo: Bool = true, story: Bool = false, projectID: String? = nil) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()

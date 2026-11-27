@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, view and edit story parts from several recordings in the Outline, with recording colours and times local to each recording.
 - Mac and Windows can build a clip from one recording, swap just one line or put a skipped line back, while keeping paid voice work safe.
 - Mac and Windows can compare transcript lines across recordings and identify alternate versions, restarts and lines unique to one take.
 - Mac and Windows project files can store spoken companions and story parts from different recordings, plan the parts in play order with a new caption page at each recording seam, and keep paid voice work safe when a version changes.

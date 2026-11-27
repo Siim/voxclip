@@ -38,7 +38,8 @@ extension EditorModel {
     }
 
     func storyRewriteReason(for scope: RewriteScope? = nil) -> String? {
-        storyClip(for: scope) == nil ? nil : StoryClipPresentation.rewriteReason
+        if let reason = recordingVoiceReason(for: scope) { return reason }
+        return storyClip(for: scope) == nil ? nil : StoryClipPresentation.rewriteReason
     }
 
     var selectedStoryPartIndex: Int {
@@ -61,38 +62,53 @@ extension EditorModel {
     var addStoryPartReason: String? {
         if !capabilities.edit { return "This clip is read-only." }
         if let clip = activeClip, clip.playParts.count >= 12 { return "A clip can have up to 12 parts." }
+        if let first = selectedIDs.first, let last = selectedIDs.last,
+           let region = recordingClock?.region(of: first), recordingClock?.region(of: last) != region {
+            return "A part comes from one recording. Select words in \(partPickRecording?.label ?? region.label) only."
+        }
+        if let picked = partPickRecording, let first = selectedIDs.first, recordingClock?.region(of: first) != picked {
+            return "A part comes from one recording. Select words in \(picked.label) only."
+        }
         return partSelection == nil ? StoryClipPresentation.addReason : nil
     }
 
     func addSelectionAsStoryPart() {
         guard addStoryPartReason == nil, let clip = activeClip, let span = partSelection else { return }
         let part = ClipPart(id: UUID().uuidString.lowercased(), startWordId: words[span.lowerBound].id, endWordId: words[span.upperBound].id)
-        let parts = clip.playParts + [part]
-        if editStoryParts(clip, parts: parts, name: "Add part", message: "Part \(parts.count) added.") {
+        addRecordingPart(part, to: clip)
+    }
+
+    func addRecordingPart(_ part: ClipPart, to clip: ClipRange) {
+        let after = hasSeveralRecordings ? selectedStoryPartID.flatMap { id in clip.playParts.firstIndex { $0.id == id } } : nil
+        let number = after.map { $0 + 2 } ?? clip.playParts.count + 1
+        let region = recordingClock?.region(of: part.startWordId)
+        let message = (hasSeveralRecordings ? region : nil).map {
+            "Part \(number) added from \($0.label), after part \(number - 1)"
+        } ?? "Part \(number) added."
+        if applyRecordingEdit(.addPart(clipId: clip.id, part: part, afterPartId: after.map { clip.playParts[$0].id }), message: message) {
             selectedStoryPartID = part.id
         }
     }
 
     func moveStoryPart(_ id: String, to destination: Int) {
-        guard let clip = activeClip, var parts = clip.parts, parts.indices.contains(destination),
+        guard let clip = activeClip, let parts = clip.parts, parts.indices.contains(destination),
               let source = parts.firstIndex(where: { $0.id == id }), source != destination else { return }
-        parts.insert(parts.remove(at: source), at: destination)
-        if editStoryParts(clip, parts: parts, name: "Move part", message: "Part \(source + 1) moved to \(destination + 1) of \(parts.count)") {
+        let previous = destination == 0 ? nil : parts[source < destination ? destination : destination - 1].id
+        if applyRecordingEdit(.movePart(clipId: clip.id, partId: id, afterPartId: previous), message: "Part \(source + 1) moved to \(destination + 1) of \(parts.count)") {
             selectedStoryPartID = id
         }
     }
 
     func removeStoryPart(_ id: String) {
-        guard let clip = activeClip, var parts = clip.parts, parts.count > 1,
+        guard let clip = activeClip, let parts = clip.parts, parts.count > 1,
               let source = parts.firstIndex(where: { $0.id == id }) else { return }
-        parts.remove(at: source)
-        if editStoryParts(clip, parts: parts, name: "Remove part", message: "Part \(source + 1) removed.") {
-            if selectedStoryPartID == id { selectedStoryPartID = parts[min(source, parts.count - 1)].id }
+        if applyRecordingEdit(.removePart(clipId: clip.id, partId: id), message: "Part \(source + 1) removed.") {
+            if selectedStoryPartID == id { selectedStoryPartID = parts[source == parts.count - 1 ? source - 1 : source + 1].id }
         }
     }
 
     func trimStoryPart(start: Bool, at position: Int) {
-        guard let clip = activeClip, var parts = clip.parts, words.indices.contains(position),
+        guard let clip = activeClip, let parts = clip.parts, words.indices.contains(position),
               let ranges = clip.playPartIndices(in: words) else { return }
         let selected = selectedStoryPartIndex
         let old = ranges[selected]
@@ -103,9 +119,8 @@ extension EditorModel {
             announce(storyPartError ?? "")
             return
         }
-        if start { parts[selected].startWordId = words[position].id }
-        else { parts[selected].endWordId = words[position].id }
-        _ = editStoryParts(clip, parts: parts, name: "Trim part", message: "Part \(selected + 1) trimmed.")
+        _ = applyRecordingEdit(.trimPart(clipId: clip.id, partId: parts[selected].id,
+            startWordId: words[span.lowerBound].id, endWordId: words[span.upperBound].id), message: "Part \(selected + 1) trimmed.")
     }
 
     func makeClipsOfStoryParts(_ partIDs: [String]) {
@@ -140,21 +155,18 @@ extension EditorModel {
         }
     }
 
-    private func editStoryParts(_ clip: ClipRange, parts: [ClipPart], name: String, message: String) -> Bool {
+    @discardableResult func applyRecordingEdit(_ edit: RecordingEdit, message: String? = nil) -> Bool {
         guard capabilities.edit else { return false }
         storyPartError = nil
-        do {
-            var next = project
-            try next.applyEditing(.setClipParts(id: clip.id, parts: parts))
-            guard next != project else { return false }
-            let copy = next.edits.activeClipId != clip.id
-            preview.pause()
-            isPlaying = false
-            replace(next, name: name)
-            announce(copy ? "\(message) Made a story copy and kept the original voice work." : message)
+        switch RecordingEdits.apply(edit, project: project) {
+        case .success(let outcome):
+            guard let step = outcome.undoStep else { return false }
+            replace(step.after, name: step.name)
+            if let announcement = outcome.announcement ?? message { announce(announcement) }
             return true
-        } catch {
-            reportStoryPartError(error)
+        case .failure(let refusal):
+            storyPartError = refusal.message
+            announce(refusal.message)
             return false
         }
     }

@@ -22,8 +22,10 @@ import SwiftUI
             } else { grip }
             Text("\(entry.id + 1)").font(DesignValues.mono(10)).bold().foregroundStyle(.black)
                 .frame(width: 17, height: 17)
-                .background(StoryClipPresentation.color(entry.id), in: RoundedRectangle(cornerRadius: 4))
+                .background(entry.recording.map { Color(nsColor: RecordingPresentation.nsColor($0, alternate: entry.alternateRecordingShade)) }
+                    ?? StoryClipPresentation.color(entry.id), in: RoundedRectangle(cornerRadius: 4))
                 .accessibilityHidden(true)
+            if let region = entry.recording { RecordingLabel(region: region).accessibilityHidden(true) }
             Text(entry.title).font(.system(size: 12)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityHidden(true)
             Text(entry.time).font(DesignValues.mono(10)).fixedSize().foregroundStyle(.secondary).accessibilityHidden(true)

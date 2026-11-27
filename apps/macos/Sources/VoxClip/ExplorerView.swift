@@ -174,6 +174,10 @@ import VoxClipCore
             let outline = shell.outlineEntries
             Section {
                 if shell.explorerExpanded(.outline) {
+                    if let heading = editor.storyRecordingHeading {
+                        Text(heading).font(.system(size: 11, weight: .semibold))
+                            .fixedSize(horizontal: false, vertical: true).selectionDisabled()
+                    }
                     ForEach(outline) { entry in
                         Group {
                             if entry.partID != nil {

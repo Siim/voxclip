@@ -740,7 +740,10 @@ struct EditorRenderSnapshot {
     }
 
     var project: Project { document.project }
-    var words: [TimedWord] { project.transcript?.words ?? [] }
+    private(set) var recordingClock: ProjectClock?
+    var recordingTranscriptChoice: RecordingTranscriptChoice?
+    var partPickKey: String?
+    var words: [TimedWord] { recordingClock?.words ?? project.transcript?.words ?? [] }
     var activeClip: ClipRange? { project.edits.clips.first { $0.id == project.edits.activeClipId } }
     var sortedClips: [ClipRange] {
         project.edits.clips.enumerated().sorted {
@@ -945,11 +948,15 @@ struct EditorRenderSnapshot {
             renderedClipEffects = project.clipEffects
             timelineEffectsRevision += 1
         }
-        let words = project.transcript?.words ?? []
         let edits = project.edits
-        let transcriptChanged = renderedTranscript != project.transcript
+        let clockChanged = renderedMedia?.source != project.media.source
+            || renderedMedia?.spokenSources != project.media.spokenSources
+            || (project.media.spokenSources?.isEmpty == false && renderedMedia?.additionalSources != project.media.additionalSources)
+        let transcriptChanged = renderedTranscript != project.transcript || clockChanged
         let editChanged = renderedEdits != edits
         guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedMusic != project.music || renderedClipControls != project.clipControls || renderedEdits == nil else { return }
+        if transcriptChanged { recordingClock = ProjectClock.build(project) }
+        let words = self.words
         let clipsChanged = renderedEdits?.clips != edits.clips
         if renderedEdits?.activeClipId != edits.activeClipId {
             selectedStoryPartID = nil
