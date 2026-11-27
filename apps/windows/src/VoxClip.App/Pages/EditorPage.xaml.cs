@@ -53,6 +53,7 @@ public sealed partial class EditorPage : Page
     private PendingProjectSave projectWrites = null!;
     private Task pendingWaveform = Task.CompletedTask;
     private CancellationTokenSource? waveformRequest;
+    private ProjectMedia? waveformMedia;
     private ProjectLeaveBoundary leave = null!;
     /// <summary>This editor's lease on its project's cache entry, from opening to closing (architecture §8.2).</summary>
     private OpenProjectCacheLease? cacheLease;
@@ -145,6 +146,8 @@ public sealed partial class EditorPage : Page
         {
             if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport();
             if (args.PropertyName == nameof(EditorViewModel.IsReadOnly)) { UpdateAiTag(); SizeStage(); }
+            if (args.PropertyName == nameof(EditorViewModel.Project) && waveformMedia is not null && waveformMedia != ViewModel.Project.Media)
+                RequestWaveform();
             if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanFindClips)) UpdateFindClips();
         };
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
@@ -239,18 +242,42 @@ public sealed partial class EditorPage : Page
     private void RequestWaveform()
     {
         waveformRequest?.Cancel();
+        waveformMedia = ViewModel.Project.Media;
+        Timeline.SetRecordingMedia(null);
         Timeline.SetWaveform([]);
         if (disposed || demo || ViewModel.IsReadOnly || media is not { Audio: not null } source) return;
         var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         waveformRequest = request;
-        pendingWaveform = LoadWaveformAsync(source, ViewModel.Project.Media.Source.ContentKey, request, pendingWaveform);
+        pendingWaveform = LoadWaveformAsync(source, ViewModel.Project, request, pendingWaveform);
     }
-    private async Task LoadWaveformAsync(MediaInfo source, string contentKey, CancellationTokenSource request, Task previous)
+    private async Task LoadWaveformAsync(MediaInfo source, Project project, CancellationTokenSource request, Task previous)
     {
         try
         {
             await previous;
-            var levels = await App.Services.Waveform.GetAsync(source, contentKey, request.Token);
+            IReadOnlyList<float> levels;
+            if (project.Media.SpokenSources is not { Count: > 0 })
+                levels = await App.Services.Waveform.GetAsync(source, project.Media.Source.ContentKey, request.Token);
+            else
+            {
+                var clock = ProjectClock.Build(project);
+                var paths = await RecordingRendering.AvailableAsync(project, App.Services.Projects, owner.ProjectPath ?? source.Path, request.Token);
+                if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetRecordingMedia(paths);
+                const double bucketSeconds = .05;
+                var samples = new float[checked((int)Math.Ceiling(clock.TotalSamples / (clock.SampleRate * bucketSeconds)))];
+                foreach (var region in clock.Regions)
+                {
+                    if (!paths.TryGetValue(region.Key, out var reference) || reference.Audio is null) continue;
+                    var recording = reference.AbsolutePath == source.Path ? source : await new FfmpegMediaProbe().ProbeAsync(reference.AbsolutePath, request.Token);
+                    var localLevels = await App.Services.Waveform.GetAsync(recording, region.Key, request.Token);
+                    var offset = (int)Math.Round(region.OffsetSamples / (clock.SampleRate * bucketSeconds));
+                    var localCount = (int)Math.Ceiling(region.DurationSamples / (clock.SampleRate * bucketSeconds));
+                    var gain = (float)Math.Pow(10, region.GainDb / 20);
+                    for (var index = 0; index < Math.Min(Math.Min(localCount, localLevels.Count), samples.Length - offset); index++)
+                        samples[offset + index] = localLevels[index] * gain;
+                }
+                levels = samples;
+            }
             if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetWaveform(levels);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }

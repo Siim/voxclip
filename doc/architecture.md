@@ -516,6 +516,8 @@ For a story spanning recordings, the Windows compose snapshot associates each ke
 
 The same mapping drives preview and export picture reads. A recording uses its own rotation, dimensions and part framing. If a used file is missing or its content key has changed, stop with “{recording} is missing. Locate it to use its words.” Unused recordings do not block the render.
 
+The timeline filmstrip and poster candidates translate project time to each verified recording’s local time before opening its cache. The waveform joins the per-file envelopes on the project clock and leaves the guard gaps silent. Frame analysis uses local readers and returns observations on the project clock.
+
 The export check reports recording seams at rendered times (`at`, `from`, `to`). The words check includes cuts between recordings. Picture-source findings go in `sync`; speech-level findings go in `loudness`, including when social normalization is off.
 
 The picture check samples at 0.2 s after the switch (or inside the new recording if it ends sooner), then compares 16×16 luma against candidate frames with the same layout. Audio is measured over expected speech for up to two seconds on each side; a change of more than 3 LU warns. If connected picture hides the recording or there is too little speech to meter, that measurement is unavailable.

@@ -402,6 +402,13 @@ public sealed partial class TimelineView : UserControl
         ToolTipService.SetToolTip(play, PlaybackPresentation.Hint(playing));
     }
     internal void SetWaveform(IReadOnlyList<float> levels) => LoadWaveform(levels, .05);
+    private IReadOnlyDictionary<string, MediaReference>? recordingMedia;
+    internal void SetRecordingMedia(IReadOnlyDictionary<string, MediaReference>? files)
+    {
+        recordingMedia = files;
+        ClearFilmstrip();
+        Draw();
+    }
     public void SetAudioEnvelope(AudioEnvelope? value) => LoadWaveform(value?.Rms ?? [], value?.FrameSeconds ?? .01);
     private async void LoadWaveform(IReadOnlyList<float> levels, double frameSeconds)
     {
@@ -1061,12 +1068,26 @@ public sealed partial class TimelineView : UserControl
     {
         if (model is null) return;
         var source = model.Project.Media.Source;
+        var clock = model.State?.ProjectClock is { Regions.Count: > 1 } projectClock ? projectClock : null;
         var service = App.Services.Thumbnails;
         var count = TimelineFilmstrip.Fill(thumbnailSlots, tile.Pieces, rendered, width, Edited || story is not null ? TimelineAxis.Edited : TimelineAxis.Source);
+        var requests = new (MediaReference? Source, double Seconds, string? Key)[count];
+        for (var index = 0; index < count; index++)
+        {
+            var seconds = thumbnailSlots[index].SourceTime;
+            var reference = source;
+            if (clock is not null)
+            {
+                if (clock.LocalTime(seconds) is not { } local ||
+                    recordingMedia is null || !recordingMedia.TryGetValue(local.Key, out reference) || reference.Video is null) continue;
+                seconds = local.LocalSeconds;
+            }
+            requests[index] = (reference, seconds, service.TimelinePathFor(reference.ContentKey, seconds, reference.Video?.RotationDegrees ?? 0));
+        }
         var changed = false;
         for (var index = 0; index < thumbnails.Length; index++)
         {
-            var key = index < count ? service.TimelinePathFor(source.ContentKey, thumbnailSlots[index].SourceTime, source.Video?.RotationDegrees ?? 0) : null;
+            var key = index < count ? requests[index].Key : null;
             if (thumbnailKeys[index] != key) changed = true;
         }
         if (changed || filmstripRequest is null) { filmstripRequest?.Cancel(); filmstripRequest?.Dispose(); filmstripRequest = new(); }
@@ -1075,13 +1096,14 @@ public sealed partial class TimelineView : UserControl
         for (var index = 0; index < thumbnails.Length; index++)
         {
             var image = thumbnails[index];
-            var key = index < count ? service.TimelinePathFor(source.ContentKey, thumbnailSlots[index].SourceTime, source.Video?.RotationDegrees ?? 0) : null;
+            var item = index < count ? requests[index] : default;
+            var key = item.Key;
             if (thumbnailKeys[index] != key)
             {
                 image.Source = null; thumbnailLeases[index]?.Dispose(); thumbnailLeases[index] = null; thumbnailKeys[index] = key;
             }
-            if (key is not null && request is not null && thumbnailLeases[index] is null && !ReferenceEquals(thumbnailLoading[index], request))
-            { thumbnailLoading[index] = request; jobs.Add(LoadThumbnail(index, thumbnailSlots[index].SourceTime, key, source, service, request)); }
+            if (key is not null && item.Source is { } file && request is not null && thumbnailLeases[index] is null && !ReferenceEquals(thumbnailLoading[index], request))
+            { thumbnailLoading[index] = request; jobs.Add(LoadThumbnail(index, item.Seconds, key, file, service, request)); }
             image.Visibility = key is null ? Visibility.Collapsed : Visibility.Visible;
             if (index >= count) continue;
             Canvas.SetLeft(image, thumbnailSlots[index].X); image.Width = thumbnailSlots[index].Width; image.Height = Math.Max(0, metrics.VideoHeight - 11);
@@ -1100,7 +1122,7 @@ public sealed partial class TimelineView : UserControl
         {
             lease = await service.GetTimelineAsync(source.ContentKey, source.AbsolutePath, seconds, source.Video?.RotationDegrees ?? 0, request.Token);
             if (lease is null || disposed || request.IsCancellationRequested || !ReferenceEquals(filmstripRequest, request) ||
-                model?.Project.Media.Source != source || model.IsReadOnly || renderingBlocked || thumbnailKeys[index] != key || !IsLoaded) return;
+                model is null || model.IsReadOnly || renderingBlocked || thumbnailKeys[index] != key || !IsLoaded) return;
             var bitmap = new BitmapImage(new Uri(lease.Path));
             thumbnailLeases[index]?.Dispose(); thumbnailLeases[index] = lease; lease = null;
             thumbnails[index].Source = bitmap;

@@ -9,6 +9,20 @@ namespace VoxClip.Media.Pipeline;
 /// <summary>Bind a planned story to verified files for both preview and export.</summary>
 public static class RecordingRendering
 {
+    /// <summary>Verified local files for clock-addressed caches; a missing file has no cache input.</summary>
+    public static async Task<IReadOnlyDictionary<string, MediaReference>> AvailableAsync(Project project, IProjectStore store,
+        string projectPath, CancellationToken ct)
+    {
+        var resolved = new Dictionary<string, MediaReference>(StringComparer.Ordinal);
+        foreach (var region in ProjectClock.Build(project).Regions)
+        {
+            if (Reference(project, region.Key) is not { } reference) continue;
+            if (await store.ResolveMediaAsync(reference, projectPath, ct).ConfigureAwait(false) is { } path)
+                resolved.Add(region.Key, reference with { AbsolutePath = path });
+        }
+        return resolved;
+    }
+
     /// <summary>Resolve the recordings actually used by the kept spans, without opening unused companions.</summary>
     public static async Task<ComposeSnapshot> BindAsync(Project project, ComposeSnapshot snapshot, IProjectStore store,
         string projectPath, CancellationToken ct)
@@ -25,8 +39,7 @@ public static class RecordingRendering
                 throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "A part comes from one recording.");
             if (!resolved.TryGetValue(region.Key, out var source))
             {
-                var reference = region.Key == primary.ContentKey ? primary with { AbsolutePath = snapshot.Media.Path }
-                    : project.Media.AdditionalSources?.FirstOrDefault(candidate => candidate.ContentKey == region.Key);
+                var reference = region.Key == primary.ContentKey ? primary with { AbsolutePath = snapshot.Media.Path } : Reference(project, region.Key);
                 if (reference is null || await store.ResolveMediaAsync(reference, projectPath, ct).ConfigureAwait(false) is not { } path)
                     throw RecordingMissing(region.Label);
                 resolved.Add(region.Key, source = new(region.Key, region.Label, path, region.OffsetSamples, region.DurationSamples,
@@ -50,6 +63,14 @@ public static class RecordingRendering
         $"{label} is missing. Locate it to use its words.");
 
     internal static string RequirePath(RecordingRenderSource source) => File.Exists(source.Path) ? source.Path : throw RecordingMissing(source.Label);
+
+    internal static async Task<string> RequirePathAsync(Project project, ProjectClock.Region region, IProjectStore store, string projectPath,
+        CancellationToken ct)
+        => Reference(project, region.Key) is { } reference && await store.ResolveMediaAsync(reference, projectPath, ct).ConfigureAwait(false) is { } path
+            ? path : throw RecordingMissing(region.Label);
+
+    private static MediaReference? Reference(Project project, string key) => key == project.Media.Source.ContentKey ? project.Media.Source :
+        project.Media.AdditionalSources?.FirstOrDefault(candidate => candidate.ContentKey == key);
 }
 
 internal sealed class RecordingVideo(string primaryPath, bool hardware = true) : IDisposable

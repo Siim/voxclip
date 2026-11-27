@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 
@@ -29,14 +30,16 @@ public sealed class VideoFramePass
     private Task<Found?>? pass;
 
     /// <summary>The pass over <paramref name="words"/>, the transcript's; <paramref name="log"/> gets the one line a failure writes.</summary>
-    public VideoFramePass(FrameAnalyzer analyzer, string source, string contentKey, IReadOnlyList<TimedWord> words, Action<string>? log = null)
+    public VideoFramePass(FrameAnalyzer analyzer, string source, string contentKey, IReadOnlyList<TimedWord> words, Action<string>? log = null,
+        ProjectClock? clock = null)
     {
         ArgumentNullException.ThrowIfNull(analyzer);
         ArgumentNullException.ThrowIfNull(words);
         this.analyzer = analyzer;
         this.source = source;
         this.contentKey = contentKey;
-        samples = FrameSampling.VideoSamples(words);
+        samples = clock is { Regions.Count: > 1 } ? clock.Regions.SelectMany(region =>
+            FrameSampling.VideoSamples(words.Where(word => clock.RegionOf(word.Id) == region).ToArray())).ToArray() : FrameSampling.VideoSamples(words);
         this.log = log ?? (_ => { });
     }
 
