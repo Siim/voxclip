@@ -192,7 +192,7 @@ public sealed class TranscriptionRoutingTests
             "if (retry is not null)", "var aligned = await retry.FinishAsync(token);", "await ReceiveAsync(aligned, token);", "return;",
             "ExtractAudioAsync", "App.Services.DetectLanguageAsync", "service.TranscribeAsync");
         var receive = dialog.Split("private async Task ReceiveAsync", StringSplitOptions.None)[1];
-        Ordered(receive, "await RecordingTranscriptCache.WriteAsync", "if (!baseline.IsCurrent) return;", "model.SetTranscript(transcript)", "await receiveRecording(transcript)");
+        Ordered(receive, "await RecordingTranscriptCache.WriteAsync", "if (!baseline.IsCurrent) return;", "model.SetTranscript(transcript)", "await receiveRecording(transcript, ct)");
         // The local engine runs only its routed plan and never falls through to ElevenLabs.
         Ordered(run, "var plan = local ? route?.Plan ?? throw new InvalidOperationException(", ": new TranscriptionPlan(TranscriptEngine.Elevenlabs,",
             "var request = new TranscriptionRequest(plan, audio.Audio, source.ContentKey)", "service.TranscribeAsync(request,");
