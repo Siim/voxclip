@@ -753,6 +753,8 @@ struct EditorRenderSnapshot {
     var project: Project { document.project }
     private(set) var recordingClock: ProjectClock?
     var recordingTranscriptChoice: RecordingTranscriptChoice?
+    var recordingOpenLineID: String?
+    var recordingSelectedVersionKey: String?
     var partPickKey: String?
     var pendingRecording: PendingSpokenRecording?
     var recordingImportTask: Task<Void, Never>?

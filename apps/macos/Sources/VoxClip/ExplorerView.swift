@@ -178,7 +178,7 @@ import VoxClipCore
                         Text(heading).font(.system(size: 11, weight: .semibold))
                             .fixedSize(horizontal: false, vertical: true).selectionDisabled()
                     }
-                    ForEach(outline) { entry in
+                    ForEach(editor.activeClip == nil && editor.hasSeveralRecordings ? [] : outline) { entry in
                         Group {
                             if entry.partID != nil {
                                 StoryOutlineRow(shell: shell, editor: editor, entry: entry)
@@ -190,8 +190,14 @@ import VoxClipCore
                             RecordingPartVersions(editor: editor, part: part).selectionDisabled()
                         }
                     }
-                    if editor.activeClip != nil { StoryOutlineAdd(editor: editor).selectionDisabled() }
-                    else { AddRecordingMenu(editor: editor).selectionDisabled() }
+                    if editor.activeClip != nil {
+                        if editor.hasSeveralRecordings { OtherRecordingLines(editor: editor).selectionDisabled() }
+                        StoryOutlineAdd(editor: editor).selectionDisabled()
+                    }
+                    else {
+                        if editor.hasSeveralRecordings { RecordingStartOutline(editor: editor).selectionDisabled() }
+                        AddRecordingMenu(editor: editor).selectionDisabled()
+                    }
                 }
             } header: { ExplorerHeader(shell: shell, section: .outline, count: outline.count) }
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.outline.accessibilityLabel(count: outline.count))

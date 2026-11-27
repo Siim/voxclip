@@ -69,15 +69,16 @@ extension EditorModel {
             switch choice {
             case .recording(let key) where recordingRegions.contains(where: { $0.key == key }): return choice
             case .all: return choice
-            case .playOrder where storyRecordingRegions.count > 1: return choice
+            case .playOrder where activeClip != nil: return choice
             default: break
             }
         }
-        if storyRecordingRegions.count > 1 { return .playOrder }
+        if storyRecordingRegions.count > 1 || activeClip?.id.hasPrefix("recording-clip") == true { return .playOrder }
         return storyRecordingRegions.first.map { .recording($0.key) } ?? .all
     }
 
     func chooseRecordingTranscript(_ choice: RecordingTranscriptChoice, scrollTo wordID: String? = nil, announceChange: Bool = true) {
+        if choice != .playOrder { recordingOpenLineID = nil }
         recordingTranscriptChoice = choice
         outlineScrollWordID = wordID
         scopeScrollRevision += 1

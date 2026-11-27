@@ -92,7 +92,21 @@ extension EditorModel {
         let boundaries = [0] + plan.partSeams.map { Double($0) / plan.sampleRate } + [plan.duration]
         let start = position == 0 ? 0 : max(boundaries[position - 1], boundaries[position] - 1)
         let end = min(plan.duration, boundaries[position + 1] + 1)
-        let snapshot = EditorRenderSnapshot(project: outcome.project, state: changed, plan: plan)
+        auditionRecordingSnapshot(.init(project: outcome.project, state: changed, plan: plan), start: start, end: end)
+    }
+
+    func auditionRecordingWords(from first: String, to last: String, in candidate: Project) {
+        guard let lower = index(first), let upper = index(last), let changed = try? EditState(project: candidate),
+              let clip = changed.activeClip,
+              let plan = try? EditPlan.build(transcript: changed.transcript, editState: changed, activeClip: clip,
+                  duration: candidate.media.source.durationSeconds, sampleRate: Double(recordingClock?.sampleRate ?? 48_000)) else { return }
+        let start = max(0, plan.mapTime(words[lower].start) - 1)
+        let end = min(plan.duration, plan.mapTime(words[upper].end) + 1)
+        guard start < end else { return }
+        auditionRecordingSnapshot(.init(project: candidate, state: changed, plan: plan), start: start, end: end)
+    }
+
+    private func auditionRecordingSnapshot(_ snapshot: EditorRenderSnapshot, start: Double, end: Double) {
         let original = project
         stopRecordingAudition(restore: false)
         cancelPendingPreviewUpdate()
