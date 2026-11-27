@@ -14,10 +14,19 @@ public abstract record RecordingEditResult
 }
 
 /// <summary>The clip, resulting parts, and skipped lines for recording shortcut feedback.</summary>
-public sealed record RecordingEditDetails(string ClipId, IReadOnlyList<string> MadePartIds, IReadOnlyList<TakeMatch.Take> LeftOut);
+public sealed record RecordingEditDetails(string ClipId, IReadOnlyList<string> MadePartIds, IReadOnlyList<TakeMatch.Take> LeftOut)
+{
+    /// <summary>The original part split by this action, if any.</summary>
+    public string? SplitPartId { get; init; }
+    /// <summary>The joins performed in order.</summary>
+    public IReadOnlyList<RecordingPartJoin> Joins { get; init; } = [];
+}
+
+/// <summary>A joined pair of parts and the identity that survived.</summary>
+public sealed record RecordingPartJoin(string KeptPartId, string RemovedPartId);
 
 /// <summary>Pure recording and ordered part edits on the project clock.</summary>
-public static class RecordingEdits
+public static partial class RecordingEdits
 {
     private const string PrefixHighWater = "com.voxclip.spoken-prefix-high-water";
     private const string CopyOrigins = "com.voxclip.recording-copy-origins";
@@ -32,6 +41,8 @@ public static class RecordingEdits
                 RecordingEdit.AddSpokenSource add => new RecordingEditResult.Applied(Adding(add, project), "Add recording"),
                 RecordingEdit.RemoveSpokenSource remove => new RecordingEditResult.Applied(Removing(remove.Key, project), "Remove recording"),
                 RecordingEdit.StartFromRecording start => Start(start.Key, project),
+                RecordingEdit.UseLineVersion use => UseVersion(use, project),
+                RecordingEdit.InsertLine insert => InsertShortcut(insert, project),
                 RecordingEdit.AddPart add => ChangeParts(add.ClipId, project, "Add part", (parts, _) =>
                     Insert(add.Part, add.AfterPartId, parts, parts.Count)),
                 RecordingEdit.MovePart move => ChangeParts(move.ClipId, project, "Move part", (parts, _) =>
