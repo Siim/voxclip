@@ -17,14 +17,14 @@ struct Check: AsyncParsableCommand {
     @Option(help: "The project the export came from.") var project: String
     @Option(help: "The clip: its number in the project's clip list (1 is the first) or its ID.") var clip: String
     @Argument(help: "The exported MP4.") var export: String
-    @Option(help: "16:9, 9:16, 1:1 or source, as exported; read from the export's frame when left out.") var aspect: String?
+    @Option(help: "16:9, 9:16, 1:1, 4:5 or source, as exported; read from the export's frame when left out.") var aspect: String?
     @Option(help: "Caption style ID or off, when the export was given --style.") var style: String?
     @Option(help: "social (the default) or off: the loudness the export ran with.") var loudness: String?
     @Flag(help: "Print one final JSON object on stdout.") var json = false
     @Flag(help: "Suppress human-readable progress on stderr.") var quiet = false
 
     mutating func validate() throws {
-        if let aspect, AspectRatio(rawValue: aspect) == nil { throw ValidationError("--aspect must be source, 16:9, 9:16 or 1:1") }
+        try Export.validateAspect(aspect)
         if let loudness, ExportLoudness(rawValue: loudness) == nil { throw ValidationError("--loudness must be social or off") }
     }
 
@@ -64,11 +64,12 @@ extension CLIWorkflow {
         return (success("check", fields: ["output": .string(exportURL.path), "clipId": .string(clip.id), "check": checkJSON(outcome)]), outcome)
     }
 
-    /// The export's frame as an aspect: 9:16, 16:9 or 1:1 when it is one, else the source's.
+    /// The export's frame as a supported aspect, else the source's.
     static func exportedAspect(_ url: URL) async throws -> String {
         guard let size = try await AVMediaProbe().probe(url).video.map({ ($0.width, $0.height) }), size.0 > 0, size.1 > 0 else { return AspectRatio.source.rawValue }
         if 16 * size.0 == 9 * size.1 { return AspectRatio.portrait.rawValue }
         if 9 * size.0 == 16 * size.1 { return AspectRatio.landscape.rawValue }
+        if 5 * size.0 == 4 * size.1 { return ClipShape.portraitFourFive.rawValue }
         return size.0 == size.1 ? AspectRatio.square.rawValue : AspectRatio.source.rawValue
     }
 

@@ -49,7 +49,7 @@ internal static class CliCheck
     /// <summary>The command's exit status: <see cref="WarningExitCode"/> when its <c>check</c> did not pass, else 0.</summary>
     internal static int ExitCode(JsonObject fields) => fields["check"]?["passed"]?.GetValue<bool>() == false ? WarningExitCode : 0;
 
-    /// <summary>The export's frame as an aspect: 9:16, 16:9 or 1:1 when it is one, else source.</summary>
+    /// <summary>The export's frame as a supported aspect, else source.</summary>
     internal static async Task<string> ExportedAspectAsync(string path, CancellationToken ct)
     {
         var size = (await CliOperations.ProbeInputAsync(path, ct).ConfigureAwait(false)).OrientedSize;
@@ -58,7 +58,7 @@ internal static class CliCheck
 
     internal static string Aspect(PixelSize size) =>
         size.Width <= 0 || size.Height <= 0 ? "source" : 16L * size.Width == 9L * size.Height ? "9:16" : 9L * size.Width == 16L * size.Height ? "16:9"
-        : size.Width == size.Height ? "1:1" : "source";
+        : 5L * size.Width == 4L * size.Height ? "4:5" : size.Width == size.Height ? "1:1" : "source";
 
     /// <summary>The local engine for <paramref name="transcript"/>'s project (<see cref="ExportChecker.LocalHearingAsync"/>): installed,
     /// verified Whisper models only; null without one.</summary>

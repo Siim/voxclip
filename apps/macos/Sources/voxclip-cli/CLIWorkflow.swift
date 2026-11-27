@@ -97,9 +97,9 @@ enum CLIWorkflow {
     }
 
     static func renderRequest(project: Project, source: URL, plan: EditPlan, style: CaptionStyle?, output: OutputSpec,
-                              voiceLab: VoiceLabRenderInput?, dataRoot: URL) throws -> RenderRequest {
+                              voiceLab: VoiceLabRenderInput?, dataRoot: URL, aspectName: String) throws -> RenderRequest {
         try RenderCallerInputs.prepare(RenderRequest(sourceURL: source, plan: plan, style: style,
-            placement: project.captions.positionByAspect[project.export.aspect.rawValue] ?? project.captions.position,
+            placement: project.captions.positionByAspect[aspectName] ?? project.captions.position,
             output: output, voiceLab: voiceLab), project: project, clipID: project.edits.activeClipId,
             dataRoot: dataRoot.resolvingSymlinksInPath(), shared: try? SharedResources.locate(),
             resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, isCancelled: { Task.isCancelled })
@@ -192,6 +192,7 @@ enum CLIWorkflow {
         let state: EditState?
         let activeClip: ClipRange?
         let aspect: AspectRatio
+        let aspectName: String
         let quality: ExportQuality
         let styleID: String
     }
@@ -266,6 +267,18 @@ enum CLIWorkflow {
         let effectiveState = try state ?? (project.transcript == nil ? nil : self.state(project, derivePauses: project.schemaVersion >= 3))
         if let effectiveState { project.edits = effectiveState.projectEdits }
         let aspect = options.aspect.flatMap(AspectRatio.init(rawValue:)) ?? project.export.aspect
+        var controls = ClipControlsProject.controls(for: project.edits.activeClipId, in: project)
+        if let requested = options.aspect {
+            if requested == ClipShape.portraitFourFive.rawValue {
+                var framed = controls ?? ProjectClipControls(clipId: "")
+                framed.shape = .portraitFourFive
+                controls = framed
+            } else {
+                controls?.shape = nil
+            }
+        }
+        if controls?.isDefault == true { controls = nil }
+        let aspectName = controls?.shape?.rawValue ?? aspect.rawValue
         let quality = options.quality.flatMap(ExportQuality.init(rawValue:)) ?? project.export.quality
         // A clip renders in its own caption look (design.md §6.6) unless --style names one.
         if options.style == nil { project = project.resolvingCaptions(forClip: project.edits.activeClipId) }
@@ -284,10 +297,11 @@ enum CLIWorkflow {
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0,
               voiceLab != nil || effectiveState?.summary.canExport != false else { throw VoxClipError.everythingCut }
         try Task.checkCancellation()
-        let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init))
+        let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init), controls: controls)
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
         var request = try renderRequest(project: project, source: source, plan: plan, style: style,
-            output: output, voiceLab: voiceLab, dataRoot: dataRoot)
+            output: output, voiceLab: voiceLab, dataRoot: dataRoot, aspectName: aspectName)
+        request.clipControls = controls
         if let musicOverride { request.music = musicOverride }
         if checkingOutputs, let music = request.music { try validateOutputs(outputs, inputs: inputs + [source, music.assetURL]) }
         let render: RenderRequest
@@ -296,7 +310,7 @@ enum CLIWorkflow {
         case .export(let prepared): render = prepared
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")
         }
-        return PreparedExport(project: project, render: render, state: effectiveState, activeClip: activeClip, aspect: aspect,
+        return PreparedExport(project: project, render: render, state: effectiveState, activeClip: activeClip, aspect: aspect, aspectName: aspectName,
                               quality: quality, styleID: styleID)
     }
 
@@ -314,7 +328,7 @@ enum CLIWorkflow {
             let url = try await FCPXMLExporter.write(name: name, render: render, to: URL(fileURLWithPath: output), replacing: true,
                 cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch", isDirectory: true))
             return success("export", fields: ["format": .string("fcpxml"), "output": .string(url.path),
-                "captionStyle": .string(styleID), "aspect": .string(aspect.rawValue), "music": .null])
+                "captionStyle": .string(styleID), "aspect": .string(prepared.aspectName), "music": .null])
         }
         let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version,
                                   cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
@@ -348,7 +362,7 @@ enum CLIWorkflow {
         fields.removeValue(forKey: "outputURL"); fields.removeValue(forKey: "srtURL"); fields.removeValue(forKey: "coverURL")
         if let cover = result.coverURL { fields["cover"] = .string(cover.path) }
         fields["output"] = .string(result.outputURL.path); fields["srt"] = result.srtURL.map { .string($0.path) } ?? .null
-        fields["captionStyle"] = .string(styleID); fields["aspect"] = .string(aspect.rawValue)
+        fields["captionStyle"] = .string(styleID); fields["aspect"] = .string(prepared.aspectName)
         fields["music"] = CLIMusic.json(render.music?.entry)
         return success("export", fields: fields)
     }

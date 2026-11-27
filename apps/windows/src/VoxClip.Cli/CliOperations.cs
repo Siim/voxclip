@@ -89,7 +89,7 @@ internal static class CliOperations
         var prepared = await PrepareExportAsync(arguments, ct, openExport).ConfigureAwait(false);
         var result = await WriteExportAsync(prepared, arguments, ct, prepareExport).ConfigureAwait(false);
         var fields = Node(result, CliDataJson.Default.ExportResult)!.AsObject();
-        fields["captionStyle"] = prepared.Style; fields["aspect"] = AspectText(prepared.Aspect); fields["elapsedSeconds"] = timer.Elapsed.TotalSeconds;
+        fields["captionStyle"] = prepared.Style; fields["aspect"] = prepared.AspectName; fields["elapsedSeconds"] = timer.Elapsed.TotalSeconds;
         fields["music"] = CliMusic.Json(prepared.Snapshot.Clip?.Music?.Entry);
         return fields;
     }
@@ -158,10 +158,26 @@ internal static class CliOperations
             throw new VoxClipException(VoxClipErrorCode.EverythingCut, "Keep at least one word before exporting.");
         if (media.IsHdr && !ToneMapper.Available && !arguments.GetValue<bool>("--quiet"))
             Console.Error.WriteLine("This video is HDR. Colours are converted to standard range and may look flatter.");
-        var aspect = arguments.GetValue<string?>("--aspect") is { } aspectText ? Aspect(aspectText) : project.Export.Aspect;
+        var requestedAspect = arguments.GetValue<string?>("--aspect");
+        var aspect = requestedAspect is null or "4:5" ? project.Export.Aspect : Aspect(requestedAspect);
         var quality = arguments.GetValue<string?>("--quality") is { } qualityText ? qualityText == "high" ? ExportQuality.High : ExportQuality.Standard : project.Export.Quality;
         // A clip render carries its controls (speed, frame, look, levels, flip, turn) and the scope's effects (design §6.9, ai.md §18.5).
         var clip = ClipRenderInput.Resolve(project, project.Edits.ActiveClipId, dataRoot, SharedResources.ResolveRoot());
+        if (requestedAspect == "4:5")
+        {
+            var controls = clip?.Controls ?? new ProjectClipControls("", 1, null, ClipLook.Original, 0, 0, 0, false, false, 0);
+            clip = (clip ?? new(null, null)) with { Controls = controls with { Shape = ClipShape.PortraitFourFive } };
+        }
+        else if (requestedAspect is not null && clip?.Controls is { Shape: not null } saved)
+        {
+            var controls = saved with { Shape = null };
+            clip = clip with { Controls = controls.IsDefault ? null : controls };
+        }
+        var aspectName = clip?.Controls?.Shape switch
+        {
+            ClipShape.Landscape => "16:9", ClipShape.Portrait => "9:16", ClipShape.Square => "1:1", ClipShape.PortraitFourFive => "4:5",
+            _ => AspectText(aspect)
+        };
         if (musicOverride is not null) clip = (clip ?? new(null, null)) with { Music = musicOverride };
         if (checkingOutputs && clip?.Music is { } music) ValidateOutputs(arguments, media.Path, destination, path, music.AssetPath);
         var size = ClipControlsRendering.OutputSize(media.OrientedSize, aspect, clip?.Controls);
@@ -188,7 +204,7 @@ internal static class CliOperations
         };
         var target = project.Edits.ActiveClipId is { } selectedClip ? (ExportTarget)new ExportTarget.Clip(selectedClip) : new ExportTarget.FullEdit();
         var loudness = arguments.GetValue<string?>("--loudness") == "off" ? ExportLoudness.Off : ExportLoudness.Social;
-        return new(project, snapshot, target, aspect, quality, captions, style, destination, loudness);
+        return new(project, snapshot, target, aspect, aspectName, quality, captions, style, destination, loudness);
     }
 
     /// <summary>Encodes <paramref name="prepared"/> and publishes it with the sidecars the arguments ask for.</summary>
@@ -589,7 +605,7 @@ internal static class CliOperations
 
 /// <summary>One export run as prepared (<see cref="CliOperations.PrepareExportAsync"/>): the project with the run's edits, the snapshot
 /// the encoder is handed, and the run's choices.</summary>
-internal sealed record PreparedExport(Project Project, ComposeSnapshot Snapshot, ExportTarget Target, ExportAspect Aspect, ExportQuality Quality,
+internal sealed record PreparedExport(Project Project, ComposeSnapshot Snapshot, ExportTarget Target, ExportAspect Aspect, string AspectName, ExportQuality Quality,
     CaptionTrack? Captions, string Style, string Destination, ExportLoudness Loudness)
 {
     /// <summary>The project's edit state, null without a transcript.</summary>

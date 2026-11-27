@@ -269,6 +269,30 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test(.timeLimit(.minutes(2)), arguments: [false, true]) func cliExportsFourFiveAndChecksIt(_ explicit: Bool) async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = try JSONProjectStore.decode(FixtureLoader.data("fixtures/story-clips/story-project.voxclip"))
+    let source = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/fillers-chirp.mp4")
+    var project = try await cliProject(source: source, transcript: fixture.transcript, edits: fixture.edits)
+    let clip = try #require(project.edits.clips.first)
+    project.export.aspect = .landscape
+    project.clipControls = [.init(clipId: clip.id, shape: explicit ? .portrait : .portraitFourFive)]
+    let input = directory.appendingPathComponent("frame.voxclip")
+    let output = directory.appendingPathComponent("frame.mp4")
+    try await JSONProjectStore().save(project, to: input)
+    let invocation = try runCLI(["export", "--open", input.path, "--clip", clip.id, "--export", output.path,
+        "--style", "off", "--loudness", "off", "--json", "--quiet"] + (explicit ? ["--aspect", "4:5"] : []), directory: directory)
+    try #require(invocation.status == 0, "CLI exit \(invocation.status): \(invocation.stderr)")
+    #expect(try invocation.json["aspect"] as? String == "4:5")
+    let video = try await AVMediaProbe().probe(output).video
+    #expect(video?.width == 1080 && video?.height == 1350)
+    let checked = try runCLI(["check", "--project", input.path, "--clip", clip.id, output.path,
+        "--aspect", "4:5", "--style", "off", "--loudness", "off", "--json"], directory: directory)
+    #expect([0, 8].contains(checked.status))
+    #expect(try checked.json["ok"] as? Bool == true)
+}
+
 @Test(.timeLimit(.minutes(1))) func cliExportsStoryClipCaptionsInPartOrder() async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
