@@ -1204,6 +1204,7 @@ member VoxClip.Media.Frames.FrameObservationsFound :: method public set_Jpegs(Sy
 member VoxClip.Media.Frames.FrameScanKind :: field public Opening
 member VoxClip.Media.Frames.FrameScanKind :: field public Sentence
 member VoxClip.Media.Frames.FrameScanKind :: field public value__
+member VoxClip.Media.Frames.HarnessFrameDecoder :: method public Decode(string,System.Collections.Generic.IReadOnlyList`1<double>,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.IFrameDecoding :: method public Open(string,int,double,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.IFrameReader :: method public Read(double,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.OnnxFrameFaces :: field private DetectorOutputs
@@ -1327,24 +1328,6 @@ member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_CreatedAt(
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_Envelope(VoxClip.Media.Pipeline.EnvelopeMetadata)
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_LastAccessAt(System.DateTimeOffset)
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_Schema(string)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method private .ctor(VoxClip.Media.Pipeline.ClipIllustrationQuote)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method private PrintMembers(System.Text.StringBuilder)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method private get_EqualityContract()
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public .ctor(System.Uri,int,System.Decimal)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public Deconstruct(System.Uri&,int&,System.Decimal&)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public Equals(VoxClip.Media.Pipeline.ClipIllustrationQuote)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public Equals(object)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public GetHashCode()
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public Load(string)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public ToString()
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public get_Endpoint()
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public get_Size()
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public get_UsdPerImage()
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public op_Equality(VoxClip.Media.Pipeline.ClipIllustrationQuote,VoxClip.Media.Pipeline.ClipIllustrationQuote)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public op_Inequality(VoxClip.Media.Pipeline.ClipIllustrationQuote,VoxClip.Media.Pipeline.ClipIllustrationQuote)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public set_Endpoint(System.Uri)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public set_Size(int)
-member VoxClip.Media.Pipeline.ClipIllustrationQuote :: method public set_UsdPerImage(System.Decimal)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Grade(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Clips.ClipLook,VoxClip.Core.Domain.Clips.ClipColorAdjustments,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Motion(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.ContextDemo.MotionCropTransform,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Orient(VoxClip.Core.Domain.Captions.PixelBuffer,System.Span`1<byte>,VoxClip.Core.Domain.Clips.ProjectClipControls,System.Threading.CancellationToken)
@@ -1353,12 +1336,12 @@ member VoxClip.Media.Pipeline.ClipPicture :: method internal Orients(VoxClip.Cor
 member VoxClip.Media.Pipeline.ClipPlanAssets :: field private openverse
 member VoxClip.Media.Pipeline.ClipPlanAssets :: method private Entry(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string)
 member VoxClip.Media.Pipeline.ClipPlanAssets :: method private Hash(byte[])
-member VoxClip.Media.Pipeline.ClipPlanAssets :: method private IllustrationPath(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,VoxClip.Media.Pipeline.ClipIllustrationQuote)
+member VoxClip.Media.Pipeline.ClipPlanAssets :: method private IllustrationPath(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,VoxClip.Core.Domain.Effects.ClipIllustrationQuote)
 member VoxClip.Media.Pipeline.ClipPlanAssets :: method private Picture(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string)
 member VoxClip.Media.Pipeline.ClipPlanAssets :: method private Save(byte[],string,string,string)
 member VoxClip.Media.Pipeline.ClipPlanAssets :: method public .ctor(VoxClip.Core.Services.Music.IMusicHttp)
-member VoxClip.Media.Pipeline.ClipPlanAssets :: method public IllustrationAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,VoxClip.Media.Pipeline.ClipIllustrationQuote,string,System.Threading.CancellationToken)
-member VoxClip.Media.Pipeline.ClipPlanAssets :: method public SavedIllustration(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,VoxClip.Media.Pipeline.ClipIllustrationQuote)
+member VoxClip.Media.Pipeline.ClipPlanAssets :: method public IllustrationAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,VoxClip.Core.Domain.Effects.ClipIllustrationQuote,string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.ClipPlanAssets :: method public SavedIllustration(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,VoxClip.Core.Domain.Effects.ClipIllustrationQuote)
 member VoxClip.Media.Pipeline.ClipPlanAssets :: method public SoundAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset,string,string,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ContextDemoFrames :: field internal MaximumBytes
 member VoxClip.Media.Pipeline.ContextDemoFrames :: field private Brands
@@ -3613,6 +3596,7 @@ type VoxClip.Media.Frames.FrameClipAnalysis
 type VoxClip.Media.Frames.FrameJpeg
 type VoxClip.Media.Frames.FrameObservationsFound
 type VoxClip.Media.Frames.FrameScanKind
+type VoxClip.Media.Frames.HarnessFrameDecoder
 type VoxClip.Media.Frames.IFrameDecoding
 type VoxClip.Media.Frames.IFrameReader
 type VoxClip.Media.Frames.OnnxFrameFaces
@@ -3623,7 +3607,6 @@ type VoxClip.Media.Frames.VideoFramePass+ClipFrames
 type VoxClip.Media.Frames.VideoFramePass+Found
 type VoxClip.Media.Pipeline.AudioCacheJson
 type VoxClip.Media.Pipeline.AudioCacheMetadata
-type VoxClip.Media.Pipeline.ClipIllustrationQuote
 type VoxClip.Media.Pipeline.ClipPicture
 type VoxClip.Media.Pipeline.ClipPlanAssets
 type VoxClip.Media.Pipeline.ContextDemoFrames
