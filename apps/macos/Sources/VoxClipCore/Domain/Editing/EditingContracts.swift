@@ -477,7 +477,7 @@ public struct EditPlan: Codable, Sendable, Equatable {
     /// mac-editing supplies validation and the exact fixture-tested planner.
     public static func build(transcript: Transcript, editState: EditState, activeClip: ClipRange?, duration: Double, sampleRate: Double) throws -> EditPlan {
         var snapshot = editState
-        snapshot.transcript = transcript
+        if snapshot.projectClock == nil { snapshot.transcript = transcript }
         if let activeClip, activeClip.parts != nil {
             return try buildStoryPlan(snapshot, clip: activeClip, duration: duration, sampleRate: sampleRate)
         }

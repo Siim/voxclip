@@ -114,7 +114,8 @@ import Testing
             let project = try JSONProjectStore.decode(JSONEncoder().encode(JSONValue.object(document)))
             let state = try #require(try EditState(project: project))
             let active = state.activeClip
-            let plan = try EditPlan.build(transcript: state.transcript, editState: state, activeClip: active,
+            let root = try #require(project.transcript)
+            let plan = try EditPlan.build(transcript: root, editState: state, activeClip: active,
                                           duration: project.media.source.durationSeconds, sampleRate: rate)
             func intervals(_ key: String) -> [MediaInterval] {
                 row[key].array.map { MediaInterval(startSample: Int64($0.array[0].int), endSample: Int64($0.array[1].int)) }
