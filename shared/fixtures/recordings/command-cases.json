@@ -1,0 +1,165 @@
+{
+  "schema": "voxclip-recording-commands/1",
+  "project": "reference-recordings.voxclip",
+  "recordingA": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "recordingB": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+  "started": [
+    [
+      "w1",
+      "w13"
+    ],
+    [
+      "w18",
+      "w27"
+    ]
+  ],
+  "swapped": [
+    [
+      "r2.w1",
+      "r2.w11"
+    ],
+    [
+      "w8",
+      "w13"
+    ],
+    [
+      "w18",
+      "w27"
+    ]
+  ],
+  "leftOut": [
+    "w14",
+    "w17"
+  ],
+  "putBack": [
+    [
+      "w1",
+      "w27"
+    ]
+  ],
+  "placement": "w23",
+  "middle": [
+    [
+      "w1",
+      "w17"
+    ],
+    [
+      "r2.w12",
+      "r2.w17"
+    ],
+    [
+      "w24",
+      "w27"
+    ]
+  ],
+  "final": {
+    "ranges": [
+      [
+        "r2.w1",
+        "r2.w11"
+      ],
+      [
+        "w8",
+        "w13"
+      ],
+      [
+        "w18",
+        "w23"
+      ],
+      [
+        "r2.w18",
+        "r2.w21"
+      ],
+      [
+        "w24",
+        "w27"
+      ]
+    ],
+    "parts": [
+      {
+        "id": "A1",
+        "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "kept": [
+          [
+            0,
+            61200
+          ]
+        ]
+      },
+      {
+        "id": "B1",
+        "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "kept": [
+          [
+            48000,
+            84000
+          ]
+        ]
+      },
+      {
+        "id": "B2",
+        "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "kept": [
+          [
+            108000,
+            172800
+          ]
+        ]
+      },
+      {
+        "id": "A2",
+        "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "kept": [
+          [
+            114240,
+            144000
+          ]
+        ]
+      },
+      {
+        "id": "B3",
+        "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "kept": [
+          [
+            210240,
+            240000
+          ]
+        ]
+      }
+    ],
+    "kept": [
+      [
+        288000,
+        349200
+      ],
+      [
+        48000,
+        84000
+      ],
+      [
+        108000,
+        172800
+      ],
+      [
+        402240,
+        432000
+      ],
+      [
+        210240,
+        240000
+      ]
+    ],
+    "outputSamples": 221520,
+    "partSeams": [
+      61200,
+      97200,
+      162000,
+      191760
+    ],
+    "recordingSeams": [
+      61200,
+      162000,
+      191760
+    ]
+  }
+}

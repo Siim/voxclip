@@ -1042,3 +1042,9 @@ Return solo runs in recording and transcript order. A run contains consecutive u
 For every take, report the §4.11 filler count (including unlabeled speech), longest nonnegative gap in seconds between speech items, and restart count. Count one restart for each run of **2 or more** equal consecutive lexical tokens where each adjacent pair spans at most **3 s** from the first token's start to the second's end. Words per minute counts transcribed word items, including verbal fillers, over the take's full span (zero for a zero-duration take). Mean ASR confidence averages only known confidences of transcribed word items and is absent if none are known. Report the same `cutOff` boolean as in the flags.
 
 Both Cores replay `shared/fixtures/recordings/take-match-cases.json`. Regenerate it with `python3 tools/fixtures/recordings/generate_takes.py`.
+
+### 13.5 Recording shortcuts
+
+Build `TakeMatch` from the project clock in region order. Each region contributes its own words, with the clock's word IDs and local timings. **Start from recording** keeps the whole recording except takes flagged `restart` or `falseStart`, which split the kept runs into parts. It selects the new clip in the same edit and reports the new part IDs and omitted takes. The title uses the first seven kept words, as in Make Clip.
+
+Regenerate `shared/fixtures/recordings/command-cases.json` with `python3 tools/fixtures/recordings/generate_commands.py`. Its expected five-part ranges and sample plan come from `plan-cases.json`.

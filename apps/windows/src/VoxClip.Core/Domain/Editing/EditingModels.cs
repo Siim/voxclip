@@ -79,6 +79,8 @@ public abstract record RecordingEdit
     public sealed record TrimPart(string ClipId, string PartId, string StartWordId, string EndWordId) : RecordingEdit;
     /// <summary>Replace a part with a version from a different recording.</summary>
     public sealed record SwapTake(string ClipId, string PartId, string StartWordId, string EndWordId, string? TakeReason = null) : RecordingEdit;
+    /// <summary>Make a clip from the recording's kept sentences.</summary>
+    public sealed record StartFromRecording(string Key) : RecordingEdit;
 }
 
 /// <summary>Explicit planner kind; editing §2.6. Never infer from an id.</summary>

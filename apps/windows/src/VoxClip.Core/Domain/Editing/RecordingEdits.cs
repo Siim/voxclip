@@ -8,10 +8,13 @@ public abstract record RecordingEditResult
 {
     private RecordingEditResult() { }
     /// <summary>The new snapshot, named Undo step, and any announcement for the editor.</summary>
-    public sealed record Applied(Project Project, string UndoName, string? Announcement = null) : RecordingEditResult;
+    public sealed record Applied(Project Project, string UndoName, string? Announcement = null, RecordingEditDetails? Details = null) : RecordingEditResult;
     /// <summary>Why the command left the snapshot unchanged.</summary>
     public sealed record Refused(string Message) : RecordingEditResult;
 }
+
+/// <summary>The clip, resulting parts, and skipped lines for recording shortcut feedback.</summary>
+public sealed record RecordingEditDetails(string ClipId, IReadOnlyList<string> MadePartIds, IReadOnlyList<TakeMatch.Take> LeftOut);
 
 /// <summary>Pure recording and ordered part edits on the project clock.</summary>
 public static class RecordingEdits
@@ -28,6 +31,7 @@ public static class RecordingEdits
             {
                 RecordingEdit.AddSpokenSource add => new RecordingEditResult.Applied(Adding(add, project), "Add recording"),
                 RecordingEdit.RemoveSpokenSource remove => new RecordingEditResult.Applied(Removing(remove.Key, project), "Remove recording"),
+                RecordingEdit.StartFromRecording start => Start(start.Key, project),
                 RecordingEdit.AddPart add => ChangeParts(add.ClipId, project, "Add part", (parts, _) =>
                     Insert(add.Part, add.AfterPartId, parts, parts.Count)),
                 RecordingEdit.MovePart move => ChangeParts(move.ClipId, project, "Move part", (parts, _) =>
@@ -62,6 +66,47 @@ public static class RecordingEdits
         }
         catch (Refusal refusal) { return new RecordingEditResult.Refused(refusal.Message); }
         catch (VoxClipException refusal) { return new RecordingEditResult.Refused(refusal.Message); }
+    }
+
+    private static RecordingEditResult.Applied Start(string key, Project project)
+    {
+        if (EditingEngine.FromProject(project) is not { } state || state.Clips.Count >= 64)
+            throw new Refusal("Choose a spoken recording with words and room for another clip.");
+        var clock = state.ProjectClock ?? ProjectClock.Build(project);
+        var takes = TakeMatch.Build(clock).Beats.SelectMany(beat => beat.Takes).Where(take => take.Key == key).ToArray();
+        var leftOut = takes.Where(take => take.Flags.Contains("restart") || take.Flags.Contains("falseStart")).ToArray();
+        var omitted = leftOut.Select(take => take.StartWordId).ToHashSet();
+        var id = FreshId("recording-clip", state.Clips.Select(clip => clip.Id).ToHashSet());
+        var parts = new List<ClipPart>();
+        var separated = true;
+        foreach (var take in takes)
+        {
+            if (omitted.Contains(take.StartWordId)) { separated = true; continue; }
+            if (separated)
+                parts.Add(new(parts.Count == 0 ? id : $"part-{parts.Count + 1}", take.StartWordId, take.EndWordId));
+            else
+                parts[^1] = parts[^1] with { EndWordId = take.EndWordId };
+            separated = false;
+        }
+        if (parts.Count == 0 || StoryClips.Indices(parts.Select(part => (part.StartWordId, part.EndWordId)), clock.Words) is not { } ranges)
+            throw new Refusal("Choose a spoken recording with a line to keep.");
+        var title = EditingAlgorithms.ClipTitle(ranges.SelectMany(range => Enumerable.Range(range.Start, range.End - range.Start + 1))
+            .Select(index => state.Corrections.GetValueOrDefault(clock.Words[index].Id, clock.Words[index].Text)));
+        var clip = new ClipRange(id, parts[0].StartWordId, parts[^1].EndWordId, title, ClipOrigin.Manual, null, null, true,
+            Parts: parts.Count > 1 ? parts : null, Kind: parts.Count > 1 ? StoryClipKind.Story : null);
+        var added = EditingSession.Reduce(state, new EditOperation.AddClip(clip), project.Ai.Results, project);
+        if (added.Clips.Count <= state.Clips.Count) throw new Refusal("This recording has too many separate parts.");
+        var selected = EditingSession.Reduce(added, new EditOperation.SetActiveClip(id));
+        return new(EditingEngine.ApplyToProject(project, selected), "Start from recording", Details:
+            new(id, parts.Select(part => part.Id).ToArray(), leftOut));
+    }
+
+    private static string FreshId(string basis, HashSet<string> reserved)
+    {
+        if (!reserved.Contains(basis)) return basis;
+        var number = 2;
+        while (reserved.Contains($"{basis}-{number}")) number++;
+        return $"{basis}-{number}";
     }
 
     private static Project Adding(RecordingEdit.AddSpokenSource add, Project project)
