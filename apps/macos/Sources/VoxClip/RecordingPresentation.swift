@@ -16,7 +16,7 @@ struct RecordingTranscriptSection {
 
     static func nsColor(_ region: ProjectClock.Region, alternate: Bool = false) -> NSColor {
         let base = DesignValues.nsColor("recording.\(region.colourIndex + 1)")
-        return alternate ? base.withAlphaComponent(0.70) : base
+        return alternate ? base.blended(withFraction: 0.23, of: DesignValues.nsColor("bg.surface")) ?? base : base
     }
 }
 

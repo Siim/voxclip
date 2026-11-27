@@ -600,8 +600,12 @@ struct TranscriptAppearance: Equatable {
         let visible = model.focusesClip ? scopes?.sorted { $0.lowerBound < $1.lowerBound } : nil
         let paragraphs: [(Range<Int>, String?)]
         if let sections = model.recordingTranscriptSections() {
+            let seams = Set(model.scopePartBounds?.flatMap { [$0.lowerBound, $0.upperBound + 1] } ?? []).sorted()
             paragraphs = sections.flatMap { section in
-                split.lazy.map { $0.clamped(to: section.words) }.filter { !$0.isEmpty }.enumerated().map { position, range in
+                split.lazy.map { $0.clamped(to: section.words) }.filter { !$0.isEmpty }.flatMap { range in
+                    let edges = [range.lowerBound] + seams.filter { range.lowerBound < $0 && $0 < range.upperBound } + [range.upperBound]
+                    return zip(edges, edges.dropFirst()).map { $0..<$1 }
+                }.enumerated().map { position, range in
                     (range, position == 0 ? section.heading : nil)
                 }
             }

@@ -33,8 +33,26 @@ struct RecordingFeedback: Equatable {
     let editor: EditorModel
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 6) {
+        HStack(spacing: 6) {
+            ScrollView(.horizontal) {
+                recordingChips
+            }
+            .scrollIndicators(.hidden)
+            AddRecordingMenu(editor: editor)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .dropDestination(for: URL.self) { urls, _ in
+            guard editor.addRecordingReason == nil, let url = urls.first, url.isFileURL,
+                  let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType, type.conforms(to: .movie) else { return false }
+            editor.addRecording(at: url)
+            return true
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Transcript recordings")
+    }
+
+    private var recordingChips: some View {
+        HStack(spacing: 6) {
                 if let clip = editor.activeClip, editor.storyRecordingRegions.count > 1 {
                     chip(.playOrder) { Text("\(editor.scopeName(clip.id)) · play order") }
                 }
@@ -77,19 +95,7 @@ struct RecordingFeedback: Equatable {
                     }
                 }
                 if editor.recordingImportTask != nil && editor.pendingRecording == nil { Text("Reading recording…").font(.system(size: 11)) }
-                AddRecordingMenu(editor: editor)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 6)
         }
-        .scrollIndicators(.hidden)
-        .dropDestination(for: URL.self) { urls, _ in
-            guard editor.addRecordingReason == nil, let url = urls.first, url.isFileURL,
-                  let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType, type.conforms(to: .movie) else { return false }
-            editor.addRecording(at: url)
-            return true
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Transcript recordings")
     }
 
     private func chip<LabelContent: View>(_ choice: RecordingTranscriptChoice, @ViewBuilder label: () -> LabelContent) -> some View {
