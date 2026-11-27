@@ -9,6 +9,7 @@ internal enum RecordingViewKind { All, Recording, PlayOrder }
 
 internal readonly record struct RecordingView(RecordingViewKind Kind, string? Key = null);
 internal sealed record RecordingSection(int First, int Last, string? Heading);
+internal sealed record OmittedRecordingLine(TakeMatch.Take Take, string AfterWordId, string Label);
 internal sealed record RecordingVersion(ProjectClock.Region Recording, string FirstId, string LastId,
     IReadOnlySet<string> ChangedWordIds, int Fillers, double Pause, double Start, double End)
 {
@@ -53,7 +54,7 @@ public sealed partial class EditorViewModel
     {
         { Kind: RecordingViewKind.All } chosen => chosen,
         { Kind: RecordingViewKind.Recording } chosen when RecordingRegions.Any(region => region.Key == chosen.Key) => chosen,
-        { Kind: RecordingViewKind.PlayOrder } chosen when StoryRecordingRegions.Count > 1 => chosen,
+        { Kind: RecordingViewKind.PlayOrder } chosen when HasSeveralRecordings && ActiveClip is not null => chosen,
         _ when StoryRecordingRegions.Count > 1 => new(RecordingViewKind.PlayOrder),
         _ when StoryRecordingRegions.FirstOrDefault() is { } region => new(RecordingViewKind.Recording, region.Key),
         _ => new(RecordingViewKind.All),
@@ -68,7 +69,7 @@ public sealed partial class EditorViewModel
     {
         var index = RecordingRegions.ToList().FindIndex(region => region.Key == choice.Key);
         if (choice.Kind == RecordingViewKind.Recording && index < 0 ||
-            choice.Kind == RecordingViewKind.PlayOrder && StoryRecordingRegions.Count < 2) return false;
+            choice.Kind == RecordingViewKind.PlayOrder && (!HasSeveralRecordings || ActiveClip is null)) return false;
         recordingView = choice;
         if (partPickKey is not null && (choice.Kind != RecordingViewKind.Recording || partPickKey != choice.Key)) partPickKey = null;
         if (clearSelection) ClearSelection();
@@ -168,7 +169,8 @@ public sealed partial class EditorViewModel
     internal MediaReference? RecordingReference(string key) => project.Media.Source.ContentKey == key
         ? project.Media.Source : project.Media.AdditionalSources?.FirstOrDefault(reference => reference.ContentKey == key);
 
-    private bool ApplyRecordingEdit(RecordingEdit edit, string? select = null, string? announcement = null, Project? prepared = null)
+    private bool ApplyRecordingEdit(RecordingEdit edit, string? select = null, string? announcement = null, Project? prepared = null,
+        Func<RecordingEditResult.Applied, string>? feedback = null)
     {
         var result = RecordingEdits.Apply(edit, prepared ?? project);
         if (result is RecordingEditResult.Refused refused) { Notice = refused.Message; return false; }
@@ -176,9 +178,10 @@ public sealed partial class EditorViewModel
         var previous = selectedPartId;
         selectedPartId = select ?? previous;
         if (!ReplaceProject(applied.Project, applied.UndoName)) { selectedPartId = previous; return false; }
-        if (edit is RecordingEdit.SwapTake && applied.Announcement is not null && ActiveClip is { } copy)
+        if (edit is RecordingEdit.SwapTake or RecordingEdit.UseLineVersion && applied.Announcement is not null && ActiveClip is { } copy)
             Announce($"Made {copy.Title ?? ActiveClipLabel} to keep the lip sync");
-        else if ((applied.Announcement ?? announcement) is { } feedback) Announce(feedback);
+        else if (feedback is not null) Announce(feedback(applied));
+        else if ((applied.Announcement ?? announcement) is { } message) Announce(message);
         return true;
     }
 
@@ -192,6 +195,62 @@ public sealed partial class EditorViewModel
         }
         return recordingMatches;
     }
+
+    internal IReadOnlyList<TakeMatch.Take> RecordingTakes(string key) => RecordingMatches()?.Beats
+        .SelectMany(beat => beat.Takes).Where(take => take.Key == key).ToArray() ?? [];
+
+    internal int SharedRecordingLines(string key) => RecordingMatches()?.Beats
+        .Count(beat => beat.Takes.Count > 1 && beat.Takes.Any(take => take.Key == key)) ?? 0;
+
+    private static bool IsRestart(TakeMatch.Take take) => take.Flags.Contains("restart");
+    private static bool IsLeftOut(TakeMatch.Take take) => IsRestart(take) || take.Flags.Contains("falseStart");
+
+    internal static string? RecordingOmission(IReadOnlyList<TakeMatch.Take> takes)
+    {
+        var restarts = takes.Count(IsRestart);
+        var starts = takes.Count(take => !IsRestart(take) && IsLeftOut(take));
+        var labels = new List<string>();
+        if (restarts > 0) labels.Add($"{restarts} restart{(restarts == 1 ? "" : "s")}");
+        if (starts > 0) labels.Add($"{starts} false start{(starts == 1 ? "" : "s")}");
+        return labels.Count == 0 ? null : string.Join(" and ", labels) + " left out";
+    }
+
+    internal string? StartFromDisabledReason(string key) => RecordingUnavailable(key) ??
+        (IsReadOnly || isLeaving ? "Editing isn't available right now." : Busy ? "Wait for the current edit to finish." :
+        project.Edits.Clips.Count >= 64 ? "A project can have up to 64 clips." :
+        !RecordingTakes(key).Any(take => !IsLeftOut(take)) ? "Choose a spoken recording with a line to keep." : null);
+
+    internal bool StartFromRecording(string key)
+    {
+        if (StartFromDisabledReason(key) is not null || RecordingRegions.FirstOrDefault(region => region.Key == key) is not { } region)
+            return false;
+        if (!ApplyRecordingEdit(new RecordingEdit.StartFromRecording(key), feedback: applied =>
+        {
+            var count = applied.Details?.MadePartIds.Count ?? 0;
+            var omission = RecordingOmission(applied.Details?.LeftOut ?? []);
+            Notice = $"{ActiveClipLabel} made from {region.Label}" + (omission is null ? "" : $" · {omission}");
+            return $"{ActiveClipLabel} made from {region.Label}, {count} part{(count == 1 ? "" : "s")}" +
+                (omission is null ? "" : $", {omission}");
+        })) return false;
+        ChooseRecordingView(new(RecordingViewKind.PlayOrder));
+        return true;
+    }
+
+    internal IReadOnlyList<OmittedRecordingLine> OmittedRecordingLines =>
+        ActiveClip?.Id.StartsWith("recording-clip", StringComparison.Ordinal) == true
+            ? StoryRecordingRegions.SelectMany(region => RecordingTakes(region.Key)).Where(IsLeftOut).Select(take =>
+            {
+                var first = Index(take.StartWordId);
+                var before = ClipParts.FirstOrDefault(part => part.Last == first - 1);
+                return first < 0 || before is null || ClipParts.Any(part => part.First <= first && first <= part.Last)
+                    ? null : new OmittedRecordingLine(take, before.Part.EndWordId, IsRestart(take) ? "restart" : "false start");
+            }).OfType<OmittedRecordingLine>().OrderBy(line => Index(line.Take.StartWordId)).ToArray()
+            : [];
+
+    internal bool PutBackRecordingLine(OmittedRecordingLine line) => CanEditParts && ActiveClip is { } clip &&
+        RecordingUnavailable(line.Take.Key) is null && ApplyRecordingEdit(new RecordingEdit.InsertLine(clip.Id, line.Take.Key,
+            line.Take.StartWordId, line.Take.EndWordId, line.AfterWordId), feedback: _ =>
+            Notice = $"{char.ToUpperInvariant(line.Label[0])}{line.Label[1..]} put back in {ActiveClipLabel}.");
 
     internal IReadOnlyList<RecordingVersion> RecordingVersions(ClipPartRow part)
     {

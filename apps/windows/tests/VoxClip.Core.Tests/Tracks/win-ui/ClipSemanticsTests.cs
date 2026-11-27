@@ -24,6 +24,29 @@ public sealed class ClipSemanticsTests
 
     internal static EditorViewModel Story() => new(Fixture("story-project.voxclip", "story-clips"));
     internal static EditorViewModel RecordingStory() => new(Fixture("two-recordings.voxclip", "recordings"));
+    internal static EditorViewModel RecordingReference() => new(Fixture("reference-recordings.voxclip", "recordings"));
+
+    [Fact]
+    public void StartFromAndPutBackUseSeparateUndoSteps()
+    {
+        var model = RecordingReference();
+        var original = model.ActiveClip;
+        var primary = model.RecordingRegions[0];
+        Assert.True(model.StartFromRecording(primary.Key));
+        Assert.Equal("Start from recording", model.UndoActionName);
+        Assert.Equal(RecordingViewKind.PlayOrder, model.TranscriptRecordingView.Kind);
+        var starter = model.ActiveClip;
+        var omitted = Assert.Single(model.OmittedRecordingLines);
+        Assert.Equal("restart", omitted.Label);
+        Assert.True(model.PutBackRecordingLine(omitted));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Empty(model.OmittedRecordingLines);
+        model.Undo();
+        Assert.Equal(starter, model.ActiveClip);
+        model.Undo();
+        Assert.Equal(original, model.ActiveClip);
+    }
+
     internal static EditorViewModel RecordingOpening()
     {
         var project = Fixture("reference-recordings.voxclip", "recordings");
