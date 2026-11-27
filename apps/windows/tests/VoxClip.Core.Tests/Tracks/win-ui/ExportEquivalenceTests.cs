@@ -4,8 +4,11 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 #if !EXPORT_BASELINE
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Loudness;
 using VoxClip.Core.Domain.Music;
+using VoxClip.Core.Services.Project;
+using VoxClip.Tests.Support;
 #endif
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Settings;
@@ -18,6 +21,55 @@ namespace VoxClip.Ui.Tests;
 public sealed class ExportEquivalenceTests
 {
 #if !EXPORT_BASELINE
+    [Fact]
+    [Trait("Category", "RequiresWindows")]
+    public async Task PreviewMatchesDialogExportAcrossRecordings()
+    {
+        var destination = Environment.GetEnvironmentVariable("VOXCLIP_EXPORT_EQ_RECORDINGS");
+        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(destination)) Assert.Skip("Run export-equivalence.py --recordings-only on Windows.");
+        var ct = TestContext.Current.CancellationToken;
+        var input = await RecordingStoryFixture.CreateAsync(destination!, ct);
+        var clipId = input.Project.Edits.ActiveClipId!;
+        var model = new EditorViewModel(input.Project);
+        var route = new ExportDialogRouting(model, clipId, ExportDialogRouting.Scopes(clipId).ToList().IndexOf(ExportScopeKind.ThisClip),
+            EditorLayout.Frames.ToList().IndexOf(ExportAspect.Source), 0, false, destination!, "recordings");
+        var shared = FixtureLoader.SharedRoot;
+        var style = CaptionStyleLibrary.Load(shared).Styles.First(style => style.Id == "vox-highlight");
+        var job = await route.JobAsync(Assert.Single(route.Targets), async (project, state, cancellation) =>
+        {
+            var media = ExportRenderInput.Media(project);
+            var plan = ExportRenderInput.Plan(media, state);
+            var clip = ClipRenderInput.Resolve(project, clipId, Path.Combine(destination!, "data"), shared);
+            var output = ExportRenderInput.Output(media, project.Export, clip?.Controls);
+            var settings = ClipCaptionStyles.Settings(project, clipId) with { StyleId = style.Id };
+            var captions = await CaptionEngine.BuildAsync(new(style, settings, output.Size,
+                ExportRenderInput.CaptionWords(project, state!, plan, null, clip?.Effects?.Effects), state!.Transcript.Language, plan.Duration),
+                new HarfBuzzGlyphShaper(), null, cancellation);
+            var snapshot = new ComposeSnapshot(media, plan, captions, output) { Clip = clip };
+            return await RecordingRendering.BindAsync(project, snapshot, new ProjectStore(), input.Path, cancellation);
+        }, ct);
+        var snapshot = job.Snapshot;
+        var result = await new Exporter().ExportAsync(job with { Loudness = ExportLoudness.Off }, null, ct);
+        await using var preview = new PreviewEngine();
+        await preview.LoadAsync(snapshot, null, ct);
+        await using var frames = preview.ReadFramesAsync(ct).GetAsyncEnumerator(ct);
+        var samples = new List<object>();
+        var fps = snapshot.Output.FrameRate;
+        var times = new[] { 0.0 }.Concat(snapshot.Plan.PartSeams.Select(sample => sample / snapshot.Plan.SampleRate));
+        foreach (var start in times)
+        {
+            var frame = (int)Math.Ceiling(snapshot.Speed.Rendered(start + .12) * fps);
+            await preview.SeekAsync(snapshot.Speed.Edited(frame / fps), true, ct);
+            Assert.True(await frames.MoveNextAsync());
+            var picture = frames.Current.Buffer;
+            var file = $"preview-{frame}.bgra";
+            await File.WriteAllBytesAsync(Path.Combine(destination!, file), picture.Pixels.ToArray(), ct);
+            samples.Add(new { frame, file, picture.Width, picture.Height });
+        }
+        Assert.Equal(5, samples.Count);
+        await File.WriteAllTextAsync(Path.Combine(destination!, "recordings.json"), JsonSerializer.Serialize(new { result.Output, samples }), ct);
+    }
+
     [Fact]
     [Trait("Category", "RequiresWindows")]
     public async Task ExportTimelineMusicThroughTheDialogRouting()

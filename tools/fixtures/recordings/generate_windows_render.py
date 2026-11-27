@@ -10,14 +10,14 @@ SEGMENTS = dict(zip('abcdefg', ((0, 0, 18, 3), (15, 0, 3, 16), (15, 15, 3, 17),
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def recording(label, width, height, background, tone, rate):
+def recording(label, width, height, background, tone, rate, duration):
     output = ROOT / f'shared/fixtures/media/t4-recording-{label}.mp4'
     command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24',
                '-s', f'{width}x{height}', '-r', '30', '-i', '-', '-f', 'lavfi', '-i',
-               f'sine=frequency={tone}:sample_rate={rate}:duration=4', '-c:v', 'h264_videotoolbox',
+               f'sine=frequency={tone}:sample_rate={rate}:duration={duration}', '-c:v', 'h264_videotoolbox',
                '-b:v', '180k', '-c:a', 'aac', '-movflags', '+faststart', str(output)]
     with subprocess.Popen(command, stdin=subprocess.PIPE) as encoder:
-        for frame in range(120):
+        for frame in range(30 * duration):
             pixels = bytearray(background * (width * height))
             for digit, value in enumerate(f'{frame:03}'):
                 for segment in DIGITS[int(value)]:
@@ -31,5 +31,5 @@ def recording(label, width, height, background, tone, rate):
             raise RuntimeError(f'Could not encode {output.name}')
 
 
-recording('A', 320, 180, bytes.fromhex('204069'), 397, 48000)
-recording('B', 240, 320, bytes.fromhex('ca7336'), 811, 44100)
+recording('A', 320, 180, bytes.fromhex('204069'), 397, 48000, 5)
+recording('B', 240, 320, bytes.fromhex('ca7336'), 811, 44100, 3)
